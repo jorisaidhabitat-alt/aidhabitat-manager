@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320" role="img" aria-label="La Cipav">
+  <rect width="640" height="320" rx="28" fill="#ffffff"/>
+  <text x="84" y="170" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="300" fill="#0f172a" letter-spacing="6">LACIPAV</text>
+  <path d="M160 214c36 24 88 24 124 0" fill="none" stroke="#12b5cb" stroke-width="16" stroke-linecap="round"/>
+</svg>

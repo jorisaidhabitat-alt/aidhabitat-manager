@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "secret": "T0pCmAvmVmOk_-epA8jUPSOSn3tZRQhP6T9d-dwycF1axYDMgirF5vK1Ob6OdOGT",
+  "users": {
+    "joris.balluais@gmail.com": {
+      "salt": "YPr8uvyPDxb9MCWlI8v5MA",
+      "passwordHash": "5108a38ed85811eeed4e860baba889da6413ed7bbea5a113d76973194f3040eaa720cf4797729d6b070121fc1611a8e51564abb2c70baeca2293c4eaa83174c8",
+      "createdAt": "2026-03-10T13:46:31.225Z",
+      "profilePhotoUrl": "/uploads/profile-photos/joris-balluais-gmail-com-1773153659353.png"
+    },
+    "joris.aidhabitat@gmail.com": {
+      "salt": "uWMfJTZr_9mK8Xsn_np9sA",
+      "passwordHash": "c1112985a857d2cabab2ee2bb2fbd9d0f1ca9165d8209ac40b27ee7e99fe58aca363270e68febc61118ef95168301b4d04b3e2e2a88f78db65010bd2c7a5a0de",
+      "createdAt": "2026-03-10T13:46:31.258Z",
+      "profilePhotoUrl": "/uploads/profile-photos/joris-aidhabitat-gmail-com-1773735340551.png"
+    },
+    "contact@aidhabitat.fr": {
+      "salt": "txt8vmHJaGyxwWpLVjRqMg",
+      "passwordHash": "2733675430a4a034df8e3f7555089f3326d7710a45d3f8d57adf6eac6a5ef39b59908c697b22ae31ed29d4cb2bf897ba3e617e3f7f293d81543f6252e8a7d0f0",
+      "createdAt": "2026-03-10T13:46:31.290Z",
+      "profilePhotoUrl": "/uploads/profile-photos/contact-aidhabitat-fr-1773154139479.png"
+    }
+  },
+  "pendingCredentials": {
+    "joris.balluais@gmail.com": {
+      "displayName": "Christelle",
+      "password": "Christel-8fdc9c1b",
+      "role": "ERGO",
+      "createdAt": "2026-03-10T13:46:31.225Z"
+    },
+    "joris.aidhabitat@gmail.com": {
+      "displayName": "Coralie",
+      "password": "Coralie-415f9b75",
+      "role": "ERGO",
+      "createdAt": "2026-03-10T13:46:31.258Z"
+    },
+    "contact@aidhabitat.fr": {
+      "displayName": "Renan",
+      "password": "Renan-a8ea54db",
+      "role": "ADMIN",
+      "createdAt": "2026-03-10T13:46:31.290Z"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "id": "cb63b3f7-a427-40c3-a219-12e6848c66ad",
+      "clientDocumentId": null,
+      "patientId": "58ab26f3-a158-4cc3-8ded-fb91f9e1edd1",
+      "dossierId": "f352eea7-a8ec-4709-b015-4c1cf473abd2",
+      "title": "AMO MaPrimeAdapt à Rennes",
+      "fileName": "AMO-MaPrimeAdapt-à-Rennes.webp",
+      "mimeType": "image/webp",
+      "tags": [
+        "Mandat"
+      ],
+      "relativeUrl": "/uploads/documents/58ab26f3-a158-4cc3-8ded-fb91f9e1edd1/1773648453860-AMO-MaPrimeAdapt-à-Rennes.webp",
+      "createdAt": "2026-03-16T08:07:33.863Z",
+      "updatedAt": "2026-03-16T08:07:33.863Z"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "funds": {
+    "1": {
+      "name": "Agirc-Arrco",
+      "phone": "0 970 660 660",
+      "audience": "Retraités et anciens salariés du privé affiliés au régime",
+      "requestMethod": "Appel ou dépôt via l’espace personnel, puis orientation vers le bon service",
+      "requestDelay": "Variable selon le service saisi",
+      "aidAmount": "Montant variable selon le dossier",
+      "therapistNote": "good",
+      "website": "https://www.agirc-arrco.fr",
+      "lastEditedAt": "2026-03-16T13:01:04.680Z",
+      "lastEditedBy": "Coralie"
+    },
+    "4": {
+      "name": "AG2R",
+      "phone": "09 69 36 10 43",
+      "audience": "Bénéficiaires affiliés AG2R avec refus ANAH ou reste à charge trop important",
+      "requestMethod": "Appeler le 09 69 36 10 43. Si l’affiliation est confirmée, AG2R rappelle pour valider l’éligibilité puis envoie un formulaire papier à retourner avec les justificatifs.",
+      "requestDelay": "Rappel possible sous 3 mois, envoi du formulaire sous 15 jours, passage en commission sous 40 jours ouvrés après réception.",
+      "aidAmount": "Montant variable après commission",
+      "therapistNote": "Intervention complémentaire après étude, surtout en cas de refus ANAH ou de reste à charge trop important.",
+      "website": "https://www.ag2rlamondiale.fr",
+      "lastEditedAt": "2026-03-11T08:20:43.377Z",
+      "lastEditedBy": "Coralie"
+    },
+    "12": {
+      "name": "CAVAMAC",
+      "phone": "01 81 69 36 01",
+      "audience": "Agents généraux d’assurance affiliés à la CAVAMAC.",
+      "requestMethod": "Vérifier l’affiliation puis demander le bon circuit de dépôt.",
+      "requestDelay": "À confirmer selon le service saisi.",
+      "aidAmount": "Étude au cas par cas.",
+      "therapistNote": "Repère pour les agents généraux d’assurance relevant de la CAVAMAC.",
+      "website": "https://www.cavamac.fr",
+      "lastEditedAt": "2026-03-11T08:21:21.563Z",
+      "lastEditedBy": "Coralie"
+    }
+  }
+}

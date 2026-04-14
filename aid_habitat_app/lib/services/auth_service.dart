@@ -1,0 +1,536 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart';
+import 'package:sqflite/sqflite.dart';
+
+import '../models/types.dart';
+import 'local_database.dart';
+
+class AuthService {
+  AuthService._internal();
+
+  static final AuthService _instance = AuthService._internal();
+
+  factory AuthService() => _instance;
+
+  final LocalDatabase _database = LocalDatabase.instance;
+
+  static const String bootstrapPassword = 'AidHabitat!Local';
+
+  static const List<_SeedUser> _seedUsers = [
+    _SeedUser(
+      id: 'user_admin',
+      email: 'contact@aidhabitat.fr',
+      displayName: 'Renan',
+      role: LocalUserRole.admin,
+    ),
+    _SeedUser(
+      id: 'user_ergo_1',
+      email: 'joris.aidhabitat@gmail.com',
+      displayName: 'Coralie',
+      role: LocalUserRole.ergo,
+      establishmentId: '2',
+      ergoLabel: 'Coralie',
+      dossierErgoScope: 'ergo1',
+    ),
+    _SeedUser(
+      id: 'user_ergo_2',
+      email: 'joris.balluais@gmail.com',
+      displayName: 'Christelle',
+      role: LocalUserRole.ergo,
+      establishmentId: '2',
+      ergoLabel: 'Christelle',
+      dossierErgoScope: 'christelle',
+    ),
+  ];
+
+  Future<void> initialize() async {
+    final db = await _database.database;
+    await _ensureSeedUsers(db);
+    await _ensureSeedScopes(db);
+  }
+
+  Future<void> _ensureSeedUsers(Database db) async {
+    final now = DateTime.now().toIso8601String();
+    final existingRows = await db.query('app_users', columns: ['local_id']);
+    final existingIds = existingRows
+        .map((row) => row['local_id'] as String)
+        .toSet();
+
+    final batch = db.batch();
+    for (final seed in _seedUsers) {
+      if (existingIds.contains(seed.id)) continue;
+      final salt = _generateSalt();
+      batch.insert('app_users', {
+        'local_id': seed.id,
+        'email': seed.email,
+        'display_name': seed.displayName,
+        'role': seed.role.name,
+        'password_salt': salt,
+        'password_hash': _hashPassword(bootstrapPassword, salt),
+        'establishment_id': seed.establishmentId,
+        'ergo_label': seed.ergoLabel,
+        'is_active': 1,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> _ensureSeedScopes(Database db) async {
+    final now = DateTime.now().toIso8601String();
+    final existingRows = await db.query(
+      'user_access_scopes',
+      columns: ['local_id'],
+    );
+    final existingIds = existingRows
+        .map((row) => row['local_id'] as String)
+        .toSet();
+
+    final seedScopes = <_SeedAccessScope>[
+      const _SeedAccessScope(
+        id: 'scope_admin_all',
+        userId: 'user_admin',
+        type: 'dossier_access',
+        value: '*',
+      ),
+      for (final seed in _seedUsers) ...[
+        if (seed.establishmentId != null)
+          _SeedAccessScope(
+            id: '${seed.id}_establishment',
+            userId: seed.id,
+            type: 'establishment_id',
+            value: seed.establishmentId!,
+          ),
+        if (seed.ergoLabel != null)
+          _SeedAccessScope(
+            id: '${seed.id}_ergo_label',
+            userId: seed.id,
+            type: 'ergo_label',
+            value: seed.ergoLabel!,
+          ),
+        if (seed.dossierErgoScope != null)
+          _SeedAccessScope(
+            id: '${seed.id}_dossier_ergo',
+            userId: seed.id,
+            type: 'dossier_ergo',
+            value: seed.dossierErgoScope!,
+          ),
+      ],
+    ];
+
+    final batch = db.batch();
+    for (final scope in seedScopes) {
+      if (existingIds.contains(scope.id)) continue;
+      batch.insert('user_access_scopes', {
+        'local_id': scope.id,
+        'user_local_id': scope.userId,
+        'scope_type': scope.type,
+        'scope_value': scope.value,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<LocalAppUser>> fetchAvailableUsers() async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'app_users',
+      where: 'is_active = 1',
+      orderBy: 'display_name ASC',
+    );
+    final scopes = await _fetchScopesByUserId(db);
+    return rows
+        .map((row) => _mapUser(row, scopes[row['local_id']] ?? []))
+        .toList();
+  }
+
+  Future<LocalAppUser?> getCurrentUser() async {
+    final db = await _database.database;
+    final sessionRows = await db.query('app_session', limit: 1);
+    if (sessionRows.isEmpty) return null;
+
+    final session = sessionRows.first;
+    final userRows = await db.query(
+      'app_users',
+      where: 'local_id = ? AND is_active = 1',
+      whereArgs: [session['user_local_id']],
+      limit: 1,
+    );
+    if (userRows.isEmpty) return null;
+    final scopes = await _fetchScopesByUserId(db);
+    final row = userRows.first;
+    return _mapUser(row, scopes[row['local_id']] ?? []);
+  }
+
+  Future<LocalSignInResult> signIn({
+    required String email,
+    required String password,
+  }) async {
+    final db = await _database.database;
+    final normalizedEmail = email.trim().toLowerCase();
+    final rows = await db.query(
+      'app_users',
+      where: 'email = ? AND is_active = 1',
+      whereArgs: [normalizedEmail],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return const LocalSignInResult(
+        success: false,
+        error: 'Compte local introuvable',
+      );
+    }
+
+    final row = rows.first;
+    final salt = row['password_salt'] as String? ?? '';
+    final expectedHash = row['password_hash'] as String? ?? '';
+    final providedHash = _hashPassword(password, salt);
+    if (providedHash != expectedHash) {
+      return const LocalSignInResult(
+        success: false,
+        error: 'Mot de passe local invalide',
+      );
+    }
+
+    final now = DateTime.now().toIso8601String();
+    await db.insert('app_session', {
+      'id': 1,
+      'user_local_id': row['local_id'],
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    final scopes = await _fetchScopesByUserId(db);
+    return LocalSignInResult(
+      success: true,
+      user: _mapUser(row, scopes[row['local_id']] ?? []),
+    );
+  }
+
+  Future<void> signOut() async {
+    final db = await _database.database;
+    await db.delete('app_session');
+  }
+
+  Future<bool> isUsingBootstrapPassword(String userId) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'app_users',
+      columns: ['password_salt', 'password_hash'],
+      where: 'local_id = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    final row = rows.first;
+    final salt = row['password_salt'] as String? ?? '';
+    final currentHash = row['password_hash'] as String? ?? '';
+    return currentHash == _hashPassword(bootstrapPassword, salt);
+  }
+
+  Future<bool> isBootstrapPasswordActiveForEmail(String email) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'app_users',
+      columns: ['local_id'],
+      where: 'email = ? AND is_active = 1',
+      whereArgs: [email.trim().toLowerCase()],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    return isUsingBootstrapPassword(rows.first['local_id'] as String);
+  }
+
+  Future<PasswordChangeResult> changePassword({
+    required String userId,
+    required String currentPassword,
+    required String nextPassword,
+  }) async {
+    if (nextPassword.trim().length < 8) {
+      return const PasswordChangeResult(
+        success: false,
+        error: 'Le nouveau mot de passe doit contenir au moins 8 caractères',
+      );
+    }
+
+    final db = await _database.database;
+    final rows = await db.query(
+      'app_users',
+      columns: ['password_salt', 'password_hash'],
+      where: 'local_id = ? AND is_active = 1',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return const PasswordChangeResult(
+        success: false,
+        error: 'Compte local introuvable',
+      );
+    }
+
+    final row = rows.first;
+    final salt = row['password_salt'] as String? ?? '';
+    final expectedHash = row['password_hash'] as String? ?? '';
+    final currentHash = _hashPassword(currentPassword, salt);
+    if (currentHash != expectedHash) {
+      return const PasswordChangeResult(
+        success: false,
+        error: 'Mot de passe actuel invalide',
+      );
+    }
+
+    final nextSalt = _generateSalt();
+    await db.update(
+      'app_users',
+      {
+        'password_salt': nextSalt,
+        'password_hash': _hashPassword(nextPassword, nextSalt),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'local_id = ?',
+      whereArgs: [userId],
+    );
+
+    return const PasswordChangeResult(success: true);
+  }
+
+  Future<bool> mergeRemoteUsers(List<Map<String, dynamic>> remoteUsers) async {
+    if (remoteUsers.isEmpty) return false;
+
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+
+    for (final remoteUser in remoteUsers) {
+      final email = (remoteUser['email']?.toString() ?? '')
+          .trim()
+          .toLowerCase();
+      if (email.isEmpty) continue;
+
+      final existingRows = await db.query(
+        'app_users',
+        columns: ['local_id'],
+        where: 'email = ?',
+        whereArgs: [email],
+        limit: 1,
+      );
+
+      final localUserId = existingRows.isNotEmpty
+          ? existingRows.first['local_id'] as String
+          : 'remote_${email.replaceAll(RegExp(r'[^a-z0-9]+'), '_')}';
+
+      if (existingRows.isEmpty) {
+        final salt = _generateSalt();
+        await db.insert('app_users', {
+          'local_id': localUserId,
+          'email': email,
+          'display_name': remoteUser['displayName']?.toString() ?? email,
+          'role': _mapRemoteRole(remoteUser['role']?.toString()).name,
+          'password_salt': salt,
+          'password_hash': _hashPassword(bootstrapPassword, salt),
+          'establishment_id': _nullableValue(remoteUser['establishmentId']),
+          'ergo_label': _nullableValue(remoteUser['ergoLabel']),
+          'is_active': _remoteIsActive(remoteUser) ? 1 : 0,
+          'created_at': now,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      } else {
+        await db.update(
+          'app_users',
+          {
+            'display_name': remoteUser['displayName']?.toString() ?? email,
+            'role': _mapRemoteRole(remoteUser['role']?.toString()).name,
+            'establishment_id': _nullableValue(remoteUser['establishmentId']),
+            'ergo_label': _nullableValue(remoteUser['ergoLabel']),
+            'is_active': _remoteIsActive(remoteUser) ? 1 : 0,
+            'updated_at': now,
+          },
+          where: 'local_id = ?',
+          whereArgs: [localUserId],
+        );
+      }
+
+      await db.delete(
+        'user_access_scopes',
+        where: 'user_local_id = ?',
+        whereArgs: [localUserId],
+      );
+
+      final remoteScopes = (remoteUser['scopes'] as List?) ?? const [];
+      for (var index = 0; index < remoteScopes.length; index += 1) {
+        final scope = remoteScopes[index];
+        if (scope is! Map) continue;
+        final type = scope['type']?.toString().trim() ?? '';
+        final value = scope['value']?.toString().trim() ?? '';
+        if (type.isEmpty || value.isEmpty) continue;
+        await db.insert('user_access_scopes', {
+          'local_id': '${localUserId}_scope_$index',
+          'user_local_id': localUserId,
+          'scope_type': type,
+          'scope_value': value,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+
+    return true;
+  }
+
+  List<Dossier> filterDossiersForUser(
+    List<Dossier> dossiers,
+    LocalAppUser user,
+  ) {
+    if (user.role == LocalUserRole.admin || _hasWildcardAccess(user.scopes)) {
+      return dossiers;
+    }
+
+    final dossierIds = user.scopes
+        .where((scope) => scope.type == 'dossier_id')
+        .map((scope) => scope.value.trim().toLowerCase())
+        .toSet();
+    final dossierErgos = user.scopes
+        .where((scope) => scope.type == 'dossier_ergo')
+        .map((scope) => scope.value.trim().toLowerCase())
+        .toSet();
+    final expectedErgo = (user.ergoLabel ?? '').trim().toLowerCase();
+    return dossiers.where((dossier) {
+      final dossierId = dossier.id.trim().toLowerCase();
+      final ergoId = dossier.ergoId.trim().toLowerCase();
+      if (dossierIds.contains(dossierId) || dossierErgos.contains(ergoId)) {
+        return true;
+      }
+      if (dossierIds.isEmpty &&
+          dossierErgos.isEmpty &&
+          expectedErgo.isNotEmpty) {
+        return ergoId == expectedErgo;
+      }
+      return false;
+    }).toList();
+  }
+
+  Future<Map<String, List<LocalAccessScope>>> _fetchScopesByUserId(
+    Database db,
+  ) async {
+    final rows = await db.query(
+      'user_access_scopes',
+      columns: ['user_local_id', 'scope_type', 'scope_value'],
+    );
+    final scopesByUserId = <String, List<LocalAccessScope>>{};
+    for (final row in rows) {
+      final userId = row['user_local_id'] as String;
+      scopesByUserId.putIfAbsent(userId, () => []);
+      scopesByUserId[userId]!.add(
+        LocalAccessScope(
+          type: row['scope_type'] as String,
+          value: row['scope_value'] as String,
+        ),
+      );
+    }
+    return scopesByUserId;
+  }
+
+  bool _hasWildcardAccess(List<LocalAccessScope> scopes) {
+    return scopes.any(
+      (scope) => scope.type == 'dossier_access' && scope.value.trim() == '*',
+    );
+  }
+
+  LocalAppUser _mapUser(
+    Map<String, Object?> row,
+    List<LocalAccessScope> scopes,
+  ) {
+    return LocalAppUser(
+      id: row['local_id'] as String,
+      email: row['email'] as String,
+      displayName: row['display_name'] as String,
+      role: LocalUserRole.values.byName(row['role'] as String),
+      establishmentId: row['establishment_id'] as String?,
+      ergoLabel: row['ergo_label'] as String?,
+      scopes: scopes,
+    );
+  }
+
+  String _generateSalt() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    return base64UrlEncode(bytes);
+  }
+
+  String _hashPassword(String password, String salt) {
+    return sha256.convert(utf8.encode('$salt::$password')).toString();
+  }
+
+  LocalUserRole _mapRemoteRole(String? role) {
+    switch ((role ?? '').trim().toUpperCase()) {
+      case 'ADMIN':
+        return LocalUserRole.admin;
+      case 'ERGO':
+      default:
+        return LocalUserRole.ergo;
+    }
+  }
+
+  bool _remoteIsActive(Map<String, dynamic> remoteUser) {
+    final value = remoteUser['isActive'];
+    if (value is bool) return value;
+    return value?.toString() != 'false';
+  }
+
+  String? _nullableValue(Object? value) {
+    final normalized = value?.toString().trim() ?? '';
+    return normalized.isEmpty ? null : normalized;
+  }
+}
+
+class LocalSignInResult {
+  final bool success;
+  final String? error;
+  final LocalAppUser? user;
+
+  const LocalSignInResult({required this.success, this.error, this.user});
+}
+
+class PasswordChangeResult {
+  final bool success;
+  final String? error;
+
+  const PasswordChangeResult({required this.success, this.error});
+}
+
+class _SeedUser {
+  final String id;
+  final String email;
+  final String displayName;
+  final LocalUserRole role;
+  final String? establishmentId;
+  final String? ergoLabel;
+  final String? dossierErgoScope;
+
+  const _SeedUser({
+    required this.id,
+    required this.email,
+    required this.displayName,
+    required this.role,
+    this.establishmentId,
+    this.ergoLabel,
+    this.dossierErgoScope,
+  });
+}
+
+class _SeedAccessScope {
+  final String id;
+  final String userId;
+  final String type;
+  final String value;
+
+  const _SeedAccessScope({
+    required this.id,
+    required this.userId,
+    required this.type,
+    required this.value,
+  });
+}

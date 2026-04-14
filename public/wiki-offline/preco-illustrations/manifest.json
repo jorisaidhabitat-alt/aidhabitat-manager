@@ -1,0 +1,347 @@
+{
+  "version": 1,
+  "count": 54,
+  "categories": {
+    "chambre": 2,
+    "domotique": 1,
+    "isolation": 1,
+    "salle-de-bain": 5,
+    "eclairage": 1,
+    "chauffage": 1,
+    "cuisine": 3,
+    "wc": 6,
+    "escaliers": 6,
+    "barres-appui": 7,
+    "ascenseur": 2,
+    "exterieur": 7,
+    "portes": 7,
+    "fenetres-volets": 3,
+    "circulation": 2
+  },
+  "items": [
+    {
+      "title": "Penderie escamotable",
+      "category": "chambre",
+      "source": "penderie escamotable.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/chambre/penderie-escamotable.jpg"
+    },
+    {
+      "title": "Television fixee au mur",
+      "category": "chambre",
+      "source": "télévision fixée au mur.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/chambre/television-fixee-au-mur.jpg"
+    },
+    {
+      "title": "VMC",
+      "category": "domotique",
+      "source": "VMC.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/domotique/vmc.jpg"
+    },
+    {
+      "title": "Doublage isole des murs",
+      "category": "isolation",
+      "source": "doublage isolé des murs.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/isolation/doublage-isole-des-murs.jpg"
+    },
+    {
+      "title": "Machine a laver en hauteur",
+      "category": "salle-de-bain",
+      "source": "machine à laver en hauteur.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/salle-de-bain/machine-a-laver-en-hauteur.jpg"
+    },
+    {
+      "title": "Eclairage",
+      "category": "eclairage",
+      "source": "éclairage.png",
+      "publicPath": "/wiki-offline/preco-illustrations/eclairage/eclairage.jpg"
+    },
+    {
+      "title": "Poele a granules",
+      "category": "chauffage",
+      "source": "poele à granulés.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/chauffage/poele-a-granules.jpg"
+    },
+    {
+      "title": "Plan de travail cuisine",
+      "category": "cuisine",
+      "source": "Cuisine/plan W cuisine.JPG",
+      "publicPath": "/wiki-offline/preco-illustrations/cuisine/plan-de-travail-cuisine.jpg"
+    },
+    {
+      "title": "Evier cuisine evide",
+      "category": "cuisine",
+      "source": "Cuisine/évier cuisine évidé.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/cuisine/evier-cuisine-evide.jpg"
+    },
+    {
+      "title": "Meuble bas evier",
+      "category": "cuisine",
+      "source": "Cuisine/meuble-bas-pour-evier-vieux-bois-bois-ingenierie-m_T1BOYkNpWnA3aEV6UVlEVjBYUWp3SzF2R3h0N2ltR3R0WDJkdWhGdzZSWkROY0tYT1BGeXBJb010U3hrbHF5RlZPM1hHM01SUnZ3YmtqVW9XTHBrcWc9PQ==.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/cuisine/meuble-bas-evier.jpg"
+    },
+    {
+      "title": "Cuvette suspendue",
+      "category": "wc",
+      "source": "WC/cuvette suspendue.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/wc/cuvette-suspendue.jpg"
+    },
+    {
+      "title": "Accoudoirs rabattables WC",
+      "category": "wc",
+      "source": "WC/accoudoirs-toilettes-rabattables-etac-supporter.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/wc/accoudoirs-rabattables-wc.jpg"
+    },
+    {
+      "title": "Barre appui coudée gauche WC",
+      "category": "wc",
+      "source": "WC/barre appui coudée gauche cuvette.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/wc/barre-appui-coudee-gauche-wc.jpg"
+    },
+    {
+      "title": "Barre appui coudée droite WC",
+      "category": "wc",
+      "source": "WC/barre appui coudée droite cuvette.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/wc/barre-appui-coudee-droite-wc.jpg"
+    },
+    {
+      "title": "Cuvette surelevee",
+      "category": "wc",
+      "source": "WC/cuvette surelevee.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/wc/cuvette-surelevee.jpg"
+    },
+    {
+      "title": "Abattant automatique",
+      "category": "wc",
+      "source": "WC/Abattant automatique.png",
+      "publicPath": "/wiki-offline/preco-illustrations/wc/abattant-automatique.jpg"
+    },
+    {
+      "title": "Siege monte escalier",
+      "category": "escaliers",
+      "source": "Escaliers/Siège monte escalier.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/escaliers/siege-monte-escalier.jpg"
+    },
+    {
+      "title": "Main courante exterieure sur pieds",
+      "category": "escaliers",
+      "source": "Escaliers/main-courante extérieure sur pieds.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/escaliers/main-courante-exterieure-sur-pieds.jpg"
+    },
+    {
+      "title": "Marches antiderapantes exterieures",
+      "category": "escaliers",
+      "source": "Escaliers/marches-antiderapantes extérieures.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/escaliers/marches-antiderapantes-exterieures.jpg"
+    },
+    {
+      "title": "Pente douce",
+      "category": "escaliers",
+      "source": "Escaliers/Pente douce.png",
+      "publicPath": "/wiki-offline/preco-illustrations/escaliers/pente-douce.png"
+    },
+    {
+      "title": "Applique LED detecteur mouvement",
+      "category": "escaliers",
+      "source": "Escaliers/applique led détecteur mouvement.jpeg",
+      "publicPath": "/wiki-offline/preco-illustrations/escaliers/applique-led-detecteur-mouvement.jpeg"
+    },
+    {
+      "title": "Rampe interieure",
+      "category": "escaliers",
+      "source": "Escaliers/rampe intérieure.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/escaliers/rampe-interieure.jpg"
+    },
+    {
+      "title": "Barre appui entree",
+      "category": "barres-appui",
+      "source": "Barre d'appui/barre d'appui entrée.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/barres-appui/barre-appui-entree.jpg"
+    },
+    {
+      "title": "Barre relevable",
+      "category": "barres-appui",
+      "source": "Barre d'appui/Barre relevable.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/barres-appui/barre-relevable.jpg"
+    },
+    {
+      "title": "Barre appui angle",
+      "category": "barres-appui",
+      "source": "Barre d'appui/barre d'appui en angle.png",
+      "publicPath": "/wiki-offline/preco-illustrations/barres-appui/barre-appui-angle.png"
+    },
+    {
+      "title": "Barre redressement lit",
+      "category": "barres-appui",
+      "source": "Barre d'appui/Barre de redressement au lit.png",
+      "publicPath": "/wiki-offline/preco-illustrations/barres-appui/barre-redressement-lit.jpg"
+    },
+    {
+      "title": "Barre droite verticale",
+      "category": "barres-appui",
+      "source": "Barre d'appui/Barre droite verticale.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/barres-appui/barre-droite-verticale.jpg"
+    },
+    {
+      "title": "Barre droite horizontale",
+      "category": "barres-appui",
+      "source": "Barre d'appui/Barre droite horizontale.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/barres-appui/barre-droite-horizontale.jpg"
+    },
+    {
+      "title": "Barre appui en L",
+      "category": "barres-appui",
+      "source": "Barre d'appui/barre d'appui en L.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/barres-appui/barre-appui-en-l.jpg"
+    },
+    {
+      "title": "Plateforme elevatrice",
+      "category": "ascenseur",
+      "source": "Ascenseur/plateforme élévatrice.png",
+      "publicPath": "/wiki-offline/preco-illustrations/ascenseur/plateforme-elevatrice.jpg"
+    },
+    {
+      "title": "Ascenseur",
+      "category": "ascenseur",
+      "source": "Ascenseur/ascenseur.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/ascenseur/ascenseur.jpg"
+    },
+    {
+      "title": "Baignoire",
+      "category": "salle-de-bain",
+      "source": "SDB/baignoire.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/salle-de-bain/baignoire.jpg"
+    },
+    {
+      "title": "Seche serviette",
+      "category": "salle-de-bain",
+      "source": "SDB/sèche serviette.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/salle-de-bain/seche-serviette.jpg"
+    },
+    {
+      "title": "Armoire toilette miroir",
+      "category": "salle-de-bain",
+      "source": "SDB/armoire de toilette avec miroir.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/salle-de-bain/armoire-toilette-miroir.jpg"
+    },
+    {
+      "title": "Fenetre dans douche",
+      "category": "salle-de-bain",
+      "source": "SDB/Fenetre dans douche.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/salle-de-bain/fenetre-dans-douche.jpg"
+    },
+    {
+      "title": "Revetement antiderapant exterieur",
+      "category": "exterieur",
+      "source": "Extérieur/revêtement antidérapant.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/exterieur/revetement-antiderapant-exterieur.jpg"
+    },
+    {
+      "title": "Rampe acces exterieure",
+      "category": "exterieur",
+      "source": "Extérieur/rampe d'accès extérieure.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/exterieur/rampe-acces-exterieure.jpg"
+    },
+    {
+      "title": "Pente douce beton",
+      "category": "exterieur",
+      "source": "Extérieur/pente douce béton.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/exterieur/pente-douce-beton.jpg"
+    },
+    {
+      "title": "Passerelle PMR",
+      "category": "exterieur",
+      "source": "Extérieur/Passerelle-pmr.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/exterieur/passerelle-pmr.jpg"
+    },
+    {
+      "title": "Seuil surbaisse",
+      "category": "exterieur",
+      "source": "Extérieur/seuil surbaissé.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/exterieur/seuil-surbaisse.jpg"
+    },
+    {
+      "title": "Reperage contrastant",
+      "category": "exterieur",
+      "source": "Extérieur/repérage contrastant.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/exterieur/reperage-contrastant.jpg"
+    },
+    {
+      "title": "Main courante exterieur",
+      "category": "exterieur",
+      "source": "Extérieur/maincourante extérieur.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/exterieur/main-courante-exterieur.jpg"
+    },
+    {
+      "title": "Porte entree",
+      "category": "portes",
+      "source": "Portes/porte d'entrée.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/portes/porte-entree.jpg"
+    },
+    {
+      "title": "Porte pliante",
+      "category": "portes",
+      "source": "Portes/porte pliante.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/portes/porte-pliante.jpg"
+    },
+    {
+      "title": "Porte de garage",
+      "category": "portes",
+      "source": "Portes/Porte de garage.png",
+      "publicPath": "/wiki-offline/preco-illustrations/portes/porte-de-garage.jpg"
+    },
+    {
+      "title": "Seuil plat",
+      "category": "portes",
+      "source": "Portes/seuil plat.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/portes/seuil-plat.jpg"
+    },
+    {
+      "title": "Porte automatique",
+      "category": "portes",
+      "source": "Portes/Porte automatique.png",
+      "publicPath": "/wiki-offline/preco-illustrations/portes/porte-automatique.jpg"
+    },
+    {
+      "title": "Porte coulissante",
+      "category": "portes",
+      "source": "Portes/porte coulissante.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/portes/porte-coulissante.jpg"
+    },
+    {
+      "title": "Ouverture de mur remplacement porte",
+      "category": "portes",
+      "source": "Portes/ouverture de mur en remplacement porte.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/portes/ouverture-de-mur-remplacement-porte.jpg"
+    },
+    {
+      "title": "Porte fenetre",
+      "category": "fenetres-volets",
+      "source": "Fenêtres - volets/porte-fenêtre.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/fenetres-volets/porte-fenetre.jpg"
+    },
+    {
+      "title": "Volet roulant electrique",
+      "category": "fenetres-volets",
+      "source": "Fenêtres - volets/volet roulant electrique.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/fenetres-volets/volet-roulant-electrique.jpg"
+    },
+    {
+      "title": "Fenetre battante",
+      "category": "fenetres-volets",
+      "source": "Fenêtres - volets/fenetre battante.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/fenetres-volets/fenetre-battante.jpg"
+    },
+    {
+      "title": "Sol vinyle bois fonce",
+      "category": "circulation",
+      "source": "revêtement sol intérieur hors sdb/sol-vinyle-bois-fonce.jpg",
+      "publicPath": "/wiki-offline/preco-illustrations/circulation/sol-vinyle-bois-fonce.jpg"
+    },
+    {
+      "title": "Parquet interieur",
+      "category": "circulation",
+      "source": "revêtement sol intérieur hors sdb/parquet dans une chambre.jpeg",
+      "publicPath": "/wiki-offline/preco-illustrations/circulation/parquet-interieur.jpeg"
+    }
+  ]
+}

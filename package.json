@@ -1,0 +1,30 @@
+{
+  "name": "aid'habitat-manager",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:api\" \"npm:dev:frontend\"",
+    "dev:api": "node server/index.mjs",
+    "dev:frontend": "vite",
+    "build": "vite build",
+    "start": "node server/index.mjs",
+    "nocodb:bootstrap-mobile-schema": "node scripts/bootstrapNocodbMobileSchema.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "lucide-react": "^0.556.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
