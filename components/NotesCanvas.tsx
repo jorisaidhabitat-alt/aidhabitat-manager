@@ -432,7 +432,15 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
         style={canvasBackgroundStyle}
       >
         {backgroundContent && (
-          <div className="absolute inset-0 pointer-events-none select-none">
+          <div
+            className="absolute inset-0 pointer-events-none select-none"
+            style={{
+              WebkitUserSelect: 'none',
+              userSelect: 'none',
+              WebkitUserDrag: 'none',
+              WebkitTouchCallout: 'none',
+            }}
+          >
             {backgroundContent}
           </div>
         )}

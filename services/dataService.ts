@@ -10,6 +10,7 @@ const debugLog = (msg: string) => {
 const APP_SESSION_TOKEN_KEY = 'aidhabitat.app_session';
 const APP_LOCAL_USER_KEY = 'aidhabitat.app_user';
 const NOCODB_TOKEN_STORAGE_KEY = 'aidhabitat.nocodb_token';
+const PROFILE_PHOTO_CACHE_NAME = 'aidhabitat.profile-photos.v1';
 const RETIREMENT_FUNDS_CACHE_KEY = 'aidhabitat.retirement_funds_cache';
 const BENEFICIARY_PATCHES_CACHE_KEY = 'aidhabitat.beneficiary_patches.v1';
 const LOCAL_DOCUMENTS_CACHE_KEY = 'aidhabitat.documents.cache.v1';
@@ -82,6 +83,124 @@ const clearLocalAppUser = () => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(APP_LOCAL_USER_KEY);
   window.localStorage.removeItem(NOCODB_TOKEN_STORAGE_KEY);
+};
+
+const profilePhotoObjectUrlCache = new Map<string, string>();
+
+const supportsLocalProfilePhotoCache = (): boolean => (
+  typeof window !== 'undefined'
+  && typeof window.caches !== 'undefined'
+  && typeof URL !== 'undefined'
+  && typeof URL.createObjectURL === 'function'
+);
+
+const buildProfilePhotoCacheKey = (email: string): string => (
+  `/local-profile-photos/${encodeURIComponent(String(email || '').trim().toLowerCase())}`
+);
+
+const revokeProfilePhotoObjectUrl = (email: string) => {
+  const key = String(email || '').trim().toLowerCase();
+  const existing = profilePhotoObjectUrlCache.get(key);
+  if (existing) {
+    URL.revokeObjectURL(existing);
+    profilePhotoObjectUrlCache.delete(key);
+  }
+};
+
+const putCachedProfilePhotoBlob = async (email: string, blob: Blob): Promise<void> => {
+  if (!supportsLocalProfilePhotoCache()) return;
+  const cache = await window.caches.open(PROFILE_PHOTO_CACHE_NAME);
+  await cache.put(buildProfilePhotoCacheKey(email), new Response(blob, {
+    headers: {
+      'Content-Type': blob.type || 'image/png',
+      'Cache-Control': 'max-age=31536000, immutable',
+    },
+  }));
+  revokeProfilePhotoObjectUrl(email);
+};
+
+const getCachedProfilePhotoBlob = async (email: string): Promise<Blob | null> => {
+  if (!supportsLocalProfilePhotoCache()) return null;
+  const cache = await window.caches.open(PROFILE_PHOTO_CACHE_NAME);
+  const response = await cache.match(buildProfilePhotoCacheKey(email));
+  if (!response) return null;
+  return response.blob();
+};
+
+const getCachedProfilePhotoObjectUrl = async (email: string): Promise<string> => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail || !supportsLocalProfilePhotoCache()) return '';
+  const cached = profilePhotoObjectUrlCache.get(normalizedEmail);
+  if (cached) return cached;
+  const blob = await getCachedProfilePhotoBlob(normalizedEmail);
+  if (!blob) return '';
+  const objectUrl = URL.createObjectURL(blob);
+  profilePhotoObjectUrlCache.set(normalizedEmail, objectUrl);
+  return objectUrl;
+};
+
+const normalizeAppUser = (user: AppUser): AppUser => ({
+  ...user,
+  email: String(user.email || '').trim().toLowerCase(),
+  profilePhotoUrl: String(user.profilePhotoUrl || '').trim(),
+});
+
+const fetchProfilePhotoBlob = async (photoUrl: string): Promise<Blob | null> => {
+  const resolvedUrl = resolveApiUrl(photoUrl);
+  const headers: Record<string, string> = {};
+  const sessionToken = getSessionToken();
+  if (sessionToken) {
+    headers['X-App-Session'] = sessionToken;
+  }
+  const response = await fetch(resolvedUrl, {
+    headers,
+    cache: 'no-cache',
+  });
+  if (!response.ok) {
+    throw new Error(`Photo HTTP ${response.status}`);
+  }
+  return response.blob();
+};
+
+const cacheProfilePhotoForUser = async (user: AppUser, imageDataUrl?: string): Promise<string> => {
+  const normalizedUser = normalizeAppUser(user);
+  if (!normalizedUser.email || !supportsLocalProfilePhotoCache()) return '';
+
+  const existingObjectUrl = await getCachedProfilePhotoObjectUrl(normalizedUser.email);
+  if (existingObjectUrl && !imageDataUrl && !normalizedUser.profilePhotoUrl) {
+    return existingObjectUrl;
+  }
+
+  try {
+    if (imageDataUrl) {
+      const response = await fetch(imageDataUrl);
+      const blob = await response.blob();
+      await putCachedProfilePhotoBlob(normalizedUser.email, blob);
+      return (await getCachedProfilePhotoObjectUrl(normalizedUser.email)) || normalizedUser.profilePhotoUrl;
+    }
+
+    if (normalizedUser.profilePhotoUrl) {
+      const blob = await fetchProfilePhotoBlob(normalizedUser.profilePhotoUrl);
+      if (blob) {
+        await putCachedProfilePhotoBlob(normalizedUser.email, blob);
+        return (await getCachedProfilePhotoObjectUrl(normalizedUser.email)) || normalizedUser.profilePhotoUrl;
+      }
+    }
+  } catch (error) {
+    console.warn('Profile photo cache refresh failed', error);
+  }
+
+  return existingObjectUrl || normalizedUser.profilePhotoUrl;
+};
+
+const hydrateStoredAppUser = async (user: AppUser | null, options?: { imageDataUrl?: string }): Promise<AppUser | null> => {
+  if (!user) return null;
+  const normalizedUser = normalizeAppUser(user);
+  const cachedPhotoUrl = await cacheProfilePhotoForUser(normalizedUser, options?.imageDataUrl);
+  return {
+    ...normalizedUser,
+    profilePhotoUrl: cachedPhotoUrl || normalizedUser.profilePhotoUrl,
+  };
 };
 
 const readLocalJsonCache = <T,>(key: string, fallbackValue: T): T => {
@@ -765,12 +884,13 @@ export const loginApp = async (email: string, password: string): Promise<{ succe
   }
 
   const role = profile.role === 'admin' ? 'ADMIN' : 'ERGO';
+  const previousLocalUser = getLocalAppUser();
   const user: AppUser = {
     email: normalizedEmail,
     displayName: profile.nomDansNocoDb,
     role,
     selectable: role !== 'ADMIN',
-    profilePhotoUrl: '',
+    profilePhotoUrl: previousLocalUser?.email === normalizedEmail ? String(previousLocalUser.profilePhotoUrl || '').trim() : '',
     establishmentId: role === 'ADMIN' ? '' : '2',
     establishmentLabel: role === 'ADMIN' ? '' : "Aid'habitat",
     ergoRecordId: '',
@@ -784,19 +904,42 @@ export const loginApp = async (email: string, password: string): Promise<{ succe
   const nocoDbToken = nocoDbTokensParEmail[normalizedEmail as keyof typeof nocoDbTokensParEmail] || '';
 
   setSessionToken(sessionToken);
-  setLocalAppUser(user);
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(NOCODB_TOKEN_STORAGE_KEY, nocoDbToken);
   }
-
-  return { success: true, error: null, user };
+  try {
+    const result = await apiFetch<AuthResult>('/api/auth/session');
+    const sessionUser = result.data?.user ? normalizeAppUser(result.data.user) : user;
+    setLocalAppUser(sessionUser);
+    const hydratedUser = await hydrateStoredAppUser(sessionUser);
+    return { success: true, error: null, user: hydratedUser || sessionUser };
+  } catch {
+    setLocalAppUser(user);
+    const hydratedUser = await hydrateStoredAppUser(user);
+    return { success: true, error: null, user: hydratedUser || user };
+  }
 };
 
 export const fetchCurrentAppUser = async (): Promise<AppUser | null> => {
   const token = getSessionToken();
-  const user = getLocalAppUser();
-  if (!token || !user) return null;
-  return user;
+  const localUser = getLocalAppUser();
+  if (!token || !localUser) return null;
+
+  const hydratedLocalUser = await hydrateStoredAppUser(localUser);
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return hydratedLocalUser || localUser;
+  }
+
+  try {
+    const result = await apiFetch<AuthResult>('/api/auth/session');
+    const sessionUser = result.data?.user ? normalizeAppUser(result.data.user) : localUser;
+    setLocalAppUser(sessionUser);
+    const hydratedSessionUser = await hydrateStoredAppUser(sessionUser);
+    return hydratedSessionUser || sessionUser;
+  } catch {
+    return hydratedLocalUser || localUser;
+  }
 };
 
 export const logoutApp = async (): Promise<void> => {
@@ -810,11 +953,19 @@ export const uploadProfilePhoto = async (imageDataUrl: string): Promise<{ succes
       method: 'POST',
       body: JSON.stringify({ imageDataUrl }),
     });
+    const remoteUser = result.data?.user ? normalizeAppUser({
+      ...result.data.user,
+      profilePhotoUrl: String(result.data?.photoUrl || result.data.user.profilePhotoUrl || '').trim(),
+    }) : null;
+    if (remoteUser) {
+      setLocalAppUser(remoteUser);
+    }
+    const hydratedUser = remoteUser ? await hydrateStoredAppUser(remoteUser, { imageDataUrl }) : null;
     return {
       success: result.success,
       error: result.error,
-      user: result.data?.user,
-      photoUrl: result.data?.photoUrl,
+      user: hydratedUser || remoteUser || undefined,
+      photoUrl: hydratedUser?.profilePhotoUrl || remoteUser?.profilePhotoUrl || result.data?.photoUrl,
     };
   } catch (error: any) {
     return { success: false, error: error.message || 'Upload impossible' };

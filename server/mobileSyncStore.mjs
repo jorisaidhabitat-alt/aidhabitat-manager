@@ -26,6 +26,10 @@ const TABLE_NAMES = {
   documentChunks: process.env.NOCODB_MOBILE_DOCUMENT_CHUNKS_TABLE_NAME || 'mobile_document_chunks',
   notePages: process.env.NOCODB_MOBILE_NOTE_PAGES_TABLE_NAME || 'mobile_note_pages',
 };
+const REQUIRE_NOCODB_ON_SERVERLESS = String(
+  process.env.MOBILE_SYNC_REQUIRE_NOCODB
+  || (process.env.VERCEL ? '1' : '0'),
+).trim() === '1';
 
 const MAX_NOCODB_LONG_TEXT_LENGTH = 100000;
 const DOCUMENT_CONTENT_CHUNK_SIZE = 95000;
@@ -1144,10 +1148,21 @@ export const createMobileSyncStore = ({ absoluteUrl }) => {
   const getAdapter = async ({ forceRefresh = false } = {}) => {
     if (!adapterPromise || forceRefresh) {
       adapterPromise = discoverMobileSyncTables()
-        .then((tables) => tables
-          ? createNocodbStoreAdapter({ absoluteUrl, ...tables })
-          : createLocalStoreAdapter({ absoluteUrl }))
-        .catch(() => createLocalStoreAdapter({ absoluteUrl }));
+        .then((tables) => {
+          if (tables) {
+            return createNocodbStoreAdapter({ absoluteUrl, ...tables });
+          }
+          if (REQUIRE_NOCODB_ON_SERVERLESS) {
+            throw new Error('Tables NocoDB mobiles introuvables (mode obligatoire en production).');
+          }
+          return createLocalStoreAdapter({ absoluteUrl });
+        })
+        .catch((error) => {
+          if (REQUIRE_NOCODB_ON_SERVERLESS) {
+            throw error;
+          }
+          return createLocalStoreAdapter({ absoluteUrl });
+        });
     }
 
     return adapterPromise;

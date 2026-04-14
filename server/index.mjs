@@ -41,6 +41,10 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ANAH_STATUS_TTL_MS = 60_000;
 const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';
 const ANAH_REGISTRATION_URL = 'https://monprojet.anah.gouv.fr/';
+const APP_PUBLIC_BASE_URL = String(process.env.APP_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '')
+  || (process.env.VERCEL_URL ? `https://${String(process.env.VERCEL_URL).trim()}` : '');
+const LOCALHOST_URL_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i;
+const PROJECT_VERCEL_HOST_PATTERN = /^aid-habitat-manager(?:-[a-z0-9-]+)?\.vercel\.app$/i;
 let anahStatusCache = null;
 
 const MEMBER_PROFILES = {
@@ -205,13 +209,41 @@ const nullableString = (value) => value == null || value === '' ? null : String(
 const absoluteUrl = (value) => {
   const stringified = String(value || '').trim();
   if (!stringified) return '';
-  if (/^https?:\/\//i.test(stringified)) return stringified;
-  return `http://127.0.0.1:${port}${stringified.startsWith('/') ? stringified : `/${stringified}`}`;
+  if (LOCALHOST_URL_PATTERN.test(stringified)) {
+    try {
+      const parsed = new URL(stringified);
+      const normalizedPath = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      if (APP_PUBLIC_BASE_URL) {
+        return `${APP_PUBLIC_BASE_URL}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`;
+      }
+      return `http://127.0.0.1:${port}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`;
+    } catch {
+      // Fall through to generic handling.
+    }
+  }
+  if (/^https?:\/\//i.test(stringified)) {
+    if (!APP_PUBLIC_BASE_URL) return stringified;
+    try {
+      const parsed = new URL(stringified);
+      if (PROJECT_VERCEL_HOST_PATTERN.test(parsed.hostname)) {
+        const normalizedPath = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        return `${APP_PUBLIC_BASE_URL}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`;
+      }
+    } catch {
+      // Keep original absolute URL if parsing fails.
+    }
+    return stringified;
+  }
+  const normalizedPath = stringified.startsWith('/') ? stringified : `/${stringified}`;
+  if (APP_PUBLIC_BASE_URL) {
+    return `${APP_PUBLIC_BASE_URL}${normalizedPath}`;
+  }
+  return `http://127.0.0.1:${port}${normalizedPath}`;
 };
 const resolveClientMediaUrl = (value) => {
   const stringified = String(value || '').trim();
   if (!stringified) return '';
-  if (/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(stringified)) {
+  if (LOCALHOST_URL_PATTERN.test(stringified)) {
     try {
       const parsed = new URL(stringified);
       return `${parsed.pathname}${parsed.search}${parsed.hash}`;
@@ -281,12 +313,31 @@ const parseOccupantsJson = (rawValue) => {
   }
 };
 const filterValue = (value) => `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+const unwrapRecordFields = (record) => (
+  record && typeof record === 'object' && record.fields && typeof record.fields === 'object'
+    ? record.fields
+    : record
+);
+
 const refLabel = (record) => {
-  if (!record?.fields) return '';
-  if (record.fields.libelle) return String(record.fields.libelle);
-  if (record.fields.nom && record.fields.prenom) return `${record.fields.prenom} ${record.fields.nom}`.trim();
-  if (record.fields.nom) return String(record.fields.nom);
-  if (record.fields.prenom) return String(record.fields.prenom);
+  if (record == null) return '';
+  if (typeof record === 'string' || typeof record === 'number') return String(record);
+  if (Array.isArray(record)) {
+    for (const entry of record) {
+      const label = refLabel(entry);
+      if (label) return label;
+    }
+    return '';
+  }
+
+  const source = unwrapRecordFields(record);
+  if (!source || typeof source !== 'object') return '';
+  if (source.libelle) return String(source.libelle);
+  if (source.nom && source.prenom) return `${source.prenom} ${source.nom}`.trim();
+  if (source.nom) return String(source.nom);
+  if (source.prenom) return String(source.prenom);
+  if (source.title) return String(source.title);
+  if (source.name) return String(source.name);
   return '';
 };
 
@@ -716,15 +767,14 @@ const writeRetirementFundsStore = async (store) => {
 };
 
 const normalizeVisitRecommendationItem = (item, wikiMap = new Map()) => {
-  const wikiItemId = stringValue(item?.wikiItemId).trim();
-  const wikiItem = wikiMap.get(wikiItemId);
+  const wikiItem = resolveRecommendationWikiItem(item, wikiMap);
   const now = new Date().toISOString();
 
   return {
     id: stringValue(item?.id).trim() || crypto.randomUUID(),
-    wikiItemId,
-    wikiTitle: wikiItem?.title || stringValue(item?.wikiTitle).trim(),
-    wikiImageUrl: wikiItem?.imageUrl || absoluteUrl(item?.wikiImageUrl),
+    wikiItemId: stringValue(wikiItem?.id || item?.wikiItemId).trim(),
+    wikiTitle: stringValue(wikiItem?.title || item?.wikiTitle).trim(),
+    wikiImageUrl: stringValue(wikiItem?.imageUrl || absoluteUrl(item?.wikiImageUrl)).trim(),
     wikiTag: stringValue(wikiItem?.tags?.[0] || item?.wikiTag).trim(),
     note: stringValue(item?.note),
     createdAt: item?.createdAt || now,
@@ -805,6 +855,60 @@ const normalizeWikiItemPayload = (item) => ({
   category: stringValue(item.category) || 'Autre',
   tags: [resolveWikiPrimaryTag(item)],
 });
+
+const normalizeLookupKey = (value) => stringValue(value)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const mediaFileNameKey = (value) => {
+  const raw = stringValue(value).trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = /^https?:\/\//i.test(raw)
+      ? new URL(raw)
+      : new URL(raw, APP_PUBLIC_BASE_URL || `http://127.0.0.1:${port}`);
+    const fileName = parsed.pathname.split('/').filter(Boolean).at(-1) || '';
+    return normalizeLookupKey(decodeURIComponent(fileName));
+  } catch {
+    const fileName = raw.split(/[/?#]/).filter(Boolean).at(-1) || '';
+    return normalizeLookupKey(fileName);
+  }
+};
+
+const buildWikiRecommendationLookup = (wikiItems = []) => {
+  const byId = new Map();
+  const byTitle = new Map();
+  const byImageFile = new Map();
+
+  for (const wikiItem of wikiItems) {
+    const id = stringValue(wikiItem?.id).trim();
+    const titleKey = normalizeLookupKey(wikiItem?.title);
+    const imageKey = mediaFileNameKey(wikiItem?.imageUrl);
+    if (id && !byId.has(id)) byId.set(id, wikiItem);
+    if (titleKey && !byTitle.has(titleKey)) byTitle.set(titleKey, wikiItem);
+    if (imageKey && !byImageFile.has(imageKey)) byImageFile.set(imageKey, wikiItem);
+  }
+
+  return { byId, byTitle, byImageFile };
+};
+
+const resolveRecommendationWikiItem = (item, lookup) => {
+  const byId = lookup?.byId || new Map();
+  const byTitle = lookup?.byTitle || new Map();
+  const byImageFile = lookup?.byImageFile || new Map();
+  const wikiItemId = stringValue(item?.wikiItemId).trim();
+  const titleKey = normalizeLookupKey(item?.wikiTitle);
+  const imageKey = mediaFileNameKey(item?.wikiImageUrl);
+
+  return byId.get(wikiItemId)
+    || byTitle.get(titleKey)
+    || byImageFile.get(imageKey)
+    || null;
+};
 
 const parseWikiContent = (value) => {
   const raw = stringValue(value).trim();
@@ -3957,6 +4061,25 @@ app.get('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
       }));
     }
 
+    const wikiItems = await loadWikiLibrary();
+    const wikiLookup = buildWikiRecommendationLookup(wikiItems);
+    items = items.map((item) => {
+      const matchedWikiItem = resolveRecommendationWikiItem(item, wikiLookup);
+      if (!matchedWikiItem) {
+        return {
+          ...item,
+          wikiImageUrl: absoluteUrl(item?.wikiImageUrl),
+        };
+      }
+      return {
+        ...item,
+        wikiItemId: stringValue(matchedWikiItem.id),
+        wikiTitle: stringValue(matchedWikiItem.title),
+        wikiImageUrl: stringValue(matchedWikiItem.imageUrl),
+        wikiTag: stringValue(matchedWikiItem.tags?.[0] || item?.wikiTag),
+      };
+    });
+
     res.json({
       success: true,
       error: null,
@@ -3976,13 +4099,13 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
     }
 
     const wikiItems = await loadWikiLibrary();
-    const wikiMap = new Map(wikiItems.map((item) => [String(item.id), item]));
+    const wikiLookup = buildWikiRecommendationLookup(wikiItems);
     const dossierId = field(dossierRecord, 'uuid_source');
     const rawItems = asArray(req.body?.items);
 
     const normalizedItems = rawItems.map((item) => {
-      const normalized = normalizeVisitRecommendationItem(item, wikiMap);
-      if (!normalized.wikiItemId || !wikiMap.has(normalized.wikiItemId)) {
+      const normalized = normalizeVisitRecommendationItem(item, wikiLookup);
+      if (!normalized.wikiItemId || !wikiLookup.byId.has(normalized.wikiItemId)) {
         throw new Error('Chaque préconisation doit être liée à une image de la bibliothèque');
       }
       return normalized;

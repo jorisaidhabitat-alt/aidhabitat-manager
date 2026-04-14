@@ -4,6 +4,7 @@ import { BathroomLevelInstance, Dossier, HeatingMode, DiagnosticSanitaires, Mesu
 import { NotesCanvas, type DrawingTool } from './NotesCanvas';
 import { CommuneFieldGroup, type CommuneOption } from './CommuneFieldGroup';
 import { ViewportOverlay } from './ViewportOverlay';
+import wikiLibraryStatic from '../data/wikiLibraryStatic.json';
 import {
     fetchVisitRecommendations,
     updateDossier,
@@ -51,6 +52,10 @@ const WIKI_FILTER_TAGS = [
     'Ouvertures',
     'Equipements',
 ];
+
+const STATIC_WIKI_ITEMS: WikiLibraryItem[] = (wikiLibraryStatic.items as WikiLibraryItem[])
+    .slice()
+    .sort((left, right) => left.title.localeCompare(right.title));
 
 const createDefaultVisitReportLocation = (): VisitReportLocation => ({
     activeTab: 'Bénéficiaire',
@@ -768,7 +773,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const [refErgos, setRefErgos] = useState<RefOption[]>([]);
     const [refEtablissements, setRefEtablissements] = useState<RefOption[]>([]);
     const [refCommunes, setRefCommunes] = useState<CommuneOption[]>([]);
-    const [wikiLibraryItems, setWikiLibraryItems] = useState<WikiLibraryItem[]>([]);
+    const [wikiLibraryItems, setWikiLibraryItems] = useState<WikiLibraryItem[]>(STATIC_WIKI_ITEMS);
     const isAutosaveReadyRef = useRef(false);
     const beneficiarySnapshotRef = useRef<string | null>(null);
     const contextSnapshotRef = useRef<string | null>(null);
@@ -853,10 +858,15 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             setRefEtablissements(refs.etablissements);
             setRefCommunes(refs.communes || []);
             const wikiItems = await fetchWikiLibrary();
-            setWikiLibraryItems(wikiItems);
+            if (wikiItems.length > 0) {
+                setWikiLibraryItems(wikiItems);
+            } else {
+                setWikiLibraryItems(STATIC_WIKI_ITEMS);
+            }
         };
         load().catch((error) => {
             console.error('Failed to load reference data from API', error);
+            setWikiLibraryItems(STATIC_WIKI_ITEMS);
         });
     }, []);
 
@@ -2253,12 +2263,21 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         activeTabNotePagesRef.current = activeTabNotePages;
     }, [activeTabNotePages]);
 
+    const lastHydratedIdentityRef = useRef('');
     useEffect(() => {
-        setNoteDraft({
-            text: currentNotePage.textContent || '',
-            drawingJson: currentNotePage.drawingJson || '',
-            isDirty: false,
-            noteKey: currentNoteIdentity,
+        const identity = `${currentNoteIdentity}:${currentNotePage.id}:${currentNotePage.pageNumber}`;
+        if (identity === lastHydratedIdentityRef.current) return;
+        lastHydratedIdentityRef.current = identity;
+        setNoteDraft((previous) => {
+            if (previous.isDirty && previous.noteKey === currentNoteIdentity) {
+                return previous;
+            }
+            return {
+                text: currentNotePage.textContent || '',
+                drawingJson: currentNotePage.drawingJson || '',
+                isDirty: false,
+                noteKey: currentNoteIdentity,
+            };
         });
     }, [currentNoteIdentity, currentNotePage.id, currentNotePage.pageNumber, currentNotePage.textContent, currentNotePage.drawingJson]);
 
@@ -2282,9 +2301,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
 
     const handlePageChange = async (newLocalPage: number) => {
         if (newLocalPage === currentLocalPage) return;
-        if (isSavingNote || isMutatingPages) return;
-        const canLeavePage = await flushCurrentNoteDraft();
-        if (!canLeavePage) return;
+        if (isMutatingPages) return;
+        await flushCurrentNoteDraft();
         const nextPageNumber = notePageNumbers[newLocalPage] ?? 0;
         if (!isMeasurementsTab) {
             rememberNotePage(noteCacheKey, nextPageNumber);
@@ -2294,9 +2312,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
 
     const handleTabSelect = async (tab: string) => {
         if (tab === activeTab) return;
-        if (isSavingNote || isMutatingPages) return;
-        const canLeaveTab = await flushCurrentNoteDraft();
-        if (!canLeaveTab) return;
+        if (isMutatingPages) return;
+        await flushCurrentNoteDraft();
         if (!isMeasurementsTab) {
             rememberNotePage(noteCacheKey, currentPageNumber);
         }
@@ -2361,8 +2378,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const handleAddPage = async () => {
         if (isMeasurementsTab) return;
         if (isMutatingPages) return;
-        const canCreatePage = await flushCurrentNoteDraft();
-        if (!canCreatePage) return;
+        await flushCurrentNoteDraft();
         setIsMutatingPages(true);
         try {
             const createdPage = await createNotePage(dossier.patient.id, {
@@ -2531,43 +2547,37 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     }, [currentNoteIdentity, debouncedNoteDraft, handleSaveNote]);
 
     const flushCurrentNoteDraft = useCallback(async () => {
-        if (!noteDraft.isDirty) return true;
+        if (!noteDraft.isDirty) return;
         try {
             await handleSaveNote({
                 text: noteDraft.text,
                 drawingJson: noteDraft.drawingJson,
             });
-            return true;
         } catch (error) {
-            return false;
+            console.error('Failed to flush note draft', error);
         }
     }, [handleSaveNote, noteDraft.drawingJson, noteDraft.isDirty, noteDraft.text]);
 
-    const isNavigationLocked = isSavingNote || isMutatingPages;
-
     const handleBeneficiarySectionChange = useCallback(async (section: VisitReportLocation['beneficiarySection']) => {
         if (section === activeBeneficiarySection) return;
-        if (isNavigationLocked) return;
-        const canChange = await flushCurrentNoteDraft();
-        if (!canChange) return;
+        if (isMutatingPages) return;
+        await flushCurrentNoteDraft();
         setActiveBeneficiarySection(section);
-    }, [activeBeneficiarySection, flushCurrentNoteDraft, isNavigationLocked]);
+    }, [activeBeneficiarySection, flushCurrentNoteDraft]);
 
     const handleContextSectionChange = useCallback(async (section: VisitReportLocation['contextSection']) => {
         if (section === activeContextSection) return;
-        if (isNavigationLocked) return;
-        const canChange = await flushCurrentNoteDraft();
-        if (!canChange) return;
+        if (isMutatingPages) return;
+        await flushCurrentNoteDraft();
         setActiveContextSection(section);
-    }, [activeContextSection, flushCurrentNoteDraft, isNavigationLocked]);
+    }, [activeContextSection, flushCurrentNoteDraft]);
 
     const handleAccessSectionChange = useCallback(async (section: VisitReportLocation['accessSection']) => {
         if (section === activeAccessSection) return;
-        if (isNavigationLocked) return;
-        const canChange = await flushCurrentNoteDraft();
-        if (!canChange) return;
+        if (isMutatingPages) return;
+        await flushCurrentNoteDraft();
         setActiveAccessSection(section);
-    }, [activeAccessSection, flushCurrentNoteDraft, isNavigationLocked]);
+    }, [activeAccessSection, flushCurrentNoteDraft]);
 
     // =============================================================
     // RENDER
@@ -4187,6 +4197,28 @@ const VoletsFormSection: React.FC<{ data: any, onChange: (f: string, v: any) => 
     );
 };
 
+const normalizePreconLookupKey = (value?: string) => String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const extractImageFileKey = (value?: string) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        const parsed = raw.startsWith('http://') || raw.startsWith('https://')
+            ? new URL(raw)
+            : new URL(raw, window.location.origin);
+        const fileName = parsed.pathname.split('/').filter(Boolean).at(-1) || '';
+        return normalizePreconLookupKey(decodeURIComponent(fileName));
+    } catch {
+        const fileName = raw.split(/[/?#]/).filter(Boolean).at(-1) || '';
+        return normalizePreconLookupKey(fileName);
+    }
+};
+
 const PreconisationsForm: React.FC<{
     items: VisitRecommendationItem[];
     wikiItems: WikiLibraryItem[];
@@ -4231,7 +4263,9 @@ const PreconisationsForm: React.FC<{
 
                 <div className="space-y-4">
                     {items.map((item, index) => {
-                        const selectedWikiItem = availableImages.find((wikiItem) => wikiItem.id === item.wikiItemId);
+                        const selectedWikiItem = availableImages.find((wikiItem) => wikiItem.id === item.wikiItemId)
+                            || availableImages.find((wikiItem) => normalizePreconLookupKey(wikiItem.title) === normalizePreconLookupKey(item.wikiTitle))
+                            || availableImages.find((wikiItem) => extractImageFileKey(wikiItem.imageUrl) === extractImageFileKey(item.wikiImageUrl));
                         const displayTitle = selectedWikiItem?.title || item.wikiTitle || `Préconisation ${index + 1}`;
                         const displayImage = selectedWikiItem?.imageUrl || item.wikiImageUrl;
                         const displayTag = selectedWikiItem?.tags?.[0] || item.wikiTag;
@@ -4529,6 +4563,13 @@ const MeasurementFigureCard: React.FC<{
                 alt={imageAlt}
                 className="mx-auto h-full max-h-[640px] w-auto object-contain select-none pointer-events-none"
                 draggable={false}
+                onDragStart={(event) => event.preventDefault()}
+                style={{
+                    WebkitUserSelect: 'none',
+                    userSelect: 'none',
+                    WebkitUserDrag: 'none',
+                    WebkitTouchCallout: 'none',
+                }}
             />
 
             {hotspots.map((hotspot) => (
@@ -4576,16 +4617,30 @@ const MeasurementsCanvasBackground: React.FC = () => (
                 <img
                     src="/measurements/seated-figure.png"
                     alt=""
-                    className="max-h-[470px] md:max-h-[520px] w-auto object-contain"
+                    className="max-h-[470px] md:max-h-[520px] w-auto object-contain pointer-events-none select-none"
                     draggable={false}
+                    onDragStart={(event) => event.preventDefault()}
+                    style={{
+                        WebkitUserSelect: 'none',
+                        userSelect: 'none',
+                        WebkitUserDrag: 'none',
+                        WebkitTouchCallout: 'none',
+                    }}
                 />
             </div>
             <div className="flex h-full flex-1 items-center justify-center">
                 <img
                     src="/measurements/standing-figure.png"
                     alt=""
-                    className="max-h-[470px] md:max-h-[520px] w-auto object-contain"
+                    className="max-h-[470px] md:max-h-[520px] w-auto object-contain pointer-events-none select-none"
                     draggable={false}
+                    onDragStart={(event) => event.preventDefault()}
+                    style={{
+                        WebkitUserSelect: 'none',
+                        userSelect: 'none',
+                        WebkitUserDrag: 'none',
+                        WebkitTouchCallout: 'none',
+                    }}
                 />
             </div>
         </div>

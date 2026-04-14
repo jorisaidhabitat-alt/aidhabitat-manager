@@ -131,7 +131,7 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
           onChange={(event) => {
             const typed = event.target.value;
             setIsCityMenuOpen(true);
-            if (!typed.trim()) {
+            if (!typed) {
               onChange({ city: '', zipCode: '', cityId: '' });
               return;
             }
