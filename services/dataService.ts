@@ -13,6 +13,10 @@ const NOCODB_TOKEN_STORAGE_KEY = 'aidhabitat.nocodb_token';
 const PROFILE_PHOTO_CACHE_NAME = 'aidhabitat.profile-photos.v1';
 const RETIREMENT_FUNDS_CACHE_KEY = 'aidhabitat.retirement_funds_cache';
 const BENEFICIARY_PATCHES_CACHE_KEY = 'aidhabitat.beneficiary_patches.v1';
+const DOSSIER_PATCHES_CACHE_KEY = 'aidhabitat.dossier_patches.v1';
+const HOUSING_PATCHES_CACHE_KEY = 'aidhabitat.housing_patches.v1';
+const VISIT_RECOMMENDATIONS_CACHE_KEY = 'aidhabitat.visit_recommendations.cache.v1';
+const VISIT_RECOMMENDATIONS_QUEUE_KEY = 'aidhabitat.visit_recommendations.queue.v1';
 const LOCAL_DOCUMENTS_CACHE_KEY = 'aidhabitat.documents.cache.v1';
 const LOCAL_DOCUMENT_QUEUE_KEY = 'aidhabitat.documents.queue.v1';
 const LOCAL_DOCUMENT_BLOB_CACHE_NAME = 'aidhabitat.documents.blobs.v1';
@@ -258,6 +262,96 @@ const clearBeneficiaryPatch = (patientId: string) => {
   writeBeneficiaryPatchMap(next);
 };
 
+const readDossierPatchMap = (): Record<string, DossierPatchRecord> => (
+  readLocalJsonCache<Record<string, DossierPatchRecord>>(DOSSIER_PATCHES_CACHE_KEY, {})
+);
+
+const writeDossierPatchMap = (value: Record<string, DossierPatchRecord>) => {
+  writeLocalJsonCache(DOSSIER_PATCHES_CACHE_KEY, value);
+};
+
+const mergeDossierPatch = (dossierId: string, updates: Partial<Dossier>, lastError?: string): DossierPatchRecord => {
+  const existing = readDossierPatchMap()[dossierId];
+  return {
+    dossierId,
+    updates: {
+      ...(existing?.updates || {}),
+      ...updates,
+    },
+    updatedAt: new Date().toISOString(),
+    lastError,
+  };
+};
+
+const setDossierPatch = (patch: DossierPatchRecord) => {
+  const next = readDossierPatchMap();
+  next[patch.dossierId] = patch;
+  writeDossierPatchMap(next);
+};
+
+const clearDossierPatch = (dossierId: string) => {
+  const next = readDossierPatchMap();
+  if (!next[dossierId]) return;
+  delete next[dossierId];
+  writeDossierPatchMap(next);
+};
+
+const readHousingPatchMap = (): Record<string, HousingPatchRecord> => (
+  readLocalJsonCache<Record<string, HousingPatchRecord>>(HOUSING_PATCHES_CACHE_KEY, {})
+);
+
+const writeHousingPatchMap = (value: Record<string, HousingPatchRecord>) => {
+  writeLocalJsonCache(HOUSING_PATCHES_CACHE_KEY, value);
+};
+
+const mergeHousingPatch = (
+  beneficiaryId: string,
+  housingId: string | undefined,
+  updates: Partial<Housing>,
+  lastError?: string,
+): HousingPatchRecord => {
+  const existing = readHousingPatchMap()[beneficiaryId];
+  return {
+    beneficiaryId,
+    housingId: housingId || existing?.housingId,
+    updates: {
+      ...(existing?.updates || {}),
+      ...updates,
+    },
+    updatedAt: new Date().toISOString(),
+    lastError,
+  };
+};
+
+const setHousingPatch = (patch: HousingPatchRecord) => {
+  const next = readHousingPatchMap();
+  next[patch.beneficiaryId] = patch;
+  writeHousingPatchMap(next);
+};
+
+const clearHousingPatch = (beneficiaryId: string) => {
+  const next = readHousingPatchMap();
+  if (!next[beneficiaryId]) return;
+  delete next[beneficiaryId];
+  writeHousingPatchMap(next);
+};
+
+const readVisitRecommendationsCacheMap = (): Record<string, VisitRecommendationsCacheRecord> => (
+  readLocalJsonCache<Record<string, VisitRecommendationsCacheRecord>>(VISIT_RECOMMENDATIONS_CACHE_KEY, {})
+);
+
+const writeVisitRecommendationsCacheMap = (value: Record<string, VisitRecommendationsCacheRecord>) => {
+  writeLocalJsonCache(VISIT_RECOMMENDATIONS_CACHE_KEY, value);
+};
+
+const readVisitRecommendationsQueueMap = (): Record<string, VisitRecommendationsQueueRecord> => (
+  readLocalJsonCache<Record<string, VisitRecommendationsQueueRecord>>(VISIT_RECOMMENDATIONS_QUEUE_KEY, {})
+);
+
+const writeVisitRecommendationsQueueMap = (value: Record<string, VisitRecommendationsQueueRecord>) => {
+  writeLocalJsonCache(VISIT_RECOMMENDATIONS_QUEUE_KEY, value);
+};
+
 const normalizeOccupantIdentity = (value: unknown): OccupantIdentity | null => {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Partial<OccupantIdentity>;
@@ -319,6 +413,37 @@ const applyPendingBeneficiaryUpdates = (dossiers: Dossier[]): Dossier[] => {
   });
 };
 
+const applyPendingDossierUpdates = (dossiers: Dossier[]): Dossier[] => {
+  const patches = readDossierPatchMap();
+  if (Object.keys(patches).length === 0) return dossiers;
+
+  return dossiers.map((dossier) => {
+    const patch = patches[dossier.id];
+    if (!patch) return dossier;
+    return {
+      ...dossier,
+      ...patch.updates,
+    };
+  });
+};
+
+const applyPendingHousingUpdates = (dossiers: Dossier[]): Dossier[] => {
+  const patches = readHousingPatchMap();
+  if (Object.keys(patches).length === 0) return dossiers;
+
+  return dossiers.map((dossier) => {
+    const patch = patches[dossier.patient.id];
+    if (!patch) return dossier;
+    return {
+      ...dossier,
+      housing: {
+        ...dossier.housing,
+        ...patch.updates,
+      },
+    };
+  });
+};
+
 const beneficiaryMatchesPatch = (patient: Patient, updates: Partial<Patient>): boolean => (
   Object.entries(updates).every(([key, value]) => {
     const patientValue = patient[key as keyof Patient];
@@ -347,11 +472,77 @@ const reconcileBeneficiaryPatchesWithDossiers = (dossiers: Dossier[]) => {
   }
 };
 
+const reconcileDossierPatchesWithDossiers = (dossiers: Dossier[]) => {
+  const patches = readDossierPatchMap();
+  if (Object.keys(patches).length === 0) return;
+
+  let changed = false;
+  const nextPatches = { ...patches };
+
+  dossiers.forEach((dossier) => {
+    const patch = nextPatches[dossier.id];
+    if (!patch) return;
+    const patchApplied = Object.entries(patch.updates).every(([key, value]) => {
+      const dossierValue = dossier[key as keyof Dossier];
+      return valuesMatch(dossierValue, value);
+    });
+    if (patchApplied) {
+      delete nextPatches[dossier.id];
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    writeDossierPatchMap(nextPatches);
+  }
+};
+
+const reconcileHousingPatchesWithDossiers = (dossiers: Dossier[]) => {
+  const patches = readHousingPatchMap();
+  if (Object.keys(patches).length === 0) return;
+
+  let changed = false;
+  const nextPatches = { ...patches };
+
+  dossiers.forEach((dossier) => {
+    const patch = nextPatches[dossier.patient.id];
+    if (!patch) return;
+    const patchApplied = Object.entries(patch.updates).every(([key, value]) => {
+      const housingValue = dossier.housing?.[key as keyof Housing];
+      return valuesMatch(housingValue, value);
+    });
+    if (patchApplied) {
+      delete nextPatches[dossier.patient.id];
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    writeHousingPatchMap(nextPatches);
+  }
+};
+
 let beneficiaryFlushPromise: Promise<void> | null = null;
 let beneficiaryOnlineListenerRegistered = false;
 let beneficiaryFlushTimer: number | null = null;
+let dossierFlushPromise: Promise<void> | null = null;
+let dossierOnlineListenerRegistered = false;
+let dossierFlushTimer: number | null = null;
+let housingFlushPromise: Promise<void> | null = null;
+let housingOnlineListenerRegistered = false;
+let housingFlushTimer: number | null = null;
+let recommendationsFlushPromise: Promise<void> | null = null;
+let recommendationsOnlineListenerRegistered = false;
+let recommendationsFlushTimer: number | null = null;
 
 const shouldAttemptBeneficiarySync = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  if (!getSessionToken()) return false;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+  return true;
+};
+
+const shouldAttemptBackgroundSync = (): boolean => {
   if (typeof window === 'undefined') return false;
   if (!getSessionToken()) return false;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
@@ -503,6 +694,7 @@ const createClientUuid = (): string => {
 let noteOfflineDbPromise: Promise<IDBDatabase | null> | null = null;
 let noteSyncPromise: Promise<void> | null = null;
 let noteSyncListenerRegistered = false;
+let noteSyncTimer: number | null = null;
 
 const openNoteOfflineDb = async (): Promise<IDBDatabase | null> => {
   if (!supportsIndexedDbNotes()) {
@@ -778,6 +970,36 @@ type BeneficiaryPatchRecord = {
   patientId: string;
   updates: Partial<Patient>;
   updatedAt: string;
+  lastError?: string;
+};
+
+type DossierPatchRecord = {
+  dossierId: string;
+  updates: Partial<Dossier>;
+  updatedAt: string;
+  lastError?: string;
+};
+
+type HousingPatchRecord = {
+  beneficiaryId: string;
+  housingId?: string;
+  updates: Partial<Housing>;
+  updatedAt: string;
+  lastError?: string;
+};
+
+type VisitRecommendationsCacheRecord = {
+  dossierId: string;
+  items: VisitRecommendationItem[];
+  updatedAt: string;
+  syncStatus: 'synced' | 'pending' | 'failed';
+  lastError?: string;
+};
+
+type VisitRecommendationsQueueRecord = {
+  dossierId: string;
+  items: VisitRecommendationItem[];
+  queuedAt: string;
   lastError?: string;
 };
 
@@ -1110,23 +1332,179 @@ export const deleteWikiLibraryItem = async (itemId: string): Promise<void> => {
 };
 
 export const fetchVisitRecommendations = async (dossierId: string): Promise<VisitRecommendationItem[]> => {
-  const result = await apiFetch<VisitRecommendationsResult>(`/api/visit-recommendations/${encodeURIComponent(dossierId)}`);
-  return result.data?.items || [];
+  const normalizedDossierId = String(dossierId || '').trim();
+  if (!normalizedDossierId) return [];
+
+  const cachedRecord = readVisitRecommendationsCacheMap()[normalizedDossierId];
+  if (cachedRecord) {
+    if (shouldAttemptBackgroundSync()) {
+      void flushQueuedVisitRecommendations()
+        .then(async () => {
+          const queue = readVisitRecommendationsQueueMap();
+          if (queue[normalizedDossierId]) return;
+          const remoteItems = await fetchVisitRecommendationsRemote(normalizedDossierId);
+          const nextCache = readVisitRecommendationsCacheMap();
+          nextCache[normalizedDossierId] = {
+            dossierId: normalizedDossierId,
+            items: remoteItems,
+            updatedAt: new Date().toISOString(),
+            syncStatus: 'synced',
+          };
+          writeVisitRecommendationsCacheMap(nextCache);
+        })
+        .catch(() => undefined);
+    }
+    return cachedRecord.items;
+  }
+
+  try {
+    const remoteItems = await fetchVisitRecommendationsRemote(normalizedDossierId);
+    const nextCache = readVisitRecommendationsCacheMap();
+    nextCache[normalizedDossierId] = {
+      dossierId: normalizedDossierId,
+      items: remoteItems,
+      updatedAt: new Date().toISOString(),
+      syncStatus: 'synced',
+    };
+    writeVisitRecommendationsCacheMap(nextCache);
+    return remoteItems;
+  } catch {
+    return [];
+  }
 };
 
 export const saveVisitRecommendations = async (
   dossierId: string,
   items: VisitRecommendationItem[],
 ): Promise<{ success: boolean; error: string | null }> => {
+  const normalizedDossierId = String(dossierId || '').trim();
+  if (!normalizedDossierId) {
+    return { success: false, error: 'Dossier introuvable' };
+  }
+
+  const normalizedItems = Array.isArray(items) ? items.map((item) => ({ ...item })) : [];
+  const now = new Date().toISOString();
+
+  const cache = readVisitRecommendationsCacheMap();
+  cache[normalizedDossierId] = {
+    dossierId: normalizedDossierId,
+    items: normalizedItems,
+    updatedAt: now,
+    syncStatus: 'pending',
+  };
+  writeVisitRecommendationsCacheMap(cache);
+
+  const queue = readVisitRecommendationsQueueMap();
+  queue[normalizedDossierId] = {
+    dossierId: normalizedDossierId,
+    items: normalizedItems,
+    queuedAt: now,
+  };
+  writeVisitRecommendationsQueueMap(queue);
+
+  scheduleQueuedVisitRecommendationsSync();
+
+  return { success: true, error: null };
+};
+
+const fetchVisitRecommendationsRemote = async (dossierId: string): Promise<VisitRecommendationItem[]> => {
+  const result = await apiFetch<VisitRecommendationsResult>(`/api/visit-recommendations/${encodeURIComponent(dossierId)}`);
+  return result.data?.items || [];
+};
+
+const saveVisitRecommendationsRemote = async (
+  dossierId: string,
+  items: VisitRecommendationItem[],
+): Promise<{ success: boolean; error: string | null; items: VisitRecommendationItem[] }> => {
   try {
-    const result = await apiFetch<MutationResult>(`/api/visit-recommendations/${encodeURIComponent(dossierId)}`, {
+    const result = await apiFetch<VisitRecommendationsResult>(`/api/visit-recommendations/${encodeURIComponent(dossierId)}`, {
       method: 'PUT',
       body: JSON.stringify({ items }),
     });
-    return { success: result.success, error: result.error };
-  } catch (e: any) {
-    return { success: false, error: e.message };
+    return {
+      success: result.success,
+      error: result.error,
+      items: result.data?.items || items,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || 'Synchronisation des préconisations impossible',
+      items,
+    };
   }
+};
+
+const flushQueuedVisitRecommendations = async (): Promise<void> => {
+  if (!shouldAttemptBackgroundSync()) {
+    return;
+  }
+  if (recommendationsFlushPromise) {
+    return recommendationsFlushPromise;
+  }
+
+  recommendationsFlushPromise = (async () => {
+    const queueEntries = Object.values(readVisitRecommendationsQueueMap())
+      .sort((left, right) => new Date(left.queuedAt).getTime() - new Date(right.queuedAt).getTime());
+
+    for (const entry of queueEntries) {
+      const result = await saveVisitRecommendationsRemote(entry.dossierId, entry.items);
+      const cache = readVisitRecommendationsCacheMap();
+      const queue = readVisitRecommendationsQueueMap();
+
+      if (result.success) {
+        delete queue[entry.dossierId];
+        writeVisitRecommendationsQueueMap(queue);
+        cache[entry.dossierId] = {
+          dossierId: entry.dossierId,
+          items: result.items,
+          updatedAt: new Date().toISOString(),
+          syncStatus: 'synced',
+        };
+        writeVisitRecommendationsCacheMap(cache);
+        continue;
+      }
+
+      queue[entry.dossierId] = {
+        ...entry,
+        lastError: result.error || 'Synchronisation des préconisations impossible',
+      };
+      writeVisitRecommendationsQueueMap(queue);
+      cache[entry.dossierId] = {
+        dossierId: entry.dossierId,
+        items: entry.items,
+        updatedAt: new Date().toISOString(),
+        syncStatus: 'failed',
+        lastError: result.error || 'Synchronisation des préconisations impossible',
+      };
+      writeVisitRecommendationsCacheMap(cache);
+      break;
+    }
+  })().finally(() => {
+    recommendationsFlushPromise = null;
+  });
+
+  return recommendationsFlushPromise;
+};
+
+const scheduleQueuedVisitRecommendationsSync = () => {
+  if (!recommendationsOnlineListenerRegistered && typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+      void flushQueuedVisitRecommendations();
+    });
+    recommendationsOnlineListenerRegistered = true;
+  }
+  if (typeof window === 'undefined') {
+    void flushQueuedVisitRecommendations();
+    return;
+  }
+  if (recommendationsFlushTimer) {
+    window.clearTimeout(recommendationsFlushTimer);
+  }
+  recommendationsFlushTimer = window.setTimeout(() => {
+    recommendationsFlushTimer = null;
+    void flushQueuedVisitRecommendations();
+  }, 120);
 };
 
 // Helper to map a raw beneficiary (from 'beneficiaires' table) to a Patient object
@@ -1377,7 +1755,11 @@ export const fetchLocalSnapshot = async (): Promise<Dossier[]> => {
 
       // 1. Map dossiers already normalized from the shared API.
       if (snapshot.dossiers && snapshot.dossiers.length > 0 && snapshot.dossiers[0]?.patient) {
-        return applyPendingBeneficiaryUpdates(snapshot.dossiers as Dossier[]);
+        return applyPendingHousingUpdates(
+          applyPendingDossierUpdates(
+            applyPendingBeneficiaryUpdates(snapshot.dossiers as Dossier[]),
+          ),
+        );
       }
 
       // 2. Map raw dossiers from legacy snapshot format.
@@ -1390,7 +1772,11 @@ export const fetchLocalSnapshot = async (): Promise<Dossier[]> => {
       const orphans = (snapshot.beneficiaries || []).filter((b: any) => !coveredIds.has(b.id));
       const virtuals = orphans.map(mapVirtualDossierFromBeneficiary);
 
-      return applyPendingBeneficiaryUpdates([...finalDossiers, ...virtuals]);
+      return applyPendingHousingUpdates(
+        applyPendingDossierUpdates(
+          applyPendingBeneficiaryUpdates([...finalDossiers, ...virtuals]),
+        ),
+      );
     }
   } catch (e: any) {
     console.error('[DataService] Snapshot fetch error:', e);
@@ -1400,12 +1786,18 @@ export const fetchLocalSnapshot = async (): Promise<Dossier[]> => {
 
 export const fetchDossiers = async (userId?: string): Promise<Dossier[]> => {
   debugLog(`fetchDossiers: loading via shared API for user ${userId || 'ALL'}`);
+  void flushQueuedBeneficiaryUpdates().catch(() => undefined);
+  void flushQueuedDossierUpdates().catch(() => undefined);
+  void flushQueuedHousingUpdates().catch(() => undefined);
+  void flushQueuedVisitRecommendations().catch(() => undefined);
   const dossiers = await apiFetch<Dossier[]>('/api/dossiers');
   reconcileBeneficiaryPatchesWithDossiers(dossiers);
-  return applyPendingBeneficiaryUpdates(dossiers);
+  reconcileDossierPatchesWithDossiers(dossiers);
+  reconcileHousingPatchesWithDossiers(dossiers);
+  return applyPendingHousingUpdates(applyPendingDossierUpdates(applyPendingBeneficiaryUpdates(dossiers)));
 };
 
-export const updateDossier = async (
+const updateDossierRemote = async (
   dossierId: string,
   updates: Partial<Dossier>,
 ): Promise<{ success: boolean; error: string | null; data?: MutationResult['data'] }> => {
@@ -1419,6 +1811,79 @@ export const updateDossier = async (
     console.error('Unexpected error updating dossier:', error);
     return { success: false, error: error.message };
   }
+};
+
+const flushQueuedDossierUpdates = async (): Promise<void> => {
+  if (!shouldAttemptBackgroundSync()) {
+    return;
+  }
+  if (dossierFlushPromise) {
+    return dossierFlushPromise;
+  }
+
+  dossierFlushPromise = (async () => {
+    const patches = Object.values(readDossierPatchMap())
+      .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime());
+
+    for (const patch of patches) {
+      const result = await updateDossierRemote(patch.dossierId, patch.updates);
+      if (result.success) {
+        clearDossierPatch(patch.dossierId);
+        continue;
+      }
+
+      setDossierPatch({
+        ...patch,
+        lastError: result.error || 'Synchronisation dossier impossible',
+      });
+      break;
+    }
+  })().finally(() => {
+    dossierFlushPromise = null;
+  });
+
+  return dossierFlushPromise;
+};
+
+const scheduleQueuedDossierSync = () => {
+  if (!dossierOnlineListenerRegistered && typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+      void flushQueuedDossierUpdates();
+    });
+    dossierOnlineListenerRegistered = true;
+  }
+  if (typeof window === 'undefined') {
+    void flushQueuedDossierUpdates();
+    return;
+  }
+  if (dossierFlushTimer) {
+    window.clearTimeout(dossierFlushTimer);
+  }
+  dossierFlushTimer = window.setTimeout(() => {
+    dossierFlushTimer = null;
+    void flushQueuedDossierUpdates();
+  }, 180);
+};
+
+export const updateDossier = async (
+  dossierId: string,
+  updates: Partial<Dossier>,
+): Promise<{ success: boolean; error: string | null; data?: MutationResult['data'] }> => {
+  if (String(dossierId).startsWith('temp-')) {
+    return updateDossierRemote(dossierId, updates);
+  }
+
+  const patch = mergeDossierPatch(dossierId, updates);
+  setDossierPatch(patch);
+  scheduleQueuedDossierSync();
+
+  return {
+    success: true,
+    error: null,
+    data: {
+      id: dossierId,
+    },
+  };
 };
 
 export const checkSupabaseConnection = async (): Promise<{ success: boolean; message: string; count?: number }> => {
@@ -2011,7 +2476,13 @@ const flushQueuedNoteOperations = async (): Promise<void> => {
           layoutKind: localRecord.layoutKind || 'freeform',
         });
 
+        if (savedPage.id && savedPage.id !== localRecord.id) {
+          await deleteLocalNotePageRecord(localRecord.id).catch(() => undefined);
+        }
         await putLocalNotePage(toLocalNotePageRecord(savedPage, 'synced'));
+        if (savedPage.id && savedPage.id !== operation.notePageId) {
+          await deleteQueuedNoteOperation(savedPage.id).catch(() => undefined);
+        }
         await deleteQueuedNoteOperation(operation.notePageId);
       } catch (error: any) {
         const localRecord = await getLocalNotePageById(operation.notePageId);
@@ -2044,7 +2515,17 @@ const scheduleQueuedNoteSync = () => {
     });
     noteSyncListenerRegistered = true;
   }
-  void flushQueuedNoteOperations();
+  if (typeof window === 'undefined') {
+    void flushQueuedNoteOperations();
+    return;
+  }
+  if (noteSyncTimer) {
+    window.clearTimeout(noteSyncTimer);
+  }
+  noteSyncTimer = window.setTimeout(() => {
+    noteSyncTimer = null;
+    void flushQueuedNoteOperations();
+  }, 120);
 };
 
 const refreshNoteScopeInBackground = (patientId: string, options: NoteScopeOptions) => {
@@ -2095,10 +2576,27 @@ export const createNotePage = async (
     ? Math.max(...localPages.map((page) => page.pageNumber)) + 1
     : 0;
 
-  const savedPage = await saveRemoteNotePage({
-    notePageId: undefined,
+  if (!supportsIndexedDbNotes()) {
+    return saveRemoteNotePage({
+      notePageId: undefined,
+      patientId,
+      dossierId: options.scopeId,
+      scopeType: options.scopeType,
+      scopeId: options.scopeId,
+      tabKey: options.tabKey,
+      pageNumber: nextPageNumber,
+      textContent: '',
+      drawingJson: '',
+      layoutKind: options.layoutKind || 'freeform',
+    });
+  }
+
+  const localPageId = createClientUuid();
+  const now = new Date().toISOString();
+  const localPage: NotePage = {
+    id: localPageId,
     patientId,
-    dossierId: options.scopeId,
+    dossierId: options.scopeId || null,
     scopeType: options.scopeType,
     scopeId: options.scopeId,
     tabKey: options.tabKey,
@@ -2106,14 +2604,19 @@ export const createNotePage = async (
     textContent: '',
     drawingJson: '',
     layoutKind: options.layoutKind || 'freeform',
+    updatedAt: now,
+  };
+
+  await putLocalNotePage(toLocalNotePageRecord(localPage, 'pending'));
+  await putQueuedNoteOperation({
+    notePageId: localPageId,
+    type: 'upsert',
+    patientId,
+    queuedAt: now,
   });
+  scheduleQueuedNoteSync();
 
-  if (supportsIndexedDbNotes()) {
-    await putLocalNotePage(toLocalNotePageRecord(savedPage, 'synced'));
-    await deleteQueuedNoteOperation(savedPage.id).catch(() => undefined);
-  }
-
-  return savedPage;
+  return localPage;
 };
 
 export const saveNotePage = async ({
@@ -2139,10 +2642,37 @@ export const saveNotePage = async ({
   drawingJson: string;
   layoutKind?: string;
 }): Promise<NotePage> => {
-  const savedPage = await saveRemoteNotePage({
-    notePageId,
+  if (!supportsIndexedDbNotes()) {
+    return saveRemoteNotePage({
+      notePageId,
+      patientId,
+      dossierId,
+      scopeType,
+      scopeId,
+      tabKey,
+      pageNumber,
+      textContent,
+      drawingJson,
+      layoutKind,
+    });
+  }
+
+  const now = new Date().toISOString();
+  const scopeOptions = { scopeType, scopeId, tabKey };
+  const identityMatch = await getLocalNotePageByIdentity(patientId, scopeOptions, pageNumber);
+  const requestedNoteId = String(notePageId || '').trim();
+  const resolvedNoteId = requestedNoteId || identityMatch?.id || createClientUuid();
+  const directMatch = await getLocalNotePageById(resolvedNoteId);
+  const existingRecord = directMatch || identityMatch;
+
+  const localPage: NotePage = {
+    id: resolvedNoteId,
     patientId,
-    dossierId,
+    dossierId: dossierId || existingRecord?.dossierId || null,
+    patientFirstName: existingRecord?.patientFirstName,
+    patientLastName: existingRecord?.patientLastName,
+    patientDisplayName: existingRecord?.patientDisplayName,
+    dossierLabel: existingRecord?.dossierLabel,
     scopeType,
     scopeId,
     tabKey,
@@ -2150,26 +2680,44 @@ export const saveNotePage = async ({
     textContent,
     drawingJson,
     layoutKind,
-  });
+    updatedAt: now,
+  };
 
-  if (supportsIndexedDbNotes()) {
-    await putLocalNotePage(toLocalNotePageRecord(savedPage, 'synced'));
-    await deleteQueuedNoteOperation(savedPage.id).catch(() => undefined);
+  await putLocalNotePage(toLocalNotePageRecord(localPage, 'pending'));
+
+  if (identityMatch && identityMatch.id !== resolvedNoteId) {
+    await deleteLocalNotePageRecord(identityMatch.id).catch(() => undefined);
+    await deleteQueuedNoteOperation(identityMatch.id).catch(() => undefined);
   }
 
-  return savedPage;
+  await putQueuedNoteOperation({
+    notePageId: resolvedNoteId,
+    type: 'upsert',
+    patientId,
+    queuedAt: now,
+  });
+  scheduleQueuedNoteSync();
+
+  return localPage;
 };
 
 export const deleteNotePage = async (
   notePageId: string,
   patientId: string,
 ): Promise<boolean> => {
-  await deleteRemoteNotePage(notePageId, patientId);
-
-  if (supportsIndexedDbNotes()) {
-    await deleteLocalNotePageRecord(notePageId).catch(() => undefined);
-    await deleteQueuedNoteOperation(notePageId).catch(() => undefined);
+  if (!supportsIndexedDbNotes()) {
+    await deleteRemoteNotePage(notePageId, patientId);
+    return true;
   }
+
+  await deleteLocalNotePageRecord(notePageId).catch(() => undefined);
+  await putQueuedNoteOperation({
+    notePageId,
+    type: 'delete',
+    patientId,
+    queuedAt: new Date().toISOString(),
+  });
+  scheduleQueuedNoteSync();
   return true;
 };
 
@@ -2326,7 +2874,7 @@ export const createBeneficiary = async (
   }
 };
 
-export const updateHousing = async (
+const updateHousingRemote = async (
   beneficiaryId: string,
   housingId: string | undefined,
   updates: Partial<Housing>,
@@ -2341,6 +2889,80 @@ export const updateHousing = async (
     console.error('Unexpected error updating housing:', error);
     return { success: false, error: error.message };
   }
+};
+
+const flushQueuedHousingUpdates = async (): Promise<void> => {
+  if (!shouldAttemptBackgroundSync()) {
+    return;
+  }
+  if (housingFlushPromise) {
+    return housingFlushPromise;
+  }
+
+  housingFlushPromise = (async () => {
+    const patches = Object.values(readHousingPatchMap())
+      .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime());
+
+    for (const patch of patches) {
+      const result = await updateHousingRemote(
+        patch.beneficiaryId,
+        patch.housingId,
+        patch.updates,
+      );
+      if (result.success) {
+        clearHousingPatch(patch.beneficiaryId);
+        continue;
+      }
+
+      setHousingPatch({
+        ...patch,
+        lastError: result.error || 'Synchronisation logement impossible',
+      });
+      break;
+    }
+  })().finally(() => {
+    housingFlushPromise = null;
+  });
+
+  return housingFlushPromise;
+};
+
+const scheduleQueuedHousingSync = () => {
+  if (!housingOnlineListenerRegistered && typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+      void flushQueuedHousingUpdates();
+    });
+    housingOnlineListenerRegistered = true;
+  }
+  if (typeof window === 'undefined') {
+    void flushQueuedHousingUpdates();
+    return;
+  }
+  if (housingFlushTimer) {
+    window.clearTimeout(housingFlushTimer);
+  }
+  housingFlushTimer = window.setTimeout(() => {
+    housingFlushTimer = null;
+    void flushQueuedHousingUpdates();
+  }, 180);
+};
+
+export const updateHousing = async (
+  beneficiaryId: string,
+  housingId: string | undefined,
+  updates: Partial<Housing>,
+): Promise<{ success: boolean; error: string | null; data?: { id?: string } }> => {
+  const patch = mergeHousingPatch(beneficiaryId, housingId, updates);
+  setHousingPatch(patch);
+  scheduleQueuedHousingSync();
+
+  return {
+    success: true,
+    error: null,
+    data: {
+      id: housingId || patch.housingId,
+    },
+  };
 };
 
 export const fetchReferenceData = async (): Promise<ReferenceData> => {

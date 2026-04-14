@@ -613,7 +613,9 @@ const createLocalStoreAdapter = ({ absoluteUrl }) => ({
       ));
 
     const notePage = {
-      id: existingIndex >= 0 ? store.notePages[existingIndex].id : crypto.randomUUID(),
+      id: existingIndex >= 0
+        ? store.notePages[existingIndex].id
+        : (stringValue(notePageId) || crypto.randomUUID()),
       patientId,
       dossierId: dossierId || null,
       patientFirstName: beneficiary.patientFirstName,
@@ -1063,7 +1065,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       }, absoluteUrl);
     }
 
-    const createdNotePageId = crypto.randomUUID();
+    const createdNotePageId = stringValue(notePageId) || crypto.randomUUID();
     const created = await createRecord(notePagesTableId, {
       uuid_source: createdNotePageId,
       beneficiaire_id: patientId,

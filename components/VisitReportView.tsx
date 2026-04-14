@@ -725,8 +725,6 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const [activeAccessSection, setActiveAccessSection] = useState<VisitReportLocation['accessSection']>(resolvedLocation.accessSection);
     const [activeBathroomSection, setActiveBathroomSection] = useState<VisitReportLocation['bathroomSection']>(resolvedLocation.bathroomSection);
     const [activeWcSection, setActiveWcSection] = useState<VisitReportLocation['wcSection']>(resolvedLocation.wcSection);
-    const saveStatus = useSaveStatus();
-    const { markSaving, markSaved, markError } = saveStatus;
     const dossierRef = useRef(dossier);
     const onUpdateDossierRef = useRef(onUpdateDossier);
     const [fiscalRevenueDraft, setFiscalRevenueDraft] = useState(dossier.patient.fiscalRevenue?.toString() || '');
@@ -1206,13 +1204,13 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     // =============================================================
     // AUTO-SAVE with Status Indicator
     // =============================================================
-    const debouncedBeneficiary = useDebounce(formData.beneficiary, 800);
-    const debouncedContext = useDebounce(formData.context, 800);
-    const debouncedHousing = useDebounce(formData.housing, 800);
-    const debouncedSanitaires = useDebounce(sanitairesData, 1000);
-    const debouncedMesures = useDebounce(mesuresData, 1000);
-    const debouncedSynthese = useDebounce(syntheseData, 1000);
-    const debouncedRecommendations = useDebounce(recommendationsData, 1000);
+    const debouncedBeneficiary = useDebounce(formData.beneficiary, 120);
+    const debouncedContext = useDebounce(formData.context, 120);
+    const debouncedHousing = useDebounce(formData.housing, 120);
+    const debouncedSanitaires = useDebounce(sanitairesData, 150);
+    const debouncedMesures = useDebounce(mesuresData, 150);
+    const debouncedSynthese = useDebounce(syntheseData, 150);
+    const debouncedRecommendations = useDebounce(recommendationsData, 150);
     const pendingSavesRef = useRef(new Map<string, {
         label: string;
         task: () => Promise<{ success: boolean; error: string | null }>;
@@ -1236,27 +1234,21 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 if (!nextEntry) break;
                 const [key, queuedSave] = nextEntry;
                 pendingSavesRef.current.delete(key);
-                markSaving();
                 try {
                     const result = await queuedSave.task();
-                    if (result.success) {
-                        console.log(`✓ ${queuedSave.label} saved`);
-                        markSaved();
-                    } else {
+                    if (!result.success) {
                         console.error(`✗ ${queuedSave.label} error:`, result.error);
-                        markError();
                     }
                     queuedSave.resolves.forEach((resolve) => resolve(result));
                 } catch (error) {
                     console.error(`✗ ${queuedSave.label} failed:`, error);
-                    markError();
                     queuedSave.rejects.forEach((reject) => reject(error));
                 }
             }
         } finally {
             isDrainingSavesRef.current = false;
         }
-    }, [markError, markSaved, markSaving]);
+    }, []);
 
     // --- Helper: queue saves and keep only the latest payload per block ---
     const runSave = useCallback(<T extends { success: boolean; error: string | null }>(
@@ -2499,14 +2491,17 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         const otherDrawingPages = activeTabNotePagesRef.current.filter((page) => page.id !== optimisticDrawingPage.id && page.pageNumber !== currentPageNumber);
         commitNotePages(noteCacheKey, [...otherDrawingPages, optimisticDrawingPage]);
 
-        if (isSharedTextSubsectionNotes) {
-            const optimisticTextPage = {
+        const optimisticTextPage = isSharedTextSubsectionNotes
+            ? {
                 ...currentTextNotePage,
                 id: currentTextNotePage.id || `pending-text-${Date.now()}`,
                 textContent: text,
                 drawingJson: EMPTY_DRAWING_JSON,
                 updatedAt: new Date().toISOString(),
-            };
+            }
+            : null;
+
+        if (optimisticTextPage) {
             const otherTextPages = currentTextNotePagesRef.current.filter((page) => page.id !== optimisticTextPage.id && page.pageNumber !== currentPageNumber);
             commitNotePages(noteTextCacheKey, [...otherTextPages, optimisticTextPage]);
         }
@@ -2520,7 +2515,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             try {
                 const [savedPage, savedSharedTextPage] = await Promise.all([
                     saveNotePage({
-                        notePageId: currentDrawingNotePage.id || undefined,
+                        notePageId: optimisticDrawingPage.id || undefined,
                         patientId: dossier.patient.id,
                         dossierId: dossier.id,
                         scopeType: noteScopeType,
@@ -2533,7 +2528,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                     }),
                     isSharedTextSubsectionNotes
                         ? saveNotePage({
-                            notePageId: currentTextNotePage.id || undefined,
+                            notePageId: optimisticTextPage?.id || undefined,
                             patientId: dossier.patient.id,
                             dossierId: dossier.id,
                             scopeType: noteScopeType,
@@ -2557,7 +2552,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 if (savedSharedTextPage) {
                     const latestTextPages = notePagesCacheRef.current[noteTextCacheKey] || [];
                     const mergedTextPages = latestTextPages.map((page) =>
-                        page.id?.startsWith('pending-text-') && page.pageNumber === currentPageNumber ? savedSharedTextPage : page
+                        page.id === optimisticTextPage?.id ? savedSharedTextPage : page
                     );
                     if (!mergedTextPages.some((page) => page.id === savedSharedTextPage.id)) {
                         mergedTextPages.push(savedSharedTextPage);
@@ -2573,7 +2568,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         noteSaveChainRef.current = prev.then(doSave, doSave).then(() => undefined, () => undefined);
     }, [commitNotePages, currentDrawingNotePage, currentPageNumber, currentTextNotePage, dossier.id, dossier.patient.id, isSharedTextSubsectionNotes, noteCacheKey, noteLayoutKind, noteScopeType, noteTabKey, noteTextCacheKey, noteTextTabKey]);
 
-    const debouncedNoteDraft = useDebounce(noteDraft, 350);
+    const debouncedNoteDraft = useDebounce(noteDraft, 80);
 
     useEffect(() => {
         if (!debouncedNoteDraft.isDirty) return;
