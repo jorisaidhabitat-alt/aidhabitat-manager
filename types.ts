@@ -169,6 +169,8 @@ export interface Patient {
   birthDate?: string; // Derived / Primary
   birthDateMr?: string; // date_naissance_monsieur
   birthDateMme?: string; // date_naissance_madame
+  occupant1BirthDate?: string;
+  occupant2BirthDate?: string;
   familySituation?: string; // situation_beneficiaire
   occupationStatus?: string; // statut_occupation
   numberPeople?: number; // nombre_personnes
@@ -188,6 +190,8 @@ export interface Patient {
   // Nouveaux champs administratifs
   numeroSecuriteSocialeMonsieur?: string;
   numeroSecuriteSocialeMadame?: string;
+  occupant1SocialSecurityNumber?: string;
+  occupant2SocialSecurityNumber?: string;
   caisseRetraitePrincipale?: string;
   caissesRetraiteComplementaires?: string;
 

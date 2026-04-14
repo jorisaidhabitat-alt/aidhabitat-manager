@@ -154,22 +154,22 @@ const buildOccupantsFromPatient = (patient: any, countOverride?: string | number
         normalizeOccupant({
             firstName: patient?.firstName,
             lastName: patient?.lastName,
-            birthDate: patient?.birthDateMr,
+            birthDate: patient?.occupant1BirthDate || patient?.birthDateMr,
             apa: patient?.apa,
             invalidity: patient?.invalidity,
             invalidityTxt: patient?.invalidityTxt,
             homeHelp: patient?.homeHelp,
             homeHelpTxt: patient?.homeHelpTxt,
             dependenceTxt: patient?.dependenceTxt,
-            numeroSecuriteSociale: patient?.numeroSecuriteSocialeMonsieur,
+            numeroSecuriteSociale: patient?.occupant1SocialSecurityNumber || patient?.numeroSecuriteSocialeMonsieur,
             caisseRetraitePrincipale: patient?.caisseRetraitePrincipale,
             caissesRetraiteComplementaires: patient?.caissesRetraiteComplementaires,
         }),
-        ...((patient?.secondFirstName || patient?.secondLastName || patient?.birthDateMme || patient?.numeroSecuriteSocialeMadame) ? [normalizeOccupant({
+        ...((patient?.secondFirstName || patient?.secondLastName || patient?.occupant2BirthDate || patient?.birthDateMme || patient?.occupant2SocialSecurityNumber || patient?.numeroSecuriteSocialeMadame) ? [normalizeOccupant({
             firstName: patient?.secondFirstName,
             lastName: patient?.secondLastName,
-            birthDate: patient?.birthDateMme,
-            numeroSecuriteSociale: patient?.numeroSecuriteSocialeMadame,
+            birthDate: patient?.occupant2BirthDate || patient?.birthDateMme,
+            numeroSecuriteSociale: patient?.occupant2SocialSecurityNumber || patient?.numeroSecuriteSocialeMadame,
         })] : []),
     ];
     const existing = Array.isArray(patient?.occupants) && patient.occupants.length > 0
@@ -197,9 +197,11 @@ const buildBeneficiaryIdentityPayload = (beneficiary: any) => {
         occupants,
         firstName: primaryOccupant.firstName,
         lastName: primaryOccupant.lastName,
+        occupant1BirthDate: primaryOccupant.birthDate,
         birthDateMr: primaryOccupant.birthDate,
         secondFirstName: secondaryOccupant.firstName,
         secondLastName: secondaryOccupant.lastName,
+        occupant2BirthDate: secondaryOccupant.birthDate,
         birthDateMme: secondaryOccupant.birthDate,
         apa: primaryOccupant.apa,
         invalidity: primaryOccupant.invalidity,
@@ -207,7 +209,9 @@ const buildBeneficiaryIdentityPayload = (beneficiary: any) => {
         homeHelp: primaryOccupant.homeHelp,
         homeHelpTxt: primaryOccupant.homeHelpTxt,
         dependenceTxt: primaryOccupant.dependenceTxt,
+        occupant1SocialSecurityNumber: primaryOccupant.numeroSecuriteSociale,
         numeroSecuriteSocialeMonsieur: primaryOccupant.numeroSecuriteSociale,
+        occupant2SocialSecurityNumber: secondaryOccupant.numeroSecuriteSociale,
         numeroSecuriteSocialeMadame: secondaryOccupant.numeroSecuriteSociale,
         caisseRetraitePrincipale: primaryOccupant.caisseRetraitePrincipale,
         caissesRetraiteComplementaires: primaryOccupant.caissesRetraiteComplementaires,
@@ -793,8 +797,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             lastName: dossier.patient.lastName || '',
             secondFirstName: dossier.patient.secondFirstName || '',
             secondLastName: dossier.patient.secondLastName || '',
-            birthDateMr: dossier.patient.birthDateMr || '',
-            birthDateMme: dossier.patient.birthDateMme || '',
+            occupant1BirthDate: dossier.patient.occupant1BirthDate || dossier.patient.birthDateMr || '',
+            occupant2BirthDate: dossier.patient.occupant2BirthDate || dossier.patient.birthDateMme || '',
             occupants: dossier.patient.occupants || [],
             numberPeople: formatHouseholdSize(dossier.patient.numberPeople),
         }),
@@ -818,8 +822,10 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         trustedName: dossier.patient.trustedPerson?.name || '',
         trustedPhone: dossier.patient.trustedPerson?.phone || '',
         trustedEmail: dossier.patient.trustedPerson?.email || '',
-        numeroSecuriteSocialeMonsieur: dossier.patient.numeroSecuriteSocialeMonsieur || '',
-        numeroSecuriteSocialeMadame: dossier.patient.numeroSecuriteSocialeMadame || '',
+        occupant1SocialSecurityNumber: dossier.patient.occupant1SocialSecurityNumber || dossier.patient.numeroSecuriteSocialeMonsieur || '',
+        occupant2SocialSecurityNumber: dossier.patient.occupant2SocialSecurityNumber || dossier.patient.numeroSecuriteSocialeMadame || '',
+        numeroSecuriteSocialeMonsieur: dossier.patient.occupant1SocialSecurityNumber || dossier.patient.numeroSecuriteSocialeMonsieur || '',
+        numeroSecuriteSocialeMadame: dossier.patient.occupant2SocialSecurityNumber || dossier.patient.numeroSecuriteSocialeMadame || '',
         caisseRetraitePrincipale: dossier.patient.caisseRetraitePrincipale || '',
         caissesRetraiteComplementaires: dossier.patient.caissesRetraiteComplementaires || '',
         compteAnah: dossier.compteAnah || 'A faire',
@@ -1003,8 +1009,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                     lastName: dossier.patient.lastName || '',
                     secondFirstName: dossier.patient.secondFirstName || '',
                     secondLastName: dossier.patient.secondLastName || '',
-                    birthDateMr: dossier.patient.birthDateMr || '',
-                    birthDateMme: dossier.patient.birthDateMme || '',
+                    occupant1BirthDate: dossier.patient.occupant1BirthDate || dossier.patient.birthDateMr || '',
+                    occupant2BirthDate: dossier.patient.occupant2BirthDate || dossier.patient.birthDateMme || '',
                     occupants: mergedOccupants,
                     numberPeople: formatHouseholdSize(dossier.patient.numberPeople),
                 }),
@@ -1028,8 +1034,10 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 trustedName: dossier.patient.trustedPerson?.name || '',
                 trustedPhone: dossier.patient.trustedPerson?.phone || '',
                 trustedEmail: dossier.patient.trustedPerson?.email || '',
-                numeroSecuriteSocialeMonsieur: dossier.patient.numeroSecuriteSocialeMonsieur || '',
-                numeroSecuriteSocialeMadame: dossier.patient.numeroSecuriteSocialeMadame || '',
+                occupant1SocialSecurityNumber: dossier.patient.occupant1SocialSecurityNumber || dossier.patient.numeroSecuriteSocialeMonsieur || '',
+                occupant2SocialSecurityNumber: dossier.patient.occupant2SocialSecurityNumber || dossier.patient.numeroSecuriteSocialeMadame || '',
+                numeroSecuriteSocialeMonsieur: dossier.patient.occupant1SocialSecurityNumber || dossier.patient.numeroSecuriteSocialeMonsieur || '',
+                numeroSecuriteSocialeMadame: dossier.patient.occupant2SocialSecurityNumber || dossier.patient.numeroSecuriteSocialeMadame || '',
                 caisseRetraitePrincipale: dossier.patient.caisseRetraitePrincipale || '',
                 caissesRetraiteComplementaires: dossier.patient.caissesRetraiteComplementaires || '',
                 compteAnah: dossier.compteAnah || 'A faire',
@@ -1299,6 +1307,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                     updateBeneficiaryService(dossier.patient.id, {
                         firstName: normalizedBeneficiary.firstName, lastName: normalizedBeneficiary.lastName,
                         secondFirstName: normalizedBeneficiary.secondFirstName, secondLastName: normalizedBeneficiary.secondLastName,
+                        occupant1BirthDate: normalizedBeneficiary.occupant1BirthDate,
+                        occupant2BirthDate: normalizedBeneficiary.occupant2BirthDate,
                         birthDateMr: normalizedBeneficiary.birthDateMr, birthDateMme: normalizedBeneficiary.birthDateMme,
                         occupants: normalizedBeneficiary.occupants,
                         address: normalizedBeneficiary.address, city: normalizedBeneficiary.city,
@@ -1311,10 +1321,13 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         apa: normalizedBeneficiary.apa, invalidity: normalizedBeneficiary.invalidity,
                         invalidityTxt: normalizedBeneficiary.invalidityTxt, homeHelp: normalizedBeneficiary.homeHelp,
                         homeHelpTxt: normalizedBeneficiary.homeHelpTxt, dependenceTxt: normalizedBeneficiary.dependenceTxt,
+                        occupant1SocialSecurityNumber: normalizedBeneficiary.occupant1SocialSecurityNumber,
+                        occupant2SocialSecurityNumber: normalizedBeneficiary.occupant2SocialSecurityNumber,
                         numeroSecuriteSocialeMonsieur: normalizedBeneficiary.numeroSecuriteSocialeMonsieur,
                         numeroSecuriteSocialeMadame: normalizedBeneficiary.numeroSecuriteSocialeMadame,
                         caisseRetraitePrincipale: normalizedBeneficiary.caisseRetraitePrincipale,
                         caissesRetraiteComplementaires: normalizedBeneficiary.caissesRetraiteComplementaires,
+                        trustedEmail: normalizedBeneficiary.trustedEmail,
                         trustedPerson: { name: normalizedBeneficiary.trustedName, phone: normalizedBeneficiary.trustedPhone, email: normalizedBeneficiary.trustedEmail }
                     }),
                     updateDossier(dossier.id, {
@@ -1402,6 +1415,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                             lastName: refreshedPatient?.lastName || normalizedBeneficiary.lastName,
                             secondFirstName: refreshedPatient?.secondFirstName || normalizedBeneficiary.secondFirstName,
                             secondLastName: refreshedPatient?.secondLastName || normalizedBeneficiary.secondLastName,
+                            occupant1BirthDate: refreshedPatient?.occupant1BirthDate || normalizedBeneficiary.occupant1BirthDate,
+                            occupant2BirthDate: refreshedPatient?.occupant2BirthDate || normalizedBeneficiary.occupant2BirthDate,
                             address: refreshedPatient?.address || normalizedBeneficiary.address,
                             city: resolvedCity,
                             cityId: resolvedCityId,
@@ -1424,6 +1439,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                                 phone: normalizedBeneficiary.trustedPhone,
                                 email: normalizedBeneficiary.trustedEmail,
                             },
+                            occupant1SocialSecurityNumber: normalizedBeneficiary.occupant1SocialSecurityNumber,
+                            occupant2SocialSecurityNumber: normalizedBeneficiary.occupant2SocialSecurityNumber,
                             numeroSecuriteSocialeMonsieur: normalizedBeneficiary.numeroSecuriteSocialeMonsieur,
                             numeroSecuriteSocialeMadame: normalizedBeneficiary.numeroSecuriteSocialeMadame,
                             caisseRetraitePrincipale: normalizedBeneficiary.caisseRetraitePrincipale,
@@ -1626,6 +1643,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             secondFirstName: normalizedBeneficiary.secondFirstName,
             secondLastName: normalizedBeneficiary.secondLastName,
             occupants: normalizedBeneficiary.occupants,
+            occupant1BirthDate: normalizedBeneficiary.occupant1BirthDate,
+            occupant2BirthDate: normalizedBeneficiary.occupant2BirthDate,
             birthDateMr: normalizedBeneficiary.birthDateMr,
             birthDateMme: normalizedBeneficiary.birthDateMme,
             address: normalizedBeneficiary.address,
@@ -1645,6 +1664,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             homeHelp: Boolean(normalizedBeneficiary.homeHelp),
             homeHelpTxt: normalizedBeneficiary.homeHelpTxt,
             dependenceTxt: normalizedBeneficiary.dependenceTxt,
+            occupant1SocialSecurityNumber: normalizedBeneficiary.occupant1SocialSecurityNumber,
+            occupant2SocialSecurityNumber: normalizedBeneficiary.occupant2SocialSecurityNumber,
             numeroSecuriteSocialeMonsieur: normalizedBeneficiary.numeroSecuriteSocialeMonsieur,
             numeroSecuriteSocialeMadame: normalizedBeneficiary.numeroSecuriteSocialeMadame,
             caisseRetraitePrincipale: normalizedBeneficiary.caisseRetraitePrincipale,
@@ -2890,6 +2911,7 @@ const BeneficiaryForm: React.FC<{
     }, [activeOccupantIndex, displayedOccupants.length]);
 
     const activeOccupant = displayedOccupants[activeOccupantIndex] || createEmptyOccupant();
+    const currentOccupantLabel = `occupant ${activeOccupantIndex + 1}`;
     const updateActiveOccupant = (field: keyof ReturnType<typeof createEmptyOccupant>, value: string | boolean) => {
         const nextOccupants = buildOccupantsFromPatient(data, data.numberPeople);
         nextOccupants[activeOccupantIndex] = {
@@ -2954,18 +2976,18 @@ const BeneficiaryForm: React.FC<{
                 {renderOccupantBadge()}
                 <div className="grid grid-cols-2 gap-2">
                     <Input
-                        label="Nom"
+                        label={`Nom ${currentOccupantLabel}`}
                         value={activeOccupant.lastName || ''}
                         onChange={v => updateActiveOccupant('lastName', v)}
                     />
                     <Input
-                        label="Prénom"
+                        label={`Prénom ${currentOccupantLabel}`}
                         value={activeOccupant.firstName || ''}
                         onChange={v => updateActiveOccupant('firstName', v)}
                     />
                 </div>
                 <Input
-                    label="Né(e) le"
+                    label={`Date de naissance ${currentOccupantLabel}`}
                     type="date"
                     value={activeOccupant.birthDate || ''}
                     onChange={v => updateActiveOccupant('birthDate', v)}
@@ -3081,18 +3103,18 @@ const BeneficiaryForm: React.FC<{
                     )}
                     {renderOccupantBadge()}
                     <div className="grid grid-cols-2 gap-2">
-                        <Input label="N° Sécu" value={activeOccupant.numeroSecuriteSociale || ''} onChange={v => updateActiveOccupant('numeroSecuriteSociale', v)} placeholder="1 23 45 67..." />
-                        <Input label="Caisse retraite princ." value={activeOccupant.caisseRetraitePrincipale || ''} onChange={v => updateActiveOccupant('caisseRetraitePrincipale', v)} placeholder="Ex: CARSAT..." />
+                        <Input label={`N° Sécu ${currentOccupantLabel}`} value={activeOccupant.numeroSecuriteSociale || ''} onChange={v => updateActiveOccupant('numeroSecuriteSociale', v)} placeholder="1 23 45 67..." />
+                        <Input label={`Caisse retraite princ. ${currentOccupantLabel}`} value={activeOccupant.caisseRetraitePrincipale || ''} onChange={v => updateActiveOccupant('caisseRetraitePrincipale', v)} placeholder="Ex: CARSAT..." />
                     </div>
                     <div className="grid grid-cols-1 gap-2">
-                        <Input label="Caisses complém." value={activeOccupant.caissesRetraiteComplementaires || ''} onChange={v => updateActiveOccupant('caissesRetraiteComplementaires', v)} placeholder="Ex: AGIRC-ARRCO..." />
+                        <Input label={`Caisses complém. ${currentOccupantLabel}`} value={activeOccupant.caissesRetraiteComplementaires || ''} onChange={v => updateActiveOccupant('caissesRetraiteComplementaires', v)} placeholder="Ex: AGIRC-ARRCO..." />
                     </div>
                 </div>
             </Section>
             <Section title="Renseignements sur la visite">
                 <ToggleGroup label="Envoi du rapport" options={['Mail', 'Courrier']} selected={data.envoiRapport} onSelect={v => onChange('envoiRapport', v)} small />
                 <div className="pt-2">
-                    <Input label="Personnes présentes à la visite" value={data.personnesPresentesVisite} onChange={v => onChange('personnesPresentesVisite', v)} placeholder="Mme X, fils, ergothérapeute..." />
+                    <Input label="Personnes présentes à la visite" value={data.personnesPresentesVisite} onChange={v => onChange('personnesPresentesVisite', v)} placeholder="Occupant, proche, ergothérapeute..." />
                 </div>
             </Section>
         </div>

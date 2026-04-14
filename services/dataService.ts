@@ -1173,6 +1173,8 @@ export const mapPatient = (data: any): Patient => ({
 
   // Situation
   birthDate: data.date_naissance_monsieur || data.date_naissance_madame || new Date().toISOString(), // Fallback main date
+  occupant1BirthDate: data.occupant1BirthDate || data.date_naissance_monsieur,
+  occupant2BirthDate: data.occupant2BirthDate || data.date_naissance_madame,
   birthDateMr: data.date_naissance_monsieur,
   birthDateMme: data.date_naissance_madame,
   familySituation: data.situation_proprietaire_libelle || '',
@@ -1195,9 +1197,11 @@ export const mapPatient = (data: any): Patient => ({
   trustedPerson: {
     name: data.personne_confiance || '',
     phone: data.telephone_personne_confiance || '',
-    email: data.mail_personne_confiance || ''
+    email: data.mail_personne_confiance || data.c8s1kh1eqqx6xl6 || ''
   },
 
+  occupant1SocialSecurityNumber: data.occupant1SocialSecurityNumber || data.numero_securite_sociale_monsieur || '',
+  occupant2SocialSecurityNumber: data.occupant2SocialSecurityNumber || data.numero_securite_sociale_madame || '',
   numeroSecuriteSocialeMonsieur: data.numero_securite_sociale_monsieur || '',
   numeroSecuriteSocialeMadame: data.numero_securite_sociale_madame || '',
   caisseRetraitePrincipale: data.caisse_retraite_principale || '',

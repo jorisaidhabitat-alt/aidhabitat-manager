@@ -54,6 +54,7 @@ const MEMBER_PROFILES = {
   'joris.aidhabitat@gmail.com': { displayName: 'Coralie', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
   'joris.balluais@gmail.com': { displayName: 'Christelle', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
 };
+const BENEFICIARY_TRUSTED_EMAIL_FIELD_ID = 'c8s1kh1eqqx6xl6';
 const DEFAULT_LEGACY_ERGO_EMAIL = 'joris.aidhabitat@gmail.com';
 let memberRegistryCache = null;
 
@@ -108,7 +109,7 @@ const FIELD_SETS = {
     'revenu_fiscal_reference', 'beneficiaire_apa', 'reconnaissance_invalidite_mdph',
     'reconnaissance_invalidité_mdph_txt', 'aide_a_domicile', 'aide_a_domicile_txt',
     'dependance_particuliere', 'dependance_particuliere_txt', 'personne_confiance',
-    'telephone_personne_confiance', 'mail_personne_confiance', 'numero_securite_sociale_monsieur',
+    'telephone_personne_confiance', 'mail_personne_confiance', BENEFICIARY_TRUSTED_EMAIL_FIELD_ID, 'numero_securite_sociale_monsieur',
     'numero_securite_sociale_madame', 'caisse_retraite_principale', 'caisse_retraite_secondaire',
     'CreatedAt',
   ],
@@ -197,6 +198,7 @@ const VISIT_RECOMMENDATION_FIELDS = [
 
 const asArray = (value) => Array.isArray(value) ? value : [];
 const field = (record, name) => record?.fields?.[name];
+const firstDefined = (...values) => values.find((value) => value !== undefined);
 const stringValue = (value) => value == null ? '' : String(value);
 const safeParseJsonArray = (value) => {
   try {
@@ -1515,6 +1517,8 @@ const mapPatient = (beneficiaryRecord, appBeneficiaryId) => ({
   birthDate: field(beneficiaryRecord, 'date_naissance_monsieur') || field(beneficiaryRecord, 'date_naissance_madame') || undefined,
   birthDateMr: field(beneficiaryRecord, 'date_naissance_monsieur') || undefined,
   birthDateMme: field(beneficiaryRecord, 'date_naissance_madame') || undefined,
+  occupant1BirthDate: field(beneficiaryRecord, 'date_naissance_monsieur') || undefined,
+  occupant2BirthDate: field(beneficiaryRecord, 'date_naissance_madame') || undefined,
   familySituation: refLabel(field(beneficiaryRecord, 'situation_proprietaire')),
   occupationStatus: normalizeOccupation(refLabel(field(beneficiaryRecord, 'statut_occupation'))),
   numberPeople: toNumber(field(beneficiaryRecord, 'nombre_personnes')),
@@ -1529,10 +1533,15 @@ const mapPatient = (beneficiaryRecord, appBeneficiaryId) => ({
   trustedPerson: {
     name: stringValue(field(beneficiaryRecord, 'personne_confiance')),
     phone: stringValue(field(beneficiaryRecord, 'telephone_personne_confiance')),
-    email: stringValue(field(beneficiaryRecord, 'mail_personne_confiance')),
+    email: stringValue(firstDefined(
+      field(beneficiaryRecord, 'mail_personne_confiance'),
+      field(beneficiaryRecord, BENEFICIARY_TRUSTED_EMAIL_FIELD_ID),
+    )),
   },
   numeroSecuriteSocialeMonsieur: stringValue(field(beneficiaryRecord, 'numero_securite_sociale_monsieur')),
   numeroSecuriteSocialeMadame: stringValue(field(beneficiaryRecord, 'numero_securite_sociale_madame')),
+  occupant1SocialSecurityNumber: stringValue(field(beneficiaryRecord, 'numero_securite_sociale_monsieur')),
+  occupant2SocialSecurityNumber: stringValue(field(beneficiaryRecord, 'numero_securite_sociale_madame')),
   caisseRetraitePrincipale: refLabel(field(beneficiaryRecord, 'caisse_retraite_principale')),
   caissesRetraiteComplementaires: refLabel(field(beneficiaryRecord, 'caisse_retraite_secondaire')),
 });
@@ -2403,6 +2412,16 @@ const selectBaremeAnah = (records, householdSize) => {
 const mapBeneficiaryUpdatesToFields = (updates, references) => {
   const has = (key) => Object.prototype.hasOwnProperty.call(updates, key);
   const hasTrustedPerson = has('trustedPerson') && updates.trustedPerson && typeof updates.trustedPerson === 'object';
+  const trustedPersonPayload = hasTrustedPerson ? updates.trustedPerson : {};
+  const trustedPersonNameValue = hasTrustedPerson && Object.prototype.hasOwnProperty.call(trustedPersonPayload, 'name')
+    ? trustedPersonPayload?.name
+    : (has('trustedName') ? updates.trustedName : undefined);
+  const trustedPersonPhoneValue = hasTrustedPerson && Object.prototype.hasOwnProperty.call(trustedPersonPayload, 'phone')
+    ? trustedPersonPayload?.phone
+    : (has('trustedPhone') ? updates.trustedPhone : undefined);
+  const trustedPersonEmailValue = hasTrustedPerson && Object.prototype.hasOwnProperty.call(trustedPersonPayload, 'email')
+    ? trustedPersonPayload?.email
+    : (has('trustedEmail') ? updates.trustedEmail : undefined);
   const situationMatch = findByLabel(references.situations, updates.familySituation);
   const occupationMatch = findByLabel(references.statuts, updates.occupationStatus === 'Usufruitier' ? 'Usufruitier(e)' : updates.occupationStatus);
   const dependenceMatch = findByLabel(references.dependances, updates.dependenceTxt);
@@ -2448,8 +2467,16 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
     ville_libre: hasCommuneInput ? nullableString(resolvedCommuneLabel) : undefined,
     code_postal_libre: hasCommuneInput ? nullableString(resolvedZipCode) : undefined,
     communes_id: hasCommuneInput ? (communeMatch ? Number(communeMatch.id) : null) : undefined,
-    date_naissance_monsieur: normalizedOccupants ? nullableString(primaryOccupant?.birthDate) : (has('birthDateMr') ? nullableString(updates.birthDateMr) : undefined),
-    date_naissance_madame: normalizedOccupants ? nullableString(secondaryOccupant?.birthDate) : (has('birthDateMme') ? nullableString(updates.birthDateMme) : undefined),
+    date_naissance_monsieur: normalizedOccupants
+      ? nullableString(primaryOccupant?.birthDate)
+      : (has('occupant1BirthDate')
+        ? nullableString(updates.occupant1BirthDate)
+        : (has('birthDateMr') ? nullableString(updates.birthDateMr) : undefined)),
+    date_naissance_madame: normalizedOccupants
+      ? nullableString(secondaryOccupant?.birthDate)
+      : (has('occupant2BirthDate')
+        ? nullableString(updates.occupant2BirthDate)
+        : (has('birthDateMme') ? nullableString(updates.birthDateMme) : undefined)),
     situation_proprietaire_id1: has('familySituation') ? (situationMatch ? Number(situationMatch.id) : null) : undefined,
     statut_occupation_id1: has('occupationStatus') ? (occupationMatch ? Number(occupationMatch.id) : null) : undefined,
     nombre_personnes: has('numberPeople') ? updates.numberPeople : undefined,
@@ -2462,11 +2489,15 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
     aide_a_domicile_txt: has('homeHelpTxt') ? nullableString(updates.homeHelpTxt) : undefined,
     dependance_particuliere_txt: has('dependenceTxt') ? nullableString(updates.dependenceTxt) : undefined,
     dependances_particulieres_id: has('dependenceTxt') ? (dependenceMatch ? Number(dependenceMatch.id) : null) : undefined,
-    personne_confiance: hasTrustedPerson && Object.prototype.hasOwnProperty.call(updates.trustedPerson, 'name') ? nullableString(updates.trustedPerson?.name) : undefined,
-    telephone_personne_confiance: hasTrustedPerson && Object.prototype.hasOwnProperty.call(updates.trustedPerson, 'phone') ? nullableString(updates.trustedPerson?.phone) : undefined,
-    mail_personne_confiance: hasTrustedPerson && Object.prototype.hasOwnProperty.call(updates.trustedPerson, 'email') ? nullableString(updates.trustedPerson?.email) : undefined,
-    numero_securite_sociale_monsieur: has('numeroSecuriteSocialeMonsieur') ? nullableString(updates.numeroSecuriteSocialeMonsieur) : undefined,
-    numero_securite_sociale_madame: has('numeroSecuriteSocialeMadame') ? nullableString(updates.numeroSecuriteSocialeMadame) : undefined,
+    personne_confiance: trustedPersonNameValue === undefined ? undefined : nullableString(trustedPersonNameValue),
+    telephone_personne_confiance: trustedPersonPhoneValue === undefined ? undefined : nullableString(trustedPersonPhoneValue),
+    mail_personne_confiance: trustedPersonEmailValue === undefined ? undefined : nullableString(trustedPersonEmailValue),
+    numero_securite_sociale_monsieur: has('occupant1SocialSecurityNumber')
+      ? nullableString(updates.occupant1SocialSecurityNumber)
+      : (has('numeroSecuriteSocialeMonsieur') ? nullableString(updates.numeroSecuriteSocialeMonsieur) : undefined),
+    numero_securite_sociale_madame: has('occupant2SocialSecurityNumber')
+      ? nullableString(updates.occupant2SocialSecurityNumber)
+      : (has('numeroSecuriteSocialeMadame') ? nullableString(updates.numeroSecuriteSocialeMadame) : undefined),
     caisses_de_retraite_id: has('caisseRetraitePrincipale') ? (caisseMatch ? Number(caisseMatch.id) : null) : undefined,
     caisses_de_retraite_complementaires_id: has('caissesRetraiteComplementaires') ? (caisseCompMatch ? Number(caisseCompMatch.id) : null) : undefined,
   });
