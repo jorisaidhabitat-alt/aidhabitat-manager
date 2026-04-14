@@ -27,3 +27,4 @@ tmp/
 *.njsproj
 *.sln
 *.sw?
+.vercel
