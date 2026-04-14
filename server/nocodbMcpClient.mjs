@@ -1,4 +1,6 @@
 import process from 'node:process';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import dotenv from 'dotenv';
@@ -278,6 +280,11 @@ const isRecoverableMcpError = (error) => {
 };
 
 const createClient = async () => {
+  const npmCacheDir = process.env.VERCEL
+    ? path.join('/tmp', '.npm-cache')
+    : `${process.cwd()}/.npm-cache`;
+  await fs.mkdir(npmCacheDir, { recursive: true }).catch(() => undefined);
+
   const transport = new StdioClientTransport({
     command: 'npx',
     args: [
@@ -289,7 +296,7 @@ const createClient = async () => {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      npm_config_cache: `${process.cwd()}/.npm-cache`,
+      npm_config_cache: npmCacheDir,
     },
     stderr: process.env.DEBUG_NOCODB_MCP ? 'inherit' : 'pipe',
   });
@@ -331,11 +338,14 @@ export const callNocoTool = async (name, args = {}) => {
     const result = await client.callTool({ name, arguments: args });
     return parseToolPayload(result);
   } catch (error) {
-    if (!canUseRestFallback(name) || !isRecoverableMcpError(error)) {
+    if (!canUseRestFallback(name)) {
       throw error;
     }
 
     await closeMcpClient().catch(() => undefined);
+    if (!isRecoverableMcpError(error)) {
+      console.warn(`[nocodb] MCP indisponible, bascule REST pour ${name}.`, error);
+    }
     return callRestTool(name, args);
   }
 };

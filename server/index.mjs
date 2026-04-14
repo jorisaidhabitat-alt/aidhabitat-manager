@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import express from 'express';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
 import { callNocoTool, closeMcpClient } from './nocodbMcpClient.mjs';
 import { createMobileSyncStore } from './mobileSyncStore.mjs';
@@ -19,17 +19,23 @@ const port = Number(process.env.API_PORT || 3001);
 const SERVER_DIR_PATH = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR_PATH = path.resolve(SERVER_DIR_PATH, '../dist');
 const DIST_INDEX_PATH = path.join(DIST_DIR_PATH, 'index.html');
-const AUTH_STORE_URL = new URL('./data/auth-store.json', import.meta.url);
-const PROFILE_PHOTOS_DIR_URL = new URL('./data/profile-photos/', import.meta.url);
-const DOCUMENTS_DIR_URL = new URL('./data/documents/', import.meta.url);
-const VISIT_PLANS_DIR_URL = new URL('./data/visit-plans/', import.meta.url);
-const WIKI_LIBRARY_DIR_URL = new URL('./data/wiki-library/', import.meta.url);
-const DOCUMENT_STORE_URL = new URL('./data/documents-store.json', import.meta.url);
-const NOTE_PAGES_STORE_URL = new URL('./data/note-pages-store.json', import.meta.url);
-const RETIREMENT_FUNDS_STORE_URL = new URL('./data/retirement-funds.json', import.meta.url);
-const VISIT_RECOMMENDATIONS_STORE_URL = new URL('./data/visit-recommendations.json', import.meta.url);
+const LOCAL_DATA_DIR_PATH = fileURLToPath(new URL('./data/', import.meta.url));
+const DATA_DIR_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'aidhabitat-data')
+  : LOCAL_DATA_DIR_PATH;
+const DATA_DIR_URL = pathToFileURL(DATA_DIR_PATH.endsWith(path.sep) ? DATA_DIR_PATH : `${DATA_DIR_PATH}${path.sep}`);
+const dataFileUrl = (relativePath) => new URL(relativePath, DATA_DIR_URL);
+const AUTH_STORE_URL = dataFileUrl('auth-store.json');
+const PROFILE_PHOTOS_DIR_URL = dataFileUrl('profile-photos/');
+const DOCUMENTS_DIR_URL = dataFileUrl('documents/');
+const VISIT_PLANS_DIR_URL = dataFileUrl('visit-plans/');
+const WIKI_LIBRARY_DIR_URL = dataFileUrl('wiki-library/');
+const DOCUMENT_STORE_URL = dataFileUrl('documents-store.json');
+const NOTE_PAGES_STORE_URL = dataFileUrl('note-pages-store.json');
+const RETIREMENT_FUNDS_STORE_URL = dataFileUrl('retirement-funds.json');
+const VISIT_RECOMMENDATIONS_STORE_URL = dataFileUrl('visit-recommendations.json');
 const VISIT_RECOMMENDATIONS_TABLE_NAME = process.env.NOCODB_VISIT_RECOMMENDATIONS_TABLE_NAME || 'mobile_visit_recommendations';
-const WIKI_LIBRARY_STORE_URL = new URL('../data/wikiLibraryStatic.json', import.meta.url);
+const WIKI_LIBRARY_STORE_URL = dataFileUrl('wikiLibraryStatic.json');
 const AUTH_CACHE_TTL_MS = 30_000;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ANAH_STATUS_TTL_MS = 60_000;
@@ -57,10 +63,10 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '30mb' }));
-app.use('/uploads/profile-photos', express.static(new URL('./data/profile-photos/', import.meta.url).pathname));
-app.use('/uploads/documents', express.static(new URL('./data/documents/', import.meta.url).pathname));
-app.use('/uploads/visit-plans', express.static(new URL('./data/visit-plans/', import.meta.url).pathname));
-app.use('/uploads/wiki-library', express.static(new URL('./data/wiki-library/', import.meta.url).pathname));
+app.use('/uploads/profile-photos', express.static(PROFILE_PHOTOS_DIR_URL.pathname));
+app.use('/uploads/documents', express.static(DOCUMENTS_DIR_URL.pathname));
+app.use('/uploads/visit-plans', express.static(VISIT_PLANS_DIR_URL.pathname));
+app.use('/uploads/wiki-library', express.static(WIKI_LIBRARY_DIR_URL.pathname));
 
 const TABLES = {
   beneficiaires: 'muvp56d5i9z2qbe',
@@ -639,7 +645,7 @@ const readAuthStore = async () => {
 };
 
 const writeAuthStore = async (store) => {
-  await fs.mkdir(new URL('./data/', import.meta.url), { recursive: true });
+  await fs.mkdir(DATA_DIR_URL, { recursive: true });
   await fs.writeFile(AUTH_STORE_URL, JSON.stringify(store, null, 2));
 };
 
@@ -658,7 +664,7 @@ const readJsonStore = async (storeUrl, fallbackValue) => {
 };
 
 const writeJsonStore = async (storeUrl, payload) => {
-  await fs.mkdir(new URL('./data/', import.meta.url), { recursive: true });
+  await fs.mkdir(DATA_DIR_URL, { recursive: true });
   await fs.writeFile(storeUrl, JSON.stringify(payload, null, 2));
 };
 
@@ -4079,17 +4085,42 @@ app.use(async (req, res, next) => {
   }
 });
 
-await loadMemberRegistry({ forceRefresh: true });
-
-const server = app.listen(port, () => {
-  console.log(`[nocodb-api] listening on http://127.0.0.1:${port}`);
-});
-
-const shutdown = async () => {
-  server.close();
-  await closeMcpClient();
-  process.exit(0);
+const initializeRuntimeStores = async () => {
+  await fs.mkdir(DATA_DIR_URL, { recursive: true });
+  await fs.mkdir(PROFILE_PHOTOS_DIR_URL, { recursive: true });
+  await fs.mkdir(DOCUMENTS_DIR_URL, { recursive: true });
+  await fs.mkdir(VISIT_PLANS_DIR_URL, { recursive: true });
+  await fs.mkdir(WIKI_LIBRARY_DIR_URL, { recursive: true });
 };
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+const warmupRuntime = async () => {
+  await initializeRuntimeStores();
+  try {
+    await loadMemberRegistry({ forceRefresh: true });
+  } catch (error) {
+    console.warn('[auth] Initialisation registre échouée au démarrage, fallback local actif.', error);
+  }
+};
+
+const isDirectExecution = process.argv[1]
+  ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  : false;
+
+await warmupRuntime();
+
+if (isDirectExecution) {
+  const server = app.listen(port, () => {
+    console.log(`[nocodb-api] listening on http://127.0.0.1:${port}`);
+  });
+
+  const shutdown = async () => {
+    server.close();
+    await closeMcpClient();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+export default app;

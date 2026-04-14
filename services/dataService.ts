@@ -1940,8 +1940,8 @@ export const createNotePage = async (
     ? Math.max(...localPages.map((page) => page.pageNumber)) + 1
     : 0;
 
-  const notePage: NotePage = {
-    id: createClientUuid(),
+  const savedPage = await saveRemoteNotePage({
+    notePageId: undefined,
     patientId,
     dossierId: options.scopeId,
     scopeType: options.scopeType,
@@ -1951,33 +1951,14 @@ export const createNotePage = async (
     textContent: '',
     drawingJson: '',
     layoutKind: options.layoutKind || 'freeform',
-    updatedAt: new Date().toISOString(),
-  };
+  });
 
-  if (!supportsIndexedDbNotes()) {
-    return saveRemoteNotePage({
-      notePageId: notePage.id,
-      patientId,
-      dossierId: notePage.dossierId || undefined,
-      scopeType: notePage.scopeType,
-      scopeId: notePage.scopeId,
-      tabKey: notePage.tabKey,
-      pageNumber: notePage.pageNumber,
-      textContent: '',
-      drawingJson: '',
-      layoutKind: notePage.layoutKind,
-    });
+  if (supportsIndexedDbNotes()) {
+    await putLocalNotePage(toLocalNotePageRecord(savedPage, 'synced'));
+    await deleteQueuedNoteOperation(savedPage.id).catch(() => undefined);
   }
 
-  await putLocalNotePage(toLocalNotePageRecord(notePage, 'pending'));
-  await putQueuedNoteOperation({
-    notePageId: notePage.id,
-    type: 'upsert',
-    patientId,
-    queuedAt: notePage.updatedAt || new Date().toISOString(),
-  });
-  scheduleQueuedNoteSync();
-  return notePage;
+  return savedPage;
 };
 
 export const saveNotePage = async ({
@@ -2003,34 +1984,10 @@ export const saveNotePage = async ({
   drawingJson: string;
   layoutKind?: string;
 }): Promise<NotePage> => {
-  if (!supportsIndexedDbNotes()) {
-    return saveRemoteNotePage({
-      notePageId,
-      patientId,
-      dossierId,
-      scopeType,
-      scopeId,
-      tabKey,
-      pageNumber,
-      textContent,
-      drawingJson,
-      layoutKind,
-    });
-  }
-
-  const options = { scopeType, scopeId, tabKey };
-  const existingRecord = notePageId
-    ? await getLocalNotePageById(notePageId)
-    : await getLocalNotePageByIdentity(patientId, options, pageNumber);
-  const savedAt = new Date().toISOString();
-  const localPage: NotePage = {
-    id: existingRecord?.id || notePageId || createClientUuid(),
+  const savedPage = await saveRemoteNotePage({
+    notePageId,
     patientId,
-    dossierId: dossierId || existingRecord?.dossierId || null,
-    patientFirstName: existingRecord?.patientFirstName,
-    patientLastName: existingRecord?.patientLastName,
-    patientDisplayName: existingRecord?.patientDisplayName,
-    dossierLabel: existingRecord?.dossierLabel,
+    dossierId,
     scopeType,
     scopeId,
     tabKey,
@@ -2038,42 +1995,26 @@ export const saveNotePage = async ({
     textContent,
     drawingJson,
     layoutKind,
-    updatedAt: savedAt,
-  };
-
-  await putLocalNotePage(toLocalNotePageRecord(localPage, 'pending'));
-  await putQueuedNoteOperation({
-    notePageId: localPage.id,
-    type: 'upsert',
-    patientId,
-    queuedAt: savedAt,
   });
-  scheduleQueuedNoteSync();
 
-  return localPage;
+  if (supportsIndexedDbNotes()) {
+    await putLocalNotePage(toLocalNotePageRecord(savedPage, 'synced'));
+    await deleteQueuedNoteOperation(savedPage.id).catch(() => undefined);
+  }
+
+  return savedPage;
 };
 
 export const deleteNotePage = async (
   notePageId: string,
   patientId: string,
 ): Promise<boolean> => {
-  if (!supportsIndexedDbNotes()) {
-    return deleteRemoteNotePage(notePageId, patientId);
-  }
+  await deleteRemoteNotePage(notePageId, patientId);
 
-  const existingRecord = await getLocalNotePageById(notePageId);
-  await deleteLocalNotePageRecord(notePageId);
-  if (existingRecord?.syncStatus === 'synced') {
-    await putQueuedNoteOperation({
-      notePageId,
-      type: 'delete',
-      patientId,
-      queuedAt: new Date().toISOString(),
-    });
-  } else {
-    await deleteQueuedNoteOperation(notePageId);
+  if (supportsIndexedDbNotes()) {
+    await deleteLocalNotePageRecord(notePageId).catch(() => undefined);
+    await deleteQueuedNoteOperation(notePageId).catch(() => undefined);
   }
-  scheduleQueuedNoteSync();
   return true;
 };
 

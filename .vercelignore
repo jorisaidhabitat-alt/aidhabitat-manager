@@ -1,0 +1,5 @@
+.git
+node_modules
+.npm-cache
+dist
+aid_habitat_app
