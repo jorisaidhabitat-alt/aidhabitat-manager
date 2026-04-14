@@ -38,6 +38,7 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
   showZipField = true,
 }) => {
   const [isCityMenuOpen, setIsCityMenuOpen] = React.useState(false);
+  const [isCityInputFocused, setIsCityInputFocused] = React.useState(false);
   const normalizedOptions = React.useMemo(
     () => options.filter((option) => option.id && option.label),
     [options],
@@ -81,6 +82,7 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
 
   React.useEffect(() => {
     if (!resolvedCityId) return;
+    if (isCityInputFocused && !cityId) return;
     const selected = optionsById.get(resolvedCityId);
     if (!selected) return;
     if (
@@ -95,7 +97,7 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
       city: selected.label,
       zipCode: selected.zipCode,
     });
-  }, [city, cityId, onChange, optionsById, resolvedCityId, zipCode]);
+  }, [city, cityId, isCityInputFocused, onChange, optionsById, resolvedCityId, zipCode]);
 
   const applyCommuneSelection = React.useCallback((option: CommuneOption) => {
     onChange({
@@ -124,8 +126,12 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
         <input
           type="text"
           value={city}
-          onFocus={() => setIsCityMenuOpen(true)}
+          onFocus={() => {
+            setIsCityInputFocused(true);
+            setIsCityMenuOpen(true);
+          }}
           onBlur={() => {
+            setIsCityInputFocused(false);
             window.setTimeout(() => setIsCityMenuOpen(false), 120);
           }}
           onChange={(event) => {
@@ -140,7 +146,8 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
             const exactMatches = normalizedOptions.filter(
               (option) => normalizeCommuneQuery(option.label) === normalizeCommuneQuery(typed),
             );
-            if (exactMatches.length === 1) {
+            const hasTrimMismatch = typed !== typed.trim();
+            if (!hasTrimMismatch && exactMatches.length === 1) {
               const selected = exactMatches[0];
               onChange({
                 cityId: selected.id,

@@ -36,6 +36,7 @@ const RETIREMENT_FUNDS_STORE_URL = dataFileUrl('retirement-funds.json');
 const VISIT_RECOMMENDATIONS_STORE_URL = dataFileUrl('visit-recommendations.json');
 const VISIT_RECOMMENDATIONS_TABLE_NAME = process.env.NOCODB_VISIT_RECOMMENDATIONS_TABLE_NAME || 'mobile_visit_recommendations';
 const WIKI_LIBRARY_STORE_URL = dataFileUrl('wikiLibraryStatic.json');
+const BUNDLED_WIKI_LIBRARY_PATH = path.resolve(SERVER_DIR_PATH, '../data/wikiLibraryStatic.json');
 const AUTH_CACHE_TTL_MS = 30_000;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ANAH_STATUS_TTL_MS = 60_000;
@@ -46,6 +47,7 @@ const APP_PUBLIC_BASE_URL = String(process.env.APP_PUBLIC_BASE_URL || '').trim()
 const LOCALHOST_URL_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i;
 const PROJECT_VERCEL_HOST_PATTERN = /^aid-habitat-manager(?:-[a-z0-9-]+)?\.vercel\.app$/i;
 let anahStatusCache = null;
+let bundledWikiItemsCache = null;
 
 const MEMBER_PROFILES = {
   'contact@aidhabitat.fr': { displayName: 'Renan', role: 'ADMIN', selectable: false, establishmentId: null, establishmentLabel: '' },
@@ -797,9 +799,28 @@ const writeVisitRecommendationsStore = async (store) => {
   });
 };
 
+const loadBundledWikiItems = async () => {
+  if (Array.isArray(bundledWikiItemsCache)) return bundledWikiItemsCache;
+  try {
+    const raw = await fs.readFile(BUNDLED_WIKI_LIBRARY_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    bundledWikiItemsCache = asArray(parsed?.items);
+  } catch {
+    bundledWikiItemsCache = [];
+  }
+  return bundledWikiItemsCache;
+};
+
 const readWikiLibraryStore = async () => {
   const store = await readJsonStore(WIKI_LIBRARY_STORE_URL, { version: 1, items: [] });
-  const items = asArray(store.items).length > 0 ? asArray(store.items) : WIKI_LIBRARY_SEED;
+  const bundledItems = await loadBundledWikiItems();
+  const storedItems = asArray(store.items);
+  const hasModernStoredImages = storedItems.some((item) => {
+    const imageUrl = stringValue(item?.imageUrl);
+    return imageUrl.includes('/wiki-offline/') || imageUrl.includes('/uploads/wiki-library/');
+  });
+  const seededItems = bundledItems.length > 0 ? bundledItems : WIKI_LIBRARY_SEED;
+  const items = storedItems.length > 0 && hasModernStoredImages ? storedItems : seededItems;
   const normalized = {
     version: 1,
     items: items.map((item) => normalizeWikiItemPayload({
@@ -893,13 +914,42 @@ const buildWikiRecommendationLookup = (wikiItems = []) => {
     if (imageKey && !byImageFile.has(imageKey)) byImageFile.set(imageKey, wikiItem);
   }
 
-  return { byId, byTitle, byImageFile };
+  return { byId, byTitle, byImageFile, items: wikiItems };
+};
+
+const fuzzyMatchWikiItem = (title, wikiItems = []) => {
+  const normalizedTitle = normalizeLookupKey(title);
+  if (!normalizedTitle || wikiItems.length === 0) return null;
+  const sourceTokens = normalizedTitle.split(' ').filter(Boolean);
+  if (sourceTokens.length === 0) return null;
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const wikiItem of wikiItems) {
+    const candidateKey = normalizeLookupKey(wikiItem?.title);
+    if (!candidateKey) continue;
+    const candidateTokens = candidateKey.split(' ').filter(Boolean);
+    if (candidateTokens.length === 0) continue;
+
+    const overlapCount = sourceTokens.filter((token) => candidateTokens.includes(token)).length;
+    const tokenScore = overlapCount / sourceTokens.length;
+    const prefixBonus = candidateKey.startsWith(sourceTokens[0]) ? 0.1 : 0;
+    const score = tokenScore + prefixBonus;
+    if (score > bestScore) {
+      best = wikiItem;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.45 ? best : null;
 };
 
 const resolveRecommendationWikiItem = (item, lookup) => {
   const byId = lookup?.byId || new Map();
   const byTitle = lookup?.byTitle || new Map();
   const byImageFile = lookup?.byImageFile || new Map();
+  const wikiItems = Array.isArray(lookup?.items) ? lookup.items : [];
   const wikiItemId = stringValue(item?.wikiItemId).trim();
   const titleKey = normalizeLookupKey(item?.wikiTitle);
   const imageKey = mediaFileNameKey(item?.wikiImageUrl);
@@ -907,6 +957,7 @@ const resolveRecommendationWikiItem = (item, lookup) => {
   return byId.get(wikiItemId)
     || byTitle.get(titleKey)
     || byImageFile.get(imageKey)
+    || fuzzyMatchWikiItem(item?.wikiTitle, wikiItems)
     || null;
 };
 

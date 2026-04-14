@@ -107,6 +107,9 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveLabel, setSaveLabel] = useState<'idle' | 'saved' | 'error'>('idle');
   const [showColorPalette, setShowColorPalette] = useState(false);
+  const textRef = useRef(text);
+  const strokesRef = useRef(strokes);
+  const isDirtyRef = useRef(isDirty);
 
   const colorPresets = ['#111827', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#2563eb', '#7c3aed', '#ec4899'];
 
@@ -122,10 +125,30 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
   }, [toolset]);
 
   const effectiveDocumentKey = documentKey || `page:${currentPage}`;
+  const serializeDrawing = React.useCallback((drawingStrokes: DrawingStroke[]) => JSON.stringify({
+    version: 1,
+    strokes: drawingStrokes,
+  } satisfies DrawingDocument), []);
+  const emitDraft = React.useCallback((next?: {
+    text?: string;
+    strokes?: DrawingStroke[];
+    isDirty?: boolean;
+  }) => {
+    if (!onDraftChange) return;
+    const draftText = next?.text ?? textRef.current;
+    const draftStrokes = next?.strokes ?? strokesRef.current;
+    const draftDirty = next?.isDirty ?? isDirtyRef.current;
+    onDraftChange({
+      text: draftText,
+      drawingJson: serializeDrawing(draftStrokes),
+      isDirty: draftDirty,
+    });
+  }, [onDraftChange, serializeDrawing]);
 
   useEffect(() => {
     const nextText = initialText || '';
     const nextDrawingJson = initialDrawingJson || EMPTY_DRAWING_JSON;
+    const parsedDrawing = parseDrawingJson(nextDrawingJson);
     const isDocumentSwitch = lastHydratedDocumentKeyRef.current !== effectiveDocumentKey;
 
     if (!isDocumentSwitch && isDirty) {
@@ -133,11 +156,19 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
     }
 
     setText(nextText);
-    setStrokes(parseDrawingJson(nextDrawingJson));
+    setStrokes(parsedDrawing);
     setIsDirty(false);
     setSaveLabel('idle');
     lastHydratedDocumentKeyRef.current = effectiveDocumentKey;
-  }, [effectiveDocumentKey, initialDrawingJson, initialText, isDirty]);
+    textRef.current = nextText;
+    strokesRef.current = parsedDrawing;
+    isDirtyRef.current = false;
+    emitDraft({
+      text: textRef.current,
+      strokes: strokesRef.current,
+      isDirty: false,
+    });
+  }, [effectiveDocumentKey, emitDraft, initialDrawingJson, initialText, isDirty]);
 
   useEffect(() => {
     if (!availableTools.includes(tool)) {
@@ -212,20 +243,21 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
   );
 
   const drawingJson = useMemo(
-    () => JSON.stringify({
-      version: 1,
-      strokes,
-    } satisfies DrawingDocument),
-    [strokes],
+    () => serializeDrawing(strokes),
+    [serializeDrawing, strokes],
   );
 
   useEffect(() => {
-    onDraftChange?.({
-      text,
-      drawingJson,
-      isDirty,
-    });
-  }, [drawingJson, isDirty, onDraftChange, text]);
+    textRef.current = text;
+  }, [text]);
+
+  useEffect(() => {
+    strokesRef.current = strokes;
+  }, [strokes]);
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
 
   const currentColor = toolset === 'advanced'
     ? (tool === 'highlighter' ? highlighterColor : penColor)
@@ -240,7 +272,12 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
     const stroke = currentStrokeRef.current;
     if (!stroke) return;
     currentStrokeRef.current = null;
-    setStrokes((previous) => [...previous, normalizeStroke(stroke)]);
+    setStrokes((previous) => {
+      const next = [...previous, normalizeStroke(stroke)];
+      strokesRef.current = next;
+      emitDraft({ strokes: next, isDirty: true });
+      return next;
+    });
   };
 
   const drawPreview = (previewStroke: DrawingStroke | null) => {
@@ -260,6 +297,7 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
       points: [point],
     };
     setIsDirty(true);
+    isDirtyRef.current = true;
     setSaveLabel('idle');
     event.currentTarget.setPointerCapture?.(event.pointerId);
 
@@ -290,25 +328,25 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
 
   const handleClear = () => {
     setStrokes([]);
+    strokesRef.current = [];
     setIsDirty(true);
+    isDirtyRef.current = true;
     setSaveLabel('idle');
+    emitDraft({ strokes: [], isDirty: true });
   };
 
   const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await onSave({
-        text,
-        drawingJson,
-      });
-      setIsDirty(false);
-      setSaveLabel('saved');
-    } catch (error) {
+    setIsDirty(false);
+    isDirtyRef.current = false;
+    setSaveLabel('saved');
+    emitDraft({ isDirty: false });
+    void onSave({
+      text,
+      drawingJson,
+    }).catch((error) => {
       console.error('Failed to save note page', error);
       setSaveLabel('error');
-    } finally {
-      setIsSaving(false);
-    }
+    });
   };
 
   const toolbarContent = (
@@ -416,9 +454,13 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
           <textarea
             value={text}
             onChange={(event) => {
-              setText(event.target.value);
+              const nextText = event.target.value;
+              setText(nextText);
+              textRef.current = nextText;
               setIsDirty(true);
+              isDirtyRef.current = true;
               setSaveLabel('idle');
+              emitDraft({ text: nextText, isDirty: true });
             }}
             placeholder={placeholder}
             className="w-full h-[92px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 outline-none focus:ring-2 focus:ring-[#907CA1] resize-none"

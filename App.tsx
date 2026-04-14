@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { AnahStatus, AppDocument, AppUser, Dossier, Visit, VisitReportLocation } from './types';
 import { Building, ExternalLink, Globe, WifiOff } from 'lucide-react';
@@ -55,6 +55,11 @@ export default function App() {
     preparedAt: string;
   } | null>(null);
   const [visitReportLocations, setVisitReportLocations] = useState<Record<string, VisitReportLocation>>({});
+  const currentViewRef = useRef(currentView);
+
+  useEffect(() => {
+    currentViewRef.current = currentView;
+  }, [currentView]);
 
   const applyDossiers = useCallback((items: Dossier[]) => {
     setDossiers(items);
@@ -150,7 +155,10 @@ export default function App() {
     });
 
     pollTimer = setInterval(() => {
-      refreshLiveData();
+      if (DOSSIER_VIEWS.has(currentViewRef.current)) {
+        return;
+      }
+      void refreshLiveData();
     }, 15000);
 
     return () => {

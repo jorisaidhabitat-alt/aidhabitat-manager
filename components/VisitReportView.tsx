@@ -893,7 +893,6 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const [currentLocalPage, setCurrentLocalPage] = useState<number>(0);
     const [notePageMemory, setNotePageMemory] = useState<Record<string, number>>({});
     const [isMutatingPages, setIsMutatingPages] = useState(false);
-    const [isSavingNote, setIsSavingNote] = useState(false);
     const [noteDraft, setNoteDraft] = useState<{ text: string; drawingJson: string; isDirty: boolean; noteKey: string }>({
         text: '',
         drawingJson: '',
@@ -905,7 +904,6 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const notePageMemoryRef = useRef<Record<string, number>>({});
     const currentTextNotePagesRef = useRef<NotePage[]>([]);
     const noteSaveChainRef = useRef<Promise<void>>(Promise.resolve());
-    const noteSavePendingCountRef = useRef(0);
 
     // --- Data Forms State ---
     const [formData, setFormData] = useState({
@@ -2463,16 +2461,42 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     };
 
     const handleSaveNote = useCallback(async ({ text, drawingJson }: { text: string; drawingJson: string }) => {
-        const saveTask = async () => {
-            noteSavePendingCountRef.current += 1;
-            setIsSavingNote(true);
+        const normalizedDrawingJson = drawingJson || EMPTY_DRAWING_JSON;
+        const isBlankText = text.trim().length === 0;
+        const isBlankDrawing = normalizedDrawingJson === EMPTY_DRAWING_JSON;
+        if (!currentDrawingNotePage.id && !currentTextNotePage.id && isBlankText && isBlankDrawing) {
+            return;
+        }
+
+        const optimisticDrawingPage = {
+            ...currentDrawingNotePage,
+            id: currentDrawingNotePage.id || `pending-${Date.now()}`,
+            textContent: isSharedTextSubsectionNotes ? '' : text,
+            drawingJson: normalizedDrawingJson,
+            updatedAt: new Date().toISOString(),
+        };
+        const otherDrawingPages = activeTabNotePagesRef.current.filter((page) => page.id !== optimisticDrawingPage.id && page.pageNumber !== currentPageNumber);
+        commitNotePages(noteCacheKey, [...otherDrawingPages, optimisticDrawingPage]);
+
+        if (isSharedTextSubsectionNotes) {
+            const optimisticTextPage = {
+                ...currentTextNotePage,
+                id: currentTextNotePage.id || `pending-text-${Date.now()}`,
+                textContent: text,
+                drawingJson: EMPTY_DRAWING_JSON,
+                updatedAt: new Date().toISOString(),
+            };
+            const otherTextPages = currentTextNotePagesRef.current.filter((page) => page.id !== optimisticTextPage.id && page.pageNumber !== currentPageNumber);
+            commitNotePages(noteTextCacheKey, [...otherTextPages, optimisticTextPage]);
+        }
+
+        setNoteDraft((prev) => {
+            if (!prev.isDirty) return prev;
+            return { ...prev, isDirty: false };
+        });
+
+        const doSave = async () => {
             try {
-                const normalizedDrawingJson = drawingJson || EMPTY_DRAWING_JSON;
-                const isBlankText = text.trim().length === 0;
-                const isBlankDrawing = normalizedDrawingJson === EMPTY_DRAWING_JSON;
-                if (!currentDrawingNotePage.id && !currentTextNotePage.id && isBlankText && isBlankDrawing) {
-                    return;
-                }
                 const [savedPage, savedSharedTextPage] = await Promise.all([
                     saveNotePage({
                         notePageId: currentDrawingNotePage.id || undefined,
@@ -2501,37 +2525,32 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         })
                         : Promise.resolve(null),
                 ]);
-                const otherPages = activeTabNotePagesRef.current.filter((page) => page.id !== savedPage.id && page.pageNumber !== savedPage.pageNumber);
-                commitNotePages(noteCacheKey, [...otherPages, savedPage]);
+                const latestPages = notePagesCacheRef.current[noteCacheKey] || [];
+                const mergedPages = latestPages.map((page) =>
+                    page.id === optimisticDrawingPage.id ? savedPage : page
+                );
+                if (!mergedPages.some((page) => page.id === savedPage.id)) {
+                    mergedPages.push(savedPage);
+                }
+                commitNotePages(noteCacheKey, mergedPages);
                 if (savedSharedTextPage) {
-                    const otherSharedPages = currentTextNotePagesRef.current.filter((page) => page.id !== savedSharedTextPage.id && page.pageNumber !== savedSharedTextPage.pageNumber);
-                    commitNotePages(noteTextCacheKey, [...otherSharedPages, savedSharedTextPage]);
+                    const latestTextPages = notePagesCacheRef.current[noteTextCacheKey] || [];
+                    const mergedTextPages = latestTextPages.map((page) =>
+                        page.id?.startsWith('pending-text-') && page.pageNumber === currentPageNumber ? savedSharedTextPage : page
+                    );
+                    if (!mergedTextPages.some((page) => page.id === savedSharedTextPage.id)) {
+                        mergedTextPages.push(savedSharedTextPage);
+                    }
+                    commitNotePages(noteTextCacheKey, mergedTextPages);
                 }
-                const savedIndex = notePageNumbersRef.current.findIndex((pageNumber) => pageNumber === savedPage.pageNumber);
-                if (savedIndex >= 0) {
-                    setCurrentLocalPage(savedIndex);
-                }
-                setNoteDraft({
-                    text: (savedSharedTextPage?.textContent ?? savedPage.textContent) || '',
-                    drawingJson: savedPage.drawingJson || normalizedDrawingJson,
-                    isDirty: false,
-                    noteKey: `${noteCacheKey}:${noteTextCacheKey}:${savedPage.pageNumber}`,
-                });
             } catch (error) {
-                console.error('Failed to save visit note', error);
-                throw error;
-            } finally {
-                noteSavePendingCountRef.current = Math.max(0, noteSavePendingCountRef.current - 1);
-                if (noteSavePendingCountRef.current === 0) {
-                    setIsSavingNote(false);
-                }
+                console.error('Background note save failed', error);
             }
         };
 
-        const nextSave = noteSaveChainRef.current.then(saveTask, saveTask);
-        noteSaveChainRef.current = nextSave.then(() => undefined, () => undefined);
-        return nextSave;
-    }, [commitNotePages, currentDrawingNotePage.id, currentPageNumber, currentTextNotePage.id, dossier.id, dossier.patient.id, isSharedTextSubsectionNotes, noteCacheKey, noteLayoutKind, noteScopeType, noteTabKey, noteTextCacheKey, noteTextTabKey]);
+        const prev = noteSaveChainRef.current;
+        noteSaveChainRef.current = prev.then(doSave, doSave).then(() => undefined, () => undefined);
+    }, [commitNotePages, currentDrawingNotePage, currentPageNumber, currentTextNotePage, dossier.id, dossier.patient.id, isSharedTextSubsectionNotes, noteCacheKey, noteLayoutKind, noteScopeType, noteTabKey, noteTextCacheKey, noteTextTabKey]);
 
     const debouncedNoteDraft = useDebounce(noteDraft, 350);
 
@@ -2578,6 +2597,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         await flushCurrentNoteDraft();
         setActiveAccessSection(section);
     }, [activeAccessSection, flushCurrentNoteDraft]);
+
+    const isNavigationLocked = isMutatingPages;
 
     // =============================================================
     // RENDER
