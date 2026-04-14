@@ -9,6 +9,7 @@ import { callNocoTool, closeMcpClient } from './nocodbMcpClient.mjs';
 import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
+import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -358,6 +359,16 @@ const generatePassword = (displayName) => {
 };
 const encodeBase64Url = (payload) => Buffer.from(JSON.stringify(payload)).toString('base64url');
 const decodeBase64Url = (payload) => JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+const decodeLocalAuthEmail = (token) => {
+  if (!String(token || '').startsWith(LOCAL_SESSION_TOKEN_PREFIX)) return null;
+  const rawPayload = String(token).slice(LOCAL_SESSION_TOKEN_PREFIX.length).trim();
+  if (!rawPayload) return null;
+  try {
+    return Buffer.from(rawPayload, 'base64').toString('utf8');
+  } catch {
+    return rawPayload;
+  }
+};
 const getTokenFromRequest = (req) => {
   const header = req.get('authorization') || '';
   if (header.toLowerCase().startsWith('bearer ')) {
@@ -1729,6 +1740,11 @@ const signSessionToken = async (email) => {
 const resolveSessionUser = async (req) => {
   const token = getTokenFromRequest(req);
   if (!token) return null;
+  const localAuthEmail = decodeLocalAuthEmail(token);
+  if (localAuthEmail) {
+    const { members } = await loadMemberRegistryForAuth();
+    return members.find((member) => member.email === normalizeEmail(localAuthEmail)) || null;
+  }
   const [encodedPayload, signature] = token.split('.');
   if (!encodedPayload || !signature) return null;
 

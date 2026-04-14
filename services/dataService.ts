@@ -1,4 +1,6 @@
 import { AdminAccessMember, AnahStatus, AppDocument, AppUser, Dossier, DossierStatus, HousingType, HeatingMode, NotePage, OccupantIdentity, Patient, Visit, Housing, DiagnosticSanitaires, MesuresAnthropometriques, ObservationsSynthese, RetirementFund, VisitRecommendationItem, WikiLibraryItem } from '../types';
+import { profilsAutorises, nocoDbTokensParEmail, LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
+import { queueReleveForSync } from './releveSync';
 
 // Simple debug logger
 const debugLog = (msg: string) => {
@@ -6,6 +8,8 @@ const debugLog = (msg: string) => {
 };
 
 const APP_SESSION_TOKEN_KEY = 'aidhabitat.app_session';
+const APP_LOCAL_USER_KEY = 'aidhabitat.app_user';
+const NOCODB_TOKEN_STORAGE_KEY = 'aidhabitat.nocodb_token';
 const RETIREMENT_FUNDS_CACHE_KEY = 'aidhabitat.retirement_funds_cache';
 const BENEFICIARY_PATCHES_CACHE_KEY = 'aidhabitat.beneficiary_patches.v1';
 const LOCAL_DOCUMENTS_CACHE_KEY = 'aidhabitat.documents.cache.v1';
@@ -53,9 +57,31 @@ const setSessionToken = (token: string) => {
   window.localStorage.setItem(APP_SESSION_TOKEN_KEY, token);
 };
 
+const setLocalAppUser = (user: AppUser) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(APP_LOCAL_USER_KEY, JSON.stringify(user));
+};
+
+const getLocalAppUser = (): AppUser | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(APP_LOCAL_USER_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as AppUser;
+  } catch {
+    return null;
+  }
+};
+
 const clearSessionToken = () => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(APP_SESSION_TOKEN_KEY);
+};
+
+const clearLocalAppUser = () => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(APP_LOCAL_USER_KEY);
+  window.localStorage.removeItem(NOCODB_TOKEN_STORAGE_KEY);
 };
 
 const readLocalJsonCache = <T,>(key: string, fallbackValue: T): T => {
@@ -729,45 +755,53 @@ let referenceDataPromise: Promise<ReferenceData> | null = null;
 export const getReferenceDataSnapshot = (): ReferenceData | null => referenceDataCache;
 
 export const loginApp = async (email: string, password: string): Promise<{ success: boolean; error: string | null; user?: AppUser }> => {
-  try {
-    const result = await apiFetch<AuthResult>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    if (!result.success || !result.data?.token || !result.data?.user) {
-      return { success: false, error: result.error || 'Connexion impossible' };
-    }
-    setSessionToken(result.data.token);
-    return { success: true, error: null, user: result.data.user };
-  } catch (error: any) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const profile = profilsAutorises[normalizedEmail as keyof typeof profilsAutorises];
+
+  if (!profile || profile.motDePasse !== password) {
     clearSessionToken();
-    return { success: false, error: error.message || 'Connexion impossible' };
+    clearLocalAppUser();
+    return { success: false, error: 'Adresse mail ou mot de passe incorrect' };
   }
+
+  const role = profile.role === 'admin' ? 'ADMIN' : 'ERGO';
+  const user: AppUser = {
+    email: normalizedEmail,
+    displayName: profile.nomDansNocoDb,
+    role,
+    selectable: role !== 'ADMIN',
+    profilePhotoUrl: '',
+    establishmentId: role === 'ADMIN' ? '' : '2',
+    establishmentLabel: role === 'ADMIN' ? '' : "Aid'habitat",
+    ergoRecordId: '',
+    ergoLabel: role === 'ADMIN' ? '' : profile.nomDansNocoDb,
+  };
+
+  const encodedEmail = typeof window !== 'undefined' && typeof window.btoa === 'function'
+    ? window.btoa(normalizedEmail)
+    : normalizedEmail;
+  const sessionToken = `${LOCAL_SESSION_TOKEN_PREFIX}${encodedEmail}`;
+  const nocoDbToken = nocoDbTokensParEmail[normalizedEmail as keyof typeof nocoDbTokensParEmail] || '';
+
+  setSessionToken(sessionToken);
+  setLocalAppUser(user);
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(NOCODB_TOKEN_STORAGE_KEY, nocoDbToken);
+  }
+
+  return { success: true, error: null, user };
 };
 
 export const fetchCurrentAppUser = async (): Promise<AppUser | null> => {
   const token = getSessionToken();
-  if (!token) return null;
-
-  try {
-    const result = await apiFetch<AuthResult>('/api/auth/session');
-    return result.data?.user || null;
-  } catch {
-    clearSessionToken();
-    return null;
-  }
+  const user = getLocalAppUser();
+  if (!token || !user) return null;
+  return user;
 };
 
 export const logoutApp = async (): Promise<void> => {
-  try {
-    if (getSessionToken()) {
-      await apiFetch<AuthResult>('/api/auth/logout', { method: 'POST' });
-    }
-  } catch (error) {
-    console.warn('Logout API failed', error);
-  } finally {
-    clearSessionToken();
-  }
+  clearSessionToken();
+  clearLocalAppUser();
 };
 
 export const uploadProfilePhoto = async (imageDataUrl: string): Promise<{ success: boolean; error: string | null; user?: AppUser; photoUrl?: string }> => {
@@ -2344,11 +2378,8 @@ export const fetchDiagnosticSanitaires = async (dossierId: string): Promise<Diag
 
 export const upsertDiagnosticSanitaires = async (dossierId: string, updates: Partial<DiagnosticSanitaires>): Promise<{ success: boolean; error: string | null }> => {
   try {
-    const result = await apiFetch<MutationResult>(`/api/diagnostic-sanitaires/${encodeURIComponent(dossierId)}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
-    return { success: result.success, error: result.error };
+    await queueReleveForSync('diagnostic_sanitaires', dossierId, updates as Record<string, unknown>);
+    return { success: true, error: null };
   } catch (e: any) { return { success: false, error: e.message }; }
 };
 
@@ -2374,11 +2405,8 @@ export const fetchMesuresAnthropometriques = async (dossierId: string): Promise<
 
 export const upsertMesuresAnthropometriques = async (dossierId: string, updates: Partial<MesuresAnthropometriques>): Promise<{ success: boolean; error: string | null }> => {
   try {
-    const result = await apiFetch<MutationResult>(`/api/mesures/${encodeURIComponent(dossierId)}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
-    return { success: result.success, error: result.error };
+    await queueReleveForSync('mesures_anthropometriques', dossierId, updates as Record<string, unknown>);
+    return { success: true, error: null };
   } catch (e: any) { return { success: false, error: e.message }; }
 };
 
@@ -2405,10 +2433,7 @@ export const fetchObservationsSynthese = async (dossierId: string, beneficiaireI
 export const upsertObservationsSynthese = async (dossierId: string, beneficiaireId: string, updates: Partial<ObservationsSynthese>): Promise<{ success: boolean; error: string | null }> => {
   try {
     void beneficiaireId;
-    const result = await apiFetch<MutationResult>(`/api/observations/${encodeURIComponent(dossierId)}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
-    return { success: result.success, error: result.error };
+    await queueReleveForSync('observations_synthese', dossierId, updates as Record<string, unknown>);
+    return { success: true, error: null };
   } catch (e: any) { return { success: false, error: e.message }; }
 };

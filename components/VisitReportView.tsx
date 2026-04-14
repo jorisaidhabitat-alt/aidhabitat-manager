@@ -881,6 +881,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const [activeTabNotePages, setActiveTabNotePages] = useState<NotePage[]>([]);
     const [notePagesCache, setNotePagesCache] = useState<Record<string, NotePage[]>>({});
     const [currentLocalPage, setCurrentLocalPage] = useState<number>(0);
+    const [notePageMemory, setNotePageMemory] = useState<Record<string, number>>({});
     const [isMutatingPages, setIsMutatingPages] = useState(false);
     const [isSavingNote, setIsSavingNote] = useState(false);
     const [noteDraft, setNoteDraft] = useState<{ text: string; drawingJson: string; isDirty: boolean; noteKey: string }>({
@@ -891,6 +892,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     });
     const noteRequestKeyRef = useRef('');
     const notePagesCacheRef = useRef<Record<string, NotePage[]>>({});
+    const notePageMemoryRef = useRef<Record<string, number>>({});
     const currentTextNotePagesRef = useRef<NotePage[]>([]);
     const noteSaveChainRef = useRef<Promise<void>>(Promise.resolve());
     const noteSavePendingCountRef = useRef(0);
@@ -1968,6 +1970,14 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         buildNoteScopeConfig(tab).drawingCacheKey
     ), [buildNoteScopeConfig]);
 
+    const rememberNotePage = useCallback((cacheKey: string, pageNumber: number) => {
+        notePageMemoryRef.current = { ...notePageMemoryRef.current, [cacheKey]: pageNumber };
+        setNotePageMemory((prev) => {
+            if (prev[cacheKey] === pageNumber) return prev;
+            return { ...prev, [cacheKey]: pageNumber };
+        });
+    }, []);
+
     const sortNotePages = useCallback((pages: NotePage[]) => (
         [...pages].sort((left, right) => left.pageNumber - right.pageNumber)
     ), []);
@@ -2058,8 +2068,9 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     }, [commitNotePages, dossier.id, dossier.patient.id, isMeasurementsTab, isSharedTextSubsectionNotes, noteCacheKey, noteScopeType, noteTabKey, noteTextCacheKey, noteTextTabKey]);
 
     useEffect(() => {
-        loadActiveTabNotes().catch((error) => console.error('Failed to refresh visit note pages', error));
-    }, [loadActiveTabNotes]);
+        const preferredPageNumber = notePageMemoryRef.current[noteCacheKey] ?? 0;
+        loadActiveTabNotes(preferredPageNumber).catch((error) => console.error('Failed to refresh visit note pages', error));
+    }, [loadActiveTabNotes, noteCacheKey]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -2127,7 +2138,9 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         syntheseSnapshotRef.current = null;
         recommendationsSnapshotRef.current = null;
         notePagesCacheRef.current = {};
+        notePageMemoryRef.current = {};
         setNotePagesCache({});
+        setNotePageMemory({});
         setActiveTabNotePages([]);
         setCurrentLocalPage(0);
         setActiveTab(nextLocation.activeTab);
@@ -2168,11 +2181,21 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     }, [notePageNumbers]);
 
     useEffect(() => {
+        if (isMeasurementsTab) {
+            setCurrentLocalPage(0);
+            return;
+        }
+
+        const preferredPageNumber = notePageMemory[noteCacheKey] ?? 0;
+        const preferredIndex = notePageNumbers.findIndex((pageNumber) => pageNumber === preferredPageNumber);
+
         setCurrentLocalPage((previous) => {
-            if (isMeasurementsTab) return 0;
+            if (preferredIndex >= 0) {
+                return preferredIndex;
+            }
             return Math.min(previous, notePageNumbers.length - 1);
         });
-    }, [isMeasurementsTab, notePageNumbers]);
+    }, [isMeasurementsTab, noteCacheKey, notePageMemory, notePageNumbers]);
 
     const currentPageNumber = notePageNumbers[currentLocalPage] ?? 0;
     const currentDrawingNotePage = activeTabNotePages.find((page) => page.pageNumber === currentPageNumber) || {
@@ -2204,6 +2227,27 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         textContent: currentTextNotePage.textContent || '',
     };
     const currentNoteIdentity = `${noteCacheKey}:${noteTextCacheKey}:${currentPageNumber}`;
+
+    useEffect(() => {
+        if (isMeasurementsTab) return;
+        const hasResolvedNotePage = Boolean(
+            currentDrawingNotePage.id
+            || currentTextNotePage.id
+            || activeTabNotePages.length > 0
+            || currentTextNotePages.length > 0
+        );
+        if (!hasResolvedNotePage) return;
+        rememberNotePage(noteCacheKey, currentPageNumber);
+    }, [
+        activeTabNotePages.length,
+        currentDrawingNotePage.id,
+        currentPageNumber,
+        currentTextNotePage.id,
+        currentTextNotePages.length,
+        isMeasurementsTab,
+        noteCacheKey,
+        rememberNotePage,
+    ]);
 
     useEffect(() => {
         activeTabNotePagesRef.current = activeTabNotePages;
@@ -2241,6 +2285,10 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         if (isSavingNote || isMutatingPages) return;
         const canLeavePage = await flushCurrentNoteDraft();
         if (!canLeavePage) return;
+        const nextPageNumber = notePageNumbers[newLocalPage] ?? 0;
+        if (!isMeasurementsTab) {
+            rememberNotePage(noteCacheKey, nextPageNumber);
+        }
         setCurrentLocalPage(newLocalPage);
     };
 
@@ -2249,11 +2297,21 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         if (isSavingNote || isMutatingPages) return;
         const canLeaveTab = await flushCurrentNoteDraft();
         if (!canLeaveTab) return;
+        if (!isMeasurementsTab) {
+            rememberNotePage(noteCacheKey, currentPageNumber);
+        }
         const nextKey = buildNoteCacheKey(tab);
         const cachedPages = notePagesCacheRef.current[nextKey] || [];
         noteRequestKeyRef.current = nextKey;
         setActiveTabNotePages(cachedPages);
-        setCurrentLocalPage(0);
+        const nextPreferredPageNumber = notePageMemoryRef.current[nextKey] ?? 0;
+        if (cachedPages.length > 0) {
+            const cachedPageNumbers = Array.from(new Set(cachedPages.map((page) => page.pageNumber))).sort((left, right) => left - right);
+            const nextIndex = cachedPageNumbers.findIndex((pageNumber) => pageNumber === nextPreferredPageNumber);
+            setCurrentLocalPage(nextIndex >= 0 ? nextIndex : 0);
+        } else {
+            setCurrentLocalPage(0);
+        }
         if (tab === 'Accessibilité') {
             setActiveAccessSection('general');
         }

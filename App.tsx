@@ -6,6 +6,7 @@ import { fetchAnahStatus, fetchCurrentAppUser, fetchDossiers, fetchLocalSnapshot
 import { LoginView } from './components/LoginView';
 import { SimpleLoader } from './components/LoadingProgress';
 import { VisitReportView } from './components/VisitReportView';
+import { flushPendingReleves, registerPendingRelevesSync } from './services/releveSync';
 
 const loadDashboardView = () => import('./components/Dashboard');
 const loadDossierView = () => import('./components/DossierView');
@@ -237,6 +238,13 @@ export default function App() {
 
     const timeoutId = window.setTimeout(preloadViews, 250);
     return () => window.clearTimeout(timeoutId);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unregister = registerPendingRelevesSync();
+    void flushPendingReleves();
+    return unregister;
   }, [user]);
 
   const isAnahAccessible = Boolean(anahStatus?.available);
