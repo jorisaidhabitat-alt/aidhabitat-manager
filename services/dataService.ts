@@ -228,12 +228,55 @@ const writeLocalJsonCache = (key: string, value: unknown) => {
   }
 };
 
-const readBeneficiaryPatchMap = (): Record<string, BeneficiaryPatchRecord> => (
-  readLocalJsonCache<Record<string, BeneficiaryPatchRecord>>(BENEFICIARY_PATCHES_CACHE_KEY, {})
-);
+let beneficiaryPatchCacheMemory: Record<string, BeneficiaryPatchRecord> | null = null;
+let dossierPatchCacheMemory: Record<string, DossierPatchRecord> | null = null;
+let housingPatchCacheMemory: Record<string, HousingPatchRecord> | null = null;
+let visitRecommendationsCacheMemory: Record<string, VisitRecommendationsCacheRecord> | null = null;
+let visitRecommendationsQueueMemory: Record<string, VisitRecommendationsQueueRecord> | null = null;
+
+let beneficiaryPatchPersistTimer: number | null = null;
+let dossierPatchPersistTimer: number | null = null;
+let housingPatchPersistTimer: number | null = null;
+let recommendationsCachePersistTimer: number | null = null;
+let recommendationsQueuePersistTimer: number | null = null;
+
+const scheduleLocalCachePersist = (
+  key: string,
+  valueFactory: () => unknown,
+  timerValue: number | null,
+  setTimer: (value: number | null) => void,
+) => {
+  if (typeof window === 'undefined') {
+    writeLocalJsonCache(key, valueFactory());
+    return;
+  }
+  if (timerValue) {
+    window.clearTimeout(timerValue);
+  }
+  const nextTimer = window.setTimeout(() => {
+    setTimer(null);
+    writeLocalJsonCache(key, valueFactory());
+  }, 140);
+  setTimer(nextTimer);
+};
+
+const readBeneficiaryPatchMap = (): Record<string, BeneficiaryPatchRecord> => {
+  if (!beneficiaryPatchCacheMemory) {
+    beneficiaryPatchCacheMemory = readLocalJsonCache<Record<string, BeneficiaryPatchRecord>>(BENEFICIARY_PATCHES_CACHE_KEY, {});
+  }
+  return beneficiaryPatchCacheMemory;
+};
 
 const writeBeneficiaryPatchMap = (value: Record<string, BeneficiaryPatchRecord>) => {
-  writeLocalJsonCache(BENEFICIARY_PATCHES_CACHE_KEY, value);
+  beneficiaryPatchCacheMemory = value;
+  scheduleLocalCachePersist(
+    BENEFICIARY_PATCHES_CACHE_KEY,
+    () => beneficiaryPatchCacheMemory || {},
+    beneficiaryPatchPersistTimer,
+    (nextTimer) => {
+      beneficiaryPatchPersistTimer = nextTimer;
+    },
+  );
 };
 
 const mergeBeneficiaryPatch = (patientId: string, updates: Partial<Patient>, lastError?: string): BeneficiaryPatchRecord => {
@@ -262,12 +305,23 @@ const clearBeneficiaryPatch = (patientId: string) => {
   writeBeneficiaryPatchMap(next);
 };
 
-const readDossierPatchMap = (): Record<string, DossierPatchRecord> => (
-  readLocalJsonCache<Record<string, DossierPatchRecord>>(DOSSIER_PATCHES_CACHE_KEY, {})
-);
+const readDossierPatchMap = (): Record<string, DossierPatchRecord> => {
+  if (!dossierPatchCacheMemory) {
+    dossierPatchCacheMemory = readLocalJsonCache<Record<string, DossierPatchRecord>>(DOSSIER_PATCHES_CACHE_KEY, {});
+  }
+  return dossierPatchCacheMemory;
+};
 
 const writeDossierPatchMap = (value: Record<string, DossierPatchRecord>) => {
-  writeLocalJsonCache(DOSSIER_PATCHES_CACHE_KEY, value);
+  dossierPatchCacheMemory = value;
+  scheduleLocalCachePersist(
+    DOSSIER_PATCHES_CACHE_KEY,
+    () => dossierPatchCacheMemory || {},
+    dossierPatchPersistTimer,
+    (nextTimer) => {
+      dossierPatchPersistTimer = nextTimer;
+    },
+  );
 };
 
 const mergeDossierPatch = (dossierId: string, updates: Partial<Dossier>, lastError?: string): DossierPatchRecord => {
@@ -296,12 +350,23 @@ const clearDossierPatch = (dossierId: string) => {
   writeDossierPatchMap(next);
 };
 
-const readHousingPatchMap = (): Record<string, HousingPatchRecord> => (
-  readLocalJsonCache<Record<string, HousingPatchRecord>>(HOUSING_PATCHES_CACHE_KEY, {})
-);
+const readHousingPatchMap = (): Record<string, HousingPatchRecord> => {
+  if (!housingPatchCacheMemory) {
+    housingPatchCacheMemory = readLocalJsonCache<Record<string, HousingPatchRecord>>(HOUSING_PATCHES_CACHE_KEY, {});
+  }
+  return housingPatchCacheMemory;
+};
 
 const writeHousingPatchMap = (value: Record<string, HousingPatchRecord>) => {
-  writeLocalJsonCache(HOUSING_PATCHES_CACHE_KEY, value);
+  housingPatchCacheMemory = value;
+  scheduleLocalCachePersist(
+    HOUSING_PATCHES_CACHE_KEY,
+    () => housingPatchCacheMemory || {},
+    housingPatchPersistTimer,
+    (nextTimer) => {
+      housingPatchPersistTimer = nextTimer;
+    },
+  );
 };
 
 const mergeHousingPatch = (
@@ -336,20 +401,42 @@ const clearHousingPatch = (beneficiaryId: string) => {
   writeHousingPatchMap(next);
 };
 
-const readVisitRecommendationsCacheMap = (): Record<string, VisitRecommendationsCacheRecord> => (
-  readLocalJsonCache<Record<string, VisitRecommendationsCacheRecord>>(VISIT_RECOMMENDATIONS_CACHE_KEY, {})
-);
-
-const writeVisitRecommendationsCacheMap = (value: Record<string, VisitRecommendationsCacheRecord>) => {
-  writeLocalJsonCache(VISIT_RECOMMENDATIONS_CACHE_KEY, value);
+const readVisitRecommendationsCacheMap = (): Record<string, VisitRecommendationsCacheRecord> => {
+  if (!visitRecommendationsCacheMemory) {
+    visitRecommendationsCacheMemory = readLocalJsonCache<Record<string, VisitRecommendationsCacheRecord>>(VISIT_RECOMMENDATIONS_CACHE_KEY, {});
+  }
+  return visitRecommendationsCacheMemory;
 };
 
-const readVisitRecommendationsQueueMap = (): Record<string, VisitRecommendationsQueueRecord> => (
-  readLocalJsonCache<Record<string, VisitRecommendationsQueueRecord>>(VISIT_RECOMMENDATIONS_QUEUE_KEY, {})
-);
+const writeVisitRecommendationsCacheMap = (value: Record<string, VisitRecommendationsCacheRecord>) => {
+  visitRecommendationsCacheMemory = value;
+  scheduleLocalCachePersist(
+    VISIT_RECOMMENDATIONS_CACHE_KEY,
+    () => visitRecommendationsCacheMemory || {},
+    recommendationsCachePersistTimer,
+    (nextTimer) => {
+      recommendationsCachePersistTimer = nextTimer;
+    },
+  );
+};
+
+const readVisitRecommendationsQueueMap = (): Record<string, VisitRecommendationsQueueRecord> => {
+  if (!visitRecommendationsQueueMemory) {
+    visitRecommendationsQueueMemory = readLocalJsonCache<Record<string, VisitRecommendationsQueueRecord>>(VISIT_RECOMMENDATIONS_QUEUE_KEY, {});
+  }
+  return visitRecommendationsQueueMemory;
+};
 
 const writeVisitRecommendationsQueueMap = (value: Record<string, VisitRecommendationsQueueRecord>) => {
-  writeLocalJsonCache(VISIT_RECOMMENDATIONS_QUEUE_KEY, value);
+  visitRecommendationsQueueMemory = value;
+  scheduleLocalCachePersist(
+    VISIT_RECOMMENDATIONS_QUEUE_KEY,
+    () => visitRecommendationsQueueMemory || {},
+    recommendationsQueuePersistTimer,
+    (nextTimer) => {
+      recommendationsQueuePersistTimer = nextTimer;
+    },
+  );
 };
 
 const normalizeOccupantIdentity = (value: unknown): OccupantIdentity | null => {
@@ -1504,7 +1591,7 @@ const scheduleQueuedVisitRecommendationsSync = () => {
   recommendationsFlushTimer = window.setTimeout(() => {
     recommendationsFlushTimer = null;
     void flushQueuedVisitRecommendations();
-  }, 120);
+  }, 80);
 };
 
 // Helper to map a raw beneficiary (from 'beneficiaires' table) to a Patient object
@@ -1862,7 +1949,7 @@ const scheduleQueuedDossierSync = () => {
   dossierFlushTimer = window.setTimeout(() => {
     dossierFlushTimer = null;
     void flushQueuedDossierUpdates();
-  }, 180);
+  }, 80);
 };
 
 export const updateDossier = async (
@@ -2525,7 +2612,7 @@ const scheduleQueuedNoteSync = () => {
   noteSyncTimer = window.setTimeout(() => {
     noteSyncTimer = null;
     void flushQueuedNoteOperations();
-  }, 120);
+  }, 70);
 };
 
 const refreshNoteScopeInBackground = (patientId: string, options: NoteScopeOptions) => {
@@ -2839,7 +2926,7 @@ const scheduleQueuedBeneficiarySync = () => {
   beneficiaryFlushTimer = window.setTimeout(() => {
     beneficiaryFlushTimer = null;
     void flushQueuedBeneficiaryUpdates();
-  }, 450);
+  }, 80);
 };
 
 export const updateBeneficiary = async (patientId: string, updates: Partial<Patient>): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
@@ -2944,7 +3031,7 @@ const scheduleQueuedHousingSync = () => {
   housingFlushTimer = window.setTimeout(() => {
     housingFlushTimer = null;
     void flushQueuedHousingUpdates();
-  }, 180);
+  }, 80);
 };
 
 export const updateHousing = async (

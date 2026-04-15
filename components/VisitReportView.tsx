@@ -1204,49 +1204,66 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     // =============================================================
     // AUTO-SAVE with Status Indicator
     // =============================================================
-    const debouncedBeneficiary = useDebounce(formData.beneficiary, 120);
-    const debouncedContext = useDebounce(formData.context, 120);
-    const debouncedHousing = useDebounce(formData.housing, 120);
-    const debouncedSanitaires = useDebounce(sanitairesData, 150);
-    const debouncedMesures = useDebounce(mesuresData, 150);
-    const debouncedSynthese = useDebounce(syntheseData, 150);
-    const debouncedRecommendations = useDebounce(recommendationsData, 150);
+    const debouncedBeneficiary = useDebounce(formData.beneficiary, 70);
+    const debouncedContext = useDebounce(formData.context, 70);
+    const debouncedHousing = useDebounce(formData.housing, 70);
+    const debouncedSanitaires = useDebounce(sanitairesData, 90);
+    const debouncedMesures = useDebounce(mesuresData, 90);
+    const debouncedSynthese = useDebounce(syntheseData, 90);
+    const debouncedRecommendations = useDebounce(recommendationsData, 90);
     const pendingSavesRef = useRef(new Map<string, {
         label: string;
         task: () => Promise<{ success: boolean; error: string | null }>;
+        version: number;
+        inFlight: boolean;
         resolves: Array<(value: { success: boolean; error: string | null }) => void>;
         rejects: Array<(reason?: unknown) => void>;
     }>());
-    const isDrainingSavesRef = useRef(false);
     const activeTabNotePagesRef = useRef<NotePage[]>([]);
 
-    const drainSaveQueue = useCallback(async () => {
-        if (isDrainingSavesRef.current) return;
-        isDrainingSavesRef.current = true;
+    const drainSaveQueue = useCallback(async (key: string) => {
+        const entry = pendingSavesRef.current.get(key);
+        if (!entry || entry.inFlight) return;
+
+        entry.inFlight = true;
         try {
-            while (pendingSavesRef.current.size > 0) {
-                const nextEntry = pendingSavesRef.current.entries().next().value as [string, {
-                    label: string;
-                    task: () => Promise<{ success: boolean; error: string | null }>;
-                    resolves: Array<(value: { success: boolean; error: string | null }) => void>;
-                    rejects: Array<(reason?: unknown) => void>;
-                }] | undefined;
-                if (!nextEntry) break;
-                const [key, queuedSave] = nextEntry;
-                pendingSavesRef.current.delete(key);
+            while (true) {
+                const current = pendingSavesRef.current.get(key);
+                if (!current) break;
+                const targetVersion = current.version;
+                const saveTask = current.task;
+                const saveLabel = current.label;
+                const resolves = current.resolves;
+                const rejects = current.rejects;
+                current.resolves = [];
+                current.rejects = [];
+
                 try {
-                    const result = await queuedSave.task();
+                    const result = await saveTask();
                     if (!result.success) {
-                        console.error(`✗ ${queuedSave.label} error:`, result.error);
+                        console.error(`✗ ${saveLabel} error:`, result.error);
                     }
-                    queuedSave.resolves.forEach((resolve) => resolve(result));
+                    resolves.forEach((resolve) => resolve(result));
                 } catch (error) {
-                    console.error(`✗ ${queuedSave.label} failed:`, error);
-                    queuedSave.rejects.forEach((reject) => reject(error));
+                    console.error(`✗ ${saveLabel} failed:`, error);
+                    rejects.forEach((reject) => reject(error));
+                }
+
+                const latest = pendingSavesRef.current.get(key);
+                if (!latest || latest.version === targetVersion) {
+                    break;
                 }
             }
         } finally {
-            isDrainingSavesRef.current = false;
+            const latest = pendingSavesRef.current.get(key);
+            if (latest) {
+                latest.inFlight = false;
+                if (latest.resolves.length === 0 && latest.rejects.length === 0) {
+                    pendingSavesRef.current.delete(key);
+                } else {
+                    void drainSaveQueue(key);
+                }
+            }
         }
     }, []);
 
@@ -1259,21 +1276,22 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         return new Promise<T>((resolve, reject) => {
             const existing = pendingSavesRef.current.get(key);
             if (existing) {
-                pendingSavesRef.current.set(key, {
-                    label,
-                    task: saveFn as () => Promise<{ success: boolean; error: string | null }>,
-                    resolves: [...existing.resolves, resolve as (value: { success: boolean; error: string | null }) => void],
-                    rejects: [...existing.rejects, reject],
-                });
+                existing.label = label;
+                existing.task = saveFn as () => Promise<{ success: boolean; error: string | null }>;
+                existing.version += 1;
+                existing.resolves.push(resolve as (value: { success: boolean; error: string | null }) => void);
+                existing.rejects.push(reject);
             } else {
                 pendingSavesRef.current.set(key, {
                     label,
                     task: saveFn as () => Promise<{ success: boolean; error: string | null }>,
+                    version: 1,
+                    inFlight: false,
                     resolves: [resolve as (value: { success: boolean; error: string | null }) => void],
                     rejects: [reject],
                 });
             }
-            void drainSaveQueue();
+            void drainSaveQueue(key);
         });
     }, [drainSaveQueue]);
 
@@ -2568,7 +2586,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         noteSaveChainRef.current = prev.then(doSave, doSave).then(() => undefined, () => undefined);
     }, [commitNotePages, currentDrawingNotePage, currentPageNumber, currentTextNotePage, dossier.id, dossier.patient.id, isSharedTextSubsectionNotes, noteCacheKey, noteLayoutKind, noteScopeType, noteTabKey, noteTextCacheKey, noteTextTabKey]);
 
-    const debouncedNoteDraft = useDebounce(noteDraft, 80);
+    const debouncedNoteDraft = useDebounce(noteDraft, 45);
 
     useEffect(() => {
         if (!debouncedNoteDraft.isDirty) return;
