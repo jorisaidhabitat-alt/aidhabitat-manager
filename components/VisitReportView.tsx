@@ -897,6 +897,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const [currentLocalPage, setCurrentLocalPage] = useState<number>(0);
     const [notePageMemory, setNotePageMemory] = useState<Record<string, number>>({});
     const [isMutatingPages, setIsMutatingPages] = useState(false);
+    const isMutatingPagesRef = useRef(false);
     const [noteDraft, setNoteDraft] = useState<{ text: string; drawingJson: string; isDirty: boolean; noteKey: string }>({
         text: '',
         drawingJson: '',
@@ -908,6 +909,10 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const notePageMemoryRef = useRef<Record<string, number>>({});
     const currentTextNotePagesRef = useRef<NotePage[]>([]);
     const noteSaveChainRef = useRef<Promise<void>>(Promise.resolve());
+    const setPageMutationState = useCallback((next: boolean) => {
+        isMutatingPagesRef.current = next;
+        setIsMutatingPages(next);
+    }, []);
 
     // --- Data Forms State ---
     const [formData, setFormData] = useState({
@@ -2022,7 +2027,25 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     ), []);
 
     const commitNotePages = useCallback((cacheKey: string, pages: NotePage[]) => {
-        const sortedPages = sortNotePages(pages);
+        const dedupedByPage = new Map<number, NotePage>();
+        pages.forEach((page) => {
+            const pageNumber = Number(page.pageNumber) || 0;
+            const existing = dedupedByPage.get(pageNumber);
+            if (!existing) {
+                dedupedByPage.set(pageNumber, page);
+                return;
+            }
+            const existingUpdatedAt = new Date(existing.updatedAt || 0).getTime();
+            const currentUpdatedAt = new Date(page.updatedAt || 0).getTime();
+            if (currentUpdatedAt > existingUpdatedAt) {
+                dedupedByPage.set(pageNumber, page);
+                return;
+            }
+            if (currentUpdatedAt === existingUpdatedAt && String(existing.id || '').startsWith('pending-') && !String(page.id || '').startsWith('pending-')) {
+                dedupedByPage.set(pageNumber, page);
+            }
+        });
+        const sortedPages = sortNotePages(Array.from(dedupedByPage.values()));
         notePagesCacheRef.current = { ...notePagesCacheRef.current, [cacheKey]: sortedPages };
         setNotePagesCache((prev) => ({ ...prev, [cacheKey]: sortedPages }));
         if (cacheKey === noteRequestKeyRef.current) {
@@ -2169,6 +2192,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     useEffect(() => {
         const nextLocation = normalizeVisitReportLocation(location);
         isAutosaveReadyRef.current = false;
+        isMutatingPagesRef.current = false;
+        setIsMutatingPages(false);
         beneficiarySnapshotRef.current = null;
         contextSnapshotRef.current = null;
         housingSnapshotRef.current = null;
@@ -2330,7 +2355,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
 
     const handlePageChange = async (newLocalPage: number) => {
         if (newLocalPage === currentLocalPage) return;
-        if (isMutatingPages) return;
+        if (isMutatingPagesRef.current) return;
         await flushCurrentNoteDraft();
         const nextPageNumber = notePageNumbers[newLocalPage] ?? 0;
         if (!isMeasurementsTab) {
@@ -2341,7 +2366,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
 
     const handleTabSelect = async (tab: string) => {
         if (tab === activeTab) return;
-        if (isMutatingPages) return;
+        if (isMutatingPagesRef.current) return;
         await flushCurrentNoteDraft();
         if (!isMeasurementsTab) {
             rememberNotePage(noteCacheKey, currentPageNumber);
@@ -2406,9 +2431,9 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
 
     const handleAddPage = async () => {
         if (isMeasurementsTab) return;
-        if (isMutatingPages) return;
+        if (isMutatingPagesRef.current) return;
+        setPageMutationState(true);
         await flushCurrentNoteDraft();
-        setIsMutatingPages(true);
         try {
             const createdPage = await createNotePage(dossier.patient.id, {
                 scopeType: noteScopeType,
@@ -2416,7 +2441,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 tabKey: noteTabKey,
                 layoutKind: noteLayoutKind,
             });
-            const nextPages = commitNotePages(noteCacheKey, [...activeTabNotePages, createdPage]);
+            const nextPages = commitNotePages(noteCacheKey, [...activeTabNotePagesRef.current, createdPage]);
             if (isSharedTextSubsectionNotes) {
                 const savedSharedTextPage = await saveNotePage({
                     patientId: dossier.patient.id,
@@ -2429,7 +2454,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                     drawingJson: EMPTY_DRAWING_JSON,
                     layoutKind: 'freeform',
                 });
-                const otherSharedPages = currentTextNotePages.filter((page) => page.pageNumber !== savedSharedTextPage.pageNumber && page.id !== savedSharedTextPage.id);
+                const otherSharedPages = currentTextNotePagesRef.current.filter((page) => page.pageNumber !== savedSharedTextPage.pageNumber && page.id !== savedSharedTextPage.id);
                 commitNotePages(noteTextCacheKey, [...otherSharedPages, savedSharedTextPage]);
             }
             const nextPageNumbers = notePageNumbersRef.current
@@ -2448,24 +2473,24 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             console.error('Failed to create visit note page', error);
             alert('Création de page impossible.');
         } finally {
-            setIsMutatingPages(false);
+            setPageMutationState(false);
         }
     };
 
     const handleDeletePage = async () => {
         if (isMeasurementsTab) return;
         if (activeTabNotePages.length <= 1) return;
-        if (isMutatingPages) return;
+        if (isMutatingPagesRef.current) return;
         const deletedPageId = currentDrawingNotePage.id;
         const deletedSharedTextPageId = isSharedTextSubsectionNotes ? currentTextNotePage.id : '';
         const remainingPages = commitNotePages(
             noteCacheKey,
-            activeTabNotePages.filter((page) => page.id !== deletedPageId),
+            activeTabNotePagesRef.current.filter((page) => page.id !== deletedPageId),
         );
         if (isSharedTextSubsectionNotes) {
             commitNotePages(
                 noteTextCacheKey,
-                currentTextNotePages.filter((page) => page.id !== deletedSharedTextPageId && page.pageNumber !== currentPageNumber),
+                currentTextNotePagesRef.current.filter((page) => page.id !== deletedSharedTextPageId && page.pageNumber !== currentPageNumber),
             );
         }
         setCurrentLocalPage(Math.max(0, Math.min(currentLocalPage - 1, remainingPages.length - 1)));
@@ -2474,7 +2499,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             return;
         }
 
-        setIsMutatingPages(true);
+        setPageMutationState(true);
         Promise.allSettled([
             deletedPageId ? deleteNotePage(deletedPageId, dossier.patient.id) : Promise.resolve({ success: true, error: null }),
             deletedSharedTextPageId ? deleteNotePage(deletedSharedTextPageId, dossier.patient.id) : Promise.resolve({ success: true, error: null }),
@@ -2487,7 +2512,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 }
             })
             .finally(() => {
-                setIsMutatingPages(false);
+                setPageMutationState(false);
             });
     };
 
@@ -2613,21 +2638,21 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
 
     const handleBeneficiarySectionChange = useCallback(async (section: VisitReportLocation['beneficiarySection']) => {
         if (section === activeBeneficiarySection) return;
-        if (isMutatingPages) return;
+        if (isMutatingPagesRef.current) return;
         await flushCurrentNoteDraft();
         setActiveBeneficiarySection(section);
     }, [activeBeneficiarySection, flushCurrentNoteDraft]);
 
     const handleContextSectionChange = useCallback(async (section: VisitReportLocation['contextSection']) => {
         if (section === activeContextSection) return;
-        if (isMutatingPages) return;
+        if (isMutatingPagesRef.current) return;
         await flushCurrentNoteDraft();
         setActiveContextSection(section);
     }, [activeContextSection, flushCurrentNoteDraft]);
 
     const handleAccessSectionChange = useCallback(async (section: VisitReportLocation['accessSection']) => {
         if (section === activeAccessSection) return;
-        if (isMutatingPages) return;
+        if (isMutatingPagesRef.current) return;
         await flushCurrentNoteDraft();
         setActiveAccessSection(section);
     }, [activeAccessSection, flushCurrentNoteDraft]);
@@ -2809,7 +2834,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                             documentKey={currentNoteIdentity}
                             placeholder=""
                             currentPage={currentLocalPage}
-                            totalPages={isPlansTab ? Math.max(activeTabNotePages.length, 1) : 1}
+                            totalPages={isPlansTab ? Math.max(notePageNumbers.length, 1) : 1}
                             initialText={currentNotePage.textContent}
                             initialDrawingJson={currentNotePage.drawingJson}
                             onPageChange={handlePageChange}
@@ -2817,7 +2842,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                             onDraftChange={handleNoteDraftChange}
                             onAddPage={isPlansTab ? handleAddPage : undefined}
                             onDeletePage={isPlansTab ? handleDeletePage : undefined}
-                            canDeletePage={isPlansTab && activeTabNotePages.length > 1 && Boolean(currentNotePage.id) && !isMutatingPages}
+                            canDeletePage={isPlansTab && notePageNumbers.length > 1 && Boolean(currentNotePage.id) && !isMutatingPages}
                             mode={isPlansTab ? 'grid' : 'freeform'}
                             showText={false}
                             toolset={isPlansTab ? 'structured' : 'advanced'}

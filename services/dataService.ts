@@ -1,6 +1,6 @@
 import { AdminAccessMember, AnahStatus, AppDocument, AppUser, Dossier, DossierStatus, HousingType, HeatingMode, NotePage, OccupantIdentity, Patient, Visit, Housing, DiagnosticSanitaires, MesuresAnthropometriques, ObservationsSynthese, RetirementFund, VisitRecommendationItem, WikiLibraryItem } from '../types';
 import { profilsAutorises, nocoDbTokensParEmail, LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
-import { queueReleveForSync } from './releveSync';
+import { flushPendingReleves, queueReleveForSync } from './releveSync';
 
 // Simple debug logger
 const debugLog = (msg: string) => {
@@ -234,32 +234,6 @@ let housingPatchCacheMemory: Record<string, HousingPatchRecord> | null = null;
 let visitRecommendationsCacheMemory: Record<string, VisitRecommendationsCacheRecord> | null = null;
 let visitRecommendationsQueueMemory: Record<string, VisitRecommendationsQueueRecord> | null = null;
 
-let beneficiaryPatchPersistTimer: number | null = null;
-let dossierPatchPersistTimer: number | null = null;
-let housingPatchPersistTimer: number | null = null;
-let recommendationsCachePersistTimer: number | null = null;
-let recommendationsQueuePersistTimer: number | null = null;
-
-const scheduleLocalCachePersist = (
-  key: string,
-  valueFactory: () => unknown,
-  timerValue: number | null,
-  setTimer: (value: number | null) => void,
-) => {
-  if (typeof window === 'undefined') {
-    writeLocalJsonCache(key, valueFactory());
-    return;
-  }
-  if (timerValue) {
-    window.clearTimeout(timerValue);
-  }
-  const nextTimer = window.setTimeout(() => {
-    setTimer(null);
-    writeLocalJsonCache(key, valueFactory());
-  }, 140);
-  setTimer(nextTimer);
-};
-
 const readBeneficiaryPatchMap = (): Record<string, BeneficiaryPatchRecord> => {
   if (!beneficiaryPatchCacheMemory) {
     beneficiaryPatchCacheMemory = readLocalJsonCache<Record<string, BeneficiaryPatchRecord>>(BENEFICIARY_PATCHES_CACHE_KEY, {});
@@ -269,14 +243,7 @@ const readBeneficiaryPatchMap = (): Record<string, BeneficiaryPatchRecord> => {
 
 const writeBeneficiaryPatchMap = (value: Record<string, BeneficiaryPatchRecord>) => {
   beneficiaryPatchCacheMemory = value;
-  scheduleLocalCachePersist(
-    BENEFICIARY_PATCHES_CACHE_KEY,
-    () => beneficiaryPatchCacheMemory || {},
-    beneficiaryPatchPersistTimer,
-    (nextTimer) => {
-      beneficiaryPatchPersistTimer = nextTimer;
-    },
-  );
+  writeLocalJsonCache(BENEFICIARY_PATCHES_CACHE_KEY, beneficiaryPatchCacheMemory || {});
 };
 
 const mergeBeneficiaryPatch = (patientId: string, updates: Partial<Patient>, lastError?: string): BeneficiaryPatchRecord => {
@@ -314,14 +281,7 @@ const readDossierPatchMap = (): Record<string, DossierPatchRecord> => {
 
 const writeDossierPatchMap = (value: Record<string, DossierPatchRecord>) => {
   dossierPatchCacheMemory = value;
-  scheduleLocalCachePersist(
-    DOSSIER_PATCHES_CACHE_KEY,
-    () => dossierPatchCacheMemory || {},
-    dossierPatchPersistTimer,
-    (nextTimer) => {
-      dossierPatchPersistTimer = nextTimer;
-    },
-  );
+  writeLocalJsonCache(DOSSIER_PATCHES_CACHE_KEY, dossierPatchCacheMemory || {});
 };
 
 const mergeDossierPatch = (dossierId: string, updates: Partial<Dossier>, lastError?: string): DossierPatchRecord => {
@@ -359,14 +319,7 @@ const readHousingPatchMap = (): Record<string, HousingPatchRecord> => {
 
 const writeHousingPatchMap = (value: Record<string, HousingPatchRecord>) => {
   housingPatchCacheMemory = value;
-  scheduleLocalCachePersist(
-    HOUSING_PATCHES_CACHE_KEY,
-    () => housingPatchCacheMemory || {},
-    housingPatchPersistTimer,
-    (nextTimer) => {
-      housingPatchPersistTimer = nextTimer;
-    },
-  );
+  writeLocalJsonCache(HOUSING_PATCHES_CACHE_KEY, housingPatchCacheMemory || {});
 };
 
 const mergeHousingPatch = (
@@ -410,14 +363,7 @@ const readVisitRecommendationsCacheMap = (): Record<string, VisitRecommendations
 
 const writeVisitRecommendationsCacheMap = (value: Record<string, VisitRecommendationsCacheRecord>) => {
   visitRecommendationsCacheMemory = value;
-  scheduleLocalCachePersist(
-    VISIT_RECOMMENDATIONS_CACHE_KEY,
-    () => visitRecommendationsCacheMemory || {},
-    recommendationsCachePersistTimer,
-    (nextTimer) => {
-      recommendationsCachePersistTimer = nextTimer;
-    },
-  );
+  writeLocalJsonCache(VISIT_RECOMMENDATIONS_CACHE_KEY, visitRecommendationsCacheMemory || {});
 };
 
 const readVisitRecommendationsQueueMap = (): Record<string, VisitRecommendationsQueueRecord> => {
@@ -429,14 +375,7 @@ const readVisitRecommendationsQueueMap = (): Record<string, VisitRecommendations
 
 const writeVisitRecommendationsQueueMap = (value: Record<string, VisitRecommendationsQueueRecord>) => {
   visitRecommendationsQueueMemory = value;
-  scheduleLocalCachePersist(
-    VISIT_RECOMMENDATIONS_QUEUE_KEY,
-    () => visitRecommendationsQueueMemory || {},
-    recommendationsQueuePersistTimer,
-    (nextTimer) => {
-      recommendationsQueuePersistTimer = nextTimer;
-    },
-  );
+  writeLocalJsonCache(VISIT_RECOMMENDATIONS_QUEUE_KEY, visitRecommendationsQueueMemory || {});
 };
 
 const normalizeOccupantIdentity = (value: unknown): OccupantIdentity | null => {
@@ -621,6 +560,8 @@ let housingFlushTimer: number | null = null;
 let recommendationsFlushPromise: Promise<void> | null = null;
 let recommendationsOnlineListenerRegistered = false;
 let recommendationsFlushTimer: number | null = null;
+let backgroundSyncLoopRegistered = false;
+let backgroundSyncIntervalId: number | null = null;
 
 const shouldAttemptBeneficiarySync = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -634,6 +575,42 @@ const shouldAttemptBackgroundSync = (): boolean => {
   if (!getSessionToken()) return false;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
   return true;
+};
+
+const runBackgroundSyncTick = () => {
+  if (!shouldAttemptBackgroundSync()) {
+    return;
+  }
+
+  void Promise.allSettled([
+    flushQueuedBeneficiaryUpdates(),
+    flushQueuedDossierUpdates(),
+    flushQueuedHousingUpdates(),
+    flushQueuedVisitRecommendations(),
+    flushQueuedNoteOperations(),
+    flushQueuedDocumentOperations(),
+    flushPendingReleves(),
+  ]);
+};
+
+const ensureBackgroundSyncLoop = () => {
+  if (typeof window === 'undefined') return;
+  if (backgroundSyncLoopRegistered) return;
+  backgroundSyncLoopRegistered = true;
+
+  window.addEventListener('online', runBackgroundSyncTick);
+  window.addEventListener('focus', runBackgroundSyncTick);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      runBackgroundSyncTick();
+    }
+  });
+
+  backgroundSyncIntervalId = window.setInterval(() => {
+    runBackgroundSyncTick();
+  }, 2000);
+
+  runBackgroundSyncTick();
 };
 
 const supportsLocalDocumentBlobCache = (): boolean => (
@@ -1565,7 +1542,10 @@ const flushQueuedVisitRecommendations = async (): Promise<void> => {
         lastError: result.error || 'Synchronisation des préconisations impossible',
       };
       writeVisitRecommendationsCacheMap(cache);
-      break;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        break;
+      }
+      continue;
     }
   })().finally(() => {
     recommendationsFlushPromise = null;
@@ -1575,6 +1555,7 @@ const flushQueuedVisitRecommendations = async (): Promise<void> => {
 };
 
 const scheduleQueuedVisitRecommendationsSync = () => {
+  ensureBackgroundSyncLoop();
   if (!recommendationsOnlineListenerRegistered && typeof window !== 'undefined') {
     window.addEventListener('online', () => {
       void flushQueuedVisitRecommendations();
@@ -1873,6 +1854,7 @@ export const fetchLocalSnapshot = async (): Promise<Dossier[]> => {
 
 export const fetchDossiers = async (userId?: string): Promise<Dossier[]> => {
   debugLog(`fetchDossiers: loading via shared API for user ${userId || 'ALL'}`);
+  ensureBackgroundSyncLoop();
   void flushQueuedBeneficiaryUpdates().catch(() => undefined);
   void flushQueuedDossierUpdates().catch(() => undefined);
   void flushQueuedHousingUpdates().catch(() => undefined);
@@ -1923,7 +1905,10 @@ const flushQueuedDossierUpdates = async (): Promise<void> => {
         ...patch,
         lastError: result.error || 'Synchronisation dossier impossible',
       });
-      break;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        break;
+      }
+      continue;
     }
   })().finally(() => {
     dossierFlushPromise = null;
@@ -1933,6 +1918,7 @@ const flushQueuedDossierUpdates = async (): Promise<void> => {
 };
 
 const scheduleQueuedDossierSync = () => {
+  ensureBackgroundSyncLoop();
   if (!dossierOnlineListenerRegistered && typeof window !== 'undefined') {
     window.addEventListener('online', () => {
       void flushQueuedDossierUpdates();
@@ -2259,7 +2245,10 @@ const flushQueuedDocumentOperations = async (): Promise<void> => {
           ...operation,
           lastError: error?.message || 'Erreur de synchronisation',
         });
-        break;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          break;
+        }
+        continue;
       }
     }
   })().finally(() => {
@@ -2270,6 +2259,7 @@ const flushQueuedDocumentOperations = async (): Promise<void> => {
 };
 
 const scheduleQueuedDocumentSync = () => {
+  ensureBackgroundSyncLoop();
   if (!documentOnlineListenerRegistered && typeof window !== 'undefined') {
     window.addEventListener('online', () => {
       void flushQueuedDocumentOperations();
@@ -2596,6 +2586,7 @@ const flushQueuedNoteOperations = async (): Promise<void> => {
 };
 
 const scheduleQueuedNoteSync = () => {
+  ensureBackgroundSyncLoop();
   if (!noteSyncListenerRegistered && typeof window !== 'undefined') {
     window.addEventListener('online', () => {
       void flushQueuedNoteOperations();
@@ -2864,6 +2855,55 @@ export const preloadDocumentsView = async (patientId: string, dossierId?: string
   return documents;
 };
 
+const BENEFICIARY_PATCH_ALLOWED_KEYS = new Set([
+  'firstName',
+  'lastName',
+  'secondFirstName',
+  'secondLastName',
+  'occupants',
+  'email',
+  'phone',
+  'address',
+  'city',
+  'cityId',
+  'zipCode',
+  'occupant1BirthDate',
+  'occupant2BirthDate',
+  'birthDateMr',
+  'birthDateMme',
+  'familySituation',
+  'occupationStatus',
+  'numberPeople',
+  'incomeCategory',
+  'fiscalRevenue',
+  'apa',
+  'invalidity',
+  'invalidityTxt',
+  'homeHelp',
+  'homeHelpTxt',
+  'dependenceTxt',
+  'trustedPerson',
+  'trustedName',
+  'trustedPhone',
+  'trustedEmail',
+  'occupant1SocialSecurityNumber',
+  'occupant2SocialSecurityNumber',
+  'numeroSecuriteSocialeMonsieur',
+  'numeroSecuriteSocialeMadame',
+  'caisseRetraitePrincipale',
+  'caissesRetraiteComplementaires',
+]);
+
+const sanitizeBeneficiaryPatchUpdates = (updates: Partial<Patient>): Partial<Patient> => {
+  const sanitizedEntries = Object.entries(updates || {}).filter(([key, value]) => {
+    if (!BENEFICIARY_PATCH_ALLOWED_KEYS.has(key)) return false;
+    if (value === undefined) return false;
+    if (typeof value === 'number' && Number.isNaN(value)) return false;
+    return true;
+  });
+  return Object.fromEntries(sanitizedEntries) as Partial<Patient>;
+};
+
 export const updateBeneficiaryRemote = async (patientId: string, updates: Partial<Patient>): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
   try {
     const result = await apiFetch<MutationResult>(`/api/beneficiaires/${encodeURIComponent(patientId)}`, {
@@ -2900,7 +2940,10 @@ const flushQueuedBeneficiaryUpdates = async (): Promise<void> => {
         ...patch,
         lastError: result.error || 'Synchronisation bénéficiaire impossible',
       });
-      break;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        break;
+      }
+      continue;
     }
   })().finally(() => {
     beneficiaryFlushPromise = null;
@@ -2910,6 +2953,7 @@ const flushQueuedBeneficiaryUpdates = async (): Promise<void> => {
 };
 
 const scheduleQueuedBeneficiarySync = () => {
+  ensureBackgroundSyncLoop();
   if (!beneficiaryOnlineListenerRegistered && typeof window !== 'undefined') {
     window.addEventListener('online', () => {
       void flushQueuedBeneficiaryUpdates();
@@ -2930,7 +2974,16 @@ const scheduleQueuedBeneficiarySync = () => {
 };
 
 export const updateBeneficiary = async (patientId: string, updates: Partial<Patient>): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
-  const normalizedUpdates = { ...updates };
+  const normalizedUpdates = sanitizeBeneficiaryPatchUpdates({ ...updates });
+  if (Object.keys(normalizedUpdates).length === 0) {
+    return {
+      success: true,
+      error: null,
+      data: {
+        patient: {},
+      },
+    };
+  }
   const patch = mergeBeneficiaryPatch(patientId, normalizedUpdates);
   setBeneficiaryPatch(patch);
   scheduleQueuedBeneficiarySync();
@@ -3005,7 +3058,10 @@ const flushQueuedHousingUpdates = async (): Promise<void> => {
         ...patch,
         lastError: result.error || 'Synchronisation logement impossible',
       });
-      break;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        break;
+      }
+      continue;
     }
   })().finally(() => {
     housingFlushPromise = null;
@@ -3015,6 +3071,7 @@ const flushQueuedHousingUpdates = async (): Promise<void> => {
 };
 
 const scheduleQueuedHousingSync = () => {
+  ensureBackgroundSyncLoop();
   if (!housingOnlineListenerRegistered && typeof window !== 'undefined') {
     window.addEventListener('online', () => {
       void flushQueuedHousingUpdates();
