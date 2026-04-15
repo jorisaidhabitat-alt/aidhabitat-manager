@@ -2302,26 +2302,18 @@ const ensureDossierRecord = async (dossierIdOrTemp) => {
   return created;
 };
 
-const upsertContexte = async (dossierUuid, beneficiaryUuid, medicalContext, autonomy) => {
+const upsertContexte = async (
+  dossierUuid,
+  beneficiaryUuid,
+  medicalContext,
+  autonomy,
+  options = {},
+) => {
   const contextes = await queryAll(TABLES.contexteDeVie, { fields: FIELD_SETS.contexteDeVie });
   const existing = latestByFieldValue(contextes, 'dossier_id', dossierUuid)
     || latestByFieldValue(contextes, 'beneficiaire_id', beneficiaryUuid);
-
-  const [dossiers, beneficiaires, logements, infosAdmin] = await Promise.all([
-    queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers }),
-    queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires }),
-    queryAll(TABLES.logements, { fields: FIELD_SETS.logements }),
-    queryAll(TABLES.informationsAdministratives, { fields: FIELD_SETS.informationsAdministratives }),
-  ]);
-  const dossierRecord = findByFieldValue(dossiers, 'uuid_source', dossierUuid);
-  const beneficiaryRecord = resolveBeneficiaryRecord({
-    beneficiaires,
-    dossiers,
-    logements,
-    contextes,
-    infosAdmin,
-    appBeneficiaryId: beneficiaryUuid,
-  });
+  const dossierRecord = options.dossierRecord || null;
+  const beneficiaryRecordId = options.beneficiaryRecordId ?? null;
 
   const checklistMap = new Map((autonomy?.checklist || []).map((item) => [item.name, item.checked]));
   const normalizedOccupants = Array.isArray(autonomy?.occupants)
@@ -2355,7 +2347,7 @@ const upsertContexte = async (dossierUuid, beneficiaryUuid, medicalContext, auto
     dossier_id: dossierUuid,
     beneficiaire_id: beneficiaryUuid,
     dossiers_id: dossierRecord ? Number(dossierRecord.id) : undefined,
-    beneficiaires_id: beneficiaryRecord ? Number(beneficiaryRecord.id) : undefined,
+    beneficiaires_id: beneficiaryRecordId != null ? Number(beneficiaryRecordId) : undefined,
     nom_pathologie: nullableString(medicalContext?.pathology),
     suivi_medical: nullableString(medicalContext?.followUp),
     deficience_auditive_visuelle: nullableString(medicalContext?.sensory),
@@ -2385,7 +2377,18 @@ const sanitizeUndefined = (fields) => Object.fromEntries(
   Object.entries(fields).filter(([, value]) => value !== undefined)
 );
 
+let beneficiaryReferenceSetsCache = null;
+let beneficiaryReferenceSetsCachedAt = 0;
+const BENEFICIARY_REFERENCE_CACHE_TTL_MS = 5 * 60 * 1000;
+
 const loadBeneficiaryReferenceSets = async () => {
+  if (
+    beneficiaryReferenceSetsCache
+    && (Date.now() - beneficiaryReferenceSetsCachedAt) < BENEFICIARY_REFERENCE_CACHE_TTL_MS
+  ) {
+    return beneficiaryReferenceSetsCache;
+  }
+
   const [communes, situations, statuts, dependances, caisses, caissesComp, baremesAnah] = await Promise.all([
     queryAll(TABLES.communes, { fields: FIELD_SETS.communes }),
     queryAll(TABLES.situationProprietaire, { fields: FIELD_SETS.referencesLibelle }),
@@ -2396,7 +2399,9 @@ const loadBeneficiaryReferenceSets = async () => {
     queryAll(TABLES.baremesAnah, { fields: FIELD_SETS.baremesAnah }),
   ]);
 
-  return { communes, situations, statuts, dependances, caisses, caissesComp, baremesAnah };
+  beneficiaryReferenceSetsCache = { communes, situations, statuts, dependances, caisses, caissesComp, baremesAnah };
+  beneficiaryReferenceSetsCachedAt = Date.now();
+  return beneficiaryReferenceSetsCache;
 };
 
 const selectBaremeAnah = (records, householdSize) => {
@@ -2446,7 +2451,7 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
   const resolvedCommuneLabel = communeMatch ? stringValue(field(communeMatch, 'nom')) : stringValue(updates.city);
   const resolvedZipCode = communeMatch ? stringValue(field(communeMatch, 'code_postal')) : stringValue(updates.zipCode);
   const baremeMatch = has('numberPeople') ? selectBaremeAnah(references.baremesAnah, updates.numberPeople) : undefined;
-  const normalizedOccupants = Array.isArray(updates.occupants)
+  const normalizedOccupantsBase = Array.isArray(updates.occupants)
     ? updates.occupants
       .filter((entry) => entry && typeof entry === 'object')
       .map((entry) => ({
@@ -2464,6 +2469,52 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
         caissesRetraiteComplementaires: stringValue(entry.caissesRetraiteComplementaires).trim(),
       }))
     : null;
+  const normalizedOccupants = normalizedOccupantsBase ? [...normalizedOccupantsBase] : null;
+
+  if (normalizedOccupants?.[0]) {
+    normalizedOccupants[0] = {
+      ...normalizedOccupants[0],
+      firstName: has('firstName') ? stringValue(updates.firstName).trim() : normalizedOccupants[0].firstName,
+      lastName: has('lastName') ? stringValue(updates.lastName).trim() : normalizedOccupants[0].lastName,
+      birthDate: has('occupant1BirthDate')
+        ? stringValue(updates.occupant1BirthDate).trim()
+        : (has('birthDateMr') ? stringValue(updates.birthDateMr).trim() : normalizedOccupants[0].birthDate),
+      apa: has('apa') ? Boolean(updates.apa) : normalizedOccupants[0].apa,
+      invalidity: has('invalidity') ? Boolean(updates.invalidity) : normalizedOccupants[0].invalidity,
+      invalidityTxt: has('invalidityTxt') ? stringValue(updates.invalidityTxt).trim() : normalizedOccupants[0].invalidityTxt,
+      homeHelp: has('homeHelp') ? Boolean(updates.homeHelp) : normalizedOccupants[0].homeHelp,
+      homeHelpTxt: has('homeHelpTxt') ? stringValue(updates.homeHelpTxt).trim() : normalizedOccupants[0].homeHelpTxt,
+      dependenceTxt: has('dependenceTxt') ? stringValue(updates.dependenceTxt).trim() : normalizedOccupants[0].dependenceTxt,
+      numeroSecuriteSociale: has('occupant1SocialSecurityNumber')
+        ? stringValue(updates.occupant1SocialSecurityNumber).trim()
+        : (has('numeroSecuriteSocialeMonsieur')
+          ? stringValue(updates.numeroSecuriteSocialeMonsieur).trim()
+          : normalizedOccupants[0].numeroSecuriteSociale),
+      caisseRetraitePrincipale: has('caisseRetraitePrincipale')
+        ? stringValue(updates.caisseRetraitePrincipale).trim()
+        : normalizedOccupants[0].caisseRetraitePrincipale,
+      caissesRetraiteComplementaires: has('caissesRetraiteComplementaires')
+        ? stringValue(updates.caissesRetraiteComplementaires).trim()
+        : normalizedOccupants[0].caissesRetraiteComplementaires,
+    };
+  }
+
+  if (normalizedOccupants?.[1]) {
+    normalizedOccupants[1] = {
+      ...normalizedOccupants[1],
+      firstName: has('secondFirstName') ? stringValue(updates.secondFirstName).trim() : normalizedOccupants[1].firstName,
+      lastName: has('secondLastName') ? stringValue(updates.secondLastName).trim() : normalizedOccupants[1].lastName,
+      birthDate: has('occupant2BirthDate')
+        ? stringValue(updates.occupant2BirthDate).trim()
+        : (has('birthDateMme') ? stringValue(updates.birthDateMme).trim() : normalizedOccupants[1].birthDate),
+      numeroSecuriteSociale: has('occupant2SocialSecurityNumber')
+        ? stringValue(updates.occupant2SocialSecurityNumber).trim()
+        : (has('numeroSecuriteSocialeMadame')
+          ? stringValue(updates.numeroSecuriteSocialeMadame).trim()
+          : normalizedOccupants[1].numeroSecuriteSociale),
+    };
+  }
+
   const primaryOccupant = normalizedOccupants?.[0];
   const secondaryOccupant = normalizedOccupants?.[1];
 
@@ -3283,26 +3334,20 @@ app.patch('/api/beneficiaires/:patientId', requireAuth, async (req, res, next) =
   try {
     const patientId = req.params.patientId;
     const updates = req.body || {};
-    const [beneficiaires, references] = await Promise.all([
+    const syntheticId = parseSyntheticBeneficiaryId(patientId);
+    const [beneficiaires, references, dossiers] = await Promise.all([
       queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires }),
       loadBeneficiaryReferenceSets(),
-    ]);
-
-    const [dossiers, logements, contextes, infosAdmin] = await Promise.all([
       queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers }),
-      queryAll(TABLES.logements, { fields: FIELD_SETS.logements }),
-      queryAll(TABLES.contexteDeVie, { fields: FIELD_SETS.contexteDeVie }),
-      queryAll(TABLES.informationsAdministratives, { fields: FIELD_SETS.informationsAdministratives }),
     ]);
 
-    const beneficiaryRecord = resolveBeneficiaryRecord({
-      beneficiaires,
-      dossiers,
-      logements,
-      contextes,
-      infosAdmin,
-      appBeneficiaryId: patientId,
-    });
+    const beneficiaryRecord = syntheticId != null
+      ? findByRecordId(beneficiaires, syntheticId)
+      : resolveBeneficiaryRecord({
+          beneficiaires,
+          dossiers,
+          appBeneficiaryId: patientId,
+        });
     if (!beneficiaryRecord) {
       throw new Error(`Bénéficiaire ${patientId} introuvable`);
     }
@@ -3316,14 +3361,10 @@ app.patch('/api/beneficiaires/:patientId', requireAuth, async (req, res, next) =
     const fields = mapBeneficiaryUpdatesToFields(updates, references);
 
     await updateRecord(TABLES.beneficiaires, beneficiaryRecord.id, fields);
-    const refreshedBeneficiaires = await queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires });
-    const refreshedRecord = findByRecordId(refreshedBeneficiaires, beneficiaryRecord.id) || beneficiaryRecord;
     res.json({
       success: true,
       error: null,
-      data: {
-        patient: mapPatient(refreshedRecord, patientId),
-      },
+      data: {},
     });
   } catch (error) {
     next(error);
@@ -3358,7 +3399,10 @@ app.patch('/api/dossiers/:dossierId', requireAuth, async (req, res, next) => {
     }
 
     if (updates.medicalContext || updates.autonomy) {
-      await upsertContexte(dossierUuid, beneficiaryUuid, updates.medicalContext, updates.autonomy);
+      await upsertContexte(dossierUuid, beneficiaryUuid, updates.medicalContext, updates.autonomy, {
+        dossierRecord,
+        beneficiaryRecordId: field(dossierRecord, 'beneficiaires_id'),
+      });
     }
 
     res.json({
@@ -3375,28 +3419,24 @@ app.patch('/api/logements/by-beneficiary/:beneficiaryId', requireAuth, async (re
   try {
     const beneficiaryId = req.params.beneficiaryId;
     const updates = req.body || {};
-    const [beneficiaires, logements, typeLogements, porteGarageRefs, portailRefs] = await Promise.all([
+    const syntheticId = parseSyntheticBeneficiaryId(beneficiaryId);
+    const [beneficiaires, logements, typeLogements, porteGarageRefs, portailRefs, dossiers] = await Promise.all([
       queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires }),
       queryAll(TABLES.logements, { fields: FIELD_SETS.logements }),
       queryAll(TABLES.typeDeLogement, { fields: FIELD_SETS.referencesLibelle }),
       queryAll(TABLES.porteDeGarage, { fields: FIELD_SETS.referencesLibelle }),
       queryAll(TABLES.portail, { fields: FIELD_SETS.referencesLibelle }),
-    ]);
-
-    const [dossiers, contextes, infosAdmin] = await Promise.all([
       queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers }),
-      queryAll(TABLES.contexteDeVie, { fields: FIELD_SETS.contexteDeVie }),
-      queryAll(TABLES.informationsAdministratives, { fields: FIELD_SETS.informationsAdministratives }),
     ]);
 
-    const beneficiaryRecord = resolveBeneficiaryRecord({
-      beneficiaires,
-      dossiers,
-      logements,
-      contextes,
-      infosAdmin,
-      appBeneficiaryId: beneficiaryId,
-    });
+    const beneficiaryRecord = syntheticId != null
+      ? findByRecordId(beneficiaires, syntheticId)
+      : resolveBeneficiaryRecord({
+          beneficiaires,
+          dossiers,
+          logements,
+          appBeneficiaryId: beneficiaryId,
+        });
     if (!beneficiaryRecord) {
       throw new Error(`Bénéficiaire ${beneficiaryId} introuvable pour le logement`);
     }

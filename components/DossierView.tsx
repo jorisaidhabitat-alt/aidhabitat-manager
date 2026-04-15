@@ -135,6 +135,34 @@ const buildEditFormFromPatient = (patient: Dossier['patient']) => ({
   email: patient.email,
 });
 
+const samePatientIdentity = (left: Dossier['patient'], right: Dossier['patient']) => (
+  (left.firstName || '') === (right.firstName || '')
+  && (left.lastName || '') === (right.lastName || '')
+  && String(left.numberPeople ?? 1) === String(right.numberPeople ?? 1)
+  && (left.address || '') === (right.address || '')
+  && (left.zipCode || '') === (right.zipCode || '')
+  && normalizeCityInput(left.city) === normalizeCityInput(right.city)
+  && (left.cityId || '') === (right.cityId || '')
+  && (left.phone || '') === (right.phone || '')
+  && (left.email || '') === (right.email || '')
+  && JSON.stringify(left.occupants || []) === JSON.stringify(right.occupants || [])
+);
+
+const sameEditForm = (
+  left: ReturnType<typeof buildEditFormFromPatient>,
+  right: ReturnType<typeof buildEditFormFromPatient>,
+) => (
+  left.firstName === right.firstName
+  && left.lastName === right.lastName
+  && left.numberPeople === right.numberPeople
+  && left.address === right.address
+  && left.zipCode === right.zipCode
+  && left.city === right.city
+  && left.cityId === right.cityId
+  && left.phone === right.phone
+  && left.email === right.email
+);
+
 const formatAccompanimentType = (value: string | undefined) => {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized.includes('diagnostic')) return 'Diagnostic ergo';
@@ -673,9 +701,23 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
   }, [buildBeneficiaryPayload, displayedIncomeCategory, dossier, dossier.patient.id, editForm, onUpdateDossier, patient]);
 
   useEffect(() => {
-    setPatient(dossier.patient);
-    setEditForm(buildEditFormFromPatient(dossier.patient));
-  }, [dossier.id, dossier.patient.id]);
+    setPatient((previous) => (samePatientIdentity(previous, dossier.patient) ? previous : dossier.patient));
+    const nextEditForm = buildEditFormFromPatient(dossier.patient);
+    setEditForm((previous) => (sameEditForm(previous, nextEditForm) ? previous : nextEditForm));
+  }, [
+    dossier.id,
+    dossier.patient.id,
+    dossier.patient.firstName,
+    dossier.patient.lastName,
+    dossier.patient.numberPeople,
+    dossier.patient.address,
+    dossier.patient.zipCode,
+    dossier.patient.city,
+    dossier.patient.cityId,
+    dossier.patient.phone,
+    dossier.patient.email,
+    dossier.patient.occupants,
+  ]);
 
   useEffect(() => {
     if (!onUpdateDossier) return;

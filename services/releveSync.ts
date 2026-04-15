@@ -65,7 +65,7 @@ const scheduleFlushSoon = () => {
   flushTimer = window.setTimeout(() => {
     flushTimer = null;
     void flushPendingReleves();
-  }, 80);
+  }, 20);
 };
 
 export const queueReleveForSync = async (

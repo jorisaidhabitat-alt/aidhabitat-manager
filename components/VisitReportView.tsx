@@ -135,8 +135,8 @@ const createEmptyOccupant = () => ({
 });
 
 const normalizeOccupant = (value: any) => ({
-    firstName: String(value?.firstName || '').trim(),
-    lastName: String(value?.lastName || '').trim(),
+    firstName: String(value?.firstName || ''),
+    lastName: String(value?.lastName || ''),
     birthDate: String(value?.birthDate || '').trim(),
     apa: Boolean(value?.apa),
     invalidity: Boolean(value?.invalidity),
@@ -1210,13 +1210,13 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     // =============================================================
     // AUTO-SAVE with Status Indicator
     // =============================================================
-    const debouncedBeneficiary = useDebounce(formData.beneficiary, 70);
-    const debouncedContext = useDebounce(formData.context, 70);
-    const debouncedHousing = useDebounce(formData.housing, 70);
-    const debouncedSanitaires = useDebounce(sanitairesData, 90);
-    const debouncedMesures = useDebounce(mesuresData, 90);
-    const debouncedSynthese = useDebounce(syntheseData, 90);
-    const debouncedRecommendations = useDebounce(recommendationsData, 90);
+    const debouncedBeneficiary = useDebounce(formData.beneficiary, 25);
+    const debouncedContext = useDebounce(formData.context, 25);
+    const debouncedHousing = useDebounce(formData.housing, 25);
+    const debouncedSanitaires = useDebounce(sanitairesData, 35);
+    const debouncedMesures = useDebounce(mesuresData, 35);
+    const debouncedSynthese = useDebounce(syntheseData, 35);
+    const debouncedRecommendations = useDebounce(recommendationsData, 35);
     const pendingSavesRef = useRef(new Map<string, {
         label: string;
         task: () => Promise<{ success: boolean; error: string | null }>;
@@ -1304,11 +1304,10 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     // Save Beneficiary (includes occupation status, APA, etc.)
     useEffect(() => {
         if (!isAutosaveReadyRef.current) return;
-        const hasInvalidContacts = !isValidFrenchPhone(debouncedBeneficiary.phone)
-            || !isValidEmail(debouncedBeneficiary.email)
-            || !isValidFrenchPhone(debouncedBeneficiary.trustedPhone)
-            || !isValidEmail(debouncedBeneficiary.trustedEmail);
-        if (hasInvalidContacts) return;
+        const phoneIsValid = isValidFrenchPhone(debouncedBeneficiary.phone);
+        const emailIsValid = isValidEmail(debouncedBeneficiary.email);
+        const trustedPhoneIsValid = isValidFrenchPhone(debouncedBeneficiary.trustedPhone);
+        const trustedEmailIsValid = isValidEmail(debouncedBeneficiary.trustedEmail);
         const beneficiarySnapshot = serializeForAutosave(debouncedBeneficiary);
         if (beneficiarySnapshotRef.current === null) {
             beneficiarySnapshotRef.current = beneficiarySnapshot;
@@ -1329,8 +1328,10 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         occupants: normalizedBeneficiary.occupants,
                         address: normalizedBeneficiary.address, city: normalizedBeneficiary.city,
                         cityId: normalizedBeneficiary.cityId,
-                        zipCode: normalizedBeneficiary.zipCode, phone: normalizedBeneficiary.phone,
-                        email: normalizedBeneficiary.email, familySituation: normalizedBeneficiary.familySituation,
+                        zipCode: normalizedBeneficiary.zipCode,
+                        phone: phoneIsValid ? normalizedBeneficiary.phone : undefined,
+                        email: emailIsValid ? normalizedBeneficiary.email : undefined,
+                        familySituation: normalizedBeneficiary.familySituation,
                         occupationStatus: normalizedBeneficiary.occupationStatus,
                         numberPeople: parseInt(normalizedBeneficiary.numberPeople) || 1,
                         fiscalRevenue: parseFloat(normalizedBeneficiary.fiscalRevenue) || 0,
@@ -1343,8 +1344,12 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         numeroSecuriteSocialeMadame: normalizedBeneficiary.numeroSecuriteSocialeMadame,
                         caisseRetraitePrincipale: normalizedBeneficiary.caisseRetraitePrincipale,
                         caissesRetraiteComplementaires: normalizedBeneficiary.caissesRetraiteComplementaires,
-                        trustedEmail: normalizedBeneficiary.trustedEmail,
-                        trustedPerson: { name: normalizedBeneficiary.trustedName, phone: normalizedBeneficiary.trustedPhone, email: normalizedBeneficiary.trustedEmail }
+                        trustedEmail: trustedEmailIsValid ? normalizedBeneficiary.trustedEmail : undefined,
+                        trustedPerson: {
+                            name: normalizedBeneficiary.trustedName,
+                            phone: trustedPhoneIsValid ? normalizedBeneficiary.trustedPhone : undefined,
+                            email: trustedEmailIsValid ? normalizedBeneficiary.trustedEmail : undefined,
+                        }
                     }),
                     updateDossier(dossier.id, {
                         compteAnah: normalizedBeneficiary.compteAnah,

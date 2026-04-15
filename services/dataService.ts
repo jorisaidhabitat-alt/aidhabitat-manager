@@ -36,7 +36,7 @@ export const normalizeCityInput = (value: unknown): string => {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
   if (!trimmed || trimmed === '[object Object]') return '';
-  return trimmed;
+  return value;
 };
 
 const resolveApiUrl = (input: string): string => {
@@ -272,6 +272,13 @@ const clearBeneficiaryPatch = (patientId: string) => {
   writeBeneficiaryPatchMap(next);
 };
 
+const clearBeneficiaryPatchIfCurrent = (patch: BeneficiaryPatchRecord) => {
+  const current = readBeneficiaryPatchMap()[patch.patientId];
+  if (!current) return;
+  if (current.updatedAt !== patch.updatedAt) return;
+  clearBeneficiaryPatch(patch.patientId);
+};
+
 const readDossierPatchMap = (): Record<string, DossierPatchRecord> => {
   if (!dossierPatchCacheMemory) {
     dossierPatchCacheMemory = readLocalJsonCache<Record<string, DossierPatchRecord>>(DOSSIER_PATCHES_CACHE_KEY, {});
@@ -308,6 +315,13 @@ const clearDossierPatch = (dossierId: string) => {
   if (!next[dossierId]) return;
   delete next[dossierId];
   writeDossierPatchMap(next);
+};
+
+const clearDossierPatchIfCurrent = (patch: DossierPatchRecord) => {
+  const current = readDossierPatchMap()[patch.dossierId];
+  if (!current) return;
+  if (current.updatedAt !== patch.updatedAt) return;
+  clearDossierPatch(patch.dossierId);
 };
 
 const readHousingPatchMap = (): Record<string, HousingPatchRecord> => {
@@ -352,6 +366,13 @@ const clearHousingPatch = (beneficiaryId: string) => {
   if (!next[beneficiaryId]) return;
   delete next[beneficiaryId];
   writeHousingPatchMap(next);
+};
+
+const clearHousingPatchIfCurrent = (patch: HousingPatchRecord) => {
+  const current = readHousingPatchMap()[patch.beneficiaryId];
+  if (!current) return;
+  if (current.updatedAt !== patch.updatedAt) return;
+  clearHousingPatch(patch.beneficiaryId);
 };
 
 const readVisitRecommendationsCacheMap = (): Record<string, VisitRecommendationsCacheRecord> => {
@@ -557,14 +578,17 @@ let dossierFlushTimer: number | null = null;
 let housingFlushPromise: Promise<void> | null = null;
 let housingOnlineListenerRegistered = false;
 let housingFlushTimer: number | null = null;
+const beneficiaryRequestControllers = new Map<string, AbortController>();
+const dossierRequestControllers = new Map<string, AbortController>();
+const housingRequestControllers = new Map<string, AbortController>();
 let recommendationsFlushPromise: Promise<void> | null = null;
 let recommendationsOnlineListenerRegistered = false;
 let recommendationsFlushTimer: number | null = null;
 let backgroundSyncLoopRegistered = false;
 let backgroundSyncIntervalId: number | null = null;
-const BACKGROUND_SYNC_INTERVAL_MS = 1_000;
-const PATCH_SYNC_TRIGGER_DELAY_MS = 40;
-const NOTE_SYNC_TRIGGER_DELAY_MS = 35;
+const BACKGROUND_SYNC_INTERVAL_MS = 750;
+const PATCH_SYNC_TRIGGER_DELAY_MS = 15;
+const NOTE_SYNC_TRIGGER_DELAY_MS = 20;
 
 const shouldAttemptBeneficiarySync = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -1448,30 +1472,15 @@ export const saveVisitRecommendations = async (
   if (!normalizedDossierId) {
     return { success: false, error: 'Dossier introuvable' };
   }
-
-  const normalizedItems = Array.isArray(items) ? items.map((item) => ({ ...item })) : [];
-  const now = new Date().toISOString();
-
-  const cache = readVisitRecommendationsCacheMap();
-  cache[normalizedDossierId] = {
-    dossierId: normalizedDossierId,
-    items: normalizedItems,
-    updatedAt: now,
-    syncStatus: 'pending',
-  };
-  writeVisitRecommendationsCacheMap(cache);
-
-  const queue = readVisitRecommendationsQueueMap();
-  queue[normalizedDossierId] = {
-    dossierId: normalizedDossierId,
-    items: normalizedItems,
-    queuedAt: now,
-  };
-  writeVisitRecommendationsQueueMap(queue);
-
-  scheduleQueuedVisitRecommendationsSync();
-
-  return { success: true, error: null };
+  try {
+    await apiFetch<VisitRecommendationsResult>(`/api/visit-recommendations/${encodeURIComponent(normalizedDossierId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ items }),
+    });
+    return { success: true, error: null };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur inconnue' };
+  }
 };
 
 const fetchVisitRecommendationsRemote = async (dossierId: string): Promise<VisitRecommendationItem[]> => {
@@ -1873,15 +1882,26 @@ const updateDossierRemote = async (
   dossierId: string,
   updates: Partial<Dossier>,
 ): Promise<{ success: boolean; error: string | null; data?: MutationResult['data'] }> => {
+  dossierRequestControllers.get(dossierId)?.abort();
+  const controller = new AbortController();
+  dossierRequestControllers.set(dossierId, controller);
   try {
     const result = await apiFetch<MutationResult>(`/api/dossiers/${encodeURIComponent(dossierId)}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
+      signal: controller.signal,
     });
     return { success: result.success, error: result.error, data: result.data };
   } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      return { success: true, error: null };
+    }
     console.error('Unexpected error updating dossier:', error);
     return { success: false, error: error.message };
+  } finally {
+    if (dossierRequestControllers.get(dossierId) === controller) {
+      dossierRequestControllers.delete(dossierId);
+    }
   }
 };
 
@@ -1894,24 +1914,27 @@ const flushQueuedDossierUpdates = async (): Promise<void> => {
   }
 
   dossierFlushPromise = (async () => {
-    const patches = Object.values(readDossierPatchMap())
-      .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime());
-
-    for (const patch of patches) {
+    while (true) {
+      const patch = Object.values(readDossierPatchMap())
+        .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime())[0];
+      if (!patch) {
+        break;
+      }
       const result = await updateDossierRemote(patch.dossierId, patch.updates);
       if (result.success) {
-        clearDossierPatch(patch.dossierId);
+        clearDossierPatchIfCurrent(patch);
         continue;
       }
 
+      const current = readDossierPatchMap()[patch.dossierId];
+      if (current && current.updatedAt !== patch.updatedAt) {
+        continue;
+      }
       setDossierPatch({
         ...patch,
         lastError: result.error || 'Synchronisation dossier impossible',
       });
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        break;
-      }
-      continue;
+      break;
     }
   })().finally(() => {
     dossierFlushPromise = null;
@@ -1945,21 +1968,29 @@ export const updateDossier = async (
   dossierId: string,
   updates: Partial<Dossier>,
 ): Promise<{ success: boolean; error: string | null; data?: MutationResult['data'] }> => {
-  if (String(dossierId).startsWith('temp-')) {
-    return updateDossierRemote(dossierId, updates);
-  }
-
   const patch = mergeDossierPatch(dossierId, updates);
   setDossierPatch(patch);
-  scheduleQueuedDossierSync();
 
-  return {
-    success: true,
-    error: null,
-    data: {
-      id: dossierId,
-    },
-  };
+  if (!shouldAttemptBackgroundSync()) {
+    scheduleQueuedDossierSync();
+    return { success: true, error: null };
+  }
+
+  const result = await updateDossierRemote(dossierId, patch.updates);
+  if (result.success) {
+    clearDossierPatchIfCurrent(patch);
+    return result;
+  }
+
+  const current = readDossierPatchMap()[dossierId];
+  if (!current || current.updatedAt === patch.updatedAt) {
+    setDossierPatch({
+      ...(current || patch),
+      lastError: result.error || 'Synchronisation dossier impossible',
+    });
+  }
+  scheduleQueuedDossierSync();
+  return result;
 };
 
 export const checkSupabaseConnection = async (): Promise<{ success: boolean; message: string; count?: number }> => {
@@ -2908,15 +2939,26 @@ const sanitizeBeneficiaryPatchUpdates = (updates: Partial<Patient>): Partial<Pat
 };
 
 export const updateBeneficiaryRemote = async (patientId: string, updates: Partial<Patient>): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
+  beneficiaryRequestControllers.get(patientId)?.abort();
+  const controller = new AbortController();
+  beneficiaryRequestControllers.set(patientId, controller);
   try {
     const result = await apiFetch<MutationResult>(`/api/beneficiaires/${encodeURIComponent(patientId)}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
+      signal: controller.signal,
     });
     return { success: result.success, error: result.error, data: result.data };
   } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      return { success: true, error: null };
+    }
     console.error('Unexpected error updating beneficiary:', error);
     return { success: false, error: error.message || 'Unexpected error' };
+  } finally {
+    if (beneficiaryRequestControllers.get(patientId) === controller) {
+      beneficiaryRequestControllers.delete(patientId);
+    }
   }
 };
 
@@ -2929,24 +2971,27 @@ const flushQueuedBeneficiaryUpdates = async (): Promise<void> => {
   }
 
   beneficiaryFlushPromise = (async () => {
-    const patches = Object.values(readBeneficiaryPatchMap())
-      .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime());
-
-    for (const patch of patches) {
+    while (true) {
+      const patch = Object.values(readBeneficiaryPatchMap())
+        .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime())[0];
+      if (!patch) {
+        break;
+      }
       const result = await updateBeneficiaryRemote(patch.patientId, patch.updates);
       if (result.success) {
-        clearBeneficiaryPatch(patch.patientId);
+        clearBeneficiaryPatchIfCurrent(patch);
         continue;
       }
 
+      const current = readBeneficiaryPatchMap()[patch.patientId];
+      if (current && current.updatedAt !== patch.updatedAt) {
+        continue;
+      }
       setBeneficiaryPatch({
         ...patch,
         lastError: result.error || 'Synchronisation bénéficiaire impossible',
       });
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        break;
-      }
-      continue;
+      break;
     }
   })().finally(() => {
     beneficiaryFlushPromise = null;
@@ -2979,27 +3024,31 @@ const scheduleQueuedBeneficiarySync = () => {
 export const updateBeneficiary = async (patientId: string, updates: Partial<Patient>): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
   const normalizedUpdates = sanitizeBeneficiaryPatchUpdates({ ...updates });
   if (Object.keys(normalizedUpdates).length === 0) {
-    return {
-      success: true,
-      error: null,
-      data: {
-        patient: {},
-      },
-    };
+    return { success: true, error: null, data: { patient: {} } };
   }
   const patch = mergeBeneficiaryPatch(patientId, normalizedUpdates);
   setBeneficiaryPatch(patch);
-  scheduleQueuedBeneficiarySync();
 
-  return {
-    success: true,
-    error: null,
-    data: {
-      patient: {
-        ...(normalizedUpdates as Patient),
-      },
-    },
-  };
+  if (!shouldAttemptBeneficiarySync()) {
+    scheduleQueuedBeneficiarySync();
+    return { success: true, error: null, data: { patient: patch.updates } };
+  }
+
+  const result = await updateBeneficiaryRemote(patientId, patch.updates);
+  if (result.success) {
+    clearBeneficiaryPatchIfCurrent(patch);
+    return result;
+  }
+
+  const current = readBeneficiaryPatchMap()[patientId];
+  if (!current || current.updatedAt === patch.updatedAt) {
+    setBeneficiaryPatch({
+      ...(current || patch),
+      lastError: result.error || 'Synchronisation bénéficiaire impossible',
+    });
+  }
+  scheduleQueuedBeneficiarySync();
+  return result;
 };
 
 export const createBeneficiary = async (
@@ -3022,15 +3071,26 @@ const updateHousingRemote = async (
   housingId: string | undefined,
   updates: Partial<Housing>,
 ): Promise<{ success: boolean; error: string | null; data?: { id?: string } }> => {
+  housingRequestControllers.get(beneficiaryId)?.abort();
+  const controller = new AbortController();
+  housingRequestControllers.set(beneficiaryId, controller);
   try {
     const result = await apiFetch<MutationResult>(`/api/logements/by-beneficiary/${encodeURIComponent(beneficiaryId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ ...updates, housingId }),
+      signal: controller.signal,
     });
     return { success: result.success, error: result.error, data: result.data };
   } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      return { success: true, error: null };
+    }
     console.error('Unexpected error updating housing:', error);
     return { success: false, error: error.message };
+  } finally {
+    if (housingRequestControllers.get(beneficiaryId) === controller) {
+      housingRequestControllers.delete(beneficiaryId);
+    }
   }
 };
 
@@ -3043,28 +3103,31 @@ const flushQueuedHousingUpdates = async (): Promise<void> => {
   }
 
   housingFlushPromise = (async () => {
-    const patches = Object.values(readHousingPatchMap())
-      .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime());
-
-    for (const patch of patches) {
+    while (true) {
+      const patch = Object.values(readHousingPatchMap())
+        .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime())[0];
+      if (!patch) {
+        break;
+      }
       const result = await updateHousingRemote(
         patch.beneficiaryId,
         patch.housingId,
         patch.updates,
       );
       if (result.success) {
-        clearHousingPatch(patch.beneficiaryId);
+        clearHousingPatchIfCurrent(patch);
         continue;
       }
 
+      const current = readHousingPatchMap()[patch.beneficiaryId];
+      if (current && current.updatedAt !== patch.updatedAt) {
+        continue;
+      }
       setHousingPatch({
         ...patch,
         lastError: result.error || 'Synchronisation logement impossible',
       });
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        break;
-      }
-      continue;
+      break;
     }
   })().finally(() => {
     housingFlushPromise = null;
@@ -3101,15 +3164,31 @@ export const updateHousing = async (
 ): Promise<{ success: boolean; error: string | null; data?: { id?: string } }> => {
   const patch = mergeHousingPatch(beneficiaryId, housingId, updates);
   setHousingPatch(patch);
-  scheduleQueuedHousingSync();
 
-  return {
-    success: true,
-    error: null,
-    data: {
-      id: housingId || patch.housingId,
-    },
-  };
+  if (!shouldAttemptBackgroundSync()) {
+    scheduleQueuedHousingSync();
+    return { success: true, error: null, data: { id: housingId } };
+  }
+
+  const result = await updateHousingRemote(
+    beneficiaryId,
+    patch.housingId,
+    patch.updates,
+  );
+  if (result.success) {
+    clearHousingPatchIfCurrent(patch);
+    return result;
+  }
+
+  const current = readHousingPatchMap()[beneficiaryId];
+  if (!current || current.updatedAt === patch.updatedAt) {
+    setHousingPatch({
+      ...(current || patch),
+      lastError: result.error || 'Synchronisation logement impossible',
+    });
+  }
+  scheduleQueuedHousingSync();
+  return result;
 };
 
 export const fetchReferenceData = async (): Promise<ReferenceData> => {
@@ -3243,7 +3322,10 @@ export const fetchDiagnosticSanitaires = async (dossierId: string): Promise<Diag
 
 export const upsertDiagnosticSanitaires = async (dossierId: string, updates: Partial<DiagnosticSanitaires>): Promise<{ success: boolean; error: string | null }> => {
   try {
-    await queueReleveForSync('diagnostic_sanitaires', dossierId, updates as Record<string, unknown>);
+    await apiFetch(`/api/diagnostic-sanitaires/${encodeURIComponent(dossierId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
     return { success: true, error: null };
   } catch (e: any) { return { success: false, error: e.message }; }
 };
@@ -3270,7 +3352,10 @@ export const fetchMesuresAnthropometriques = async (dossierId: string): Promise<
 
 export const upsertMesuresAnthropometriques = async (dossierId: string, updates: Partial<MesuresAnthropometriques>): Promise<{ success: boolean; error: string | null }> => {
   try {
-    await queueReleveForSync('mesures_anthropometriques', dossierId, updates as Record<string, unknown>);
+    await apiFetch(`/api/mesures/${encodeURIComponent(dossierId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
     return { success: true, error: null };
   } catch (e: any) { return { success: false, error: e.message }; }
 };
@@ -3298,7 +3383,10 @@ export const fetchObservationsSynthese = async (dossierId: string, beneficiaireI
 export const upsertObservationsSynthese = async (dossierId: string, beneficiaireId: string, updates: Partial<ObservationsSynthese>): Promise<{ success: boolean; error: string | null }> => {
   try {
     void beneficiaireId;
-    await queueReleveForSync('observations_synthese', dossierId, updates as Record<string, unknown>);
+    await apiFetch(`/api/observations/${encodeURIComponent(dossierId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
     return { success: true, error: null };
   } catch (e: any) { return { success: false, error: e.message }; }
 };

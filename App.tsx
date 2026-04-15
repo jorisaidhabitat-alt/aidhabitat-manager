@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { AnahStatus, AppDocument, AppUser, Dossier, Visit, VisitReportLocation } from './types';
 import { Building, ExternalLink, Globe, WifiOff } from 'lucide-react';
@@ -25,6 +25,7 @@ const WikiView = lazy(() => loadWikiView().then((module) => ({ default: module.W
 const RetirementFundsView = lazy(() => loadRetirementFundsView().then((module) => ({ default: module.RetirementFundsView })));
 
 const DOSSIER_VIEWS = new Set(['dossiers', 'documents', 'visit-report']);
+const LIVE_REFRESH_INTERVAL_MS = 15_000;
 
 const createDefaultVisitReportLocation = (): VisitReportLocation => ({
   activeTab: 'Bénéficiaire',
@@ -55,11 +56,6 @@ export default function App() {
     preparedAt: string;
   } | null>(null);
   const [visitReportLocations, setVisitReportLocations] = useState<Record<string, VisitReportLocation>>({});
-  const currentViewRef = useRef(currentView);
-
-  useEffect(() => {
-    currentViewRef.current = currentView;
-  }, [currentView]);
 
   const applyDossiers = useCallback((items: Dossier[]) => {
     setDossiers(items);
@@ -132,6 +128,10 @@ export default function App() {
       }
     };
 
+    const refreshSilently = () => {
+      void refreshLiveData();
+    };
+
     if (!user) {
       setDossiers([]);
       setVisits([]);
@@ -154,15 +154,25 @@ export default function App() {
       }
     });
 
-    pollTimer = setInterval(() => {
-      if (DOSSIER_VIEWS.has(currentViewRef.current)) {
-        return;
+    const handleWindowFocus = () => refreshSilently();
+    const handleWindowOnline = () => refreshSilently();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSilently();
       }
-      void refreshLiveData();
-    }, 15000);
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('online', handleWindowOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    pollTimer = setInterval(refreshSilently, LIVE_REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('online', handleWindowOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearPolling();
     };
   }, [hydrateInitialData, isAuthResolved, refreshLiveData, user]);
