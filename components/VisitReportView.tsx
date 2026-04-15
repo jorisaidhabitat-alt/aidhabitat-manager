@@ -1350,7 +1350,6 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         numeroSecuriteSocialeMadame: normalizedBeneficiary.numeroSecuriteSocialeMadame,
                         caisseRetraitePrincipale: normalizedBeneficiary.caisseRetraitePrincipale,
                         caissesRetraiteComplementaires: normalizedBeneficiary.caissesRetraiteComplementaires,
-                        trustedEmail: trustedEmailIsValid ? normalizedBeneficiary.trustedEmail : undefined,
                         trustedPerson: {
                             name: normalizedBeneficiary.trustedName,
                             phone: trustedPhoneIsValid ? normalizedBeneficiary.trustedPhone : undefined,

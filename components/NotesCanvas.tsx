@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,6 +11,8 @@ import {
   Save,
   Slash,
   Trash2,
+  Maximize2,
+  X,
 } from 'lucide-react';
 
 export type DrawingTool = 'pen' | 'eraser' | 'highlighter' | 'line' | 'rect';
@@ -108,6 +110,20 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveLabel, setSaveLabel] = useState<'idle' | 'saved' | 'error'>('idle');
   const [showColorPalette, setShowColorPalette] = useState(false);
+  const [showTextModal, setShowTextModal] = useState(false);
+  const [textModalVisible, setTextModalVisible] = useState(false);
+
+  const openTextModal = useCallback(() => {
+    setShowTextModal(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setTextModalVisible(true));
+    });
+  }, []);
+
+  const closeTextModal = useCallback(() => {
+    setTextModalVisible(false);
+    setTimeout(() => setShowTextModal(false), 280);
+  }, []);
   const textRef = useRef(text);
   const strokesRef = useRef(strokes);
   const isDirtyRef = useRef(isDirty);
@@ -456,7 +472,7 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
       }`}
     >
       {showText && (
-        <div className="px-4 pt-4 pb-3 border-b border-slate-200 bg-slate-50">
+        <div className="relative px-4 pt-4 pb-3 border-b border-slate-200 bg-slate-50">
           <textarea
             value={text}
             onChange={(event) => {
@@ -471,6 +487,50 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
             placeholder={placeholder}
             className="w-full h-[92px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 outline-none focus:ring-2 focus:ring-[#907CA1] resize-none"
           />
+          <button
+            type="button"
+            onClick={openTextModal}
+            className="absolute bottom-5 left-5 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white/80 transition-colors"
+            title="Ouvrir en grand"
+          >
+            <Maximize2 size={16} />
+          </button>
+        </div>
+      )}
+
+      {showTextModal && (
+        <div className={`fixed inset-0 z-[9999] flex items-center justify-center transition-all duration-300 ease-out ${textModalVisible ? 'opacity-100' : 'opacity-0'}`}>
+          <div
+            className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${textModalVisible ? 'opacity-100' : 'opacity-0'}`}
+            onClick={closeTextModal}
+          />
+          <div className={`relative z-10 flex flex-col w-[92vw] max-w-[900px] h-[82vh] bg-white rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 ease-out ${textModalVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+              <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Notes</span>
+              <button
+                type="button"
+                onClick={closeTextModal}
+                className="p-2 rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                <X size={20} className="text-slate-500" />
+              </button>
+            </div>
+            <textarea
+              autoFocus
+              value={text}
+              onChange={(event) => {
+                const nextText = event.target.value;
+                setText(nextText);
+                textRef.current = nextText;
+                setIsDirty(true);
+                isDirtyRef.current = true;
+                setSaveLabel('idle');
+                emitDraft({ text: nextText, isDirty: true });
+              }}
+              placeholder={placeholder}
+              className="flex-1 w-full p-6 text-base leading-relaxed text-slate-700 outline-none resize-none"
+            />
+          </div>
         </div>
       )}
 
