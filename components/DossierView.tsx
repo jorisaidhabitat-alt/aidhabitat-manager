@@ -47,6 +47,7 @@ const OCCUPANT_OPTIONS = [
   { value: '5+', label: '5+ occupants' },
 ];
 const QUICK_NOTE_AUTOSAVE_DELAY_MS = 250;
+const BENEFICIARY_AUTOSAVE_DELAY_MS = 180;
 
 const parseOccupantCount = (value: string | number | undefined) => {
   const normalized = Number.parseInt(String(value ?? '').trim(), 10);
@@ -838,16 +839,19 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
 
     let isCancelled = false;
 
-    void (async () => {
-      const { success, error } = await updateBeneficiary(dossier.patient.id, payload);
-      if (isCancelled || requestId !== beneficiarySaveRequestRef.current) return;
-      if (!success) {
-        console.error('Failed to save beneficiary details', error);
-      }
-    })();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const { success, error } = await updateBeneficiary(dossier.patient.id, payload);
+        if (isCancelled || requestId !== beneficiarySaveRequestRef.current) return;
+        if (!success) {
+          console.error('Failed to save beneficiary details', error);
+        }
+      })();
+    }, BENEFICIARY_AUTOSAVE_DELAY_MS);
 
     return () => {
       isCancelled = true;
+      window.clearTimeout(timer);
     };
   }, [buildBeneficiaryPayload, displayedIncomeCategory, dossier.patient.id, editForm, patient]);
 

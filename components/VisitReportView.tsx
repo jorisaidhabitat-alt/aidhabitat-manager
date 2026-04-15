@@ -713,6 +713,12 @@ function useDebounce<T>(value: T, delay: number): T {
     return debouncedValue;
 }
 
+const BENEFICIARY_SYNC_DEBOUNCE_MS = 180;
+const CONTEXT_SYNC_DEBOUNCE_MS = 180;
+const HOUSING_SYNC_DEBOUNCE_MS = 180;
+const RELEVE_BLOCK_SYNC_DEBOUNCE_MS = 120;
+const NOTE_DRAFT_SYNC_DEBOUNCE_MS = 45;
+
 // =============================================================
 // Main Component
 // =============================================================
@@ -1210,13 +1216,13 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     // =============================================================
     // AUTO-SAVE with Status Indicator
     // =============================================================
-    const debouncedBeneficiary = useDebounce(formData.beneficiary, 25);
-    const debouncedContext = useDebounce(formData.context, 25);
-    const debouncedHousing = useDebounce(formData.housing, 25);
-    const debouncedSanitaires = useDebounce(sanitairesData, 35);
-    const debouncedMesures = useDebounce(mesuresData, 35);
-    const debouncedSynthese = useDebounce(syntheseData, 35);
-    const debouncedRecommendations = useDebounce(recommendationsData, 35);
+    const debouncedBeneficiary = useDebounce(formData.beneficiary, BENEFICIARY_SYNC_DEBOUNCE_MS);
+    const debouncedContext = useDebounce(formData.context, CONTEXT_SYNC_DEBOUNCE_MS);
+    const debouncedHousing = useDebounce(formData.housing, HOUSING_SYNC_DEBOUNCE_MS);
+    const debouncedSanitaires = useDebounce(sanitairesData, RELEVE_BLOCK_SYNC_DEBOUNCE_MS);
+    const debouncedMesures = useDebounce(mesuresData, RELEVE_BLOCK_SYNC_DEBOUNCE_MS);
+    const debouncedSynthese = useDebounce(syntheseData, RELEVE_BLOCK_SYNC_DEBOUNCE_MS);
+    const debouncedRecommendations = useDebounce(recommendationsData, RELEVE_BLOCK_SYNC_DEBOUNCE_MS);
     const pendingSavesRef = useRef(new Map<string, {
         label: string;
         task: () => Promise<{ success: boolean; error: string | null }>;
@@ -2674,7 +2680,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         noteSaveChainRef.current = prev.then(doSave, doSave).then(() => undefined, () => undefined);
     }, [commitNotePages, currentDrawingNotePage, currentPageNumber, currentTextNotePage, dossier.id, dossier.patient.id, isSharedTextSubsectionNotes, noteCacheKey, noteLayoutKind, noteScopeType, noteTabKey, noteTextCacheKey, noteTextTabKey]);
 
-    const debouncedNoteDraft = useDebounce(noteDraft, 45);
+    const debouncedNoteDraft = useDebounce(noteDraft, NOTE_DRAFT_SYNC_DEBOUNCE_MS);
 
     useEffect(() => {
         if (!debouncedNoteDraft.isDirty) return;
