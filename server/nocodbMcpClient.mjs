@@ -8,11 +8,12 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const MCP_URL = process.env.NOCODB_MCP_URL || 'https://apps-nocodb.z5avx1.easypanel.host/mcp/ncsmc7qy3dpge8j1';
-const MCP_TOKEN = process.env.NOCODB_MCP_TOKEN || 'lRGWxsf8Oj4F5MrbRmAVGxzJeRyYd-yq';
-const API_TOKEN = process.env.NOCODB_API_TOKEN || '';
-const AUTH_TOKEN = process.env.NOCODB_AUTH_TOKEN || '';
-const BASE_ID = process.env.NOCODB_BASE_ID || 'pskgbjythubfzv9';
+const MCP_URL = String(process.env.NOCODB_MCP_URL || '').trim();
+const MCP_TOKEN = String(process.env.NOCODB_MCP_TOKEN || '').trim();
+const API_TOKEN = String(process.env.NOCODB_API_TOKEN || '').trim();
+const AUTH_TOKEN = String(process.env.NOCODB_AUTH_TOKEN || '').trim();
+const BASE_ID = String(process.env.NOCODB_BASE_ID || 'pskgbjythubfzv9').trim();
+const SHOULD_FORCE_REST = process.env.NOCODB_FORCE_REST === '1' || Boolean(process.env.VERCEL);
 
 let clientPromise;
 let transportRef;
@@ -280,6 +281,10 @@ const isRecoverableMcpError = (error) => {
 };
 
 const createClient = async () => {
+  if (!MCP_URL || !MCP_TOKEN) {
+    throw new Error('NocoDB MCP non configuré');
+  }
+
   const npmCacheDir = process.env.VERCEL
     ? path.join('/tmp', '.npm-cache')
     : `${process.cwd()}/.npm-cache`;
@@ -329,7 +334,11 @@ export const getMcpClient = async () => {
 };
 
 export const callNocoTool = async (name, args = {}) => {
-  if (process.env.NOCODB_FORCE_REST === '1' && canUseRestFallback(name)) {
+  if (SHOULD_FORCE_REST && canUseRestFallback(name)) {
+    return callRestTool(name, args);
+  }
+
+  if ((!MCP_URL || !MCP_TOKEN) && canUseRestFallback(name)) {
     return callRestTool(name, args);
   }
 

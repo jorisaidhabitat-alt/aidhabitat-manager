@@ -46,6 +46,7 @@ const OCCUPANT_OPTIONS = [
   { value: '5', label: '5 occupants' },
   { value: '5+', label: '5+ occupants' },
 ];
+const QUICK_NOTE_AUTOSAVE_DELAY_MS = 250;
 
 const parseOccupantCount = (value: string | number | undefined) => {
   const normalized = Number.parseInt(String(value ?? '').trim(), 10);
@@ -836,7 +837,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
           setIsNoteSaving(false);
         }
       }
-    }, 800);
+    }, QUICK_NOTE_AUTOSAVE_DELAY_MS);
 
     return () => clearTimeout(timer);
   }, [currentNotePage.drawingJson, currentNotePage.textContent, emptyDrawingJson, handleSaveNote, noteDraft]);

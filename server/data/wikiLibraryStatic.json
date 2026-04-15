@@ -1,0 +1,653 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "preco-chambre-penderie-escamotable",
+      "title": "Penderie escamotable",
+      "description": "Facilite l acces aux vêtements sans lever les bras ni utiliser un marchepied.",
+      "imageUrl": "/wiki-offline/preco-illustrations/chambre/penderie-escamotable.jpg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Chambre",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-chambre-television-fixee-au-mur",
+      "title": "Television fixee au mur",
+      "description": "Libère l espace au sol et améliore le confort visuel depuis le lit ou le fauteuil.",
+      "imageUrl": "/wiki-offline/preco-illustrations/chambre/television-fixee-au-mur.jpg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Chambre",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-domotique-vmc",
+      "title": "VMC",
+      "description": "Améliore la qualité de l air et limite l humidité dans le logement.",
+      "imageUrl": "/wiki-offline/preco-illustrations/domotique/vmc.jpg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Domotique",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-isolation-doublage-isole-des-murs",
+      "title": "Doublage isole des murs",
+      "description": "Améliore le confort thermique et réduit la sensation de paroi froide.",
+      "imageUrl": "/wiki-offline/preco-illustrations/isolation/doublage-isole-des-murs.jpg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Isolation",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-salle-de-bain-machine-a-laver-en-hauteur",
+      "title": "Machine a laver en hauteur",
+      "description": "Limite les flexions et facilite le chargement du linge.",
+      "imageUrl": "/wiki-offline/preco-illustrations/salle-de-bain/machine-a-laver-en-hauteur.jpg",
+      "tags": [
+        "Salle de bain"
+      ],
+      "category": "Salle de bain",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-eclairage-eclairage",
+      "title": "Eclairage",
+      "description": "Améliore la visibilité et sécurise les déplacements au quotidien.",
+      "imageUrl": "/wiki-offline/preco-illustrations/eclairage/eclairage.jpg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Eclairage",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-chauffage-poele-a-granules",
+      "title": "Poele a granules",
+      "description": "Apporte un chauffage plus confortable et plus facile à piloter.",
+      "imageUrl": "/wiki-offline/preco-illustrations/chauffage/poele-a-granules.jpg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Chauffage",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-cuisine-plan-de-travail-cuisine",
+      "title": "Plan de travail cuisine",
+      "description": "Permet une préparation des repas plus confortable et mieux adaptée à la posture.",
+      "imageUrl": "/wiki-offline/preco-illustrations/cuisine/plan-de-travail-cuisine.jpg",
+      "tags": [
+        "Cuisine"
+      ],
+      "category": "Cuisine",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-cuisine-evier-cuisine-evide",
+      "title": "Evier cuisine evide",
+      "description": "Facilite l usage en position assise ou au plus près du plan de travail.",
+      "imageUrl": "/wiki-offline/preco-illustrations/cuisine/evier-cuisine-evide.jpg",
+      "tags": [
+        "Cuisine"
+      ],
+      "category": "Cuisine",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-cuisine-meuble-bas-evier",
+      "title": "Meuble bas evier",
+      "description": "Optimise le rangement à hauteur accessible dans la cuisine.",
+      "imageUrl": "/wiki-offline/preco-illustrations/cuisine/meuble-bas-evier.jpg",
+      "tags": [
+        "Cuisine"
+      ],
+      "category": "Cuisine",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-wc-cuvette-suspendue",
+      "title": "Cuvette suspendue",
+      "description": "Facilite l entretien et permet d adapter plus finement la hauteur d usage.",
+      "imageUrl": "/wiki-offline/preco-illustrations/wc/cuvette-suspendue.jpg",
+      "tags": [
+        "WC"
+      ],
+      "category": "WC",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-wc-accoudoirs-rabattables-wc",
+      "title": "Accoudoirs rabattables WC",
+      "description": "Sécurisent le transfert assis-debout et apportent un appui latéral au WC.",
+      "imageUrl": "/wiki-offline/preco-illustrations/wc/accoudoirs-rabattables-wc.jpg",
+      "tags": [
+        "WC"
+      ],
+      "category": "WC",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-wc-barre-appui-coudee-gauche-wc",
+      "title": "Barre appui coudée gauche WC",
+      "description": "Sécurise les transferts et apporte un appui stable au relevage.",
+      "imageUrl": "/wiki-offline/preco-illustrations/wc/barre-appui-coudee-gauche-wc.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "WC",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-wc-barre-appui-coudee-droite-wc",
+      "title": "Barre appui coudée droite WC",
+      "description": "Sécurise les transferts et apporte un appui stable au relevage.",
+      "imageUrl": "/wiki-offline/preco-illustrations/wc/barre-appui-coudee-droite-wc.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "WC",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-wc-cuvette-surelevee",
+      "title": "Cuvette surelevee",
+      "description": "Réduit l effort au relevage grâce à une assise plus haute.",
+      "imageUrl": "/wiki-offline/preco-illustrations/wc/cuvette-surelevee.jpg",
+      "tags": [
+        "WC"
+      ],
+      "category": "WC",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-wc-abattant-automatique",
+      "title": "Abattant automatique",
+      "description": "Améliore l hygiène et limite les manipulations fines.",
+      "imageUrl": "/wiki-offline/preco-illustrations/wc/abattant-automatique.jpg",
+      "tags": [
+        "WC"
+      ],
+      "category": "WC",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-escaliers-siege-monte-escalier",
+      "title": "Siege monte escalier",
+      "description": "Permet de franchir l escalier en limitant l effort et le risque de chute.",
+      "imageUrl": "/wiki-offline/preco-illustrations/escaliers/siege-monte-escalier.jpg",
+      "tags": [
+        "Escaliers & ascenseur"
+      ],
+      "category": "Escalier",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-escaliers-main-courante-exterieure-sur-pieds",
+      "title": "Main courante exterieure sur pieds",
+      "description": "Sécurise la progression sur un cheminement extérieur ou quelques marches.",
+      "imageUrl": "/wiki-offline/preco-illustrations/escaliers/main-courante-exterieure-sur-pieds.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Escalier",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-escaliers-marches-antiderapantes-exterieures",
+      "title": "Marches antiderapantes exterieures",
+      "description": "Réduisent le risque de glissade sur les escaliers extérieurs.",
+      "imageUrl": "/wiki-offline/preco-illustrations/escaliers/marches-antiderapantes-exterieures.jpg",
+      "tags": [
+        "Escaliers & ascenseur"
+      ],
+      "category": "Escalier",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-escaliers-pente-douce",
+      "title": "Pente douce",
+      "description": "Facilite le franchissement d un dénivelé avec un passage plus progressif.",
+      "imageUrl": "/wiki-offline/preco-illustrations/escaliers/pente-douce.png",
+      "tags": [
+        "Accès extérieurs"
+      ],
+      "category": "Escalier",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-escaliers-applique-led-detecteur-mouvement",
+      "title": "Applique LED detecteur mouvement",
+      "description": "Apporte un éclairage automatique utile dans les zones de passage.",
+      "imageUrl": "/wiki-offline/preco-illustrations/escaliers/applique-led-detecteur-mouvement.jpeg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Escalier",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-escaliers-rampe-interieure",
+      "title": "Rampe interieure",
+      "description": "Facilite le franchissement d un ressaut ou d une petite marche.",
+      "imageUrl": "/wiki-offline/preco-illustrations/escaliers/rampe-interieure.jpg",
+      "tags": [
+        "Accès extérieurs"
+      ],
+      "category": "Escalier",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-barres-appui-barre-appui-entree",
+      "title": "Barre appui entree",
+      "description": "Apporte un appui rassurant à l entrée du logement.",
+      "imageUrl": "/wiki-offline/preco-illustrations/barres-appui/barre-appui-entree.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Barres d'appui",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-barres-appui-barre-relevable",
+      "title": "Barre relevable",
+      "description": "Offre un appui modulable selon le transfert ou l usage.",
+      "imageUrl": "/wiki-offline/preco-illustrations/barres-appui/barre-relevable.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Barres d'appui",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-barres-appui-barre-appui-angle",
+      "title": "Barre appui angle",
+      "description": "Sécurise les changements d appui dans les angles ou zones de pivot.",
+      "imageUrl": "/wiki-offline/preco-illustrations/barres-appui/barre-appui-angle.png",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Barres d'appui",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-barres-appui-barre-redressement-lit",
+      "title": "Barre redressement lit",
+      "description": "Aide au redressement et au passage assis depuis le lit.",
+      "imageUrl": "/wiki-offline/preco-illustrations/barres-appui/barre-redressement-lit.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Barres d'appui",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-barres-appui-barre-droite-verticale",
+      "title": "Barre droite verticale",
+      "description": "Aide à la stabilisation et au relevage dans les zones de transfert.",
+      "imageUrl": "/wiki-offline/preco-illustrations/barres-appui/barre-droite-verticale.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Barres d'appui",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-barres-appui-barre-droite-horizontale",
+      "title": "Barre droite horizontale",
+      "description": "Offre un appui continu pour sécuriser les déplacements ou transferts.",
+      "imageUrl": "/wiki-offline/preco-illustrations/barres-appui/barre-droite-horizontale.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Barres d'appui",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-barres-appui-barre-appui-en-l",
+      "title": "Barre appui en L",
+      "description": "Combine appui vertical et horizontal pour sécuriser plusieurs gestes.",
+      "imageUrl": "/wiki-offline/preco-illustrations/barres-appui/barre-appui-en-l.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Barres d'appui",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-ascenseur-plateforme-elevatrice",
+      "title": "Plateforme elevatrice",
+      "description": "Permet de franchir un dénivelé important avec fauteuil ou aide technique.",
+      "imageUrl": "/wiki-offline/preco-illustrations/ascenseur/plateforme-elevatrice.jpg",
+      "tags": [
+        "Escaliers & ascenseur"
+      ],
+      "category": "Ascenseur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-ascenseur-ascenseur",
+      "title": "Ascenseur",
+      "description": "Facilite l accès aux étages sans effort de franchissement.",
+      "imageUrl": "/wiki-offline/preco-illustrations/ascenseur/ascenseur.jpg",
+      "tags": [
+        "Escaliers & ascenseur"
+      ],
+      "category": "Ascenseur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-salle-de-bain-baignoire",
+      "title": "Baignoire",
+      "description": "Peut être conservée ou adaptée selon les besoins d usage et de sécurité.",
+      "imageUrl": "/wiki-offline/preco-illustrations/salle-de-bain/baignoire.jpg",
+      "tags": [
+        "Salle de bain"
+      ],
+      "category": "Salle de bain",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-salle-de-bain-seche-serviette",
+      "title": "Seche serviette",
+      "description": "Améliore le confort thermique dans la salle de bain.",
+      "imageUrl": "/wiki-offline/preco-illustrations/salle-de-bain/seche-serviette.jpg",
+      "tags": [
+        "Salle de bain"
+      ],
+      "category": "Salle de bain",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-salle-de-bain-armoire-toilette-miroir",
+      "title": "Armoire toilette miroir",
+      "description": "Améliore le rangement et le confort d usage au lavabo.",
+      "imageUrl": "/wiki-offline/preco-illustrations/salle-de-bain/armoire-toilette-miroir.jpg",
+      "tags": [
+        "Salle de bain"
+      ],
+      "category": "Salle de bain",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-salle-de-bain-fenetre-dans-douche",
+      "title": "Fenetre dans douche",
+      "description": "Améliore l aération et l apport de lumière naturelle dans la douche.",
+      "imageUrl": "/wiki-offline/preco-illustrations/salle-de-bain/fenetre-dans-douche.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Salle de bain",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-exterieur-revetement-antiderapant-exterieur",
+      "title": "Revetement antiderapant exterieur",
+      "description": "Sécurise les déplacements extérieurs en limitant le risque de glissade.",
+      "imageUrl": "/wiki-offline/preco-illustrations/exterieur/revetement-antiderapant-exterieur.jpg",
+      "tags": [
+        "Accès extérieurs"
+      ],
+      "category": "Exterieur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-exterieur-rampe-acces-exterieure",
+      "title": "Rampe acces exterieure",
+      "description": "Permet un accès plus facile au logement en limitant le franchissement de marches.",
+      "imageUrl": "/wiki-offline/preco-illustrations/exterieur/rampe-acces-exterieure.jpg",
+      "tags": [
+        "Accès extérieurs"
+      ],
+      "category": "Exterieur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-exterieur-pente-douce-beton",
+      "title": "Pente douce beton",
+      "description": "Crée un accès plus progressif et plus praticable en entrée.",
+      "imageUrl": "/wiki-offline/preco-illustrations/exterieur/pente-douce-beton.jpg",
+      "tags": [
+        "Accès extérieurs"
+      ],
+      "category": "Exterieur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-exterieur-passerelle-pmr",
+      "title": "Passerelle PMR",
+      "description": "Facilite le passage sur une zone irrégulière ou en contrebas.",
+      "imageUrl": "/wiki-offline/preco-illustrations/exterieur/passerelle-pmr.jpg",
+      "tags": [
+        "Accès extérieurs"
+      ],
+      "category": "Exterieur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-exterieur-seuil-surbaisse",
+      "title": "Seuil surbaisse",
+      "description": "Réduit le ressaut de passage pour faciliter le franchissement.",
+      "imageUrl": "/wiki-offline/preco-illustrations/exterieur/seuil-surbaisse.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Exterieur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-exterieur-reperage-contrastant",
+      "title": "Reperage contrastant",
+      "description": "Améliore la lecture visuelle des marches et zones de franchissement.",
+      "imageUrl": "/wiki-offline/preco-illustrations/exterieur/reperage-contrastant.jpg",
+      "tags": [
+        "Escaliers & ascenseur"
+      ],
+      "category": "Exterieur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-exterieur-main-courante-exterieur",
+      "title": "Main courante exterieur",
+      "description": "Offre un appui continu pour sécuriser les cheminements extérieurs.",
+      "imageUrl": "/wiki-offline/preco-illustrations/exterieur/main-courante-exterieur.jpg",
+      "tags": [
+        "Barres d'appui"
+      ],
+      "category": "Exterieur",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-portes-porte-entree",
+      "title": "Porte entree",
+      "description": "Facilite l accès principal du logement avec un passage plus fonctionnel.",
+      "imageUrl": "/wiki-offline/preco-illustrations/portes/porte-entree.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Portes",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-portes-porte-pliante",
+      "title": "Porte pliante",
+      "description": "Réduit l encombrement du débattement dans les espaces restreints.",
+      "imageUrl": "/wiki-offline/preco-illustrations/portes/porte-pliante.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Portes",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-portes-porte-de-garage",
+      "title": "Porte de garage",
+      "description": "Automatise ou simplifie l accès au garage selon les besoins d usage.",
+      "imageUrl": "/wiki-offline/preco-illustrations/portes/porte-de-garage.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Portes",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-portes-seuil-plat",
+      "title": "Seuil plat",
+      "description": "Supprime le ressaut et fluidifie le passage entre deux espaces.",
+      "imageUrl": "/wiki-offline/preco-illustrations/portes/seuil-plat.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Portes",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-portes-porte-automatique",
+      "title": "Porte automatique",
+      "description": "Réduit l effort d ouverture et facilite le passage.",
+      "imageUrl": "/wiki-offline/preco-illustrations/portes/porte-automatique.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Portes",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-portes-porte-coulissante",
+      "title": "Porte coulissante",
+      "description": "Libère l espace de manoeuvre et facilite la circulation.",
+      "imageUrl": "/wiki-offline/preco-illustrations/portes/porte-coulissante.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Portes",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-portes-ouverture-de-mur-remplacement-porte",
+      "title": "Ouverture de mur remplacement porte",
+      "description": "Élargit le passage pour améliorer la circulation et l accessibilité.",
+      "imageUrl": "/wiki-offline/preco-illustrations/portes/ouverture-de-mur-remplacement-porte.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Portes",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-fenetres-volets-porte-fenetre",
+      "title": "Porte fenetre",
+      "description": "Améliore le passage vers l extérieur avec une ouverture plus accessible.",
+      "imageUrl": "/wiki-offline/preco-illustrations/fenetres-volets/porte-fenetre.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Fenetres - volets",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-fenetres-volets-volet-roulant-electrique",
+      "title": "Volet roulant electrique",
+      "description": "Facilite la gestion de la lumière sans effort de manoeuvre.",
+      "imageUrl": "/wiki-offline/preco-illustrations/fenetres-volets/volet-roulant-electrique.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Fenetres - volets",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-fenetres-volets-fenetre-battante",
+      "title": "Fenetre battante",
+      "description": "Permet une ouverture simple et un accès à l aération du logement.",
+      "imageUrl": "/wiki-offline/preco-illustrations/fenetres-volets/fenetre-battante.jpg",
+      "tags": [
+        "Ouvertures"
+      ],
+      "category": "Fenetres - volets",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-circulation-sol-vinyle-bois-fonce",
+      "title": "Sol vinyle bois fonce",
+      "description": "Améliore le confort d usage avec un sol souple et facile d entretien.",
+      "imageUrl": "/wiki-offline/preco-illustrations/circulation/sol-vinyle-bois-fonce.jpg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Circulation",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    },
+    {
+      "id": "preco-circulation-parquet-interieur",
+      "title": "Parquet interieur",
+      "description": "Apporte un revêtement plus confortable et plus chaleureux à l usage.",
+      "imageUrl": "/wiki-offline/preco-illustrations/circulation/parquet-interieur.jpeg",
+      "tags": [
+        "Equipements"
+      ],
+      "category": "Circulation",
+      "createdAt": "2026-03-16T10:12:36.511Z",
+      "updatedAt": "2026-03-16T10:12:36.511Z"
+    }
+  ]
+}

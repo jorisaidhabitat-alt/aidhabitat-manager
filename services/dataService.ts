@@ -562,6 +562,9 @@ let recommendationsOnlineListenerRegistered = false;
 let recommendationsFlushTimer: number | null = null;
 let backgroundSyncLoopRegistered = false;
 let backgroundSyncIntervalId: number | null = null;
+const BACKGROUND_SYNC_INTERVAL_MS = 1_000;
+const PATCH_SYNC_TRIGGER_DELAY_MS = 40;
+const NOTE_SYNC_TRIGGER_DELAY_MS = 35;
 
 const shouldAttemptBeneficiarySync = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -608,7 +611,7 @@ const ensureBackgroundSyncLoop = () => {
 
   backgroundSyncIntervalId = window.setInterval(() => {
     runBackgroundSyncTick();
-  }, 2000);
+  }, BACKGROUND_SYNC_INTERVAL_MS);
 
   runBackgroundSyncTick();
 };
@@ -1572,7 +1575,7 @@ const scheduleQueuedVisitRecommendationsSync = () => {
   recommendationsFlushTimer = window.setTimeout(() => {
     recommendationsFlushTimer = null;
     void flushQueuedVisitRecommendations();
-  }, 80);
+  }, PATCH_SYNC_TRIGGER_DELAY_MS);
 };
 
 // Helper to map a raw beneficiary (from 'beneficiaires' table) to a Patient object
@@ -1935,7 +1938,7 @@ const scheduleQueuedDossierSync = () => {
   dossierFlushTimer = window.setTimeout(() => {
     dossierFlushTimer = null;
     void flushQueuedDossierUpdates();
-  }, 80);
+  }, PATCH_SYNC_TRIGGER_DELAY_MS);
 };
 
 export const updateDossier = async (
@@ -2603,7 +2606,7 @@ const scheduleQueuedNoteSync = () => {
   noteSyncTimer = window.setTimeout(() => {
     noteSyncTimer = null;
     void flushQueuedNoteOperations();
-  }, 70);
+  }, NOTE_SYNC_TRIGGER_DELAY_MS);
 };
 
 const refreshNoteScopeInBackground = (patientId: string, options: NoteScopeOptions) => {
@@ -2970,7 +2973,7 @@ const scheduleQueuedBeneficiarySync = () => {
   beneficiaryFlushTimer = window.setTimeout(() => {
     beneficiaryFlushTimer = null;
     void flushQueuedBeneficiaryUpdates();
-  }, 80);
+  }, PATCH_SYNC_TRIGGER_DELAY_MS);
 };
 
 export const updateBeneficiary = async (patientId: string, updates: Partial<Patient>): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
@@ -3088,7 +3091,7 @@ const scheduleQueuedHousingSync = () => {
   housingFlushTimer = window.setTimeout(() => {
     housingFlushTimer = null;
     void flushQueuedHousingUpdates();
-  }, 80);
+  }, PATCH_SYNC_TRIGGER_DELAY_MS);
 };
 
 export const updateHousing = async (

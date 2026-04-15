@@ -94,6 +94,7 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const currentStrokeRef = useRef<DrawingStroke | null>(null);
   const lastHydratedDocumentKeyRef = useRef('');
+  const lastExternalToolRef = useRef<DrawingTool | undefined>(activeTool);
 
   const [tool, setTool] = useState<DrawingTool>(activeTool || 'pen');
   const [penColor, setPenColor] = useState('#111827');
@@ -172,19 +173,24 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
 
   useEffect(() => {
     if (!availableTools.includes(tool)) {
-      setTool('pen');
+      const fallbackTool = availableTools[0] || 'pen';
+      setTool(fallbackTool);
+      onToolChange?.(fallbackTool);
     }
-  }, [availableTools, tool]);
+  }, [availableTools, onToolChange, tool]);
 
   useEffect(() => {
-    if (!activeTool || activeTool === tool) {
-      return;
+    if (lastExternalToolRef.current === activeTool) return;
+    lastExternalToolRef.current = activeTool;
+    if (activeTool) {
+      setTool(activeTool);
     }
-    setTool(activeTool);
-  }, [activeTool, tool]);
+  }, [activeTool]);
 
-  useEffect(() => {
-    onToolChange?.(tool);
+  const handleToolSelect = React.useCallback((nextTool: DrawingTool) => {
+    if (nextTool === tool) return;
+    setTool(nextTool);
+    onToolChange?.(nextTool);
   }, [onToolChange, tool]);
 
   useEffect(() => {
@@ -382,14 +388,14 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
         label="Crayon"
         icon={<PenLine size={18} />}
         isActive={tool === 'pen'}
-        onClick={() => setTool('pen')}
+        onClick={() => handleToolSelect('pen')}
       />
       {toolset === 'advanced' && (
         <ToolButton
           label="Surligneur"
           icon={<Highlighter size={18} />}
           isActive={tool === 'highlighter'}
-          onClick={() => setTool('highlighter')}
+          onClick={() => handleToolSelect('highlighter')}
         />
       )}
       {toolset === 'structured' && (
@@ -398,13 +404,13 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
             label="Ligne"
             icon={<Slash size={18} />}
             isActive={tool === 'line'}
-            onClick={() => setTool('line')}
+            onClick={() => handleToolSelect('line')}
           />
           <ToolButton
             label="Rectangle"
             icon={<RectangleHorizontal size={18} />}
             isActive={tool === 'rect'}
-            onClick={() => setTool('rect')}
+            onClick={() => handleToolSelect('rect')}
           />
         </>
       )}
@@ -412,7 +418,7 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
         label="Gomme"
         icon={<Eraser size={18} />}
         isActive={tool === 'eraser'}
-        onClick={() => setTool('eraser')}
+        onClick={() => handleToolSelect('eraser')}
       />
       {toolset === 'advanced' && tool !== 'eraser' && (
         <ToolButton
@@ -571,7 +577,11 @@ const ToolButton: React.FC<{
 }> = ({ label, icon, isActive, onClick, disabled = false, accentColor }) => (
   <button
     type="button"
-    onClick={onClick}
+    onPointerDown={(event) => event.stopPropagation()}
+    onClick={(event) => {
+      event.stopPropagation();
+      onClick();
+    }}
     disabled={disabled}
     title={label}
     aria-label={label}
@@ -599,7 +609,11 @@ const PageButton: React.FC<{
 }> = ({ onClick, icon, disabled = false, title }) => (
   <button
     type="button"
-    onClick={onClick}
+    onPointerDown={(event) => event.stopPropagation()}
+    onClick={(event) => {
+      event.stopPropagation();
+      onClick();
+    }}
     disabled={disabled}
     title={title}
     className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 disabled:opacity-40"

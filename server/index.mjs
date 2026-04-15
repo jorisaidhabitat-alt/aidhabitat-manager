@@ -363,11 +363,19 @@ const findByRecordId = (records, recordId) => records.find((record) => String(re
 const latestByFieldValue = (records, fieldName, value) => latestRecord(
   records.filter((record) => String(field(record, fieldName) ?? '') === String(value ?? ''))
 );
+const normalizeLabelForMatch = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/['’`()/-]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
 const findByLabel = (records, value) => {
   if (!value) return undefined;
-  const normalized = String(value).trim().toLowerCase();
-  return records.find((record) => refLabel(record).trim().toLowerCase() === normalized)
-    || records.find((record) => refLabel(record).trim().toLowerCase().startsWith(normalized));
+  const normalized = normalizeLabelForMatch(value);
+  if (!normalized) return undefined;
+  return records.find((record) => normalizeLabelForMatch(refLabel(record)) === normalized)
+    || records.find((record) => normalizeLabelForMatch(refLabel(record)).startsWith(normalized));
 };
 const normalizeCommuneKey = (value) => String(value || '')
   .normalize('NFD')
@@ -2423,7 +2431,11 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
     ? trustedPersonPayload?.email
     : (has('trustedEmail') ? updates.trustedEmail : undefined);
   const situationMatch = findByLabel(references.situations, updates.familySituation);
-  const occupationMatch = findByLabel(references.statuts, updates.occupationStatus === 'Usufruitier' ? 'Usufruitier(e)' : updates.occupationStatus);
+  const normalizedOccupation = normalizeLabelForMatch(updates.occupationStatus);
+  const occupationMatch = findByLabel(references.statuts, updates.occupationStatus === 'Usufruitier' ? 'Usufruitier(e)' : updates.occupationStatus)
+    || (normalizedOccupation.startsWith('usufruitier')
+      ? findByLabel(references.statuts, 'Usufruitier')
+      : undefined);
   const dependenceMatch = findByLabel(references.dependances, updates.dependenceTxt);
   const caisseMatch = findByLabel(references.caisses, updates.caisseRetraitePrincipale);
   const caisseCompMatch = findByLabel(references.caissesComp, updates.caissesRetraiteComplementaires);
@@ -4298,8 +4310,74 @@ const initializeRuntimeStores = async () => {
   await fs.mkdir(WIKI_LIBRARY_DIR_URL, { recursive: true });
 };
 
+let bundledDataBootstrapPromise = null;
+
+const bootstrapBundledDataForRuntime = async () => {
+  if (!process.env.VERCEL) {
+    return;
+  }
+
+  const targetAuthStorePath = AUTH_STORE_URL.pathname;
+  const bundledAuthStorePath = new URL('./data/auth-store.json', import.meta.url).pathname;
+
+  try {
+    await fs.access(targetAuthStorePath);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      throw error;
+    }
+
+    try {
+      await fs.cp(LOCAL_DATA_DIR_PATH, DATA_DIR_PATH, {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+      return;
+    } catch (copyError) {
+      console.warn('[runtime] Copie initiale des données embarquées impossible.', copyError);
+    }
+  }
+
+  try {
+    await fs.access(targetAuthStorePath);
+  } catch {
+    try {
+      await fs.copyFile(bundledAuthStorePath, targetAuthStorePath);
+    } catch (copyError) {
+      console.warn('[runtime] Copie du auth-store embarqué impossible.', copyError);
+    }
+  }
+
+  const bundledProfilePhotosPath = new URL('./data/profile-photos/', import.meta.url).pathname;
+  try {
+    const currentPhotos = await fs.readdir(PROFILE_PHOTOS_DIR_URL);
+    if (currentPhotos.length > 0) {
+      return;
+    }
+  } catch {
+    // Continue with copy attempt.
+  }
+
+  try {
+    await fs.cp(bundledProfilePhotosPath, PROFILE_PHOTOS_DIR_URL.pathname, {
+      recursive: true,
+      force: false,
+      errorOnExist: false,
+    });
+  } catch (copyError) {
+    console.warn('[runtime] Copie des photos de profil embarquées impossible.', copyError);
+  }
+};
+
 const warmupRuntime = async () => {
   await initializeRuntimeStores();
+  if (!bundledDataBootstrapPromise) {
+    bundledDataBootstrapPromise = bootstrapBundledDataForRuntime().catch((error) => {
+      console.warn('[runtime] Initialisation des données embarquées impossible.', error);
+    });
+  }
+  await bundledDataBootstrapPromise;
   try {
     await loadMemberRegistry({ forceRefresh: true });
   } catch (error) {

@@ -907,6 +907,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const noteRequestKeyRef = useRef('');
     const notePagesCacheRef = useRef<Record<string, NotePage[]>>({});
     const notePageMemoryRef = useRef<Record<string, number>>({});
+    const pendingPageSelectionRef = useRef<{ cacheKey: string; pageNumber: number } | null>(null);
     const currentTextNotePagesRef = useRef<NotePage[]>([]);
     const noteSaveChainRef = useRef<Promise<void>>(Promise.resolve());
     const setPageMutationState = useCallback((next: boolean) => {
@@ -2203,6 +2204,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         recommendationsSnapshotRef.current = null;
         notePagesCacheRef.current = {};
         notePageMemoryRef.current = {};
+        pendingPageSelectionRef.current = null;
         setNotePagesCache({});
         setNotePageMemory({});
         setActiveTabNotePages([]);
@@ -2238,19 +2240,17 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         return pageNumbers.length > 0 ? pageNumbers : [0];
     }, [activeTabNotePages, currentTextNotePages]);
 
-    const notePageNumbersRef = useRef<number[]>(notePageNumbers);
-
-    useEffect(() => {
-        notePageNumbersRef.current = notePageNumbers;
-    }, [notePageNumbers]);
-
     useEffect(() => {
         if (isMeasurementsTab) {
+            pendingPageSelectionRef.current = null;
             setCurrentLocalPage(0);
             return;
         }
 
-        const preferredPageNumber = notePageMemory[noteCacheKey] ?? 0;
+        const pendingSelection = pendingPageSelectionRef.current;
+        const preferredPageNumber = pendingSelection?.cacheKey === noteCacheKey
+            ? pendingSelection.pageNumber
+            : (notePageMemory[noteCacheKey] ?? 0);
         const preferredIndex = notePageNumbers.findIndex((pageNumber) => pageNumber === preferredPageNumber);
 
         setCurrentLocalPage((previous) => {
@@ -2259,6 +2259,10 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             }
             return Math.min(previous, notePageNumbers.length - 1);
         });
+
+        if (pendingSelection?.cacheKey === noteCacheKey && preferredIndex >= 0) {
+            pendingPageSelectionRef.current = null;
+        }
     }, [isMeasurementsTab, noteCacheKey, notePageMemory, notePageNumbers]);
 
     const currentPageNumber = notePageNumbers[currentLocalPage] ?? 0;
@@ -2301,6 +2305,10 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             || currentTextNotePages.length > 0
         );
         if (!hasResolvedNotePage) return;
+        const pendingSelection = pendingPageSelectionRef.current;
+        if (pendingSelection?.cacheKey === noteCacheKey && pendingSelection.pageNumber !== currentPageNumber) {
+            return;
+        }
         rememberNotePage(noteCacheKey, currentPageNumber);
     }, [
         activeTabNotePages.length,
@@ -2442,8 +2450,17 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 layoutKind: noteLayoutKind,
             });
             const nextPages = commitNotePages(noteCacheKey, [...activeTabNotePagesRef.current, createdPage]);
+            const pendingSelection = {
+                cacheKey: noteCacheKey,
+                pageNumber: createdPage.pageNumber,
+            };
+            pendingPageSelectionRef.current = pendingSelection;
+            rememberNotePage(noteCacheKey, createdPage.pageNumber);
+
+            let nextTextPages = currentTextNotePagesRef.current;
             if (isSharedTextSubsectionNotes) {
-                const savedSharedTextPage = await saveNotePage({
+                const optimisticSharedTextPage: NotePage = {
+                    id: `pending-text-page-${createdPage.id || Date.now()}`,
                     patientId: dossier.patient.id,
                     dossierId: dossier.id,
                     scopeType: noteScopeType,
@@ -2453,14 +2470,43 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                     textContent: '',
                     drawingJson: EMPTY_DRAWING_JSON,
                     layoutKind: 'freeform',
-                });
-                const otherSharedPages = currentTextNotePagesRef.current.filter((page) => page.pageNumber !== savedSharedTextPage.pageNumber && page.id !== savedSharedTextPage.id);
-                commitNotePages(noteTextCacheKey, [...otherSharedPages, savedSharedTextPage]);
+                    updatedAt: new Date().toISOString(),
+                };
+                const otherSharedPages = currentTextNotePagesRef.current.filter((page) => page.pageNumber !== optimisticSharedTextPage.pageNumber && page.id !== optimisticSharedTextPage.id);
+                nextTextPages = commitNotePages(noteTextCacheKey, [...otherSharedPages, optimisticSharedTextPage]);
+
+                void saveNotePage({
+                    notePageId: optimisticSharedTextPage.id,
+                    patientId: dossier.patient.id,
+                    dossierId: dossier.id,
+                    scopeType: noteScopeType,
+                    scopeId: dossier.id,
+                    tabKey: noteTextTabKey,
+                    pageNumber: createdPage.pageNumber,
+                    textContent: '',
+                    drawingJson: EMPTY_DRAWING_JSON,
+                    layoutKind: 'freeform',
+                })
+                    .then((savedSharedTextPage) => {
+                        const latestSharedPages = notePagesCacheRef.current[noteTextCacheKey] || [];
+                        const mergedSharedPages = latestSharedPages.map((page) => (
+                            page.id === optimisticSharedTextPage.id ? savedSharedTextPage : page
+                        ));
+                        if (!mergedSharedPages.some((page) => page.id === savedSharedTextPage.id)) {
+                            mergedSharedPages.push(savedSharedTextPage);
+                        }
+                        commitNotePages(noteTextCacheKey, mergedSharedPages);
+                    })
+                    .catch((error) => {
+                        console.error('Failed to create shared visit note page', error);
+                    });
             }
-            const nextPageNumbers = notePageNumbersRef.current
-                .concat(createdPage.pageNumber)
-                .filter((pageNumber, index, array) => array.indexOf(pageNumber) === index)
-                .sort((left, right) => left - right)
+
+            const nextPageNumbers = Array.from(new Set([
+                ...nextPages.map((page) => page.pageNumber),
+                ...nextTextPages.map((page) => page.pageNumber),
+                createdPage.pageNumber,
+            ])).sort((left, right) => left - right);
             const nextPageIndex = nextPageNumbers.findIndex((pageNumber) => pageNumber === createdPage.pageNumber);
             setNoteDraft({
                 text: '',
@@ -2487,13 +2533,25 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             noteCacheKey,
             activeTabNotePagesRef.current.filter((page) => page.id !== deletedPageId),
         );
+        let remainingTextPages = currentTextNotePagesRef.current;
         if (isSharedTextSubsectionNotes) {
-            commitNotePages(
+            remainingTextPages = commitNotePages(
                 noteTextCacheKey,
                 currentTextNotePagesRef.current.filter((page) => page.id !== deletedSharedTextPageId && page.pageNumber !== currentPageNumber),
             );
         }
-        setCurrentLocalPage(Math.max(0, Math.min(currentLocalPage - 1, remainingPages.length - 1)));
+        const remainingPageNumbers = Array.from(new Set([
+            ...remainingPages.map((page) => page.pageNumber),
+            ...remainingTextPages.map((page) => page.pageNumber),
+        ])).sort((left, right) => left - right);
+        const nextPageIndex = Math.max(0, Math.min(currentLocalPage - 1, remainingPageNumbers.length - 1));
+        const nextPageNumber = remainingPageNumbers[nextPageIndex] ?? 0;
+        pendingPageSelectionRef.current = {
+            cacheKey: noteCacheKey,
+            pageNumber: nextPageNumber,
+        };
+        rememberNotePage(noteCacheKey, nextPageNumber);
+        setCurrentLocalPage(nextPageIndex);
 
         if (!deletedPageId && !deletedSharedTextPageId) {
             return;
@@ -3032,6 +3090,11 @@ const BeneficiaryForm: React.FC<{
                 />
             </Section>
             <Section title="Coordonnées">
+                <Input
+                    label="Adresse du logement"
+                    value={data.address || ''}
+                    onChange={v => onChange('address', v)}
+                />
                 <CommuneFieldGroup
                     city={data.city}
                     zipCode={data.zipCode}
