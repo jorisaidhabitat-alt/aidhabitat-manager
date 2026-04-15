@@ -587,8 +587,12 @@ let recommendationsFlushTimer: number | null = null;
 let backgroundSyncLoopRegistered = false;
 let backgroundSyncIntervalId: number | null = null;
 const BACKGROUND_SYNC_INTERVAL_MS = 750;
-const PATCH_SYNC_TRIGGER_DELAY_MS = 15;
+const PATCH_SYNC_TRIGGER_DELAY_MS = 700;
 const NOTE_SYNC_TRIGGER_DELAY_MS = 20;
+
+type SyncUpdateOptions = {
+  immediate?: boolean;
+};
 
 const shouldAttemptBeneficiarySync = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -603,6 +607,9 @@ const shouldAttemptBackgroundSync = (): boolean => {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
   return true;
 };
+
+const hasSyncDelayElapsed = (updatedAt: string): boolean =>
+  Date.now() - new Date(updatedAt).getTime() >= PATCH_SYNC_TRIGGER_DELAY_MS;
 
 const runBackgroundSyncTick = () => {
   if (!shouldAttemptBackgroundSync()) {
@@ -1905,7 +1912,7 @@ const updateDossierRemote = async (
   }
 };
 
-const flushQueuedDossierUpdates = async (): Promise<void> => {
+const flushQueuedDossierUpdates = async (force = false): Promise<void> => {
   if (!shouldAttemptBackgroundSync()) {
     return;
   }
@@ -1918,6 +1925,10 @@ const flushQueuedDossierUpdates = async (): Promise<void> => {
       const patch = Object.values(readDossierPatchMap())
         .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime())[0];
       if (!patch) {
+        break;
+      }
+      if (!force && !hasSyncDelayElapsed(patch.updatedAt)) {
+        scheduleQueuedDossierSync();
         break;
       }
       const result = await updateDossierRemote(patch.dossierId, patch.updates);
@@ -1943,6 +1954,23 @@ const flushQueuedDossierUpdates = async (): Promise<void> => {
   return dossierFlushPromise;
 };
 
+export const flushDossierSync = async (
+  dossierId?: string,
+): Promise<{ success: boolean; error: string | null }> => {
+  await flushQueuedDossierUpdates(true);
+  if (!dossierId) {
+    return { success: true, error: null };
+  }
+  const patch = readDossierPatchMap()[dossierId];
+  if (patch) {
+    return {
+      success: false,
+      error: patch.lastError || 'Synchronisation dossier impossible',
+    };
+  }
+  return { success: true, error: null };
+};
+
 const scheduleQueuedDossierSync = () => {
   ensureBackgroundSyncLoop();
   if (!dossierOnlineListenerRegistered && typeof window !== 'undefined') {
@@ -1955,8 +1983,7 @@ const scheduleQueuedDossierSync = () => {
     void flushQueuedDossierUpdates();
     return;
   }
-  if (shouldAttemptBackgroundSync()) {
-    void flushQueuedDossierUpdates();
+  if (!shouldAttemptBackgroundSync()) {
     return;
   }
   if (dossierFlushTimer) {
@@ -1971,10 +1998,27 @@ const scheduleQueuedDossierSync = () => {
 export const updateDossier = async (
   dossierId: string,
   updates: Partial<Dossier>,
+  options: SyncUpdateOptions = {},
 ): Promise<{ success: boolean; error: string | null; data?: MutationResult['data'] }> => {
+  if (String(dossierId).startsWith('temp-')) {
+    return updateDossierRemote(dossierId, updates);
+  }
+
   const patch = mergeDossierPatch(dossierId, updates);
   setDossierPatch(patch);
   scheduleQueuedDossierSync();
+
+  if (options.immediate) {
+    await flushQueuedDossierUpdates(true);
+    const current = readDossierPatchMap()[dossierId];
+    if (current && current.updatedAt === patch.updatedAt) {
+      return {
+        success: false,
+        error: current.lastError || 'Synchronisation dossier impossible',
+      };
+    }
+  }
+
   return { success: true, error: null, data: { id: dossierId } };
 };
 
@@ -2947,7 +2991,7 @@ export const updateBeneficiaryRemote = async (patientId: string, updates: Partia
   }
 };
 
-const flushQueuedBeneficiaryUpdates = async (): Promise<void> => {
+const flushQueuedBeneficiaryUpdates = async (force = false): Promise<void> => {
   if (!shouldAttemptBeneficiarySync()) {
     return;
   }
@@ -2960,6 +3004,10 @@ const flushQueuedBeneficiaryUpdates = async (): Promise<void> => {
       const patch = Object.values(readBeneficiaryPatchMap())
         .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime())[0];
       if (!patch) {
+        break;
+      }
+      if (!force && !hasSyncDelayElapsed(patch.updatedAt)) {
+        scheduleQueuedBeneficiarySync();
         break;
       }
       const result = await updateBeneficiaryRemote(patch.patientId, patch.updates);
@@ -2985,6 +3033,23 @@ const flushQueuedBeneficiaryUpdates = async (): Promise<void> => {
   return beneficiaryFlushPromise;
 };
 
+export const flushBeneficiarySync = async (
+  patientId?: string,
+): Promise<{ success: boolean; error: string | null }> => {
+  await flushQueuedBeneficiaryUpdates(true);
+  if (!patientId) {
+    return { success: true, error: null };
+  }
+  const patch = readBeneficiaryPatchMap()[patientId];
+  if (patch) {
+    return {
+      success: false,
+      error: patch.lastError || 'Synchronisation bénéficiaire impossible',
+    };
+  }
+  return { success: true, error: null };
+};
+
 const scheduleQueuedBeneficiarySync = () => {
   ensureBackgroundSyncLoop();
   if (!beneficiaryOnlineListenerRegistered && typeof window !== 'undefined') {
@@ -2997,8 +3062,7 @@ const scheduleQueuedBeneficiarySync = () => {
     void flushQueuedBeneficiaryUpdates();
     return;
   }
-  if (shouldAttemptBeneficiarySync()) {
-    void flushQueuedBeneficiaryUpdates();
+  if (!shouldAttemptBeneficiarySync()) {
     return;
   }
   if (beneficiaryFlushTimer) {
@@ -3010,7 +3074,11 @@ const scheduleQueuedBeneficiarySync = () => {
   }, PATCH_SYNC_TRIGGER_DELAY_MS);
 };
 
-export const updateBeneficiary = async (patientId: string, updates: Partial<Patient>): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
+export const updateBeneficiary = async (
+  patientId: string,
+  updates: Partial<Patient>,
+  options: SyncUpdateOptions = {},
+): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
   const normalizedUpdates = sanitizeBeneficiaryPatchUpdates({ ...updates });
   if (Object.keys(normalizedUpdates).length === 0) {
     return { success: true, error: null, data: { patient: {} } };
@@ -3018,7 +3086,20 @@ export const updateBeneficiary = async (patientId: string, updates: Partial<Pati
   const patch = mergeBeneficiaryPatch(patientId, normalizedUpdates);
   setBeneficiaryPatch(patch);
   scheduleQueuedBeneficiarySync();
-  return { success: true, error: null, data: { patient: patch.updates } };
+
+  if (options.immediate) {
+    await flushQueuedBeneficiaryUpdates(true);
+    const current = readBeneficiaryPatchMap()[patientId];
+    if (current && current.updatedAt === patch.updatedAt) {
+      return {
+        success: false,
+        error: current.lastError || 'Synchronisation bénéficiaire impossible',
+        data: { patient: current.updates as Patient },
+      };
+    }
+  }
+
+  return { success: true, error: null, data: { patient: patch.updates as Patient } };
 };
 
 export const createBeneficiary = async (
@@ -3064,7 +3145,7 @@ const updateHousingRemote = async (
   }
 };
 
-const flushQueuedHousingUpdates = async (): Promise<void> => {
+const flushQueuedHousingUpdates = async (force = false): Promise<void> => {
   if (!shouldAttemptBackgroundSync()) {
     return;
   }
@@ -3077,6 +3158,10 @@ const flushQueuedHousingUpdates = async (): Promise<void> => {
       const patch = Object.values(readHousingPatchMap())
         .sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime())[0];
       if (!patch) {
+        break;
+      }
+      if (!force && !hasSyncDelayElapsed(patch.updatedAt)) {
+        scheduleQueuedHousingSync();
         break;
       }
       const result = await updateHousingRemote(
@@ -3106,6 +3191,23 @@ const flushQueuedHousingUpdates = async (): Promise<void> => {
   return housingFlushPromise;
 };
 
+export const flushHousingSync = async (
+  beneficiaryId?: string,
+): Promise<{ success: boolean; error: string | null }> => {
+  await flushQueuedHousingUpdates(true);
+  if (!beneficiaryId) {
+    return { success: true, error: null };
+  }
+  const patch = readHousingPatchMap()[beneficiaryId];
+  if (patch) {
+    return {
+      success: false,
+      error: patch.lastError || 'Synchronisation logement impossible',
+    };
+  }
+  return { success: true, error: null };
+};
+
 const scheduleQueuedHousingSync = () => {
   ensureBackgroundSyncLoop();
   if (!housingOnlineListenerRegistered && typeof window !== 'undefined') {
@@ -3118,8 +3220,7 @@ const scheduleQueuedHousingSync = () => {
     void flushQueuedHousingUpdates();
     return;
   }
-  if (shouldAttemptBackgroundSync()) {
-    void flushQueuedHousingUpdates();
+  if (!shouldAttemptBackgroundSync()) {
     return;
   }
   if (housingFlushTimer) {
@@ -3135,10 +3236,24 @@ export const updateHousing = async (
   beneficiaryId: string,
   housingId: string | undefined,
   updates: Partial<Housing>,
+  options: SyncUpdateOptions = {},
 ): Promise<{ success: boolean; error: string | null; data?: { id?: string } }> => {
   const patch = mergeHousingPatch(beneficiaryId, housingId, updates);
   setHousingPatch(patch);
   scheduleQueuedHousingSync();
+
+  if (options.immediate) {
+    await flushQueuedHousingUpdates(true);
+    const current = readHousingPatchMap()[beneficiaryId];
+    if (current && current.updatedAt === patch.updatedAt) {
+      return {
+        success: false,
+        error: current.lastError || 'Synchronisation logement impossible',
+        data: { id: current.housingId },
+      };
+    }
+  }
+
   return { success: true, error: null, data: { id: housingId || patch.housingId } };
 };
 

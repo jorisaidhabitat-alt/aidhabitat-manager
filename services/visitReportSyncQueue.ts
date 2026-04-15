@@ -37,7 +37,7 @@ const syncBeneficiarySection: SyncHandler<'beneficiary'> = async (operation) => 
   }
 
   if (Object.keys(dossierUpdates).length > 0) {
-    const dossierResult = await updateDossier(operation.dossierId, dossierUpdates);
+    const dossierResult = await updateDossier(operation.dossierId, dossierUpdates, { immediate: true });
     if (!dossierResult.success) {
       throw new Error(dossierResult.error || 'Synchronisation dossier impossible');
     }
@@ -49,7 +49,7 @@ const syncContextSection: SyncHandler<'context'> = async (operation) => {
   const result = await updateDossier(operation.dossierId, {
     medicalContext: payload.medicalContext,
     autonomy: payload.autonomy,
-  });
+  }, { immediate: true });
 
   if (!result.success) {
     throw new Error(result.error || 'Synchronisation contexte impossible');
@@ -57,7 +57,7 @@ const syncContextSection: SyncHandler<'context'> = async (operation) => {
 };
 
 const syncHousingSection: SyncHandler<'housing'> = async (operation) => {
-  const result = await updateHousing(operation.patientId, undefined, operation.payload);
+  const result = await updateHousing(operation.patientId, undefined, operation.payload, { immediate: true });
   if (!result.success) {
     throw new Error(result.error || 'Synchronisation logement impossible');
   }

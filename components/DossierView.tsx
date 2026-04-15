@@ -667,7 +667,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
     };
   }, [currentOccupantCount, editForm, patient]);
 
-  const persistBeneficiaryDraft = useCallback(() => {
+  const persistBeneficiaryDraft = useCallback((immediate = false) => {
     const hasBeneficiaryChanges =
       editForm.firstName !== (patient.firstName || '') ||
       editForm.lastName !== (patient.lastName || '') ||
@@ -698,7 +698,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
       ...dossier,
       patient: nextPatient,
     });
-    void updateBeneficiary(dossier.patient.id, payload);
+    void updateBeneficiary(dossier.patient.id, payload, { immediate });
   }, [buildBeneficiaryPayload, displayedIncomeCategory, dossier, dossier.patient.id, editForm, onUpdateDossier, patient]);
 
   useEffect(() => {
@@ -908,7 +908,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
     if (isNoteSaving) return;
     const canLeave = await flushQuickNoteDraft();
     if (!canLeave) return;
-    persistBeneficiaryDraft();
+    persistBeneficiaryDraft(true);
     onBack();
   };
 
@@ -916,7 +916,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
     if (isNoteSaving) return;
     const canLeave = await flushQuickNoteDraft();
     if (!canLeave) return;
-    persistBeneficiaryDraft();
+    persistBeneficiaryDraft(true);
     onOpenDocuments();
   };
 
@@ -924,12 +924,12 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
     if (isNoteSaving) return;
     const canLeave = await flushQuickNoteDraft();
     if (!canLeave) return;
-    persistBeneficiaryDraft();
+    persistBeneficiaryDraft(true);
     onStartVisit();
   };
 
   useEffect(() => () => {
-    persistBeneficiaryDraft();
+    persistBeneficiaryDraft(true);
   }, [persistBeneficiaryDraft]);
 
   useEffect(() => {
@@ -1072,11 +1072,13 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
                   label="Prénom"
                   value={editForm.firstName}
                   onChange={(value) => setEditForm((previous) => ({ ...previous, firstName: value }))}
+                  onBlur={() => persistBeneficiaryDraft(true)}
                 />
                 <EditableInfoField
                   label="Nom"
                   value={editForm.lastName}
                   onChange={(value) => setEditForm((previous) => ({ ...previous, lastName: value }))}
+                  onBlur={() => persistBeneficiaryDraft(true)}
                 />
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1084,6 +1086,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
                   label="Occupants"
                   value={editForm.numberPeople}
                   onChange={(value) => setEditForm((previous) => ({ ...previous, numberPeople: value }))}
+                  onBlur={() => persistBeneficiaryDraft(true)}
                   options={OCCUPANT_OPTIONS}
                 />
                 <CommuneFieldGroup
@@ -1092,6 +1095,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
                   cityId={editForm.cityId}
                   options={communeOptions}
                   onChange={(updates) => setEditForm((previous) => ({ ...previous, ...updates }))}
+                  onBlur={() => persistBeneficiaryDraft(true)}
                   zipLabel="Code postal"
                   cityLabel="Ville"
                   showZipField={false}
@@ -1117,14 +1121,16 @@ const EditableInfoField: React.FC<{
   label: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   type?: 'text' | 'email';
-}> = ({ label, value, onChange, type = 'text' }) => (
+}> = ({ label, value, onChange, onBlur, type = 'text' }) => (
   <div>
     <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{label}</label>
     <input
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800 outline-none transition-colors focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20"
     />
   </div>
@@ -1134,13 +1140,15 @@ const SelectInfoField: React.FC<{
   label: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   options: Array<{ value: string; label: string }>;
-}> = ({ label, value, onChange, options }) => (
+}> = ({ label, value, onChange, onBlur, options }) => (
   <div>
     <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{label}</label>
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800 outline-none transition-colors focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20"
     >
       {options.map((option) => (

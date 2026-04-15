@@ -713,11 +713,11 @@ function useDebounce<T>(value: T, delay: number): T {
     return debouncedValue;
 }
 
-const BENEFICIARY_SYNC_DEBOUNCE_MS = 180;
-const CONTEXT_SYNC_DEBOUNCE_MS = 180;
-const HOUSING_SYNC_DEBOUNCE_MS = 180;
-const RELEVE_BLOCK_SYNC_DEBOUNCE_MS = 120;
-const NOTE_DRAFT_SYNC_DEBOUNCE_MS = 45;
+const BENEFICIARY_SYNC_DEBOUNCE_MS = 5000;
+const CONTEXT_SYNC_DEBOUNCE_MS = 5000;
+const HOUSING_SYNC_DEBOUNCE_MS = 5000;
+const RELEVE_BLOCK_SYNC_DEBOUNCE_MS = 5000;
+const NOTE_DRAFT_SYNC_DEBOUNCE_MS = 5000;
 
 // =============================================================
 // Main Component
@@ -1223,6 +1223,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const debouncedMesures = useDebounce(mesuresData, RELEVE_BLOCK_SYNC_DEBOUNCE_MS);
     const debouncedSynthese = useDebounce(syntheseData, RELEVE_BLOCK_SYNC_DEBOUNCE_MS);
     const debouncedRecommendations = useDebounce(recommendationsData, RELEVE_BLOCK_SYNC_DEBOUNCE_MS);
+
     const pendingSavesRef = useRef(new Map<string, {
         label: string;
         task: () => Promise<{ success: boolean; error: string | null }>;
@@ -1306,6 +1307,114 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             void drainSaveQueue(key);
         });
     }, [drainSaveQueue]);
+
+    const flushActiveTabSaves = useCallback(() => {
+        if (activeTab === 'Bénéficiaire' || activeTab === 'Contexte de vie' || activeTab === 'Logement') {
+            const phoneIsValid = isValidFrenchPhone(formData.beneficiary.phone);
+            const emailIsValid = isValidEmail(formData.beneficiary.email);
+            const trustedPhoneIsValid = isValidFrenchPhone(formData.beneficiary.trustedPhone);
+            const trustedEmailIsValid = isValidEmail(formData.beneficiary.trustedEmail);
+            const normalizedBeneficiary = buildBeneficiaryIdentityPayload(formData.beneficiary);
+            void runSave('beneficiary', async () => {
+                const [beneficiaryResult] = await Promise.all([
+                    updateBeneficiaryService(dossier.patient.id, {
+                        firstName: normalizedBeneficiary.firstName, lastName: normalizedBeneficiary.lastName,
+                        secondFirstName: normalizedBeneficiary.secondFirstName, secondLastName: normalizedBeneficiary.secondLastName,
+                        occupant1BirthDate: normalizedBeneficiary.occupant1BirthDate,
+                        occupant2BirthDate: normalizedBeneficiary.occupant2BirthDate,
+                        birthDateMr: normalizedBeneficiary.birthDateMr, birthDateMme: normalizedBeneficiary.birthDateMme,
+                        occupants: normalizedBeneficiary.occupants,
+                        address: normalizedBeneficiary.address, city: normalizedBeneficiary.city,
+                        cityId: normalizedBeneficiary.cityId,
+                        zipCode: normalizedBeneficiary.zipCode,
+                        phone: phoneIsValid ? normalizedBeneficiary.phone : undefined,
+                        email: emailIsValid ? normalizedBeneficiary.email : undefined,
+                        familySituation: normalizedBeneficiary.familySituation,
+                        occupationStatus: normalizedBeneficiary.occupationStatus,
+                        numberPeople: parseInt(normalizedBeneficiary.numberPeople) || 1,
+                        fiscalRevenue: parseFloat(normalizedBeneficiary.fiscalRevenue) || 0,
+                        apa: normalizedBeneficiary.apa, invalidity: normalizedBeneficiary.invalidity,
+                        invalidityTxt: normalizedBeneficiary.invalidityTxt, homeHelp: normalizedBeneficiary.homeHelp,
+                        homeHelpTxt: normalizedBeneficiary.homeHelpTxt, dependenceTxt: normalizedBeneficiary.dependenceTxt,
+                        occupant1SocialSecurityNumber: normalizedBeneficiary.occupant1SocialSecurityNumber,
+                        occupant2SocialSecurityNumber: normalizedBeneficiary.occupant2SocialSecurityNumber,
+                        numeroSecuriteSocialeMonsieur: normalizedBeneficiary.numeroSecuriteSocialeMonsieur,
+                        numeroSecuriteSocialeMadame: normalizedBeneficiary.numeroSecuriteSocialeMadame,
+                        caisseRetraitePrincipale: normalizedBeneficiary.caisseRetraitePrincipale,
+                        caissesRetraiteComplementaires: normalizedBeneficiary.caissesRetraiteComplementaires,
+                        trustedPerson: {
+                            name: normalizedBeneficiary.trustedName,
+                            phone: trustedPhoneIsValid ? normalizedBeneficiary.trustedPhone : undefined,
+                            email: trustedEmailIsValid ? normalizedBeneficiary.trustedEmail : undefined,
+                        },
+                    }, { immediate: true }),
+                    updateDossier(dossier.id, {
+                        compteAnah: normalizedBeneficiary.compteAnah,
+                        natureAccompagnement: normalizedBeneficiary.natureAccompagnement,
+                        envoiRapport: normalizedBeneficiary.envoiRapport,
+                        personnesPresentesVisite: normalizedBeneficiary.personnesPresentesVisite,
+                        ergoId: normalizedBeneficiary.ergoId,
+                    }, { immediate: true }),
+                ]);
+                if (beneficiaryResult.success && beneficiaryResult.data?.patient) {
+                    const refreshedPatient = beneficiaryResult.data.patient;
+                    beneficiarySnapshotRef.current = serializeForAutosave(formData.beneficiary);
+                    setFormData((prev) => {
+                        const mergedOccupants = buildOccupantsFromPatient({ ...prev.beneficiary, occupants: refreshedPatient.occupants || [] }, prev.beneficiary.numberPeople);
+                        return {
+                            ...prev,
+                            beneficiary: {
+                                ...prev.beneficiary,
+                                incomeCategory: refreshedPatient.incomeCategory || prev.beneficiary.incomeCategory,
+                                numberPeople: formatHouseholdSize(refreshedPatient.numberPeople),
+                                fiscalRevenue: refreshedPatient.fiscalRevenue != null ? String(refreshedPatient.fiscalRevenue) : prev.beneficiary.fiscalRevenue,
+                                occupants: mergedOccupants,
+                            },
+                        };
+                    });
+                }
+                return beneficiaryResult;
+            }, 'Bénéficiaire').catch(() => undefined);
+        }
+        if (activeTab === 'Contexte de vie') {
+            void runSave('context', async () => updateDossier(dossier.id, {
+                medicalContext: formData.context.medical,
+                autonomy: {
+                    done: formData.context.autonomyDone,
+                    checklist: formData.context.autonomy,
+                    humanHelp: formData.context.humanHelp,
+                    occupants: formData.context.occupants,
+                }
+            }, { immediate: true }), 'Contexte → dossiers (jsonb)').then(() => {
+                contextSnapshotRef.current = serializeForAutosave(formData.context);
+            }).catch(() => undefined);
+        }
+        if (activeTab === 'Logement') {
+            void runSave('housing', async () => updateHousing(dossier.patient.id, dossier.housing.id, buildHousingPayload(formData.housing), { immediate: true }), 'Logement → logements')
+                .then(() => { housingSnapshotRef.current = serializeForAutosave(formData.housing); })
+                .catch(() => undefined);
+        }
+        if (activeTab === 'Salle de bain' || activeTab === 'WC') {
+            void runSave('sanitaires', async () => upsertDiagnosticSanitaires(dossier.id, sanitairesData), 'Sanitaires → diagnostic_sanitaires')
+                .then(() => { sanitairesSnapshotRef.current = serializeForAutosave(sanitairesData); })
+                .catch(() => undefined);
+        }
+        if (activeTab === 'Mesures') {
+            void runSave('mesures', async () => upsertMesuresAnthropometriques(dossier.id, mesuresData), 'Mesures → mesures_anthropometriques')
+                .then(() => { mesuresSnapshotRef.current = serializeForAutosave(mesuresData); })
+                .catch(() => undefined);
+        }
+        if (activeTab === 'Observations') {
+            void runSave('synthese', async () => upsertObservationsSynthese(dossier.id, dossier.patient.id, syntheseData), 'Synthèse → observations')
+                .then(() => { syntheseSnapshotRef.current = serializeForAutosave(syntheseData); })
+                .catch(() => undefined);
+        }
+        if (activeTab === 'Préconisations') {
+            void runSave('recommendations', async () => saveVisitRecommendations(dossier.id, recommendationsData), 'Préconisations')
+                .then(() => { recommendationsSnapshotRef.current = serializeForAutosave(recommendationsData); })
+                .catch(() => undefined);
+        }
+    }, [activeTab, formData, sanitairesData, mesuresData, syntheseData, recommendationsData, dossier, runSave]);
 
     // Save Beneficiary (includes occupation status, APA, etc.)
     useEffect(() => {
@@ -2929,13 +3038,13 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         />
                     </div>
                 ) : isPreconisationsTab ? (
-                    <div className={`h-full overflow-y-auto rounded-3xl bg-white px-4 custom-scrollbar relative ${hasInnerQuickNav ? 'pt-0 pb-5' : 'py-5'}`}>
+                    <div onBlur={() => { void flushActiveTabSaves(); }} className={`h-full overflow-y-auto rounded-3xl bg-white px-4 custom-scrollbar relative ${hasInnerQuickNav ? 'pt-0 pb-5' : 'py-5'}`}>
                         {renderTabContent()}
                     </div>
                 ) : (
                     <>
                 {/* Form Panel */}
-                <div className={`bg-white rounded-3xl px-4 overflow-y-auto custom-scrollbar relative ${hasInnerQuickNav ? 'pt-0 pb-5' : 'py-5'}`}>
+                <div onBlur={() => { void flushActiveTabSaves(); }} className={`bg-white rounded-3xl px-4 overflow-y-auto custom-scrollbar relative ${hasInnerQuickNav ? 'pt-0 pb-5' : 'py-5'}`}>
                     {renderTabContent()}
                 </div>
 

@@ -22,6 +22,7 @@ interface CommuneFieldGroupProps {
   cityId?: string;
   options?: CommuneOption[];
   onChange: (updates: { city?: string; zipCode?: string; cityId?: string }) => void;
+  onBlur?: () => void;
   zipLabel?: string;
   cityLabel?: string;
   showZipField?: boolean;
@@ -33,6 +34,7 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
   cityId,
   options = [],
   onChange,
+  onBlur,
   zipLabel = 'CP',
   cityLabel = 'Ville',
   showZipField = true,
@@ -133,6 +135,7 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
           onBlur={() => {
             setIsCityInputFocused(false);
             window.setTimeout(() => setIsCityMenuOpen(false), 120);
+            onBlur?.();
           }}
           onChange={(event) => {
             const typed = event.target.value;
