@@ -1,4 +1,5 @@
 import React from 'react';
+import { uiFieldClass, uiFieldReadonlyClass, uiLabelClass } from './uiTheme';
 
 const normalizeCommuneQuery = (value: string) => String(value || '')
   .normalize('NFD')
@@ -114,17 +115,17 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
     <div className={`mb-2.5 grid gap-2 ${showZipField ? 'grid-cols-2' : 'grid-cols-1'}`}>
       {showZipField ? (
         <div>
-          <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{zipLabel}</label>
+          <label className={uiLabelClass}>{zipLabel}</label>
           <input
             type="text"
             value={zipCode}
             readOnly
-            className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm text-slate-600 outline-none"
+            className={uiFieldReadonlyClass}
           />
         </div>
       ) : null}
       <div className={`relative ${isCityMenuOpen ? 'z-[120]' : ''}`}>
-        <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{cityLabel}</label>
+        <label className={uiLabelClass}>{cityLabel}</label>
         <input
           type="text"
           value={city}
@@ -159,7 +160,7 @@ export const CommuneFieldGroup: React.FC<CommuneFieldGroupProps> = ({
               });
             }
           }}
-          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20"
+          className={uiFieldClass}
         />
         {isCityMenuOpen && filteredOptions.length > 0 ? (
           <div className="absolute left-0 right-0 z-[140] mt-1 max-h-[112px] w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">

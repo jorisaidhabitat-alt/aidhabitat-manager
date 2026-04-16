@@ -4,6 +4,7 @@ import { createRetirementFund, fetchRetirementFunds, getCachedRetirementFunds, p
 import { RetirementFund } from '../types';
 import { SimpleLoader } from './LoadingProgress';
 import { ViewportOverlay } from './ViewportOverlay';
+import { uiDangerButtonClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPanelClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass, uiSoftPanelClass, uiLabelClass } from './uiTheme';
 
 const phoneHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`;
 
@@ -195,7 +196,7 @@ export const RetirementFundsView: React.FC = () => {
 
                 <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center">
                     <div className="w-full lg:w-[360px]">
-                        <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+                        <div className={`${uiPanelClass} flex items-center gap-3 px-4 py-3`}>
                             <Search size={18} className="text-slate-400" />
                             <input
                                 value={query}
@@ -221,7 +222,7 @@ export const RetirementFundsView: React.FC = () => {
                             key={fund.id}
                             type="button"
                             onClick={() => openFund(fund.id)}
-                            className="h-full flex flex-col items-start justify-start text-left bg-white rounded-[28px] border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-[#907CA1] transition-all duration-200"
+                            className={`${uiPanelInteractiveClass} h-full flex flex-col items-start justify-start p-6 text-left`}
                         >
                             <div className="w-full flex items-start justify-between gap-4">
                                 <div className="w-24 h-16 rounded-2xl bg-white border border-slate-200 px-2 py-1.5 flex items-center justify-center overflow-hidden">
@@ -262,7 +263,7 @@ export const RetirementFundsView: React.FC = () => {
             )}
 
             {!isLoading && !error && filteredFunds.length === 0 && (
-                <div className="bg-white rounded-[28px] border border-slate-200 p-8 text-center text-slate-500">
+                <div className={`${uiPanelClass} p-8 text-center text-slate-500`}>
                     Aucun organisme ne correspond à cette recherche.
                 </div>
             )}
@@ -273,7 +274,7 @@ export const RetirementFundsView: React.FC = () => {
                     onClick={() => setSelectedFundId(null)}
                 >
                     <div
-                        className="w-full max-w-4xl bg-white rounded-[36px] shadow-2xl overflow-hidden"
+                        className={`${uiModalClass} w-full max-w-4xl overflow-hidden`}
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="px-8 py-7 border-b border-slate-200 flex items-start justify-between gap-6">
@@ -305,7 +306,7 @@ export const RetirementFundsView: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => setSelectedFundId(null)}
-                                    className="w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
+                                    className={uiIconButtonClass}
                                 >
                                     <X size={20} />
                                 </button>
@@ -382,7 +383,7 @@ export const RetirementFundsView: React.FC = () => {
                     }}
                 >
                     <div
-                        className="w-full max-w-4xl bg-white rounded-[36px] shadow-2xl overflow-hidden"
+                        className={`${uiModalClass} w-full max-w-4xl overflow-hidden`}
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="px-8 py-7 border-b border-slate-200 flex items-start justify-between gap-6">
@@ -522,7 +523,7 @@ const SaveStateIndicator: React.FC<{ status: SaveState; onSave: () => void }> = 
 };
 
 const FieldBlock: React.FC<{ icon: any; label: string; children: React.ReactNode }> = ({ icon: Icon, label, children }) => (
-    <div className="rounded-[24px] border border-slate-200 px-5 py-4 bg-white">
+    <div className={`${uiPanelClass} px-5 py-4`}>
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
             <Icon size={14} />
             <span>{label}</span>
@@ -536,7 +537,7 @@ const Textarea: React.FC<{ value: string; onChange: (value: string) => void; com
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={compact ? 1 : 4}
-        className={`w-full bg-transparent outline-none text-slate-900 font-semibold leading-relaxed ${
+        className={`${uiFieldClass} bg-slate-50 text-slate-900 font-semibold leading-relaxed ${
             compact ? 'h-11 resize-none overflow-hidden' : 'min-h-[88px] resize-y'
         }`}
     />
@@ -546,6 +547,6 @@ const Input: React.FC<{ value: string; onChange: (value: string) => void }> = ({
     <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full bg-transparent outline-none text-slate-900 font-semibold border-b border-slate-200 focus:border-[#907CA1] pb-2"
+        className={`${uiFieldClass} bg-slate-50 font-semibold`}
     />
 );

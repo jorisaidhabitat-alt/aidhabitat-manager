@@ -773,7 +773,7 @@ const supportsIndexedDbNotes = (): boolean => (
 );
 
 const buildNoteScopeKey = (patientId: string, options: NoteScopeOptions): string => (
-  `${patientId}::${options.scopeType}::${options.scopeId}::${options.tabKey}`
+  `${patientId}::${options.scopeType}::${options.scopeId}::${options.tabKey}::${options.subTabKey || 'general'}`
 );
 
 const buildNoteIdentityKey = (
@@ -839,6 +839,7 @@ const toLocalNotePageRecord = (
     scopeType: notePage.scopeType,
     scopeId: notePage.scopeId,
     tabKey: notePage.tabKey,
+    subTabKey: notePage.subTabKey,
   }),
   identityKey: buildNoteIdentityKey(
     notePage.patientId,
@@ -846,6 +847,7 @@ const toLocalNotePageRecord = (
       scopeType: notePage.scopeType,
       scopeId: notePage.scopeId,
       tabKey: notePage.tabKey,
+      subTabKey: notePage.subTabKey,
     },
     notePage.pageNumber,
   ),
@@ -1047,6 +1049,7 @@ type NoteScopeOptions = {
   scopeType: string;
   scopeId: string;
   tabKey: string;
+  subTabKey?: string;
 };
 
 type LocalNotePageRecord = NotePage & {
@@ -2485,10 +2488,93 @@ const fetchRemoteNotePages = async (
     scopeId: options.scopeId,
     tabKey: options.tabKey,
   });
+  if (options.subTabKey) {
+    query.set('subTabKey', options.subTabKey);
+  }
   const result = await apiFetch<NotePagesResult>(
     `/api/note-pages/${encodeURIComponent(patientId)}?${query.toString()}`,
   );
   return result.data?.notePages || [];
+};
+
+const LEGACY_NOTE_TAB_LABELS: Record<string, string> = {
+  beneficiaire: 'Bénéficiaire',
+  contexte_de_vie: 'Contexte de vie',
+  accessibilite: 'Accessibilité',
+  salle_de_bain: 'Salle de bain',
+  wc: 'WC',
+  mesures: 'Mesures',
+  plans: 'Plans',
+  synthese: 'Synthèse',
+  preconisations: 'Préconisations',
+};
+
+const LEGACY_NOTE_TAB_DETAIL_KEYS: Record<string, string> = {
+  'beneficiaire::profile': 'Bénéficiaire:profile:drawing',
+  'beneficiaire::finance': 'Bénéficiaire:finance:drawing',
+  'beneficiaire::health': 'Bénéficiaire:health:drawing',
+  'beneficiaire::admin': 'Bénéficiaire:admin:drawing',
+  'beneficiaire::shared_text': 'Bénéficiaire:shared-text',
+  'contexte_de_vie::medical': 'Contexte de vie:medical:drawing',
+  'contexte_de_vie::autonomy': 'Contexte de vie:autonomy:drawing',
+  'contexte_de_vie::shared_text': 'Contexte de vie:shared-text',
+  'accessibilite::general': 'Accessibilité:general:drawing',
+  'accessibilite::interior': 'Accessibilité:interior:drawing',
+  'accessibilite::exterior': 'Accessibilité:exterior:drawing',
+  'accessibilite::shutters': 'Accessibilité:shutters:drawing',
+  'accessibilite::shared_text': 'Accessibilité:shared-text',
+  'salle_de_bain::equipment': 'Salle de bain:equipment:drawing',
+  'salle_de_bain::door': 'Salle de bain:door:drawing',
+  'wc::main': 'WC:main:drawing',
+  'wc::door': 'WC:door:drawing',
+};
+
+const dedupeNoteScopeOptions = (scopes: NoteScopeOptions[]): NoteScopeOptions[] => {
+  const seen = new Set<string>();
+  return scopes.filter((scope) => {
+    const key = `${scope.scopeType}::${scope.scopeId}::${scope.tabKey}::${scope.subTabKey || 'general'}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const getLegacyFallbackNoteScopes = (options: NoteScopeOptions): NoteScopeOptions[] => {
+  const fallbacks: NoteScopeOptions[] = [];
+  const legacyTabLabel = LEGACY_NOTE_TAB_LABELS[options.tabKey];
+  const detailKey = LEGACY_NOTE_TAB_DETAIL_KEYS[`${options.tabKey}::${options.subTabKey || 'general'}`];
+
+  if (options.subTabKey && options.subTabKey !== 'general') {
+    fallbacks.push({
+      ...options,
+      subTabKey: 'general',
+    });
+  }
+
+  if (detailKey) {
+    fallbacks.push({
+      ...options,
+      tabKey: detailKey,
+      subTabKey: 'general',
+    });
+  }
+
+  if (legacyTabLabel) {
+    fallbacks.push({
+      ...options,
+      tabKey: legacyTabLabel,
+      subTabKey: options.subTabKey,
+    });
+    if (!options.subTabKey || options.subTabKey !== 'general') {
+      fallbacks.push({
+        ...options,
+        tabKey: legacyTabLabel,
+        subTabKey: 'general',
+      });
+    }
+  }
+
+  return dedupeNoteScopeOptions(fallbacks);
 };
 
 const saveRemoteNotePage = async ({
@@ -2498,9 +2584,11 @@ const saveRemoteNotePage = async ({
   scopeType,
   scopeId,
   tabKey,
+  subTabKey,
   pageNumber,
   textContent,
   drawingJson,
+  previewDataUrl,
   layoutKind = 'freeform',
 }: {
   notePageId?: string;
@@ -2509,9 +2597,11 @@ const saveRemoteNotePage = async ({
   scopeType: string;
   scopeId: string;
   tabKey: string;
+  subTabKey?: string;
   pageNumber: number;
   textContent: string;
   drawingJson: string;
+  previewDataUrl?: string;
   layoutKind?: string;
 }): Promise<NotePage> => {
   const result = await apiFetch<NotePagesResult>('/api/note-pages', {
@@ -2523,9 +2613,11 @@ const saveRemoteNotePage = async ({
       scopeType,
       scopeId,
       tabKey,
+      subTabKey,
       pageNumber,
       textContent,
       drawingJson,
+      previewDataUrl,
       layoutKind,
     }),
   });
@@ -2613,6 +2705,7 @@ const flushQueuedNoteOperations = async (): Promise<void> => {
           pageNumber: localRecord.pageNumber,
           textContent: localRecord.textContent,
           drawingJson: localRecord.drawingJson,
+          previewDataUrl: localRecord.previewDataUrl,
           layoutKind: localRecord.layoutKind || 'freeform',
         });
 
@@ -2674,8 +2767,17 @@ const refreshNoteScopeInBackground = (patientId: string, options: NoteScopeOptio
     return;
   }
 
+  const fallbackOptions = getLegacyFallbackNoteScope(options);
+
   void flushQueuedNoteOperations()
     .then(() => fetchRemoteNotePages(patientId, options))
+    .then(async (remotePages) => {
+      if (remotePages.length > 0 || !fallbackOptions) {
+        return remotePages;
+      }
+
+      return fetchRemoteNotePages(patientId, fallbackOptions);
+    })
     .then((remotePages) => mergeRemoteNotesIntoLocalStore(remotePages))
     .catch((error) => {
       console.error('Failed to refresh notes scope from remote', error);
@@ -2686,8 +2788,20 @@ export const fetchNotePages = async (
   patientId: string,
   options: NoteScopeOptions,
 ): Promise<NotePage[]> => {
+  const fallbackOptions = getLegacyFallbackNoteScopes(options);
+
   if (!supportsIndexedDbNotes()) {
-    return fetchRemoteNotePages(patientId, options);
+    const remotePages = await fetchRemoteNotePages(patientId, options);
+    if (remotePages.length > 0 || fallbackOptions.length === 0) {
+      return remotePages;
+    }
+    for (const fallbackOption of fallbackOptions) {
+      const fallbackPages = await fetchRemoteNotePages(patientId, fallbackOption);
+      if (fallbackPages.length > 0) {
+        return fallbackPages;
+      }
+    }
+    return [];
   }
 
   const localPages = await listLocalNotePages(patientId, options);
@@ -2696,10 +2810,38 @@ export const fetchNotePages = async (
     return localPages;
   }
 
+  for (const fallbackOption of fallbackOptions) {
+    const legacyLocalPages = await listLocalNotePages(patientId, fallbackOption);
+    if (legacyLocalPages.length > 0) {
+      refreshNoteScopeInBackground(patientId, options);
+      return legacyLocalPages;
+    }
+  }
+
   try {
     const remotePages = await fetchRemoteNotePages(patientId, options);
-    await mergeRemoteNotesIntoLocalStore(remotePages);
-    return listLocalNotePages(patientId, options);
+    let resolvedRemotePages = remotePages;
+    if (resolvedRemotePages.length === 0 && fallbackOptions.length > 0) {
+      for (const fallbackOption of fallbackOptions) {
+        const fallbackPages = await fetchRemoteNotePages(patientId, fallbackOption);
+        if (fallbackPages.length > 0) {
+          resolvedRemotePages = fallbackPages;
+          break;
+        }
+      }
+    }
+    await mergeRemoteNotesIntoLocalStore(resolvedRemotePages);
+    const exactLocalPages = await listLocalNotePages(patientId, options);
+    if (exactLocalPages.length > 0 || fallbackOptions.length === 0) {
+      return exactLocalPages;
+    }
+    for (const fallbackOption of fallbackOptions) {
+      const fallbackLocalPages = await listLocalNotePages(patientId, fallbackOption);
+      if (fallbackLocalPages.length > 0) {
+        return fallbackLocalPages;
+      }
+    }
+    return exactLocalPages;
   } catch (error) {
     console.error('Failed to fetch note pages from remote', error);
     return localPages;
@@ -2725,6 +2867,7 @@ export const createNotePage = async (
       scopeType: options.scopeType,
       scopeId: options.scopeId,
       tabKey: options.tabKey,
+      subTabKey: options.subTabKey,
       pageNumber: nextPageNumber,
       textContent: '',
       drawingJson: '',
@@ -2741,9 +2884,11 @@ export const createNotePage = async (
     scopeType: options.scopeType,
     scopeId: options.scopeId,
     tabKey: options.tabKey,
+    subTabKey: options.subTabKey,
     pageNumber: nextPageNumber,
     textContent: '',
     drawingJson: '',
+    previewDataUrl: '',
     layoutKind: options.layoutKind || 'freeform',
     updatedAt: now,
   };
@@ -2767,9 +2912,11 @@ export const saveNotePage = async ({
   scopeType,
   scopeId,
   tabKey,
+  subTabKey,
   pageNumber,
   textContent,
   drawingJson,
+  previewDataUrl,
   layoutKind = 'freeform',
 }: {
   notePageId?: string;
@@ -2778,9 +2925,11 @@ export const saveNotePage = async ({
   scopeType: string;
   scopeId: string;
   tabKey: string;
+  subTabKey?: string;
   pageNumber: number;
   textContent: string;
   drawingJson: string;
+  previewDataUrl?: string;
   layoutKind?: string;
 }): Promise<NotePage> => {
   if (!supportsIndexedDbNotes()) {
@@ -2791,15 +2940,17 @@ export const saveNotePage = async ({
       scopeType,
       scopeId,
       tabKey,
+      subTabKey,
       pageNumber,
       textContent,
       drawingJson,
+      previewDataUrl,
       layoutKind,
     });
   }
 
   const now = new Date().toISOString();
-  const scopeOptions = { scopeType, scopeId, tabKey };
+  const scopeOptions = { scopeType, scopeId, tabKey, subTabKey };
   const identityMatch = await getLocalNotePageByIdentity(patientId, scopeOptions, pageNumber);
   const requestedNoteId = String(notePageId || '').trim();
   const resolvedNoteId = requestedNoteId || identityMatch?.id || createClientUuid();
@@ -2817,9 +2968,11 @@ export const saveNotePage = async ({
     scopeType,
     scopeId,
     tabKey,
+    subTabKey,
     pageNumber,
     textContent,
     drawingJson,
+    previewDataUrl: String(previewDataUrl || ''),
     layoutKind,
     updatedAt: now,
   };

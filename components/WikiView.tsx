@@ -4,6 +4,7 @@ import wikiLibraryStatic from '../data/wikiLibraryStatic.json';
 import { createWikiLibraryItem, fetchWikiLibrary, preloadImageAssets } from '../services/dataService';
 import { WikiLibraryItem } from '../types';
 import { ViewportOverlay } from './ViewportOverlay';
+import { uiChipActiveClass, uiChipBaseClass, uiChipInactiveClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from './uiTheme';
 
 const FILTER_TAGS = [
   'Salle de bain',
@@ -116,7 +117,7 @@ export const WikiView: React.FC = () => {
         </div>
 
         <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-center">
-          <div className="relative w-full xl:w-[340px] bg-white rounded-full overflow-hidden border border-slate-200">
+          <div className="relative w-full xl:w-[340px] overflow-hidden rounded-full border border-slate-200 bg-white">
           <input
             type="text"
             placeholder="Rechercher un equipement..."
@@ -125,7 +126,7 @@ export const WikiView: React.FC = () => {
               setSearch(event.target.value);
               setSelectedTag(null);
             }}
-            className="w-full pl-6 pr-10 py-3 bg-transparent border-none outline-none placeholder-slate-400 text-slate-900"
+            className={`${uiFieldClass} rounded-full border-0 bg-transparent py-3 pl-6 pr-10 text-slate-900`}
           />
             <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
           </div>
@@ -137,7 +138,7 @@ export const WikiView: React.FC = () => {
           <button
             key={tag}
             onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${tag === selectedTag ? 'bg-[#907CA1] text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+            className={`${uiChipBaseClass} whitespace-nowrap text-sm ${tag === selectedTag ? uiChipActiveClass : uiChipInactiveClass}`}
           >
             {tag}
           </button>
@@ -151,7 +152,7 @@ export const WikiView: React.FC = () => {
               key={item.id}
               type="button"
               onClick={() => setSelectedItem(item)}
-              className="bg-white p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow text-left group relative"
+              className={`${uiPanelInteractiveClass} group relative p-4 text-left`}
             >
               <div className="aspect-square rounded-xl overflow-hidden mb-4 bg-slate-100 relative">
                 <img
@@ -188,13 +189,13 @@ export const WikiView: React.FC = () => {
           onClick={() => setSelectedItem(null)}
         >
           <div
-            className="bg-white rounded-3xl w-full max-w-5xl h-[90vh] md:h-auto flex flex-col md:flex-row shadow-2xl overflow-hidden relative"
+            className={`${uiModalClass} relative flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden md:h-auto md:flex-row`}
             onClick={(event) => event.stopPropagation()}
           >
             <button
               type="button"
               onClick={() => setSelectedItem(null)}
-              className="absolute top-4 right-4 z-10 p-2 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-md transition-colors"
+              className="absolute top-4 right-4 z-10 rounded-full bg-black/20 p-2 text-white backdrop-blur-md transition-colors hover:bg-black/40"
             >
               <X size={20} />
             </button>
@@ -240,7 +241,7 @@ export const WikiView: React.FC = () => {
             setIsCreateOpen(true);
             setCreateError(null);
           }}
-          className="w-14 h-14 md:w-16 md:h-16 bg-[#907CA1] rounded-full shadow-lg flex items-center justify-center text-white hover:scale-105 hover:bg-[#7a668a] transition-all"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-[#907CA1] text-white shadow-lg transition-all hover:scale-105 hover:bg-[#7a668a] md:h-16 md:w-16"
           aria-label="Ajouter un élément"
           title="Ajouter un élément"
         >
@@ -257,7 +258,7 @@ export const WikiView: React.FC = () => {
           }}
         >
           <div
-            className="bg-white rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden relative"
+            className={`${uiModalClass} relative w-full max-w-3xl overflow-hidden`}
             onClick={(event) => event.stopPropagation()}
           >
             <button

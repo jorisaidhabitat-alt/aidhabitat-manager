@@ -3,6 +3,7 @@ import { AppUser, Visit, Dossier } from '../types';
 import { Calendar, CheckCircle, Clock, MapPin, TrendingUp, Users, ArrowRight, Folder } from 'lucide-react';
 import { formatCityLabel, mapVirtualDossierFromBeneficiary } from '../services/dataService'; // Import mapper
 import { CreateDossierFab } from './DossierView';
+import { uiPanelInteractiveClass } from './uiTheme';
 
 interface DashboardProps {
   visits: Visit[];
@@ -108,7 +109,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ visits, dossiersCount, dos
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.9fr)]">
         {/* Recent Dossiers */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 hover:shadow-md hover:border-[#907CA1] transition-all duration-300 flex min-h-0 flex-col">
+        <div className={`${uiPanelInteractiveClass} flex min-h-0 flex-col p-6`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-xl font-bold text-slate-800">Dossiers Récents ({safeDossiers.length})</h2>
             <button
@@ -156,7 +157,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ visits, dossiersCount, dos
         </div>
 
         {/* Chart */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 hover:shadow-md hover:border-[#907CA1] transition-all duration-300 flex min-h-0 flex-col">
+        <div className={`${uiPanelInteractiveClass} flex min-h-0 flex-col p-6`}>
           <h2 className="text-xl font-bold text-slate-800 mb-5">Activité</h2>
           <ActivityChart data={activityData} />
         </div>
@@ -199,7 +200,7 @@ const ActivityChart: React.FC<{ data: Array<{ name: string; dossiers: number }> 
 
 const KPICard: React.FC<{ icon: any, label: string, value: number, color: string, trend: string, onClick?: () => void }> = ({ icon: Icon, label, value, color, trend, onClick }) => (
   <div
-    className={`bg-white p-5 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md hover:border-[#907CA1] transition-all duration-300 ${onClick ? 'cursor-pointer' : ''}`}
+    className={`${uiPanelInteractiveClass} p-5 ${onClick ? 'cursor-pointer' : ''}`}
     onClick={onClick}
   >
     <div className="flex justify-between items-start mb-4">

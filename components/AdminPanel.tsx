@@ -3,6 +3,7 @@ import { AlertTriangle, Copy, KeyRound, RefreshCw, ShieldCheck, UserCog, Users }
 import { fetchAdminAccessMembers, regenerateAccessPassword } from '../services/dataService';
 import { AdminAccessMember } from '../types';
 import { SimpleLoader } from './LoadingProgress';
+import { uiPanelClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass, uiSoftPanelClass } from './uiTheme';
 
 export const AdminPanel: React.FC = () => {
   const [members, setMembers] = useState<AdminAccessMember[]>([]);
@@ -75,7 +76,7 @@ export const AdminPanel: React.FC = () => {
         </div>
         <button
           onClick={() => loadMembers(true)}
-          className="px-4 py-3 rounded-full bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-colors flex items-center gap-2"
+          className={`${uiSecondaryButtonClass} rounded-full`}
           disabled={isRefreshing}
         >
           <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
@@ -97,7 +98,7 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+      <div className={`${uiPanelClass} overflow-hidden`}>
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 className="font-bold text-slate-900">Accès applicatifs</h3>
@@ -140,7 +141,7 @@ export const AdminPanel: React.FC = () => {
 
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Mot de passe courant</p>
-                  <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3 font-mono text-sm text-slate-800 break-all">
+                  <div className={`${uiSoftPanelClass} px-4 py-3 font-mono text-sm text-slate-800 break-all`}>
                     {member.generatedPassword || 'Aucun mot de passe généré'}
                   </div>
                 </div>
@@ -148,7 +149,7 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex flex-col sm:flex-row xl:flex-col gap-2">
                   <button
                     onClick={() => handleCopy(member)}
-                    className="px-4 py-3 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors flex items-center justify-center gap-2"
+                    className={`${uiSecondaryButtonClass} rounded-full`}
                   >
                     <Copy size={16} />
                     {copiedEmail === member.email ? 'Copié' : 'Copier'}
@@ -156,7 +157,7 @@ export const AdminPanel: React.FC = () => {
                   <button
                     onClick={() => handleReset(member)}
                     disabled={resettingEmail === member.email}
-                    className="px-4 py-3 rounded-full bg-[#907CA1] hover:bg-[#7a668a] text-white font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                    className={`${uiPrimaryButtonClass} rounded-full disabled:opacity-60`}
                   >
                     <RefreshCw size={16} className={resettingEmail === member.email ? 'animate-spin' : ''} />
                     Réinitialiser
@@ -172,7 +173,7 @@ export const AdminPanel: React.FC = () => {
 };
 
 const StatCard: React.FC<{ icon: React.ComponentType<any>; label: string; value: number }> = ({ icon: Icon, label, value }) => (
-  <div className="bg-white rounded-[2rem] border border-slate-100 p-5 flex items-center justify-between shadow-sm">
+  <div className={`${uiPanelInteractiveClass} flex items-center justify-between p-5`}>
     <div>
       <p className="text-sm font-medium text-slate-500">{label}</p>
       <p className="text-3xl font-bold text-slate-900 mt-1">{value}</p>

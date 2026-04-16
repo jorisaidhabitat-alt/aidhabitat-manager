@@ -5,6 +5,7 @@ import { deleteDocument, fetchDocumentBlob, fetchDocuments, getCachedDocumentBlo
 import { AppDocument, Dossier } from '../types';
 import { LoadingProgress, SimpleLoader, useSmoothLoadingState } from './LoadingProgress';
 import { ViewportOverlay } from './ViewportOverlay';
+import { uiActionCardClass, uiChipActiveClass, uiChipBaseClass, uiChipInactiveClass, uiDangerButtonClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from './uiTheme';
 
 interface DocumentsViewProps {
   dossier: Dossier;
@@ -363,7 +364,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
       <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-4">
-            <button onClick={onBack} className="w-10 h-10 border border-black rounded-full flex items-center justify-center hover:bg-black hover:text-white transition-colors">
+            <button onClick={onBack} className={`${uiIconButtonClass} h-10 w-10 border-slate-300`}>
               <ArrowLeft size={20} />
             </button>
             <div>
@@ -387,7 +388,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
         <button
           onClick={() => setSelectedTag(null)}
-          className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${!selectedTag ? 'bg-[#907CA1] text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+          className={`${uiChipBaseClass} whitespace-nowrap text-sm ${!selectedTag ? uiChipActiveClass : uiChipInactiveClass}`}
         >
           Tous
         </button>
@@ -395,7 +396,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           <button
             key={tag}
             onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${tag === selectedTag ? 'bg-[#907CA1] text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+            className={`${uiChipBaseClass} whitespace-nowrap text-sm ${tag === selectedTag ? uiChipActiveClass : uiChipInactiveClass}`}
           >
             {tag}
           </button>
@@ -412,13 +413,13 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           <div className="relative">
             <button
               onClick={() => setShowAddMenu((current) => !current)}
-              className="w-full aspect-[3/4] border-2 border-dashed border-[#907CA1] rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-white/50 transition-colors group bg-white"
+              className={`${uiActionCardClass} flex aspect-[3/4] w-full items-center justify-center border-2 border-dashed border-[#907CA1] bg-white group`}
             >
               <Plus size={48} strokeWidth={1.5} className="text-[#907CA1] group-hover:scale-110 transition-transform" />
             </button>
 
             {showAddMenu && (
-              <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.2)] border border-slate-100 z-50 overflow-hidden py-2 animate-in fade-in zoom-in-95 duration-200">
+              <div className="absolute top-full left-0 z-50 mt-2 w-64 overflow-hidden rounded-[24px] border border-slate-200 bg-white py-2 shadow-[0_10px_40px_rgba(0,0,0,0.2)] animate-in fade-in zoom-in-95 duration-200">
                 <MenuItem icon={ImageIcon} label="Image" onClick={() => fileInputRef.current?.click()} />
                 <MenuItem icon={Camera} label="Prendre une photo" onClick={() => cameraInputRef.current?.click()} />
                 <MenuItem icon={ScanLine} label="Scanner des documents" onClick={() => scannerInputRef.current?.click()} />
@@ -439,7 +440,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
               onTouchEnd={() => setSelectedDoc(doc)}
               className="flex flex-col items-center gap-2 group cursor-pointer relative text-left"
             >
-              <div className="w-full aspect-[3/4] bg-white rounded-2xl border border-slate-200 flex items-center justify-center shadow-sm overflow-hidden relative hover:shadow-md transition-shadow">
+              <div className={`${uiActionCardClass} flex aspect-[3/4] w-full items-center justify-center overflow-hidden`}>
                 <button
                   onClick={(event) => handleDelete(doc, event)}
                   className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
@@ -487,7 +488,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           }}
         >
           <div
-            className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"
+            className={`${uiModalClass} w-full max-w-sm p-6`}
             onClick={(event) => event.stopPropagation()}
           >
             <h3 className="text-lg font-bold mb-4">Valider le document</h3>
@@ -499,7 +500,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                   type="text"
                   value={uploadName}
                   onChange={(event) => setUploadName(event.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-black focus:ring-2 focus:ring-[#907CA1] outline-none"
+                  className={uiFieldClass}
                 />
               </div>
 
@@ -510,7 +511,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                     <button
                       key={tag}
                       onClick={() => setUploadTag(tag)}
-                      className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${uploadTag === tag ? 'bg-[#907CA1] text-white border-[#907CA1]' : 'bg-transparent text-slate-600 border-slate-300 hover:border-[#907CA1]'}`}
+                      className={`${uiChipBaseClass} ${uploadTag === tag ? uiChipActiveClass : uiChipInactiveClass}`}
                     >
                       {tag}
                     </button>
@@ -526,14 +527,14 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                   setPendingFile(null);
                   resetInputs();
                 }}
-                className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors font-medium"
+                className={uiSecondaryButtonClass}
               >
                 Annuler
               </button>
               <button
                 onClick={handleConfirmUpload}
                 disabled={!uploadName.trim() || !uploadTag || isUploading}
-                className="px-4 py-2 rounded-lg bg-[#907CA1] text-white hover:bg-[#7a668a] transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+                className={`${uiPrimaryButtonClass} disabled:opacity-50`}
               >
                 {uploadLoadingState.visible ? (
                   <LoadingProgress
@@ -556,7 +557,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           onClick={() => setDocToDelete(null)}
         >
           <div
-            className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl transform transition-all scale-100"
+            className={`${uiModalClass} w-full max-w-sm p-6`}
             onClick={(event) => event.stopPropagation()}
           >
             <h3 className="text-lg font-bold mb-2">Confirmer la suppression</h3>
@@ -566,13 +567,13 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDocToDelete(null)}
-                className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors font-medium"
+                className={uiSecondaryButtonClass}
               >
                 Annuler
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors font-medium"
+                className={uiDangerButtonClass}
               >
                 Supprimer
               </button>
@@ -587,7 +588,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           onClick={() => setSelectedDoc(null)}
         >
           <div
-            className="bg-white rounded-3xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in"
+            className={`${uiModalClass} animate-fade-in flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden`}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="p-4 border-b border-slate-100 flex flex-col gap-4 bg-slate-50 lg:flex-row lg:items-center lg:justify-between">
@@ -608,21 +609,21 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                   <button
                     key={tag}
                     onClick={() => setEditingTag(tag)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${editingTag === tag ? 'bg-[#907CA1] text-white border-[#907CA1]' : 'bg-white text-slate-600 border-slate-300'}`}
+                    className={`${uiChipBaseClass} ${editingTag === tag ? uiChipActiveClass : uiChipInactiveClass}`}
                   >
                     {tag}
                   </button>
                 ))}
                 <button
                   onClick={() => void handleOpenDocument(selectedDoc)}
-                  className="px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-white"
+                  className={uiSecondaryButtonClass}
                 >
                   Ouvrir
                 </button>
                 <button
                   onClick={() => void handleSaveMetadata()}
                   disabled={isSavingMetadata || !editingTitle.trim()}
-                  className="px-3 py-2 rounded-lg bg-[#907CA1] text-white hover:bg-[#7a668a] transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+                  className={`${uiPrimaryButtonClass} disabled:opacity-50`}
                 >
                   {isSavingMetadata ? (
                     <SimpleLoader
@@ -655,7 +656,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                   <p className="text-slate-600">Previsualisation non disponible pour ce format.</p>
                   <button
                     onClick={() => void handleOpenDocument(selectedDoc)}
-                    className="px-4 py-2 rounded-lg bg-[#907CA1] text-white hover:bg-[#7a668a] transition-colors font-medium"
+                    className={uiPrimaryButtonClass}
                   >
                     Ouvrir le document
                   </button>

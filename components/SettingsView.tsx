@@ -3,6 +3,7 @@ import { Camera, LogOut, Shield } from 'lucide-react';
 import { uploadProfilePhoto } from '../services/dataService';
 import { AppUser } from '../types';
 import { SimpleLoader } from './LoadingProgress';
+import { uiPanelClass, uiSecondaryButtonClass, uiSoftPanelClass } from './uiTheme';
 
 interface SettingsViewProps {
     user: AppUser | null;
@@ -60,7 +61,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onLogout, onUs
             <h2 className="text-3xl font-bold text-black">Paramètres du compte</h2>
 
             {user && (
-                <div className="bg-white rounded-3xl p-8 shadow-sm space-y-8">
+                <div className={`${uiPanelClass} space-y-8 p-8`}>
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                         <div className="flex items-center gap-5">
                             <div className="relative">
@@ -103,14 +104,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onLogout, onUs
 
                         <button
                             onClick={() => onLogout()}
-                            className="px-4 py-3 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-2 transition-colors"
+                            className={`${uiSecondaryButtonClass} rounded-full`}
                         >
                             <LogOut size={16} />
                             Se déconnecter
                         </button>
                     </div>
 
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
+                    <div className={`${uiSoftPanelClass} px-5 py-4 text-sm text-slate-600`}>
                         <p className="font-semibold text-slate-900">Photo de profil</p>
                         <p className="mt-1">Choisis une image pour personnaliser ton compte. Elle sera réutilisée dans la barre latérale et dans l’espace paramètres.</p>
                         {isUploading && (

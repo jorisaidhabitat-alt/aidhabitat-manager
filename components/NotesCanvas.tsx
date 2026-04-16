@@ -41,7 +41,7 @@ interface NotesCanvasProps {
   currentPage?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
-  onSave: (payload: { text: string; drawingJson: string }) => Promise<void> | void;
+  onSave: (payload: { text: string; drawingJson: string; previewDataUrl: string }) => Promise<void> | void;
   onAddPage?: () => Promise<void> | void;
   onDeletePage?: () => Promise<void> | void;
   canDeletePage?: boolean;
@@ -365,6 +365,11 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
     void onSave({
       text,
       drawingJson,
+      previewDataUrl: buildNotePreviewDataUrlFromContent({
+        text,
+        drawingJson,
+        mode,
+      }),
     }).catch((error) => {
       console.error('Failed to save note page', error);
       setSaveLabel('error');
@@ -767,4 +772,159 @@ const redraw = (
 
     ctx.restore();
   }
+};
+
+const buildNotePreviewDataUrl = ({
+  text,
+  strokes,
+  mode,
+}: {
+  text: string;
+  strokes: DrawingStroke[];
+  mode: 'freeform' | 'grid';
+}): string => {
+  if (typeof document === 'undefined') {
+    return '';
+  }
+
+  const canvas = document.createElement('canvas');
+  const width = 360;
+  const height = 220;
+  const padding = 18;
+  const textAreaHeight = 78;
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+
+  if (mode === 'grid') {
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= width; x += 24) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= height; y += 24) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+  }
+
+  const normalizedText = String(text || '').replace(/\s+/g, ' ').trim();
+  const previewLines = normalizedText
+    ? wrapPreviewText(normalizedText, 36).slice(0, 3)
+    : ['Note manuscrite'];
+
+  ctx.fillStyle = normalizedText ? '#111827' : '#94a3b8';
+  ctx.font = '600 14px sans-serif';
+  previewLines.forEach((line, index) => {
+    ctx.fillText(line, padding, padding + 18 + index * 18);
+  });
+
+  const previewArea = {
+    x: padding,
+    y: padding + textAreaHeight,
+    width: width - padding * 2,
+    height: height - padding * 2 - textAreaHeight,
+  };
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(previewArea.x, previewArea.y, previewArea.width, previewArea.height);
+  ctx.clip();
+
+  for (const rawStroke of strokes) {
+    const stroke = normalizeStroke(rawStroke);
+    if (!stroke.points.length) continue;
+    const points = stroke.points.map((point) => ({
+      x: previewArea.x + point.x * previewArea.width,
+      y: previewArea.y + point.y * previewArea.height,
+    }));
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = stroke.size;
+    ctx.strokeStyle = stroke.tool === 'eraser' ? '#000000' : (stroke.color || '#111827');
+    ctx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.globalAlpha = stroke.tool === 'highlighter' ? 0.4 : 1;
+
+    if (stroke.tool === 'rect' && points.length >= 2) {
+      const start = points[0];
+      const end = points[points.length - 1];
+      ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+    } else if (stroke.tool === 'line' && points.length >= 2) {
+      ctx.moveTo(points[0].x, points[0].y);
+      ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+      ctx.stroke();
+    } else {
+      const [firstPoint, ...otherPoints] = points;
+      ctx.moveTo(firstPoint.x, firstPoint.y);
+      for (const point of otherPoints) {
+        ctx.lineTo(point.x, point.y);
+      }
+      if (otherPoints.length === 0) {
+        ctx.lineTo(firstPoint.x + 0.01, firstPoint.y + 0.01);
+      }
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+  return canvas.toDataURL('image/png', 0.82);
+};
+
+export const buildNotePreviewDataUrlFromContent = ({
+  text,
+  drawingJson,
+  mode,
+}: {
+  text: string;
+  drawingJson: string;
+  mode: 'freeform' | 'grid';
+}): string => buildNotePreviewDataUrl({
+  text,
+  strokes: parseDrawingJson(drawingJson || EMPTY_DRAWING_JSON),
+  mode,
+});
+
+const wrapPreviewText = (value: string, maxCharactersPerLine: number): string[] => {
+  const words = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+    if (nextLine.length <= maxCharactersPerLine) {
+      currentLine = nextLine;
+      continue;
+    }
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+    currentLine = word;
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
 };

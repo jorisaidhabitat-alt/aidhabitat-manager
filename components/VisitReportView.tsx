@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { AlertTriangle, ArrowLeft, Bath, Blinds, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Coins, DoorOpen, FolderOpen, Heart, House, ImagePlus, LayoutGrid, MapPin, Plus, Search, ShowerHead, Toilet, Trash2, User } from 'lucide-react';
 import { BathroomLevelInstance, Dossier, HeatingMode, DiagnosticSanitaires, MesuresAnthropometriques, NotePage, ObservationsSynthese, VisitRecommendationItem, VisitReportLocation, WikiLibraryItem, WcLevelInstance } from '../types';
-import { NotesCanvas, type DrawingTool } from './NotesCanvas';
+import { NotesCanvas, buildNotePreviewDataUrlFromContent, type DrawingTool } from './NotesCanvas';
 import { CommuneFieldGroup, type CommuneOption } from './CommuneFieldGroup';
 import { ViewportOverlay } from './ViewportOverlay';
+import { cx, uiFieldClass, uiFieldWarningClass, uiLabelClass } from './uiTheme';
 import wikiLibraryStatic from '../data/wikiLibraryStatic.json';
 import {
     fetchVisitRecommendations,
@@ -38,7 +39,7 @@ interface VisitReportViewProps {
 }
 
 const TABS = [
-    'Bénéficiaire', 'Contexte de vie', 'Accessibilité', 'Salle de bain', 'WC', 'Préconisations', 'Plans', 'Mesures'
+    'Bénéficiaire', 'Contexte de vie', 'Mesures', 'Accessibilité', 'Salle de bain', 'WC', 'Préconisations', 'Plans'
 ];
 
 const WIKI_FILTER_TAGS = [
@@ -118,6 +119,47 @@ const parseNamedOccupantCount = (value?: string | number) => {
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
     return 1;
 };
+
+const BENEFICIARY_NOTE_SUBTAB_LABELS: Record<VisitReportLocation['beneficiarySection'], string> = {
+    profile: 'profile',
+    finance: 'finance',
+    health: 'health',
+    admin: 'admin',
+};
+
+const CONTEXT_NOTE_SUBTAB_LABELS: Record<VisitReportLocation['contextSection'], string> = {
+    medical: 'medical',
+    autonomy: 'autonomy',
+};
+
+const ACCESS_NOTE_SUBTAB_LABELS: Record<VisitReportLocation['accessSection'], string> = {
+    general: 'general',
+    interior: 'interior',
+    exterior: 'exterior',
+    shutters: 'shutters',
+};
+
+const BATHROOM_NOTE_SUBTAB_LABELS: Record<VisitReportLocation['bathroomSection'], string> = {
+    equipment: 'equipment',
+    door: 'door',
+};
+
+const WC_NOTE_SUBTAB_LABELS: Record<VisitReportLocation['wcSection'], string> = {
+    main: 'main',
+    door: 'door',
+};
+
+const VISIT_NOTE_TAB_KEYS = {
+    'Bénéficiaire': 'beneficiaire',
+    'Contexte de vie': 'contexte_de_vie',
+    'Accessibilité': 'accessibilite',
+    'Salle de bain': 'salle_de_bain',
+    'WC': 'wc',
+    'Mesures': 'mesures',
+    'Plans': 'plans',
+    'Synthèse': 'synthese',
+    'Préconisations': 'preconisations',
+} as const;
 
 const createEmptyOccupant = () => ({
     firstName: '',
@@ -568,7 +610,22 @@ const buildAutonomyItems = (items?: Array<{ name: string; checked: boolean }>) =
 
 const formatOccupantLabel = (occupant: any, index: number) => {
     const firstName = String(occupant?.firstName || '').trim();
-    return firstName ? `Occupant ${index + 1} (${firstName})` : `Occupant ${index + 1}`;
+    const lastName = String(occupant?.lastName || '').trim();
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (fullName) {
+        return fullName;
+    }
+    const fallbackLetter = String.fromCharCode(65 + (index % 26));
+    return `Profil ${fallbackLetter}`;
+};
+
+const formatOccupantBadgeLabel = (occupant: any, index: number) => {
+    const firstName = String(occupant?.firstName || '').trim();
+    if (firstName) {
+        return `(${firstName})`;
+    }
+    const fallbackLetter = String.fromCharCode(65 + (index % 26));
+    return `(Profil ${fallbackLetter})`;
 };
 
 const parseHumanHelpItems = (rawValue?: string) => {
@@ -2069,63 +2126,111 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         const layoutKind = structured ? 'grid' : 'freeform';
 
         if (tab === 'Bénéficiaire') {
-            const drawingTabKey = `${tab}:${activeBeneficiarySection}:drawing`;
-            const textTabKey = `${tab}:shared-text`;
+            const drawingTabKey = VISIT_NOTE_TAB_KEYS[tab];
+            const drawingSubTabKey = BENEFICIARY_NOTE_SUBTAB_LABELS[activeBeneficiarySection];
+            const textTabKey = drawingTabKey;
+            const textSubTabKey = 'shared_text';
             return {
                 scopeType,
                 layoutKind,
                 drawingTabKey,
+                drawingSubTabKey,
                 textTabKey,
-                drawingCacheKey: `${scopeType}:${drawingTabKey}`,
-                textCacheKey: `${scopeType}:${textTabKey}`,
+                textSubTabKey,
+                drawingCacheKey: `${scopeType}:${drawingTabKey}:${drawingSubTabKey}`,
+                textCacheKey: `${scopeType}:${textTabKey}:${textSubTabKey}`,
                 sharedText: true,
             };
         }
 
         if (tab === 'Contexte de vie') {
-            const drawingTabKey = `${tab}:${activeContextSection}:drawing`;
-            const textTabKey = `${tab}:shared-text`;
+            const drawingTabKey = VISIT_NOTE_TAB_KEYS[tab];
+            const drawingSubTabKey = CONTEXT_NOTE_SUBTAB_LABELS[activeContextSection];
+            const textTabKey = drawingTabKey;
+            const textSubTabKey = 'shared_text';
             return {
                 scopeType,
                 layoutKind,
                 drawingTabKey,
+                drawingSubTabKey,
                 textTabKey,
-                drawingCacheKey: `${scopeType}:${drawingTabKey}`,
-                textCacheKey: `${scopeType}:${textTabKey}`,
+                textSubTabKey,
+                drawingCacheKey: `${scopeType}:${drawingTabKey}:${drawingSubTabKey}`,
+                textCacheKey: `${scopeType}:${textTabKey}:${textSubTabKey}`,
                 sharedText: true,
             };
         }
 
         if (tab === 'Accessibilité') {
-            const drawingTabKey = `${tab}:${activeAccessSection}:drawing`;
-            const textTabKey = `${tab}:shared-text`;
+            const drawingTabKey = VISIT_NOTE_TAB_KEYS[tab];
+            const drawingSubTabKey = ACCESS_NOTE_SUBTAB_LABELS[activeAccessSection];
+            const textTabKey = drawingTabKey;
+            const textSubTabKey = 'shared_text';
             return {
                 scopeType,
                 layoutKind,
                 drawingTabKey,
+                drawingSubTabKey,
                 textTabKey,
-                drawingCacheKey: `${scopeType}:${drawingTabKey}`,
-                textCacheKey: `${scopeType}:${textTabKey}`,
+                textSubTabKey,
+                drawingCacheKey: `${scopeType}:${drawingTabKey}:${drawingSubTabKey}`,
+                textCacheKey: `${scopeType}:${textTabKey}:${textSubTabKey}`,
                 sharedText: true,
+            };
+        }
+
+        if (tab === 'Salle de bain') {
+            const drawingTabKey = VISIT_NOTE_TAB_KEYS[tab];
+            const drawingSubTabKey = BATHROOM_NOTE_SUBTAB_LABELS[activeBathroomSection];
+            return {
+                scopeType,
+                layoutKind,
+                drawingTabKey,
+                drawingSubTabKey,
+                textTabKey: tab,
+                textSubTabKey: drawingSubTabKey,
+                drawingCacheKey: `${scopeType}:${drawingTabKey}:${drawingSubTabKey}`,
+                textCacheKey: `${scopeType}:${drawingTabKey}:${drawingSubTabKey}`,
+                sharedText: false,
+            };
+        }
+
+        if (tab === 'WC') {
+            const drawingTabKey = VISIT_NOTE_TAB_KEYS[tab];
+            const drawingSubTabKey = WC_NOTE_SUBTAB_LABELS[activeWcSection];
+            return {
+                scopeType,
+                layoutKind,
+                drawingTabKey,
+                drawingSubTabKey,
+                textTabKey: tab,
+                textSubTabKey: drawingSubTabKey,
+                drawingCacheKey: `${scopeType}:${drawingTabKey}:${drawingSubTabKey}`,
+                textCacheKey: `${scopeType}:${drawingTabKey}:${drawingSubTabKey}`,
+                sharedText: false,
             };
         }
 
         return {
             scopeType,
             layoutKind,
-            drawingTabKey: tab,
-            textTabKey: tab,
-            drawingCacheKey: `${scopeType}:${tab}`,
-            textCacheKey: `${scopeType}:${tab}`,
+            drawingTabKey: VISIT_NOTE_TAB_KEYS[tab as keyof typeof VISIT_NOTE_TAB_KEYS] || tab.toLowerCase(),
+            drawingSubTabKey: 'general',
+            textTabKey: VISIT_NOTE_TAB_KEYS[tab as keyof typeof VISIT_NOTE_TAB_KEYS] || tab.toLowerCase(),
+            textSubTabKey: 'general',
+            drawingCacheKey: `${scopeType}:${VISIT_NOTE_TAB_KEYS[tab as keyof typeof VISIT_NOTE_TAB_KEYS] || tab.toLowerCase()}:general`,
+            textCacheKey: `${scopeType}:${VISIT_NOTE_TAB_KEYS[tab as keyof typeof VISIT_NOTE_TAB_KEYS] || tab.toLowerCase()}:general`,
             sharedText: false,
         };
-    }, [activeAccessSection, activeBeneficiarySection, activeContextSection]);
+    }, [activeAccessSection, activeBathroomSection, activeBeneficiarySection, activeContextSection, activeWcSection]);
 
     const currentNoteScope = buildNoteScopeConfig(activeTab);
     const noteScopeType = currentNoteScope.scopeType;
     const noteLayoutKind = currentNoteScope.layoutKind;
     const noteTabKey = currentNoteScope.drawingTabKey;
+    const noteSubTabKey = currentNoteScope.drawingSubTabKey;
     const noteTextTabKey = currentNoteScope.textTabKey;
+    const noteTextSubTabKey = currentNoteScope.textSubTabKey;
     const noteCacheKey = currentNoteScope.drawingCacheKey;
     const noteTextCacheKey = currentNoteScope.textCacheKey;
     const isSharedTextSubsectionNotes = currentNoteScope.sharedText;
@@ -2203,12 +2308,14 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                     scopeType: noteScopeType,
                     scopeId: dossier.id,
                     tabKey: noteTabKey,
+                    subTabKey: noteSubTabKey,
                 }),
                 isSharedTextSubsectionNotes
                     ? fetchNotePages(dossier.patient.id, {
                         scopeType: noteScopeType,
                         scopeId: dossier.id,
                         tabKey: noteTextTabKey,
+                        subTabKey: noteTextSubTabKey,
                     })
                     : Promise.resolve([]),
             ]);
@@ -2247,7 +2354,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 setCurrentLocalPage(0);
             }
         }
-    }, [commitNotePages, dossier.id, dossier.patient.id, isMeasurementsTab, isSharedTextSubsectionNotes, noteCacheKey, noteScopeType, noteTabKey, noteTextCacheKey, noteTextTabKey]);
+    }, [commitNotePages, dossier.id, dossier.patient.id, isMeasurementsTab, isSharedTextSubsectionNotes, noteCacheKey, noteScopeType, noteSubTabKey, noteTabKey, noteTextCacheKey, noteTextSubTabKey, noteTextTabKey]);
 
     useEffect(() => {
         const preferredPageNumber = notePageMemoryRef.current[noteCacheKey] ?? 0;
@@ -2271,12 +2378,14 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         scopeType: structured ? 'visit_grid' : 'visit_report',
                         scopeId: dossier.id,
                         tabKey: scope.drawingTabKey,
+                        subTabKey: scope.drawingSubTabKey,
                     }),
                     scope.sharedText
                         ? fetchNotePages(dossier.patient.id, {
                             scopeType: structured ? 'visit_grid' : 'visit_report',
                             scopeId: dossier.id,
                             tabKey: scope.textTabKey,
+                            subTabKey: scope.textSubTabKey,
                         })
                         : Promise.resolve([]),
                 ])
@@ -2392,6 +2501,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         scopeType: noteScopeType,
         scopeId: dossier.id,
         tabKey: noteTabKey,
+        subTabKey: noteSubTabKey,
         pageNumber: currentPageNumber,
         textContent: '',
         drawingJson: '',
@@ -2404,6 +2514,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         scopeType: noteScopeType,
         scopeId: dossier.id,
         tabKey: noteTextTabKey,
+        subTabKey: noteTextSubTabKey,
         pageNumber: currentPageNumber,
         textContent: '',
         drawingJson: EMPTY_DRAWING_JSON,
@@ -2566,6 +2677,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 scopeType: noteScopeType,
                 scopeId: dossier.id,
                 tabKey: noteTabKey,
+                subTabKey: noteSubTabKey,
                 layoutKind: noteLayoutKind,
             });
             const nextPages = commitNotePages(noteCacheKey, [...activeTabNotePagesRef.current, createdPage]);
@@ -2585,6 +2697,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                     scopeType: noteScopeType,
                     scopeId: dossier.id,
                     tabKey: noteTextTabKey,
+                    subTabKey: noteTextSubTabKey,
                     pageNumber: createdPage.pageNumber,
                     textContent: '',
                     drawingJson: EMPTY_DRAWING_JSON,
@@ -2601,6 +2714,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                     scopeType: noteScopeType,
                     scopeId: dossier.id,
                     tabKey: noteTextTabKey,
+                    subTabKey: noteTextSubTabKey,
                     pageNumber: createdPage.pageNumber,
                     textContent: '',
                     drawingJson: EMPTY_DRAWING_JSON,
@@ -2693,8 +2807,13 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             });
     };
 
-    const handleSaveNote = useCallback(async ({ text, drawingJson }: { text: string; drawingJson: string }) => {
+    const handleSaveNote = useCallback(async ({ text, drawingJson, previewDataUrl }: { text: string; drawingJson: string; previewDataUrl: string }) => {
         const normalizedDrawingJson = drawingJson || EMPTY_DRAWING_JSON;
+        const resolvedPreviewDataUrl = previewDataUrl || buildNotePreviewDataUrlFromContent({
+            text,
+            drawingJson: normalizedDrawingJson,
+            mode: noteLayoutKind === 'grid' ? 'grid' : 'freeform',
+        });
         const isBlankText = text.trim().length === 0;
         const isBlankDrawing = normalizedDrawingJson === EMPTY_DRAWING_JSON;
         if (!currentDrawingNotePage.id && !currentTextNotePage.id && isBlankText && isBlankDrawing) {
@@ -2706,6 +2825,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             id: currentDrawingNotePage.id || `pending-${Date.now()}`,
             textContent: isSharedTextSubsectionNotes ? '' : text,
             drawingJson: normalizedDrawingJson,
+            previewDataUrl: resolvedPreviewDataUrl,
             updatedAt: new Date().toISOString(),
         };
         const otherDrawingPages = activeTabNotePagesRef.current.filter((page) => page.id !== optimisticDrawingPage.id && page.pageNumber !== currentPageNumber);
@@ -2717,6 +2837,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 id: currentTextNotePage.id || `pending-text-${Date.now()}`,
                 textContent: text,
                 drawingJson: EMPTY_DRAWING_JSON,
+                previewDataUrl: resolvedPreviewDataUrl,
                 updatedAt: new Date().toISOString(),
             }
             : null;
@@ -2741,9 +2862,11 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         scopeType: noteScopeType,
                         scopeId: dossier.id,
                         tabKey: noteTabKey,
+                        subTabKey: noteSubTabKey,
                         pageNumber: currentPageNumber,
                         textContent: isSharedTextSubsectionNotes ? '' : text,
                         drawingJson: normalizedDrawingJson,
+                        previewDataUrl: resolvedPreviewDataUrl,
                         layoutKind: noteLayoutKind,
                     }),
                     isSharedTextSubsectionNotes
@@ -2754,9 +2877,11 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                             scopeType: noteScopeType,
                             scopeId: dossier.id,
                             tabKey: noteTextTabKey,
+                            subTabKey: noteTextSubTabKey,
                             pageNumber: currentPageNumber,
                             textContent: text,
                             drawingJson: EMPTY_DRAWING_JSON,
+                            previewDataUrl: resolvedPreviewDataUrl,
                             layoutKind: 'freeform',
                         })
                         : Promise.resolve(null),
@@ -2786,7 +2911,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
 
         const prev = noteSaveChainRef.current;
         noteSaveChainRef.current = prev.then(doSave, doSave).then(() => undefined, () => undefined);
-    }, [commitNotePages, currentDrawingNotePage, currentPageNumber, currentTextNotePage, dossier.id, dossier.patient.id, isSharedTextSubsectionNotes, noteCacheKey, noteLayoutKind, noteScopeType, noteTabKey, noteTextCacheKey, noteTextTabKey]);
+    }, [commitNotePages, currentDrawingNotePage, currentPageNumber, currentTextNotePage, dossier.id, dossier.patient.id, isSharedTextSubsectionNotes, noteCacheKey, noteLayoutKind, noteScopeType, noteSubTabKey, noteTabKey, noteTextCacheKey, noteTextSubTabKey, noteTextTabKey]);
 
     const debouncedNoteDraft = useDebounce(noteDraft, NOTE_DRAFT_SYNC_DEBOUNCE_MS);
 
@@ -2796,6 +2921,11 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         handleSaveNote({
             text: debouncedNoteDraft.text,
             drawingJson: debouncedNoteDraft.drawingJson,
+            previewDataUrl: buildNotePreviewDataUrlFromContent({
+                text: debouncedNoteDraft.text,
+                drawingJson: debouncedNoteDraft.drawingJson,
+                mode: noteLayoutKind === 'grid' ? 'grid' : 'freeform',
+            }),
         }).catch(() => {
             // saveStatus already handles UI feedback
         });
@@ -3126,7 +3256,6 @@ const BeneficiaryForm: React.FC<{
     }, [activeOccupantIndex, displayedOccupants.length]);
 
     const activeOccupant = displayedOccupants[activeOccupantIndex] || createEmptyOccupant();
-    const currentOccupantLabel = `occupant ${activeOccupantIndex + 1}`;
     const updateActiveOccupant = (field: keyof ReturnType<typeof createEmptyOccupant>, value: string | boolean) => {
         const nextOccupants = buildOccupantsFromPatient(data, data.numberPeople);
         nextOccupants[activeOccupantIndex] = {
@@ -3170,7 +3299,7 @@ const BeneficiaryForm: React.FC<{
     );
     const renderOccupantBadge = () => hasMultipleOccupants ? (
         <div className="mb-3 rounded-2xl border border-[#907CA1]/30 bg-[#F4EFF7] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#554A63]">
-            {formatOccupantLabel(activeOccupant, activeOccupantIndex)}
+            {formatOccupantBadgeLabel(activeOccupant, activeOccupantIndex)}
         </div>
     ) : null;
 
@@ -3191,18 +3320,18 @@ const BeneficiaryForm: React.FC<{
                 {renderOccupantBadge()}
                 <div className="grid grid-cols-2 gap-2">
                     <Input
-                        label={`Nom ${currentOccupantLabel}`}
+                        label="Nom"
                         value={activeOccupant.lastName || ''}
                         onChange={v => updateActiveOccupant('lastName', v)}
                     />
                     <Input
-                        label={`Prénom ${currentOccupantLabel}`}
+                        label="Prénom"
                         value={activeOccupant.firstName || ''}
                         onChange={v => updateActiveOccupant('firstName', v)}
                     />
                 </div>
                 <Input
-                    label={`Date de naissance ${currentOccupantLabel}`}
+                    label="Date de naissance"
                     type="date"
                     value={activeOccupant.birthDate || ''}
                     onChange={v => updateActiveOccupant('birthDate', v)}
@@ -3323,18 +3452,18 @@ const BeneficiaryForm: React.FC<{
                     )}
                     {renderOccupantBadge()}
                     <div className="grid grid-cols-2 gap-2">
-                        <Input label={`N° Sécu ${currentOccupantLabel}`} value={activeOccupant.numeroSecuriteSociale || ''} onChange={v => updateActiveOccupant('numeroSecuriteSociale', v)} placeholder="1 23 45 67..." />
-                        <Input label={`Caisse retraite princ. ${currentOccupantLabel}`} value={activeOccupant.caisseRetraitePrincipale || ''} onChange={v => updateActiveOccupant('caisseRetraitePrincipale', v)} placeholder="Ex: CARSAT..." />
+                        <Input label="N° Sécu" value={activeOccupant.numeroSecuriteSociale || ''} onChange={v => updateActiveOccupant('numeroSecuriteSociale', v)} placeholder="1 23 45 67..." />
+                        <Input label="Caisse retraite princ." value={activeOccupant.caisseRetraitePrincipale || ''} onChange={v => updateActiveOccupant('caisseRetraitePrincipale', v)} placeholder="Ex: CARSAT..." />
                     </div>
                     <div className="grid grid-cols-1 gap-2">
-                        <Input label={`Caisses complém. ${currentOccupantLabel}`} value={activeOccupant.caissesRetraiteComplementaires || ''} onChange={v => updateActiveOccupant('caissesRetraiteComplementaires', v)} placeholder="Ex: AGIRC-ARRCO..." />
+                        <Input label="Caisses complém." value={activeOccupant.caissesRetraiteComplementaires || ''} onChange={v => updateActiveOccupant('caissesRetraiteComplementaires', v)} placeholder="Ex: AGIRC-ARRCO..." />
                     </div>
                 </div>
             </Section>
             <Section title="Renseignements sur la visite">
                 <ToggleGroup label="Envoi du rapport" options={['Mail', 'Courrier']} selected={data.envoiRapport} onSelect={v => onChange('envoiRapport', v)} small />
                 <div className="pt-2">
-                    <Input label="Personnes présentes à la visite" value={data.personnesPresentesVisite} onChange={v => onChange('personnesPresentesVisite', v)} placeholder="Occupant, proche, ergothérapeute..." />
+                    <Input label="Personnes présentes à la visite" value={data.personnesPresentesVisite} onChange={v => onChange('personnesPresentesVisite', v)} placeholder="Bénéficiaire, proche, ergothérapeute..." />
                 </div>
             </Section>
         </div>
@@ -3594,7 +3723,7 @@ const ContextForm: React.FC<{
                 }>
                     {hasMultipleOccupants && (
                         <div className="mb-3 rounded-2xl border border-[#907CA1]/30 bg-[#F4EFF7] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#554A63]">
-                            {formatOccupantLabel(displayedOccupants[activeOccupantIndex], activeOccupantIndex)}
+                            {formatOccupantBadgeLabel(displayedOccupants[activeOccupantIndex], activeOccupantIndex)}
                         </div>
                     )}
                     <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-1.5">
@@ -3666,7 +3795,7 @@ const ContextForm: React.FC<{
                 >
                     {hasMultipleOccupants && (
                         <div className="mb-3 rounded-2xl border border-[#907CA1]/30 bg-[#F4EFF7] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#554A63]">
-                            {formatOccupantLabel(displayedOccupants[activeOccupantIndex], activeOccupantIndex)}
+                            {formatOccupantBadgeLabel(displayedOccupants[activeOccupantIndex], activeOccupantIndex)}
                         </div>
                     )}
                     <div className={`space-y-4 transition-opacity ${autonomyLocked ? 'opacity-55' : 'opacity-100'}`}>
@@ -4916,7 +5045,7 @@ const MeasurementsCanvasBackground: React.FC = () => (
 
 const Section: React.FC<{ title: React.ReactNode, children: React.ReactNode }> = ({ title, children }) => (
     <div className="mb-5">
-        <h4 className="mb-2 border-b border-slate-100 pb-1 text-sm font-bold uppercase text-[#597E8D]">{title}</h4>
+        <h4 className="mb-2 border-b border-slate-100 pb-1 text-sm font-bold uppercase tracking-[0.14em] text-[#597E8D]">{title}</h4>
         {children}
     </div>
 );
@@ -4941,12 +5070,12 @@ const Select: React.FC<{ label?: string, value: string, onChange: (v: string) =>
 
     return (
         <div className="mb-2.5" ref={containerRef}>
-            {label && <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{label}</label>}
+            {label && <label className={uiLabelClass}>{label}</label>}
             <div className="relative">
                 <button
                     type="button"
                     onClick={() => setIsOpen((current) => !current)}
-                    className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm outline-none transition-colors hover:border-slate-300 focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20"
+                    className={`${uiFieldClass} flex items-center justify-between text-left hover:border-slate-300`}
                 >
                     <span className={selectedOption || value ? 'text-slate-700' : 'text-slate-400'}>
                         {selectedOption?.label || value || placeholder || 'Sélectionner...'}
@@ -4954,7 +5083,7 @@ const Select: React.FC<{ label?: string, value: string, onChange: (v: string) =>
                     <ChevronDown size={16} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isOpen && (
-                    <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                    <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-[22px] border border-slate-200 bg-white p-2 shadow-lg">
                         <div className="max-h-[138px] overflow-y-auto pr-1">
                             {placeholder && (
                                 <button
@@ -5013,18 +5142,19 @@ const Input: React.FC<{
     warningLabel?: string,
     unit?: string
 }> = ({ label, type = "text", placeholder, value, onChange, onBlur, onFocus, showWarningIcon = false, warningLabel = 'Valeur invalide', unit }) => (
-    <div className="mb-2.5">
-        {label && <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{label}</label>}
+        <div className="mb-2.5">
+        {label && <label className={uiLabelClass}>{label}</label>}
         <div className="relative">
             <input type={type} placeholder={placeholder} value={value}
                 onChange={e => onChange(e.target.value)}
                 onFocus={onFocus}
                 onBlur={onBlur}
-                className={`w-full rounded-lg border bg-slate-50 px-3 py-2.5 text-sm outline-none transition-colors ${
-                    showWarningIcon ? 'border-amber-400 pr-10 text-amber-700 focus:ring-2 focus:ring-amber-200' : 'border-slate-200 focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20'
-                } ${unit ? 'pr-10' : ''} ${
+                className={cx(
+                    uiFieldClass,
+                    showWarningIcon && uiFieldWarningClass,
+                    unit && 'pr-10',
                     unit && showWarningIcon ? 'pr-16' : ''
-                }`} />
+                )} />
             {unit && (
                 <span className={`absolute top-1/2 -translate-y-1/2 text-xs font-bold ${showWarningIcon ? 'right-8 text-amber-500' : 'right-3 text-slate-400'}`}>
                     {unit}
@@ -5045,7 +5175,7 @@ const Input: React.FC<{
 
 const TextArea: React.FC<{ placeholder?: string, value: string, onChange: (v: string) => void, rows?: number }> = ({ placeholder, value, onChange, rows = 4 }) => (
     <textarea placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)} rows={rows}
-        className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20" />
+        className={`${uiFieldClass} resize-none`} />
 );
 
 const Checkbox: React.FC<{ label: string, checked: boolean, onChange: (v: boolean) => void }> = ({ label, checked, onChange }) => (

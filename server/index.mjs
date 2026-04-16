@@ -2110,14 +2110,24 @@ const mapStoredNotePage = (notePage) => ({
   scopeType: notePage.scopeType || 'legacy',
   scopeId: notePage.scopeId || notePage.dossierId || notePage.patientId,
   tabKey: notePage.tabKey,
+  subTabKey: stringValue(notePage.subTabKey),
   pageNumber: Number(notePage.pageNumber) || 0,
   textContent: stringValue(notePage.textContent),
   drawingJson: stringValue(notePage.drawingJson),
+  previewDataUrl: stringValue(notePage.previewDataUrl),
+  previewUrl: absoluteUrl(`/public/note-pages/${encodeURIComponent(notePage.id)}/preview`),
   layoutKind: stringValue(notePage.layoutKind) || 'freeform',
   updatedAt: notePage.updatedAt,
-  remotePath: `note-pages/${notePage.patientId}/${notePage.scopeType || 'legacy'}/${notePage.scopeId || notePage.dossierId || notePage.patientId}/${notePage.tabKey}/${Number(notePage.pageNumber) || 0}`,
-  remoteUrl: absoluteUrl(`/api/note-pages/${encodeURIComponent(notePage.patientId)}?scopeType=${encodeURIComponent(notePage.scopeType || 'legacy')}&scopeId=${encodeURIComponent(notePage.scopeId || notePage.dossierId || notePage.patientId)}&tabKey=${encodeURIComponent(notePage.tabKey)}&pageNumber=${Number(notePage.pageNumber) || 0}`),
+  remotePath: `note-pages/${notePage.patientId}/${notePage.scopeType || 'legacy'}/${notePage.scopeId || notePage.dossierId || notePage.patientId}/${notePage.tabKey}/${stringValue(notePage.subTabKey) || 'general'}/${Number(notePage.pageNumber) || 0}`,
+  remoteUrl: absoluteUrl(`/api/note-pages/${encodeURIComponent(notePage.patientId)}?scopeType=${encodeURIComponent(notePage.scopeType || 'legacy')}&scopeId=${encodeURIComponent(notePage.scopeId || notePage.dossierId || notePage.patientId)}&tabKey=${encodeURIComponent(notePage.tabKey)}&subTabKey=${encodeURIComponent(stringValue(notePage.subTabKey) || 'general')}&pageNumber=${Number(notePage.pageNumber) || 0}`),
 });
+
+const escapeHtml = (value) => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
 
 const formatBeneficiaryDisplayName = (beneficiaryRecord) => {
   const firstName = stringValue(field(beneficiaryRecord, 'prenom')).trim();
@@ -3361,6 +3371,17 @@ app.patch('/api/beneficiaires/:patientId', requireAuth, async (req, res, next) =
     const fields = mapBeneficiaryUpdatesToFields(updates, references);
 
     await updateRecord(TABLES.beneficiaires, beneficiaryRecord.id, fields);
+    const refreshedDossiers = await getDossiersForApp(req.appUser);
+    const refreshedDossier = refreshedDossiers.find((dossier) => String(dossier?.patient?.id) === String(patientId));
+    if (refreshedDossier?.patient) {
+      await mobileSyncStore.syncNotePagesBeneficiaryMetadata(patientId, {
+        patientFirstName: refreshedDossier.patient.firstName,
+        patientLastName: refreshedDossier.patient.lastName,
+        patientDisplayName: [refreshedDossier.patient.firstName, refreshedDossier.patient.lastName].filter(Boolean).join(' ').trim(),
+        dossierLabel: refreshedDossier.label || [refreshedDossier.patient.firstName, refreshedDossier.patient.lastName].filter(Boolean).join(' ').trim(),
+        dossierId: refreshedDossier.id,
+      });
+    }
     res.json({
       success: true,
       error: null,
@@ -3701,18 +3722,76 @@ app.get('/api/mobile-documents/:documentId/content', requireAuth, async (req, re
   }
 });
 
+app.get('/public/note-pages/:notePageId/preview', async (req, res, next) => {
+  try {
+    const notePage = await mobileSyncStore.getNotePageById(req.params.notePageId);
+    if (!notePage) {
+      throw httpError(404, 'Note introuvable');
+    }
+
+    const previewDataUrl = stringValue(notePage.previewDataUrl).trim();
+    const noteTitle = [
+      stringValue(notePage.patientFirstName).trim(),
+      stringValue(notePage.patientLastName).trim(),
+    ].filter(Boolean).join(' ').trim() || 'Note';
+    const textPreview = stringValue(notePage.textContent).trim();
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(noteTitle)} - Prévisualisation note</title>
+    <style>
+      body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#f8fafc; color:#0f172a; }
+      .shell { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 20px; }
+      .card { width:min(820px, 100%); background:#fff; border:1px solid #e2e8f0; border-radius:24px; box-shadow:0 20px 40px rgba(15, 23, 42, 0.08); overflow:hidden; }
+      .header { padding:20px 24px 12px; border-bottom:1px solid #e2e8f0; }
+      .meta { color:#64748b; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; }
+      h1 { margin:8px 0 0; font-size:22px; }
+      .body { padding:24px; display:grid; gap:20px; }
+      .preview { border:1px solid #e2e8f0; border-radius:18px; background:#fff; overflow:hidden; }
+      .preview img { display:block; width:100%; height:auto; }
+      .empty { padding:48px 24px; color:#94a3b8; text-align:center; font-weight:600; }
+      .text { white-space:pre-wrap; line-height:1.6; color:#334155; border:1px solid #e2e8f0; border-radius:18px; background:#f8fafc; padding:18px; }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <article class="card">
+        <header class="header">
+          <div class="meta">${escapeHtml(notePage.tabKey)} · page ${Number(notePage.pageNumber) + 1}</div>
+          <h1>${escapeHtml(noteTitle)}</h1>
+        </header>
+        <div class="body">
+          <section class="preview">
+            ${previewDataUrl ? `<img src="${escapeHtml(previewDataUrl)}" alt="Prévisualisation de la note" />` : '<div class="empty">Aucune miniature disponible</div>'}
+          </section>
+          ${textPreview ? `<section class="text">${escapeHtml(textPreview)}</section>` : ''}
+        </div>
+      </article>
+    </div>
+  </body>
+</html>`);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/note-pages/:patientId', requireAuth, async (req, res, next) => {
   try {
     await resolveBeneficiaryAccess(req.appUser, req.params.patientId);
     const scopeType = stringValue(req.query?.scopeType).trim();
     const scopeId = stringValue(req.query?.scopeId).trim();
     const tabKey = stringValue(req.query?.tabKey).trim();
+    const subTabKey = stringValue(req.query?.subTabKey).trim();
     const pageNumber = req.query?.pageNumber == null || req.query.pageNumber === ''
       ? null
       : Number(req.query.pageNumber);
     const notePages = await mobileSyncStore.listNotePagesByPatient(
       req.params.patientId,
-      { scopeType, scopeId, tabKey, pageNumber },
+      { scopeType, scopeId, tabKey, subTabKey, pageNumber },
     );
 
     res.json({
@@ -3732,9 +3811,11 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
     const scopeType = stringValue(req.body?.scopeType).trim();
     const scopeId = stringValue(req.body?.scopeId).trim();
     const tabKey = stringValue(req.body?.tabKey).trim();
+    const subTabKey = stringValue(req.body?.subTabKey).trim();
     const pageNumber = Number(req.body?.pageNumber ?? 0);
     const textContent = typeof req.body?.textContent === 'string' ? req.body.textContent : '';
     const drawingJson = typeof req.body?.drawingJson === 'string' ? req.body.drawingJson : JSON.stringify(req.body?.drawingJson ?? '');
+    const previewDataUrl = typeof req.body?.previewDataUrl === 'string' ? req.body.previewDataUrl : '';
     const layoutKind = stringValue(req.body?.layoutKind).trim() || 'freeform';
 
     if (!patientId) {
@@ -3766,9 +3847,11 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
       scopeType,
       scopeId,
       tabKey,
+      subTabKey,
       pageNumber,
       textContent,
       drawingJson,
+      previewDataUrl,
       layoutKind,
       ...notePageContext,
     });
@@ -3789,6 +3872,7 @@ app.post('/api/note-pages', requireAuth, async (req, res, next) => {
     const scopeType = stringValue(req.body?.scopeType).trim();
     const scopeId = stringValue(req.body?.scopeId).trim();
     const tabKey = stringValue(req.body?.tabKey).trim();
+    const subTabKey = stringValue(req.body?.subTabKey).trim();
     const layoutKind = stringValue(req.body?.layoutKind).trim() || 'freeform';
 
     if (!patientId) {
@@ -3816,6 +3900,7 @@ app.post('/api/note-pages', requireAuth, async (req, res, next) => {
       scopeType,
       scopeId,
       tabKey,
+      subTabKey,
       layoutKind,
       ...notePageContext,
     });

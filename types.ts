@@ -52,9 +52,12 @@ export interface NotePage {
   scopeType: string;
   scopeId: string;
   tabKey: string;
+  subTabKey?: string;
   pageNumber: number;
   textContent: string;
   drawingJson: string;
+  previewDataUrl?: string;
+  previewUrl?: string;
   layoutKind?: string;
   updatedAt?: string;
 }

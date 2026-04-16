@@ -4,11 +4,12 @@ import {
   ArrowRight, Search, ChevronRight, Plus, ChevronDown,
   Paperclip, Home, User, Phone, MapPin, Calendar, Activity, ArrowLeft, X
 } from 'lucide-react';
-import { NotesCanvas } from './NotesCanvas';
+import { NotesCanvas, buildNotePreviewDataUrlFromContent } from './NotesCanvas';
 import { CommuneFieldGroup, type CommuneOption } from './CommuneFieldGroup';
 import { fetchNotePages, saveNotePage, mapVirtualDossierFromBeneficiary, createBeneficiaryWithDossier, fetchReferenceData, getReferenceDataSnapshot, updateBeneficiary, fetchObservationsSynthese, formatCityLabel, normalizeCityInput } from '../services/dataService';
 import { SimpleLoader } from './LoadingProgress';
 import { ViewportOverlay } from './ViewportOverlay';
+import { uiActionCardClass, uiBadgeAccentClass, uiFieldClass, uiFieldReadonlyAccentClass, uiFieldReadonlyClass, uiIconButtonClass, uiLabelClass, uiPanelClass } from './uiTheme';
 
 interface DossierViewProps {
   dossiers: Dossier[];
@@ -440,7 +441,7 @@ const DossierList: React.FC<{ dossiers: Dossier[]; onSelect: (d: Dossier) => voi
           <input
             type="text"
             placeholder="Rechercher..."
-            className="w-full pl-6 pr-12 py-3 md:py-4 rounded-full bg-white border-2 border-slate-300 shadow-sm focus:ring-2 focus:ring-[#907CA1] focus:outline-none text-black placeholder-slate-400 text-base md:text-lg"
+            className={`${uiFieldClass} rounded-full border-2 border-slate-300 py-3 pl-6 pr-12 text-base text-black md:py-4 md:text-lg`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -450,14 +451,14 @@ const DossierList: React.FC<{ dossiers: Dossier[]; onSelect: (d: Dossier) => voi
         <div className="relative w-full lg:w-auto">
           <button
             onClick={() => setIsSortMenuOpen(!isSortMenuOpen)}
-            className="w-full lg:w-auto h-full px-6 py-3 md:py-4 bg-white rounded-full shadow-sm border-2 border-slate-300 flex items-center justify-between gap-3 text-black font-medium hover:bg-slate-50 min-w-[160px]"
+            className={`${uiPanelClass} flex h-full w-full min-w-[160px] items-center justify-between gap-3 rounded-full border-2 border-slate-300 px-6 py-3 font-medium text-black lg:w-auto md:py-4`}
           >
             <span>{getSortLabel()}</span>
             <ChevronDown size={20} />
           </button>
 
           {isSortMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-full bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden z-30">
+            <div className="absolute right-0 top-full z-30 mt-2 w-full overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-lg">
               <button onClick={() => { setSortOrder('asc'); setIsSortMenuOpen(false); }} className="w-full text-left px-4 py-3 hover:bg-slate-50">de A à Z</button>
               <button onClick={() => { setSortOrder('desc'); setIsSortMenuOpen(false); }} className="w-full text-left px-4 py-3 hover:bg-slate-50">de Z à A</button>
               <button onClick={() => { setSortOrder('random'); setIsSortMenuOpen(false); }} className="w-full text-left px-4 py-3 hover:bg-slate-50">Aléatoire</button>
@@ -467,7 +468,7 @@ const DossierList: React.FC<{ dossiers: Dossier[]; onSelect: (d: Dossier) => voi
       </div>
 
       {/* Main List Area */}
-      <div className="bg-white rounded-[2rem] shadow-sm flex-1 flex flex-col overflow-hidden relative py-4 md:py-6">
+      <div className={`${uiPanelClass} relative flex-1 flex-col overflow-hidden py-4 md:py-6`}>
         {/* Dossier Rows */}
         <div className="flex-1 overflow-y-auto space-y-2">
           {filtered.length > 0 ? (
@@ -524,22 +525,22 @@ const DossierList: React.FC<{ dossiers: Dossier[]; onSelect: (d: Dossier) => voi
 
 const FormInput: React.FC<{ label: string; value: string; onChange: (value: string) => void }> = ({ label, value, onChange }) => (
   <div>
-    <label className="block text-xs font-bold text-slate-500 mb-1">{label}</label>
+    <label className={uiLabelClass}>{label}</label>
     <input
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20 transition-colors"
+      className={uiFieldClass}
     />
   </div>
 );
 
 const FormSelect: React.FC<{ label: string; value: string; options: Array<{ id: string; label: string }>; onChange: (value: string) => void }> = ({ label, value, options, onChange }) => (
   <div>
-    <label className="block text-xs font-bold text-slate-500 mb-1">{label}</label>
+    <label className={uiLabelClass}>{label}</label>
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20 transition-colors bg-white"
+      className={`${uiFieldClass} bg-white`}
     >
       <option value="">Sélectionner...</option>
       {options.map((option) => (
@@ -793,8 +794,13 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
       });
   }, [currentNotePage.id, currentNotePage.updatedAt, currentNotePage.textContent, currentNotePage.drawingJson, emptyDrawingJson]);
 
-  const handleSaveNote = useCallback(async ({ text, drawingJson }: { text: string; drawingJson: string }) => {
+  const handleSaveNote = useCallback(async ({ text, drawingJson, previewDataUrl }: { text: string; drawingJson: string; previewDataUrl: string }) => {
     try {
+      const resolvedPreviewDataUrl = previewDataUrl || buildNotePreviewDataUrlFromContent({
+        text,
+        drawingJson,
+        mode: 'freeform',
+      });
       const savedPage = await saveNotePage({
         notePageId: currentNotePage.id || undefined,
         patientId: dossier.patient.id,
@@ -805,6 +811,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
         pageNumber: 0,
         textContent: text,
         drawingJson,
+        previewDataUrl: resolvedPreviewDataUrl,
         layoutKind: 'freeform',
       });
       setNotePage(savedPage);
@@ -892,10 +899,15 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
     if (!noteDraft.isDirty) return true;
     try {
       setIsNoteSaving(true);
-      await handleSaveNote({
-        text: noteDraft.text,
-        drawingJson: noteDraft.drawingJson || emptyDrawingJson,
-      });
+        await handleSaveNote({
+          text: noteDraft.text,
+          drawingJson: noteDraft.drawingJson || emptyDrawingJson,
+          previewDataUrl: buildNotePreviewDataUrlFromContent({
+            text: noteDraft.text,
+            drawingJson: noteDraft.drawingJson || emptyDrawingJson,
+            mode: 'freeform',
+          }),
+        });
       setIsNoteSaving(false);
       return true;
     } catch (error) {
@@ -967,7 +979,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
       {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="flex items-center gap-4 min-w-0">
-          <button onClick={() => void handleBackClick()} disabled={isQuickNoteLocked} className={`w-12 h-12 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-700 transition-colors shadow-sm ${isQuickNoteLocked ? 'opacity-45 cursor-not-allowed' : 'hover:bg-slate-50'}`}>
+          <button onClick={() => void handleBackClick()} disabled={isQuickNoteLocked} className={`${uiIconButtonClass} h-12 w-12 ${isQuickNoteLocked ? 'cursor-not-allowed opacity-45' : ''}`}>
             <ArrowLeft size={24} strokeWidth={2} />
           </button>
           <div className="min-w-0">
@@ -991,7 +1003,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
 
         {/* Left Column: Notes */}
         <div className="flex h-full min-h-[620px] flex-col md:min-h-0">
-          <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className={`${uiPanelClass} flex h-full flex-col overflow-hidden`}>
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <h3 className="pl-4 font-bold text-slate-800">Notes Rapides</h3>
             </div>
@@ -1024,7 +1036,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
             <button
               onClick={() => void handleOpenDocumentsClick()}
               disabled={isQuickNoteLocked}
-              className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-[#907CA1] hover:shadow-md transition-all group text-left relative overflow-hidden"
+              className={`${uiActionCardClass} group p-6`}
             >
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Paperclip size={64} className="text-[#907CA1]" />
@@ -1038,7 +1050,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
             <button
               onClick={() => void handleStartVisitClick()}
               disabled={isQuickNoteLocked}
-              className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-[#907CA1] hover:shadow-md transition-all group text-left relative overflow-hidden"
+              className={`${uiActionCardClass} group p-6`}
             >
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Home size={64} className="text-[#907CA1]" />
@@ -1050,7 +1062,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
             </button>
           </div>
 
-          <div className="relative z-20 flex flex-1 min-h-0 flex-col overflow-visible rounded-3xl border border-slate-100 bg-white p-5 shadow-sm md:p-6">
+          <div className={`${uiPanelClass} relative z-20 flex flex-1 min-h-0 flex-col overflow-visible p-5 md:p-6`}>
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <User className="text-slate-400" />
@@ -1125,13 +1137,13 @@ const EditableInfoField: React.FC<{
   type?: 'text' | 'email';
 }> = ({ label, value, onChange, onBlur, type = 'text' }) => (
   <div>
-    <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{label}</label>
+    <label className={uiLabelClass}>{label}</label>
     <input
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
-      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800 outline-none transition-colors focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20"
+      className={uiFieldClass}
     />
   </div>
 );
@@ -1144,12 +1156,12 @@ const SelectInfoField: React.FC<{
   options: Array<{ value: string; label: string }>;
 }> = ({ label, value, onChange, onBlur, options }) => (
   <div>
-    <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{label}</label>
+    <label className={uiLabelClass}>{label}</label>
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
-      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800 outline-none transition-colors focus:border-[#907CA1] focus:ring-2 focus:ring-[#907CA1]/20"
+      className={uiFieldClass}
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>{option.label}</option>
@@ -1166,11 +1178,9 @@ const ReadOnlyInfoField: React.FC<{
   emphasized?: boolean;
 }> = ({ label, value, multiline = false, compact = false, emphasized = false }) => (
   <div>
-    <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{label}</label>
-    <div className={`w-full rounded-xl px-3 py-2.5 text-slate-800 ${
-      emphasized
-        ? 'border border-[#d8cfe0] bg-[#f3edf7] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]'
-        : 'border border-slate-200 bg-slate-50'
+    <label className={uiLabelClass}>{label}</label>
+    <div className={`w-full px-3.5 py-2.5 ${
+      emphasized ? uiFieldReadonlyAccentClass : uiFieldReadonlyClass
     } ${
       multiline
         ? compact
@@ -1186,7 +1196,7 @@ const ReadOnlyInfoField: React.FC<{
 const InfoBadge: React.FC<{
   value: string;
 }> = ({ value }) => (
-  <div className="inline-flex items-center rounded-full border border-[#d8cfe0] bg-[#f3edf7] px-3 py-1.5 text-xs font-semibold text-[#5c4b6d] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+  <div className={uiBadgeAccentClass}>
     <span>{value}</span>
   </div>
 );
