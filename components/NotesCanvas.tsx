@@ -3,7 +3,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Eraser,
+  GripHorizontal,
   Highlighter,
+  Maximize2,
+  Minimize2,
   Palette,
   PenLine,
   Plus,
@@ -11,7 +14,6 @@ import {
   Save,
   Slash,
   Trash2,
-  Maximize2,
   X,
 } from 'lucide-react';
 
@@ -112,17 +114,74 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
   const [showColorPalette, setShowColorPalette] = useState(false);
   const [showTextModal, setShowTextModal] = useState(false);
   const [textModalVisible, setTextModalVisible] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [floatingPos, setFloatingPos] = useState<{ x: number; y: number } | null>(null);
+  const [floatingSize, setFloatingSize] = useState<{ w: number; h: number }>({ w: 420, h: 340 });
+  const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const resizeRef = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
+  const floatingNodeRef = useRef<HTMLDivElement>(null);
 
   const openTextModal = useCallback(() => {
+    if (!floatingPos) {
+      setFloatingPos({ x: Math.max(60, window.innerWidth / 2 - 210), y: Math.max(40, window.innerHeight / 2 - 200) });
+    }
     setShowTextModal(true);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setTextModalVisible(true));
     });
-  }, []);
+  }, [floatingPos]);
 
   const closeTextModal = useCallback(() => {
     setTextModalVisible(false);
+    setIsFullscreen(false);
     setTimeout(() => setShowTextModal(false), 280);
+  }, []);
+
+  const handleDragStart = useCallback((e: React.PointerEvent) => {
+    if (isFullscreen) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pos = floatingPos || { x: 60, y: 40 };
+    dragRef.current = { startX: e.clientX, startY: e.clientY, originX: pos.x, originY: pos.y };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [floatingPos, isFullscreen]);
+
+  const handleDragMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    e.preventDefault();
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    setFloatingPos({
+      x: Math.max(0, Math.min(window.innerWidth - 120, dragRef.current.originX + dx)),
+      y: Math.max(0, Math.min(window.innerHeight - 60, dragRef.current.originY + dy)),
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    dragRef.current = null;
+  }, []);
+
+  const handleResizeStart = useCallback((e: React.PointerEvent) => {
+    if (isFullscreen) return;
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = { startX: e.clientX, startY: e.clientY, originW: floatingSize.w, originH: floatingSize.h };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [floatingSize, isFullscreen]);
+
+  const handleResizeMove = useCallback((e: React.PointerEvent) => {
+    if (!resizeRef.current) return;
+    e.preventDefault();
+    const dw = e.clientX - resizeRef.current.startX;
+    const dh = e.clientY - resizeRef.current.startY;
+    setFloatingSize({
+      w: Math.max(280, Math.min(window.innerWidth - 40, resizeRef.current.originW + dw)),
+      h: Math.max(200, Math.min(window.innerHeight - 40, resizeRef.current.originH + dh)),
+    });
+  }, []);
+
+  const handleResizeEnd = useCallback(() => {
+    resizeRef.current = null;
   }, []);
   const textRef = useRef(text);
   const strokesRef = useRef(strokes);
@@ -504,38 +563,82 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
       )}
 
       {showTextModal && (
-        <div className={`fixed inset-0 z-[9999] flex items-center justify-center transition-all duration-300 ease-out ${textModalVisible ? 'opacity-100' : 'opacity-0'}`}>
+        <div
+          ref={floatingNodeRef}
+          className={`fixed z-[9999] flex flex-col bg-white rounded-2xl shadow-2xl border border-[#907CA1]/30 overflow-hidden transition-all ease-out ${
+            isFullscreen
+              ? 'inset-3 !w-auto !h-auto'
+              : ''
+          } ${textModalVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}
+          style={isFullscreen ? { transition: 'opacity 200ms, transform 200ms, inset 250ms' } : {
+            left: floatingPos?.x ?? 60,
+            top: floatingPos?.y ?? 40,
+            width: floatingSize.w,
+            height: floatingSize.h,
+            transition: 'opacity 200ms, transform 200ms',
+          }}
+        >
+          {/* Draggable header / tab bar */}
           <div
-            className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${textModalVisible ? 'opacity-100' : 'opacity-0'}`}
-            onClick={closeTextModal}
-          />
-          <div className={`relative z-10 flex flex-col w-[92vw] max-w-[900px] h-[82vh] bg-white rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 ease-out ${textModalVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-              <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Notes</span>
+            className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-gradient-to-r from-[#907CA1]/10 to-slate-50 select-none"
+            style={{ cursor: isFullscreen ? 'default' : 'grab', touchAction: 'none' }}
+            onPointerDown={handleDragStart}
+            onPointerMove={handleDragMove}
+            onPointerUp={handleDragEnd}
+          >
+            <div className="flex items-center gap-2">
+              <GripHorizontal size={16} className="text-[#907CA1]/50" />
+              <span className="text-xs font-bold text-[#907CA1] uppercase tracking-wider">Notes</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsFullscreen((v) => !v)}
+                className="p-1.5 rounded-lg hover:bg-slate-200/70 transition-colors"
+                title={isFullscreen ? 'Réduire' : 'Plein écran'}
+              >
+                {isFullscreen ? <Minimize2 size={15} className="text-slate-500" /> : <Maximize2 size={15} className="text-slate-500" />}
+              </button>
               <button
                 type="button"
                 onClick={closeTextModal}
-                className="p-2 rounded-xl hover:bg-slate-200 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-red-100 transition-colors"
+                title="Fermer"
               >
-                <X size={20} className="text-slate-500" />
+                <X size={15} className="text-slate-500" />
               </button>
             </div>
-            <textarea
-              autoFocus
-              value={text}
-              onChange={(event) => {
-                const nextText = event.target.value;
-                setText(nextText);
-                textRef.current = nextText;
-                setIsDirty(true);
-                isDirtyRef.current = true;
-                setSaveLabel('idle');
-                emitDraft({ text: nextText, isDirty: true });
-              }}
-              placeholder={placeholder}
-              className="flex-1 w-full p-6 text-base leading-relaxed text-slate-700 outline-none resize-none"
-            />
           </div>
+          {/* Text area */}
+          <textarea
+            autoFocus
+            value={text}
+            onChange={(event) => {
+              const nextText = event.target.value;
+              setText(nextText);
+              textRef.current = nextText;
+              setIsDirty(true);
+              isDirtyRef.current = true;
+              setSaveLabel('idle');
+              emitDraft({ text: nextText, isDirty: true });
+            }}
+            placeholder={placeholder}
+            className="flex-1 w-full p-4 text-sm leading-relaxed text-slate-700 outline-none resize-none"
+          />
+          {/* Resize handle (bottom-right corner) */}
+          {!isFullscreen && (
+            <div
+              className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize"
+              style={{ touchAction: 'none' }}
+              onPointerDown={handleResizeStart}
+              onPointerMove={handleResizeMove}
+              onPointerUp={handleResizeEnd}
+            >
+              <svg viewBox="0 0 20 20" className="w-full h-full text-slate-300">
+                <path d="M14 20L20 14M10 20L20 10M6 20L20 6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              </svg>
+            </div>
+          )}
         </div>
       )}
 

@@ -5,11 +5,13 @@ import '../models/types.dart';
 class DossiersListScreen extends StatefulWidget {
   final List<Dossier> dossiers;
   final Function(Dossier) onSelectDossier;
+  final VoidCallback? onCreateNew;
 
   const DossiersListScreen({
     super.key,
     required this.dossiers,
     required this.onSelectDossier,
+    this.onCreateNew,
   });
 
   @override
@@ -58,6 +60,15 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     }
   }
 
+  String _initials(Patient patient) {
+    final f = patient.firstName.trim();
+    final l = patient.lastName.trim();
+    if (f.isEmpty && l.isEmpty) return '?';
+    if (f.isEmpty) return l.substring(0, 1).toUpperCase();
+    if (l.isEmpty) return f.substring(0, 1).toUpperCase();
+    return '${f[0]}${l[0]}'.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -65,13 +76,36 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Mes dossiers",
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
+          Row(
+            children: [
+              const Text(
+                "Mes dossiers",
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const Spacer(),
+              if (widget.onCreateNew != null)
+                ElevatedButton.icon(
+                  onPressed: widget.onCreateNew,
+                  icon: const Icon(LucideIcons.plus, size: 18),
+                  label: const Text('Nouveau'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF907CA1),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 14,
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 24),
 
@@ -273,7 +307,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                         ),
                                         child: Center(
                                           child: Text(
-                                            "${dossier.patient.firstName[0]}${dossier.patient.lastName[0]}",
+                                            _initials(dossier.patient),
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               color: Color(0xFF554a63),

@@ -9,6 +9,9 @@ class Sidebar extends StatefulWidget {
   final Function(String) onNavigate;
   final LocalAppUser currentUser;
   final Future<void> Function() onLogout;
+  final int pendingSyncCount;
+  final bool isSyncing;
+  final VoidCallback? onSyncTap;
 
   const Sidebar({
     super.key,
@@ -16,6 +19,9 @@ class Sidebar extends StatefulWidget {
     required this.onNavigate,
     required this.currentUser,
     required this.onLogout,
+    this.pendingSyncCount = 0,
+    this.isSyncing = false,
+    this.onSyncTap,
   });
 
   @override
@@ -125,6 +131,61 @@ class _SidebarState extends State<Sidebar> {
               );
             }).toList(),
           ),
+
+          // Sync status indicator
+          if (widget.isSyncing || widget.pendingSyncCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Tooltip(
+                message: widget.isSyncing
+                    ? 'Synchronisation en cours…'
+                    : '${widget.pendingSyncCount} modification${widget.pendingSyncCount > 1 ? 's' : ''} en attente',
+                child: InkWell(
+                  onTap: widget.onSyncTap,
+                  borderRadius: BorderRadius.circular(50),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: widget.isSyncing
+                          ? const Color(0xFFFFF7ED) // orange-50
+                          : const Color(0xFFFEF3C7), // amber-100
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: widget.isSyncing
+                            ? const Color(0xFFFB923C) // orange-400
+                            : const Color(0xFFF59E0B), // amber-500
+                      ),
+                    ),
+                    child: widget.isSyncing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: Center(
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFFFB923C),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              '${widget.pendingSyncCount}',
+                              style: const TextStyle(
+                                color: Color(0xFFD97706), // amber-600
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ),
 
           // Profile / Bottom
           Padding(

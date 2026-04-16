@@ -1001,36 +1001,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
       {/* Main Grid */}
       <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-5 overflow-y-auto pb-4 md:grid-cols-2 md:overflow-visible">
 
-        {/* Left Column: Notes */}
-        <div className="flex h-full min-h-[620px] flex-col md:min-h-0">
-          <div className={`${uiPanelClass} flex h-full flex-col overflow-hidden`}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h3 className="pl-4 font-bold text-slate-800">Notes Rapides</h3>
-            </div>
-            {isNotesReady ? (
-              <NotesCanvas
-                key={`${currentNotePage.id || 'draft'}:${currentNotePage.updatedAt || 'initial'}`}
-                initialText={currentNotePage.textContent}
-                initialDrawingJson={currentNotePage.drawingJson}
-                placeholder="Notes d'appel, observations rapides..."
-                currentPage={0}
-                totalPages={1}
-                onSave={handleSaveNote}
-                onDraftChange={setNoteDraft}
-                allowPagination={false}
-                toolset="quick"
-                showSaveButton={false}
-                embedded
-              />
-            ) : (
-              <div className="flex flex-1 items-center justify-center bg-white">
-                <SimpleLoader label="Chargement des notes" />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: Actions + Beneficiary Info */}
+        {/* Left Column: Actions + Beneficiary Info */}
         <div className={`relative z-30 flex h-full min-h-[620px] flex-col gap-5 overflow-visible md:min-h-0 transition-opacity ${isQuickNoteLocked ? 'opacity-45 pointer-events-none select-none' : ''}`}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <button
@@ -1121,6 +1092,36 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
               />
 
             </div>
+          </div>
+        </div>
+
+        {/* Right Column: Notes */}
+        <div className="flex h-full min-h-[620px] flex-col md:min-h-0">
+          <div className={`${uiPanelClass} flex h-full flex-col overflow-hidden`}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h3 className="pl-4 font-bold text-slate-800">Notes Rapides</h3>
+            </div>
+            {isNotesReady ? (
+              <NotesCanvas
+                key={`${currentNotePage.id || 'draft'}:${currentNotePage.updatedAt || 'initial'}`}
+                initialText={currentNotePage.textContent}
+                initialDrawingJson={currentNotePage.drawingJson}
+                placeholder="Notes d'appel, observations rapides..."
+                currentPage={0}
+                totalPages={1}
+                onSave={handleSaveNote}
+                onDraftChange={setNoteDraft}
+                allowPagination={false}
+                toolset="quick"
+                showSaveButton={false}
+                showText={false}
+                embedded
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center bg-white">
+                <SimpleLoader label="Chargement des notes" />
+              </div>
+            )}
           </div>
         </div>
 

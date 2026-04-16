@@ -12,7 +12,7 @@ const MCP_URL = String(process.env.NOCODB_MCP_URL || '').trim();
 const MCP_TOKEN = String(process.env.NOCODB_MCP_TOKEN || '').trim();
 const API_TOKEN = String(process.env.NOCODB_API_TOKEN || '').trim();
 const AUTH_TOKEN = String(process.env.NOCODB_AUTH_TOKEN || '').trim();
-const BASE_ID = String(process.env.NOCODB_BASE_ID || 'pskgbjythubfzv9').trim();
+const BASE_ID = String(process.env.NOCODB_BASE_ID || '').trim();
 const SHOULD_FORCE_REST = process.env.NOCODB_FORCE_REST === '1' || Boolean(process.env.VERCEL);
 
 let clientPromise;

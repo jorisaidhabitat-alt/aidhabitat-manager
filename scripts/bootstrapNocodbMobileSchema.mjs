@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const DEFAULT_BASE_ID = process.env.NOCODB_BASE_ID || 'pskgbjythubfzv9';
+const DEFAULT_BASE_ID = process.env.NOCODB_BASE_ID || '';
 
 const MOBILE_SCHEMA = [
   {

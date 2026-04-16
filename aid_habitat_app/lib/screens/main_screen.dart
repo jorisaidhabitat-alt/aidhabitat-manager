@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../components/sidebar.dart';
 import 'admin_access_screen.dart';
+import 'create_beneficiary_screen.dart';
 import 'dashboard_screen.dart';
 import 'dossiers_list_screen.dart';
 import 'dossier_screen.dart';
@@ -8,7 +11,9 @@ import 'retirement_funds_screen.dart';
 import 'wiki_screen.dart';
 import '../models/types.dart';
 import '../services/auth_service.dart';
+import '../services/connectivity_service.dart';
 import '../services/data_service.dart';
+import '../services/sync_engine.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({
@@ -27,17 +32,64 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   final DataService _dataService = DataService();
   final AuthService _authService = AuthService();
+  late final SyncEngine _syncEngine;
+  StreamSubscription<SyncEngineState>? _syncSubscription;
+  StreamSubscription<bool>? _connectivitySubscription;
+
   String _activeView = 'dashboard';
   Dossier? _selectedDossier;
   List<Dossier> _dossiers = [];
   int _pendingSyncCount = 0;
   bool _isSyncing = false;
   bool _isLoading = true;
+  bool _isOffline = false;
 
   @override
   void initState() {
     super.initState();
+    _syncEngine = SyncEngine();
+    final connectivity = ConnectivityService();
+    connectivity.bindSyncEngine(_syncEngine);
+    _isOffline = connectivity.isOffline;
+
+    _syncSubscription = _syncEngine.stateStream.listen(_onSyncStateChanged);
+    _connectivitySubscription = connectivity.offlineStream.listen((offline) {
+      if (mounted) setState(() => _isOffline = offline);
+    });
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    _connectivitySubscription?.cancel();
+    _syncEngine.dispose();
+    super.dispose();
+  }
+
+  void _onSyncStateChanged(SyncEngineState state) {
+    if (!mounted) return;
+
+    final wasSyncing = _isSyncing;
+    setState(() {
+      _pendingSyncCount = state.pendingCount;
+      _isSyncing = state.isSyncing;
+    });
+
+    // When a sync run finishes, refresh the dossier list to reflect any
+    // remote changes that were pulled or local states that were updated.
+    if (wasSyncing && !state.isSyncing) {
+      _refreshDossiers();
+    }
+  }
+
+  Future<void> _refreshDossiers() async {
+    final dossiers = _authService.filterDossiersForUser(
+      await _dataService.fetchDossiers(),
+      widget.currentUser,
+    );
+    if (!mounted) return;
+    setState(() => _dossiers = dossiers);
   }
 
   Future<void> _loadData() async {
@@ -54,20 +106,13 @@ class _MainScreenState extends State<MainScreen> {
       });
     }
 
-    final didRefresh = await _dataService.refreshWorkspaceFromRemote();
-    if (!didRefresh) return;
+    // Start the sync engine — it will handle initial push + periodic refresh.
+    _syncEngine.start();
 
-    final refreshedDossiers = _authService.filterDossiersForUser(
-      await _dataService.fetchDossiers(),
-      widget.currentUser,
-    );
-    final refreshedPendingOperations = await _dataService
-        .fetchPendingOperations();
-    if (!mounted) return;
-    setState(() {
-      _dossiers = refreshedDossiers;
-      _pendingSyncCount = refreshedPendingOperations.length;
-    });
+    // Also pull remote dossiers for the initial view.
+    final didRefresh = await _dataService.refreshWorkspaceFromRemote();
+    if (!didRefresh || !mounted) return;
+    await _refreshDossiers();
   }
 
   void _handleViewChange(String view) {
@@ -86,28 +131,36 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  Future<void> _handleSyncNow() async {
-    if (_isSyncing) return;
-    setState(() => _isSyncing = true);
+  void _handleSyncNow() {
+    _syncEngine.requestSync();
+  }
 
-    final result = await _dataService.runSync();
-    final refreshedDossiers = _authService.filterDossiersForUser(
-      await _dataService.fetchDossiers(),
-      widget.currentUser,
+  void _handleCreateNew() {
+    setState(() => _activeView = 'create_beneficiary');
+  }
+
+  Future<void> _handleBeneficiaryCreated(
+    String firstName,
+    String lastName,
+  ) async {
+    final ergoId = widget.currentUser.ergoLabel ?? '';
+    final dossier = await _dataService.createDossierOffline(
+      firstName: firstName,
+      lastName: lastName,
+      ergoId: ergoId,
     );
-    final refreshedPendingOperations = await _dataService
-        .fetchPendingOperations();
 
+    // Refresh the dossier list and navigate to the new dossier.
+    await _refreshDossiers();
     if (!mounted) return;
-    setState(() {
-      _isSyncing = false;
-      _dossiers = refreshedDossiers;
-      _pendingSyncCount = refreshedPendingOperations.length;
-    });
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(result.message)));
+    // Trigger a sync attempt for the newly created dossier.
+    _syncEngine.requestSync();
+
+    setState(() {
+      _selectedDossier = dossier;
+      _activeView = 'dossier_detail';
+    });
   }
 
   @override
@@ -122,11 +175,53 @@ class _MainScreenState extends State<MainScreen> {
                 : _activeView,
             onNavigate: _handleViewChange,
             onLogout: widget.onLogout,
+            pendingSyncCount: _pendingSyncCount,
+            isSyncing: _isSyncing,
+            onSyncTap: _handleSyncNow,
           ),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _buildContent(),
+            child: Column(
+              children: [
+                // Offline banner
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 250),
+                  child: _isOffline
+                      ? Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          color: const Color(0xFF475569), // slate-600
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.wifi_off_rounded,
+                                size: 16,
+                                color: Colors.white70,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Mode hors ligne — les modifications seront synchronisees au retour du reseau',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildContent(),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -144,8 +239,7 @@ class _MainScreenState extends State<MainScreen> {
     switch (_activeView) {
       case 'dashboard':
         return DashboardScreen(
-          visits:
-              [], // Visits not yet fetched from DB in DataService, passing empty for now or could add fetchVisits
+          visits: [],
           dossiersCount: _dossiers.length,
           dossiers: _dossiers,
           pendingSyncCount: _pendingSyncCount,
@@ -153,10 +247,16 @@ class _MainScreenState extends State<MainScreen> {
           onSyncNow: _handleSyncNow,
           onSelectDossier: _handleSelectDossier,
         );
+      case 'create_beneficiary':
+        return CreateBeneficiaryScreen(
+          onCreated: _handleBeneficiaryCreated,
+          onCancel: () => _handleViewChange('dossiers'),
+        );
       case 'dossiers':
         return DossiersListScreen(
           dossiers: _dossiers,
           onSelectDossier: _handleSelectDossier,
+          onCreateNew: _handleCreateNew,
         );
       case 'wiki':
         return const WikiScreen();

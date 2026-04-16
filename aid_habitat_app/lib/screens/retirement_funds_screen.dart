@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
 import '../services/data_service.dart';
+import '../services/retirement_funds_repository.dart';
 
 class RetirementFundsScreen extends StatefulWidget {
   const RetirementFundsScreen({super.key});
@@ -13,6 +14,7 @@ class RetirementFundsScreen extends StatefulWidget {
 }
 
 class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
+  final RetirementFundsRepository _repository = RetirementFundsRepository();
   final DataService _dataService = DataService();
   final TextEditingController _searchController = TextEditingController();
 
@@ -34,31 +36,30 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
 
   Future<void> _loadFunds() async {
     try {
-      final funds = await _dataService.fetchRetirementFunds();
+      // Load from local SQLite cache immediately.
+      final cached = await _repository.fetchAllFunds();
+      if (mounted) {
+        setState(() {
+          _funds = cached;
+          _isLoading = false;
+          _error = null;
+        });
+      }
+
+      // Refresh from remote in background.
+      final didRefresh = await _dataService.refreshRetirementFundsFromRemote();
+      if (!didRefresh || !mounted) return;
+
+      final refreshed = await _repository.fetchAllFunds();
       if (!mounted) return;
-      setState(() {
-        _funds = funds;
-        _isLoading = false;
-        _error = null;
-      });
-      _refreshFromRemote();
+      setState(() => _funds = refreshed);
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = 'Chargement impossible';
+        _error = _funds.isEmpty ? 'Chargement impossible' : null;
       });
     }
-  }
-
-  Future<void> _refreshFromRemote() async {
-    final updated = await _dataService.refreshRetirementFundsFromRemote();
-    if (!updated || !mounted) return;
-    final funds = await _dataService.fetchRetirementFunds();
-    if (!mounted) return;
-    setState(() {
-      _funds = funds;
-    });
   }
 
   Future<void> _openFund(RetirementFund fund) async {
@@ -69,7 +70,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
     if (updated == null) return;
 
     try {
-      final saved = await _dataService.updateRetirementFund(updated);
+      final saved = await _repository.updateFund(updated);
       if (!mounted) return;
       setState(() {
         _funds = _funds
@@ -78,7 +79,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Fiche enregistrée')));
+      ).showSnackBar(const SnackBar(content: Text('Fiche enregistree')));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

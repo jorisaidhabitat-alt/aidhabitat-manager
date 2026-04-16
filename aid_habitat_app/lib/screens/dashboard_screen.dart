@@ -10,7 +10,7 @@ class DashboardScreen extends StatelessWidget {
   final List<Dossier> dossiers;
   final int pendingSyncCount;
   final bool isSyncing;
-  final Future<void> Function() onSyncNow;
+  final VoidCallback onSyncNow;
   final Function(Dossier) onSelectDossier;
 
   const DashboardScreen({

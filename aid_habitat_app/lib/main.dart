@@ -5,6 +5,7 @@ import 'models/types.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
 import 'services/auth_service.dart';
+import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
 
 Future<void> main() async {
@@ -12,6 +13,7 @@ Future<void> main() async {
   await DataService().initialize();
   await AuthService().initialize();
   await DataService().refreshLocalAuthStateFromRemote();
+  await ConnectivityService().initialize();
   await initializeDateFormatting('fr_FR', null);
 
   runApp(const MyApp());

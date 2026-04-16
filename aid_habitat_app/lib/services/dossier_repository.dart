@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:sqflite/sqflite.dart';
 
@@ -13,6 +14,205 @@ class DossierRepository {
 
   Future<void> initialize() async {
     await _database.ensureSeeded();
+  }
+
+  /// Create a new beneficiary + housing + dossier locally. All three entities
+  /// are inserted into SQLite with local IDs and a sync operation is enqueued
+  /// for each so they are pushed to the server when connectivity is available.
+  ///
+  /// Returns the newly created [Dossier] immediately — no network required.
+  Future<Dossier> createDossierOffline({
+    required String firstName,
+    required String lastName,
+    String ergoId = '',
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final patientLocalId = _generateLocalId();
+    final housingLocalId = _generateLocalId();
+    final dossierLocalId = _generateLocalId();
+
+    final patient = Patient(
+      id: patientLocalId,
+      firstName: firstName,
+      lastName: lastName,
+      birthDate: '',
+      phone: '',
+      email: '',
+      address: '',
+      city: '',
+      zipCode: '',
+      familySituation: '',
+      incomeCategory: '',
+      trustedPerson: TrustedPerson(name: '', phone: '', email: ''),
+    );
+
+    final housing = Housing(
+      type: HousingType.HOUSE,
+      heating: HeatingMode.ELECTRIC,
+      accessibilityNotes: '',
+    );
+
+    await db.transaction((txn) async {
+      await txn.insert('patients', {
+        'local_id': patientLocalId,
+        'remote_patient_id': null,
+        'first_name': firstName,
+        'last_name': lastName,
+        'birth_date': '',
+        'phone': '',
+        'email': '',
+        'address': '',
+        'city': '',
+        'zip_code': '',
+        'family_situation': '',
+        'income_category': '',
+        'trusted_person_json': jsonEncode({
+          'name': '',
+          'phone': '',
+          'email': '',
+        }),
+        'updated_at': now,
+        'remote_updated_at': null,
+        'sync_state': SyncState.localOnly.name,
+      });
+
+      await txn.insert('housings', {
+        'local_id': housingLocalId,
+        'remote_housing_id': null,
+        'patient_local_id': patientLocalId,
+        'type': HousingType.HOUSE.name,
+        'year_value': null,
+        'surface': null,
+        'heating_mode': HeatingMode.ELECTRIC.name,
+        'accessibility_notes': '',
+        'updated_at': now,
+        'remote_updated_at': null,
+        'sync_state': SyncState.localOnly.name,
+      });
+
+      await txn.insert('dossiers', {
+        'local_id': dossierLocalId,
+        'remote_dossier_id': null,
+        'patient_local_id': patientLocalId,
+        'housing_local_id': housingLocalId,
+        'status': DossierStatus.TO_VISIT.name,
+        'ergo_id': ergoId,
+        'visit_date': null,
+        'autonomy_notes': '',
+        'plans_json': jsonEncode(['PF1', 'PF2', 'PF3']),
+        'created_at': now,
+        'updated_at': now,
+        'remote_updated_at': null,
+        'sync_state': SyncState.localOnly.name,
+      });
+
+      // Enqueue a sync operation to create the full dossier on the server
+      // when connectivity is available.
+      await txn.insert('sync_operations', {
+        'id': 'create_$dossierLocalId',
+        'entity_type': 'dossier',
+        'entity_local_id': dossierLocalId,
+        'operation_type': 'create',
+        'payload_json': jsonEncode({
+          'dossierLocalId': dossierLocalId,
+          'patientLocalId': patientLocalId,
+          'housingLocalId': housingLocalId,
+          'firstName': firstName,
+          'lastName': lastName,
+          'ergoId': ergoId,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      });
+    });
+
+    return Dossier(
+      id: dossierLocalId,
+      patient: patient,
+      status: DossierStatus.TO_VISIT,
+      ergoId: ergoId,
+      housing: housing,
+      autonomyNotes: '',
+      plans: const {
+        'PF1': FinancialPlan(id: 'PF1'),
+        'PF2': FinancialPlan(id: 'PF2'),
+        'PF3': FinancialPlan(id: 'PF3'),
+      },
+      createdAt: now,
+      syncState: SyncState.localOnly,
+    );
+  }
+
+  /// Update local patient fields for an existing dossier and enqueue a sync.
+  Future<void> updatePatientLocal({
+    required String patientLocalId,
+    required Map<String, dynamic> updates,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+
+    final dbUpdates = <String, dynamic>{'updated_at': now};
+    if (updates.containsKey('firstName')) dbUpdates['first_name'] = updates['firstName'];
+    if (updates.containsKey('lastName')) dbUpdates['last_name'] = updates['lastName'];
+    if (updates.containsKey('phone')) dbUpdates['phone'] = updates['phone'];
+    if (updates.containsKey('email')) dbUpdates['email'] = updates['email'];
+    if (updates.containsKey('address')) dbUpdates['address'] = updates['address'];
+    if (updates.containsKey('city')) dbUpdates['city'] = updates['city'];
+    if (updates.containsKey('zipCode')) dbUpdates['zip_code'] = updates['zipCode'];
+    if (updates.containsKey('birthDate')) dbUpdates['birth_date'] = updates['birthDate'];
+    if (updates.containsKey('familySituation')) dbUpdates['family_situation'] = updates['familySituation'];
+    if (updates.containsKey('incomeCategory')) dbUpdates['income_category'] = updates['incomeCategory'];
+
+    // Only update sync_state if currently synced — don't overwrite localOnly
+    final currentRows = await db.query(
+      'patients',
+      columns: ['sync_state'],
+      where: 'local_id = ?',
+      whereArgs: [patientLocalId],
+      limit: 1,
+    );
+    if (currentRows.isNotEmpty) {
+      final current = currentRows.first['sync_state'] as String;
+      if (current == SyncState.synced.name) {
+        dbUpdates['sync_state'] = SyncState.pendingSync.name;
+      }
+    }
+
+    await db.update(
+      'patients',
+      dbUpdates,
+      where: 'local_id = ?',
+      whereArgs: [patientLocalId],
+    );
+
+    // Enqueue sync operation (upsert by entity key to avoid duplicates).
+    final opId = 'patient_update_$patientLocalId';
+    await db.insert('sync_operations', {
+      'id': opId,
+      'entity_type': 'patient',
+      'entity_local_id': patientLocalId,
+      'operation_type': 'update',
+      'payload_json': jsonEncode({
+        'patientLocalId': patientLocalId,
+        'updates': updates,
+      }),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  static String _generateLocalId() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(8, (_) => random.nextInt(256));
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return 'local_$hex';
   }
 
   Future<List<Dossier>> fetchAllDossiers() async {

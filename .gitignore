@@ -31,4 +31,8 @@ tmp/
 .vercel/
 .env
 .env.local
+.env.*
+
+# Sensitive runtime data
 shared/localAuthProfiles.js
+server/data/auth-store.json

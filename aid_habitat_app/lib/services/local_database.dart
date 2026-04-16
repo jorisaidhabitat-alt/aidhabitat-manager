@@ -27,45 +27,149 @@ class LocalDatabase {
     return _database!;
   }
 
+  // ---------------------------------------------------------------------------
+  // Incremental migrations — each step preserves existing data.
+  //
+  // IMPORTANT: When adding a new schema version, bump _dbVersion and add a
+  // new case to _onUpgrade. Never drop tables that contain user data.
+  // ---------------------------------------------------------------------------
+
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion == newVersion) return;
-    if (oldVersion < 4) await _migrateV3ToV4(db);
-    if (oldVersion < 5) await _migrateV4ToV5(db);
+    // Run each migration step in sequence so upgrading from any old version
+    // to any new version works correctly (e.g. 1->4 runs steps 2, 3, 4).
+    if (oldVersion < 2) {
+      await _migrateV1ToV2(db);
+    }
+    if (oldVersion < 3) {
+      await _migrateV2ToV3(db);
+    }
+    if (oldVersion < 4) {
+      await _migrateV3ToV4(db);
+    }
+    if (oldVersion < 5) {
+      await _migrateV4ToV5(db);
+    }
   }
 
+  /// v1 → v2: Original schema had no remote_updated_at or sync_state columns
+  /// on patients and housings. Add them if missing.
+  Future<void> _migrateV1ToV2(Database db) async {
+    await _addColumnIfMissing(db, 'patients', 'remote_updated_at', 'TEXT');
+    await _addColumnIfMissing(db, 'patients', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+    await _addColumnIfMissing(db, 'housings', 'remote_updated_at', 'TEXT');
+    await _addColumnIfMissing(db, 'housings', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+  }
+
+  /// v2 → v3: Added user_access_scopes table and ergo_label to app_users.
+  Future<void> _migrateV2ToV3(Database db) async {
+    await _createTableIfMissing(db, 'user_access_scopes', '''
+      CREATE TABLE user_access_scopes (
+        local_id TEXT PRIMARY KEY,
+        user_local_id TEXT NOT NULL,
+        scope_type TEXT NOT NULL,
+        scope_value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await _addColumnIfMissing(db, 'app_users', 'ergo_label', 'TEXT');
+  }
+
+  /// v3 → v4: Add indexes for common queries and dossier_local_id to
+  /// documents & note_pages for proper dossier scoping.
   Future<void> _migrateV3ToV4(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS wiki_items (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        image_url TEXT NOT NULL,
-        tags_json TEXT NOT NULL,
-        category TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    ''');
+    await _addColumnIfMissing(db, 'documents', 'dossier_local_id', 'TEXT');
+    await _addColumnIfMissing(db, 'note_pages', 'dossier_local_id', 'TEXT');
+
+    // Indexes to speed up common lookups
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_patient ON dossiers(patient_local_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_sync ON dossiers(sync_state)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_local_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_documents_sync ON documents(sync_state)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)');
   }
 
+  /// v4 → v5: Add wiki_items and retirement_funds tables for offline reference
+  /// data caching.
   Future<void> _migrateV4ToV5(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS retirement_funds (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        audience TEXT NOT NULL,
-        request_method TEXT NOT NULL,
-        request_delay TEXT NOT NULL,
-        aid_amount TEXT NOT NULL,
-        therapist_note TEXT NOT NULL,
-        website TEXT NOT NULL,
-        logo_url TEXT NOT NULL,
-        last_edited_at TEXT,
-        updated_at TEXT NOT NULL
-      )
-    ''');
+    await _createTableIfMissing(db, 'wiki_items', _createWikiItemsSQL);
+    await _createTableIfMissing(db, 'retirement_funds', _createRetirementFundsSQL);
+    await _createTableIfMissing(db, 'reference_sync_meta', _createReferenceSyncMetaSQL);
   }
+
+  static const _createWikiItemsSQL = '''
+    CREATE TABLE wiki_items (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      image_url TEXT NOT NULL DEFAULT '',
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      category TEXT NOT NULL DEFAULT '',
+      created_at TEXT,
+      updated_at TEXT,
+      last_synced_at TEXT NOT NULL
+    )
+  ''';
+
+  static const _createRetirementFundsSQL = '''
+    CREATE TABLE retirement_funds (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
+      audience TEXT NOT NULL DEFAULT '',
+      request_method TEXT NOT NULL DEFAULT '',
+      request_delay TEXT NOT NULL DEFAULT '',
+      aid_amount TEXT NOT NULL DEFAULT '',
+      therapist_note TEXT NOT NULL DEFAULT '',
+      website TEXT NOT NULL DEFAULT '',
+      logo_url TEXT NOT NULL DEFAULT '',
+      last_edited_at TEXT,
+      last_synced_at TEXT NOT NULL
+    )
+  ''';
+
+  static const _createReferenceSyncMetaSQL = '''
+    CREATE TABLE reference_sync_meta (
+      table_name TEXT PRIMARY KEY,
+      last_synced_at TEXT NOT NULL
+    )
+  ''';
+
+  // ---------------------------------------------------------------------------
+  // Helpers for safe incremental migrations
+  // ---------------------------------------------------------------------------
+
+  Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String column,
+    String definition,
+  ) async {
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    final columnNames = columns.map((c) => c['name'] as String).toSet();
+    if (!columnNames.contains(column)) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+    }
+  }
+
+  Future<void> _createTableIfMissing(
+    Database db,
+    String table,
+    String createSql,
+  ) async {
+    final existing = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+      [table],
+    );
+    if (existing.isEmpty) {
+      await db.execute(createSql);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Initial schema creation (for brand new installs)
+  // ---------------------------------------------------------------------------
 
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
@@ -162,6 +266,7 @@ class LocalDatabase {
       CREATE TABLE documents (
         local_id TEXT PRIMARY KEY,
         patient_local_id TEXT NOT NULL,
+        dossier_local_id TEXT,
         title TEXT NOT NULL,
         file_name TEXT NOT NULL,
         file_ext TEXT NOT NULL,
@@ -181,6 +286,7 @@ class LocalDatabase {
       CREATE TABLE note_pages (
         local_id TEXT PRIMARY KEY,
         patient_local_id TEXT NOT NULL,
+        dossier_local_id TEXT,
         tab_key TEXT NOT NULL,
         page_number INTEGER NOT NULL,
         text_content TEXT NOT NULL,
@@ -209,55 +315,21 @@ class LocalDatabase {
       )
     ''');
 
-    await db.execute('''
-      CREATE TABLE wiki_items (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        image_url TEXT NOT NULL,
-        tags_json TEXT NOT NULL,
-        category TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    ''');
+    // Reference data tables (offline cache)
+    await db.execute(_createWikiItemsSQL);
+    await db.execute(_createRetirementFundsSQL);
+    await db.execute(_createReferenceSyncMetaSQL);
 
-    await db.execute('''
-      CREATE TABLE retirement_funds (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        audience TEXT NOT NULL,
-        request_method TEXT NOT NULL,
-        request_delay TEXT NOT NULL,
-        aid_amount TEXT NOT NULL,
-        therapist_note TEXT NOT NULL,
-        website TEXT NOT NULL,
-        logo_url TEXT NOT NULL,
-        last_edited_at TEXT,
-        updated_at TEXT NOT NULL
-      )
-    ''');
+    // Indexes for common queries
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_patient ON dossiers(patient_local_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_sync ON dossiers(sync_state)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_local_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_documents_sync ON documents(sync_state)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)');
 
     await _seedInitialWorkspace(db);
-  }
-
-  Future<void> _dropAllTables(Database db) async {
-    for (final table in const [
-      'retirement_funds',
-      'wiki_items',
-      'sync_operations',
-      'note_pages',
-      'documents',
-      'dossiers',
-      'housings',
-      'patients',
-      'user_access_scopes',
-      'app_session',
-      'app_users',
-    ]) {
-      await db.execute('DROP TABLE IF EXISTS $table');
-    }
   }
 
   Future<void> ensureSeeded() async {

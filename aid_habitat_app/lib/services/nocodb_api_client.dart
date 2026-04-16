@@ -6,6 +6,18 @@ import 'package:http/http.dart' as http;
 import '../models/types.dart';
 import 'app_config.dart';
 
+/// Thrown when the server returns HTTP 409, indicating the remote record was
+/// modified since the client last fetched it.
+class ConflictException implements Exception {
+  final String message;
+  final Map<String, dynamic>? remoteData;
+
+  ConflictException(this.message, {this.remoteData});
+
+  @override
+  String toString() => 'ConflictException: $message';
+}
+
 class NocodbApiClient {
   NocodbApiClient({http.Client? client}) : _client = client ?? http.Client();
 
@@ -41,6 +53,34 @@ class NocodbApiClient {
         .toList();
   }
 
+  /// Create a new beneficiary on the server. The server automatically creates
+  /// the associated dossier and housing records.
+  /// Returns `{ id: remotePatientId, dossierId: remoteDossierId }`.
+  Future<Map<String, dynamic>> createBeneficiary({
+    required Map<String, dynamic> fields,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/api/beneficiaires'),
+      headers: _headers,
+      body: jsonEncode(fields),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote beneficiary creation failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data =
+        (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return data;
+  }
+
   Future<void> updateDossier({
     required String dossierId,
     required Map<String, dynamic> updates,
@@ -54,6 +94,18 @@ class NocodbApiClient {
       headers: _headers,
       body: jsonEncode(updates),
     );
+
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? remoteData;
+      try {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        remoteData = body;
+      } catch (_) {}
+      throw ConflictException(
+        'Conflit de modification sur le dossier $dossierId',
+        remoteData: remoteData,
+      );
+    }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote dossier update failed (${response.statusCode})');

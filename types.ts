@@ -110,6 +110,7 @@ export interface VisitRecommendationItem {
   wikiTitle: string;
   wikiImageUrl: string;
   wikiTag?: string;
+  customTitle?: string;
   note: string;
   createdAt: string;
   updatedAt: string;

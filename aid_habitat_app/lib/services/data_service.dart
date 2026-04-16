@@ -62,6 +62,31 @@ class DataService {
     }
   }
 
+  /// Create a new beneficiary + dossier locally (works offline).
+  /// A sync operation is automatically enqueued.
+  Future<Dossier> createDossierOffline({
+    required String firstName,
+    required String lastName,
+    String ergoId = '',
+  }) async {
+    return _dossierRepository.createDossierOffline(
+      firstName: firstName,
+      lastName: lastName,
+      ergoId: ergoId,
+    );
+  }
+
+  /// Update patient fields locally and enqueue a sync operation.
+  Future<void> updatePatientLocal({
+    required String patientLocalId,
+    required Map<String, dynamic> updates,
+  }) async {
+    return _dossierRepository.updatePatientLocal(
+      patientLocalId: patientLocalId,
+      updates: updates,
+    );
+  }
+
   Future<List<RetirementFund>> fetchRetirementFunds() async {
     return _retirementFundsRepository.fetchAllFunds();
   }

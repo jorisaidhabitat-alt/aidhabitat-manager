@@ -6,6 +6,17 @@ import 'app_config.dart';
 import 'nocodb_api_client.dart';
 import 'sync_repository.dart';
 
+/// Indicates that a sync operation was rejected due to a conflict (HTTP 409).
+/// The engine should NOT retry these -- they require user resolution.
+class SyncConflictException implements Exception {
+  final String message;
+  final Map<String, dynamic>? remoteData;
+
+  SyncConflictException(this.message, {this.remoteData});
+
+  @override
+  String toString() => 'SyncConflictException: $message';
+}
 
 class NocodbSyncService {
   NocodbSyncService({
@@ -45,6 +56,7 @@ class NocodbSyncService {
 
     var pushed = 0;
     var failed = 0;
+    var conflicts = 0;
     final failures = <String>[];
 
     for (final operation in operations) {
@@ -57,6 +69,16 @@ class NocodbSyncService {
           entityLocalId: operation.entityLocalId,
         );
         pushed += 1;
+      } on ConflictException catch (e) {
+        // Server returned 409 — mark as conflict, do not retry automatically.
+        await _syncRepository.markConflict(
+          operationId: operation.id,
+          entityType: operation.entityType,
+          entityLocalId: operation.entityLocalId,
+          error: e.message,
+        );
+        conflicts += 1;
+        failures.add('${operation.entityType}:conflit');
       } catch (error) {
         final message = error.toString();
         await _syncRepository.markFailed(
@@ -70,13 +92,16 @@ class NocodbSyncService {
       }
     }
 
-    final message = failed == 0
+    final message = (failed == 0 && conflicts == 0)
         ? 'Synchronisation terminée'
-        : 'Synchronisation partielle. Échecs: ${failures.join(', ')}';
+        : conflicts > 0
+            ? 'Synchronisation : $conflicts conflit${conflicts > 1 ? 's' : ''} à résoudre'
+            : 'Synchronisation partielle. Échecs: ${failures.join(', ')}';
 
     return SyncRunResult(
       pushedOperations: pushed,
       failedOperations: failed,
+      conflictCount: conflicts,
       message: message,
     );
   }
@@ -88,6 +113,9 @@ class NocodbSyncService {
       case 'dossier':
         await _processDossierOperation(operation, payload);
         return;
+      case 'patient':
+        await _processPatientOperation(operation, payload);
+        return;
       case 'document':
         await _processDocumentOperation(operation, payload);
         return;
@@ -96,7 +124,7 @@ class NocodbSyncService {
         return;
       default:
         throw Exception(
-          'Type d’opération non supporté: ${operation.entityType}',
+          'Type d\'operation non supporte: ${operation.entityType}',
         );
     }
   }
@@ -105,6 +133,37 @@ class NocodbSyncService {
     SyncOperation operation,
     Map<String, dynamic> payload,
   ) async {
+    if (operation.operationType == 'create') {
+      final firstName = payload['firstName']?.toString() ?? '';
+      final lastName = payload['lastName']?.toString() ?? '';
+      final ergoId = payload['ergoId']?.toString() ?? '';
+      final dossierLocalId = payload['dossierLocalId']?.toString() ?? '';
+      final patientLocalId = payload['patientLocalId']?.toString() ?? '';
+
+      if (lastName.isEmpty) {
+        throw Exception('Nom du bénéficiaire obligatoire');
+      }
+
+      final result = await _apiClient.createBeneficiary(fields: {
+        'firstName': firstName,
+        'lastName': lastName,
+        'ergoId': ergoId,
+      });
+
+      // Store the remote IDs locally so future updates reference them.
+      final remotePatientId = result['id']?.toString();
+      final remoteDossierId = result['dossierId']?.toString();
+      if (remotePatientId != null && remotePatientId.isNotEmpty) {
+        await _syncRepository.storeRemoteIds(
+          patientLocalId: patientLocalId,
+          remotePatientId: remotePatientId,
+          dossierLocalId: dossierLocalId,
+          remoteDossierId: remoteDossierId,
+        );
+      }
+      return;
+    }
+
     if (operation.operationType == 'update') {
       final dossierId = payload['dossierId']?.toString();
       final updates = (payload['updates'] as Map?)?.cast<String, dynamic>();
@@ -121,6 +180,35 @@ class NocodbSyncService {
 
     throw Exception(
       'Opération dossier non supportée: ${operation.operationType}',
+    );
+  }
+
+  Future<void> _processPatientOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    if (operation.operationType != 'update') {
+      throw Exception(
+        'Opération patient non supportée: ${operation.operationType}',
+      );
+    }
+
+    final patientLocalId = payload['patientLocalId']?.toString();
+    final updates = (payload['updates'] as Map?)?.cast<String, dynamic>();
+    if (patientLocalId == null || updates == null) {
+      throw Exception('Payload patient incomplet');
+    }
+
+    // Resolve remote patient ID from local DB.
+    final remoteId = await _syncRepository.resolveRemotePatientId(patientLocalId);
+    if (remoteId == null || remoteId.isEmpty) {
+      throw Exception('Patient $patientLocalId n\'a pas encore d\'ID remote');
+    }
+
+    // Use the beneficiary PATCH endpoint.
+    await _apiClient.updateDossier(
+      dossierId: remoteId,
+      updates: updates,
     );
   }
 
@@ -220,11 +308,13 @@ class NocodbSyncService {
 class SyncRunResult {
   final int pushedOperations;
   final int failedOperations;
+  final int conflictCount;
   final String message;
 
   const SyncRunResult({
     required this.pushedOperations,
     required this.failedOperations,
+    this.conflictCount = 0,
     required this.message,
   });
 }

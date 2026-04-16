@@ -15,6 +15,7 @@ import {
     deleteNotePage,
     fetchNotePages,
     fetchReferenceData,
+    fetchRetirementFunds,
     fetchDiagnosticSanitaires,
     upsertDiagnosticSanitaires,
     fetchMesuresAnthropometriques,
@@ -95,6 +96,7 @@ const createEmptyRecommendationItem = (): VisitRecommendationItem => {
         wikiTitle: '',
         wikiImageUrl: '',
         wikiTag: '',
+        customTitle: '',
         note: '',
         createdAt: now,
         updatedAt: now,
@@ -578,7 +580,7 @@ const HEATING_OPTIONS: MultiFieldOption[] = [
     { field: 'electric', label: 'Électrique' },
     { field: 'gas', label: 'Gaz' },
     { field: 'oil', label: 'Fioul' },
-    { field: 'heatPump', label: 'Pompe à chaleur' },
+    { field: 'heatPump', label: 'PAC' },
     { field: 'wood', label: 'Bois' },
     { field: 'pellet', label: 'Granulés' },
     { field: 'collective', label: 'Collectif' },
@@ -627,6 +629,51 @@ const formatOccupantBadgeLabel = (occupant: any, index: number) => {
     const fallbackLetter = String.fromCharCode(65 + (index % 26));
     return `(Profil ${fallbackLetter})`;
 };
+
+const formatOccupantSwitcherLabel = (occupant: any, index: number) => {
+    const firstName = String(occupant?.firstName || '').trim();
+    if (firstName) {
+        return firstName;
+    }
+    const fallbackLetter = String.fromCharCode(65 + (index % 26));
+    return `Profil ${fallbackLetter}`;
+};
+
+const computeAgeFromBirthDate = (birthDate?: string) => {
+    const raw = String(birthDate || '').trim();
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    let age = now.getFullYear() - date.getFullYear();
+    const monthDelta = now.getMonth() - date.getMonth();
+    const dayDelta = now.getDate() - date.getDate();
+    if (monthDelta < 0 || (monthDelta === 0 && dayDelta < 0)) {
+        age -= 1;
+    }
+
+    return age >= 0 ? `${age} ans` : '';
+};
+
+const buildToggleOptions = (options: RefOption[], currentValue?: string, emptyLabel?: string) => {
+    const labels = options.map((option) => option.label).filter(Boolean);
+    const current = String(currentValue || '').trim();
+    if (current && !labels.includes(current)) {
+        labels.push(current);
+    }
+    if (emptyLabel) {
+        return [emptyLabel, ...labels];
+    }
+    return labels;
+};
+
+const parseComplementaryFundNames = (value?: string) => (
+    String(value || '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+);
 
 const parseHumanHelpItems = (rawValue?: string) => {
     const normalized = String(rawValue || '').toLowerCase();
@@ -838,6 +885,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const [refErgos, setRefErgos] = useState<RefOption[]>([]);
     const [refEtablissements, setRefEtablissements] = useState<RefOption[]>([]);
     const [refCommunes, setRefCommunes] = useState<CommuneOption[]>([]);
+    const [retirementFundOptions, setRetirementFundOptions] = useState<string[]>([]);
     const [wikiLibraryItems, setWikiLibraryItems] = useState<WikiLibraryItem[]>(STATIC_WIKI_ITEMS);
     const isAutosaveReadyRef = useRef(false);
     const beneficiarySnapshotRef = useRef<string | null>(null);
@@ -924,6 +972,18 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             setRefErgos(refs.ergos);
             setRefEtablissements(refs.etablissements);
             setRefCommunes(refs.communes || []);
+            try {
+                const funds = await fetchRetirementFunds();
+                setRetirementFundOptions(
+                    funds
+                        .map((fund) => String(fund.name || '').trim())
+                        .filter(Boolean)
+                        .sort((left, right) => left.localeCompare(right)),
+                );
+            } catch (error) {
+                console.error('Failed to load retirement funds', error);
+                setRetirementFundOptions([]);
+            }
             const wikiItems = await fetchWikiLibrary();
             if (wikiItems.length > 0) {
                 setWikiLibraryItems(wikiItems);
@@ -3014,6 +3074,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         onChange={updateBeneficiary}
                         refSituations={refSituations}
                         refDependances={refDependances}
+                        retirementFundOptions={retirementFundOptions}
                         refCommunes={refCommunes}
                     />
                 );
@@ -3226,6 +3287,7 @@ const BeneficiaryForm: React.FC<{
     onChange: (f: string, v: any) => void,
     refSituations: RefOption[],
     refDependances: RefOption[],
+    retirementFundOptions: string[],
     refCommunes: CommuneOption[]
 }> = ({
     data,
@@ -3238,6 +3300,7 @@ const BeneficiaryForm: React.FC<{
     onChange,
     refSituations,
     refDependances,
+    retirementFundOptions,
     refCommunes
 }) => {
     const phoneInvalid = !isValidFrenchPhone(data.phone);
@@ -3256,6 +3319,10 @@ const BeneficiaryForm: React.FC<{
     }, [activeOccupantIndex, displayedOccupants.length]);
 
     const activeOccupant = displayedOccupants[activeOccupantIndex] || createEmptyOccupant();
+    const activeOccupantAge = computeAgeFromBirthDate(activeOccupant.birthDate);
+    const familySituationOptions = buildToggleOptions(refSituations, data.familySituation);
+    const dependenceOptions = buildToggleOptions(refDependances, activeOccupant.dependenceTxt, 'Aucune');
+    const selectedComplementaryFunds = parseComplementaryFundNames(activeOccupant.caissesRetraiteComplementaires);
     const updateActiveOccupant = (field: keyof ReturnType<typeof createEmptyOccupant>, value: string | boolean) => {
         const nextOccupants = buildOccupantsFromPatient(data, data.numberPeople);
         nextOccupants[activeOccupantIndex] = {
@@ -3270,6 +3337,12 @@ const BeneficiaryForm: React.FC<{
         }
         onChange('occupants', nextOccupants);
     };
+    const updateComplementaryFunds = (fundName: string, checked: boolean) => {
+        const nextFunds = checked
+            ? Array.from(new Set([...selectedComplementaryFunds, fundName]))
+            : selectedComplementaryFunds.filter((entry) => entry !== fundName);
+        updateActiveOccupant('caissesRetraiteComplementaires', nextFunds.join(', '));
+    };
     const renderOccupantSwitcher = (title: string, tone: 'default' | 'soft' = 'default') => (
         <div className="flex items-center justify-between gap-3">
             <span>{title}</span>
@@ -3280,7 +3353,7 @@ const BeneficiaryForm: React.FC<{
                             key={`occupant-${title}-${index}`}
                             type="button"
                             onClick={() => setActiveOccupantIndex(index)}
-                            className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+                            className={`flex min-w-[72px] items-center justify-center rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                                 activeOccupantIndex === index
                                     ? 'border-[#907CA1] bg-[#F4EFF7] text-[#554A63]'
                                     : tone === 'soft'
@@ -3290,18 +3363,13 @@ const BeneficiaryForm: React.FC<{
                             title={formatOccupantLabel(occupant, index)}
                             aria-label={`Afficher ${formatOccupantLabel(occupant, index)}`}
                         >
-                            <User size={16} />
+                            {formatOccupantSwitcherLabel(occupant, index)}
                         </button>
                     ))}
                 </div>
             )}
         </div>
     );
-    const renderOccupantBadge = () => hasMultipleOccupants ? (
-        <div className="mb-3 rounded-2xl border border-[#907CA1]/30 bg-[#F4EFF7] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#554A63]">
-            {formatOccupantBadgeLabel(activeOccupant, activeOccupantIndex)}
-        </div>
-    ) : null;
 
     return (
     <div className="space-y-6">
@@ -3317,7 +3385,6 @@ const BeneficiaryForm: React.FC<{
         {activeQuickLink === 'profile' && (
         <div className="space-y-6">
             <Section title={renderOccupantSwitcher('Identité')}>
-                {renderOccupantBadge()}
                 <div className="grid grid-cols-2 gap-2">
                     <Input
                         label="Nom"
@@ -3330,12 +3397,15 @@ const BeneficiaryForm: React.FC<{
                         onChange={v => updateActiveOccupant('firstName', v)}
                     />
                 </div>
-                <Input
-                    label="Date de naissance"
-                    type="date"
-                    value={activeOccupant.birthDate || ''}
-                    onChange={v => updateActiveOccupant('birthDate', v)}
-                />
+                <div className="grid grid-cols-2 gap-2">
+                    <Input
+                        label="Date de naissance"
+                        type="date"
+                        value={activeOccupant.birthDate || ''}
+                        onChange={v => updateActiveOccupant('birthDate', v)}
+                    />
+                    <ReadOnlyField label="Âge" value={activeOccupantAge || 'Non renseigné'} />
+                </div>
             </Section>
             <Section title="Coordonnées">
                 <Input
@@ -3378,7 +3448,13 @@ const BeneficiaryForm: React.FC<{
         {activeQuickLink === 'finance' && (
         <div className="space-y-6">
             <Section title="Situation">
-                <Select label="Situation familiale" value={data.familySituation} onChange={v => onChange('familySituation', v)} options={refSituations} placeholder="Sélectionner..." />
+                <ToggleGroup
+                    label="Situation familiale"
+                    options={familySituationOptions}
+                    selected={data.familySituation}
+                    onSelect={v => onChange('familySituation', v)}
+                    small
+                />
                 <ToggleGroup label="Occupation" options={['Propriétaire', 'Locataire', 'Usufruitier']} selected={data.occupationStatus} onSelect={v => onChange('occupationStatus', v)} small />
             </Section>
             <Section title="Revenus">
@@ -3401,13 +3477,18 @@ const BeneficiaryForm: React.FC<{
 
         {activeQuickLink === 'health' && (
         <div className="space-y-6">
-            <Section title={renderOccupantSwitcher('Santé / Autonomie', 'soft')}>
-                {renderOccupantBadge()}
+            <Section title={renderOccupantSwitcher('Santé', 'soft')}>
                 <div className="space-y-3">
                     <Checkbox label="Bénéficiaire APA" checked={Boolean(activeOccupant.apa)} onChange={v => updateActiveOccupant('apa', v)} />
                     <Checkbox label="Reconnaissance Invalidité" checked={Boolean(activeOccupant.invalidity)} onChange={v => updateActiveOccupant('invalidity', v)} />
                     <Checkbox label="Aide à domicile" checked={Boolean(activeOccupant.homeHelp)} onChange={v => updateActiveOccupant('homeHelp', v)} />
-                    <Select label="Dépendance particulière" value={activeOccupant.dependenceTxt || ''} onChange={v => updateActiveOccupant('dependenceTxt', v)} options={refDependances} placeholder="Aucune" />
+                    <ToggleGroup
+                        label="Dépendance"
+                        options={dependenceOptions}
+                        selected={activeOccupant.dependenceTxt || 'Aucune'}
+                        onSelect={v => updateActiveOccupant('dependenceTxt', v === 'Aucune' ? '' : v)}
+                        small
+                    />
                 </div>
             </Section>
             <Section title="Personne de Confiance">
@@ -3445,19 +3526,23 @@ const BeneficiaryForm: React.FC<{
                         options={ANAH_ACCOUNT_OPTIONS}
                         placeholder="Sélectionner..."
                     />
-                    {hasMultipleOccupants && (
-                        <div className="-mt-1">
-                            {renderOccupantSwitcher('Informations individuelles', 'soft')}
-                        </div>
-                    )}
-                    {renderOccupantBadge()}
+                </div>
+            </Section>
+            <Section title={renderOccupantSwitcher('Personnel', 'soft')}>
+                <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-2">
                         <Input label="N° Sécu" value={activeOccupant.numeroSecuriteSociale || ''} onChange={v => updateActiveOccupant('numeroSecuriteSociale', v)} placeholder="1 23 45 67..." />
-                        <Input label="Caisse retraite princ." value={activeOccupant.caisseRetraitePrincipale || ''} onChange={v => updateActiveOccupant('caisseRetraitePrincipale', v)} placeholder="Ex: CARSAT..." />
+                        <Input label="Caisse princ." value={activeOccupant.caisseRetraitePrincipale || ''} onChange={v => updateActiveOccupant('caisseRetraitePrincipale', v)} placeholder="Ex: CARSAT..." />
                     </div>
-                    <div className="grid grid-cols-1 gap-2">
-                        <Input label="Caisses complém." value={activeOccupant.caissesRetraiteComplementaires || ''} onChange={v => updateActiveOccupant('caissesRetraiteComplementaires', v)} placeholder="Ex: AGIRC-ARRCO..." />
-                    </div>
+                    <MultiSelectDropdown
+                        label="Caisses complém."
+                        options={retirementFundOptions.map((fundName) => ({
+                            label: fundName,
+                            checked: selectedComplementaryFunds.includes(fundName),
+                            onToggle: (checked) => updateComplementaryFunds(fundName, checked),
+                        }))}
+                        placeholder="Sélectionner une ou plusieurs caisses"
+                    />
                 </div>
             </Section>
             <Section title="Renseignements sur la visite">
@@ -3674,18 +3759,6 @@ const ContextForm: React.FC<{
             onToggle: () => toggleMedicalFlag('sensory'),
         }
     ];
-    const medicalMeasureItem = {
-        key: 'metrics',
-        label: 'Mesures',
-        completed: Boolean(String(activeContext.medical.heightCm || '').trim() || String(activeContext.medical.weightKg || '').trim()),
-        node: (
-            <div className="grid grid-cols-2 gap-2">
-                <Input type="number" value={activeContext.medical.heightCm || ''} onChange={v => onMedicalChange(activeOccupantIndex, 'heightCm', v)} unit="cm" />
-                <Input type="number" value={activeContext.medical.weightKg || ''} onChange={v => onMedicalChange(activeOccupantIndex, 'weightKg', v)} unit="kg" />
-            </div>
-        )
-    };
-
     return (
         <div className="space-y-6">
             <div className="sticky top-0 z-10 -mx-1 rounded-[22px] border border-slate-200 bg-white/95 px-2 py-2 backdrop-blur">
@@ -3737,14 +3810,14 @@ const ContextForm: React.FC<{
                             />
                         ))}
                     </div>
-                    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-1.5">
-                        <MedicalFieldRow
-                            index={4}
-                            label={medicalMeasureItem.label}
-                            completed={medicalMeasureItem.completed}
-                        >
-                            {medicalMeasureItem.node}
-                        </MedicalFieldRow>
+                    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                        <div className="mb-2 flex items-center gap-2">
+                            <span className="text-[13px] font-semibold text-slate-700">Mesures</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <Input type="number" value={activeContext.medical.heightCm || ''} onChange={v => onMedicalChange(activeOccupantIndex, 'heightCm', v)} unit="cm" />
+                            <Input type="number" value={activeContext.medical.weightKg || ''} onChange={v => onMedicalChange(activeOccupantIndex, 'weightKg', v)} unit="kg" />
+                        </div>
                     </div>
                 </Section>
             )}
@@ -3784,11 +3857,11 @@ const ContextForm: React.FC<{
                                         <User size={16} />
                                     </button>
                                 ))}
-                                <span className={`inline-flex min-w-[92px] items-center justify-center rounded-full px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wider ${
-                                    humanHelpEnabled ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-400'
-                                }`}>
-                                    Aide humaine
-                                </span>
+                                {humanHelpEnabled && (
+                                    <span className="inline-flex min-w-[92px] items-center justify-center rounded-full bg-amber-100 px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                                        Aide humaine
+                                    </span>
+                                )}
                             </div>
                         </div>
                     }
@@ -3862,32 +3935,6 @@ const MedicalFlagRow: React.FC<{
     </div>
 );
 
-const MedicalFieldRow: React.FC<{
-    index: number;
-    label: string;
-    completed: boolean;
-    children?: React.ReactNode;
-}> = ({ index, label, completed, children }) => (
-    <div className="px-1 py-1">
-        <div className={`flex items-center gap-2 ${children ? 'mb-2' : ''}`}>
-            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border ${
-                completed ? 'border-[#907CA1] bg-[#907CA1] text-white' : 'border-[#907CA1]/55 bg-white text-transparent'
-            }`}>
-                <Check size={10} />
-            </span>
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#F4EFF7] text-[10px] font-bold text-[#554A63]">
-                {String(index).padStart(2, '0')}
-            </span>
-            <span className="flex-1 text-[13px] font-medium text-slate-700">{label}</span>
-        </div>
-        {children ? (
-            <div className="pl-[38px]">
-                {children}
-            </div>
-        ) : null}
-    </div>
-);
-
 const NumberedCheckRow: React.FC<{
     index: number;
     label: string;
@@ -3915,18 +3962,19 @@ const NumberedCheckRow: React.FC<{
             {String(index).padStart(2, '0')}
         </span>
         <span className={`flex-1 text-[13px] ${concernChecked ? 'text-slate-500 line-through' : 'text-slate-700'}`}>{label}</span>
-        <button
-            type="button"
-            onClick={onHelpToggle}
-            disabled={!helpEnabled}
-            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border ${
-                helpChecked ? 'border-amber-400 bg-amber-100 text-amber-700' : 'border-amber-300 bg-amber-50 text-transparent'
-            } ${helpEnabled ? 'hover:border-amber-400' : 'cursor-not-allowed border-slate-200 bg-slate-100 text-transparent opacity-85'}`}
-            title="Aide humaine"
-            aria-label={`Aide humaine pour ${label}`}
-        >
-            <Check size={10} />
-        </button>
+        {helpEnabled ? (
+            <button
+                type="button"
+                onClick={onHelpToggle}
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border ${
+                    helpChecked ? 'border-amber-400 bg-amber-100 text-amber-700' : 'border-amber-300 bg-amber-50 text-transparent'
+                } hover:border-amber-400`}
+                title="Aide humaine"
+                aria-label={`Aide humaine pour ${label}`}
+            >
+                <Check size={10} />
+            </button>
+        ) : null}
     </div>
 );
 
@@ -3993,16 +4041,6 @@ const AccessForm: React.FC<{
         label: option.label,
         checked: Boolean(data[option.field]),
         onToggle: (checked: boolean) => onChange(option.field, checked),
-    }));
-
-    const heatingOptions = HEATING_OPTIONS.map((option) => ({
-        label: option.label,
-        checked: Boolean(data.heatingDetails?.[option.field]),
-        onToggle: (checked: boolean) => {
-            onHeatingChange(option.field, checked);
-            const hasAnyHeating = checked || HEATING_OPTIONS.some((entry) => entry.field !== option.field && Boolean(data.heatingDetails?.[entry.field]));
-            onChange('heatingMain', hasAnyHeating);
-        },
     }));
 
     return (
@@ -4114,10 +4152,35 @@ const AccessForm: React.FC<{
                     </Section>
 
                     <Section title="Chauffage">
-                        <MultiSelectDropdown label="Types de chauffage" options={heatingOptions} placeholder="Sélectionner un ou plusieurs chauffages" />
-                        <p className="text-xs text-slate-400">
-                            Le chauffage principal est mis à jour automatiquement selon les choix sélectionnés.
-                        </p>
+                        <div className="mb-2.5">
+                            <div className="grid grid-cols-2 gap-2">
+                                {HEATING_OPTIONS.map((option) => {
+                                    const checked = Boolean(data.heatingDetails?.[option.field]);
+                                    return (
+                                        <button
+                                            key={option.field}
+                                            type="button"
+                                            onClick={() => {
+                                                const nextChecked = !checked;
+                                                onHeatingChange(option.field, nextChecked);
+                                                const hasAnyHeating = nextChecked || HEATING_OPTIONS.some((entry) => (
+                                                    entry.field !== option.field && Boolean(data.heatingDetails?.[entry.field])
+                                                ));
+                                                onChange('heatingMain', hasAnyHeating);
+                                            }}
+                                            className={`w-full rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-colors ${
+                                                checked
+                                                    ? 'border-[#907CA1] bg-[#907CA1] text-white'
+                                                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                     </Section>
                 </div>
             )}
@@ -4248,35 +4311,21 @@ const SalleDeBainForm: React.FC<{
                             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                                 Zone d'eau présente
                             </p>
-                            <div className="grid grid-cols-2 gap-3">
-                                <BathroomPresenceOptionCard
-                                    label="Aucune"
-                                    description="Pas de douche ni baignoire dans cette salle de bain."
-                                    selected={wetZoneSelection === 'Aucune'}
-                                    icon={LayoutGrid}
-                                    onClick={() => updateWetZoneSelection('Aucune')}
-                                />
-                                <BathroomPresenceOptionCard
-                                    label="Douche"
-                                    description="Active les éléments liés à la zone douche."
-                                    selected={wetZoneSelection === 'Douche'}
-                                    icon={ShowerHead}
-                                    onClick={() => updateWetZoneSelection('Douche')}
-                                />
-                                <BathroomPresenceOptionCard
-                                    label="Baignoire"
-                                    description="Active les éléments liés à la baignoire."
-                                    selected={wetZoneSelection === 'Baignoire'}
-                                    icon={Bath}
-                                    onClick={() => updateWetZoneSelection('Baignoire')}
-                                />
-                                <BathroomPresenceOptionCard
-                                    label="Douche + baignoire"
-                                    description="Permet de renseigner les deux zones en une fois."
-                                    selected={wetZoneSelection === 'Douche + baignoire'}
-                                    icon={Bath}
-                                    onClick={() => updateWetZoneSelection('Douche + baignoire')}
-                                />
+                            <div className="flex gap-2">
+                                {(['Douche', 'Baignoire', 'Aucune'] as const).map((option) => (
+                                    <button
+                                        key={option}
+                                        type="button"
+                                        onClick={() => updateWetZoneSelection(option)}
+                                        className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                                            wetZoneSelection === option
+                                                ? 'border-[#907CA1] bg-[#907CA1] text-white'
+                                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        {option}
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
@@ -4288,7 +4337,6 @@ const SalleDeBainForm: React.FC<{
                                     </span>
                                     <div>
                                         <p className="text-sm font-semibold text-slate-800">Zone douche / baignoire</p>
-                                        <p className="text-xs text-slate-500">Renseigne uniquement les équipements présents.</p>
                                     </div>
                                 </div>
                                 {wetZoneEquipment.length > 0 ? (
@@ -4325,7 +4373,6 @@ const SalleDeBainForm: React.FC<{
                                         </span>
                                         <div>
                                             <p className="text-sm font-semibold text-slate-800">Équipements complémentaires</p>
-                                            <p className="text-xs text-slate-500">Vasque, bidet et machine à laver.</p>
                                         </div>
                                     </div>
                                     <div className="grid gap-3">
@@ -4348,32 +4395,20 @@ const SalleDeBainForm: React.FC<{
                                     </div>
                                 </div>
 
-                                <div className={`rounded-[28px] border px-4 py-4 transition-colors ${
-                                    activeInstance.sdbSolGlissant ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
-                                }`}>
-                                    <button
-                                        type="button"
-                                        onClick={() => onInstanceChange(activeInstance.levelField, 'sdbSolGlissant', !activeInstance.sdbSolGlissant)}
-                                        className="flex w-full items-center justify-between gap-3 text-left"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
-                                                activeInstance.sdbSolGlissant ? 'bg-white text-amber-600' : 'bg-slate-50 text-slate-400'
-                                            }`}>
-                                                <AlertTriangle size={18} />
-                                            </span>
-                                            <div>
-                                                <p className="text-sm font-semibold text-slate-800">Sécurité du sol</p>
-                                                <p className="text-xs text-slate-500">Signale immédiatement un revêtement glissant.</p>
-                                            </div>
-                                        </div>
-                                        <span className={`flex h-5 w-5 items-center justify-center rounded-[6px] border ${
-                                            activeInstance.sdbSolGlissant ? 'border-[#907CA1] bg-[#907CA1] text-white' : 'border-slate-300 text-transparent'
-                                        }`}>
-                                            <Check size={11} />
-                                        </span>
-                                    </button>
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => onInstanceChange(activeInstance.levelField, 'sdbSolGlissant', !activeInstance.sdbSolGlissant)}
+                                    className={`flex w-full items-center gap-3 rounded-[28px] border px-4 py-4 text-left transition-colors ${
+                                        activeInstance.sdbSolGlissant ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'
+                                    }`}
+                                >
+                                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                                        activeInstance.sdbSolGlissant ? 'bg-white text-amber-600' : 'bg-slate-50 text-slate-400'
+                                    }`}>
+                                        <AlertTriangle size={18} />
+                                    </span>
+                                    <p className="text-sm font-semibold text-slate-800">Sol glissant</p>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -4643,13 +4678,9 @@ const PreconisationsForm: React.FC<{
     return (
         <div className="space-y-6">
             <Section title="Préconisations visuelles">
-                <p className="mb-4 text-sm text-slate-500">
-                    Ajoute une image de la bibliothèque puis complète avec ton texte libre.
-                </p>
-
                 {items.length === 0 && (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                        Aucune préconisation pour l’instant.
+                        Aucune préconisation pour l'instant.
                     </div>
                 )}
 
@@ -4658,34 +4689,42 @@ const PreconisationsForm: React.FC<{
                         const selectedWikiItem = availableImages.find((wikiItem) => wikiItem.id === item.wikiItemId)
                             || availableImages.find((wikiItem) => normalizePreconLookupKey(wikiItem.title) === normalizePreconLookupKey(item.wikiTitle))
                             || availableImages.find((wikiItem) => extractImageFileKey(wikiItem.imageUrl) === extractImageFileKey(item.wikiImageUrl));
-                        const displayTitle = selectedWikiItem?.title || item.wikiTitle || `Préconisation ${index + 1}`;
+                        const displayTitle = item.customTitle || selectedWikiItem?.title || item.wikiTitle || `Préconisation ${index + 1}`;
                         const displayImage = selectedWikiItem?.imageUrl || item.wikiImageUrl;
-                        const displayTag = selectedWikiItem?.tags?.[0] || item.wikiTag;
 
                         return (
                             <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-slate-800">{displayTitle}</h4>
-                                        {displayTag && (
-                                            <span className="mt-1 inline-flex rounded-full bg-[#F4EFF7] px-2.5 py-1 text-xs font-semibold text-[#7B688D]">
-                                                {displayTag}
-                                            </span>
+                                <div className="flex items-center justify-between gap-3">
+                                    <input
+                                        type="text"
+                                        value={displayTitle}
+                                        onChange={(e) => onUpdate(item.id, { customTitle: e.target.value })}
+                                        className="flex-1 bg-transparent text-sm font-semibold text-slate-800 outline-none"
+                                    />
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {displayImage && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setActivePickerId(item.id)}
+                                                className="rounded-full px-2 py-1 text-xs font-medium text-[#7B688D] transition hover:bg-[#F4EFF7] hover:text-[#5f506e]"
+                                            >
+                                                Changer d'image
+                                            </button>
                                         )}
+                                        <button
+                                            type="button"
+                                            onClick={() => onRemove(item.id)}
+                                            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                                            aria-label="Supprimer cette préconisation"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => onRemove(item.id)}
-                                        className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                                        aria-label="Supprimer cette préconisation"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
                                 </div>
 
                                 <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
                                     <div className="space-y-3">
-                                        <div className="flex flex-wrap items-center gap-2">
+                                        {!displayImage && (
                                             <button
                                                 type="button"
                                                 onClick={() => setActivePickerId((prev) => prev === item.id ? null : item.id)}
@@ -4694,16 +4733,7 @@ const PreconisationsForm: React.FC<{
                                                 <ImagePlus size={16} />
                                                 Choisir une image dans la bibliothèque
                                             </button>
-                                            {selectedWikiItem && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setActivePickerId(item.id)}
-                                                    className="text-sm font-medium text-[#7B688D] transition hover:text-[#5f506e]"
-                                                >
-                                                    Changer l’image
-                                                </button>
-                                            )}
-                                        </div>
+                                        )}
 
                                         <TextArea
                                             placeholder="Texte libre pour cette préconisation..."
@@ -4823,6 +4853,7 @@ const PreconisationsForm: React.FC<{
                                                         wikiTitle: wikiItem.title,
                                                         wikiImageUrl: wikiItem.imageUrl,
                                                         wikiTag: wikiItem.tags?.[0] || '',
+                                                        note: activePickerItem.note || wikiItem.description || '',
                                                     });
                                                     setActivePickerId(null);
                                                 }}

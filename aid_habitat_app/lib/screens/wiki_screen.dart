@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
 import '../services/data_service.dart';
+import '../services/wiki_repository.dart';
 
 class WikiScreen extends StatefulWidget {
   const WikiScreen({super.key});
@@ -12,20 +13,14 @@ class WikiScreen extends StatefulWidget {
 }
 
 class _WikiScreenState extends State<WikiScreen> {
-  static const List<String> _availableTags = [
-    'Douche PMR',
-    'WC PMR',
-    'Rampe d\'accès',
-    'Monte escalier',
-    'Sol anti derapant',
-    'Barre d\'appui',
-  ];
-
+  final WikiRepository _wikiRepository = WikiRepository();
   final DataService _dataService = DataService();
+
   List<WikiItem> _items = const [];
+  Set<String> _availableTags = {};
+  String? _selectedTag;
   bool _isLoading = true;
   String? _error;
-  String? _selectedTag;
 
   @override
   void initState() {
@@ -35,31 +30,42 @@ class _WikiScreenState extends State<WikiScreen> {
 
   Future<void> _loadItems() async {
     try {
-      final items = await _dataService.fetchWikiItems();
+      // Load from local SQLite cache immediately.
+      final cached = await _wikiRepository.fetchAllItems();
+      if (mounted) {
+        setState(() {
+          _items = cached;
+          _availableTags = _extractTags(cached);
+          _isLoading = false;
+          _error = null;
+        });
+      }
+
+      // Refresh from remote in background.
+      final didRefresh = await _dataService.refreshWikiItemsFromRemote();
+      if (!didRefresh || !mounted) return;
+
+      final refreshed = await _wikiRepository.fetchAllItems();
       if (!mounted) return;
       setState(() {
-        _items = items;
-        _isLoading = false;
-        _error = null;
+        _items = refreshed;
+        _availableTags = _extractTags(refreshed);
       });
-      _refreshFromRemote();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = 'Chargement impossible';
+        _error = _items.isEmpty ? 'Chargement impossible' : null;
       });
     }
   }
 
-  Future<void> _refreshFromRemote() async {
-    final updated = await _dataService.refreshWikiItemsFromRemote();
-    if (!updated || !mounted) return;
-    final items = await _dataService.fetchWikiItems();
-    if (!mounted) return;
-    setState(() {
-      _items = items;
-    });
+  static Set<String> _extractTags(List<WikiItem> items) {
+    final tags = <String>{};
+    for (final item in items) {
+      tags.addAll(item.tags);
+    }
+    return tags;
   }
 
   List<WikiItem> get _filteredItems {
@@ -73,7 +79,7 @@ class _WikiScreenState extends State<WikiScreen> {
     final updated = await showDialog<WikiItem>(
       context: context,
       builder: (context) =>
-          _WikiItemDialog(item: item, availableTags: _availableTags),
+          _WikiItemDialog(item: item, availableTags: _availableTags.toList()),
     );
     if (updated == null) return;
 
@@ -86,6 +92,12 @@ class _WikiScreenState extends State<WikiScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final sortedTags = _availableTags.toList()..sort();
+
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(
@@ -101,7 +113,7 @@ class _WikiScreenState extends State<WikiScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Bibliothèque visuelle pour garder des repères de solutions.',
+            'Bibliotheque visuelle pour garder des reperes de solutions.',
             style: TextStyle(color: Colors.grey.shade600),
           ),
           const SizedBox(height: 24),
@@ -114,7 +126,7 @@ class _WikiScreenState extends State<WikiScreen> {
                   isActive: _selectedTag == null,
                   onTap: () => setState(() => _selectedTag = null),
                 ),
-                for (final tag in _availableTags)
+                for (final tag in sortedTags)
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
                     child: _FilterChip(
@@ -129,16 +141,14 @@ class _WikiScreenState extends State<WikiScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          if (_isLoading)
-            const Expanded(child: Center(child: CircularProgressIndicator()))
-          else if (_error != null && _items.isEmpty)
+          if (_error != null && _items.isEmpty)
             Expanded(
               child: Center(
                 child: Text(_error!, style: const TextStyle(color: Colors.red)),
               ),
             )
           else if (_filteredItems.isEmpty)
-            const Expanded(child: Center(child: Text('Aucun élément trouvé')))
+            const Expanded(child: Center(child: Text('Aucun element trouve')))
           else
             Expanded(
               child: GridView.builder(
@@ -167,7 +177,7 @@ class _WikiScreenState extends State<WikiScreen> {
                           Expanded(
                             child: Container(
                               decoration: BoxDecoration(
-                                color: const Color(0xFFB9D4C2),
+                                color: _colorForCategory(item.category),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: ClipRRect(
@@ -257,6 +267,23 @@ class _WikiScreenState extends State<WikiScreen> {
         ],
       ),
     );
+  }
+
+  static Color _colorForCategory(String category) {
+    switch (category.toLowerCase()) {
+      case 'salle de bain':
+        return const Color(0xFFB9D4C2);
+      case 'wc':
+        return const Color(0xFFD7CEE6);
+      case 'cuisine':
+        return const Color(0xFFE2C9B0);
+      case 'chambre':
+        return const Color(0xFFC5D2D8);
+      case 'escaliers & ascenseur':
+        return const Color(0xFFE8D5B7);
+      default:
+        return const Color(0xFFC5D2D8);
+    }
   }
 }
 

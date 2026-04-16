@@ -78,8 +78,9 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (isOriginAllowed(origin)) {
     res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Vary', 'Origin');
   }
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Session');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Session, If-Unmodified-Since');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   if (req.method === 'OPTIONS') {
     res.sendStatus(204);
@@ -132,11 +133,11 @@ const FIELD_SETS = {
     'dependance_particuliere', 'dependance_particuliere_txt', 'personne_confiance',
     'telephone_personne_confiance', 'mail_personne_confiance', BENEFICIARY_TRUSTED_EMAIL_FIELD_ID, 'numero_securite_sociale_monsieur',
     'numero_securite_sociale_madame', 'caisse_retraite_principale', 'caisse_retraite_secondaire',
-    'CreatedAt',
+    'CreatedAt', 'UpdatedAt',
   ],
   dossiers: [
     'uuid_source', 'patient_id', 'beneficiaires_id', 'status', 'ergo_id', 'visit_date', 'compte_anah',
-    'nature_accompagnement', 'envoi_rapport', 'personnes_presentes_visite', 'created_at', 'CreatedAt',
+    'nature_accompagnement', 'envoi_rapport', 'personnes_presentes_visite', 'created_at', 'CreatedAt', 'UpdatedAt',
   ],
   logements: [
     'uuid_source', 'beneficiaire_id', 'beneficiaires_id', 'type_de_logement', 'annee_construction', 'annee_habitation',
@@ -149,7 +150,7 @@ const FIELD_SETS = {
     'cheminement_escalier_exterieur', 'cheminement_escalier_interieur', 'cheminement_pente_douce',
     'cheminement_plat', 'cheminement_quelques_marches', 'cheminement_par_arriere', 'cheminement_seuil_porte',
     'difficultes_circulation_interieure', 'porte_de_garage', 'portail', 'acces_facile_rue',
-    'commentaire', 'observation_accessibilite',
+    'commentaire', 'observation_accessibilite', 'UpdatedAt',
   ],
   contexteDeVie: [
     'uuid_source', 'dossier_id', 'beneficiaire_id', 'beneficiaires_id', 'aide_technique_deplacement', 'restrictions_conduite',
@@ -169,13 +170,13 @@ const FIELD_SETS = {
     'sdb_machine_a_laver', 'sdb_machine_a_laver_hauteur', 'wc_cuvette_bonne_hauteur', 'wc_cuvette_trop_basse', 'wc_cuvette_hauteur',
     'wc_barre_relevement', 'porte_sdb_largeur_suffisante', 'porte_sdb_dimension', 'porte_sdb_sens_adapte',
     'porte_wc_largeur_suffisante', 'porte_wc_dimension', 'porte_wc_sens_adapte',
-    'observation_equipements_utilisation', 'sdb_instances_json', 'wc_instances_json',
+    'observation_equipements_utilisation', 'sdb_instances_json', 'wc_instances_json', 'updated_at', 'UpdatedAt',
   ],
   mesuresAnthropometriques: [
     'uuid_source', 'dossier_id', 'debout_hauteur_coude', 'assis_hauteur_assise', 'assis_profondeur_genoux',
-    'assis_hauteur_coudes', 'observations',
+    'assis_hauteur_coudes', 'observations', 'updated_at', 'UpdatedAt',
   ],
-  observations: ['uuid_source', 'dossier_id', 'observation_equipements', 'projet_souhait_usage', 'resume_preconisations'],
+  observations: ['uuid_source', 'dossier_id', 'observation_equipements', 'projet_souhait_usage', 'resume_preconisations', 'updated_at', 'UpdatedAt'],
   referencesLibelle: ['libelle'],
   referencesNom: ['nom'],
   ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement'],
@@ -384,6 +385,33 @@ const findByRecordId = (records, recordId) => records.find((record) => String(re
 const latestByFieldValue = (records, fieldName, value) => latestRecord(
   records.filter((record) => String(field(record, fieldName) ?? '') === String(value ?? ''))
 );
+const getRecordUpdatedAt = (record) => {
+  const raw = field(record, 'updated_at') || field(record, 'UpdatedAt') || field(record, 'created_at') || field(record, 'CreatedAt');
+  return raw ? new Date(raw).toISOString() : null;
+};
+const sendConflictIfStale = (req, res, record) => {
+  const expectedRaw = req.body?.expectedUpdatedAt || req.get('If-Unmodified-Since');
+  if (!expectedRaw) return false;
+
+  const remoteUpdatedAt = getRecordUpdatedAt(record);
+  if (!remoteUpdatedAt) return false;
+
+  const expectedTime = new Date(expectedRaw).getTime();
+  const remoteTime = new Date(remoteUpdatedAt).getTime();
+  if (isNaN(expectedTime) || isNaN(remoteTime)) return false;
+
+  if (remoteTime > expectedTime) {
+    const remoteData = {};
+    if (record?.fields) {
+      for (const [key, value] of Object.entries(record.fields)) {
+        remoteData[key] = value;
+      }
+    }
+    res.status(409).json({ conflict: true, remoteUpdatedAt, remoteData });
+    return true;
+  }
+  return false;
+};
 const normalizeLabelForMatch = (value) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -1705,6 +1733,7 @@ const mapVisitRecommendationRecord = (record) => ({
   wikiTitle: stringValue(field(record, 'wiki_title')),
   wikiImageUrl: absoluteUrl(field(record, 'wiki_image_url')),
   wikiTag: stringValue(field(record, 'wiki_tag')),
+  customTitle: stringValue(field(record, 'custom_title')),
   note: stringValue(field(record, 'note')),
   createdAt: field(record, 'created_at') || field(record, 'updated_at') || new Date().toISOString(),
   updatedAt: field(record, 'updated_at') || field(record, 'created_at') || new Date().toISOString(),
@@ -3389,6 +3418,8 @@ app.patch('/api/beneficiaires/:patientId', requireAuth, async (req, res, next) =
       return;
     }
 
+    if (sendConflictIfStale(req, res, beneficiaryRecord)) return;
+
     const fields = mapBeneficiaryUpdatesToFields(updates, references);
 
     await updateRecord(TABLES.beneficiaires, beneficiaryRecord.id, fields);
@@ -3421,6 +3452,8 @@ app.patch('/api/dossiers/:dossierId', requireAuth, async (req, res, next) => {
       res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
       return;
     }
+    if (sendConflictIfStale(req, res, dossierRecord)) return;
+
     const dossierUuid = field(dossierRecord, 'uuid_source');
     const beneficiaryUuid = field(dossierRecord, 'patient_id');
 
@@ -3547,6 +3580,7 @@ app.patch('/api/logements/by-beneficiary/:beneficiaryId', requireAuth, async (re
     });
 
     if (existingHousing) {
+      if (sendConflictIfStale(req, res, existingHousing)) return;
       await updateRecord(TABLES.logements, existingHousing.id, fields);
       res.json({ success: true, error: null, data: { id: field(existingHousing, 'uuid_source') || `nocodb-housing-${existingHousing.id}` } });
       return;
@@ -4162,6 +4196,7 @@ app.put('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res, n
     };
 
     if (existing) {
+      if (sendConflictIfStale(req, res, existing)) return;
       await updateRecord(TABLES.diagnosticSanitaires, existing.id, fields);
     } else {
       await createRecord(TABLES.diagnosticSanitaires, { uuid_source: crypto.randomUUID(), created_at: new Date().toISOString(), ...fields });
@@ -4219,6 +4254,7 @@ app.put('/api/mesures/:dossierId', requireAuth, async (req, res, next) => {
     };
 
     if (existing) {
+      if (sendConflictIfStale(req, res, existing)) return;
       await updateRecord(TABLES.mesuresAnthropometriques, existing.id, fields);
     } else {
       await createRecord(TABLES.mesuresAnthropometriques, { uuid_source: crypto.randomUUID(), created_at: new Date().toISOString(), ...fields });
@@ -4271,6 +4307,7 @@ app.put('/api/observations/:dossierId', requireAuth, async (req, res, next) => {
     };
 
     if (existing) {
+      if (sendConflictIfStale(req, res, existing)) return;
       await updateRecord(TABLES.observations, existing.id, fields);
     } else {
       await createRecord(TABLES.observations, { uuid_source: crypto.randomUUID(), ...fields });
@@ -4390,6 +4427,7 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
           wiki_title: item.wikiTitle || null,
           wiki_image_url: item.wikiImageUrl || null,
           wiki_tag: item.wikiTag || null,
+          custom_title: item.customTitle || null,
           note: item.note || null,
           created_at: item.createdAt,
           updated_at: item.updatedAt,
