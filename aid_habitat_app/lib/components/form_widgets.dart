@@ -308,6 +308,7 @@ class FormCheckbox extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 20,
@@ -320,7 +321,7 @@ class FormCheckbox extends StatelessWidget {
               child: value ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
             ),
             const SizedBox(width: 10),
-            Expanded(
+            Flexible(
               child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF334155))),
             ),
           ],

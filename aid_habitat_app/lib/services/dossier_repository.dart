@@ -584,13 +584,6 @@ class DossierRepository {
     await db.update('housings', fields, where: 'local_id = ?', whereArgs: [housingId]);
   }
 
-  Future<void> updateDossierFields(String dossierId, Map<String, dynamic> fields) async {
-    final db = await _database.database;
-    fields['updated_at'] = DateTime.now().toIso8601String();
-    fields['sync_state'] = SyncState.pendingSync.name;
-    await db.update('dossiers', fields, where: 'local_id = ?', whereArgs: [dossierId]);
-  }
-
   Future<Map<String, dynamic>?> fetchContexteDeVie(String dossierId) async {
     final db = await _database.database;
     final rows = await db.query('contexte_de_vie', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);

@@ -470,26 +470,32 @@ class _AccessibilityTabState extends State<AccessibilityTab> {
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Color(0xFF334155)),
         ),
         const SizedBox(height: 8),
-        FormCheckbox(
-          label: 'Logement entier',
-          value: _voletsManEntier,
-          onChanged: (v) {
-            _voletsManEntier = v;
-            if (v) _voletsManLoc = '';
-            _onChanged();
-          },
+        Row(
+          children: [
+            FormCheckbox(
+              label: 'Logement entier',
+              value: _voletsManEntier,
+              onChanged: (v) {
+                _voletsManEntier = v;
+                if (v) _voletsManLoc = '';
+                _onChanged();
+              },
+            ),
+            if (!_voletsManEntier) ...[
+              const SizedBox(width: 16),
+              Expanded(
+                child: FormTextField(
+                  label: 'Localisation',
+                  value: _voletsManLoc,
+                  onChanged: (v) {
+                    _voletsManLoc = v;
+                    _onChanged();
+                  },
+                ),
+              ),
+            ],
+          ],
         ),
-        if (!_voletsManEntier) ...[
-          const SizedBox(height: 8),
-          FormTextField(
-            label: 'Localisation',
-            value: _voletsManLoc,
-            onChanged: (v) {
-              _voletsManLoc = v;
-              _onChanged();
-            },
-          ),
-        ],
 
         const SizedBox(height: 20),
 
@@ -499,26 +505,32 @@ class _AccessibilityTabState extends State<AccessibilityTab> {
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Color(0xFF334155)),
         ),
         const SizedBox(height: 8),
-        FormCheckbox(
-          label: 'Logement entier',
-          value: _voletsElecEntier,
-          onChanged: (v) {
-            _voletsElecEntier = v;
-            if (v) _voletsElecLoc = '';
-            _onChanged();
-          },
+        Row(
+          children: [
+            FormCheckbox(
+              label: 'Logement entier',
+              value: _voletsElecEntier,
+              onChanged: (v) {
+                _voletsElecEntier = v;
+                if (v) _voletsElecLoc = '';
+                _onChanged();
+              },
+            ),
+            if (!_voletsElecEntier) ...[
+              const SizedBox(width: 16),
+              Expanded(
+                child: FormTextField(
+                  label: 'Localisation',
+                  value: _voletsElecLoc,
+                  onChanged: (v) {
+                    _voletsElecLoc = v;
+                    _onChanged();
+                  },
+                ),
+              ),
+            ],
+          ],
         ),
-        if (!_voletsElecEntier) ...[
-          const SizedBox(height: 8),
-          FormTextField(
-            label: 'Localisation',
-            value: _voletsElecLoc,
-            onChanged: (v) {
-              _voletsElecLoc = v;
-              _onChanged();
-            },
-          ),
-        ],
 
         const SizedBox(height: 20),
 
@@ -528,26 +540,32 @@ class _AccessibilityTabState extends State<AccessibilityTab> {
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Color(0xFF334155)),
         ),
         const SizedBox(height: 8),
-        FormCheckbox(
-          label: 'Logement entier',
-          value: _voletsPersEntier,
-          onChanged: (v) {
-            _voletsPersEntier = v;
-            if (v) _voletsPersLoc = '';
-            _onChanged();
-          },
+        Row(
+          children: [
+            FormCheckbox(
+              label: 'Logement entier',
+              value: _voletsPersEntier,
+              onChanged: (v) {
+                _voletsPersEntier = v;
+                if (v) _voletsPersLoc = '';
+                _onChanged();
+              },
+            ),
+            if (!_voletsPersEntier) ...[
+              const SizedBox(width: 16),
+              Expanded(
+                child: FormTextField(
+                  label: 'Localisation',
+                  value: _voletsPersLoc,
+                  onChanged: (v) {
+                    _voletsPersLoc = v;
+                    _onChanged();
+                  },
+                ),
+              ),
+            ],
+          ],
         ),
-        if (!_voletsPersEntier) ...[
-          const SizedBox(height: 8),
-          FormTextField(
-            label: 'Localisation',
-            value: _voletsPersLoc,
-            onChanged: (v) {
-              _voletsPersLoc = v;
-              _onChanged();
-            },
-          ),
-        ],
       ],
     );
   }
