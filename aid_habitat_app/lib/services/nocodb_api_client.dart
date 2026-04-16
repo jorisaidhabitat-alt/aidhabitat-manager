@@ -256,6 +256,40 @@ class NocodbApiClient {
         .toList();
   }
 
+  Future<WikiItem> updateWikiItem({
+    required String itemId,
+    required WikiItem item,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final response = await _client.put(
+      Uri.parse('$_baseUrl/api/wiki-library/$itemId'),
+      headers: _headers,
+      body: jsonEncode({
+        'title': item.title,
+        'description': item.description,
+        'tags': item.tags,
+        'category': item.category,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote wiki item update failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final saved = (data['item'] as Map?)?.cast<String, dynamic>();
+    if (saved == null) {
+      throw Exception('Unexpected wiki item payload');
+    }
+    return _mapWikiItem(saved);
+  }
+
   Future<List<RetirementFund>> fetchRetirementFunds() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 

@@ -83,11 +83,22 @@ class _WikiScreenState extends State<WikiScreen> {
     );
     if (updated == null) return;
 
-    setState(() {
-      _items = _items
-          .map((entry) => entry.id == updated.id ? updated : entry)
-          .toList(growable: false);
-    });
+    try {
+      final saved = await _dataService.updateWikiItem(updated);
+      if (!mounted) return;
+      setState(() {
+        _items = _items
+            .map((entry) => entry.id == saved.id ? saved : entry)
+            .toList(growable: false);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _items = _items
+            .map((entry) => entry.id == updated.id ? updated : entry)
+            .toList(growable: false);
+      });
+    }
   }
 
   @override
