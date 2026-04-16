@@ -6,6 +6,7 @@ import 'app_config.dart';
 import 'nocodb_api_client.dart';
 import 'sync_repository.dart';
 
+
 class NocodbSyncService {
   NocodbSyncService({
     NocodbApiClient? apiClient,
@@ -164,7 +165,7 @@ class NocodbSyncService {
       fileName: fileName,
       mimeType: mimeType,
       tags: tags,
-      contentBase64: base64Encode(await file.readAsBytes()),
+      file: file,
     );
 
     await _syncRepository.storeDocumentRemoteData(
