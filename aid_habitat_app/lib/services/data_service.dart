@@ -201,6 +201,42 @@ class DataService {
     );
   }
 
+  Future<void> updatePatientFields(
+    String patientLocalId,
+    Map<String, dynamic> fields,
+  ) async {
+    await _dossierRepository.updatePatientFields(patientLocalId, fields);
+  }
+
+  Future<void> updateHousingFields(
+    String patientLocalId,
+    Map<String, dynamic> fields,
+  ) async {
+    await _dossierRepository.updateHousingFields(patientLocalId, fields);
+  }
+
+  Future<void> updateDossierFields(
+    String dossierLocalId,
+    Map<String, dynamic> fields,
+  ) async {
+    await _dossierRepository.updateDossierFields(dossierLocalId, fields);
+  }
+
+  Future<Map<String, dynamic>> fetchFormData(
+    String patientId,
+    String formKey,
+  ) async {
+    return _dossierRepository.fetchFormData(patientId, formKey);
+  }
+
+  Future<void> saveFormData(
+    String patientId,
+    String formKey,
+    Map<String, dynamic> data,
+  ) async {
+    await _dossierRepository.saveFormData(patientId, formKey, data);
+  }
+
   Future<List<SyncOperation>> fetchPendingOperations() async {
     return _syncRepository.fetchRunnableOperations();
   }
@@ -218,5 +254,30 @@ class DataService {
 
   Future<SyncRunResult> runSync() async {
     return _nocodbSyncService.pushPendingChanges();
+  }
+
+  Future<Dossier?> fetchRemoteDossierById(String dossierId) async {
+    try {
+      final remoteDossiers = await _nocodbApiClient.fetchDossiers();
+      return remoteDossiers.cast<Dossier?>().firstWhere(
+        (d) => d!.id == dossierId,
+        orElse: () => null,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> resolveConflictKeepLocal(Dossier dossier) async {
+    await _syncRepository.setEntitySyncState(
+      entityType: 'dossier',
+      entityLocalId: dossier.id,
+      syncState: SyncState.pendingSync,
+    );
+  }
+
+  Future<void> resolveConflictTakeRemote(Dossier remoteDossier) async {
+    await _dossierRepository.forceReplaceWithRemote(remoteDossier);
+    await _syncRepository.clearPendingOperationsForEntity(remoteDossier.id);
   }
 }

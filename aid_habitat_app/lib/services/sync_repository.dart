@@ -240,6 +240,33 @@ class SyncRepository {
     );
   }
 
+  Future<void> setEntitySyncState({
+    required String entityType,
+    required String entityLocalId,
+    required SyncState syncState,
+  }) async {
+    final db = await _database.database;
+    await _updateEntitySyncState(
+      db: db,
+      entityType: entityType,
+      entityLocalId: entityLocalId,
+      syncState: syncState,
+    );
+  }
+
+  Future<void> clearPendingOperationsForEntity(String entityLocalId) async {
+    final db = await _database.database;
+    await db.delete(
+      'sync_operations',
+      where: 'entity_local_id = ? AND status IN (?, ?)',
+      whereArgs: [
+        entityLocalId,
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.failed.name,
+      ],
+    );
+  }
+
   Future<void> _updateOperation({
     required String operationId,
     required SyncOperationStatus status,

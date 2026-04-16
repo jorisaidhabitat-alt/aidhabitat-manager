@@ -362,6 +362,157 @@ class DossierRepository {
     });
   }
 
+  Future<void> forceReplaceWithRemote(Dossier remote) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+
+    await db.transaction((txn) async {
+      await txn.insert('patients', {
+        'local_id': remote.patient.id,
+        'remote_patient_id': remote.patient.id,
+        'first_name': remote.patient.firstName,
+        'last_name': remote.patient.lastName,
+        'birth_date': remote.patient.birthDate,
+        'phone': remote.patient.phone,
+        'email': remote.patient.email,
+        'address': remote.patient.address,
+        'city': remote.patient.city,
+        'zip_code': remote.patient.zipCode,
+        'family_situation': remote.patient.familySituation,
+        'income_category': remote.patient.incomeCategory,
+        'trusted_person_json': jsonEncode({
+          'name': remote.patient.trustedPerson.name,
+          'phone': remote.patient.trustedPerson.phone,
+          'email': remote.patient.trustedPerson.email,
+        }),
+        'updated_at': now,
+        'remote_updated_at': now,
+        'sync_state': SyncState.synced.name,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      final housingLocalId = 'housing_${remote.id}';
+      await txn.insert('housings', {
+        'local_id': housingLocalId,
+        'remote_housing_id': housingLocalId,
+        'patient_local_id': remote.patient.id,
+        'type': remote.housing.type.name,
+        'year_value': remote.housing.year,
+        'surface': remote.housing.surface,
+        'heating_mode': remote.housing.heating.name,
+        'accessibility_notes': remote.housing.accessibilityNotes,
+        'updated_at': now,
+        'remote_updated_at': now,
+        'sync_state': SyncState.synced.name,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      await txn.insert('dossiers', {
+        'local_id': remote.id,
+        'remote_dossier_id': remote.id,
+        'patient_local_id': remote.patient.id,
+        'housing_local_id': housingLocalId,
+        'status': remote.status.name,
+        'ergo_id': remote.ergoId,
+        'visit_date': remote.visitDate,
+        'autonomy_notes': remote.autonomyNotes,
+        'plans_json': jsonEncode(remote.plans.keys.toList()),
+        'created_at': remote.createdAt,
+        'updated_at': now,
+        'remote_updated_at': now,
+        'sync_state': SyncState.synced.name,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
+  Future<void> updatePatientFields(
+    String patientLocalId,
+    Map<String, dynamic> fields,
+  ) async {
+    final db = await _database.database;
+    fields['updated_at'] = DateTime.now().toIso8601String();
+    fields['sync_state'] = SyncState.pendingSync.name;
+    await db.update(
+      'patients',
+      fields,
+      where: 'local_id = ?',
+      whereArgs: [patientLocalId],
+    );
+  }
+
+  Future<void> updateHousingFields(
+    String patientLocalId,
+    Map<String, dynamic> fields,
+  ) async {
+    final db = await _database.database;
+    fields['updated_at'] = DateTime.now().toIso8601String();
+    fields['sync_state'] = SyncState.pendingSync.name;
+    await db.update(
+      'housings',
+      fields,
+      where: 'patient_local_id = ?',
+      whereArgs: [patientLocalId],
+    );
+  }
+
+  Future<void> updateDossierFields(
+    String dossierLocalId,
+    Map<String, dynamic> fields,
+  ) async {
+    final db = await _database.database;
+    fields['updated_at'] = DateTime.now().toIso8601String();
+    fields['sync_state'] = SyncState.pendingSync.name;
+    await db.update(
+      'dossiers',
+      fields,
+      where: 'local_id = ?',
+      whereArgs: [dossierLocalId],
+    );
+  }
+
+  Future<Map<String, dynamic>> fetchFormData(
+    String patientId,
+    String formKey,
+  ) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'note_pages',
+      columns: ['text_content'],
+      where: 'patient_local_id = ? AND tab_key = ? AND page_number = ?',
+      whereArgs: [patientId, 'form_$formKey', 0],
+      limit: 1,
+    );
+    if (rows.isEmpty) return {};
+    final text = rows.first['text_content'] as String? ?? '';
+    if (text.isEmpty) return {};
+    return jsonDecode(text) as Map<String, dynamic>;
+  }
+
+  Future<void> saveFormData(
+    String patientId,
+    String formKey,
+    Map<String, dynamic> data,
+  ) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final noteId = 'form_${patientId}_$formKey';
+    await db.insert(
+      'note_pages',
+      {
+        'local_id': noteId,
+        'patient_local_id': patientId,
+        'tab_key': 'form_$formKey',
+        'page_number': 0,
+        'text_content': jsonEncode(data),
+        'drawing_json': null,
+        'drawing_local_path': null,
+        'drawing_remote_path': null,
+        'drawing_remote_url': null,
+        'updated_at': now,
+        'sync_state': SyncState.pendingSync.name,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Dossier _mapDossierRow(Map<String, Object?> row) {
     final trustedPersonJson =
         jsonDecode(row['patient_trusted_person_json'] as String)

@@ -176,6 +176,14 @@ class TrustedPerson {
   final String email;
 
   TrustedPerson({required this.name, required this.phone, required this.email});
+
+  TrustedPerson copyWith({String? name, String? phone, String? email}) {
+    return TrustedPerson(
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+    );
+  }
 }
 
 class Patient {
@@ -206,6 +214,35 @@ class Patient {
     required this.incomeCategory,
     required this.trustedPerson,
   });
+
+  Patient copyWith({
+    String? firstName,
+    String? lastName,
+    String? birthDate,
+    String? phone,
+    String? email,
+    String? address,
+    String? city,
+    String? zipCode,
+    String? familySituation,
+    String? incomeCategory,
+    TrustedPerson? trustedPerson,
+  }) {
+    return Patient(
+      id: id,
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      birthDate: birthDate ?? this.birthDate,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      address: address ?? this.address,
+      city: city ?? this.city,
+      zipCode: zipCode ?? this.zipCode,
+      familySituation: familySituation ?? this.familySituation,
+      incomeCategory: incomeCategory ?? this.incomeCategory,
+      trustedPerson: trustedPerson ?? this.trustedPerson,
+    );
+  }
 }
 
 class Housing {
@@ -222,6 +259,22 @@ class Housing {
     required this.heating,
     required this.accessibilityNotes,
   });
+
+  Housing copyWith({
+    HousingType? type,
+    int? year,
+    double? surface,
+    HeatingMode? heating,
+    String? accessibilityNotes,
+  }) {
+    return Housing(
+      type: type ?? this.type,
+      year: year ?? this.year,
+      surface: surface ?? this.surface,
+      heating: heating ?? this.heating,
+      accessibilityNotes: accessibilityNotes ?? this.accessibilityNotes,
+    );
+  }
 }
 
 class FinancialPlan {
@@ -254,6 +307,30 @@ class Dossier {
     required this.createdAt,
     this.syncState = SyncState.synced,
   });
+
+  Dossier copyWith({
+    Patient? patient,
+    DossierStatus? status,
+    String? ergoId,
+    String? visitDate,
+    Housing? housing,
+    String? autonomyNotes,
+    Map<String, FinancialPlan>? plans,
+    SyncState? syncState,
+  }) {
+    return Dossier(
+      id: id,
+      patient: patient ?? this.patient,
+      status: status ?? this.status,
+      ergoId: ergoId ?? this.ergoId,
+      visitDate: visitDate ?? this.visitDate,
+      housing: housing ?? this.housing,
+      autonomyNotes: autonomyNotes ?? this.autonomyNotes,
+      plans: plans ?? this.plans,
+      createdAt: createdAt,
+      syncState: syncState ?? this.syncState,
+    );
+  }
 }
 
 class DocItem {

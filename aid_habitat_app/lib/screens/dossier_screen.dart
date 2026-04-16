@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
 import '../components/notes_widget.dart';
+import 'conflict_resolution_screen.dart';
 import 'documents_screen.dart';
 import 'start_visit_screen.dart';
 
@@ -176,6 +177,33 @@ class DossierScreen extends StatelessWidget {
                             ),
                           ],
                         ),
+                        if (dossier.syncState == SyncState.conflict) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: _QuickActionButton(
+                              icon: LucideIcons.gitMerge,
+                              label: 'R\u00e9soudre le conflit',
+                              subLabel:
+                                  'Comparer les versions et choisir laquelle garder',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        ConflictResolutionScreen(
+                                      localDossier: dossier,
+                                      onResolved: () {
+                                        Navigator.pop(context);
+                                        onBack();
+                                      },
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 24),
 
                         // Info Card
