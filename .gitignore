@@ -28,3 +28,7 @@ tmp/
 *.sln
 *.sw?
 .vercel
+.vercel/
+.env
+.env.local
+shared/localAuthProfiles.js

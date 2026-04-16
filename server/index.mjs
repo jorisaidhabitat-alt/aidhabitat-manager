@@ -5,6 +5,7 @@ import process from 'node:process';
 import express from 'express';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
+import multer from 'multer';
 import { callNocoTool, closeMcpClient } from './nocodbMcpClient.mjs';
 import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
@@ -58,8 +59,26 @@ const BENEFICIARY_TRUSTED_EMAIL_FIELD_ID = 'c8s1kh1eqqx6xl6';
 const DEFAULT_LEGACY_ERGO_EMAIL = 'joris.aidhabitat@gmail.com';
 let memberRegistryCache = null;
 
+const ALLOWED_ORIGINS = new Set(
+  [APP_PUBLIC_BASE_URL, process.env.CORS_EXTRA_ORIGIN].filter(Boolean),
+);
+
+function isOriginAllowed(origin) {
+  if (!origin) return true; // same-origin / non-browser requests
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  try {
+    const { hostname } = new URL(origin);
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+    if (PROJECT_VERCEL_HOST_PATTERN.test(hostname)) return true;
+  } catch { /* malformed origin */ }
+  return false;
+}
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (isOriginAllowed(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  }
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Session');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   if (req.method === 'OPTIONS') {
@@ -70,6 +89,8 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '30mb' }));
+
+const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
 app.use('/uploads/profile-photos', express.static(PROFILE_PHOTOS_DIR_URL.pathname));
 app.use('/uploads/documents', express.static(DOCUMENTS_DIR_URL.pathname));
 app.use('/uploads/visit-plans', express.static(VISIT_PLANS_DIR_URL.pathname));
@@ -3613,17 +3634,27 @@ app.post(
   },
 );
 
-app.post('/api/documents', requireAuth, async (req, res, next) => {
+app.post('/api/documents', requireAuth, documentUpload.single('file'), async (req, res, next) => {
   try {
     const patientId = stringValue(req.body?.patientId).trim();
     const documentLocalId = stringValue(req.body?.documentLocalId).trim();
     const title = stringValue(req.body?.title).trim() || 'Document';
     const requestedFileName = stringValue(req.body?.fileName).trim();
     const requestedDossierId = stringValue(req.body?.dossierId).trim();
-    const tags = asArray(req.body?.tags).map((tag) => String(tag).trim()).filter(Boolean);
+
+    // tags may arrive as JSON string (multipart) or array (JSON body)
+    const rawTags = req.body?.tags;
+    const parsedTags = typeof rawTags === 'string' ? (() => { try { const p = JSON.parse(rawTags); return Array.isArray(p) ? p : [rawTags]; } catch { return [rawTags]; } })() : rawTags;
+    const tags = asArray(parsedTags).map((tag) => String(tag).trim()).filter(Boolean);
 
     if (!patientId) {
       throw httpError(400, 'patientId manquant');
+    }
+
+    // Multipart file upload: convert buffer to base64 for downstream compatibility
+    let contentBase64 = req.body?.contentBase64;
+    if (!contentBase64 && req.file?.buffer) {
+      contentBase64 = req.file.buffer.toString('base64');
     }
 
     const access = await resolveBeneficiaryAccess(req.appUser, patientId);
@@ -3638,9 +3669,9 @@ app.post('/api/documents', requireAuth, async (req, res, next) => {
       documentLocalId,
       title,
       fileName: requestedFileName || `${title}.bin`,
-      mimeType: stringValue(req.body?.mimeType).trim() || 'application/octet-stream',
+      mimeType: stringValue(req.body?.mimeType).trim() || req.file?.mimetype || 'application/octet-stream',
       tags,
-      contentBase64: req.body?.contentBase64,
+      contentBase64,
       ...documentContext,
     });
 
