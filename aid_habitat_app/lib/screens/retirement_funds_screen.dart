@@ -62,6 +62,16 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
     }
   }
 
+  Future<void> _refreshFromRemote() async {
+    final updated = await _dataService.refreshRetirementFundsFromRemote();
+    if (!updated || !mounted) return;
+    final funds = await _dataService.fetchRetirementFunds();
+    if (!mounted) return;
+    setState(() {
+      _funds = funds;
+    });
+  }
+
   Future<void> _openFund(RetirementFund fund) async {
     final updated = await showDialog<RetirementFund>(
       context: context,
