@@ -1,9 +1,8 @@
-import 'dart:io';
-import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+
+import '../models/types.dart';
+import '../services/data_service.dart';
 
 class WikiScreen extends StatefulWidget {
   const WikiScreen({super.key});
@@ -22,71 +21,56 @@ class _WikiScreenState extends State<WikiScreen> {
     'Barre d\'appui',
   ];
 
-  final List<_WikiItem> _items = [
-    const _WikiItem(
-      id: 'wiki_1',
-      title: 'Douche PMR',
-      description:
-          'Douche de plain-pied avec siège rabattable et barre d’appui.',
-      tags: ['Douche PMR'],
-      accentColor: Color(0xFFB9D4C2),
-    ),
-    const _WikiItem(
-      id: 'wiki_2',
-      title: 'Rampe d’accès',
-      description: 'Rampe antidérapante pour franchissement de seuil.',
-      tags: ['Rampe d\'accès'],
-      accentColor: Color(0xFFE2C9B0),
-    ),
-    const _WikiItem(
-      id: 'wiki_3',
-      title: 'Barre d’appui',
-      description: 'Barre coudée 135° pour transfert toilette.',
-      tags: ['Barre d\'appui'],
-      accentColor: Color(0xFFD7CEE6),
-    ),
-  ];
-
+  final DataService _dataService = DataService();
+  List<WikiItem> _items = const [];
+  bool _isLoading = true;
+  String? _error;
   String? _selectedTag;
 
-  List<_WikiItem> get _filteredItems {
+  @override
+  void initState() {
+    super.initState();
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    try {
+      final items = await _dataService.fetchWikiItems();
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _isLoading = false;
+        _error = null;
+      });
+      _refreshFromRemote();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = 'Chargement impossible';
+      });
+    }
+  }
+
+  Future<void> _refreshFromRemote() async {
+    final updated = await _dataService.refreshWikiItemsFromRemote();
+    if (!updated || !mounted) return;
+    final items = await _dataService.fetchWikiItems();
+    if (!mounted) return;
+    setState(() {
+      _items = items;
+    });
+  }
+
+  List<WikiItem> get _filteredItems {
     if (_selectedTag == null) return _items;
     return _items
         .where((item) => item.tags.contains(_selectedTag))
         .toList(growable: false);
   }
 
-  Future<void> _pickImage() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      withData: true,
-    );
-    final file = result?.files.single;
-    if (file == null) return;
-
-    Uint8List? bytes = file.bytes;
-    if (bytes == null && file.path != null) {
-      bytes = await File(file.path!).readAsBytes();
-    }
-    if (bytes == null) return;
-
-    setState(() {
-      _items.insert(
-        0,
-        _WikiItem(
-          id: 'wiki_${DateTime.now().millisecondsSinceEpoch}',
-          title: file.name.split('.').first,
-          description: '',
-          tags: const [],
-          accentColor: const Color(0xFFC5D2D8),
-          imageBytes: bytes,
-        ),
-      );
-    });
-  }
-
-  Future<void> _openItem(_WikiItem item) async {
-    final updated = await showDialog<_WikiItem>(
+  Future<void> _openItem(WikiItem item) async {
+    final updated = await showDialog<WikiItem>(
       context: context,
       builder: (context) =>
           _WikiItemDialog(item: item, availableTags: _availableTags),
@@ -94,10 +78,9 @@ class _WikiScreenState extends State<WikiScreen> {
     if (updated == null) return;
 
     setState(() {
-      final index = _items.indexWhere((entry) => entry.id == updated.id);
-      if (index >= 0) {
-        _items[index] = updated;
-      }
+      _items = _items
+          .map((entry) => entry.id == updated.id ? updated : entry)
+          .toList(growable: false);
     });
   }
 
@@ -118,7 +101,7 @@ class _WikiScreenState extends State<WikiScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Bibliothèque visuelle locale pour garder des repères de solutions.',
+            'Bibliothèque visuelle pour garder des repères de solutions.',
             style: TextStyle(color: Colors.grey.shade600),
           ),
           const SizedBox(height: 24),
@@ -146,116 +129,131 @@ class _WikiScreenState extends State<WikiScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 280,
-                mainAxisSpacing: 20,
-                crossAxisSpacing: 20,
-                childAspectRatio: 0.88,
+          if (_isLoading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_error != null && _items.isEmpty)
+            Expanded(
+              child: Center(
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
               ),
-              itemCount: _filteredItems.length + 1,
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return _AddWikiCard(onTap: _pickImage);
-                }
-
-                final item = _filteredItems[index - 1];
-                return InkWell(
-                  onTap: () => _openItem(item),
-                  borderRadius: BorderRadius.circular(28),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: item.accentColor,
-                              borderRadius: BorderRadius.circular(20),
+            )
+          else if (_filteredItems.isEmpty)
+            const Expanded(child: Center(child: Text('Aucun élément trouvé')))
+          else
+            Expanded(
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 280,
+                  mainAxisSpacing: 20,
+                  crossAxisSpacing: 20,
+                  childAspectRatio: 0.88,
+                ),
+                itemCount: _filteredItems.length,
+                itemBuilder: (context, index) {
+                  final item = _filteredItems[index];
+                  return InkWell(
+                    onTap: () => _openItem(item),
+                    borderRadius: BorderRadius.circular(28),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFB9D4C2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: item.imageUrl.isNotEmpty
+                                    ? Image.network(
+                                        item.imageUrl,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Center(
+                                              child: Icon(
+                                                LucideIcons.image,
+                                                size: 42,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                      )
+                                    : const Center(
+                                        child: Icon(
+                                          LucideIcons.image,
+                                          size: 42,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                              ),
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: item.imageBytes != null
-                                  ? Image.memory(
-                                      item.imageBytes!,
-                                      fit: BoxFit.cover,
-                                      width: double.infinity,
-                                    )
-                                  : const Center(
-                                      child: Icon(
-                                        LucideIcons.image,
-                                        size: 42,
-                                        color: Colors.black54,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            item.description.isEmpty
+                                ? 'Aucune description'
+                                : item.description,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              height: 1.35,
+                            ),
+                          ),
+                          if (item.tags.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: item.tags
+                                  .map(
+                                    (tag) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                      child: Text(
+                                        tag,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
+                                  )
+                                  .toList(),
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          item.description.isEmpty
-                              ? 'Aucune description'
-                              : item.description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            height: 1.35,
-                          ),
-                        ),
-                        if (item.tags.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: item.tags
-                                .map(
-                                  (tag) => Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF1F5F9),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      tag,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                          ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -265,7 +263,7 @@ class _WikiScreenState extends State<WikiScreen> {
 class _WikiItemDialog extends StatefulWidget {
   const _WikiItemDialog({required this.item, required this.availableTags});
 
-  final _WikiItem item;
+  final WikiItem item;
   final List<String> availableTags;
 
   @override
@@ -308,15 +306,22 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                 flex: 3,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: widget.item.accentColor,
+                    color: const Color(0xFFB9D4C2),
                     borderRadius: BorderRadius.circular(28),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(28),
-                    child: widget.item.imageBytes != null
-                        ? Image.memory(
-                            widget.item.imageBytes!,
+                    child: widget.item.imageUrl.isNotEmpty
+                        ? Image.network(
+                            widget.item.imageUrl,
                             fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Center(
+                              child: Icon(
+                                LucideIcons.image,
+                                size: 72,
+                                color: Colors.black54,
+                              ),
+                            ),
                           )
                         : const Center(
                             child: Icon(
@@ -431,38 +436,6 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
   }
 }
 
-class _AddWikiCard extends StatelessWidget {
-  const _AddWikiCard({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(28),
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(LucideIcons.plusCircle, size: 46, color: Color(0xFF907CA1)),
-            SizedBox(height: 14),
-            Text(
-              'Ajouter une image',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _FilterChip extends StatelessWidget {
   const _FilterChip({
     required this.label,
@@ -496,35 +469,6 @@ class _FilterChip extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _WikiItem {
-  const _WikiItem({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.tags,
-    required this.accentColor,
-    this.imageBytes,
-  });
-
-  final String id;
-  final String title;
-  final String description;
-  final List<String> tags;
-  final Color accentColor;
-  final Uint8List? imageBytes;
-
-  _WikiItem copyWith({String? title, String? description, List<String>? tags}) {
-    return _WikiItem(
-      id: id,
-      title: title ?? this.title,
-      description: description ?? this.description,
-      tags: tags ?? this.tags,
-      accentColor: accentColor,
-      imageBytes: imageBytes,
     );
   }
 }

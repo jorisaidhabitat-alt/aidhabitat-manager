@@ -41,6 +41,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
         _isLoading = false;
         _error = null;
       });
+      _refreshFromRemote();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -48,6 +49,16 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
         _error = 'Chargement impossible';
       });
     }
+  }
+
+  Future<void> _refreshFromRemote() async {
+    final updated = await _dataService.refreshRetirementFundsFromRemote();
+    if (!updated || !mounted) return;
+    final funds = await _dataService.fetchRetirementFunds();
+    if (!mounted) return;
+    setState(() {
+      _funds = funds;
+    });
   }
 
   Future<void> _openFund(RetirementFund fund) async {

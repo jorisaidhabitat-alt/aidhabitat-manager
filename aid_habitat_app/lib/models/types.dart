@@ -128,6 +128,48 @@ class RetirementFund {
   }
 }
 
+class WikiItem {
+  final String id;
+  final String title;
+  final String description;
+  final String imageUrl;
+  final List<String> tags;
+  final String category;
+  final String createdAt;
+  final String updatedAt;
+
+  const WikiItem({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.imageUrl,
+    required this.tags,
+    required this.category,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  WikiItem copyWith({
+    String? title,
+    String? description,
+    String? imageUrl,
+    List<String>? tags,
+    String? category,
+    String? updatedAt,
+  }) {
+    return WikiItem(
+      id: id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      imageUrl: imageUrl ?? this.imageUrl,
+      tags: tags ?? this.tags,
+      category: category ?? this.category,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
 class TrustedPerson {
   final String name;
   final String phone;

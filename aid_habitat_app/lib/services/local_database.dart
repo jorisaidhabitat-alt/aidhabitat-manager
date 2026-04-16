@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 3;
+  static const _dbVersion = 5;
 
   Database? _database;
 
@@ -29,8 +29,42 @@ class LocalDatabase {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion == newVersion) return;
-    await _dropAllTables(db);
-    await _onCreate(db, newVersion);
+    if (oldVersion < 4) await _migrateV3ToV4(db);
+    if (oldVersion < 5) await _migrateV4ToV5(db);
+  }
+
+  Future<void> _migrateV3ToV4(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS wiki_items (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        image_url TEXT NOT NULL,
+        tags_json TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _migrateV4ToV5(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS retirement_funds (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        audience TEXT NOT NULL,
+        request_method TEXT NOT NULL,
+        request_delay TEXT NOT NULL,
+        aid_amount TEXT NOT NULL,
+        therapist_note TEXT NOT NULL,
+        website TEXT NOT NULL,
+        logo_url TEXT NOT NULL,
+        last_edited_at TEXT,
+        updated_at TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -175,11 +209,43 @@ class LocalDatabase {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE wiki_items (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        image_url TEXT NOT NULL,
+        tags_json TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE retirement_funds (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        audience TEXT NOT NULL,
+        request_method TEXT NOT NULL,
+        request_delay TEXT NOT NULL,
+        aid_amount TEXT NOT NULL,
+        therapist_note TEXT NOT NULL,
+        website TEXT NOT NULL,
+        logo_url TEXT NOT NULL,
+        last_edited_at TEXT,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
     await _seedInitialWorkspace(db);
   }
 
   Future<void> _dropAllTables(Database db) async {
     for (final table in const [
+      'retirement_funds',
+      'wiki_items',
       'sync_operations',
       'note_pages',
       'documents',

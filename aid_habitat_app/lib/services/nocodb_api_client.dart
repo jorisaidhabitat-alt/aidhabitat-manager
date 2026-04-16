@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -66,31 +67,37 @@ class NocodbApiClient {
     required String fileName,
     required String mimeType,
     required List<String> tags,
-    required String contentBase64,
+    required File file,
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
 
-    final response = await _client.post(
+    final request = http.MultipartRequest(
+      'POST',
       Uri.parse('$_baseUrl/api/documents'),
-      headers: _headers,
-      body: jsonEncode({
-        'patientId': patientId,
-        'documentLocalId': documentLocalId,
-        'title': title,
-        'fileName': fileName,
-        'mimeType': mimeType,
-        'tags': tags,
-        'contentBase64': contentBase64,
-      }),
+    );
+    request.headers['X-App-Session'] = AppConfig.appSessionToken;
+    request.fields['patientId'] = patientId;
+    request.fields['documentLocalId'] = documentLocalId;
+    request.fields['title'] = title;
+    request.fields['fileName'] = fileName;
+    request.fields['mimeType'] = mimeType;
+    request.fields['tags'] = jsonEncode(tags);
+    request.files.add(
+      await http.MultipartFile.fromPath('file', file.path, filename: fileName),
     );
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Remote document upload failed (${response.statusCode})');
+    final streamed = await _client.send(request);
+    final responseBody = await streamed.stream.bytesToString();
+
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      throw Exception(
+        'Remote document upload failed (${streamed.statusCode})',
+      );
     }
 
-    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final payload = jsonDecode(responseBody) as Map<String, dynamic>;
     final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
     final document = (data['document'] as Map?)?.cast<String, dynamic>();
     if (document == null) {
@@ -172,6 +179,28 @@ class NocodbApiClient {
     return ((data['users'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<List<WikiItem>> fetchWikiItems() async {
+    if (!AppConfig.hasRemoteConfig) return const [];
+
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/api/wiki-library'),
+      headers: _headers,
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote wiki items fetch failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ((data['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => _mapWikiItem(item.cast<String, dynamic>()))
         .toList();
   }
 
@@ -394,6 +423,23 @@ class NocodbApiClient {
       default:
         return HeatingMode.ELECTRIC;
     }
+  }
+
+  WikiItem _mapWikiItem(Map<String, dynamic> json) {
+    final rawTags = json['tags'];
+    final tags = rawTags is List
+        ? rawTags.map((tag) => tag.toString()).toList()
+        : <String>[];
+    return WikiItem(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      imageUrl: json['imageUrl']?.toString() ?? '',
+      tags: tags,
+      category: json['category']?.toString() ?? '',
+      createdAt: json['createdAt']?.toString() ?? '',
+      updatedAt: json['updatedAt']?.toString() ?? '',
+    );
   }
 
   RetirementFund _mapRetirementFund(Map<String, dynamic> json) {

@@ -7,7 +7,9 @@ import 'document_repository.dart';
 import 'note_repository.dart';
 import 'nocodb_api_client.dart';
 import 'nocodb_sync_service.dart';
+import 'retirement_funds_repository.dart';
 import 'sync_repository.dart';
+import 'wiki_repository.dart';
 
 class DataService {
   DataService._internal();
@@ -23,6 +25,9 @@ class DataService {
   final SyncRepository _syncRepository = SyncRepository();
   final NocodbSyncService _nocodbSyncService = NocodbSyncService();
   final AuthService _authService = AuthService();
+  final WikiRepository _wikiRepository = WikiRepository();
+  final RetirementFundsRepository _retirementFundsRepository =
+      RetirementFundsRepository();
 
   Future<void> initialize() async {
     await _dossierRepository.initialize();
@@ -42,12 +47,43 @@ class DataService {
     return _dossierRepository.fetchAllDossiers();
   }
 
+  Future<List<WikiItem>> fetchWikiItems() async {
+    return _wikiRepository.fetchAllItems();
+  }
+
+  Future<bool> refreshWikiItemsFromRemote() async {
+    try {
+      final remoteItems = await _nocodbApiClient.fetchWikiItems();
+      if (remoteItems.isEmpty) return false;
+      await _wikiRepository.mergeRemoteItems(remoteItems);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<List<RetirementFund>> fetchRetirementFunds() async {
-    return _nocodbApiClient.fetchRetirementFunds();
+    return _retirementFundsRepository.fetchAllFunds();
+  }
+
+  Future<bool> refreshRetirementFundsFromRemote() async {
+    try {
+      final remoteFunds = await _nocodbApiClient.fetchRetirementFunds();
+      if (remoteFunds.isEmpty) return false;
+      await _retirementFundsRepository.mergeRemoteFunds(remoteFunds);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<RetirementFund> updateRetirementFund(RetirementFund fund) async {
-    return _nocodbApiClient.updateRetirementFund(fundId: fund.id, fund: fund);
+    final saved = await _nocodbApiClient.updateRetirementFund(
+      fundId: fund.id,
+      fund: fund,
+    );
+    await _retirementFundsRepository.upsertFund(saved);
+    return saved;
   }
 
   Future<List<AdminAccessMember>> fetchAdminAccessMembers() async {
