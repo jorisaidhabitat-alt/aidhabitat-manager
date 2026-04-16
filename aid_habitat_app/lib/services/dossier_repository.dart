@@ -12,6 +12,8 @@ class DossierRepository {
 
   final LocalDatabase _database;
 
+  String _uuid() => DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+
   Future<void> initialize() async {
     await _database.ensureSeeded();
   }
@@ -559,5 +561,195 @@ class DossierRepository {
       createdAt: row['dossier_created_at'] as String,
       syncState: SyncState.values.byName(row['dossier_sync_state'] as String),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Visit report CRUD methods
+  // ---------------------------------------------------------------------------
+
+  Future<void> updatePatient(String patientId, Map<String, dynamic> fields) async {
+    final db = await _database.database;
+    fields['updated_at'] = DateTime.now().toIso8601String();
+    fields['sync_state'] = SyncState.pendingSync.name;
+    await db.update('patients', fields, where: 'local_id = ?', whereArgs: [patientId]);
+  }
+
+  Future<void> updateHousing(String dossierId, Map<String, dynamic> fields) async {
+    final db = await _database.database;
+    final rows = await db.query('dossiers', columns: ['housing_local_id'], where: 'local_id = ?', whereArgs: [dossierId], limit: 1);
+    if (rows.isEmpty) return;
+    final housingId = rows.first['housing_local_id'] as String;
+    fields['updated_at'] = DateTime.now().toIso8601String();
+    fields['sync_state'] = SyncState.pendingSync.name;
+    await db.update('housings', fields, where: 'local_id = ?', whereArgs: [housingId]);
+  }
+
+  Future<void> updateDossierFields(String dossierId, Map<String, dynamic> fields) async {
+    final db = await _database.database;
+    fields['updated_at'] = DateTime.now().toIso8601String();
+    fields['sync_state'] = SyncState.pendingSync.name;
+    await db.update('dossiers', fields, where: 'local_id = ?', whereArgs: [dossierId]);
+  }
+
+  Future<Map<String, dynamic>?> fetchContexteDeVie(String dossierId) async {
+    final db = await _database.database;
+    final rows = await db.query('contexte_de_vie', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return {
+      'medicalContext': row['medical_context_json'] != null ? jsonDecode(row['medical_context_json'] as String) : null,
+      'autonomy': row['autonomy_json'] != null ? jsonDecode(row['autonomy_json'] as String) : null,
+    };
+  }
+
+  Future<void> upsertContexteDeVie(String dossierId, String patientId, {MedicalContext? medicalContext, AutonomyData? autonomy}) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final existing = await db.query('contexte_de_vie', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'patient_local_id': patientId,
+      'updated_at': now,
+      'sync_state': SyncState.pendingSync.name,
+    };
+    if (medicalContext != null) data['medical_context_json'] = jsonEncode(medicalContext.toJson());
+    if (autonomy != null) data['autonomy_json'] = jsonEncode(autonomy.toJson());
+    if (existing.isEmpty) {
+      data['local_id'] = 'ctx_${dossierId}_${_uuid()}';
+      await db.insert('contexte_de_vie', data);
+    } else {
+      await db.update('contexte_de_vie', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+    }
+  }
+
+  Future<DiagnosticSanitaire?> fetchDiagnosticSanitaire(String dossierId) async {
+    final db = await _database.database;
+    final rows = await db.query('diagnostic_sanitaires', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return DiagnosticSanitaire(
+      dossierId: dossierId,
+      sdbInstances: row['sdb_instances_json'] != null
+          ? (jsonDecode(row['sdb_instances_json'] as String) as List<dynamic>).map((e) => BathroomInstance.fromJson(e as Map<String, dynamic>)).toList()
+          : [],
+      wcInstances: row['wc_instances_json'] != null
+          ? (jsonDecode(row['wc_instances_json'] as String) as List<dynamic>).map((e) => WcInstance.fromJson(e as Map<String, dynamic>)).toList()
+          : [],
+    );
+  }
+
+  Future<void> upsertDiagnosticSanitaire(String dossierId, DiagnosticSanitaire diag) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final existing = await db.query('diagnostic_sanitaires', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'sdb_instances_json': jsonEncode(diag.sdbInstances.map((e) => e.toJson()).toList()),
+      'wc_instances_json': jsonEncode(diag.wcInstances.map((e) => e.toJson()).toList()),
+      'updated_at': now,
+      'sync_state': SyncState.pendingSync.name,
+    };
+    if (existing.isEmpty) {
+      data['local_id'] = 'diag_${dossierId}_${_uuid()}';
+      await db.insert('diagnostic_sanitaires', data);
+    } else {
+      await db.update('diagnostic_sanitaires', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+    }
+  }
+
+  Future<MesuresAnthropometriques?> fetchMesures(String dossierId) async {
+    final db = await _database.database;
+    final rows = await db.query('mesures_anthropometriques', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return MesuresAnthropometriques(
+      dossierId: dossierId,
+      deboutHauteurCoude: (row['debout_hauteur_coude'] as num?)?.toDouble(),
+      assisHauteurAssise: (row['assis_hauteur_assise'] as num?)?.toDouble(),
+      assisProfondeurGenoux: (row['assis_profondeur_genoux'] as num?)?.toDouble(),
+      assisHauteurCoudes: (row['assis_hauteur_coudes'] as num?)?.toDouble(),
+      observations: row['observations'] as String? ?? '',
+    );
+  }
+
+  Future<void> upsertMesures(String dossierId, MesuresAnthropometriques mesures) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final existing = await db.query('mesures_anthropometriques', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'debout_hauteur_coude': mesures.deboutHauteurCoude,
+      'assis_hauteur_assise': mesures.assisHauteurAssise,
+      'assis_profondeur_genoux': mesures.assisProfondeurGenoux,
+      'assis_hauteur_coudes': mesures.assisHauteurCoudes,
+      'observations': mesures.observations,
+      'updated_at': now,
+      'sync_state': SyncState.pendingSync.name,
+    };
+    if (existing.isEmpty) {
+      data['local_id'] = 'mes_${dossierId}_${_uuid()}';
+      await db.insert('mesures_anthropometriques', data);
+    } else {
+      await db.update('mesures_anthropometriques', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+    }
+  }
+
+  Future<ObservationsSynthese?> fetchObservations(String dossierId) async {
+    final db = await _database.database;
+    final rows = await db.query('observations_synthese', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return ObservationsSynthese(
+      dossierId: dossierId,
+      observationEquipements: row['observation_equipements'] as String? ?? '',
+      projetSouhaitUsage: row['projet_souhait_usage'] as String? ?? '',
+      resumePreconisations: row['resume_preconisations'] as String? ?? '',
+    );
+  }
+
+  Future<void> upsertObservations(String dossierId, ObservationsSynthese obs) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final existing = await db.query('observations_synthese', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'observation_equipements': obs.observationEquipements,
+      'projet_souhait_usage': obs.projetSouhaitUsage,
+      'resume_preconisations': obs.resumePreconisations,
+      'updated_at': now,
+      'sync_state': SyncState.pendingSync.name,
+    };
+    if (existing.isEmpty) {
+      data['local_id'] = 'obs_${dossierId}_${_uuid()}';
+      await db.insert('observations_synthese', data);
+    } else {
+      await db.update('observations_synthese', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+    }
+  }
+
+  Future<List<VisitRecommendationItem>> fetchVisitRecommendations(String dossierId) async {
+    final db = await _database.database;
+    final rows = await db.query('visit_recommendations', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    if (rows.isEmpty) return [];
+    final itemsJson = jsonDecode(rows.first['items_json'] as String) as List<dynamic>;
+    return itemsJson.map((e) => VisitRecommendationItem.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> saveVisitRecommendations(String dossierId, List<VisitRecommendationItem> items) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final existing = await db.query('visit_recommendations', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'items_json': jsonEncode(items.map((e) => e.toJson()).toList()),
+      'updated_at': now,
+      'sync_state': SyncState.pendingSync.name,
+    };
+    if (existing.isEmpty) {
+      data['local_id'] = 'rec_${dossierId}_${_uuid()}';
+      await db.insert('visit_recommendations', data);
+    } else {
+      await db.update('visit_recommendations', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+    }
   }
 }

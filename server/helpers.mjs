@@ -1,59 +1,64 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import express from 'express';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
-import multer from 'multer';
 import { callNocoTool, closeMcpClient } from './nocodbMcpClient.mjs';
 import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
+
+export { callNocoTool, closeMcpClient, getRetirementFundMeta, WIKI_FILTER_TAGS };
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const app = express();
+export const port = Number(process.env.API_PORT || 3001);
+export const SERVER_DIR_PATH = path.dirname(fileURLToPath(import.meta.url));
+export const DIST_DIR_PATH = path.resolve(SERVER_DIR_PATH, '../dist');
+export const DIST_INDEX_PATH = path.join(DIST_DIR_PATH, 'index.html');
+export const LOCAL_DATA_DIR_PATH = fileURLToPath(new URL('./data/', import.meta.url));
+export const DATA_DIR_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'aidhabitat-data')
+  : LOCAL_DATA_DIR_PATH;
+export const DATA_DIR_URL = pathToFileURL(DATA_DIR_PATH.endsWith(path.sep) ? DATA_DIR_PATH : `${DATA_DIR_PATH}${path.sep}`);
+export const dataFileUrl = (relativePath) => new URL(relativePath, DATA_DIR_URL);
+export const AUTH_STORE_URL = dataFileUrl('auth-store.json');
+export const PROFILE_PHOTOS_DIR_URL = dataFileUrl('profile-photos/');
+export const DOCUMENTS_DIR_URL = dataFileUrl('documents/');
+export const VISIT_PLANS_DIR_URL = dataFileUrl('visit-plans/');
+export const WIKI_LIBRARY_DIR_URL = dataFileUrl('wiki-library/');
+export const DOCUMENT_STORE_URL = dataFileUrl('documents-store.json');
+export const NOTE_PAGES_STORE_URL = dataFileUrl('note-pages-store.json');
+export const RETIREMENT_FUNDS_STORE_URL = dataFileUrl('retirement-funds.json');
+export const VISIT_RECOMMENDATIONS_STORE_URL = dataFileUrl('visit-recommendations.json');
+export const VISIT_RECOMMENDATIONS_TABLE_NAME = process.env.NOCODB_VISIT_RECOMMENDATIONS_TABLE_NAME || 'mobile_visit_recommendations';
+export const WIKI_LIBRARY_STORE_URL = dataFileUrl('wikiLibraryStatic.json');
+export const BUNDLED_WIKI_LIBRARY_PATH = path.resolve(SERVER_DIR_PATH, '../data/wikiLibraryStatic.json');
+export const AUTH_CACHE_TTL_MS = 30_000;
+export const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+export const ANAH_STATUS_TTL_MS = 60_000;
+export const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';
+export const ANAH_REGISTRATION_URL = 'https://monprojet.anah.gouv.fr/';
+export const APP_PUBLIC_BASE_URL = String(process.env.APP_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '')
+  || (process.env.VERCEL_URL ? `https://${String(process.env.VERCEL_URL).trim()}` : '');
+export const LOCALHOST_URL_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i;
+export const PROJECT_VERCEL_HOST_PATTERN = /^aid-habitat-manager(?:-[a-z0-9-]+)?\.vercel\.app$/i;
+export let anahStatusCache = null;
+export let bundledWikiItemsCache = null;
 
-const ALLOWED_ORIGINS = new Set(
-  [APP_PUBLIC_BASE_URL, process.env.CORS_EXTRA_ORIGIN].filter(Boolean),
-);
+export const MEMBER_PROFILES = {
+  'contact@aidhabitat.fr': { displayName: 'Renan', role: 'ADMIN', selectable: false, establishmentId: null, establishmentLabel: '' },
+  'joris.aidhabitat@gmail.com': { displayName: 'Coralie', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+  'joris.balluais@gmail.com': { displayName: 'Christelle', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+};
+export const BENEFICIARY_TRUSTED_EMAIL_FIELD_ID = 'c8s1kh1eqqx6xl6';
+export const DEFAULT_LEGACY_ERGO_EMAIL = 'joris.aidhabitat@gmail.com';
+export let memberRegistryCache = null;
 
-function isOriginAllowed(origin) {
-  if (!origin) return true; // same-origin / non-browser requests
-  if (ALLOWED_ORIGINS.has(origin)) return true;
-  try {
-    const { hostname } = new URL(origin);
-    if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
-    if (PROJECT_VERCEL_HOST_PATTERN.test(hostname)) return true;
-  } catch { /* malformed origin */ }
-  return false;
-}
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (isOriginAllowed(origin)) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Vary', 'Origin');
-  }
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Session, If-Unmodified-Since');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(204);
-    return;
-  }
-  next();
-});
-
-app.use(express.json({ limit: '30mb' }));
-
-const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
-app.use('/uploads/profile-photos', express.static(PROFILE_PHOTOS_DIR_URL.pathname));
-app.use('/uploads/documents', express.static(DOCUMENTS_DIR_URL.pathname));
-app.use('/uploads/visit-plans', express.static(VISIT_PLANS_DIR_URL.pathname));
-app.use('/uploads/wiki-library', express.static(WIKI_LIBRARY_DIR_URL.pathname));
-
-const TABLES = {
+export const TABLES = {
   beneficiaires: 'muvp56d5i9z2qbe',
   logements: 'mgdpvdrnzyy6n4k',
   dossiers: 'mez74y7ndoej30p',
@@ -79,7 +84,7 @@ const TABLES = {
   baremesAnah: 'mtg6pgm9t274ya9',
 };
 
-const FIELD_SETS = {
+export const FIELD_SETS = {
   beneficiaires: [
     'prenom', 'nom', 'prenom_occupant_2', 'nom_occupant_2', 'occupants_json', 'adresse_logement', 'ville_libre', 'code_postal_libre', 'commune', 'communes_id', 'code_postal',
     'telephone', 'mail', 'date_naissance_monsieur', 'date_naissance_madame', 'date_visite',
@@ -89,11 +94,11 @@ const FIELD_SETS = {
     'dependance_particuliere', 'dependance_particuliere_txt', 'personne_confiance',
     'telephone_personne_confiance', 'mail_personne_confiance', BENEFICIARY_TRUSTED_EMAIL_FIELD_ID, 'numero_securite_sociale_monsieur',
     'numero_securite_sociale_madame', 'caisse_retraite_principale', 'caisse_retraite_secondaire',
-    'CreatedAt', 'UpdatedAt',
+    'CreatedAt',
   ],
   dossiers: [
     'uuid_source', 'patient_id', 'beneficiaires_id', 'status', 'ergo_id', 'visit_date', 'compte_anah',
-    'nature_accompagnement', 'envoi_rapport', 'personnes_presentes_visite', 'created_at', 'CreatedAt', 'UpdatedAt',
+    'nature_accompagnement', 'envoi_rapport', 'personnes_presentes_visite', 'created_at', 'CreatedAt',
   ],
   logements: [
     'uuid_source', 'beneficiaire_id', 'beneficiaires_id', 'type_de_logement', 'annee_construction', 'annee_habitation',
@@ -106,7 +111,7 @@ const FIELD_SETS = {
     'cheminement_escalier_exterieur', 'cheminement_escalier_interieur', 'cheminement_pente_douce',
     'cheminement_plat', 'cheminement_quelques_marches', 'cheminement_par_arriere', 'cheminement_seuil_porte',
     'difficultes_circulation_interieure', 'porte_de_garage', 'portail', 'acces_facile_rue',
-    'commentaire', 'observation_accessibilite', 'UpdatedAt',
+    'commentaire', 'observation_accessibilite',
   ],
   contexteDeVie: [
     'uuid_source', 'dossier_id', 'beneficiaire_id', 'beneficiaires_id', 'aide_technique_deplacement', 'restrictions_conduite',
@@ -126,13 +131,13 @@ const FIELD_SETS = {
     'sdb_machine_a_laver', 'sdb_machine_a_laver_hauteur', 'wc_cuvette_bonne_hauteur', 'wc_cuvette_trop_basse', 'wc_cuvette_hauteur',
     'wc_barre_relevement', 'porte_sdb_largeur_suffisante', 'porte_sdb_dimension', 'porte_sdb_sens_adapte',
     'porte_wc_largeur_suffisante', 'porte_wc_dimension', 'porte_wc_sens_adapte',
-    'observation_equipements_utilisation', 'sdb_instances_json', 'wc_instances_json', 'updated_at', 'UpdatedAt',
+    'observation_equipements_utilisation', 'sdb_instances_json', 'wc_instances_json',
   ],
   mesuresAnthropometriques: [
     'uuid_source', 'dossier_id', 'debout_hauteur_coude', 'assis_hauteur_assise', 'assis_profondeur_genoux',
-    'assis_hauteur_coudes', 'observations', 'updated_at', 'UpdatedAt',
+    'assis_hauteur_coudes', 'observations',
   ],
-  observations: ['uuid_source', 'dossier_id', 'observation_equipements', 'projet_souhait_usage', 'resume_preconisations', 'updated_at', 'UpdatedAt'],
+  observations: ['uuid_source', 'dossier_id', 'observation_equipements', 'projet_souhait_usage', 'resume_preconisations'],
   referencesLibelle: ['libelle'],
   referencesNom: ['nom'],
   ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement'],
@@ -143,7 +148,7 @@ const FIELD_SETS = {
   wiki: ['uuid_source', 'titre', 'photos', 'contenu', 'wiki_tags_id', 'wiki_tags'],
 };
 
-const AUTONOMY_ITEMS = [
+export const AUTONOMY_ITEMS = [
   'Déplacements/transferts',
   'Escaliers',
   'Conduite automobile',
@@ -157,7 +162,7 @@ const AUTONOMY_ITEMS = [
   'Communication',
 ];
 
-const VISIT_RECOMMENDATION_FIELDS = [
+export const VISIT_RECOMMENDATION_FIELDS = [
   'uuid_source',
   'dossier_id',
   'beneficiaire_id',
@@ -174,11 +179,11 @@ const VISIT_RECOMMENDATION_FIELDS = [
   'updated_at',
 ];
 
-const asArray = (value) => Array.isArray(value) ? value : [];
-const field = (record, name) => record?.fields?.[name];
-const firstDefined = (...values) => values.find((value) => value !== undefined);
-const stringValue = (value) => value == null ? '' : String(value);
-const safeParseJsonArray = (value) => {
+export const asArray = (value) => Array.isArray(value) ? value : [];
+export const field = (record, name) => record?.fields?.[name];
+export const firstDefined = (...values) => values.find((value) => value !== undefined);
+export const stringValue = (value) => value == null ? '' : String(value);
+export const safeParseJsonArray = (value) => {
   try {
     const parsed = JSON.parse(stringValue(value) || '[]');
     return asArray(parsed).map((entry) => String(entry));
@@ -186,9 +191,9 @@ const safeParseJsonArray = (value) => {
     return [];
   }
 };
-const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
-const nullableString = (value) => value == null || value === '' ? null : String(value);
-const absoluteUrl = (value) => {
+export const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+export const nullableString = (value) => value == null || value === '' ? null : String(value);
+export const absoluteUrl = (value) => {
   const stringified = String(value || '').trim();
   if (!stringified) return '';
   if (LOCALHOST_URL_PATTERN.test(stringified)) {
@@ -222,7 +227,7 @@ const absoluteUrl = (value) => {
   }
   return `http://127.0.0.1:${port}${normalizedPath}`;
 };
-const resolveClientMediaUrl = (value) => {
+export const resolveClientMediaUrl = (value) => {
   const stringified = String(value || '').trim();
   if (!stringified) return '';
   if (LOCALHOST_URL_PATTERN.test(stringified)) {
@@ -236,7 +241,7 @@ const resolveClientMediaUrl = (value) => {
   if (/^https?:\/\//i.test(stringified)) return stringified;
   return stringified.startsWith('/') ? stringified : `/${stringified}`;
 };
-const withTimeout = async (promiseFactory, timeoutMs = 5000) => {
+export const withTimeout = async (promiseFactory, timeoutMs = 5000) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -245,19 +250,19 @@ const withTimeout = async (promiseFactory, timeoutMs = 5000) => {
     clearTimeout(timeout);
   }
 };
-const toNumber = (value) => {
+export const toNumber = (value) => {
   if (value == null || value === '') return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 };
-const toBool = (value) => {
+export const toBool = (value) => {
   if (typeof value === 'boolean') return value;
   if (value == null) return false;
   return ['true', '1', 'yes', 'oui', 'x'].includes(String(value).trim().toLowerCase());
 };
-const boolText = (value) => String(Boolean(value));
-const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
-const latestRecord = (records) => {
+export const boolText = (value) => String(Boolean(value));
+export const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
+export const latestRecord = (records) => {
   const sorted = [...records].sort((a, b) => {
     const aDate = new Date(field(a, 'UpdatedAt') || field(a, 'updated_at') || field(a, 'created_at') || 0).getTime();
     const bDate = new Date(field(b, 'UpdatedAt') || field(b, 'updated_at') || field(b, 'created_at') || 0).getTime();
@@ -266,9 +271,9 @@ const latestRecord = (records) => {
   });
   return sorted[0];
 };
-const normalizeOccupation = (label) => label?.startsWith('Usufruitier') ? 'Usufruitier' : (label || '');
+export const normalizeOccupation = (label) => label?.startsWith('Usufruitier') ? 'Usufruitier' : (label || '');
 
-const parseOccupantsJson = (rawValue) => {
+export const parseOccupantsJson = (rawValue) => {
   const source = stringValue(rawValue).trim();
   if (!source) return [];
   try {
@@ -294,14 +299,14 @@ const parseOccupantsJson = (rawValue) => {
     return [];
   }
 };
-const filterValue = (value) => `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-const unwrapRecordFields = (record) => (
+export const filterValue = (value) => `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+export const unwrapRecordFields = (record) => (
   record && typeof record === 'object' && record.fields && typeof record.fields === 'object'
     ? record.fields
     : record
 );
 
-const refLabel = (record) => {
+export const refLabel = (record) => {
   if (record == null) return '';
   if (typeof record === 'string' || typeof record === 'number') return String(record);
   if (Array.isArray(record)) {
@@ -323,7 +328,7 @@ const refLabel = (record) => {
   return '';
 };
 
-const groupBy = (records, key) => {
+export const groupBy = (records, key) => {
   const map = new Map();
   for (const record of records) {
     const value = field(record, key);
@@ -335,61 +340,34 @@ const groupBy = (records, key) => {
   return map;
 };
 
-const findByUuidSource = (records, sourceId) => records.find((record) => field(record, 'uuid_source') === sourceId);
-const findByFieldValue = (records, fieldName, value) => records.find((record) => field(record, fieldName) === value);
-const findByRecordId = (records, recordId) => records.find((record) => String(record.id) === String(recordId));
-const latestByFieldValue = (records, fieldName, value) => latestRecord(
+export const findByUuidSource = (records, sourceId) => records.find((record) => field(record, 'uuid_source') === sourceId);
+export const findByFieldValue = (records, fieldName, value) => records.find((record) => field(record, fieldName) === value);
+export const findByRecordId = (records, recordId) => records.find((record) => String(record.id) === String(recordId));
+export const latestByFieldValue = (records, fieldName, value) => latestRecord(
   records.filter((record) => String(field(record, fieldName) ?? '') === String(value ?? ''))
 );
-const getRecordUpdatedAt = (record) => {
-  const raw = field(record, 'updated_at') || field(record, 'UpdatedAt') || field(record, 'created_at') || field(record, 'CreatedAt');
-  return raw ? new Date(raw).toISOString() : null;
-};
-const sendConflictIfStale = (req, res, record) => {
-  const expectedRaw = req.body?.expectedUpdatedAt || req.get('If-Unmodified-Since');
-  if (!expectedRaw) return false;
-
-  const remoteUpdatedAt = getRecordUpdatedAt(record);
-  if (!remoteUpdatedAt) return false;
-
-  const expectedTime = new Date(expectedRaw).getTime();
-  const remoteTime = new Date(remoteUpdatedAt).getTime();
-  if (isNaN(expectedTime) || isNaN(remoteTime)) return false;
-
-  if (remoteTime > expectedTime) {
-    const remoteData = {};
-    if (record?.fields) {
-      for (const [key, value] of Object.entries(record.fields)) {
-        remoteData[key] = value;
-      }
-    }
-    res.status(409).json({ conflict: true, remoteUpdatedAt, remoteData });
-    return true;
-  }
-  return false;
-};
-const normalizeLabelForMatch = (value) => String(value || '')
+export const normalizeLabelForMatch = (value) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .toLowerCase()
-  .replace(/['’`()/-]/g, ' ')
+  .replace(/[''`()/-]/g, ' ')
   .replace(/\s+/g, ' ')
   .trim();
-const findByLabel = (records, value) => {
+export const findByLabel = (records, value) => {
   if (!value) return undefined;
   const normalized = normalizeLabelForMatch(value);
   if (!normalized) return undefined;
   return records.find((record) => normalizeLabelForMatch(refLabel(record)) === normalized)
     || records.find((record) => normalizeLabelForMatch(refLabel(record)).startsWith(normalized));
 };
-const normalizeCommuneKey = (value) => String(value || '')
+export const normalizeCommuneKey = (value) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .toLowerCase()
-  .replace(/['’`-]/g, ' ')
+  .replace(/[''`-]/g, ' ')
   .replace(/\s+/g, ' ')
   .trim();
-const findCommuneMatch = (records, city, zipCode) => {
+export const findCommuneMatch = (records, city, zipCode) => {
   const normalizedCity = normalizeCommuneKey(city);
   const normalizedZip = String(zipCode || '').trim();
 
@@ -415,25 +393,25 @@ const findCommuneMatch = (records, city, zipCode) => {
 
   return undefined;
 };
-const resolveCommuneMatch = async (city, zipCode, fallbackRecords = []) => {
+export const resolveCommuneMatch = async (city, zipCode, fallbackRecords = []) => {
   return findCommuneMatch(fallbackRecords, city, zipCode);
 };
-const specialMemberProfile = (email) => MEMBER_PROFILES[normalizeEmail(email)];
-const splitDisplayName = (displayName) => {
+export const specialMemberProfile = (email) => MEMBER_PROFILES[normalizeEmail(email)];
+export const splitDisplayName = (displayName) => {
   const parts = String(displayName || '').trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { prenom: '', nom: '' };
   if (parts.length === 1) return { prenom: parts[0], nom: '' };
   return { prenom: parts.slice(0, -1).join(' '), nom: parts.at(-1) };
 };
-const randomSecret = (size = 48) => crypto.randomBytes(size).toString('base64url');
-const hashPassword = (password, salt) => crypto.scryptSync(String(password), salt, 64).toString('hex');
-const generatePassword = (displayName) => {
+export const randomSecret = (size = 48) => crypto.randomBytes(size).toString('base64url');
+export const hashPassword = (password, salt) => crypto.scryptSync(String(password), salt, 64).toString('hex');
+export const generatePassword = (displayName) => {
   const base = String(displayName || 'AidHabitat').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'AidHab';
   return `${base}-${crypto.randomBytes(4).toString('hex')}`;
 };
-const encodeBase64Url = (payload) => Buffer.from(JSON.stringify(payload)).toString('base64url');
-const decodeBase64Url = (payload) => JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-const decodeLocalAuthEmail = (token) => {
+export const encodeBase64Url = (payload) => Buffer.from(JSON.stringify(payload)).toString('base64url');
+export const decodeBase64Url = (payload) => JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+export const decodeLocalAuthEmail = (token) => {
   if (!String(token || '').startsWith(LOCAL_SESSION_TOKEN_PREFIX)) return null;
   const rawPayload = String(token).slice(LOCAL_SESSION_TOKEN_PREFIX.length).trim();
   if (!rawPayload) return null;
@@ -443,20 +421,20 @@ const decodeLocalAuthEmail = (token) => {
     return rawPayload;
   }
 };
-const getTokenFromRequest = (req) => {
+export const getTokenFromRequest = (req) => {
   const header = req.get('authorization') || '';
   if (header.toLowerCase().startsWith('bearer ')) {
     return header.slice(7).trim();
   }
   return String(req.get('x-app-session') || '').trim();
 };
-const syntheticBeneficiaryId = (recordId) => `nocodb-beneficiaire-${recordId}`;
-const parseSyntheticBeneficiaryId = (value) => {
+export const syntheticBeneficiaryId = (recordId) => `nocodb-beneficiaire-${recordId}`;
+export const parseSyntheticBeneficiaryId = (value) => {
   const match = String(value || '').match(/^nocodb-beneficiaire-(\d+)$/);
   return match ? Number(match[1]) : null;
 };
-const mobileSyncStore = createMobileSyncStore({ absoluteUrl });
-const deriveBeneficiaryAppId = ({ beneficiaryRecord, dossierRecords = [], housingRecords = [], contextRecords = [], infoRecords = [] }) => {
+export const mobileSyncStore = createMobileSyncStore({ absoluteUrl });
+export const deriveBeneficiaryAppId = ({ beneficiaryRecord, dossierRecords = [], housingRecords = [], contextRecords = [], infoRecords = [] }) => {
   const relatedExternalId = [
     latestRecord(dossierRecords) ? field(latestRecord(dossierRecords), 'patient_id') : undefined,
     latestRecord(housingRecords) ? field(latestRecord(housingRecords), 'beneficiaire_id') : undefined,
@@ -466,7 +444,7 @@ const deriveBeneficiaryAppId = ({ beneficiaryRecord, dossierRecords = [], housin
 
   return String(relatedExternalId || syntheticBeneficiaryId(beneficiaryRecord.id));
 };
-const resolveBeneficiaryRecord = ({ beneficiaires, dossiers = [], logements = [], contextes = [], infosAdmin = [], appBeneficiaryId }) => {
+export const resolveBeneficiaryRecord = ({ beneficiaires, dossiers = [], logements = [], contextes = [], infosAdmin = [], appBeneficiaryId }) => {
   const syntheticId = parseSyntheticBeneficiaryId(appBeneficiaryId);
   if (syntheticId != null) {
     return findByRecordId(beneficiaires, syntheticId);
@@ -484,7 +462,7 @@ const resolveBeneficiaryRecord = ({ beneficiaires, dossiers = [], logements = []
   return findByRecordId(beneficiaires, field(linkedRecord, 'beneficiaires_id'));
 };
 
-const parseChecklistDone = (contextRecord) => {
+export const parseChecklistDone = (contextRecord) => {
   if (!contextRecord) {
     return { done: false, checklist: AUTONOMY_ITEMS.map((name) => ({ name, checked: false })), occupants: [] };
   }
@@ -545,7 +523,7 @@ const parseChecklistDone = (contextRecord) => {
   return { done: checklist.some((item) => item.checked), checklist, occupants: [] };
 };
 
-const safeSlug = (value, fallback = 'item') => {
+export const safeSlug = (value, fallback = 'item') => {
   const normalized = String(value || '')
     .trim()
     .replace(/[^a-z0-9._-]+/gi, '-')
@@ -555,7 +533,7 @@ const safeSlug = (value, fallback = 'item') => {
   return normalized || fallback;
 };
 
-const buildRetirementFundLogoDataUri = (name) => {
+export const buildRetirementFundLogoDataUri = (name) => {
   const label = stringValue(name).trim() || 'Caisse';
   const initials = label
     .split(/\s+/)
@@ -580,7 +558,7 @@ const buildRetirementFundLogoDataUri = (name) => {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 };
 
-const normalizeRetirementFundPayload = (fund) => {
+export const normalizeRetirementFundPayload = (fund) => {
   const normalizedName = stringValue(fund?.name).trim();
   return {
     id: stringValue(fund?.id).trim() || `custom-${crypto.randomUUID()}`,
@@ -598,7 +576,7 @@ const normalizeRetirementFundPayload = (fund) => {
   };
 };
 
-const buildRetirementFundResponse = (fund) => {
+export const buildRetirementFundResponse = (fund) => {
   const meta = getRetirementFundMeta(fund?.name || '');
   const normalized = normalizeRetirementFundPayload(fund);
   return {
@@ -606,7 +584,7 @@ const buildRetirementFundResponse = (fund) => {
     name: normalized.name || meta?.displayName || '',
     phone: normalized.phone || meta?.contactPhone || '',
     audience: normalized.audience || meta?.audience || '',
-    requestMethod: normalized.requestMethod || meta?.requestMethod || 'Procédure à confirmer auprès de l’organisme.',
+    requestMethod: normalized.requestMethod || meta?.requestMethod || 'Procédure à confirmer auprès de l\u2019organisme.',
     requestDelay: normalized.requestDelay || meta?.requestDelay || 'Délai à confirmer.',
     aidAmount: normalized.aidAmount || meta?.aidAmount || '',
     therapistNote: normalized.therapistNote || meta?.therapistNote || '',
@@ -615,7 +593,7 @@ const buildRetirementFundResponse = (fund) => {
   };
 };
 
-const safeFileName = (value, fallback = 'document.bin') => {
+export const safeFileName = (value, fallback = 'document.bin') => {
   const normalized = String(value || '')
     .trim()
     .replace(/[/\\?%*:|"<>]+/g, '-')
@@ -625,7 +603,7 @@ const safeFileName = (value, fallback = 'document.bin') => {
   return normalized || fallback;
 };
 
-const inferExtensionFromMimeType = (mimeType) => ({
+export const inferExtensionFromMimeType = (mimeType) => ({
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
@@ -633,7 +611,7 @@ const inferExtensionFromMimeType = (mimeType) => ({
   'application/pdf': 'pdf',
 })[String(mimeType || '').trim().toLowerCase()] || 'bin';
 
-const decodeBase64FilePayload = ({ contentBase64, mimeType }) => {
+export const decodeBase64FilePayload = ({ contentBase64, mimeType }) => {
   const rawValue = String(contentBase64 || '').trim();
   if (!rawValue) {
     throw new Error('Contenu fichier manquant');
@@ -654,7 +632,7 @@ const decodeBase64FilePayload = ({ contentBase64, mimeType }) => {
   };
 };
 
-const mapMedicalContext = (contextRecord) => {
+export const mapMedicalContext = (contextRecord) => {
   if (!contextRecord) return undefined;
 
   const pathology = [field(contextRecord, 'nom_pathologie'), field(contextRecord, 'pathologie_maladie'), field(contextRecord, 'maladie_evolutive')].filter(Boolean).join(' • ');
@@ -682,7 +660,7 @@ const mapMedicalContext = (contextRecord) => {
   };
 };
 
-const readAuthStore = async () => {
+export const readAuthStore = async () => {
   try {
     const raw = await fs.readFile(AUTH_STORE_URL, 'utf8');
     const parsed = JSON.parse(raw);
@@ -712,12 +690,12 @@ const readAuthStore = async () => {
   }
 };
 
-const writeAuthStore = async (store) => {
+export const writeAuthStore = async (store) => {
   await fs.mkdir(DATA_DIR_URL, { recursive: true });
   await fs.writeFile(AUTH_STORE_URL, JSON.stringify(store, null, 2));
 };
 
-const readJsonStore = async (storeUrl, fallbackValue) => {
+export const readJsonStore = async (storeUrl, fallbackValue) => {
   try {
     const raw = await fs.readFile(storeUrl, 'utf8');
     const parsed = JSON.parse(raw);
@@ -731,12 +709,12 @@ const readJsonStore = async (storeUrl, fallbackValue) => {
   }
 };
 
-const writeJsonStore = async (storeUrl, payload) => {
+export const writeJsonStore = async (storeUrl, payload) => {
   await fs.mkdir(DATA_DIR_URL, { recursive: true });
   await fs.writeFile(storeUrl, JSON.stringify(payload, null, 2));
 };
 
-const readDocumentStore = async () => {
+export const readDocumentStore = async () => {
   const store = await readJsonStore(DOCUMENT_STORE_URL, { version: 1, documents: [] });
   return {
     version: 1,
@@ -744,14 +722,14 @@ const readDocumentStore = async () => {
   };
 };
 
-const writeDocumentStore = async (store) => {
+export const writeDocumentStore = async (store) => {
   await writeJsonStore(DOCUMENT_STORE_URL, {
     version: 1,
     documents: asArray(store.documents),
   });
 };
 
-const readNotePagesStore = async () => {
+export const readNotePagesStore = async () => {
   const store = await readJsonStore(NOTE_PAGES_STORE_URL, { version: 1, notePages: [] });
   return {
     version: 1,
@@ -759,14 +737,14 @@ const readNotePagesStore = async () => {
   };
 };
 
-const writeNotePagesStore = async (store) => {
+export const writeNotePagesStore = async (store) => {
   await writeJsonStore(NOTE_PAGES_STORE_URL, {
     version: 1,
     notePages: asArray(store.notePages),
   });
 };
 
-const readRetirementFundsStore = async () => {
+export const readRetirementFundsStore = async () => {
   const store = await readJsonStore(RETIREMENT_FUNDS_STORE_URL, { version: 1, funds: {}, customFunds: [] });
   return {
     version: 1,
@@ -775,7 +753,7 @@ const readRetirementFundsStore = async () => {
   };
 };
 
-const writeRetirementFundsStore = async (store) => {
+export const writeRetirementFundsStore = async (store) => {
   await writeJsonStore(RETIREMENT_FUNDS_STORE_URL, {
     version: 1,
     funds: store.funds || {},
@@ -783,7 +761,7 @@ const writeRetirementFundsStore = async (store) => {
   });
 };
 
-const normalizeVisitRecommendationItem = (item, wikiMap = new Map()) => {
+export const normalizeVisitRecommendationItem = (item, wikiMap = new Map()) => {
   const wikiItem = resolveRecommendationWikiItem(item, wikiMap);
   const now = new Date().toISOString();
 
@@ -799,7 +777,7 @@ const normalizeVisitRecommendationItem = (item, wikiMap = new Map()) => {
   };
 };
 
-const readVisitRecommendationsStore = async () => {
+export const readVisitRecommendationsStore = async () => {
   const store = await readJsonStore(VISIT_RECOMMENDATIONS_STORE_URL, { version: 1, dossiers: {} });
   return {
     version: 1,
@@ -807,14 +785,14 @@ const readVisitRecommendationsStore = async () => {
   };
 };
 
-const writeVisitRecommendationsStore = async (store) => {
+export const writeVisitRecommendationsStore = async (store) => {
   await writeJsonStore(VISIT_RECOMMENDATIONS_STORE_URL, {
     version: 1,
     dossiers: store.dossiers && typeof store.dossiers === 'object' ? store.dossiers : {},
   });
 };
 
-const loadBundledWikiItems = async () => {
+export const loadBundledWikiItems = async () => {
   if (Array.isArray(bundledWikiItemsCache)) return bundledWikiItemsCache;
   try {
     const raw = await fs.readFile(BUNDLED_WIKI_LIBRARY_PATH, 'utf8');
@@ -826,7 +804,7 @@ const loadBundledWikiItems = async () => {
   return bundledWikiItemsCache;
 };
 
-const readWikiLibraryStore = async () => {
+export const readWikiLibraryStore = async () => {
   const store = await readJsonStore(WIKI_LIBRARY_STORE_URL, { version: 1, items: [] });
   const bundledItems = await loadBundledWikiItems();
   const storedItems = asArray(store.items);
@@ -857,14 +835,14 @@ const readWikiLibraryStore = async () => {
   return normalized;
 };
 
-const writeWikiLibraryStore = async (store) => {
+export const writeWikiLibraryStore = async (store) => {
   await writeJsonStore(WIKI_LIBRARY_STORE_URL, {
     version: 1,
     items: asArray(store.items),
   });
 };
 
-const resolveWikiPrimaryTag = ({ title, description, category, tags }) => {
+export const resolveWikiPrimaryTag = ({ title, description, category, tags }) => {
   const explicitAllowed = asArray(tags).find((tag) => WIKI_FILTER_TAGS.includes(String(tag)));
   if (explicitAllowed) return String(explicitAllowed);
 
@@ -883,7 +861,7 @@ const resolveWikiPrimaryTag = ({ title, description, category, tags }) => {
   return 'Equipements';
 };
 
-const normalizeWikiItemPayload = (item) => ({
+export const normalizeWikiItemPayload = (item) => ({
   ...item,
   title: stringValue(item.title),
   description: stringValue(item.description),
@@ -892,14 +870,14 @@ const normalizeWikiItemPayload = (item) => ({
   tags: [resolveWikiPrimaryTag(item)],
 });
 
-const normalizeLookupKey = (value) => stringValue(value)
+export const normalizeLookupKey = (value) => stringValue(value)
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, ' ')
   .trim();
 
-const mediaFileNameKey = (value) => {
+export const mediaFileNameKey = (value) => {
   const raw = stringValue(value).trim();
   if (!raw) return '';
 
@@ -915,7 +893,7 @@ const mediaFileNameKey = (value) => {
   }
 };
 
-const buildWikiRecommendationLookup = (wikiItems = []) => {
+export const buildWikiRecommendationLookup = (wikiItems = []) => {
   const byId = new Map();
   const byTitle = new Map();
   const byImageFile = new Map();
@@ -932,7 +910,7 @@ const buildWikiRecommendationLookup = (wikiItems = []) => {
   return { byId, byTitle, byImageFile, items: wikiItems };
 };
 
-const fuzzyMatchWikiItem = (title, wikiItems = []) => {
+export const fuzzyMatchWikiItem = (title, wikiItems = []) => {
   const normalizedTitle = normalizeLookupKey(title);
   if (!normalizedTitle || wikiItems.length === 0) return null;
   const sourceTokens = normalizedTitle.split(' ').filter(Boolean);
@@ -960,7 +938,7 @@ const fuzzyMatchWikiItem = (title, wikiItems = []) => {
   return bestScore >= 0.45 ? best : null;
 };
 
-const resolveRecommendationWikiItem = (item, lookup) => {
+export const resolveRecommendationWikiItem = (item, lookup) => {
   const byId = lookup?.byId || new Map();
   const byTitle = lookup?.byTitle || new Map();
   const byImageFile = lookup?.byImageFile || new Map();
@@ -976,7 +954,7 @@ const resolveRecommendationWikiItem = (item, lookup) => {
     || null;
 };
 
-const parseWikiContent = (value) => {
+export const parseWikiContent = (value) => {
   const raw = stringValue(value).trim();
   if (!raw) {
     return { description: '', category: 'Autre', tags: [] };
@@ -994,13 +972,13 @@ const parseWikiContent = (value) => {
   }
 };
 
-const serializeWikiContent = ({ description, category, tags }) => JSON.stringify({
+export const serializeWikiContent = ({ description, category, tags }) => JSON.stringify({
   description: stringValue(description),
   category: stringValue(category) || 'Autre',
   tags: asArray(tags).slice(0, 1).map((tag) => String(tag)),
 });
 
-const parseJsonArrayField = (value) => {
+export const parseJsonArrayField = (value) => {
   const raw = stringValue(value).trim();
   if (!raw) return [];
   try {
@@ -1011,7 +989,7 @@ const parseJsonArrayField = (value) => {
   }
 };
 
-const buildLegacyBathroomInstances = (payload) => {
+export const buildLegacyBathroomInstances = (payload) => {
   const hasLegacyBathroomData = [
     payload?.sdbBaignoire,
     payload?.sdbBacDouche,
@@ -1056,7 +1034,7 @@ const buildLegacyBathroomInstances = (payload) => {
   }];
 };
 
-const buildLegacyWcInstances = (payload) => {
+export const buildLegacyWcInstances = (payload) => {
   const hasLegacyWcData = [
     payload?.wcCuvetteBonneHauteur,
     payload?.wcCuvetteTropBasse,
@@ -1085,7 +1063,7 @@ const buildLegacyWcInstances = (payload) => {
   }];
 };
 
-const mapWikiLibraryItem = (item) => ({
+export const mapWikiLibraryItem = (item) => ({
   id: String(item.id),
   title: stringValue(item.title),
   description: stringValue(item.description),
@@ -1096,7 +1074,7 @@ const mapWikiLibraryItem = (item) => ({
   updatedAt: item.updatedAt,
 });
 
-const mapWikiRecordToItem = (record) => {
+export const mapWikiRecordToItem = (record) => {
   const metadata = parseWikiContent(field(record, 'contenu'));
   const linkedTag = stringValue(field(record, 'wiki_tags')?.fields?.tags);
   const tags = metadata.tags.length > 0
@@ -1115,7 +1093,7 @@ const mapWikiRecordToItem = (record) => {
   });
 };
 
-const ensureWikiTagsInNocodb = async (tagNames, existingTagRecords = null) => {
+export const ensureWikiTagsInNocodb = async (tagNames, existingTagRecords = null) => {
   const records = existingTagRecords || await queryAll(TABLES.wikiTags, { fields: FIELD_SETS.wikiTags });
   const normalizedMap = new Map(
     records.map((record) => [stringValue(field(record, 'tags')).trim().toLowerCase(), record]),
@@ -1135,7 +1113,7 @@ const ensureWikiTagsInNocodb = async (tagNames, existingTagRecords = null) => {
   return { records, normalizedMap };
 };
 
-const cleanupWikiTagsInNocodb = async (tagRecords, wikiRecords) => {
+export const cleanupWikiTagsInNocodb = async (tagRecords, wikiRecords) => {
   const allowed = new Set(WIKI_FILTER_TAGS.map((tag) => tag.toLowerCase()));
   const wikiTagIdsInUse = new Set(
     wikiRecords.map((record) => String(field(record, 'wiki_tags_id') || '').trim()).filter(Boolean),
@@ -1154,7 +1132,7 @@ const cleanupWikiTagsInNocodb = async (tagRecords, wikiRecords) => {
   }
 };
 
-const syncLocalWikiStoreToNocodb = async () => {
+export const syncLocalWikiStoreToNocodb = async () => {
   const localStore = await readWikiLibraryStore();
   const localItems = localStore.items.map((item) => normalizeWikiItemPayload(item));
   await writeWikiLibraryStore({ version: 1, items: localItems });
@@ -1254,7 +1232,7 @@ const syncLocalWikiStoreToNocodb = async () => {
   return { wikiRecords: refreshedWikiRecords, tagRecords };
 };
 
-const loadWikiLibrary = async () => {
+export const loadWikiLibrary = async () => {
   const localStore = await readWikiLibraryStore();
 
   try {
@@ -1266,7 +1244,7 @@ const loadWikiLibrary = async () => {
   return localStore.items.map(mapWikiLibraryItem).sort((a, b) => a.title.localeCompare(b.title));
 };
 
-const readAnahStatus = async ({ forceRefresh = false } = {}) => {
+export const readAnahStatus = async ({ forceRefresh = false } = {}) => {
   if (!forceRefresh && anahStatusCache && anahStatusCache.expiresAt > Date.now()) {
     return anahStatusCache.value;
   }
@@ -1326,12 +1304,12 @@ const readAnahStatus = async ({ forceRefresh = false } = {}) => {
   return value;
 };
 
-const syncRecordFieldsLocally = (record, updates) => {
+export const syncRecordFieldsLocally = (record, updates) => {
   if (!record?.fields) return;
   record.fields = { ...record.fields, ...updates };
 };
 
-const backfillChildDossierLinks = async ({ tableId, records, dossiers, beneficiaryField = 'beneficiaires_id' }) => {
+export const backfillChildDossierLinks = async ({ tableId, records, dossiers, beneficiaryField = 'beneficiaires_id' }) => {
   const updates = [];
 
   for (const record of records) {
@@ -1369,7 +1347,7 @@ const backfillChildDossierLinks = async ({ tableId, records, dossiers, beneficia
   }
 };
 
-const createBlankDossierForBeneficiary = async ({ beneficiaryRecord, dossiers, logements, contextes, infosAdmin }) => {
+export const createBlankDossierForBeneficiary = async ({ beneficiaryRecord, dossiers, logements, contextes, infosAdmin }) => {
   const beneficiaryRowId = String(beneficiaryRecord.id);
   const existing = latestByFieldValue(dossiers, 'beneficiaires_id', beneficiaryRowId);
   if (existing) return existing;
@@ -1398,7 +1376,7 @@ const createBlankDossierForBeneficiary = async ({ beneficiaryRecord, dossiers, l
   return created;
 };
 
-const ensureDossiersForBeneficiaries = async ({ beneficiaires, dossiers, logements, contextes, infosAdmin }) => {
+export const ensureDossiersForBeneficiaries = async ({ beneficiaires, dossiers, logements, contextes, infosAdmin }) => {
   for (const beneficiaryRecord of beneficiaires) {
     await createBlankDossierForBeneficiary({
       beneficiaryRecord,
@@ -1410,7 +1388,7 @@ const ensureDossiersForBeneficiaries = async ({ beneficiaires, dossiers, logemen
   }
 };
 
-const mapHousing = (housingRecord) => {
+export const mapHousing = (housingRecord) => {
   if (!housingRecord) {
     return {
       basement: false,
@@ -1489,7 +1467,7 @@ const mapHousing = (housingRecord) => {
   };
 };
 
-const mapPatient = (beneficiaryRecord, appBeneficiaryId) => ({
+export const mapPatient = (beneficiaryRecord, appBeneficiaryId) => ({
   id: String(appBeneficiaryId),
   firstName: stringValue(field(beneficiaryRecord, 'prenom')),
   lastName: stringValue(field(beneficiaryRecord, 'nom')),
@@ -1559,7 +1537,7 @@ const mapPatient = (beneficiaryRecord, appBeneficiaryId) => ({
   caissesRetraiteComplementaires: refLabel(field(beneficiaryRecord, 'caisse_retraite_secondaire')),
 });
 
-const createVirtualDossier = (beneficiaryRecord, appBeneficiaryId, housingRecord, contextRecord, dossierRecord, infoRecord) => ({
+export const createVirtualDossier = (beneficiaryRecord, appBeneficiaryId, housingRecord, contextRecord, dossierRecord, infoRecord) => ({
   id: `temp-${appBeneficiaryId}`,
   patient: mapPatient(beneficiaryRecord, appBeneficiaryId),
   status: 'À visiter',
@@ -1581,7 +1559,7 @@ const createVirtualDossier = (beneficiaryRecord, appBeneficiaryId, housingRecord
   createdAt: field(beneficiaryRecord, 'CreatedAt') || new Date().toISOString(),
 });
 
-const createDossier = (beneficiaryRecord, appBeneficiaryId, dossierRecord, housingRecord, contextRecord, infoRecord) => ({
+export const createDossier = (beneficiaryRecord, appBeneficiaryId, dossierRecord, housingRecord, contextRecord, infoRecord) => ({
   id: field(dossierRecord, 'uuid_source'),
   patient: mapPatient(beneficiaryRecord, appBeneficiaryId),
   status: stringValue(field(dossierRecord, 'status')) || 'À visiter',
@@ -1603,7 +1581,7 @@ const createDossier = (beneficiaryRecord, appBeneficiaryId, dossierRecord, housi
   createdAt: field(dossierRecord, 'created_at') || field(dossierRecord, 'CreatedAt') || new Date().toISOString(),
 });
 
-const queryAll = async (tableId, options = {}) => {
+export const queryAll = async (tableId, options = {}) => {
   const records = [];
   let page = 1;
 
@@ -1628,14 +1606,14 @@ const queryAll = async (tableId, options = {}) => {
   return records;
 };
 
-const updateRecord = async (tableId, id, fields) => {
+export const updateRecord = async (tableId, id, fields) => {
   await callNocoTool('updateRecords', {
     tableId,
     records: [{ id: String(id), fields }],
   });
 };
 
-const createRecord = async (tableId, fields) => {
+export const createRecord = async (tableId, fields) => {
   const payload = await callNocoTool('createRecords', {
     tableId,
     records: [{ fields }],
@@ -1645,16 +1623,16 @@ const createRecord = async (tableId, fields) => {
   return created;
 };
 
-let visitRecommendationsTableIdCache = null;
+export let visitRecommendationsTableIdCache = null;
 
-const discoverTableIdByTitle = async (tableTitle) => {
+export const discoverTableIdByTitle = async (tableTitle) => {
   const payload = await callNocoTool('getTablesList');
   const tables = asArray(payload);
   const match = tables.find((table) => String(table.title).trim().toLowerCase() === String(tableTitle).trim().toLowerCase());
   return match ? String(match.id) : null;
 };
 
-const getVisitRecommendationsTableId = async () => {
+export const getVisitRecommendationsTableId = async () => {
   if (visitRecommendationsTableIdCache) {
     return visitRecommendationsTableIdCache;
   }
@@ -1666,7 +1644,7 @@ const getVisitRecommendationsTableId = async () => {
   return tableId;
 };
 
-const buildVisitRecommendationMetadata = async (dossierRecord) => {
+export const buildVisitRecommendationMetadata = async (dossierRecord) => {
   const beneficiaires = await queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires });
   const beneficiaryRecord = findByRecordId(beneficiaires, field(dossierRecord, 'beneficiaires_id'));
   const patientFirstName = stringValue(field(beneficiaryRecord, 'prenom')).trim();
@@ -1683,19 +1661,18 @@ const buildVisitRecommendationMetadata = async (dossierRecord) => {
   };
 };
 
-const mapVisitRecommendationRecord = (record) => ({
+export const mapVisitRecommendationRecord = (record) => ({
   id: stringValue(field(record, 'uuid_source')) || String(record.id || ''),
   wikiItemId: stringValue(field(record, 'wiki_item_id')),
   wikiTitle: stringValue(field(record, 'wiki_title')),
   wikiImageUrl: absoluteUrl(field(record, 'wiki_image_url')),
   wikiTag: stringValue(field(record, 'wiki_tag')),
-  customTitle: stringValue(field(record, 'custom_title')),
   note: stringValue(field(record, 'note')),
   createdAt: field(record, 'created_at') || field(record, 'updated_at') || new Date().toISOString(),
   updatedAt: field(record, 'updated_at') || field(record, 'created_at') || new Date().toISOString(),
 });
 
-const buildMemberFromErgoRecord = (record) => {
+export const buildMemberFromErgoRecord = (record) => {
   const email = normalizeEmail(field(record, 'email') || asArray(field(record, 'User')).at(0)?.email);
   if (!email) return null;
   const special = specialMemberProfile(email);
@@ -1713,7 +1690,7 @@ const buildMemberFromErgoRecord = (record) => {
   };
 };
 
-const buildFallbackMemberFromProfile = ([email, profile]) => ({
+export const buildFallbackMemberFromProfile = ([email, profile]) => ({
   email,
   displayName: profile.displayName,
   role: profile.role,
@@ -1725,21 +1702,21 @@ const buildFallbackMemberFromProfile = ([email, profile]) => ({
   ergoLabel: profile.role === 'ADMIN' ? '' : profile.displayName,
 });
 
-const buildFallbackMembers = () => (
+export const buildFallbackMembers = () => (
   Object.entries(MEMBER_PROFILES)
     .map(buildFallbackMemberFromProfile)
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 );
 
-const resolveStoredProfilePhotoUrl = (store, email) => {
+export const resolveStoredProfilePhotoUrl = (store, email) => {
   const rawValue = stringValue(store?.users?.[email]?.profilePhotoUrl).trim();
   return rawValue ? resolveClientMediaUrl(rawValue) : '';
 };
 
-const parseImageDataUrl = (dataUrl) => {
+export const parseImageDataUrl = (dataUrl) => {
   const match = String(dataUrl || '').match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   if (!match) {
-    throw new Error('Format d’image invalide');
+    throw new Error('Format d\u2019image invalide');
   }
 
   const mimeType = match[1].toLowerCase();
@@ -1751,7 +1728,7 @@ const parseImageDataUrl = (dataUrl) => {
   })[mimeType];
 
   if (!extension) {
-    throw new Error('Format d’image non supporté');
+    throw new Error('Format d\u2019image non supporté');
   }
 
   return {
@@ -1761,17 +1738,17 @@ const parseImageDataUrl = (dataUrl) => {
   };
 };
 
-const getVisitPlanRelativeUrl = (dossierId) => {
+export const getVisitPlanRelativeUrl = (dossierId) => {
   const folderName = safeSlug(dossierId, 'dossier');
   return `/uploads/visit-plans/${folderName}/plan_logement.png`;
 };
 
-const getVisitPlanFileUrl = (dossierId) => {
+export const getVisitPlanFileUrl = (dossierId) => {
   const folderName = safeSlug(dossierId, 'dossier');
   return new URL(`${folderName}/plan_logement.png`, VISIT_PLANS_DIR_URL);
 };
 
-const readVisitPlanMeta = async (dossierId) => {
+export const readVisitPlanMeta = async (dossierId) => {
   const targetUrl = getVisitPlanFileUrl(dossierId);
   try {
     const stats = await fs.stat(targetUrl);
@@ -1787,7 +1764,7 @@ const readVisitPlanMeta = async (dossierId) => {
   }
 };
 
-const syncPresetMembersInErgos = async () => {
+export const syncPresetMembersInErgos = async () => {
   const records = await queryAll(TABLES.ergotherapeutes, { fields: FIELD_SETS.ergotherapeutes });
   for (const [email, profile] of Object.entries(MEMBER_PROFILES)) {
     const existing = records.find((record) => normalizeEmail(field(record, 'email')) === email);
@@ -1816,7 +1793,7 @@ const syncPresetMembersInErgos = async () => {
   return records;
 };
 
-const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
+export const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
   if (!forceRefresh && memberRegistryCache && memberRegistryCache.expiresAt > Date.now()) {
     return memberRegistryCache.value;
   }
@@ -1884,7 +1861,7 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
   return value;
 };
 
-const loadMemberRegistryForAuth = async () => {
+export const loadMemberRegistryForAuth = async () => {
   if (memberRegistryCache?.value) {
     return memberRegistryCache.value;
   }
@@ -1910,7 +1887,7 @@ const loadMemberRegistryForAuth = async () => {
   }
 };
 
-const signSessionToken = async (email) => {
+export const signSessionToken = async (email) => {
   const { store } = await loadMemberRegistryForAuth();
   const payload = {
     email,
@@ -1921,7 +1898,7 @@ const signSessionToken = async (email) => {
   return `${encodedPayload}.${signature}`;
 };
 
-const resolveSessionUser = async (req) => {
+export const resolveSessionUser = async (req) => {
   const token = getTokenFromRequest(req);
   if (!token) return null;
   const localAuthEmail = decodeLocalAuthEmail(token);
@@ -1942,39 +1919,7 @@ const resolveSessionUser = async (req) => {
   return members.find((member) => member.email === normalizeEmail(payload.email)) || null;
 };
 
-const requireAuth = async (req, res, next) => {
-  try {
-    const user = await resolveSessionUser(req);
-    if (!user) {
-      res.status(401).json({ success: false, error: 'Session invalide ou expirée' });
-      return;
-    }
-    req.appUser = user;
-    next();
-  } catch (error) {
-    next(error);
-  }
-};
-
-const requireAdmin = async (req, res, next) => {
-  try {
-    const user = await resolveSessionUser(req);
-    if (!user) {
-      res.status(401).json({ success: false, error: 'Session invalide ou expirée' });
-      return;
-    }
-    if (user.role !== 'ADMIN') {
-      res.status(403).json({ success: false, error: 'Accès administrateur requis' });
-      return;
-    }
-    req.appUser = user;
-    next();
-  } catch (error) {
-    next(error);
-  }
-};
-
-const getAdminAccessMembers = async () => {
+export const getAdminAccessMembers = async () => {
   const { members, store } = await loadMemberRegistry({ forceRefresh: true });
   return members.map((member) => ({
     email: member.email,
@@ -1989,7 +1934,7 @@ const getAdminAccessMembers = async () => {
   }));
 };
 
-const buildLocalAccessScopes = (member) => {
+export const buildLocalAccessScopes = (member) => {
   if (!member) return [];
   if (member.role === 'ADMIN') {
     return [{ type: 'dossier_access', value: '*' }];
@@ -2006,7 +1951,7 @@ const buildLocalAccessScopes = (member) => {
   return scopes;
 };
 
-const buildLocalAuthUserPayload = (member) => ({
+export const buildLocalAuthUserPayload = (member) => ({
   email: member.email,
   displayName: member.displayName,
   role: member.role,
@@ -2016,7 +1961,7 @@ const buildLocalAuthUserPayload = (member) => ({
   scopes: buildLocalAccessScopes(member),
 });
 
-const resolveRequestedErgoLabel = async (appUser, requestedErgoLabel) => {
+export const resolveRequestedErgoLabel = async (appUser, requestedErgoLabel) => {
   const normalizedRequested = stringValue(requestedErgoLabel).trim();
   if (appUser.role !== 'ADMIN') {
     return appUser.ergoLabel;
@@ -2034,12 +1979,12 @@ const resolveRequestedErgoLabel = async (appUser, requestedErgoLabel) => {
   return match.displayName;
 };
 
-const canAccessDossierRecord = (appUser, dossierRecord) => {
+export const canAccessDossierRecord = (appUser, dossierRecord) => {
   if (appUser?.role === 'ADMIN') return true;
   return stringValue(field(dossierRecord, 'ergo_id')).trim() === stringValue(appUser?.ergoLabel).trim();
 };
 
-const resolveBeneficiaryAccess = async (appUser, patientId) => {
+export const resolveBeneficiaryAccess = async (appUser, patientId) => {
   const [beneficiaires, dossiers, logements, contextes, infosAdmin] = await Promise.all([
     queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires }),
     queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers }),
@@ -2072,7 +2017,7 @@ const resolveBeneficiaryAccess = async (appUser, patientId) => {
   };
 };
 
-const mapStoredDocument = (document) => ({
+export const mapStoredDocument = (document) => ({
   id: document.id,
   patientId: document.patientId,
   dossierId: document.dossierId || null,
@@ -2090,7 +2035,7 @@ const mapStoredDocument = (document) => ({
   publicUrl: document.publicUrl || (document.relativeUrl ? absoluteUrl(document.relativeUrl) : ''),
 });
 
-const buildBeneficiaryDocumentContext = ({ beneficiaryRecord, dossierRecord, patientId }) => {
+export const buildBeneficiaryDocumentContext = ({ beneficiaryRecord, dossierRecord, patientId }) => {
   const patientFirstName = stringValue(field(beneficiaryRecord, 'prenom')).trim();
   const patientLastName = stringValue(field(beneficiaryRecord, 'nom')).trim();
   const patientDisplayName = [patientFirstName, patientLastName].filter(Boolean).join(' ').trim()
@@ -2105,7 +2050,7 @@ const buildBeneficiaryDocumentContext = ({ beneficiaryRecord, dossierRecord, pat
   };
 };
 
-const mapStoredNotePage = (notePage) => ({
+export const mapStoredNotePage = (notePage) => ({
   id: notePage.id,
   patientId: notePage.patientId,
   dossierId: notePage.dossierId || null,
@@ -2128,20 +2073,20 @@ const mapStoredNotePage = (notePage) => ({
   remoteUrl: absoluteUrl(`/api/note-pages/${encodeURIComponent(notePage.patientId)}?scopeType=${encodeURIComponent(notePage.scopeType || 'legacy')}&scopeId=${encodeURIComponent(notePage.scopeId || notePage.dossierId || notePage.patientId)}&tabKey=${encodeURIComponent(notePage.tabKey)}&subTabKey=${encodeURIComponent(stringValue(notePage.subTabKey) || 'general')}&pageNumber=${Number(notePage.pageNumber) || 0}`),
 });
 
-const escapeHtml = (value) => String(value || '')
+export const escapeHtml = (value) => String(value || '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
 
-const formatBeneficiaryDisplayName = (beneficiaryRecord) => {
+export const formatBeneficiaryDisplayName = (beneficiaryRecord) => {
   const firstName = stringValue(field(beneficiaryRecord, 'prenom')).trim();
   const lastName = stringValue(field(beneficiaryRecord, 'nom')).trim();
   return [firstName, lastName].filter(Boolean).join(' ').trim();
 };
 
-const backfillLegacyDossierAssignments = async (dossiers) => {
+export const backfillLegacyDossierAssignments = async (dossiers) => {
   const fallbackLabel = specialMemberProfile(DEFAULT_LEGACY_ERGO_EMAIL)?.displayName || 'Coralie';
   const updates = dossiers
     .filter((record) => {
@@ -2165,7 +2110,7 @@ const backfillLegacyDossierAssignments = async (dossiers) => {
   }
 };
 
-const getReferences = async (appUser) => {
+export const getReferences = async (appUser) => {
   const [situations, dependances, porteGarage, portail, baremesAnah, ergos, etablissements, communes, epcis] = await Promise.all([
     queryAll(TABLES.situationProprietaire, { fields: FIELD_SETS.referencesLibelle }),
     queryAll(TABLES.dependancesParticulieres, { fields: FIELD_SETS.referencesLibelle }),
@@ -2217,7 +2162,7 @@ const getReferences = async (appUser) => {
   };
 };
 
-const getDossiersForApp = async (appUser) => {
+export const getDossiersForApp = async (appUser) => {
   const [beneficiaires, dossiers, logements, contextes, infosAdmin] = await Promise.all([
     queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires }),
     queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers }),
@@ -2273,7 +2218,7 @@ const getDossiersForApp = async (appUser) => {
   return filtered.sort((a, b) => a.patient.lastName.localeCompare(b.patient.lastName) || a.patient.firstName.localeCompare(b.patient.firstName));
 };
 
-const ensureDossierRecord = async (dossierIdOrTemp) => {
+export const ensureDossierRecord = async (dossierIdOrTemp) => {
   const dossiers = await queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers });
 
   if (!dossierIdOrTemp.startsWith('temp-')) {
@@ -2318,7 +2263,7 @@ const ensureDossierRecord = async (dossierIdOrTemp) => {
   return created;
 };
 
-const upsertContexte = async (
+export const upsertContexte = async (
   dossierUuid,
   beneficiaryUuid,
   medicalContext,
@@ -2389,15 +2334,15 @@ const upsertContexte = async (
   }
 };
 
-const sanitizeUndefined = (fields) => Object.fromEntries(
+export const sanitizeUndefined = (fields) => Object.fromEntries(
   Object.entries(fields).filter(([, value]) => value !== undefined)
 );
 
-let beneficiaryReferenceSetsCache = null;
-let beneficiaryReferenceSetsCachedAt = 0;
-const BENEFICIARY_REFERENCE_CACHE_TTL_MS = 5 * 60 * 1000;
+export let beneficiaryReferenceSetsCache = null;
+export let beneficiaryReferenceSetsCachedAt = 0;
+export const BENEFICIARY_REFERENCE_CACHE_TTL_MS = 5 * 60 * 1000;
 
-const loadBeneficiaryReferenceSets = async () => {
+export const loadBeneficiaryReferenceSets = async () => {
   if (
     beneficiaryReferenceSetsCache
     && (Date.now() - beneficiaryReferenceSetsCachedAt) < BENEFICIARY_REFERENCE_CACHE_TTL_MS
@@ -2420,7 +2365,7 @@ const loadBeneficiaryReferenceSets = async () => {
   return beneficiaryReferenceSetsCache;
 };
 
-const selectBaremeAnah = (records, householdSize) => {
+export const selectBaremeAnah = (records, householdSize) => {
   const size = Number(householdSize);
   if (!Number.isFinite(size) || size <= 0) return undefined;
 
@@ -2438,7 +2383,7 @@ const selectBaremeAnah = (records, householdSize) => {
   })[0];
 };
 
-const mapBeneficiaryUpdatesToFields = (updates, references) => {
+export const mapBeneficiaryUpdatesToFields = (updates, references) => {
   const has = (key) => Object.prototype.hasOwnProperty.call(updates, key);
   const hasTrustedPerson = has('trustedPerson') && updates.trustedPerson && typeof updates.trustedPerson === 'object';
   const trustedPersonPayload = hasTrustedPerson ? updates.trustedPerson : {};
@@ -2582,1896 +2527,85 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
   });
 };
 
-app.post('/api/auth/login', async (req, res, next) => {
-  try {
-    const email = normalizeEmail(req.body?.email);
-    const password = String(req.body?.password || '');
-    const { members, store } = await loadMemberRegistryForAuth();
-    const member = members.find((entry) => entry.email === email);
-
-    if (!member) {
-      res.status(401).json({ success: false, error: 'Adresse mail non autorisée' });
-      return;
-    }
-
-    const credentials = store.users[email];
-    if (!credentials) {
-      res.status(401).json({ success: false, error: 'Aucun mot de passe généré pour ce membre' });
-      return;
-    }
-
-    const isValid = credentials.passwordHash === hashPassword(password, credentials.salt);
-    if (!isValid) {
-      res.status(401).json({ success: false, error: 'Mot de passe incorrect' });
-      return;
-    }
-
-    const token = await signSessionToken(email);
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        token,
-        user: member,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/auth/session', requireAuth, async (req, res) => {
-  res.json({
-    success: true,
-    error: null,
-    data: { user: req.appUser },
-  });
-});
-
-app.get('/api/auth/local-state', requireAuth, async (req, res, next) => {
-  try {
-    const { members } = await loadMemberRegistryForAuth();
-    const currentUser = req.appUser;
-    const visibleMembers = currentUser?.role === 'ADMIN'
-      ? members
-      : members.filter((member) => member.email === currentUser?.email);
-
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        users: visibleMembers.map(buildLocalAuthUserPayload),
-        syncedAt: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/auth/logout', requireAuth, async (_req, res) => {
-  res.json({ success: true, error: null });
-});
-
-app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
-  try {
-    const imageDataUrl = String(req.body?.imageDataUrl || '').trim();
-    if (!imageDataUrl) {
-      res.status(400).json({ success: false, error: 'Image manquante' });
-      return;
-    }
-
-    const currentUser = req.appUser;
-    if (!currentUser?.email) {
-      res.status(400).json({ success: false, error: 'Utilisateur introuvable' });
-      return;
-    }
-
-    const { extension, buffer } = parseImageDataUrl(imageDataUrl);
-    if (buffer.length > 5 * 1024 * 1024) {
-      res.status(400).json({ success: false, error: 'Image trop volumineuse' });
-      return;
-    }
-
-    await fs.mkdir(PROFILE_PHOTOS_DIR_URL, { recursive: true });
-    const safeEmail = currentUser.email.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-    const fileName = `${safeEmail}-${Date.now()}.${extension}`;
-    const filePath = new URL(fileName, PROFILE_PHOTOS_DIR_URL);
-    await fs.writeFile(filePath, buffer);
-
-    const relativeUrl = `/uploads/profile-photos/${fileName}`;
-    const store = await readAuthStore();
-    const credentials = store.users[currentUser.email];
-    if (credentials) {
-      store.users[currentUser.email] = {
-        ...credentials,
-        profilePhotoUrl: relativeUrl,
-      };
-      await writeAuthStore(store);
-    }
-
-    if (currentUser.ergoRecordId) {
-      try {
-        await updateRecord(TABLES.ergotherapeutes, currentUser.ergoRecordId, {
-          nom_etablissement_id: relativeUrl,
-        });
-      } catch (error) {
-        console.warn('[profile-photo] sync NocoDB impossible, photo conservée localement.', error);
-      }
-    }
-
-    memberRegistryCache = null;
-    const { members } = await loadMemberRegistry({ forceRefresh: true });
-    const refreshedUser = members.find((member) => member.email === currentUser.email) || currentUser;
-
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        user: refreshedUser,
-        photoUrl: resolveClientMediaUrl(relativeUrl),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/auth/provision', requireAdmin, async (req, res, next) => {
-  try {
-    const requestedEmail = normalizeEmail(req.body?.email);
-    const forceReset = Boolean(req.body?.forceReset);
-    const { members } = await loadMemberRegistry({ forceRefresh: true });
-    const store = await readAuthStore();
-    const targets = requestedEmail
-      ? members.filter((member) => member.email === requestedEmail)
-      : members;
-
-    if (targets.length === 0) {
-      throw new Error('Aucun membre correspondant');
-    }
-
-    const generated = [];
-
-    for (const member of targets) {
-      if (!forceReset && store.users[member.email]) continue;
-      const password = generatePassword(member.displayName);
-      const salt = randomSecret(16);
-      store.users[member.email] = {
-        salt,
-        passwordHash: hashPassword(password, salt),
-        createdAt: new Date().toISOString(),
-      };
-      store.pendingCredentials[member.email] = {
-        displayName: member.displayName,
-        password,
-        role: member.role,
-        createdAt: new Date().toISOString(),
-      };
-      generated.push({
-        email: member.email,
-        displayName: member.displayName,
-        role: member.role,
-        password,
-      });
-    }
-
-    await writeAuthStore(store);
-    memberRegistryCache = null;
-    res.json({ success: true, error: null, data: { generated } });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/admin/access-members', requireAdmin, async (_req, res, next) => {
-  try {
-    const members = await getAdminAccessMembers();
-    res.json({
-      success: true,
-      error: null,
-      data: { members },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/health', async (_req, res, next) => {
-  try {
-    const beneficiaires = await queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires });
-    res.json({
-      success: true,
-      message: 'Connexion active à la base métier',
-      count: beneficiaires.length,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/references', requireAuth, async (req, res, next) => {
-  try {
-    res.json(await getReferences(req.appUser));
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/retirement-funds', requireAuth, async (_req, res, next) => {
-  try {
-    const records = await queryAll(TABLES.caissesRetraiteComplementaires, { fields: FIELD_SETS.caissesRetraiteComplementaires });
-    const store = await readRetirementFundsStore();
-    const remoteFunds = records
-      .filter((record) => normalizeEmail(field(record, 'nom')).replace(/\s+/g, ' ') !== 'humanis')
-      .map((record) => {
-      const name = field(record, 'nom') || '';
-      const override = store.funds[String(record.id)] || {};
-      return buildRetirementFundResponse({
-        id: String(record.id),
-        name: override.name || name,
-        phone: override.phone || field(record, 'numero_telephone_contact') || '',
-        audience: override.audience || '',
-        requestMethod: override.requestMethod || '',
-        requestDelay: override.requestDelay || '',
-        aidAmount: override.aidAmount || '',
-        therapistNote: override.therapistNote || field(record, 'aide_complementaire') || '',
-        website: override.website || '',
-        logoUrl: override.logoUrl || '',
-        lastEditedAt: override.lastEditedAt || field(record, 'UpdatedAt') || field(record, 'CreatedAt') || null,
-      });
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const customFunds = store.customFunds
-      .map((fund) => buildRetirementFundResponse(fund))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const funds = [...remoteFunds, ...customFunds].sort((a, b) => a.name.localeCompare(b.name));
-
-    res.json({ success: true, error: null, data: { funds } });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/anah-status', requireAuth, async (_req, res, next) => {
-  try {
-    const status = await readAnahStatus();
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        status,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/wiki-library', requireAuth, async (_req, res, next) => {
-  try {
-    const items = await loadWikiLibrary();
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        items,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/wiki-library', requireAuth, async (req, res, next) => {
-  try {
-    const now = new Date().toISOString();
-    const store = await readWikiLibraryStore();
-    const title = stringValue(req.body?.title).trim();
-    const description = stringValue(req.body?.description).trim();
-    const category = stringValue(req.body?.category).trim() || 'Autre';
-    const tags = asArray(req.body?.tags).map((tag) => String(tag).trim()).filter(Boolean);
-
-    if (!title) {
-      res.status(400).json({ success: false, error: 'Titre obligatoire' });
-      return;
-    }
-
-    let imageUrl = stringValue(req.body?.imageUrl).trim() || '/wiki-access.svg';
-    const imageDataUrl = stringValue(req.body?.imageDataUrl).trim();
-    if (imageDataUrl) {
-      const imagePayload = parseImageDataUrl(imageDataUrl);
-      await fs.mkdir(WIKI_LIBRARY_DIR_URL, { recursive: true });
-      const fileName = `${safeSlug(title, 'wiki-item')}-${Date.now()}.${imagePayload.extension}`;
-      const targetUrl = new URL(fileName, WIKI_LIBRARY_DIR_URL);
-      await fs.writeFile(targetUrl, imagePayload.buffer);
-      imageUrl = `/uploads/wiki-library/${fileName}`;
-    }
-
-    const item = normalizeWikiItemPayload({
-      id: crypto.randomUUID(),
-      title,
-      description,
-      imageUrl,
-      tags,
-      category,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    store.items.unshift(item);
-    await writeWikiLibraryStore(store);
-
-    try {
-      const [wikiRecords, initialTagRecords] = await Promise.all([
-        queryAll(TABLES.wiki, { fields: FIELD_SETS.wiki }),
-        queryAll(TABLES.wikiTags, { fields: FIELD_SETS.wikiTags }),
-      ]);
-      const { normalizedMap } = await ensureWikiTagsInNocodb(WIKI_FILTER_TAGS, initialTagRecords);
-      const primaryTag = stringValue(item.tags[0]).trim();
-      const primaryTagRecord = primaryTag ? normalizedMap.get(primaryTag.toLowerCase()) : undefined;
-      const existing = wikiRecords.find((record) => stringValue(field(record, 'uuid_source')).trim() === item.id);
-      const payload = {
-        uuid_source: item.id,
-        titre: item.title,
-        photos: item.imageUrl,
-        contenu: serializeWikiContent(item),
-        wiki_tags_id: primaryTagRecord ? Number(primaryTagRecord.id) : null,
-      };
-      if (existing) {
-        await updateRecord(TABLES.wiki, existing.id, payload);
-      } else {
-        await createRecord(TABLES.wiki, payload);
-      }
-    } catch (syncError) {
-      console.error('Wiki Noco sync failed on create', syncError);
-    }
-
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        item: mapWikiLibraryItem(item),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put('/api/wiki-library/:itemId', requireAuth, async (req, res, next) => {
-  try {
-    const store = await readWikiLibraryStore();
-    const index = store.items.findIndex((item) => String(item.id) === String(req.params.itemId));
-    if (index === -1) {
-      res.status(404).json({ success: false, error: 'Element introuvable' });
-      return;
-    }
-
-    const current = store.items[index];
-    const title = Object.prototype.hasOwnProperty.call(req.body || {}, 'title') ? stringValue(req.body?.title).trim() : current.title;
-    if (!title) {
-      res.status(400).json({ success: false, error: 'Titre obligatoire' });
-      return;
-    }
-
-    let imageUrl = current.imageUrl;
-    const imageDataUrl = stringValue(req.body?.imageDataUrl).trim();
-    if (imageDataUrl) {
-      const imagePayload = parseImageDataUrl(imageDataUrl);
-      await fs.mkdir(WIKI_LIBRARY_DIR_URL, { recursive: true });
-      const fileName = `${safeSlug(title, 'wiki-item')}-${Date.now()}.${imagePayload.extension}`;
-      const targetUrl = new URL(fileName, WIKI_LIBRARY_DIR_URL);
-      await fs.writeFile(targetUrl, imagePayload.buffer);
-      imageUrl = `/uploads/wiki-library/${fileName}`;
-    }
-
-    const updated = normalizeWikiItemPayload({
-      ...current,
-      title,
-      description: Object.prototype.hasOwnProperty.call(req.body || {}, 'description') ? stringValue(req.body?.description).trim() : current.description,
-      category: Object.prototype.hasOwnProperty.call(req.body || {}, 'category') ? stringValue(req.body?.category).trim() || 'Autre' : current.category,
-      tags: Object.prototype.hasOwnProperty.call(req.body || {}, 'tags') ? asArray(req.body?.tags).map((tag) => String(tag).trim()).filter(Boolean) : current.tags,
-      imageUrl,
-      updatedAt: new Date().toISOString(),
-    });
-
-    store.items[index] = updated;
-    await writeWikiLibraryStore(store);
-
-    try {
-      const [wikiRecords, initialTagRecords] = await Promise.all([
-        queryAll(TABLES.wiki, { fields: FIELD_SETS.wiki }),
-        queryAll(TABLES.wikiTags, { fields: FIELD_SETS.wikiTags }),
-      ]);
-      const { normalizedMap } = await ensureWikiTagsInNocodb(WIKI_FILTER_TAGS, initialTagRecords);
-      const primaryTag = stringValue(updated.tags[0]).trim();
-      const primaryTagRecord = primaryTag ? normalizedMap.get(primaryTag.toLowerCase()) : undefined;
-      const existing = wikiRecords.find((record) => stringValue(field(record, 'uuid_source')).trim() === updated.id);
-      const payload = {
-        uuid_source: updated.id,
-        titre: updated.title,
-        photos: updated.imageUrl,
-        contenu: serializeWikiContent(updated),
-        wiki_tags_id: primaryTagRecord ? Number(primaryTagRecord.id) : null,
-      };
-      if (existing) {
-        await updateRecord(TABLES.wiki, existing.id, payload);
-      } else {
-        await createRecord(TABLES.wiki, payload);
-      }
-    } catch (syncError) {
-      console.error('Wiki Noco sync failed on update', syncError);
-    }
-
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        item: mapWikiLibraryItem(updated),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.delete('/api/wiki-library/:itemId', requireAuth, async (req, res, next) => {
-  try {
-    const store = await readWikiLibraryStore();
-    const nextItems = store.items.filter((item) => String(item.id) !== String(req.params.itemId));
-    if (nextItems.length === store.items.length) {
-      res.status(404).json({ success: false, error: 'Element introuvable' });
-      return;
-    }
-    store.items = nextItems;
-    await writeWikiLibraryStore(store);
-
-    try {
-      const wikiRecords = await queryAll(TABLES.wiki, { fields: FIELD_SETS.wiki });
-      const existing = wikiRecords.find((record) => stringValue(field(record, 'uuid_source')).trim() === String(req.params.itemId));
-      if (existing) {
-        await callNocoTool('deleteRecords', {
-          tableId: TABLES.wiki,
-          records: [{ id: String(existing.id) }],
-        });
-      }
-    } catch (syncError) {
-      console.error('Wiki Noco sync failed on delete', syncError);
-    }
-
-    res.status(204).end();
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/retirement-funds', requireAuth, async (req, res, next) => {
-  try {
-    const name = stringValue(req.body?.name).trim();
-    const phone = stringValue(req.body?.phone).trim();
-    const audience = stringValue(req.body?.audience).trim();
-    const requestMethod = stringValue(req.body?.requestMethod).trim();
-    const requestDelay = stringValue(req.body?.requestDelay).trim();
-    const aidAmount = stringValue(req.body?.aidAmount).trim();
-    const therapistNote = stringValue(req.body?.therapistNote).trim();
-    const website = stringValue(req.body?.website).trim();
-    const logoUrl = stringValue(req.body?.logoUrl).trim();
-
-    if (!name) {
-      res.status(400).json({ success: false, error: 'Nom obligatoire' });
-      return;
-    }
-
-    const store = await readRetirementFundsStore();
-    const lastEditedAt = new Date().toISOString();
-    const storePayload = {
-      name,
-      phone,
-      audience,
-      requestMethod,
-      requestDelay,
-      aidAmount,
-      therapistNote,
-      website,
-      logoUrl,
-      lastEditedAt,
-      lastEditedBy: req.appUser?.displayName || req.appUser?.email || '',
-    };
-
-    let createdId = null;
-    try {
-      const created = await createRecord(TABLES.caissesRetraiteComplementaires, {
-        nom: nullableString(name),
-        numero_telephone_contact: nullableString(phone),
-        aide_complementaire: nullableString(therapistNote),
-      });
-      createdId = String(created?.id || '').trim() || null;
-    } catch (createError) {
-      console.error('Retirement fund Noco sync failed on create', createError);
-    }
-
-    if (createdId) {
-      store.funds[createdId] = {
-        ...(store.funds[createdId] || {}),
-        ...storePayload,
-      };
-    } else {
-      store.customFunds.unshift(normalizeRetirementFundPayload({
-        id: `custom-${crypto.randomUUID()}`,
-        ...storePayload,
-      }));
-    }
-    await writeRetirementFundsStore(store);
-
-    const createdFund = createdId
-      ? buildRetirementFundResponse({ id: createdId, ...storePayload })
-      : buildRetirementFundResponse(store.customFunds[0]);
-
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        fund: createdFund,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put('/api/retirement-funds/:fundId', requireAuth, async (req, res, next) => {
-  try {
-    const fundId = String(req.params.fundId || '').trim();
-    if (!fundId) {
-      res.status(400).json({ success: false, error: 'Identifiant de caisse manquant' });
-      return;
-    }
-
-    const updates = req.body || {};
-    const store = await readRetirementFundsStore();
-
-    if (fundId.startsWith('custom-')) {
-      const customIndex = store.customFunds.findIndex((fund) => fund.id === fundId);
-      if (customIndex === -1) {
-        res.status(404).json({ success: false, error: 'Caisse introuvable' });
-        return;
-      }
-
-      const current = store.customFunds[customIndex];
-      const updatedFund = normalizeRetirementFundPayload({
-        ...current,
-        name: stringValue(updates.name ?? current.name).trim(),
-        phone: stringValue(updates.phone ?? current.phone).trim(),
-        audience: stringValue(updates.audience ?? current.audience).trim(),
-        requestMethod: stringValue(updates.requestMethod ?? current.requestMethod).trim(),
-        requestDelay: stringValue(updates.requestDelay ?? current.requestDelay).trim(),
-        aidAmount: stringValue(updates.aidAmount ?? current.aidAmount).trim(),
-        therapistNote: stringValue(updates.therapistNote ?? current.therapistNote).trim(),
-        website: stringValue(updates.website ?? current.website).trim(),
-        logoUrl: stringValue(updates.logoUrl ?? current.logoUrl).trim(),
-        lastEditedAt: new Date().toISOString(),
-        lastEditedBy: req.appUser?.displayName || req.appUser?.email || '',
-      });
-
-      store.customFunds[customIndex] = updatedFund;
-      await writeRetirementFundsStore(store);
-
-      res.json({
-        success: true,
-        error: null,
-        data: {
-          fund: buildRetirementFundResponse(updatedFund),
-        },
-      });
-      return;
-    }
-
-    const records = await queryAll(TABLES.caissesRetraiteComplementaires, { fields: FIELD_SETS.caissesRetraiteComplementaires });
-    const record = records.find((entry) => String(entry.id) === fundId);
-    if (!record) {
-      res.status(404).json({ success: false, error: 'Caisse introuvable' });
-      return;
-    }
-
-    if (normalizeEmail(field(record, 'nom')).replace(/\s+/g, ' ') === 'humanis') {
-      res.status(410).json({ success: false, error: 'Cette caisse a été retirée' });
-      return;
-    }
-
-    const meta = getRetirementFundMeta(field(record, 'nom') || '');
-    const nextName = String(updates.name || meta?.displayName || field(record, 'nom') || '').trim();
-    const nextPhone = String(updates.phone || '').trim();
-    const nextAudience = String(updates.audience || '').trim();
-    const nextRequestMethod = String(updates.requestMethod || '').trim();
-    const nextRequestDelay = String(updates.requestDelay || '').trim();
-    const nextAidAmount = String(updates.aidAmount || '').trim();
-    const nextTherapistNote = String(updates.therapistNote || '').trim();
-    const nextWebsite = String(updates.website || '').trim();
-    const nextLogoUrl = String(updates.logoUrl || '').trim();
-    const lastEditedAt = new Date().toISOString();
-
-    await updateRecord(TABLES.caissesRetraiteComplementaires, fundId, {
-      nom: nullableString(nextName),
-      numero_telephone_contact: nullableString(nextPhone),
-      aide_complementaire: nullableString(nextTherapistNote),
-    });
-
-    store.funds[fundId] = {
-      ...(store.funds[fundId] || {}),
-      name: nextName,
-      phone: nextPhone,
-      audience: nextAudience,
-      requestMethod: nextRequestMethod,
-      requestDelay: nextRequestDelay,
-      aidAmount: nextAidAmount,
-      therapistNote: nextTherapistNote,
-      website: nextWebsite,
-      logoUrl: nextLogoUrl,
-      lastEditedAt,
-      lastEditedBy: req.appUser?.displayName || req.appUser?.email || '',
-    };
-    await writeRetirementFundsStore(store);
-
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        fund: {
-          id: fundId,
-          name: nextName,
-          phone: nextPhone,
-          audience: nextAudience,
-          requestMethod: nextRequestMethod,
-          requestDelay: nextRequestDelay,
-          aidAmount: nextAidAmount,
-          therapistNote: nextTherapistNote,
-          website: nextWebsite,
-          logoUrl: nextLogoUrl || meta?.logoUrl || '',
-          lastEditedAt,
-        },
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/mobile-sync/schema', requireAuth, async (_req, res, next) => {
-  try {
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        mode: await mobileSyncStore.getMode(),
-        schema: mobileSyncStore.schemaSpec,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/mobile-sync/migration-status', requireAuth, async (_req, res, next) => {
-  try {
-    res.json({
-      success: true,
-      error: null,
-      data: await mobileSyncStore.getMigrationStatus(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/mobile-sync/schema-check', requireAuth, async (_req, res, next) => {
-  try {
-    res.json({
-      success: true,
-      error: null,
-      data: await mobileSyncStore.getSchemaCheck(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/mobile-sync/migrate', requireAuth, async (_req, res, next) => {
-  try {
-    res.json({
-      success: true,
-      error: null,
-      data: await mobileSyncStore.migrateLocalToNocodb(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/dossiers', requireAuth, async (req, res, next) => {
-  try {
-    res.json(await getDossiersForApp(req.appUser));
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/beneficiaires', requireAuth, async (req, res, next) => {
-  try {
-    const updates = req.body || {};
-    const assignedErgoLabel = await resolveRequestedErgoLabel(req.appUser, updates.ergoId);
-    const references = await loadBeneficiaryReferenceSets();
-    const fields = mapBeneficiaryUpdatesToFields(updates, references);
-    const relationFieldNames = [
-      'situation_proprietaire_id1',
-      'statut_occupation_id1',
-      'dependances_particulieres_id',
-      'caisses_de_retraite_id',
-      'caisses_de_retraite_complementaires_id',
-      'categorie_revenu_id1',
-    ];
-    const relationFields = Object.fromEntries(
-      Object.entries(fields).filter(([key]) => relationFieldNames.includes(key))
-    );
-    const baseFields = Object.fromEntries(
-      Object.entries(fields).filter(([key]) => !relationFieldNames.includes(key))
-    );
-
-    if (!fields.nom) {
-      throw new Error('Le nom du bénéficiaire est obligatoire');
-    }
-
-    const created = await createRecord(TABLES.beneficiaires, baseFields);
-    if (Object.keys(relationFields).length > 0) {
-      await updateRecord(TABLES.beneficiaires, created.id, relationFields);
-    }
-    const createdDossier = await createRecord(TABLES.dossiers, {
-      uuid_source: crypto.randomUUID(),
-      patient_id: syntheticBeneficiaryId(created.id),
-      beneficiaires_id: Number(created.id),
-      ergo_id: assignedErgoLabel,
-      status: 'À visiter',
-      created_at: new Date().toISOString(),
-    });
-    res.status(201).json({
-      success: true,
-      error: null,
-      data: {
-        id: syntheticBeneficiaryId(created.id),
-        dossierId: field(createdDossier, 'uuid_source') || String(createdDossier.id),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.patch('/api/beneficiaires/:patientId', requireAuth, async (req, res, next) => {
-  try {
-    const patientId = req.params.patientId;
-    const updates = req.body || {};
-    const syntheticId = parseSyntheticBeneficiaryId(patientId);
-    const [beneficiaires, references, dossiers] = await Promise.all([
-      queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires }),
-      loadBeneficiaryReferenceSets(),
-      queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers }),
-    ]);
-
-    const beneficiaryRecord = syntheticId != null
-      ? findByRecordId(beneficiaires, syntheticId)
-      : resolveBeneficiaryRecord({
-          beneficiaires,
-          dossiers,
-          appBeneficiaryId: patientId,
-        });
-    if (!beneficiaryRecord) {
-      throw new Error(`Bénéficiaire ${patientId} introuvable`);
-    }
-
-    const dossierRecord = latestByFieldValue(dossiers, 'beneficiaires_id', beneficiaryRecord.id);
-    if (dossierRecord && !canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce bénéficiaire' });
-      return;
-    }
-
-    if (sendConflictIfStale(req, res, beneficiaryRecord)) return;
-
-    const fields = mapBeneficiaryUpdatesToFields(updates, references);
-
-    await updateRecord(TABLES.beneficiaires, beneficiaryRecord.id, fields);
-    const refreshedDossiers = await getDossiersForApp(req.appUser);
-    const refreshedDossier = refreshedDossiers.find((dossier) => String(dossier?.patient?.id) === String(patientId));
-    if (refreshedDossier?.patient) {
-      await mobileSyncStore.syncNotePagesBeneficiaryMetadata(patientId, {
-        patientFirstName: refreshedDossier.patient.firstName,
-        patientLastName: refreshedDossier.patient.lastName,
-        patientDisplayName: [refreshedDossier.patient.firstName, refreshedDossier.patient.lastName].filter(Boolean).join(' ').trim(),
-        dossierLabel: refreshedDossier.label || [refreshedDossier.patient.firstName, refreshedDossier.patient.lastName].filter(Boolean).join(' ').trim(),
-        dossierId: refreshedDossier.id,
-      });
-    }
-    res.json({
-      success: true,
-      error: null,
-      data: {},
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.patch('/api/dossiers/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const updates = req.body || {};
-    const dossierRecord = await ensureDossierRecord(req.params.dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-    if (sendConflictIfStale(req, res, dossierRecord)) return;
-
-    const dossierUuid = field(dossierRecord, 'uuid_source');
-    const beneficiaryUuid = field(dossierRecord, 'patient_id');
-
-    const fields = sanitizeUndefined({
-      compte_anah: updates.compteAnah,
-      nature_accompagnement: updates.natureAccompagnement,
-      envoi_rapport: updates.envoiRapport,
-      personnes_presentes_visite: updates.personnesPresentesVisite,
-      status: updates.status,
-      visit_date: nullableString(updates.visitDate),
-      ergo_id: Object.prototype.hasOwnProperty.call(updates, 'ergoId')
-        ? nullableString(await resolveRequestedErgoLabel(req.appUser, updates.ergoId))
-        : undefined,
-    });
-
-    if (Object.keys(fields).length > 0) {
-      await updateRecord(TABLES.dossiers, dossierRecord.id, fields);
-    }
-
-    if (updates.medicalContext || updates.autonomy) {
-      await upsertContexte(dossierUuid, beneficiaryUuid, updates.medicalContext, updates.autonomy, {
-        dossierRecord,
-        beneficiaryRecordId: field(dossierRecord, 'beneficiaires_id'),
-      });
-    }
-
-    res.json({
-      success: true,
-      error: null,
-      data: { id: dossierUuid },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.patch('/api/logements/by-beneficiary/:beneficiaryId', requireAuth, async (req, res, next) => {
-  try {
-    const beneficiaryId = req.params.beneficiaryId;
-    const updates = req.body || {};
-    const syntheticId = parseSyntheticBeneficiaryId(beneficiaryId);
-    const [beneficiaires, logements, typeLogements, porteGarageRefs, portailRefs, dossiers] = await Promise.all([
-      queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires }),
-      queryAll(TABLES.logements, { fields: FIELD_SETS.logements }),
-      queryAll(TABLES.typeDeLogement, { fields: FIELD_SETS.referencesLibelle }),
-      queryAll(TABLES.porteDeGarage, { fields: FIELD_SETS.referencesLibelle }),
-      queryAll(TABLES.portail, { fields: FIELD_SETS.referencesLibelle }),
-      queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers }),
-    ]);
-
-    const beneficiaryRecord = syntheticId != null
-      ? findByRecordId(beneficiaires, syntheticId)
-      : resolveBeneficiaryRecord({
-          beneficiaires,
-          dossiers,
-          logements,
-          appBeneficiaryId: beneficiaryId,
-        });
-    if (!beneficiaryRecord) {
-      throw new Error(`Bénéficiaire ${beneficiaryId} introuvable pour le logement`);
-    }
-
-    const dossierRecord = latestByFieldValue(dossiers, 'beneficiaires_id', beneficiaryRecord.id);
-    if (dossierRecord && !canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce logement' });
-      return;
-    }
-
-    const existingHousing = latestRecord(
-      logements.filter((record) => field(record, 'beneficiaire_id') === beneficiaryId || String(field(record, 'beneficiaires_id')) === String(beneficiaryRecord.id))
-    );
-    const typeLogement = findByLabel(typeLogements, updates.typology);
-    const porteGarage = findByLabel(porteGarageRefs, updates.motorisationPorteGarage);
-    const portail = findByLabel(portailRefs, updates.motorisationPortail);
-
-    const fields = sanitizeUndefined({
-      uuid_source: existingHousing ? undefined : crypto.randomUUID(),
-      beneficiaire_id: beneficiaryId,
-      beneficiaires_id: Number(beneficiaryRecord.id),
-      annee_construction: nullableString(updates.yearConstruction),
-      annee_habitation: nullableString(updates.yearHabitation),
-      surface_habitable: nullableString(updates.surface),
-      nombre_niveaux: updates.levels,
-      sous_sol: boolText(updates.basement),
-      description_sous_sol: nullableString(updates.basementDesc),
-      rdc: boolText(updates.rdc),
-      description_rdc: nullableString(updates.rdcDesc),
-      etage: boolText(updates.floor),
-      description_etage: nullableString(updates.floorDesc),
-      garage: boolText(updates.garage),
-      veranda: boolText(updates.veranda),
-      balcon: boolText(updates.balcon),
-      terrasse: boolText(updates.terrasse),
-      jardin: boolText(updates.jardin),
-      chauffage: boolText(updates.heatingMain),
-      radiateurs_electrique: boolText(updates.heatingDetails?.electric),
-      chaudiere_gaz: boolText(updates.heatingDetails?.gas),
-      chaudiere_fioul: boolText(updates.heatingDetails?.oil),
-      pompe_a_chaleur: boolText(updates.heatingDetails?.heatPump),
-      chaudiere_collective: boolText(updates.heatingDetails?.collective),
-      cheminee_pole_bois: boolText(updates.heatingDetails?.wood),
-      poele_granules: boolText(updates.heatingDetails?.pellet),
-      autre_chauffage: boolText(updates.heatingDetails?.other),
-      volets_roulants_manuels_localisation: nullableString(updates.voletsRoulantsManuelsLocalisation),
-      volets_roulants_manuels_entier: boolText(updates.voletsRoulantsManuelsEntier),
-      volets_roulants_electriques_localisation: nullableString(updates.voletsRoulantsElectriquesLocalisation),
-      volets_roulants_electriques_entier: boolText(updates.voletsRoulantsElectriquesEntier),
-      volets_persiennes_localisation: nullableString(updates.voletsPersiennesLocalisation),
-      volets_persiennes_entier: boolText(updates.voletsPersiennesEntier),
-      cheminement_escalier_exterieur: boolText(updates.cheminementEscalierExterieur),
-      cheminement_escalier_interieur: boolText(updates.cheminementEscalierInterieur),
-      cheminement_pente_douce: boolText(updates.cheminementPenteDouce),
-      cheminement_plat: boolText(updates.cheminementPlat),
-      cheminement_quelques_marches: boolText(updates.cheminementQuelquesMarches),
-      cheminement_par_arriere: boolText(updates.cheminementParArriere),
-      cheminement_seuil_porte: boolText(updates.cheminementSeuilPorte),
-      difficultes_circulation_interieure: boolText(updates.difficultesCirculationInterieure),
-      acces_facile_rue: boolText(updates.easyAccess),
-      commentaire: nullableString(updates.comments),
-      observation_accessibilite: nullableString(updates.accessObservation),
-      type_de_logement_id: typeLogement ? Number(typeLogement.id) : undefined,
-      porte_de_garage_id: porteGarage ? Number(porteGarage.id) : undefined,
-      portail_id1: portail ? Number(portail.id) : undefined,
-    });
-
-    if (existingHousing) {
-      if (sendConflictIfStale(req, res, existingHousing)) return;
-      await updateRecord(TABLES.logements, existingHousing.id, fields);
-      res.json({ success: true, error: null, data: { id: field(existingHousing, 'uuid_source') || `nocodb-housing-${existingHousing.id}` } });
-      return;
-    }
-
-    const created = await createRecord(TABLES.logements, fields);
-    res.json({ success: true, error: null, data: { id: field(created, 'uuid_source') || `nocodb-housing-${created.id}` } });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/documents/:patientId', requireAuth, async (req, res, next) => {
-  try {
-    const access = await resolveBeneficiaryAccess(req.appUser, req.params.patientId);
-    const dossierId = stringValue(req.query?.dossierId).trim();
-    const documents = await mobileSyncStore.listDocumentsByPatient(req.params.patientId, {
-      dossierId: dossierId || undefined,
-    });
-    const documentContext = buildBeneficiaryDocumentContext({
-      beneficiaryRecord: access.beneficiaryRecord,
-      dossierRecord: access.dossierRecord,
-      patientId: req.params.patientId,
-    });
-
-    res.json({
-      success: true,
-      error: null,
-      data: { documents: documents.map((document) => ({ ...documentContext, ...document })) },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post(
-  '/api/documents/upload',
-  requireAuth,
-  express.raw({ type: () => true, limit: '30mb' }),
-  async (req, res, next) => {
-    try {
-      const patientId = stringValue(req.query?.patientId).trim();
-      const documentLocalId = stringValue(req.query?.documentLocalId).trim();
-      const title = stringValue(req.query?.title).trim() || 'Document';
-      const requestedFileName = stringValue(req.query?.fileName).trim();
-      const requestedDossierId = stringValue(req.query?.dossierId).trim();
-      const tags = safeParseJsonArray(req.query?.tagsJson).map((tag) => String(tag).trim()).filter(Boolean);
-      const mimeType = stringValue(req.get('content-type')).trim() || 'application/octet-stream';
-      const bodyBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-
-      if (!patientId) {
-        throw httpError(400, 'patientId manquant');
-      }
-
-      if (bodyBuffer.length === 0) {
-        throw httpError(400, 'Fichier manquant');
-      }
-
-      const access = await resolveBeneficiaryAccess(req.appUser, patientId);
-      const documentContext = buildBeneficiaryDocumentContext({
-        beneficiaryRecord: access.beneficiaryRecord,
-        dossierRecord: access.dossierRecord,
-        patientId,
-      });
-      const document = await mobileSyncStore.upsertDocument({
-        patientId,
-        dossierId: requestedDossierId || field(access.dossierRecord, 'uuid_source') || null,
-        documentLocalId,
-        title,
-        fileName: requestedFileName || `${title}.bin`,
-        mimeType,
-        tags,
-        contentBase64: bodyBuffer.toString('base64'),
-        ...documentContext,
-      });
-
-      res.status(201).json({
-        success: true,
-        error: null,
-        data: { document: mapStoredDocument(document) },
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
-);
-
-app.post('/api/documents', requireAuth, documentUpload.single('file'), async (req, res, next) => {
-  try {
-    const patientId = stringValue(req.body?.patientId).trim();
-    const documentLocalId = stringValue(req.body?.documentLocalId).trim();
-    const title = stringValue(req.body?.title).trim() || 'Document';
-    const requestedFileName = stringValue(req.body?.fileName).trim();
-    const requestedDossierId = stringValue(req.body?.dossierId).trim();
-
-    // tags may arrive as JSON string (multipart) or array (JSON body)
-    const rawTags = req.body?.tags;
-    const parsedTags = typeof rawTags === 'string' ? (() => { try { const p = JSON.parse(rawTags); return Array.isArray(p) ? p : [rawTags]; } catch { return [rawTags]; } })() : rawTags;
-    const tags = asArray(parsedTags).map((tag) => String(tag).trim()).filter(Boolean);
-
-    if (!patientId) {
-      throw httpError(400, 'patientId manquant');
-    }
-
-    // Multipart file upload: convert buffer to base64 for downstream compatibility
-    let contentBase64 = req.body?.contentBase64;
-    if (!contentBase64 && req.file?.buffer) {
-      contentBase64 = req.file.buffer.toString('base64');
-    }
-
-    const access = await resolveBeneficiaryAccess(req.appUser, patientId);
-    const documentContext = buildBeneficiaryDocumentContext({
-      beneficiaryRecord: access.beneficiaryRecord,
-      dossierRecord: access.dossierRecord,
-      patientId,
-    });
-    const document = await mobileSyncStore.upsertDocument({
-      patientId,
-      dossierId: requestedDossierId || field(access.dossierRecord, 'uuid_source') || null,
-      documentLocalId,
-      title,
-      fileName: requestedFileName || `${title}.bin`,
-      mimeType: stringValue(req.body?.mimeType).trim() || req.file?.mimetype || 'application/octet-stream',
-      tags,
-      contentBase64,
-      ...documentContext,
-    });
-
-    res.status(201).json({
-      success: true,
-      error: null,
-      data: { document: mapStoredDocument(document) },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.patch('/api/documents/:documentId', requireAuth, async (req, res, next) => {
-  try {
-    const document = await mobileSyncStore.getDocumentById(req.params.documentId);
-    if (!document) {
-      throw httpError(404, 'Document introuvable');
-    }
-
-    await resolveBeneficiaryAccess(req.appUser, document.patientId);
-    const title = req.body?.title == null ? undefined : stringValue(req.body.title).trim();
-    const tags = req.body?.tags == null
-      ? undefined
-      : asArray(req.body.tags).map((tag) => String(tag).trim()).filter(Boolean);
-
-    const updated = await mobileSyncStore.updateDocument(req.params.documentId, {
-      title,
-      tags,
-    });
-
-    if (!updated) {
-      throw httpError(404, 'Document introuvable');
-    }
-
-    res.json({
-      success: true,
-      error: null,
-      data: { document: mapStoredDocument(updated) },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.delete('/api/documents/:documentId', requireAuth, async (req, res, next) => {
-  try {
-    const document = await mobileSyncStore.getDocumentById(req.params.documentId);
-    if (!document) {
-      throw httpError(404, 'Document introuvable');
-    }
-
-    await resolveBeneficiaryAccess(req.appUser, document.patientId);
-    const deleted = await mobileSyncStore.deleteDocument(req.params.documentId);
-
-    res.json({
-      success: deleted,
-      error: deleted ? null : 'Document introuvable',
-      data: { deleted },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/mobile-documents/:documentId/content', requireAuth, async (req, res, next) => {
-  try {
-    const content = await mobileSyncStore.getDocumentContent(req.params.documentId);
-    if (!content) {
-      throw httpError(404, 'Document introuvable');
-    }
-
-    await resolveBeneficiaryAccess(req.appUser, content.patientId);
-    res.setHeader('Content-Type', content.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'inline');
-    res.send(content.buffer);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/public/note-pages/:notePageId/preview', async (req, res, next) => {
-  try {
-    const notePage = await mobileSyncStore.getNotePageById(req.params.notePageId);
-    if (!notePage) {
-      throw httpError(404, 'Note introuvable');
-    }
-
-    const previewDataUrl = stringValue(notePage.previewDataUrl).trim();
-    const noteTitle = [
-      stringValue(notePage.patientFirstName).trim(),
-      stringValue(notePage.patientLastName).trim(),
-    ].filter(Boolean).join(' ').trim() || 'Note';
-    const textPreview = stringValue(notePage.textContent).trim();
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(`<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(noteTitle)} - Prévisualisation note</title>
-    <style>
-      body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#f8fafc; color:#0f172a; }
-      .shell { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 20px; }
-      .card { width:min(820px, 100%); background:#fff; border:1px solid #e2e8f0; border-radius:24px; box-shadow:0 20px 40px rgba(15, 23, 42, 0.08); overflow:hidden; }
-      .header { padding:20px 24px 12px; border-bottom:1px solid #e2e8f0; }
-      .meta { color:#64748b; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; }
-      h1 { margin:8px 0 0; font-size:22px; }
-      .body { padding:24px; display:grid; gap:20px; }
-      .preview { border:1px solid #e2e8f0; border-radius:18px; background:#fff; overflow:hidden; }
-      .preview img { display:block; width:100%; height:auto; }
-      .empty { padding:48px 24px; color:#94a3b8; text-align:center; font-weight:600; }
-      .text { white-space:pre-wrap; line-height:1.6; color:#334155; border:1px solid #e2e8f0; border-radius:18px; background:#f8fafc; padding:18px; }
-    </style>
-  </head>
-  <body>
-    <div class="shell">
-      <article class="card">
-        <header class="header">
-          <div class="meta">${escapeHtml(notePage.tabKey)} · page ${Number(notePage.pageNumber) + 1}</div>
-          <h1>${escapeHtml(noteTitle)}</h1>
-        </header>
-        <div class="body">
-          <section class="preview">
-            ${previewDataUrl ? `<img src="${escapeHtml(previewDataUrl)}" alt="Prévisualisation de la note" />` : '<div class="empty">Aucune miniature disponible</div>'}
-          </section>
-          ${textPreview ? `<section class="text">${escapeHtml(textPreview)}</section>` : ''}
-        </div>
-      </article>
-    </div>
-  </body>
-</html>`);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/note-pages/:patientId', requireAuth, async (req, res, next) => {
-  try {
-    await resolveBeneficiaryAccess(req.appUser, req.params.patientId);
-    const scopeType = stringValue(req.query?.scopeType).trim();
-    const scopeId = stringValue(req.query?.scopeId).trim();
-    const tabKey = stringValue(req.query?.tabKey).trim();
-    const subTabKey = stringValue(req.query?.subTabKey).trim();
-    const pageNumber = req.query?.pageNumber == null || req.query.pageNumber === ''
-      ? null
-      : Number(req.query.pageNumber);
-    const notePages = await mobileSyncStore.listNotePagesByPatient(
-      req.params.patientId,
-      { scopeType, scopeId, tabKey, subTabKey, pageNumber },
-    );
-
-    res.json({
-      success: true,
-      error: null,
-      data: { notePages },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put('/api/note-pages', requireAuth, async (req, res, next) => {
-  try {
-    const notePageId = stringValue(req.body?.notePageId).trim();
-    const patientId = stringValue(req.body?.patientId).trim();
-    const scopeType = stringValue(req.body?.scopeType).trim();
-    const scopeId = stringValue(req.body?.scopeId).trim();
-    const tabKey = stringValue(req.body?.tabKey).trim();
-    const subTabKey = stringValue(req.body?.subTabKey).trim();
-    const pageNumber = Number(req.body?.pageNumber ?? 0);
-    const textContent = typeof req.body?.textContent === 'string' ? req.body.textContent : '';
-    const drawingJson = typeof req.body?.drawingJson === 'string' ? req.body.drawingJson : JSON.stringify(req.body?.drawingJson ?? '');
-    const previewDataUrl = typeof req.body?.previewDataUrl === 'string' ? req.body.previewDataUrl : '';
-    const layoutKind = stringValue(req.body?.layoutKind).trim() || 'freeform';
-
-    if (!patientId) {
-      throw httpError(400, 'patientId manquant');
-    }
-    if (!scopeType) {
-      throw httpError(400, 'scopeType manquant');
-    }
-    if (!scopeId) {
-      throw httpError(400, 'scopeId manquant');
-    }
-    if (!tabKey) {
-      throw httpError(400, 'tabKey manquant');
-    }
-    if (!Number.isFinite(pageNumber) || pageNumber < 0) {
-      throw httpError(400, 'pageNumber invalide');
-    }
-
-    const access = await resolveBeneficiaryAccess(req.appUser, patientId);
-    const notePageContext = buildBeneficiaryDocumentContext({
-      beneficiaryRecord: access.beneficiaryRecord,
-      dossierRecord: access.dossierRecord,
-      patientId,
-    });
-    const notePage = await mobileSyncStore.upsertNotePage({
-      notePageId: notePageId || null,
-      patientId,
-      dossierId: field(access.dossierRecord, 'uuid_source') || null,
-      scopeType,
-      scopeId,
-      tabKey,
-      subTabKey,
-      pageNumber,
-      textContent,
-      drawingJson,
-      previewDataUrl,
-      layoutKind,
-      ...notePageContext,
-    });
-
-    res.json({
-      success: true,
-      error: null,
-      data: { notePage: mapStoredNotePage(notePage) },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/note-pages', requireAuth, async (req, res, next) => {
-  try {
-    const patientId = stringValue(req.body?.patientId).trim();
-    const scopeType = stringValue(req.body?.scopeType).trim();
-    const scopeId = stringValue(req.body?.scopeId).trim();
-    const tabKey = stringValue(req.body?.tabKey).trim();
-    const subTabKey = stringValue(req.body?.subTabKey).trim();
-    const layoutKind = stringValue(req.body?.layoutKind).trim() || 'freeform';
-
-    if (!patientId) {
-      throw httpError(400, 'patientId manquant');
-    }
-    if (!scopeType) {
-      throw httpError(400, 'scopeType manquant');
-    }
-    if (!scopeId) {
-      throw httpError(400, 'scopeId manquant');
-    }
-    if (!tabKey) {
-      throw httpError(400, 'tabKey manquant');
-    }
-
-    const access = await resolveBeneficiaryAccess(req.appUser, patientId);
-    const notePageContext = buildBeneficiaryDocumentContext({
-      beneficiaryRecord: access.beneficiaryRecord,
-      dossierRecord: access.dossierRecord,
-      patientId,
-    });
-    const notePage = await mobileSyncStore.createNotePage({
-      patientId,
-      dossierId: field(access.dossierRecord, 'uuid_source') || null,
-      scopeType,
-      scopeId,
-      tabKey,
-      subTabKey,
-      layoutKind,
-      ...notePageContext,
-    });
-
-    res.json({
-      success: true,
-      error: null,
-      data: { notePage: mapStoredNotePage(notePage) },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.delete('/api/note-pages/:notePageId', requireAuth, async (req, res, next) => {
-  try {
-    const patientId = stringValue(req.query?.patientId).trim();
-    if (!patientId) {
-      throw httpError(400, 'patientId manquant');
-    }
-
-    await resolveBeneficiaryAccess(req.appUser, patientId);
-    const deleted = await mobileSyncStore.deleteNotePage(req.params.notePageId);
-    if (!deleted) {
-      throw httpError(404, 'Note introuvable');
-    }
-
-    res.json({
-      success: true,
-      error: null,
-      data: { deleted: true },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/visit-plans/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierRecord = await ensureDossierRecord(req.params.dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-
-    const visitPlan = await readVisitPlanMeta(field(dossierRecord, 'uuid_source') || req.params.dossierId);
-    res.json({
-      success: true,
-      error: null,
-      data: { visitPlan },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put('/api/visit-plans/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierRecord = await ensureDossierRecord(req.params.dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-
-    const contentBase64 = stringValue(req.body?.contentBase64).trim();
-    if (!contentBase64) {
-      throw httpError(400, 'Contenu du plan manquant');
-    }
-
-    const image = parseImageDataUrl(contentBase64);
-    const dossierId = field(dossierRecord, 'uuid_source') || req.params.dossierId;
-    const targetUrl = getVisitPlanFileUrl(dossierId);
-    await fs.mkdir(new URL('./', targetUrl), { recursive: true });
-    await fs.writeFile(targetUrl, image.buffer);
-
-    const visitPlan = await readVisitPlanMeta(dossierId);
-    res.json({
-      success: true,
-      error: null,
-      data: { visitPlan },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierRecord = await ensureDossierRecord(req.params.dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-    const records = await queryAll(TABLES.diagnosticSanitaires, { fields: FIELD_SETS.diagnosticSanitaires });
-    const record = latestByFieldValue(records, 'dossier_id', req.params.dossierId);
-    res.json(record ? {
-      id: field(record, 'uuid_source') || String(record.id),
-      dossierId: field(record, 'dossier_id'),
-      sdbInstances: (() => {
-        const parsed = parseJsonArrayField(field(record, 'sdb_instances_json'));
-        return parsed.length > 0 ? parsed : buildLegacyBathroomInstances({
-          sdbNiveauPiecesVie: toBool(field(record, 'sdb_niveau_pieces_vie')),
-          sdbBaignoire: toBool(field(record, 'sdb_baignoire')),
-          sdbBaignoireHauteur: toNumber(field(record, 'sdb_baignoire_hauteur')),
-          sdbBacDouche: toBool(field(record, 'sdb_bac_douche')),
-          sdbBacDoucheHauteur: toNumber(field(record, 'sdb_bac_douche_hauteur')),
-          sdbVasqueSuspendue: toBool(field(record, 'sdb_vasque_suspendue')),
-          sdbVasqueSuspendueHauteur: toNumber(field(record, 'sdb_vasque_suspendue_hauteur')),
-          sdbVasqueColonne: toBool(field(record, 'sdb_vasque_colonne')),
-          sdbVasqueColonneHauteur: toNumber(field(record, 'sdb_vasque_colonne_hauteur')),
-          sdbMeubleVasque: toBool(field(record, 'sdb_meuble_vasque')),
-          sdbMeubleVasqueHauteur: toNumber(field(record, 'sdb_meuble_vasque_hauteur')),
-          sdbBidet: toBool(field(record, 'sdb_bidet')),
-          sdbBidetHauteur: toNumber(field(record, 'sdb_bidet_hauteur')),
-          sdbParoiDouche: toBool(field(record, 'sdb_paroi_douche')),
-          sdbParoiDoucheHauteur: toNumber(field(record, 'sdb_paroi_douche_hauteur')),
-          sdbSolGlissant: toBool(field(record, 'sdb_sol_glissant')),
-          sdbMachineALaver: toBool(field(record, 'sdb_machine_a_laver')),
-          sdbMachineALaverHauteur: toNumber(field(record, 'sdb_machine_a_laver_hauteur')),
-          porteSdbLargeurSuffisante: toBool(field(record, 'porte_sdb_largeur_suffisante')),
-          porteSdbDimension: toNumber(field(record, 'porte_sdb_dimension')),
-          porteSdbSensAdapte: toBool(field(record, 'porte_sdb_sens_adapte')),
-        });
-      })(),
-      wcInstances: (() => {
-        const parsed = parseJsonArrayField(field(record, 'wc_instances_json'));
-        return parsed.length > 0 ? parsed : buildLegacyWcInstances({
-          wcNiveau: toBool(field(record, 'wc_niveau')),
-          wcCuvetteBonneHauteur: toBool(field(record, 'wc_cuvette_bonne_hauteur')),
-          wcCuvetteTropBasse: toBool(field(record, 'wc_cuvette_trop_basse')),
-          wcCuvetteHauteur: toNumber(field(record, 'wc_cuvette_hauteur')),
-          wcBarreRelevement: toBool(field(record, 'wc_barre_relevement')),
-          porteWcLargeurSuffisante: toBool(field(record, 'porte_wc_largeur_suffisante')),
-          porteWcDimension: toNumber(field(record, 'porte_wc_dimension')),
-          porteWcSensAdapte: toBool(field(record, 'porte_wc_sens_adapte')),
-          observationEquipementsUtilisation: stringValue(field(record, 'observation_equipements_utilisation')),
-        });
-      })(),
-      sdbNiveauPiecesVie: toBool(field(record, 'sdb_niveau_pieces_vie')),
-      wcNiveau: toBool(field(record, 'wc_niveau')),
-      wcEtage: toBool(field(record, 'wc_etage')),
-      sdbBaignoire: toBool(field(record, 'sdb_baignoire')),
-      sdbBaignoireHauteur: toNumber(field(record, 'sdb_baignoire_hauteur')),
-      sdbBacDouche: toBool(field(record, 'sdb_bac_douche')),
-      sdbBacDoucheHauteur: toNumber(field(record, 'sdb_bac_douche_hauteur')),
-      sdbVasqueSuspendue: toBool(field(record, 'sdb_vasque_suspendue')),
-      sdbVasqueSuspendueHauteur: toNumber(field(record, 'sdb_vasque_suspendue_hauteur')),
-      sdbVasqueColonne: toBool(field(record, 'sdb_vasque_colonne')),
-      sdbVasqueColonneHauteur: toNumber(field(record, 'sdb_vasque_colonne_hauteur')),
-      sdbMeubleVasque: toBool(field(record, 'sdb_meuble_vasque')),
-      sdbMeubleVasqueHauteur: toNumber(field(record, 'sdb_meuble_vasque_hauteur')),
-      sdbBidet: toBool(field(record, 'sdb_bidet')),
-      sdbBidetHauteur: toNumber(field(record, 'sdb_bidet_hauteur')),
-      sdbParoiDouche: toBool(field(record, 'sdb_paroi_douche')),
-      sdbParoiDoucheHauteur: toNumber(field(record, 'sdb_paroi_douche_hauteur')),
-      sdbSolGlissant: toBool(field(record, 'sdb_sol_glissant')),
-      sdbMachineALaver: toBool(field(record, 'sdb_machine_a_laver')),
-      sdbMachineALaverHauteur: toNumber(field(record, 'sdb_machine_a_laver_hauteur')),
-      wcCuvetteBonneHauteur: toBool(field(record, 'wc_cuvette_bonne_hauteur')),
-      wcCuvetteTropBasse: toBool(field(record, 'wc_cuvette_trop_basse')),
-      wcCuvetteHauteur: toNumber(field(record, 'wc_cuvette_hauteur')),
-      wcBarreRelevement: toBool(field(record, 'wc_barre_relevement')),
-      porteSdbLargeurSuffisante: toBool(field(record, 'porte_sdb_largeur_suffisante')),
-      porteSdbDimension: toNumber(field(record, 'porte_sdb_dimension')),
-      porteSdbSensAdapte: toBool(field(record, 'porte_sdb_sens_adapte')),
-      porteWcLargeurSuffisante: toBool(field(record, 'porte_wc_largeur_suffisante')),
-      porteWcDimension: toNumber(field(record, 'porte_wc_dimension')),
-      porteWcSensAdapte: toBool(field(record, 'porte_wc_sens_adapte')),
-      observationEquipementsUtilisation: stringValue(field(record, 'observation_equipements_utilisation')),
-    } : null);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierId = req.params.dossierId;
-    const payload = req.body || {};
-    const records = await queryAll(TABLES.diagnosticSanitaires, { fields: FIELD_SETS.diagnosticSanitaires });
-    const dossierRecord = await ensureDossierRecord(dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-    const existing = latestByFieldValue(records, 'dossier_id', field(dossierRecord, 'uuid_source'));
-    const sdbInstances = Array.isArray(payload.sdbInstances) ? payload.sdbInstances : [];
-    const wcInstances = Array.isArray(payload.wcInstances) ? payload.wcInstances : [];
-    const primaryBathroom = sdbInstances[0] || {};
-    const primaryWc = wcInstances[0] || {};
-    const fields = {
-      dossier_id: field(dossierRecord, 'uuid_source'),
-      dossiers_id: Number(dossierRecord.id),
-      sdb_instances_json: nullableString(sdbInstances.length > 0 ? JSON.stringify(sdbInstances) : null),
-      wc_instances_json: nullableString(wcInstances.length > 0 ? JSON.stringify(wcInstances) : null),
-      sdb_niveau_pieces_vie: boolText(sdbInstances.length > 0 ? primaryBathroom.levelField === 'rdc' : payload.sdbNiveauPiecesVie),
-      wc_niveau: boolText(wcInstances.length > 0 ? primaryWc.levelField === 'rdc' : payload.wcNiveau),
-      wc_etage: boolText(wcInstances.length > 0 ? primaryWc.levelField !== 'rdc' : payload.wcEtage),
-      sdb_baignoire: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbBaignoire : payload.sdbBaignoire),
-      sdb_baignoire_hauteur: nullableString(sdbInstances.length > 0 ? primaryBathroom.sdbBaignoireHauteur : payload.sdbBaignoireHauteur),
-      sdb_bac_douche: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbBacDouche : payload.sdbBacDouche),
-      sdb_bac_douche_hauteur: nullableString(sdbInstances.length > 0 ? primaryBathroom.sdbBacDoucheHauteur : payload.sdbBacDoucheHauteur),
-      sdb_vasque_suspendue: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbVasqueSuspendue : payload.sdbVasqueSuspendue),
-      sdb_vasque_suspendue_hauteur: nullableString(sdbInstances.length > 0 ? primaryBathroom.sdbVasqueSuspendueHauteur : payload.sdbVasqueSuspendueHauteur),
-      sdb_vasque_colonne: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbVasqueColonne : payload.sdbVasqueColonne),
-      sdb_vasque_colonne_hauteur: nullableString(sdbInstances.length > 0 ? primaryBathroom.sdbVasqueColonneHauteur : payload.sdbVasqueColonneHauteur),
-      sdb_meuble_vasque: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbMeubleVasque : payload.sdbMeubleVasque),
-      sdb_meuble_vasque_hauteur: nullableString(sdbInstances.length > 0 ? primaryBathroom.sdbMeubleVasqueHauteur : payload.sdbMeubleVasqueHauteur),
-      sdb_bidet: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbBidet : payload.sdbBidet),
-      sdb_bidet_hauteur: nullableString(sdbInstances.length > 0 ? primaryBathroom.sdbBidetHauteur : payload.sdbBidetHauteur),
-      sdb_paroi_douche: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbParoiDouche : payload.sdbParoiDouche),
-      sdb_paroi_douche_hauteur: nullableString(sdbInstances.length > 0 ? primaryBathroom.sdbParoiDoucheHauteur : payload.sdbParoiDoucheHauteur),
-      sdb_sol_glissant: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbSolGlissant : payload.sdbSolGlissant),
-      sdb_machine_a_laver: boolText(sdbInstances.length > 0 ? primaryBathroom.sdbMachineALaver : payload.sdbMachineALaver),
-      sdb_machine_a_laver_hauteur: nullableString(sdbInstances.length > 0 ? primaryBathroom.sdbMachineALaverHauteur : payload.sdbMachineALaverHauteur),
-      wc_cuvette_bonne_hauteur: boolText(wcInstances.length > 0 ? primaryWc.wcCuvetteBonneHauteur : payload.wcCuvetteBonneHauteur),
-      wc_cuvette_trop_basse: boolText(wcInstances.length > 0 ? primaryWc.wcCuvetteTropBasse : payload.wcCuvetteTropBasse),
-      wc_cuvette_hauteur: nullableString(wcInstances.length > 0 ? primaryWc.wcCuvetteHauteur : payload.wcCuvetteHauteur),
-      wc_barre_relevement: boolText(wcInstances.length > 0 ? primaryWc.wcBarreRelevement : payload.wcBarreRelevement),
-      porte_sdb_largeur_suffisante: boolText(sdbInstances.length > 0 ? primaryBathroom.porteSdbLargeurSuffisante : payload.porteSdbLargeurSuffisante),
-      porte_sdb_dimension: nullableString(sdbInstances.length > 0 ? primaryBathroom.porteSdbDimension : payload.porteSdbDimension),
-      porte_sdb_sens_adapte: boolText(sdbInstances.length > 0 ? primaryBathroom.porteSdbSensAdapte : payload.porteSdbSensAdapte),
-      porte_wc_largeur_suffisante: boolText(wcInstances.length > 0 ? primaryWc.porteWcLargeurSuffisante : payload.porteWcLargeurSuffisante),
-      porte_wc_dimension: nullableString(wcInstances.length > 0 ? primaryWc.porteWcDimension : payload.porteWcDimension),
-      porte_wc_sens_adapte: boolText(wcInstances.length > 0 ? primaryWc.porteWcSensAdapte : payload.porteWcSensAdapte),
-      observation_equipements_utilisation: nullableString(wcInstances.length > 0 ? primaryWc.observationEquipementsUtilisation : payload.observationEquipementsUtilisation),
-      updated_at: new Date().toISOString(),
-    };
-
-    if (existing) {
-      if (sendConflictIfStale(req, res, existing)) return;
-      await updateRecord(TABLES.diagnosticSanitaires, existing.id, fields);
-    } else {
-      await createRecord(TABLES.diagnosticSanitaires, { uuid_source: crypto.randomUUID(), created_at: new Date().toISOString(), ...fields });
-    }
-
-    res.json({ success: true, error: null });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/mesures/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierRecord = await ensureDossierRecord(req.params.dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-    const records = await queryAll(TABLES.mesuresAnthropometriques, { fields: FIELD_SETS.mesuresAnthropometriques });
-    const record = latestByFieldValue(records, 'dossier_id', req.params.dossierId);
-    res.json(record ? {
-      id: field(record, 'uuid_source') || String(record.id),
-      dossierId: field(record, 'dossier_id'),
-      deboutHauteurCoude: toNumber(field(record, 'debout_hauteur_coude')),
-      assisHauteurAssise: toNumber(field(record, 'assis_hauteur_assise')),
-      assisProfondeurGenoux: toNumber(field(record, 'assis_profondeur_genoux')),
-      assisHauteurCoudes: toNumber(field(record, 'assis_hauteur_coudes')),
-      observations: stringValue(field(record, 'observations')),
-    } : null);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put('/api/mesures/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierId = req.params.dossierId;
-    const payload = req.body || {};
-    const records = await queryAll(TABLES.mesuresAnthropometriques, { fields: FIELD_SETS.mesuresAnthropometriques });
-    const dossierRecord = await ensureDossierRecord(dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-    const existing = latestByFieldValue(records, 'dossier_id', field(dossierRecord, 'uuid_source'));
-    const fields = {
-      dossier_id: field(dossierRecord, 'uuid_source'),
-      dossiers_id: Number(dossierRecord.id),
-      debout_hauteur_coude: nullableString(payload.deboutHauteurCoude),
-      assis_hauteur_assise: nullableString(payload.assisHauteurAssise),
-      assis_profondeur_genoux: nullableString(payload.assisProfondeurGenoux),
-      assis_hauteur_coudes: nullableString(payload.assisHauteurCoudes),
-      observations: nullableString(payload.observations),
-      updated_at: new Date().toISOString(),
-    };
-
-    if (existing) {
-      if (sendConflictIfStale(req, res, existing)) return;
-      await updateRecord(TABLES.mesuresAnthropometriques, existing.id, fields);
-    } else {
-      await createRecord(TABLES.mesuresAnthropometriques, { uuid_source: crypto.randomUUID(), created_at: new Date().toISOString(), ...fields });
-    }
-
-    res.json({ success: true, error: null });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/observations/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierRecord = await ensureDossierRecord(req.params.dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-    const records = await queryAll(TABLES.observations, { fields: FIELD_SETS.observations });
-    const record = latestByFieldValue(records, 'dossier_id', req.params.dossierId);
-    res.json(record ? {
-      id: field(record, 'uuid_source') || String(record.id),
-      dossierId: field(record, 'dossier_id'),
-      observationEquipements: stringValue(field(record, 'observation_equipements')),
-      projetSouhaitUsage: stringValue(field(record, 'projet_souhait_usage')),
-      resumePreconisations: stringValue(field(record, 'resume_preconisations')),
-    } : null);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put('/api/observations/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierId = req.params.dossierId;
-    const payload = req.body || {};
-    const records = await queryAll(TABLES.observations, { fields: FIELD_SETS.observations });
-    const dossierRecord = await ensureDossierRecord(dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-    const existing = latestByFieldValue(records, 'dossier_id', field(dossierRecord, 'uuid_source'));
-    const fields = {
-      dossier_id: field(dossierRecord, 'uuid_source'),
-      dossiers_id: Number(dossierRecord.id),
-      observation_equipements: nullableString(payload.observationEquipements),
-      projet_souhait_usage: nullableString(payload.projetSouhaitUsage),
-      resume_preconisations: nullableString(payload.resumePreconisations),
-    };
-
-    if (existing) {
-      if (sendConflictIfStale(req, res, existing)) return;
-      await updateRecord(TABLES.observations, existing.id, fields);
-    } else {
-      await createRecord(TABLES.observations, { uuid_source: crypto.randomUUID(), ...fields });
-    }
-
-    res.json({ success: true, error: null });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierRecord = await ensureDossierRecord(req.params.dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-
-    const dossierId = field(dossierRecord, 'uuid_source');
-    const tableId = await getVisitRecommendationsTableId();
-    let items = [];
-
-    if (tableId) {
-      const records = await queryAll(tableId, {
-        fields: VISIT_RECOMMENDATION_FIELDS,
-        where: `(dossier_id,eq,${JSON.stringify(String(dossierId))})`,
-      });
-      items = records
-        .map(mapVisitRecommendationRecord)
-        .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
-    } else {
-      const store = await readVisitRecommendationsStore();
-      const payload = store.dossiers?.[dossierId];
-      items = asArray(payload?.items).map((item) => ({
-        ...item,
-        wikiImageUrl: absoluteUrl(item?.wikiImageUrl),
-      }));
-    }
-
-    const wikiItems = await loadWikiLibrary();
-    const wikiLookup = buildWikiRecommendationLookup(wikiItems);
-    items = items.map((item) => {
-      const matchedWikiItem = resolveRecommendationWikiItem(item, wikiLookup);
-      if (!matchedWikiItem) {
-        return {
-          ...item,
-          wikiImageUrl: absoluteUrl(item?.wikiImageUrl),
-        };
-      }
-      return {
-        ...item,
-        wikiItemId: stringValue(matchedWikiItem.id),
-        wikiTitle: stringValue(matchedWikiItem.title),
-        wikiImageUrl: stringValue(matchedWikiItem.imageUrl),
-        wikiTag: stringValue(matchedWikiItem.tags?.[0] || item?.wikiTag),
-      };
-    });
-
-    res.json({
-      success: true,
-      error: null,
-      data: { items },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, next) => {
-  try {
-    const dossierRecord = await ensureDossierRecord(req.params.dossierId);
-    if (!canAccessDossierRecord(req.appUser, dossierRecord)) {
-      res.status(403).json({ success: false, error: 'Accès interdit à ce dossier' });
-      return;
-    }
-
-    const wikiItems = await loadWikiLibrary();
-    const wikiLookup = buildWikiRecommendationLookup(wikiItems);
-    const dossierId = field(dossierRecord, 'uuid_source');
-    const rawItems = asArray(req.body?.items);
-
-    const normalizedItems = rawItems.map((item) => {
-      const normalized = normalizeVisitRecommendationItem(item, wikiLookup);
-      if (!normalized.wikiItemId || !wikiLookup.byId.has(normalized.wikiItemId)) {
-        throw new Error('Chaque préconisation doit être liée à une image de la bibliothèque');
-      }
-      return normalized;
-    });
-
-    const tableId = await getVisitRecommendationsTableId();
-
-    if (tableId) {
-      const metadata = await buildVisitRecommendationMetadata(dossierRecord);
-      const existingRecords = await queryAll(tableId, {
-        fields: ['uuid_source'],
-        where: `(dossier_id,eq,${JSON.stringify(String(dossierId))})`,
-      });
-
-      for (const record of existingRecords) {
-        await callNocoTool('deleteRecords', {
-          tableId,
-          records: [{ id: String(record.id) }],
-        });
-      }
-
-      for (const item of normalizedItems) {
-        await createRecord(tableId, {
-          uuid_source: item.id,
-          dossier_id: metadata.dossierId,
-          beneficiaire_id: metadata.patientId,
-          beneficiaire_prenom: metadata.patientFirstName || null,
-          beneficiaire_nom: metadata.patientLastName || null,
-          beneficiaire_nom_complet: metadata.patientDisplayName || null,
-          dossier_libelle: metadata.dossierLabel || null,
-          wiki_item_id: item.wikiItemId,
-          wiki_title: item.wikiTitle || null,
-          wiki_image_url: item.wikiImageUrl || null,
-          wiki_tag: item.wikiTag || null,
-          custom_title: item.customTitle || null,
-          note: item.note || null,
-          created_at: item.createdAt,
-          updated_at: item.updatedAt,
-        });
-      }
-    } else {
-      const store = await readVisitRecommendationsStore();
-      store.dossiers[dossierId] = {
-        updatedAt: new Date().toISOString(),
-        items: normalizedItems,
-      };
-      await writeVisitRecommendationsStore(store);
-    }
-
-    res.json({
-      success: true,
-      error: null,
-      data: {
-        items: normalizedItems.map((item) => ({
-          ...item,
-          wikiImageUrl: absoluteUrl(item.wikiImageUrl),
-        })),
-      },
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('bibliothèque')) {
-      res.status(400).json({ success: false, error: error.message });
-      return;
-    }
-    next(error);
-  }
-});
-
-app.use((error, _req, res, _next) => {
-  console.error('[nocodb-api]', error);
-  res.status(Number(error?.statusCode) || 500).json({
-    success: false,
-    error: error instanceof Error ? error.message : 'Erreur serveur inconnue',
-  });
-});
-
-app.use(express.static(DIST_DIR_PATH, {
-  etag: false,
-  lastModified: false,
-  setHeaders: (res) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-  },
-}));
-
-app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
-    next();
+export const initializeRuntimeStores = async () => {
+  await fs.mkdir(DATA_DIR_URL, { recursive: true });
+  await fs.mkdir(PROFILE_PHOTOS_DIR_URL, { recursive: true });
+  await fs.mkdir(DOCUMENTS_DIR_URL, { recursive: true });
+  await fs.mkdir(VISIT_PLANS_DIR_URL, { recursive: true });
+  await fs.mkdir(WIKI_LIBRARY_DIR_URL, { recursive: true });
+};
+
+export let bundledDataBootstrapPromise = null;
+
+export const bootstrapBundledDataForRuntime = async () => {
+  if (!process.env.VERCEL) {
     return;
   }
 
+  const targetAuthStorePath = AUTH_STORE_URL.pathname;
+  const bundledAuthStorePath = new URL('./data/auth-store.json', import.meta.url).pathname;
+
   try {
-    const fs = await import('node:fs/promises');
-    await fs.access(DIST_INDEX_PATH);
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.sendFile(DIST_INDEX_PATH);
+    await fs.access(targetAuthStorePath);
   } catch (error) {
-    next(error);
+    if (error?.code !== 'ENOENT') {
+      throw error;
+    }
+
+    try {
+      await fs.cp(LOCAL_DATA_DIR_PATH, DATA_DIR_PATH, {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+      return;
+    } catch (copyError) {
+      console.warn('[runtime] Copie initiale des données embarquées impossible.', copyError);
+    }
   }
-});
 
-const isDirectExecution = process.argv[1]
-  ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-  : false;
+  try {
+    await fs.access(targetAuthStorePath);
+  } catch {
+    try {
+      await fs.copyFile(bundledAuthStorePath, targetAuthStorePath);
+    } catch (copyError) {
+      console.warn('[runtime] Copie du auth-store embarqué impossible.', copyError);
+    }
+  }
 
-await warmupRuntime();
+  const bundledProfilePhotosPath = new URL('./data/profile-photos/', import.meta.url).pathname;
+  try {
+    const currentPhotos = await fs.readdir(PROFILE_PHOTOS_DIR_URL);
+    if (currentPhotos.length > 0) {
+      return;
+    }
+  } catch {
+    // Continue with copy attempt.
+  }
 
-if (isDirectExecution) {
-  const server = app.listen(port, () => {
-    console.log(`[nocodb-api] listening on http://127.0.0.1:${port}`);
-  });
+  try {
+    await fs.cp(bundledProfilePhotosPath, PROFILE_PHOTOS_DIR_URL.pathname, {
+      recursive: true,
+      force: false,
+      errorOnExist: false,
+    });
+  } catch (copyError) {
+    console.warn('[runtime] Copie des photos de profil embarquées impossible.', copyError);
+  }
+};
 
-  const shutdown = async () => {
-    server.close();
-    await closeMcpClient();
-    process.exit(0);
-  };
-
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-}
-
-export default app;
+export const warmupRuntime = async () => {
+  await initializeRuntimeStores();
+  if (!bundledDataBootstrapPromise) {
+    bundledDataBootstrapPromise = bootstrapBundledDataForRuntime().catch((error) => {
+      console.warn('[runtime] Initialisation des données embarquées impossible.', error);
+    });
+  }
+  await bundledDataBootstrapPromise;
+  try {
+    await loadMemberRegistry({ forceRefresh: true });
+  } catch (error) {
+    console.warn('[auth] Initialisation registre échouée au démarrage, fallback local actif.', error);
+  }
+};
