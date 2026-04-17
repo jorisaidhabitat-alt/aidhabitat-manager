@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -15,6 +14,17 @@ import 'conflict_resolution_screen.dart';
 import 'documents_screen.dart';
 import 'visit_report_screen.dart';
 
+/// Dossier detail screen — React parity with `DossierDetail` in
+/// `components/DossierView.tsx`. The "Informations Bénéficiaire" card shows
+/// ONLY the fields React displays here:
+///  - Type d'accompagnement (read-only)
+///  - Prénom, Nom (editable)
+///  - Occupants (dropdown), Ville (autocomplete, zip hidden)
+///  - Commentaire projet (read-only, multiline — loaded from observations)
+///
+/// Everything else (phone, email, address, santé, situation familiale,
+/// revenus, trusted person, …) is edited via the Bénéficiaire tab of the
+/// visit report, not here.
 class DossierScreen extends StatefulWidget {
   final Dossier dossier;
   final VoidCallback onBack;
@@ -37,49 +47,34 @@ class _DossierScreenState extends State<DossierScreen> {
   Timer? _saveTimer;
   bool _saving = false;
 
-  // -- Identité --
+  // Editable fields shown in the card
   late String _firstName;
   late String _lastName;
-  late String _birthDate;
-
-  // -- Contact --
-  late String _phone;
-  late String _email;
-  late String _address;
+  late String _numberPeople; // dropdown value: '1'..'5' or '5+'
   late String _city;
   late String _zipCode;
   late String _cityId;
 
-  // References (commune autocomplete)
+  // Readonly fields
+  late String _natureAccompagnement;
+  late String _incomeCategory;
+
+  // Project comment (async-loaded)
+  String _projectComment = '';
+  bool _projectCommentLoaded = false;
+
+  // References
   final ReferencesService _references = ReferencesService();
   StreamSubscription<ReferencesPayload>? _refSub;
   List<CommuneOption> _communeOptions = const [];
 
-  // -- Santé --
-  late bool _apa;
-  late bool _invalidity;
-  late bool _homeHelp;
-  late String _dependenceTxt;
-  late String _autonomyNotes;
-
-  // -- Situation familiale --
-  late String _familySituation;
-  late String _trustedName;
-  late String _trustedPhone;
-  late String _trustedEmail;
-
-  // -- Revenus --
-  late String _incomeCategory;
-  late double? _fiscalRevenue;
-  late String _caisseRetraitePrincipale;
-  late String _caissesRetraiteComplementaires;
-
-  static const _familyOptions = [
-    'Marié',
-    'Célibataire',
-    'Divorcé',
-    'Veuf(ve)',
-    'Concubinage',
+  static const List<String> _occupantOptions = [
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '5+',
   ];
 
   @override
@@ -88,13 +83,14 @@ class _DossierScreenState extends State<DossierScreen> {
     _repository = widget.repository ?? DossierRepository();
     _loadFromDossier();
 
-    // Commune autocomplete reference data
     _references.ensureLoaded();
     _communeOptions = _mapCommunes();
     _refSub = _references.onLoaded.listen((_) {
       if (!mounted) return;
       setState(() => _communeOptions = _mapCommunes());
     });
+
+    _loadProjectComment();
   }
 
   List<CommuneOption> _mapCommunes() {
@@ -111,33 +107,36 @@ class _DossierScreenState extends State<DossierScreen> {
 
   void _loadFromDossier() {
     final p = widget.dossier.patient;
-
     _firstName = p.firstName;
     _lastName = p.lastName;
-    _birthDate = p.birthDate;
-
-    _phone = p.phone;
-    _email = p.email;
-    _address = p.address;
     _city = p.city;
     _zipCode = p.zipCode;
     _cityId = p.cityId;
-
-    _apa = p.apa;
-    _invalidity = p.invalidity;
-    _homeHelp = p.homeHelp;
-    _dependenceTxt = p.dependenceTxt;
-    _autonomyNotes = widget.dossier.autonomyNotes;
-
-    _familySituation = p.familySituation;
-    _trustedName = p.trustedPerson.name;
-    _trustedPhone = p.trustedPerson.phone;
-    _trustedEmail = p.trustedPerson.email;
-
     _incomeCategory = p.incomeCategory;
-    _fiscalRevenue = p.fiscalRevenue;
-    _caisseRetraitePrincipale = p.caisseRetraitePrincipale;
-    _caissesRetraiteComplementaires = p.caissesRetraiteComplementaires;
+    _natureAccompagnement = widget.dossier.natureAccompagnement;
+
+    final n = p.numberPeople ?? 0;
+    if (n <= 0) {
+      _numberPeople = '1';
+    } else if (n >= 5) {
+      _numberPeople = '5';
+    } else {
+      _numberPeople = n.toString();
+    }
+  }
+
+  Future<void> _loadProjectComment() async {
+    try {
+      final obs = await _repository.fetchObservations(widget.dossier.id);
+      if (!mounted) return;
+      setState(() {
+        _projectComment = obs?.projetSouhaitUsage ?? '';
+        _projectCommentLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _projectCommentLoaded = true);
+    }
   }
 
   @override
@@ -161,32 +160,15 @@ class _DossierScreenState extends State<DossierScreen> {
     if (!mounted) return;
     setState(() => _saving = true);
     try {
+      final numberPeopleInt =
+          int.tryParse(_numberPeople.replaceAll('+', '')) ?? 1;
       await _repository.updatePatientFields(widget.dossier.patient.id, {
         'first_name': _firstName,
         'last_name': _lastName,
-        'birth_date': _birthDate,
-        'phone': _phone,
-        'email': _email,
-        'address': _address,
+        'number_people': numberPeopleInt,
         'city': _city,
         'zip_code': _zipCode,
         'city_id': _cityId,
-        'family_situation': _familySituation,
-        'apa': _apa ? 1 : 0,
-        'invalidity': _invalidity ? 1 : 0,
-        'home_help': _homeHelp ? 1 : 0,
-        'dependence_txt': _dependenceTxt,
-        'fiscal_revenue': _fiscalRevenue,
-        'caisse_retraite_principale': _caisseRetraitePrincipale,
-        'caisses_retraite_complementaires': _caissesRetraiteComplementaires,
-        'trusted_person_json': jsonEncode({
-          'name': _trustedName,
-          'phone': _trustedPhone,
-          'email': _trustedEmail,
-        }),
-      });
-      await _repository.updateDossierFields(widget.dossier.id, {
-        'autonomy_notes': _autonomyNotes,
       });
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -199,6 +181,25 @@ class _DossierScreenState extends State<DossierScreen> {
       return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw));
     } catch (_) {
       return raw;
+    }
+  }
+
+  /// Mirrors React's `formatAccompanimentType()`:
+  ///  - `diagnostic` → "Diagnostic ergo"
+  ///  - `ergo` → "Ergo"
+  ///  - `complet` → "Complet"
+  ///  - anything else → the raw value (or empty placeholder)
+  String _formatAccompanimentType(String raw) {
+    final v = raw.trim().toLowerCase();
+    switch (v) {
+      case 'diagnostic':
+        return 'Diagnostic ergo';
+      case 'ergo':
+        return 'Ergo';
+      case 'complet':
+        return 'Complet';
+      default:
+        return raw.trim();
     }
   }
 
@@ -215,7 +216,6 @@ class _DossierScreenState extends State<DossierScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Left Column: Actions + editable info card
                   Expanded(
                     flex: 5,
                     child: Column(
@@ -253,7 +253,6 @@ class _DossierScreenState extends State<DossierScreen> {
                     ),
                   ),
                   const SizedBox(width: 24),
-                  // Right Column: Notes Rapides
                   Expanded(flex: 7, child: _buildNotesColumn()),
                 ],
               ),
@@ -279,7 +278,7 @@ class _DossierScreenState extends State<DossierScreen> {
               child: Container(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
                 ),
@@ -350,7 +349,8 @@ class _DossierScreenState extends State<DossierScreen> {
           children: [
             const Text(
               'Créé le',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+              style:
+                  TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
             ),
             Text(
               _formatDate(widget.dossier.createdAt),
@@ -416,7 +416,7 @@ class _DossierScreenState extends State<DossierScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Info Card (editable)
+  // Info Card — strict React parity
   // ---------------------------------------------------------------------------
   Widget _buildInfoCard() {
     return Container(
@@ -428,40 +428,123 @@ class _DossierScreenState extends State<DossierScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header row: title + income category badge + save indicator
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: const [
-                  Icon(LucideIcons.user, color: Colors.grey, size: 20),
-                  SizedBox(width: 12),
-                  Text(
-                    'Informations Bénéficiaire',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.user,
+                        color: Colors.grey, size: 20),
+                    const SizedBox(width: 12),
+                    const Flexible(
+                      child: Text(
+                        'Informations Bénéficiaire',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                    if (_incomeCategory.trim().isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      _IncomeBadge(value: _incomeCategory),
+                    ],
+                  ],
+                ),
               ),
               SaveStatusIndicator(saving: _saving),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Expanded(
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildIdentiteSection(),
-                  const _SectionDivider(),
-                  _buildContactSection(),
-                  const _SectionDivider(),
-                  _buildSanteSection(),
-                  const _SectionDivider(),
-                  _buildSituationSection(),
-                  const _SectionDivider(),
-                  _buildRevenusSection(),
+                  // 1. Type d'accompagnement (read-only, emphasized)
+                  _ReadonlyField(
+                    label: "Type d'accompagnement",
+                    value: _formatAccompanimentType(_natureAccompagnement)
+                            .isEmpty
+                        ? 'Non renseigné'
+                        : _formatAccompanimentType(_natureAccompagnement),
+                    emphasized: true,
+                  ),
+                  const SizedBox(height: 12),
+                  // 2. Prénom + Nom (editable)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: FormTextField(
+                          label: 'Prénom',
+                          value: _firstName,
+                          onChanged: (v) {
+                            _firstName = v;
+                            _onChanged();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FormTextField(
+                          label: 'Nom',
+                          value: _lastName,
+                          onChanged: (v) {
+                            _lastName = v;
+                            _onChanged();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // 3. Occupants + Ville (zip hidden)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _buildOccupantsDropdown()),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: CommuneFieldGroup(
+                          city: _city,
+                          zipCode: _zipCode,
+                          cityId: _cityId,
+                          options: _communeOptions,
+                          showZipField: false,
+                          onChanged: (update) {
+                            setState(() {
+                              if (update.city != null) _city = update.city!;
+                              if (update.zipCode != null) {
+                                _zipCode = update.zipCode!;
+                              }
+                              if (update.cityId != null) {
+                                _cityId = update.cityId!;
+                              }
+                            });
+                            _scheduleSave();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // 4. Commentaire projet (read-only, multiline)
+                  _ReadonlyField(
+                    label: 'Commentaire projet',
+                    value: _projectCommentLoaded
+                        ? (_projectComment.trim().isEmpty
+                            ? 'Aucun commentaire renseigné'
+                            : _projectComment)
+                        : 'Chargement du commentaire…',
+                    multiline: true,
+                    compact: true,
+                    muted: !_projectCommentLoaded ||
+                        _projectComment.trim().isEmpty,
+                  ),
                   const SizedBox(height: 8),
                 ],
               ),
@@ -472,246 +555,47 @@ class _DossierScreenState extends State<DossierScreen> {
     );
   }
 
-  Widget _buildIdentiteSection() {
+  Widget _buildOccupantsDropdown() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const FormSectionHeader(title: 'Identité', icon: LucideIcons.user),
-        FormTextField(
-          label: 'Prénom',
-          value: _firstName,
-          onChanged: (v) {
-            _firstName = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Nom',
-          value: _lastName,
-          onChanged: (v) {
-            _lastName = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Date de naissance',
-          value: _birthDate,
-          onChanged: (v) {
-            _birthDate = v;
-            _onChanged();
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildContactSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const FormSectionHeader(title: 'Contact', icon: LucideIcons.phone),
-        FormTextField(
-          label: 'Téléphone',
-          value: _phone,
-          keyboardType: TextInputType.phone,
-          onChanged: (v) {
-            _phone = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Email',
-          value: _email,
-          keyboardType: TextInputType.emailAddress,
-          onChanged: (v) {
-            _email = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Adresse',
-          value: _address,
-          onChanged: (v) {
-            _address = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        CommuneFieldGroup(
-          city: _city,
-          zipCode: _zipCode,
-          cityId: _cityId,
-          options: _communeOptions,
-          onChanged: (update) {
-            setState(() {
-              if (update.city != null) _city = update.city!;
-              if (update.zipCode != null) _zipCode = update.zipCode!;
-              if (update.cityId != null) _cityId = update.cityId!;
-            });
-            _scheduleSave();
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSanteSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const FormSectionHeader(title: 'Santé', icon: LucideIcons.activity),
-        FormToggleGroup(
-          label: 'Bénéficiaire APA',
-          options: const ['Oui', 'Non'],
-          selected: _apa ? 'Oui' : 'Non',
-          onChanged: (v) {
-            _apa = v == 'Oui';
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormToggleGroup(
-          label: 'Reconnaissance invalidité',
-          options: const ['Oui', 'Non'],
-          selected: _invalidity ? 'Oui' : 'Non',
-          onChanged: (v) {
-            _invalidity = v == 'Oui';
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormToggleGroup(
-          label: 'Aide à domicile',
-          options: const ['Oui', 'Non'],
-          selected: _homeHelp ? 'Oui' : 'Non',
-          onChanged: (v) {
-            _homeHelp = v == 'Oui';
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Dépendance particulière',
-          value: _dependenceTxt,
-          onChanged: (v) {
-            _dependenceTxt = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Notes autonomie',
-          value: _autonomyNotes,
-          maxLines: 3,
-          onChanged: (v) {
-            _autonomyNotes = v;
-            _onChanged();
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSituationSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const FormSectionHeader(
-          title: 'Situation familiale',
-          icon: LucideIcons.users,
-        ),
-        FormToggleGroup(
-          label: 'Situation familiale',
-          options: _familyOptions,
-          selected: _familySituation,
-          onChanged: (v) {
-            _familySituation = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 16),
         const Text(
-          'Personne de confiance',
+          'Occupants',
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
             color: Color(0xFF64748B),
           ),
         ),
-        const SizedBox(height: 8),
-        FormTextField(
-          label: 'Nom',
-          value: _trustedName,
-          onChanged: (v) {
-            _trustedName = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Téléphone',
-          value: _trustedPhone,
-          keyboardType: TextInputType.phone,
-          onChanged: (v) {
-            _trustedPhone = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Email',
-          value: _trustedEmail,
-          keyboardType: TextInputType.emailAddress,
-          onChanged: (v) {
-            _trustedEmail = v;
-            _onChanged();
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRevenusSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const FormSectionHeader(title: 'Revenus', icon: LucideIcons.euro),
-        FormTextField(
-          label: 'Catégorie revenus',
-          value: _incomeCategory,
-          readOnly: true,
-        ),
-        const SizedBox(height: 12),
-        FormNumberField(
-          label: 'Revenu fiscal de référence',
-          value: _fiscalRevenue,
-          unit: '€',
-          onChanged: (v) {
-            _fiscalRevenue = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Caisse retraite principale',
-          value: _caisseRetraitePrincipale,
-          onChanged: (v) {
-            _caisseRetraitePrincipale = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          label: 'Caisses complémentaires',
-          value: _caissesRetraiteComplementaires,
-          onChanged: (v) {
-            _caissesRetraiteComplementaires = v;
-            _onChanged();
-          },
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: _occupantOptions.contains(_numberPeople)
+                  ? _numberPeople
+                  : '1',
+              items: _occupantOptions
+                  .map((opt) => DropdownMenuItem<String>(
+                        value: opt,
+                        child: Text(
+                          opt == '1' ? '1 occupant' : '$opt occupants',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ))
+                  .toList(),
+              onChanged: (v) {
+                if (v == null) return;
+                _numberPeople = v;
+                _onChanged();
+              },
+            ),
+          ),
         ),
       ],
     );
@@ -732,14 +616,105 @@ class _DossierScreenState extends State<DossierScreen> {
 // Helper widgets
 // -----------------------------------------------------------------------------
 
-class _SectionDivider extends StatelessWidget {
-  const _SectionDivider();
+class _ReadonlyField extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool emphasized;
+  final bool multiline;
+  final bool compact;
+  final bool muted;
+
+  const _ReadonlyField({
+    required this.label,
+    required this.value,
+    this.emphasized = false,
+    this.multiline = false,
+    this.compact = false,
+    this.muted = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 16),
-      child: Divider(height: 1, color: Color(0xFFE2E8F0)),
+    final bg = emphasized ? const Color(0xFFF4EFF7) : const Color(0xFFF8FAFC);
+    final borderColor =
+        emphasized ? const Color(0xFFD8CFE0) : const Color(0xFFE2E8F0);
+    final valueColor =
+        muted ? const Color(0xFF94A3B8) : const Color(0xFF334155);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          constraints: multiline
+              ? const BoxConstraints(maxHeight: 120)
+              : const BoxConstraints(),
+          padding: EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: compact ? 10 : 12,
+          ),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          child: multiline
+              ? SingleChildScrollView(
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: valueColor,
+                      height: 1.4,
+                    ),
+                  ),
+                )
+              : Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: valueColor,
+                    fontWeight:
+                        emphasized ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _IncomeBadge extends StatelessWidget {
+  final String value;
+
+  const _IncomeBadge({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F0F5),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFD8CFE0)),
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF554A63),
+        ),
+      ),
     );
   }
 }
