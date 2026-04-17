@@ -37,6 +37,7 @@ class _AccessibilityTabState extends State<AccessibilityTab> {
   String _rdcDesc = '';
   String _floorDesc = '';
   Set<String> _heatingTypes = {};
+  String? _niveauxError;
 
   // -- Exterior --
   String _accessRue = '';
@@ -304,7 +305,10 @@ class _AccessibilityTabState extends State<AccessibilityTab> {
           options: const ['1', '2', '3', '4', '5'],
           selected: _levels,
           onChanged: (v) {
-            _levels = v;
+            setState(() {
+              _levels = v;
+              _niveauxError = null;
+            });
             _onChanged();
           },
         ),
@@ -326,6 +330,7 @@ class _AccessibilityTabState extends State<AccessibilityTab> {
   // Sub-section 2: Intérieur
   // ---------------------------------------------------------------------------
   Widget _buildInterior() {
+    final maxLevels = int.tryParse(_levels);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -335,10 +340,49 @@ class _AccessibilityTabState extends State<AccessibilityTab> {
           options: const ['Sous-sol', 'RDC', 'Étage'],
           selected: _niveaux,
           onChanged: (v) {
-            _niveaux = v;
+            if (maxLevels == null || maxLevels <= 0) {
+              setState(() {
+                _niveauxError = 'Veuillez d\'abord renseigner le nombre de niveaux dans Général';
+              });
+              return;
+            }
+            if (v.length > maxLevels) {
+              setState(() {
+                _niveauxError =
+                    'Vous ne pouvez sélectionner que $maxLevels niveau${maxLevels > 1 ? 'x' : ''} (défini dans Général)';
+              });
+              return;
+            }
+            setState(() {
+              _niveaux = v;
+              _niveauxError = null;
+            });
             _onChanged();
           },
         ),
+        if (_niveauxError != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFFCA5A5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: Color(0xFFB91C1C)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _niveauxError!,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFFB91C1C)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         if (_niveaux.contains('Sous-sol')) ...[
           const SizedBox(height: 12),
           FormTextField(
