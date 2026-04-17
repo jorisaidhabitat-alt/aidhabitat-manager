@@ -47,6 +47,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     _dossier = widget.dossier;
     _tabController = TabController(length: _tabs.length, vsync: this);
     _tabController.addListener(_handleTabChange);
+    // Re-read the dossier from the local DB on mount, in case patient
+    // fields changed elsewhere (dashboard, dossiers list, dossier screen).
+    _refreshDossier();
   }
 
   @override
@@ -62,6 +65,78 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   void _onDossierChanged(Dossier updated) {
     setState(() => _dossier = updated);
+  }
+
+  /// Re-fetches the dossier from the local database and updates state.
+  /// Called after any tab saves, so every other tab sees fresh patient /
+  /// housing / dossier fields (name, city, etc.) on the next rebuild.
+  Future<void> _refreshDossier() async {
+    final fresh = await _repository.fetchDossierById(widget.dossier.id);
+    if (!mounted || fresh == null) return;
+    // Only rebuild if something actually changed, to avoid flicker.
+    if (fresh.patient.firstName == _dossier.patient.firstName &&
+        fresh.patient.lastName == _dossier.patient.lastName &&
+        fresh.patient.city == _dossier.patient.city &&
+        fresh.patient.zipCode == _dossier.patient.zipCode &&
+        fresh.patient.phone == _dossier.patient.phone &&
+        fresh.patient.email == _dossier.patient.email &&
+        fresh.patient.address == _dossier.patient.address &&
+        fresh.patient.numberPeople == _dossier.patient.numberPeople) {
+      return;
+    }
+    setState(() => _dossier = fresh);
+  }
+
+  Widget _buildTabBar() {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(50),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        isScrollable: true,
+        indicator: BoxDecoration(
+          color: const Color(0xFFD8D0DC),
+          borderRadius: BorderRadius.circular(50),
+        ),
+        indicatorSize: TabBarIndicatorSize.label,
+        indicatorPadding:
+            const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
+        labelColor: const Color(0xFF554a63),
+        unselectedLabelColor: Colors.black87,
+        labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+        tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
+        dividerColor: Colors.transparent,
+        padding: const EdgeInsets.all(4),
+        tabAlignment: TabAlignment.start,
+        // Disable hover / splash / pressed overlay on tabs so hovering
+        // "Bénéficiaire" (and any other tab) does NOT show a gray fill.
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
+        splashFactory: NoSplash.splashFactory,
+      ),
+    );
+  }
+
+  Widget _buildBackButton() {
+    return InkWell(
+      onTap: widget.onBack,
+      borderRadius: BorderRadius.circular(50),
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          LucideIcons.arrowLeft,
+          color: Colors.black87,
+        ),
+      ),
+    );
   }
 
   @override
