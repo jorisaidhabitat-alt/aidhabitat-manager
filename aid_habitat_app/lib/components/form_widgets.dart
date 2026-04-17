@@ -61,9 +61,6 @@ class FormSubSectionChips extends StatelessWidget {
               decoration: BoxDecoration(
                 color: selected ? const Color(0xFF907CA1) : Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: selected ? const Color(0xFF907CA1) : Colors.grey.shade300,
-                ),
               ),
               child: Text(
                 labels[i],
@@ -145,9 +142,20 @@ class _FormTextFieldState extends State<FormTextField> {
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5),
+            ),
+            filled: true,
+            fillColor: widget.readOnly ? const Color(0xFFF8FAFC) : Colors.white,
             suffixText: widget.suffix,
             suffixStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
           ),
@@ -216,9 +224,20 @@ class _FormNumberFieldState extends State<FormNumberField> {
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5),
+            ),
+            filled: true,
+            fillColor: Colors.white,
             suffixText: widget.unit,
             suffixStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
           ),
@@ -254,20 +273,26 @@ class FormToggleGroup extends StatelessWidget {
       children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF64748B))),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: options.map((opt) {
+        SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            alignment: WrapAlignment.start,
+            crossAxisAlignment: WrapCrossAlignment.start,
+            spacing: 8,
+            runSpacing: 8,
+            children: options.map((opt) {
             final isSelected = opt == selected;
             return GestureDetector(
               onTap: () => onChanged?.call(opt),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: isSelected ? const Color(0xFF907CA1) : Colors.white,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isSelected ? const Color(0xFF907CA1) : Colors.grey.shade400,
+                    color: isSelected
+                        ? const Color(0xFF907CA1)
+                        : Colors.grey.shade300,
                   ),
                 ),
                 child: Text(
@@ -275,12 +300,13 @@ class FormToggleGroup extends StatelessWidget {
                   style: TextStyle(
                     color: isSelected ? Colors.white : Colors.black87,
                     fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
             );
           }).toList(),
+          ),
         ),
       ],
     );
@@ -316,7 +342,12 @@ class FormCheckbox extends StatelessWidget {
               decoration: BoxDecoration(
                 color: value ? const Color(0xFF907CA1) : Colors.white,
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: value ? const Color(0xFF907CA1) : Colors.grey.shade400),
+                border: Border.all(
+                  color: value
+                      ? const Color(0xFF907CA1)
+                      : Colors.grey.shade400,
+                  width: 1.5,
+                ),
               ),
               child: value ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
             ),
@@ -374,6 +405,499 @@ class FormMultiSelect extends StatelessWidget {
   }
 }
 
+// =============================================================================
+// Validation helpers (parity with React: isValidFrenchPhone / isValidEmail)
+// =============================================================================
+
+final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
+bool isValidEmail(String? value) {
+  final normalized = (value ?? '').trim();
+  if (normalized.isEmpty) return true;
+  return _emailPattern.hasMatch(normalized);
+}
+
+bool isValidFrenchPhone(String? value) {
+  final digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
+  if (digits.isEmpty) return true;
+  if (RegExp(r'^0[1-9]\d{8}$').hasMatch(digits)) return true;
+  if (RegExp(r'^33[1-9]\d{8}$').hasMatch(digits)) return true;
+  return false;
+}
+
+// =============================================================================
+// Section (equivalent to React `<Section title>` with a title row + body)
+// =============================================================================
+
+class FormSection extends StatelessWidget {
+  final Widget title;
+  final Widget child;
+  final EdgeInsets? padding;
+
+  const FormSection({
+    super.key,
+    required this.title,
+    required this.child,
+    this.padding,
+  });
+
+  factory FormSection.text(String titleText, {required Widget child}) {
+    return FormSection(
+      title: Text(
+        titleText,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF334155),
+          letterSpacing: 0.2,
+        ),
+      ),
+      child: child,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: padding ?? const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          title,
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Text field with warning suffix (parity with React `showWarningIcon` prop).
+// =============================================================================
+
+class FormTextFieldWithWarning extends StatefulWidget {
+  final String label;
+  final String value;
+  final ValueChanged<String>? onChanged;
+  final TextInputType? keyboardType;
+  final bool showWarning;
+  final String? warningText;
+  final String? placeholder;
+
+  const FormTextFieldWithWarning({
+    super.key,
+    required this.label,
+    this.value = '',
+    this.onChanged,
+    this.keyboardType,
+    this.showWarning = false,
+    this.warningText,
+    this.placeholder,
+  });
+
+  @override
+  State<FormTextFieldWithWarning> createState() =>
+      _FormTextFieldWithWarningState();
+}
+
+class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant FormTextFieldWithWarning oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value && _controller.text != widget.value) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextFormField(
+          controller: _controller,
+          keyboardType: widget.keyboardType,
+          style: const TextStyle(fontSize: 14),
+          decoration: InputDecoration(
+            isDense: true,
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(
+                color: widget.showWarning
+                    ? const Color(0xFFF59E0B)
+                    : const Color(0xFFCBD5E1),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(
+                color: Color(0xFF907CA1),
+                width: 1.5,
+              ),
+            ),
+            hintText: widget.placeholder,
+            hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+            suffixIcon: widget.showWarning
+                ? Tooltip(
+                    message: widget.warningText ?? 'Valeur invalide',
+                    child: const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFF59E0B),
+                      size: 18,
+                    ),
+                  )
+                : null,
+          ),
+          onChanged: widget.onChanged,
+        ),
+        if (widget.showWarning && widget.warningText != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 4),
+            child: Text(
+              widget.warningText!,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFFF59E0B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// Select dropdown (parity with React `<Select>`)
+// =============================================================================
+
+class FormSelectDropdown<T> extends StatelessWidget {
+  final String label;
+  final T? value;
+  final List<FormSelectOption<T>> options;
+  final ValueChanged<T?>? onChanged;
+  final String placeholder;
+
+  const FormSelectDropdown({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.options,
+    this.onChanged,
+    this.placeholder = 'Sélectionner...',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<T>(
+              value: value,
+              isExpanded: true,
+              isDense: true,
+              hint: Text(
+                placeholder,
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+              ),
+              items: options
+                  .map(
+                    (o) => DropdownMenuItem<T>(
+                      value: o.value,
+                      child: Text(
+                        o.label,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class FormSelectOption<T> {
+  final T value;
+  final String label;
+  const FormSelectOption({required this.value, required this.label});
+}
+
+// =============================================================================
+// Multi-select dropdown with checkboxes (parity with React MultiSelectDropdown)
+// =============================================================================
+
+class FormMultiSelectDropdown extends StatefulWidget {
+  final String label;
+  final List<String> options;
+  final Set<String> selected;
+  final ValueChanged<Set<String>>? onChanged;
+  final String placeholder;
+
+  const FormMultiSelectDropdown({
+    super.key,
+    required this.label,
+    required this.options,
+    required this.selected,
+    this.onChanged,
+    this.placeholder = 'Sélectionner...',
+  });
+
+  @override
+  State<FormMultiSelectDropdown> createState() =>
+      _FormMultiSelectDropdownState();
+}
+
+class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
+  bool _open = false;
+
+  String _summarize(List<String> picked) {
+    if (picked.isEmpty) return widget.placeholder;
+    if (picked.length <= 2) return picked.join(', ');
+    return '${picked.take(2).join(', ')} +${picked.length - 2}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = widget.options.where(widget.selected.contains).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => setState(() => _open = !_open),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _summarize(picked),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: picked.isNotEmpty
+                          ? const Color(0xFF334155)
+                          : const Color(0xFF94A3B8),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(
+                  _open ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                  size: 18,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_open)
+          Container(
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: ListView(
+                shrinkWrap: true,
+                children: widget.options.map((opt) {
+                  final checked = widget.selected.contains(opt);
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () {
+                      final next = Set<String>.from(widget.selected);
+                      if (checked) {
+                        next.remove(opt);
+                      } else {
+                        next.add(opt);
+                      }
+                      widget.onChanged?.call(next);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: checked
+                                  ? const Color(0xFF907CA1)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: checked
+                                ? const Icon(Icons.check,
+                                    size: 13, color: Colors.white)
+                                : null,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              opt,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// Occupant switcher (tabs-like row shown inside Section titles when 2+ occupants)
+// =============================================================================
+
+class OccupantSwitcher extends StatelessWidget {
+  final String title;
+  final List<String> occupantLabels;
+  final int activeIndex;
+  final ValueChanged<int>? onChanged;
+
+  const OccupantSwitcher({
+    super.key,
+    required this.title,
+    required this.occupantLabels,
+    required this.activeIndex,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF334155),
+            letterSpacing: 0.2,
+          ),
+        ),
+        if (occupantLabels.length > 1)
+          Wrap(
+            spacing: 6,
+            children: List.generate(occupantLabels.length, (i) {
+              final active = i == activeIndex;
+              return GestureDetector(
+                onTap: () => onChanged?.call(i),
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 64),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: active
+                        ? const Color(0xFFF4EFF7)
+                        : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    occupantLabels[i],
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: active
+                          ? const Color(0xFF554A63)
+                          : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+      ],
+    );
+  }
+}
+
 /// Save status indicator
 class SaveStatusIndicator extends StatelessWidget {
   final bool saving;
@@ -382,23 +906,31 @@ class SaveStatusIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      opacity: saving ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 300),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF907CA1))),
-            SizedBox(width: 6),
-            Text('Enregistrement...', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-          ],
-        ),
+    // Ne prend aucune place quand inactif (parité UX : pas d'espace blanc).
+    if (!saving) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              color: Color(0xFF907CA1),
+            ),
+          ),
+          SizedBox(width: 6),
+          Text(
+            'Enregistrement...',
+            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+          ),
+        ],
       ),
     );
   }
