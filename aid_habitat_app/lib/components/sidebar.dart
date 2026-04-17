@@ -56,9 +56,15 @@ class _SidebarState extends State<Sidebar> {
         ),
 // border-slate-100
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
+      child: SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: MediaQuery.of(context).size.height,
+          ),
+          child: IntrinsicHeight(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
           // Logo Area — click to return to dashboard
           Padding(
             padding: const EdgeInsets.only(top: 32.0),
@@ -77,8 +83,12 @@ class _SidebarState extends State<Sidebar> {
                 child: Container(
                   width: 48,
                   height: 48,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFCBD5E1), // slate-300
+                      width: 1.5,
+                    ),
                   ),
                   child: Stack(
                     children: [
@@ -151,7 +161,7 @@ class _SidebarState extends State<Sidebar> {
               child: Tooltip(
                 message: widget.isSyncing
                     ? 'Synchronisation automatique en cours…'
-                    : '${widget.pendingSyncCount} modification${widget.pendingSyncCount > 1 ? 's' : ''} en attente — sync auto au retour du réseau',
+                    : '${widget.pendingSyncCount} modification${widget.pendingSyncCount > 1 ? 's' : ''} en attente',
                 child: Container(
                   width: 40,
                   height: 40,
@@ -241,6 +251,9 @@ class _SidebarState extends State<Sidebar> {
             ),
           ),
         ],
+            ),
+          ),
+        ),
       ),
     );
   }
