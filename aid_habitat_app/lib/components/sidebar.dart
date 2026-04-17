@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import 'account_dialog.dart';
 import '../models/types.dart';
 
 class Sidebar extends StatefulWidget {
@@ -33,11 +32,12 @@ class _SidebarState extends State<Sidebar> {
     {
       'id': 'dashboard',
       'label': 'Accueil',
-      'icon': LucideIcons.layoutDashboard,
+      'icon': LucideIcons.home,
     },
     {'id': 'dossiers', 'label': 'Dossiers', 'icon': LucideIcons.folderOpen},
-    {'id': 'wiki', 'label': 'Wiki', 'icon': LucideIcons.bookOpen},
+    {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.bookOpen},
     {'id': 'precos', 'label': 'Caisses', 'icon': LucideIcons.heart},
+    {'id': 'anah', 'label': 'Anah', 'icon': LucideIcons.coins},
     if (widget.currentUser.role == LocalUserRole.admin)
       {'id': 'admin', 'label': 'Admin', 'icon': LucideIcons.shieldCheck},
   ];
@@ -53,38 +53,49 @@ class _SidebarState extends State<Sidebar> {
           topRight: Radius.circular(32), // rounded-r-[2rem]
           bottomRight: Radius.circular(32),
         ),
-        border: Border(
-          right: BorderSide(color: Color(0xFFF1F5F9)),
-        ), // border-slate-100
+// border-slate-100
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Logo Area
+          // Logo Area — click to return to dashboard
           Padding(
             padding: const EdgeInsets.only(top: 32.0),
-            child: Container(
-              width: 48,
-              height: 48,
+            child: Tooltip(
+              message: 'Accueil',
+              preferBelow: false,
+              margin: const EdgeInsets.only(left: 80),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.black, width: 2),
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(4),
               ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: const BoxDecoration(
-                        color: Colors.black,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
+              textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+              child: InkWell(
+                onTap: () => widget.onNavigate('dashboard'),
+                borderRadius: BorderRadius.circular(50),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
                   ),
-                ],
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -132,57 +143,44 @@ class _SidebarState extends State<Sidebar> {
             }).toList(),
           ),
 
-          // Sync status indicator
+          // Sync status indicator (passive — sync is automatic on network return)
           if (widget.isSyncing || widget.pendingSyncCount > 0)
             Padding(
               padding: const EdgeInsets.only(bottom: 8.0),
               child: Tooltip(
                 message: widget.isSyncing
-                    ? 'Synchronisation en cours…'
-                    : '${widget.pendingSyncCount} modification${widget.pendingSyncCount > 1 ? 's' : ''} en attente',
-                child: InkWell(
-                  onTap: widget.onSyncTap,
-                  borderRadius: BorderRadius.circular(50),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: widget.isSyncing
-                          ? const Color(0xFFFFF7ED) // orange-50
-                          : const Color(0xFFFEF3C7), // amber-100
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: widget.isSyncing
-                            ? const Color(0xFFFB923C) // orange-400
-                            : const Color(0xFFF59E0B), // amber-500
-                      ),
-                    ),
-                    child: widget.isSyncing
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: Center(
-                              child: SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFFFB923C),
-                                ),
-                              ),
-                            ),
-                          )
-                        : Center(
-                            child: Text(
-                              '${widget.pendingSyncCount}',
-                              style: const TextStyle(
-                                color: Color(0xFFD97706), // amber-600
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
+                    ? 'Synchronisation automatique en cours…'
+                    : '${widget.pendingSyncCount} modification${widget.pendingSyncCount > 1 ? 's' : ''} en attente — sync auto au retour du réseau',
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: widget.isSyncing
+                        ? const Color(0xFFFFF7ED)
+                        : const Color(0xFFFEF3C7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: widget.isSyncing
+                      ? const Center(
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFFFB923C),
                             ),
                           ),
-                  ),
+                        )
+                      : Center(
+                          child: Text(
+                            '${widget.pendingSyncCount}',
+                            style: const TextStyle(
+                              color: Color(0xFFD97706),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -222,29 +220,18 @@ class _SidebarState extends State<Sidebar> {
                 ),
                 const SizedBox(height: 16),
                 Tooltip(
-                  message: 'Compte local',
+                  message: 'Paramètres',
                   child: InkWell(
-                    onTap: () async {
-                      final didChangePassword = await showDialog<bool>(
-                        context: context,
-                        builder: (dialogContext) =>
-                            AccountDialog(currentUser: widget.currentUser),
-                      );
-                      if (didChangePassword != true || !context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Mot de passe local mis à jour'),
-                        ),
-                      );
-                    },
+                    onTap: () => widget.onNavigate('settings'),
                     borderRadius: BorderRadius.circular(50),
                     child: Container(
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: widget.currentView == 'settings'
+                            ? const Color(0xFFE8DEF0)
+                            : const Color(0xFFF8FAFC),
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
                       child: const Icon(
                         LucideIcons.settings,
@@ -266,7 +253,6 @@ class _SidebarState extends State<Sidebar> {
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
                       child: const Icon(
                         LucideIcons.logOut,
