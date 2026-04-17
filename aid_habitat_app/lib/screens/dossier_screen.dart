@@ -370,8 +370,14 @@ class _DossierScreenState extends State<DossierScreen> {
   // Quick actions
   // ---------------------------------------------------------------------------
   Widget _buildQuickActions(BuildContext context) {
-    return Row(
-      children: [
+    // IntrinsicHeight + CrossAxisAlignment.stretch force the two quick-action
+    // buttons to share the same height (the taller one wins) so "Espace
+    // Documents" and "Visite Domicile" are always visually aligned,
+    // regardless of how their sub-labels wrap.
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
         Expanded(
           child: _QuickActionButton(
             icon: LucideIcons.paperclip,
@@ -396,8 +402,8 @@ class _DossierScreenState extends State<DossierScreen> {
             icon: LucideIcons.home,
             label: 'Visite Domicile',
             subLabel: 'Relevés, mesures, photos...',
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => Scaffold(
@@ -408,11 +414,46 @@ class _DossierScreenState extends State<DossierScreen> {
                   ),
                 ),
               );
+              // On return from the visit report, re-read the patient row
+              // so any change made there (firstName, lastName, city…) is
+              // reflected in the "informations bénéficiaire" card here.
+              await _refreshFromRepository();
             },
           ),
         ),
-      ],
+        ],
+      ),
     );
+  }
+
+  /// Re-reads the patient row from SQLite and hydrates the local form
+  /// state. Called on return from the visit report so edits made there
+  /// propagate back to the dossier screen without requiring a full
+  /// navigation refresh.
+  Future<void> _refreshFromRepository() async {
+    if (!mounted) return;
+    final fresh = await _repository.fetchDossierById(widget.dossier.id);
+    if (fresh == null || !mounted) return;
+    // Preserve in-flight edits: only copy fields that aren't currently
+    // being typed (i.e. no pending save).
+    if (_saveTimer?.isActive == true) return;
+    setState(() {
+      _firstName = fresh.patient.firstName;
+      _lastName = fresh.patient.lastName;
+      _city = fresh.patient.city;
+      _zipCode = fresh.patient.zipCode;
+      _cityId = fresh.patient.cityId;
+      _incomeCategory = fresh.patient.incomeCategory;
+      _natureAccompagnement = fresh.natureAccompagnement;
+      final n = fresh.patient.numberPeople ?? 0;
+      if (n <= 0) {
+        _numberPeople = '1';
+      } else if (n >= 5) {
+        _numberPeople = '5';
+      } else {
+        _numberPeople = n.toString();
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------
