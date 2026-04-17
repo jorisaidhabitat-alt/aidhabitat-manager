@@ -9,9 +9,22 @@ import '../services/auth_service.dart';
 import '../services/data_service.dart';
 
 class AccountDialog extends StatefulWidget {
-  const AccountDialog({super.key, required this.currentUser});
+  const AccountDialog({
+    super.key,
+    required this.currentUser,
+    this.onLogout,
+    this.onOpenAdmin,
+  });
 
   final LocalAppUser currentUser;
+
+  /// Called when the user taps "Se déconnecter". The dialog pops itself
+  /// first, then invokes the callback so navigation can happen safely.
+  final Future<void> Function()? onLogout;
+
+  /// Called when the user taps "Gérer les accès". Admin-only shortcut that
+  /// navigates to the admin members screen. If null, the button is hidden.
+  final VoidCallback? onOpenAdmin;
 
   @override
   State<AccountDialog> createState() => _AccountDialogState();
@@ -163,10 +176,6 @@ class _AccountDialogState extends State<AccountDialog> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: const Color(0xFFF3F0F5),
-                                border: Border.all(
-                                  color: const Color(0xFFE2E8F0),
-                                  width: 2,
-                                ),
                                 image: _photoUrl.isNotEmpty
                                     ? DecorationImage(
                                         image: NetworkImage(_photoUrl),
@@ -264,6 +273,44 @@ class _AccountDialogState extends State<AccountDialog> {
                     widget.currentUser.role.label,
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
+                  const SizedBox(height: 18),
+                  // Quick actions: Admin access (if admin) + Logout
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (widget.onOpenAdmin != null)
+                        OutlinedButton.icon(
+                          onPressed: _isSubmitting
+                              ? null
+                              : () {
+                                  Navigator.of(context).pop();
+                                  widget.onOpenAdmin!();
+                                },
+                          icon: const Icon(LucideIcons.shieldCheck, size: 16),
+                          label: const Text('Gérer les accès'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF334155),
+                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          ),
+                        ),
+                      if (widget.onLogout != null)
+                        OutlinedButton.icon(
+                          onPressed: _isSubmitting
+                              ? null
+                              : () async {
+                                  Navigator.of(context).pop();
+                                  await widget.onLogout!();
+                                },
+                          icon: const Icon(LucideIcons.logOut, size: 16),
+                          label: const Text('Se déconnecter'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFB91C1C),
+                            side: const BorderSide(color: Color(0xFFFCA5A5)),
+                          ),
+                        ),
+                    ],
+                  ),
                   if (_isBootstrapPasswordActive) ...[
                     const SizedBox(height: 18),
                     Container(
@@ -272,7 +319,6 @@ class _AccountDialogState extends State<AccountDialog> {
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFFBEB),
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFFDE68A)),
                       ),
                       child: const Text(
                         'Le mot de passe initial du poste est encore actif. Remplacez-le avant usage terrain.',
@@ -368,18 +414,9 @@ class _AccountDialogState extends State<AccountDialog> {
       hintText: hintText,
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5),
-      ),
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
     );
   }
