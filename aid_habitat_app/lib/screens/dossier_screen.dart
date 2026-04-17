@@ -5,13 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/commune_field_group.dart';
 import '../components/form_widgets.dart';
 import '../components/notes_widget.dart';
 import '../models/types.dart';
 import '../services/dossier_repository.dart';
+import '../services/references_service.dart';
 import 'conflict_resolution_screen.dart';
 import 'documents_screen.dart';
-import 'start_visit_screen.dart';
+import 'visit_report_screen.dart';
 
 class DossierScreen extends StatefulWidget {
   final Dossier dossier;
@@ -46,6 +48,12 @@ class _DossierScreenState extends State<DossierScreen> {
   late String _address;
   late String _city;
   late String _zipCode;
+  late String _cityId;
+
+  // References (commune autocomplete)
+  final ReferencesService _references = ReferencesService();
+  StreamSubscription<ReferencesPayload>? _refSub;
+  List<CommuneOption> _communeOptions = const [];
 
   // -- Santé --
   late bool _apa;
@@ -79,6 +87,26 @@ class _DossierScreenState extends State<DossierScreen> {
     super.initState();
     _repository = widget.repository ?? DossierRepository();
     _loadFromDossier();
+
+    // Commune autocomplete reference data
+    _references.ensureLoaded();
+    _communeOptions = _mapCommunes();
+    _refSub = _references.onLoaded.listen((_) {
+      if (!mounted) return;
+      setState(() => _communeOptions = _mapCommunes());
+    });
+  }
+
+  List<CommuneOption> _mapCommunes() {
+    return _references.communes
+        .map((c) => CommuneOption(
+              id: c.id,
+              label: c.label,
+              zipCode: c.zipCode,
+              epciId: c.epciId,
+              epciLabel: c.epciLabel,
+            ))
+        .toList();
   }
 
   void _loadFromDossier() {
@@ -93,6 +121,7 @@ class _DossierScreenState extends State<DossierScreen> {
     _address = p.address;
     _city = p.city;
     _zipCode = p.zipCode;
+    _cityId = p.cityId;
 
     _apa = p.apa;
     _invalidity = p.invalidity;
@@ -113,6 +142,7 @@ class _DossierScreenState extends State<DossierScreen> {
 
   @override
   void dispose() {
+    _refSub?.cancel();
     _saveTimer?.cancel();
     super.dispose();
   }
@@ -140,6 +170,7 @@ class _DossierScreenState extends State<DossierScreen> {
         'address': _address,
         'city': _city,
         'zip_code': _zipCode,
+        'city_id': _cityId,
         'family_situation': _familySituation,
         'apa': _apa ? 1 : 0,
         'invalidity': _invalidity ? 1 : 0,
@@ -251,7 +282,6 @@ class _DossierScreenState extends State<DossierScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.grey.shade200),
                 ),
                 child: const Icon(
                   LucideIcons.arrowLeft,
@@ -370,9 +400,11 @@ class _DossierScreenState extends State<DossierScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => StartVisitScreen(
-                    dossier: widget.dossier,
-                    onBack: () => Navigator.pop(context),
+                  builder: (_) => Scaffold(
+                    body: VisitReportScreen(
+                      dossier: widget.dossier,
+                      onBack: () => Navigator.pop(context),
+                    ),
                   ),
                 ),
               );
@@ -392,7 +424,6 @@ class _DossierScreenState extends State<DossierScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -510,34 +541,19 @@ class _DossierScreenState extends State<DossierScreen> {
           },
         ),
         const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 2,
-              child: FormTextField(
-                label: 'Ville',
-                value: _city,
-                onChanged: (v) {
-                  _city = v;
-                  _onChanged();
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 1,
-              child: FormTextField(
-                label: 'Code postal',
-                value: _zipCode,
-                keyboardType: TextInputType.number,
-                onChanged: (v) {
-                  _zipCode = v;
-                  _onChanged();
-                },
-              ),
-            ),
-          ],
+        CommuneFieldGroup(
+          city: _city,
+          zipCode: _zipCode,
+          cityId: _cityId,
+          options: _communeOptions,
+          onChanged: (update) {
+            setState(() {
+              if (update.city != null) _city = update.city!;
+              if (update.zipCode != null) _zipCode = update.zipCode!;
+              if (update.cityId != null) _cityId = update.cityId!;
+            });
+            _scheduleSave();
+          },
         ),
       ],
     );
@@ -705,49 +721,9 @@ class _DossierScreenState extends State<DossierScreen> {
   // Right column: Notes
   // ---------------------------------------------------------------------------
   Widget _buildNotesColumn() {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
-            ),
-            border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Notes Rapides',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(50),
-                ),
-                child: const Text(
-                  'Sauvegarde auto',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: NotesWidget(
-            patientId: widget.dossier.patient.id,
-            tabKey: 'notes_rapides',
-          ),
-        ),
-      ],
+    return NotesWidget(
+      patientId: widget.dossier.patient.id,
+      tabKey: 'notes_rapides',
     );
   }
 }
@@ -819,7 +795,6 @@ class _QuickActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.grey.shade200),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

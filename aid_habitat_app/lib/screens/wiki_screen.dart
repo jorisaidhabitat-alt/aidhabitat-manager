@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
@@ -26,6 +30,12 @@ class _WikiScreenState extends State<WikiScreen> {
   void initState() {
     super.initState();
     _loadItems();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadItems() async {
@@ -68,11 +78,19 @@ class _WikiScreenState extends State<WikiScreen> {
     return tags;
   }
 
+  /// Combined tag + search filter, matching the React `filteredItems` useMemo:
+  /// haystack = "title description tags.join(' ')" lowercased.
   List<WikiItem> get _filteredItems {
-    if (_selectedTag == null) return _items;
-    return _items
-        .where((item) => item.tags.contains(_selectedTag))
-        .toList(growable: false);
+    final search = _searchTerm.trim().toLowerCase();
+    return _items.where((item) {
+      final matchesTag =
+          _selectedTag == null || item.tags.contains(_selectedTag);
+      if (!matchesTag) return false;
+      if (search.isEmpty) return true;
+      final haystack = '${item.title} ${item.description} ${item.tags.join(' ')}'
+          .toLowerCase();
+      return haystack.contains(search);
+    }).toList(growable: false);
   }
 
   Future<void> _openItem(WikiItem item) async {
@@ -115,6 +133,7 @@ class _WikiScreenState extends State<WikiScreen> {
         description: draft.description,
         category: draft.category,
         tags: draft.tags,
+        imageDataUrl: draft.imageDataUrl,
       );
       if (!mounted) return;
       setState(() {
@@ -189,25 +208,38 @@ class _WikiScreenState extends State<WikiScreen> {
             const Expanded(child: Center(child: Text('Aucun element trouve')))
           else
             Expanded(
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 280,
-                  mainAxisSpacing: 20,
-                  crossAxisSpacing: 20,
-                  childAspectRatio: 0.88,
+              child: LayoutBuilder(
+                builder: (ctx, constraints) {
+                  // Grille responsive : 5 col large, 4 moyen, 3 tablette, 2 mobile.
+                  final crossAxis = constraints.maxWidth > 1200
+                      ? 5
+                      : constraints.maxWidth > 900
+                          ? 4
+                          : constraints.maxWidth > 600
+                              ? 3
+                              : 2;
+                  return GridView.builder(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxis,
+                  mainAxisSpacing: 24,
+                  crossAxisSpacing: 24,
+                  // Card layout: padding(16) + image(square, ~W-32) + gap(16) +
+                  // title(~22) + gap(4) + subtitle(~14) + padding(16). Ratio
+                  // must leave enough vertical room for the text below.
+                  childAspectRatio: 0.68,
                 ),
                 itemCount: _filteredItems.length,
                 itemBuilder: (context, index) {
                   final item = _filteredItems[index];
+                  final primaryTag = item.tags.isNotEmpty ? item.tags.first : null;
                   return InkWell(
                     onTap: () => _openItem(item),
                     borderRadius: BorderRadius.circular(28),
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Colors.transparent,
                         borderRadius: BorderRadius.circular(28),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,58 +273,86 @@ class _WikiScreenState extends State<WikiScreen> {
                                           color: Colors.black54,
                                         ),
                                       ),
+                                    )
+                                  else
+                                    const Center(
+                                      child: Icon(
+                                        LucideIcons.image,
+                                        size: 42,
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+                                  // ring-1 ring-black/10 equivalent
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.1,
+                                            ),
+                                            width: 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  // Tag badge overlay bottom-left
+                                  if (primaryTag != null)
+                                    Positioned(
+                                      left: 8,
+                                      bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.55,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          primaryTag,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           Text(
                             item.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
+                              color: Color(0xFF1E293B),
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            item.description.isEmpty
-                                ? 'Aucune description'
-                                : item.description,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              height: 1.35,
-                            ),
-                          ),
-                          if (item.tags.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: item.tags
-                                  .map(
-                                    (tag) => Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(999),
-                                      ),
-                                      child: Text(
-                                        tag,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
+                          if (primaryTag != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              primaryTag.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF94A3B8),
+                                letterSpacing: 1.2,
+                              ),
                             ),
                           ],
                         ],
@@ -300,9 +360,26 @@ class _WikiScreenState extends State<WikiScreen> {
                     ),
                   );
                 },
+              );
+                },
               ),
             ),
             ],
+          ),
+        ),
+        // Floating "+" button (FAB) bottom-right, matches the React layout.
+        Positioned(
+          right: 24,
+          bottom: 24,
+          child: Tooltip(
+            message: 'Ajouter un élément',
+            child: FloatingActionButton(
+              onPressed: _createItem,
+              backgroundColor: const Color(0xFF907CA1),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              child: const Icon(LucideIcons.plus, size: 28),
+            ),
           ),
         ),
       ],
@@ -361,26 +438,27 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final selectedTag = _selectedTags.isNotEmpty ? _selectedTags.first : '';
+
     return Dialog(
+      backgroundColor: Colors.white,
       insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 920, maxHeight: 720),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFB9D4C2),
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
+        constraints: const BoxConstraints(maxWidth: 1040, maxHeight: 720),
+        child: Stack(
+          children: [
+            Row(
+              children: [
+                // Left side: image on neutral slate-100 background (matches React)
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    color: const Color(0xFFF1F5F9),
                     child: widget.item.imageUrl.isNotEmpty
                         ? Image.network(
-                            widget.item.imageUrl,
+                            resolveMediaUrl(widget.item.imageUrl),
                             fit: BoxFit.contain,
                             errorBuilder: (_, __, ___) => const Center(
                               child: Icon(
@@ -399,98 +477,152 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                           ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Fiche inspiration',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _titleController,
-                      decoration: _decoration('Titre'),
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: TextField(
-                        controller: _descriptionController,
-                        maxLines: null,
-                        expands: true,
-                        decoration: _decoration('Description'),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: widget.availableTags
-                          .map(
-                            (tag) => FilterChip(
-                              label: Text(tag),
-                              selected: _selectedTags.contains(tag),
-                              onSelected: (_) {
+                // Right side: form on white background
+                Expanded(
+                  flex: 1,
+                  child: Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.all(28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _FormLabel(text: 'Titre'),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _titleController,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                          decoration: _inputDecoration(),
+                        ),
+                        const SizedBox(height: 20),
+                        _FormLabel(text: 'Tag'),
+                        const SizedBox(height: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: widget.availableTags.contains(selectedTag)
+                                  ? selectedTag
+                                  : (selectedTag.isEmpty ? '' : null),
+                              isExpanded: true,
+                              hint: const Text('Aucun tag'),
+                              items: [
+                                const DropdownMenuItem(
+                                  value: '',
+                                  child: Text('Aucun tag'),
+                                ),
+                                ...widget.availableTags.map(
+                                  (tag) => DropdownMenuItem(
+                                    value: tag,
+                                    child: Text(tag),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (value) {
                                 setState(() {
-                                  if (_selectedTags.contains(tag)) {
-                                    _selectedTags.remove(tag);
-                                  } else {
-                                    _selectedTags.add(tag);
-                                  }
+                                  _selectedTags =
+                                      (value == null || value.isEmpty)
+                                          ? []
+                                          : [value];
                                 });
                               },
                             ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Fermer'),
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: () {
-                            Navigator.of(context).pop(
-                              widget.item.copyWith(
-                                title: _titleController.text.trim(),
-                                description: _descriptionController.text.trim(),
-                                tags: _selectedTags,
-                              ),
-                            );
-                          },
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF907CA1),
-                            foregroundColor: Colors.white,
                           ),
-                          child: const Text('Enregistrer'),
+                        ),
+                        const SizedBox(height: 20),
+                        _FormLabel(text: 'Description'),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _descriptionController,
+                            maxLines: null,
+                            expands: true,
+                            textAlignVertical: TextAlignVertical.top,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF475569),
+                              height: 1.5,
+                            ),
+                            decoration: _inputDecoration(),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () {
+                              Navigator.of(context).pop(
+                                widget.item.copyWith(
+                                  title: _titleController.text.trim(),
+                                  description:
+                                      _descriptionController.text.trim(),
+                                  tags: _selectedTags,
+                                ),
+                              );
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF907CA1),
+                              foregroundColor: Colors.white,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            child: const Text(
+                              'Enregistrer',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ],
+                  ),
+                ),
+              ],
+            ),
+            // Close button top-right (over the image)
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.35),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.close, color: Colors.white, size: 18),
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  InputDecoration _decoration(String label) {
+  InputDecoration _inputDecoration() {
     return InputDecoration(
-      labelText: label,
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
         borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -498,6 +630,29 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
         borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5),
+      ),
+    );
+  }
+}
+
+/// Uppercase tracking-wider slate-500 label, equivalent of React's FormBlock.
+class _FormLabel extends StatelessWidget {
+  const _FormLabel({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF64748B),
+        letterSpacing: 1.2,
       ),
     );
   }
@@ -508,12 +663,14 @@ class _WikiItemDraft {
   final String description;
   final String category;
   final List<String> tags;
+  final String imageDataUrl;
 
   const _WikiItemDraft({
     required this.title,
     required this.description,
     required this.category,
     required this.tags,
+    this.imageDataUrl = '',
   });
 }
 
@@ -531,8 +688,12 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _categoryController =
       TextEditingController(text: 'Autre');
+  final ImagePicker _imagePicker = ImagePicker();
   final List<String> _selectedTags = [];
   bool _submitting = false;
+  bool _pickingImage = false;
+  Uint8List? _pickedImageBytes;
+  String _pickedImageExt = 'jpg';
 
   @override
   void dispose() {
@@ -540,6 +701,48 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
     _descriptionController.dispose();
     _categoryController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    setState(() => _pickingImage = true);
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      final ext = picked.path.split('.').last.toLowerCase();
+      if (!mounted) return;
+      setState(() {
+        _pickedImageBytes = bytes;
+        _pickedImageExt = switch (ext) {
+          'png' => 'png',
+          'webp' => 'webp',
+          'gif' => 'gif',
+          _ => 'jpg',
+        };
+      });
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image indisponible : $err')),
+      );
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
+    }
+  }
+
+  String _buildImageDataUrl() {
+    if (_pickedImageBytes == null) return '';
+    final mime = switch (_pickedImageExt) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      _ => 'image/jpeg',
+    };
+    return 'data:$mime;base64,${base64Encode(_pickedImageBytes!)}';
   }
 
   void _submit() {
@@ -558,6 +761,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
           ? 'Autre'
           : _categoryController.text.trim(),
       tags: List.unmodifiable(_selectedTags),
+      imageDataUrl: _buildImageDataUrl(),
     ));
   }
 
@@ -578,6 +782,8 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 20),
+              _buildImageSection(),
+              const SizedBox(height: 16),
               TextField(
                 controller: _titleController,
                 decoration: _decoration('Titre'),
@@ -668,13 +874,113 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
       labelText: label,
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+    );
+  }
+
+  Widget _buildImageSection() {
+    if (_pickedImageBytes != null) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(
+              _pickedImageBytes!,
+              width: 128,
+              height: 96,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Image sélectionnée',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '.${_pickedImageExt.toUpperCase()}',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: _submitting || _pickingImage ? null : _pickImage,
+                      icon: const Icon(LucideIcons.refreshCw, size: 14),
+                      label: const Text('Changer'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF907CA1),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    TextButton.icon(
+                      onPressed: _submitting
+                          ? null
+                          : () => setState(() => _pickedImageBytes = null),
+                      icon: const Icon(LucideIcons.x, size: 14),
+                      label: const Text('Retirer'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFB91C1C),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return InkWell(
+      onTap: _submitting || _pickingImage ? null : _pickImage,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFFCBD5E1),
+            style: BorderStyle.solid,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_pickingImage)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF907CA1),
+                ),
+              )
+            else
+              const Icon(LucideIcons.image, size: 18, color: Color(0xFF64748B)),
+            const SizedBox(width: 10),
+            Text(
+              _pickingImage ? 'Chargement…' : 'Choisir une image (optionnel)',
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -701,9 +1007,6 @@ class _FilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: isActive ? const Color(0xFF907CA1) : Colors.white,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: isActive ? const Color(0xFF907CA1) : const Color(0xFFE2E8F0),
-          ),
         ),
         child: Text(
           label,
