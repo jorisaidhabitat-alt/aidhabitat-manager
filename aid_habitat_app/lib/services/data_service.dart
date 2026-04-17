@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import '../models/types.dart';
@@ -47,6 +48,20 @@ class DataService {
     return _dossierRepository.fetchAllDossiers();
   }
 
+  /// Create a new beneficiary + dossier locally (works offline).
+  /// A sync operation is automatically enqueued.
+  Future<Dossier> createDossierOffline({
+    required String firstName,
+    required String lastName,
+    String ergoId = '',
+  }) async {
+    return _dossierRepository.createDossierOffline(
+      firstName: firstName,
+      lastName: lastName,
+      ergoId: ergoId,
+    );
+  }
+
   Future<List<WikiItem>> fetchWikiItems() async {
     return _wikiRepository.fetchAllItems();
   }
@@ -85,6 +100,46 @@ class DataService {
       patientLocalId: patientLocalId,
       updates: updates,
     );
+  }
+
+  Future<WikiItem> createWikiItem({
+    required String title,
+    required String description,
+    required String category,
+    required List<String> tags,
+    String imageDataUrl = '',
+  }) async {
+    final created = await _nocodbApiClient.createWikiItem(
+      title: title,
+      description: description,
+      category: category,
+      tags: tags,
+      imageDataUrl: imageDataUrl,
+    );
+    await _wikiRepository.mergeRemoteItems([created]);
+    return created;
+  }
+
+  /// Uploads a [File] as the current user's profile photo.
+  /// Reads the file, base64-encodes it as a `data:<mime>;base64,...` URL,
+  /// and POSTs to the backend. Returns the resolved public photo URL.
+  Future<String> uploadProfilePhoto(File imageFile) async {
+    final bytes = await imageFile.readAsBytes();
+    final extension = imageFile.path.split('.').last.toLowerCase();
+    final mimeType = switch (extension) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      _ => 'image/jpeg',
+    };
+    final base64Data = base64Encode(bytes);
+    final dataUrl = 'data:$mimeType;base64,$base64Data';
+    return _nocodbApiClient.uploadProfilePhoto(dataUrl);
+  }
+
+  Future<Map<String, dynamic>> fetchAnahStatus() async {
+    return _nocodbApiClient.fetchAnahStatus();
   }
 
   Future<List<RetirementFund>> fetchRetirementFunds() async {

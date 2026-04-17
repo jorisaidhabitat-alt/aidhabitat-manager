@@ -23,6 +23,14 @@ class NocodbApiClient {
 
   final http.Client _client;
 
+  /// Default timeout for regular JSON requests. Kept short so slow networks
+  /// fail fast and the sync engine can retry with backoff instead of hanging.
+  static const Duration _defaultTimeout = Duration(seconds: 20);
+
+  /// Longer timeout for multipart uploads (documents), which can legitimately
+  /// take longer on mobile networks.
+  static const Duration _uploadTimeout = Duration(seconds: 60);
+
   String get _baseUrl => AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
 
   Map<String, String> get _headers => {
@@ -36,7 +44,7 @@ class NocodbApiClient {
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/dossiers'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote dossiers fetch failed (${response.statusCode})');
@@ -93,7 +101,7 @@ class NocodbApiClient {
       Uri.parse('$_baseUrl/api/dossiers/$dossierId'),
       headers: _headers,
       body: jsonEncode(updates),
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
@@ -140,8 +148,9 @@ class NocodbApiClient {
       await http.MultipartFile.fromPath('file', file.path, filename: fileName),
     );
 
-    final streamed = await _client.send(request);
-    final responseBody = await streamed.stream.bytesToString();
+    final streamed = await _client.send(request).timeout(_uploadTimeout);
+    final responseBody =
+        await streamed.stream.bytesToString().timeout(_uploadTimeout);
 
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
       throw Exception(
@@ -177,7 +186,7 @@ class NocodbApiClient {
         'pageNumber': pageNumber,
         'drawingJson': drawingJson,
       }),
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote note sync failed (${response.statusCode})');
@@ -198,7 +207,7 @@ class NocodbApiClient {
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/documents/$patientId'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote documents fetch failed (${response.statusCode})');
@@ -212,13 +221,45 @@ class NocodbApiClient {
         .toList();
   }
 
+  /// Authenticate against the Express API and return the session token.
+  /// Unlike other methods, this does not require [AppConfig.hasRemoteConfig]
+  /// since we're establishing it.
+  Future<String?> loginToRemote({
+    required String email,
+    required String password,
+  }) async {
+    if (AppConfig.apiBaseUrl.trim().isEmpty) return null;
+
+    try {
+      final response = await _client.post(
+        Uri.parse('$_baseUrl/api/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      ).timeout(_defaultTimeout);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+      if (payload['success'] != true) return null;
+
+      final data =
+          (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final token = data['token']?.toString();
+      return (token != null && token.isNotEmpty) ? token : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchLocalAuthState() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/auth/local-state'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -240,7 +281,7 @@ class NocodbApiClient {
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/wiki-library'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -254,6 +295,117 @@ class NocodbApiClient {
         .whereType<Map>()
         .map((item) => _mapWikiItem(item.cast<String, dynamic>()))
         .toList();
+  }
+
+  Future<WikiItem> createWikiItem({
+    required String title,
+    required String description,
+    required String category,
+    required List<String> tags,
+    String imageDataUrl = '',
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final body = <String, dynamic>{
+      'title': title,
+      'description': description,
+      'category': category,
+      'tags': tags,
+    };
+    if (imageDataUrl.isNotEmpty) body['imageDataUrl'] = imageDataUrl;
+
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/wiki-library'),
+          headers: _headers,
+          body: jsonEncode(body),
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote wiki item create failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final saved = (data['item'] as Map?)?.cast<String, dynamic>();
+    if (saved == null) {
+      throw Exception('Unexpected wiki item payload');
+    }
+    return _mapWikiItem(saved);
+  }
+
+  /// Uploads a base64 data URL image as profile photo.
+  /// Returns the resolved public photo URL.
+  Future<String> uploadProfilePhoto(String imageDataUrl) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/profile/photo'),
+          headers: _headers,
+          body: jsonEncode({'imageDataUrl': imageDataUrl}),
+        )
+        .timeout(_uploadTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Profile photo upload failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final photoUrl = data['photoUrl']?.toString() ?? '';
+    return photoUrl;
+  }
+
+  /// Fetches ANAH service status.
+  /// Returns a map with `available`, `registrationUrl`, `publicUrl`, `reason`, `checkedAt`.
+  Future<Map<String, dynamic>> fetchAnahStatus() async {
+    if (!AppConfig.hasRemoteConfig) {
+      // Fallback: assume offline, but still provide the public URLs so the
+      // "Ouvrir MaPrimeAdapt'" button works without a backend.
+      return {
+        'available': false,
+        'registrationUrl': 'https://monprojet.anah.gouv.fr/',
+        'publicUrl': 'https://www.anah.gouv.fr/',
+        'reason': 'Configuration distante manquante',
+        'checkedAt': DateTime.now().toIso8601String(),
+      };
+    }
+
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/anah-status'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('ANAH status fetch failed (${response.statusCode})');
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final status =
+        (data['status'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return {
+      'available': status['available'] as bool? ?? false,
+      'registrationUrl':
+          status['registrationUrl']?.toString() ?? 'https://monprojet.anah.gouv.fr/',
+      'publicUrl':
+          status['publicUrl']?.toString() ?? 'https://www.anah.gouv.fr/',
+      'reason': status['reason']?.toString() ?? '',
+      'checkedAt':
+          status['checkedAt']?.toString() ?? DateTime.now().toIso8601String(),
+    };
   }
 
   Future<WikiItem> updateWikiItem({
@@ -273,7 +425,7 @@ class NocodbApiClient {
         'tags': item.tags,
         'category': item.category,
       }),
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -296,7 +448,7 @@ class NocodbApiClient {
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/retirement-funds'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -333,7 +485,7 @@ class NocodbApiClient {
         'therapistNote': fund.therapistNote,
         'website': fund.website,
       }),
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -356,7 +508,7 @@ class NocodbApiClient {
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/admin/access-members'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -381,7 +533,7 @@ class NocodbApiClient {
       Uri.parse('$_baseUrl/api/auth/provision'),
       headers: _headers,
       body: jsonEncode({'email': email, 'forceReset': true}),
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote password reset failed (${response.statusCode})');
@@ -410,7 +562,8 @@ class NocodbApiClient {
     final uri = Uri.parse(
       '$_baseUrl/api/note-pages/$patientId',
     ).replace(queryParameters: {'tabKey': tabKey, 'pageNumber': '$pageNumber'});
-    final response = await _client.get(uri, headers: _headers);
+    final response =
+        await _client.get(uri, headers: _headers).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote note fetch failed (${response.statusCode})');

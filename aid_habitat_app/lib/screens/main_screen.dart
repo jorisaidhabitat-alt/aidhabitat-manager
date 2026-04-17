@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../components/sidebar.dart';
 import 'admin_access_screen.dart';
+import 'anah_screen.dart';
 import 'create_beneficiary_screen.dart';
 import 'dashboard_screen.dart';
 import 'dossiers_list_screen.dart';
 import 'dossier_screen.dart';
 import 'retirement_funds_screen.dart';
+import 'settings_screen.dart';
 import 'wiki_screen.dart';
 import '../models/types.dart';
 import '../services/auth_service.dart';
@@ -63,7 +65,8 @@ class _MainScreenState extends State<MainScreen> {
   void dispose() {
     _syncSubscription?.cancel();
     _connectivitySubscription?.cancel();
-    _syncEngine.dispose();
+    // SyncEngine is a process-lifetime singleton — do not dispose it with the
+    // screen, or later screens will lose the stream and the engine.
     super.dispose();
   }
 
@@ -246,6 +249,8 @@ class _MainScreenState extends State<MainScreen> {
           isSyncing: _isSyncing,
           onSyncNow: _handleSyncNow,
           onSelectDossier: _handleSelectDossier,
+          userName: widget.currentUser.displayName,
+          onNavigateToDossiers: () => _handleViewChange('dossiers'),
         );
       case 'create_beneficiary':
         return CreateBeneficiaryScreen(
@@ -262,12 +267,20 @@ class _MainScreenState extends State<MainScreen> {
         return const WikiScreen();
       case 'precos':
         return const RetirementFundsScreen();
+      case 'anah':
+        return const AnahScreen();
       case 'admin':
         return widget.currentUser.role == LocalUserRole.admin
             ? const AdminAccessScreen()
             : const Center(child: Text('Accès administrateur requis'));
+      case 'settings':
+        return SettingsScreen(
+          user: widget.currentUser,
+          onLogout: widget.onLogout,
+        );
       default:
         return Center(child: Text("View: $_activeView"));
     }
   }
+
 }

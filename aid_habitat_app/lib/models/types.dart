@@ -51,6 +51,7 @@ class LocalAppUser {
   final String? establishmentId;
   final String? ergoLabel;
   final List<LocalAccessScope> scopes;
+  final String profilePhotoUrl;
 
   const LocalAppUser({
     required this.id,
@@ -60,7 +61,30 @@ class LocalAppUser {
     this.establishmentId,
     this.ergoLabel,
     this.scopes = const [],
+    this.profilePhotoUrl = '',
   });
+
+  LocalAppUser copyWith({
+    String? id,
+    String? email,
+    String? displayName,
+    LocalUserRole? role,
+    String? establishmentId,
+    String? ergoLabel,
+    List<LocalAccessScope>? scopes,
+    String? profilePhotoUrl,
+  }) {
+    return LocalAppUser(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      displayName: displayName ?? this.displayName,
+      role: role ?? this.role,
+      establishmentId: establishmentId ?? this.establishmentId,
+      ergoLabel: ergoLabel ?? this.ergoLabel,
+      scopes: scopes ?? this.scopes,
+      profilePhotoUrl: profilePhotoUrl ?? this.profilePhotoUrl,
+    );
+  }
 }
 
 class AdminAccessMember {

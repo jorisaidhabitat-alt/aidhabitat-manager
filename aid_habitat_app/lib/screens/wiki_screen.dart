@@ -101,6 +101,33 @@ class _WikiScreenState extends State<WikiScreen> {
     }
   }
 
+  Future<void> _createItem() async {
+    final draft = await showDialog<_WikiItemDraft>(
+      context: context,
+      builder: (context) =>
+          _WikiCreateDialog(availableTags: _availableTags),
+    );
+    if (draft == null) return;
+
+    try {
+      final created = await _dataService.createWikiItem(
+        title: draft.title,
+        description: draft.description,
+        category: draft.category,
+        tags: draft.tags,
+      );
+      if (!mounted) return;
+      setState(() {
+        _items = [created, ..._items];
+      });
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Création impossible : $err')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -275,8 +302,10 @@ class _WikiScreenState extends State<WikiScreen> {
                 },
               ),
             ),
-        ],
-      ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -449,6 +478,183 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                     ),
                   ],
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: const Color(0xFFF8FAFC),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+    );
+  }
+}
+
+class _WikiItemDraft {
+  final String title;
+  final String description;
+  final String category;
+  final List<String> tags;
+
+  const _WikiItemDraft({
+    required this.title,
+    required this.description,
+    required this.category,
+    required this.tags,
+  });
+}
+
+class _WikiCreateDialog extends StatefulWidget {
+  const _WikiCreateDialog({required this.availableTags});
+
+  final List<String> availableTags;
+
+  @override
+  State<_WikiCreateDialog> createState() => _WikiCreateDialogState();
+}
+
+class _WikiCreateDialogState extends State<_WikiCreateDialog> {
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _categoryController =
+      TextEditingController(text: 'Autre');
+  final List<String> _selectedTags = [];
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _categoryController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Le titre est obligatoire')),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    Navigator.of(context).pop(_WikiItemDraft(
+      title: title,
+      description: _descriptionController.text.trim(),
+      category: _categoryController.text.trim().isEmpty
+          ? 'Autre'
+          : _categoryController.text.trim(),
+      tags: List.unmodifiable(_selectedTags),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Nouvel élément',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _titleController,
+                decoration: _decoration('Titre'),
+                autofocus: true,
+                enabled: !_submitting,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _descriptionController,
+                decoration: _decoration('Description'),
+                maxLines: 4,
+                enabled: !_submitting,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _categoryController,
+                decoration: _decoration('Catégorie'),
+                enabled: !_submitting,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Tags',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: widget.availableTags
+                    .map(
+                      (tag) => FilterChip(
+                        label: Text(tag),
+                        selected: _selectedTags.contains(tag),
+                        onSelected: _submitting
+                            ? null
+                            : (_) {
+                                setState(() {
+                                  if (_selectedTags.contains(tag)) {
+                                    _selectedTags.remove(tag);
+                                  } else {
+                                    _selectedTags.add(tag);
+                                  }
+                                });
+                              },
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: const Text('Annuler'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _submitting ? null : _submit,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF907CA1),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Créer'),
+                  ),
+                ],
               ),
             ],
           ),
