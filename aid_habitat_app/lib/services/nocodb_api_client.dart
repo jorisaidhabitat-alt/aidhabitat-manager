@@ -275,6 +275,43 @@ class NocodbApiClient {
         .toList();
   }
 
+  /// Fetches reference data from `GET /api/references`.
+  /// Includes communes, baremesAnah (income thresholds), and other
+  /// reference lists.
+  Future<ReferencesPayload> fetchReferences() async {
+    if (!AppConfig.hasRemoteConfig) return const ReferencesPayload();
+
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/api/references'),
+      headers: _headers,
+    ).timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote references fetch failed (${response.statusCode})',
+      );
+    }
+
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw Exception('Unexpected references payload');
+    }
+
+    final communesRaw = (body['communes'] as List?) ?? const [];
+    final baremesRaw = (body['baremesAnah'] as List?) ?? const [];
+
+    return ReferencesPayload(
+      communes: communesRaw
+          .whereType<Map>()
+          .map((e) => CommuneRef.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+      baremesAnah: baremesRaw
+          .whereType<Map>()
+          .map((e) => BaremeAnahRef.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
+
   Future<List<WikiItem>> fetchWikiItems() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 

@@ -142,6 +142,12 @@ class DataService {
     return _nocodbApiClient.fetchAnahStatus();
   }
 
+  /// Directly fetch raw reference data from the backend. Most callers
+  /// should use `ReferencesService()` which caches this in memory.
+  Future<ReferencesPayload> fetchReferences() async {
+    return _nocodbApiClient.fetchReferences();
+  }
+
   Future<List<RetirementFund>> fetchRetirementFunds() async {
     return _retirementFundsRepository.fetchAllFunds();
   }

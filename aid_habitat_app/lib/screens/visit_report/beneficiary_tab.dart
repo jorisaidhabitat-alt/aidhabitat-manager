@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
+import '../../services/references_service.dart';
+import '../../components/commune_autocomplete.dart';
 import '../../components/form_widgets.dart';
+import '../../components/occupants_editor.dart';
 
 class BeneficiaryTab extends StatefulWidget {
   final Dossier dossier;
@@ -32,6 +36,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
   late String _address;
   late String _city;
   late String _zipCode;
+  late String _cityId;
   late String _phone;
   late String _email;
 
@@ -40,6 +45,11 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
   String _occupationStatus = ''; // no DB column yet
   late String _incomeCategory;
   late double? _fiscalRevenue;
+  late int _numberPeople;
+  late List<Occupant> _occupants;
+
+  final ReferencesService _references = ReferencesService();
+  StreamSubscription<ReferencesPayload>? _refSub;
 
   // -- Sant\u00e9 fields --
   late bool _apa;
@@ -64,6 +74,15 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
   void initState() {
     super.initState();
     _loadFromDossier();
+
+    // Kick off the references fetch (no-op if already cached) and listen
+    // for the first load so the income category can auto-refresh once the
+    // barèmes arrive.
+    _references.ensureLoaded();
+    _refSub = _references.onLoaded.listen((_) {
+      if (!mounted) return;
+      _recomputeIncomeCategory();
+    });
   }
 
   void _loadFromDossier() {
@@ -74,12 +93,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
     _address = p.address;
     _city = p.city;
     _zipCode = p.zipCode;
+    _cityId = p.cityId;
     _phone = p.phone;
     _email = p.email;
 
     _familySituation = p.familySituation;
     _incomeCategory = p.incomeCategory;
     _fiscalRevenue = p.fiscalRevenue;
+    _numberPeople = p.numberPeople != null && p.numberPeople! > 0
+        ? p.numberPeople!
+        : 1;
+    _occupants = List<Occupant>.from(p.occupants);
 
     _apa = p.apa;
     _invalidity = p.invalidity;
@@ -100,8 +124,20 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
 
   @override
   void dispose() {
+    _refSub?.cancel();
     _saveTimer?.cancel();
     super.dispose();
+  }
+
+  void _recomputeIncomeCategory() {
+    final next = _references.computeIncomeCategory(
+      _numberPeople,
+      _fiscalRevenue,
+    );
+    if (next.isNotEmpty && next != _incomeCategory) {
+      setState(() => _incomeCategory = next);
+      _scheduleSave();
+    }
   }
 
   void _scheduleSave() {
@@ -119,18 +155,26 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
         'address': _address,
         'city': _city,
         'zip_code': _zipCode,
+        'city_id': _cityId,
         'phone': _phone,
         'email': _email,
         'family_situation': _familySituation,
+        'income_category': _incomeCategory,
         'fiscal_revenue': _fiscalRevenue,
+        'number_people': _numberPeople,
+        'occupants_json':
+            jsonEncode(_occupants.map((o) => o.toJson()).toList()),
         'apa': _apa ? 1 : 0,
         'invalidity': _invalidity ? 1 : 0,
         'invalidity_txt': _invalidityTxt,
         'home_help': _homeHelp ? 1 : 0,
         'home_help_txt': _homeHelpTxt,
         'dependence_txt': _dependenceTxt,
-        'trusted_person_json':
-            '{"name":"$_trustedName","phone":"$_trustedPhone","email":"$_trustedEmail"}',
+        'trusted_person_json': jsonEncode({
+          'name': _trustedName,
+          'phone': _trustedPhone,
+          'email': _trustedEmail,
+        }),
         'caisse_retraite_principale': _caisseRetraitePrincipale,
         'caisses_retraite_complementaires': _caissesRetraiteComplementaires,
       });
@@ -216,13 +260,32 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
           readOnly: true,
         ),
         const SizedBox(height: 14),
-        FormTextField(
-          label: 'Date de naissance',
-          value: _birthDate,
-          onChanged: (v) {
-            _birthDate = v;
-            _onChanged();
-          },
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: FormTextField(
+                label: 'Date de naissance',
+                value: _birthDate,
+                onChanged: (v) {
+                  _birthDate = v;
+                  _onChanged();
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Text(
+                _computeAgeLabel(_birthDate),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF554A63),
+                ),
+              ),
+            ),
+          ],
         ),
         const _SectionDivider(),
         FormTextField(
@@ -234,19 +297,24 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
           },
         ),
         const SizedBox(height: 14),
-        FormTextField(
-          label: 'Ville',
-          value: _city,
-          onChanged: (v) {
+        CommuneAutocomplete(
+          city: _city,
+          zipCode: _zipCode,
+          cityId: _cityId,
+          onSelected: (city, zip, id) {
+            setState(() {
+              _city = city;
+              _zipCode = zip;
+              _cityId = id;
+            });
+            _scheduleSave();
+          },
+          onCityTextChanged: (v) {
             _city = v;
+            _cityId = '';
             _onChanged();
           },
-        ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'Code postal',
-          value: _zipCode,
-          onChanged: (v) {
+          onZipTextChanged: (v) {
             _zipCode = v;
             _onChanged();
           },
@@ -310,10 +378,28 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
           },
         ),
         const _SectionDivider(),
-        FormTextField(
-          label: 'Cat\u00e9gorie revenus',
-          value: _incomeCategory,
-          readOnly: true,
+        FormToggleGroup(
+          label: "Nombre d'occupants",
+          options: const ['1', '2', '3', '4', '5'],
+          selected: _numberPeople.toString(),
+          onChanged: (v) {
+            final n = int.tryParse(v);
+            if (n == null) return;
+            setState(() {
+              _numberPeople = n;
+              // Resize occupants list to match
+              if (_occupants.length < n) {
+                _occupants = [
+                  ..._occupants,
+                  ...List.generate(n - _occupants.length, (_) => const Occupant()),
+                ];
+              } else if (_occupants.length > n) {
+                _occupants = _occupants.sublist(0, n);
+              }
+            });
+            _recomputeIncomeCategory();
+            _scheduleSave();
+          },
         ),
         const SizedBox(height: 14),
         FormNumberField(
@@ -322,8 +408,15 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
           unit: '\u20ac',
           onChanged: (v) {
             _fiscalRevenue = v;
+            _recomputeIncomeCategory();
             _onChanged();
           },
+        ),
+        const SizedBox(height: 14),
+        FormTextField(
+          label: 'Cat\u00e9gorie revenus (auto-calcul\u00e9)',
+          value: _incomeCategory,
+          readOnly: true,
         ),
         const SizedBox(height: 24),
       ],
@@ -338,64 +431,30 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormToggleGroup(
-          label: 'B\u00e9n\u00e9ficiaire APA',
-          options: const ['Oui', 'Non'],
-          selected: _apa ? 'Oui' : 'Non',
-          onChanged: (v) {
-            _apa = v == 'Oui';
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        FormToggleGroup(
-          label: 'Reconnaissance invalidit\u00e9',
-          options: const ['Oui', 'Non'],
-          selected: _invalidity ? 'Oui' : 'Non',
-          onChanged: (v) {
-            _invalidity = v == 'Oui';
-            _onChanged();
-          },
-        ),
-        if (_invalidity) ...[
-          const SizedBox(height: 14),
-          FormTextField(
-            label: 'Pr\u00e9cisez invalidit\u00e9',
-            value: _invalidityTxt,
-            onChanged: (v) {
-              _invalidityTxt = v;
-              _onChanged();
-            },
-          ),
-        ],
-        const _SectionDivider(),
-        FormToggleGroup(
-          label: 'Aide \u00e0 domicile',
-          options: const ['Oui', 'Non'],
-          selected: _homeHelp ? 'Oui' : 'Non',
-          onChanged: (v) {
-            _homeHelp = v == 'Oui';
-            _onChanged();
-          },
-        ),
-        if (_homeHelp) ...[
-          const SizedBox(height: 14),
-          FormTextField(
-            label: 'Pr\u00e9cisez aide \u00e0 domicile',
-            value: _homeHelpTxt,
-            onChanged: (v) {
-              _homeHelpTxt = v;
-              _onChanged();
-            },
-          ),
-        ],
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'D\u00e9pendance particuli\u00e8re',
-          value: _dependenceTxt,
-          onChanged: (v) {
-            _dependenceTxt = v;
-            _onChanged();
+        OccupantsEditor(
+          numberPeople: _numberPeople,
+          occupants: _occupants,
+          onChanged: (n, list) {
+            setState(() {
+              _numberPeople = n;
+              _occupants = list;
+              // Mirror the first occupant onto the primary beneficiary
+              // fields so the existing patient DB columns stay in sync.
+              if (list.isNotEmpty) {
+                final first = list.first;
+                _apa = first.apa;
+                _invalidity = first.invalidity;
+                _invalidityTxt = first.invalidityTxt;
+                _homeHelp = first.homeHelp;
+                _homeHelpTxt = first.homeHelpTxt;
+                _dependenceTxt = first.dependenceTxt;
+                _caisseRetraitePrincipale = first.caisseRetraitePrincipale;
+                _caissesRetraiteComplementaires =
+                    first.caissesRetraiteComplementaires;
+              }
+            });
+            _recomputeIncomeCategory();
+            _scheduleSave();
           },
         ),
         const _SectionDivider(),
@@ -508,6 +567,20 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
         const SizedBox(height: 24),
       ],
     );
+  }
+
+  /// Retourne une étiquette courte type "78 !" pour un affichage compact
+  /// (équivalent du rendu React : âge en violet foncé, sans label).
+  String _computeAgeLabel(String birthDate) {
+    final parsed = DateTime.tryParse(birthDate);
+    if (parsed == null) return '';
+    final now = DateTime.now();
+    var age = now.year - parsed.year;
+    final hadBirthday = (now.month > parsed.month) ||
+        (now.month == parsed.month && now.day >= parsed.day);
+    if (!hadBirthday) age -= 1;
+    if (age <= 0) return '';
+    return '$age !';
   }
 }
 

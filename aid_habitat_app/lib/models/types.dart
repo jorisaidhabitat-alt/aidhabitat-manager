@@ -282,6 +282,39 @@ class Occupant {
     'caisseRetraitePrincipale': caisseRetraitePrincipale,
     'caissesRetraiteComplementaires': caissesRetraiteComplementaires,
   };
+
+  Occupant copyWith({
+    String? firstName,
+    String? lastName,
+    String? birthDate,
+    bool? apa,
+    bool? invalidity,
+    String? invalidityTxt,
+    bool? homeHelp,
+    String? homeHelpTxt,
+    String? dependenceTxt,
+    String? numeroSecuriteSociale,
+    String? caisseRetraitePrincipale,
+    String? caissesRetraiteComplementaires,
+  }) {
+    return Occupant(
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      birthDate: birthDate ?? this.birthDate,
+      apa: apa ?? this.apa,
+      invalidity: invalidity ?? this.invalidity,
+      invalidityTxt: invalidityTxt ?? this.invalidityTxt,
+      homeHelp: homeHelp ?? this.homeHelp,
+      homeHelpTxt: homeHelpTxt ?? this.homeHelpTxt,
+      dependenceTxt: dependenceTxt ?? this.dependenceTxt,
+      numeroSecuriteSociale:
+          numeroSecuriteSociale ?? this.numeroSecuriteSociale,
+      caisseRetraitePrincipale:
+          caisseRetraitePrincipale ?? this.caisseRetraitePrincipale,
+      caissesRetraiteComplementaires: caissesRetraiteComplementaires ??
+          this.caissesRetraiteComplementaires,
+    );
+  }
 }
 
 class Patient {
@@ -1045,4 +1078,72 @@ extension LocalUserRoleLabel on LocalUserRole {
         return 'Ergo';
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reference data (served by GET /api/references)
+// ---------------------------------------------------------------------------
+
+class CommuneRef {
+  final String id;
+  final String label;
+  final String zipCode;
+  final String epciId;
+  final String epciLabel;
+
+  const CommuneRef({
+    required this.id,
+    required this.label,
+    this.zipCode = '',
+    this.epciId = '',
+    this.epciLabel = '',
+  });
+
+  factory CommuneRef.fromJson(Map<String, dynamic> json) => CommuneRef(
+    id: json['id']?.toString() ?? '',
+    label: json['label']?.toString() ?? '',
+    zipCode: json['zipCode']?.toString() ?? '',
+    epciId: json['epciId']?.toString() ?? '',
+    epciLabel: json['epciLabel']?.toString() ?? '',
+  );
+}
+
+class BaremeAnahRef {
+  final String id;
+  final int householdSize;
+  final double? revenueTresModeste;
+  final double? revenueModeste;
+  final double? revenueIntermediaire;
+  final double? revenueHaut;
+  final int? plafondYear;
+
+  const BaremeAnahRef({
+    required this.id,
+    required this.householdSize,
+    this.revenueTresModeste,
+    this.revenueModeste,
+    this.revenueIntermediaire,
+    this.revenueHaut,
+    this.plafondYear,
+  });
+
+  factory BaremeAnahRef.fromJson(Map<String, dynamic> json) => BaremeAnahRef(
+    id: json['id']?.toString() ?? '',
+    householdSize: (json['householdSize'] as num?)?.toInt() ?? 0,
+    revenueTresModeste: (json['revenueTresModeste'] as num?)?.toDouble(),
+    revenueModeste: (json['revenueModeste'] as num?)?.toDouble(),
+    revenueIntermediaire: (json['revenueIntermediaire'] as num?)?.toDouble(),
+    revenueHaut: (json['revenueHaut'] as num?)?.toDouble(),
+    plafondYear: (json['plafondYear'] as num?)?.toInt(),
+  );
+}
+
+class ReferencesPayload {
+  final List<CommuneRef> communes;
+  final List<BaremeAnahRef> baremesAnah;
+
+  const ReferencesPayload({
+    this.communes = const [],
+    this.baremesAnah = const [],
+  });
 }

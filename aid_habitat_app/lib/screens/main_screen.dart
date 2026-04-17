@@ -15,6 +15,7 @@ import '../models/types.dart';
 import '../services/auth_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/data_service.dart';
+import '../services/references_service.dart';
 import '../services/sync_engine.dart';
 
 class MainScreen extends StatefulWidget {
@@ -58,6 +59,10 @@ class _MainScreenState extends State<MainScreen> {
     _connectivitySubscription = connectivity.offlineStream.listen((offline) {
       if (mounted) setState(() => _isOffline = offline);
     });
+    // Preload reference data (communes, barèmes ANAH, ...) in the
+    // background so the beneficiary autocomplete + income auto-calc work
+    // as soon as the user opens a dossier.
+    ReferencesService().ensureLoaded();
     _loadData();
   }
 
