@@ -11,6 +11,8 @@ class SyncRepository {
 
   Future<List<SyncOperation>> fetchRunnableOperations() async {
     final db = await _database.database;
+    // Exclude 'conflict' and 'completed' operations — conflicts require manual
+    // resolution and completed operations are done.
     final rows = await db.query(
       'sync_operations',
       where: 'status IN (?, ?)',
@@ -110,6 +112,32 @@ class SyncRepository {
     );
   }
 
+  Future<void> markConflict({
+    required String operationId,
+    required String entityType,
+    required String entityLocalId,
+    required String error,
+  }) async {
+    final db = await _database.database;
+    await db.update(
+      'sync_operations',
+      {
+        'status': 'conflict',
+        'last_error': error,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [operationId],
+    );
+
+    await _updateEntitySyncState(
+      db: db,
+      entityType: entityType,
+      entityLocalId: entityLocalId,
+      syncState: SyncState.conflict,
+    );
+  }
+
   Future<void> storeDocumentRemoteData({
     required String documentLocalId,
     required String remotePath,
@@ -143,6 +171,133 @@ class SyncRepository {
       },
       where: 'local_id = ?',
       whereArgs: [noteLocalId],
+    );
+  }
+
+  /// After a successful remote creation, store the remote IDs in the local
+  /// database so subsequent updates can reference them.
+  Future<void> storeRemoteIds({
+    required String patientLocalId,
+    required String remotePatientId,
+    required String dossierLocalId,
+    String? remoteDossierId,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+
+    await db.update(
+      'patients',
+      {
+        'remote_patient_id': remotePatientId,
+        'sync_state': SyncState.synced.name,
+        'remote_updated_at': now,
+        'updated_at': now,
+      },
+      where: 'local_id = ?',
+      whereArgs: [patientLocalId],
+    );
+
+    if (dossierLocalId.isNotEmpty && remoteDossierId != null) {
+      await db.update(
+        'dossiers',
+        {
+          'remote_dossier_id': remoteDossierId,
+          'sync_state': SyncState.synced.name,
+          'remote_updated_at': now,
+          'updated_at': now,
+        },
+        where: 'local_id = ?',
+        whereArgs: [dossierLocalId],
+      );
+    }
+  }
+
+  /// Look up the remote patient ID for a given local patient ID.
+  Future<String?> resolveRemotePatientId(String patientLocalId) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'patients',
+      columns: ['remote_patient_id'],
+      where: 'local_id = ?',
+      whereArgs: [patientLocalId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['remote_patient_id'] as String?;
+  }
+
+  /// Delete completed sync operations older than [maxAge] to prevent
+  /// unbounded SQLite growth. Safe to call periodically.
+  Future<int> purgeCompleted({
+    Duration maxAge = const Duration(hours: 24),
+  }) async {
+    final db = await _database.database;
+    final cutoff = DateTime.now().subtract(maxAge).toIso8601String();
+    return db.delete(
+      'sync_operations',
+      where: 'status = ? AND updated_at < ?',
+      whereArgs: [SyncOperationStatus.completed.name, cutoff],
+    );
+  }
+
+  /// Purge stale sync operations that are almost certainly obsolete and
+  /// would otherwise be replayed every time the app starts, overwriting
+  /// fresh remote data with values captured by a previous app version.
+  ///
+  ///  - any operation in `failed` state (retries exhausted → payload
+  ///    rejected by the current backend schema, not worth pushing again),
+  ///  - `pending` operations whose `created_at` is older than
+  ///    [maxPendingAge] (default 72 h — a comfortable offline window),
+  ///  - `running` operations whose `updated_at` is older than
+  ///    [maxPendingAge] (they should have completed long ago).
+  ///
+  /// Returns the number of rows removed. Safe to call on app boot.
+  Future<int> purgeStalePendingOperations({
+    Duration maxPendingAge = const Duration(hours: 72),
+  }) async {
+    final db = await _database.database;
+    final cutoff = DateTime.now().subtract(maxPendingAge).toIso8601String();
+    return db.delete(
+      'sync_operations',
+      where: '''
+        status = ?
+        OR (status = ? AND created_at < ?)
+        OR (status = ? AND updated_at < ?)
+      ''',
+      whereArgs: [
+        SyncOperationStatus.failed.name,
+        SyncOperationStatus.pending.name,
+        cutoff,
+        SyncOperationStatus.running.name,
+        cutoff,
+      ],
+    );
+  }
+
+  Future<void> setEntitySyncState({
+    required String entityType,
+    required String entityLocalId,
+    required SyncState syncState,
+  }) async {
+    final db = await _database.database;
+    await _updateEntitySyncState(
+      db: db,
+      entityType: entityType,
+      entityLocalId: entityLocalId,
+      syncState: syncState,
+    );
+  }
+
+  Future<void> clearPendingOperationsForEntity(String entityLocalId) async {
+    final db = await _database.database;
+    await db.delete(
+      'sync_operations',
+      where: 'entity_local_id = ? AND status IN (?, ?)',
+      whereArgs: [
+        entityLocalId,
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.failed.name,
+      ],
     );
   }
 

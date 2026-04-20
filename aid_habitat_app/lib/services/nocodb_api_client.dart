@@ -1,14 +1,35 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import '../models/types.dart';
 import 'app_config.dart';
 
+/// Thrown when the server returns HTTP 409, indicating the remote record was
+/// modified since the client last fetched it.
+class ConflictException implements Exception {
+  final String message;
+  final Map<String, dynamic>? remoteData;
+
+  ConflictException(this.message, {this.remoteData});
+
+  @override
+  String toString() => 'ConflictException: $message';
+}
+
 class NocodbApiClient {
   NocodbApiClient({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
+
+  /// Default timeout for regular JSON requests. Kept short so slow networks
+  /// fail fast and the sync engine can retry with backoff instead of hanging.
+  static const Duration _defaultTimeout = Duration(seconds: 20);
+
+  /// Longer timeout for multipart uploads (documents), which can legitimately
+  /// take longer on mobile networks.
+  static const Duration _uploadTimeout = Duration(seconds: 60);
 
   String get _baseUrl => AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
 
@@ -18,12 +39,22 @@ class NocodbApiClient {
   };
 
   Future<List<Dossier>> fetchDossiers() async {
+    final raw = await fetchDossierPayloads();
+    return raw.map(_mapRemoteDossier).toList();
+  }
+
+  /// Returns raw dossier payloads as returned by the server, untouched.
+  /// Used by the sync pipeline so ALL server-provided fields (including
+  /// those that have no Dart model representation — e.g. `cheminement_*`,
+  /// `*_rooms_json`) can be persisted directly into SQLite without being
+  /// filtered through the Dossier / Patient / Housing model shape.
+  Future<List<Map<String, dynamic>>> fetchDossierPayloads() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/dossiers'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote dossiers fetch failed (${response.statusCode})');
@@ -34,10 +65,35 @@ class NocodbApiClient {
       throw Exception('Unexpected dossiers payload');
     }
 
-    return payload
-        .whereType<Map<String, dynamic>>()
-        .map(_mapRemoteDossier)
-        .toList();
+    return payload.whereType<Map<String, dynamic>>().toList();
+  }
+
+  /// Create a new beneficiary on the server. The server automatically creates
+  /// the associated dossier and housing records.
+  /// Returns `{ id: remotePatientId, dossierId: remoteDossierId }`.
+  Future<Map<String, dynamic>> createBeneficiary({
+    required Map<String, dynamic> fields,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/api/beneficiaires'),
+      headers: _headers,
+      body: jsonEncode(fields),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote beneficiary creation failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data =
+        (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return data;
   }
 
   Future<void> updateDossier({
@@ -52,10 +108,180 @@ class NocodbApiClient {
       Uri.parse('$_baseUrl/api/dossiers/$dossierId'),
       headers: _headers,
       body: jsonEncode(updates),
-    );
+    ).timeout(_defaultTimeout);
+
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? remoteData;
+      try {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        remoteData = body;
+      } catch (_) {}
+      throw ConflictException(
+        'Conflit de modification sur le dossier $dossierId',
+        remoteData: remoteData,
+      );
+    }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote dossier update failed (${response.statusCode})');
+    }
+  }
+
+  /// PATCH /api/beneficiaires/:patientId — updates a beneficiary record.
+  /// The [patientId] is the remote/app beneficiary ID (not the SQLite
+  /// local_id). Payload uses camelCase keys (firstName, lastName,
+  /// trustedPerson: {name, phone, email}, etc.); the server maps them to
+  /// NocoDB column names.
+  Future<void> updateBeneficiary({
+    required String patientId,
+    required Map<String, dynamic> updates,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client
+        .patch(
+          Uri.parse('$_baseUrl/api/beneficiaires/$patientId'),
+          headers: _headers,
+          body: jsonEncode(updates),
+        )
+        .timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote beneficiary update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
+  /// PATCH /api/logements/by-beneficiary/:beneficiaryId — updates a housing
+  /// record linked to the given beneficiary.
+  Future<void> updateLogement({
+    required String beneficiaryId,
+    required Map<String, dynamic> updates,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client
+        .patch(
+          Uri.parse(
+              '$_baseUrl/api/logements/by-beneficiary/$beneficiaryId'),
+          headers: _headers,
+          body: jsonEncode(updates),
+        )
+        .timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote logement update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
+  /// GET /api/diagnostic-sanitaires/:dossierId — returns the latest
+  /// persisted SDB + WC instances for the dossier, or null if no record
+  /// has ever been saved server-side.
+  Future<Map<String, dynamic>?> fetchDiagnosticSanitairePayload(
+    String dossierId,
+  ) async {
+    if (!AppConfig.hasRemoteConfig) return null;
+
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/diagnostic-sanitaires/$dossierId'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote diagnostic sanitaires fetch failed (${response.statusCode})',
+      );
+    }
+    final body = response.body.trim();
+    if (body.isEmpty || body == 'null') return null;
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return null;
+  }
+
+  /// GET /api/visit-recommendations/:dossierId — returns the list of
+  /// recommendation items persisted server-side for this dossier.
+  Future<List<Map<String, dynamic>>> fetchVisitRecommendationsPayload(
+    String dossierId,
+  ) async {
+    if (!AppConfig.hasRemoteConfig) return const [];
+
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/visit-recommendations/$dossierId'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote visit recommendations fetch failed (${response.statusCode})',
+      );
+    }
+    final payload = jsonDecode(response.body);
+    if (payload is! Map<String, dynamic>) return const [];
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final items = (data['items'] as List?) ?? const [];
+    return items
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
+  }
+
+  /// PUT /api/diagnostic-sanitaires/:dossierId — persists bathroom + WC
+  /// instances (arrays) for the given dossier. The server normalises each
+  /// instance into the `diagnostic_sanitaires` NocoDB table.
+  Future<void> updateDiagnosticSanitaires({
+    required String dossierId,
+    required List<Map<String, dynamic>> sdbInstances,
+    required List<Map<String, dynamic>> wcInstances,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client
+        .put(
+          Uri.parse('$_baseUrl/api/diagnostic-sanitaires/$dossierId'),
+          headers: _headers,
+          body: jsonEncode({
+            'sdbInstances': sdbInstances,
+            'wcInstances': wcInstances,
+          }),
+        )
+        .timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote diagnostic sanitaires update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
+  /// PUT /api/visit-recommendations/:dossierId — replaces the full list of
+  /// recommendations for the dossier. Each item must reference a valid
+  /// wiki library entry (server-side validation).
+  Future<void> updateVisitRecommendations({
+    required String dossierId,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client
+        .put(
+          Uri.parse('$_baseUrl/api/visit-recommendations/$dossierId'),
+          headers: _headers,
+          body: jsonEncode({'items': items}),
+        )
+        .timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote visit recommendations update failed (${response.statusCode}): ${response.body}',
+      );
     }
   }
 
@@ -66,31 +292,38 @@ class NocodbApiClient {
     required String fileName,
     required String mimeType,
     required List<String> tags,
-    required String contentBase64,
+    required File file,
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
 
-    final response = await _client.post(
+    final request = http.MultipartRequest(
+      'POST',
       Uri.parse('$_baseUrl/api/documents'),
-      headers: _headers,
-      body: jsonEncode({
-        'patientId': patientId,
-        'documentLocalId': documentLocalId,
-        'title': title,
-        'fileName': fileName,
-        'mimeType': mimeType,
-        'tags': tags,
-        'contentBase64': contentBase64,
-      }),
+    );
+    request.headers['X-App-Session'] = AppConfig.appSessionToken;
+    request.fields['patientId'] = patientId;
+    request.fields['documentLocalId'] = documentLocalId;
+    request.fields['title'] = title;
+    request.fields['fileName'] = fileName;
+    request.fields['mimeType'] = mimeType;
+    request.fields['tags'] = jsonEncode(tags);
+    request.files.add(
+      await http.MultipartFile.fromPath('file', file.path, filename: fileName),
     );
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Remote document upload failed (${response.statusCode})');
+    final streamed = await _client.send(request).timeout(_uploadTimeout);
+    final responseBody =
+        await streamed.stream.bytesToString().timeout(_uploadTimeout);
+
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      throw Exception(
+        'Remote document upload failed (${streamed.statusCode})',
+      );
     }
 
-    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final payload = jsonDecode(responseBody) as Map<String, dynamic>;
     final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
     final document = (data['document'] as Map?)?.cast<String, dynamic>();
     if (document == null) {
@@ -104,6 +337,10 @@ class NocodbApiClient {
     required String tabKey,
     required int pageNumber,
     required String drawingJson,
+    String scopeType = 'dossier_detail',
+    String? scopeId,
+    String? subTabKey,
+    String layoutKind = 'freeform',
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
@@ -114,11 +351,17 @@ class NocodbApiClient {
       headers: _headers,
       body: jsonEncode({
         'patientId': patientId,
+        'scopeType': scopeType,
+        // Fallback: patientId is a valid scopeId for dossier/visit scopes when
+        // the caller doesn't know the exact dossierId.
+        'scopeId': scopeId ?? patientId,
         'tabKey': tabKey,
+        if (subTabKey != null) 'subTabKey': subTabKey,
         'pageNumber': pageNumber,
         'drawingJson': drawingJson,
+        'layoutKind': layoutKind,
       }),
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote note sync failed (${response.statusCode})');
@@ -139,7 +382,7 @@ class NocodbApiClient {
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/documents/$patientId'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote documents fetch failed (${response.statusCode})');
@@ -153,13 +396,45 @@ class NocodbApiClient {
         .toList();
   }
 
+  /// Authenticate against the Express API and return the session token.
+  /// Unlike other methods, this does not require [AppConfig.hasRemoteConfig]
+  /// since we're establishing it.
+  Future<String?> loginToRemote({
+    required String email,
+    required String password,
+  }) async {
+    if (AppConfig.apiBaseUrl.trim().isEmpty) return null;
+
+    try {
+      final response = await _client.post(
+        Uri.parse('$_baseUrl/api/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      ).timeout(_defaultTimeout);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+      if (payload['success'] != true) return null;
+
+      final data =
+          (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final token = data['token']?.toString();
+      return (token != null && token.isNotEmpty) ? token : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchLocalAuthState() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/auth/local-state'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -175,13 +450,226 @@ class NocodbApiClient {
         .toList();
   }
 
+  /// Fetches reference data from `GET /api/references`.
+  /// Includes communes, baremesAnah (income thresholds), and other
+  /// reference lists.
+  Future<ReferencesPayload> fetchReferences() async {
+    if (!AppConfig.hasRemoteConfig) return const ReferencesPayload();
+
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/api/references'),
+      headers: _headers,
+    ).timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote references fetch failed (${response.statusCode})',
+      );
+    }
+
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw Exception('Unexpected references payload');
+    }
+
+    final communesRaw = (body['communes'] as List?) ?? const [];
+    final baremesRaw = (body['baremesAnah'] as List?) ?? const [];
+
+    return ReferencesPayload(
+      communes: communesRaw
+          .whereType<Map>()
+          .map((e) => CommuneRef.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+      baremesAnah: baremesRaw
+          .whereType<Map>()
+          .map((e) => BaremeAnahRef.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
+
+  Future<List<WikiItem>> fetchWikiItems() async {
+    if (!AppConfig.hasRemoteConfig) return const [];
+
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/api/wiki-library'),
+      headers: _headers,
+    ).timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote wiki items fetch failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ((data['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => _mapWikiItem(item.cast<String, dynamic>()))
+        .toList();
+  }
+
+  Future<WikiItem> createWikiItem({
+    required String title,
+    required String description,
+    required String category,
+    required List<String> tags,
+    String imageDataUrl = '',
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final body = <String, dynamic>{
+      'title': title,
+      'description': description,
+      'category': category,
+      'tags': tags,
+    };
+    if (imageDataUrl.isNotEmpty) body['imageDataUrl'] = imageDataUrl;
+
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/wiki-library'),
+          headers: _headers,
+          body: jsonEncode(body),
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote wiki item create failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final saved = (data['item'] as Map?)?.cast<String, dynamic>();
+    if (saved == null) {
+      throw Exception('Unexpected wiki item payload');
+    }
+    return _mapWikiItem(saved);
+  }
+
+  /// Uploads a base64 data URL image as profile photo.
+  /// Returns the resolved public photo URL.
+  Future<String> uploadProfilePhoto(String imageDataUrl) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/profile/photo'),
+          headers: _headers,
+          body: jsonEncode({'imageDataUrl': imageDataUrl}),
+        )
+        .timeout(_uploadTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Profile photo upload failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final photoUrl = data['photoUrl']?.toString() ?? '';
+    return photoUrl;
+  }
+
+  /// Fetches ANAH service status.
+  /// Returns a map with `available`, `registrationUrl`, `publicUrl`, `reason`, `checkedAt`.
+  Future<Map<String, dynamic>> fetchAnahStatus() async {
+    if (!AppConfig.hasRemoteConfig) {
+      // Fallback: assume offline, but still provide the public URLs so the
+      // "Ouvrir MaPrimeAdapt'" button works without a backend.
+      return {
+        'available': false,
+        'registrationUrl': 'https://monprojet.anah.gouv.fr/',
+        'publicUrl': 'https://www.anah.gouv.fr/',
+        'reason': 'Configuration distante manquante',
+        'checkedAt': DateTime.now().toIso8601String(),
+      };
+    }
+
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/anah-status'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('ANAH status fetch failed (${response.statusCode})');
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final status =
+        (data['status'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return {
+      'available': status['available'] as bool? ?? false,
+      'registrationUrl':
+          status['registrationUrl']?.toString() ?? 'https://monprojet.anah.gouv.fr/',
+      'publicUrl':
+          status['publicUrl']?.toString() ?? 'https://www.anah.gouv.fr/',
+      'reason': status['reason']?.toString() ?? '',
+      'checkedAt':
+          status['checkedAt']?.toString() ?? DateTime.now().toIso8601String(),
+    };
+  }
+
+  Future<WikiItem> updateWikiItem({
+    required String itemId,
+    required WikiItem item,
+    String? imageDataUrl,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final body = <String, dynamic>{
+      'title': item.title,
+      'description': item.description,
+      'tags': item.tags,
+      'category': item.category,
+    };
+    // Only include imageDataUrl when the caller provided a new one —
+    // the server interprets an empty string as "clear the image", which
+    // is not what we want when the user only edited the text fields.
+    if (imageDataUrl != null && imageDataUrl.isNotEmpty) {
+      body['imageDataUrl'] = imageDataUrl;
+    }
+
+    final response = await _client.put(
+      Uri.parse('$_baseUrl/api/wiki-library/$itemId'),
+      headers: _headers,
+      body: jsonEncode(body),
+    ).timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote wiki item update failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final saved = (data['item'] as Map?)?.cast<String, dynamic>();
+    if (saved == null) {
+      throw Exception('Unexpected wiki item payload');
+    }
+    return _mapWikiItem(saved);
+  }
+
   Future<List<RetirementFund>> fetchRetirementFunds() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/retirement-funds'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -218,7 +706,7 @@ class NocodbApiClient {
         'therapistNote': fund.therapistNote,
         'website': fund.website,
       }),
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -241,7 +729,7 @@ class NocodbApiClient {
     final response = await _client.get(
       Uri.parse('$_baseUrl/api/admin/access-members'),
       headers: _headers,
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -257,123 +745,6 @@ class NocodbApiClient {
         .toList();
   }
 
-  /// Définit un mot de passe explicite pour [email]. Si [password] est
-  /// null, on demande au serveur de régénérer aléatoirement (équivalent à
-  /// `regenerateAccessPassword`). Retourne le mot de passe effectivement
-  /// en vigueur (utile pour affichage / copie dans l'admin).
-  Future<String?> setAccessPassword({
-    required String email,
-    String? password,
-  }) async {
-    if (!AppConfig.hasRemoteConfig) {
-      throw Exception('Remote config missing');
-    }
-    final body = <String, dynamic>{
-      'email': email,
-      if (password != null && password.isNotEmpty)
-        'password': password
-      else
-        'forceReset': true,
-    };
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/api/auth/provision'),
-      headers: _headers,
-      body: jsonEncode(body),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Remote password set failed (${response.statusCode})');
-    }
-    final payload = jsonDecode(response.body) as Map<String, dynamic>;
-    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final generatedEntries = ((data['generated'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((item) => item.cast<String, dynamic>())
-        .toList();
-    final generated = generatedEntries.firstWhere(
-      (entry) => entry['email']?.toString() == email,
-      orElse: () => const {},
-    );
-    return generated['password']?.toString();
-  }
-
-  Future<AdminAccessMember> createAccessMember({
-    required String email,
-    required String displayName,
-    required LocalUserRole role,
-    String? establishmentId,
-    String? password,
-  }) async {
-    if (!AppConfig.hasRemoteConfig) {
-      throw Exception('Remote config missing');
-    }
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/api/admin/access-members'),
-      headers: _headers,
-      body: jsonEncode({
-        'email': email,
-        'displayName': displayName,
-        'role': role == LocalUserRole.admin ? 'ADMIN' : 'ERGO',
-        if (establishmentId != null && establishmentId.isNotEmpty)
-          'establishmentId': establishmentId,
-        if (password != null && password.isNotEmpty) 'password': password,
-      }),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = response.body;
-      throw Exception('Remote create member failed (${response.statusCode}): $body');
-    }
-    final payload = jsonDecode(response.body) as Map<String, dynamic>;
-    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final member = (data['member'] as Map?)?.cast<String, dynamic>();
-    if (member == null) {
-      throw Exception('Unexpected create member payload');
-    }
-    return _mapAdminAccessMember(member);
-  }
-
-  Future<AdminAccessMember> updateAccessMember({
-    required String email,
-    String? displayName,
-    String? establishmentId,
-  }) async {
-    if (!AppConfig.hasRemoteConfig) {
-      throw Exception('Remote config missing');
-    }
-    final encodedEmail = Uri.encodeComponent(email);
-    final response = await _client.patch(
-      Uri.parse('$_baseUrl/api/admin/access-members/$encodedEmail'),
-      headers: _headers,
-      body: jsonEncode({
-        if (displayName != null) 'displayName': displayName,
-        if (establishmentId != null) 'establishmentId': establishmentId,
-      }),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Remote update member failed (${response.statusCode})');
-    }
-    final payload = jsonDecode(response.body) as Map<String, dynamic>;
-    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final member = (data['member'] as Map?)?.cast<String, dynamic>();
-    if (member == null) {
-      throw Exception('Unexpected update member payload');
-    }
-    return _mapAdminAccessMember(member);
-  }
-
-  Future<void> deleteAccessMember(String email) async {
-    if (!AppConfig.hasRemoteConfig) {
-      throw Exception('Remote config missing');
-    }
-    final encodedEmail = Uri.encodeComponent(email);
-    final response = await _client.delete(
-      Uri.parse('$_baseUrl/api/admin/access-members/$encodedEmail'),
-      headers: _headers,
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Remote delete member failed (${response.statusCode})');
-    }
-  }
-
   Future<String?> regenerateAccessPassword(String email) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
@@ -383,7 +754,7 @@ class NocodbApiClient {
       Uri.parse('$_baseUrl/api/auth/provision'),
       headers: _headers,
       body: jsonEncode({'email': email, 'forceReset': true}),
-    );
+    ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote password reset failed (${response.statusCode})');
@@ -412,7 +783,8 @@ class NocodbApiClient {
     final uri = Uri.parse(
       '$_baseUrl/api/note-pages/$patientId',
     ).replace(queryParameters: {'tabKey': tabKey, 'pageNumber': '$pageNumber'});
-    final response = await _client.get(uri, headers: _headers);
+    final response =
+        await _client.get(uri, headers: _headers).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote note fetch failed (${response.statusCode})');
@@ -436,6 +808,12 @@ class NocodbApiClient {
     final trustedPersonJson =
         (patientJson['trustedPerson'] as Map?)?.cast<String, dynamic>() ??
         const {};
+    final occupantsList =
+        (patientJson['occupants'] as List?)
+                ?.whereType<Map>()
+                .map((e) => Occupant.fromJson(e.cast<String, dynamic>()))
+                .toList() ??
+            const <Occupant>[];
 
     return Dossier(
       id: json['id']?.toString() ?? '',
@@ -443,14 +821,30 @@ class NocodbApiClient {
         id: patientJson['id']?.toString() ?? '',
         firstName: patientJson['firstName']?.toString() ?? '',
         lastName: patientJson['lastName']?.toString() ?? '',
+        secondFirstName: patientJson['secondFirstName']?.toString() ?? '',
+        secondLastName: patientJson['secondLastName']?.toString() ?? '',
         birthDate: patientJson['birthDate']?.toString() ?? '',
         phone: patientJson['phone']?.toString() ?? '',
         email: patientJson['email']?.toString() ?? '',
         address: patientJson['address']?.toString() ?? '',
         city: patientJson['city']?.toString() ?? '',
+        cityId: patientJson['cityId']?.toString() ?? '',
         zipCode: patientJson['zipCode']?.toString() ?? '',
         familySituation: patientJson['familySituation']?.toString() ?? '',
         incomeCategory: patientJson['incomeCategory']?.toString() ?? '',
+        numberPeople: _parseInt(patientJson['numberPeople']),
+        fiscalRevenue: _parseDouble(patientJson['fiscalRevenue']),
+        occupants: occupantsList,
+        apa: _parseBool(patientJson['apa']),
+        invalidity: _parseBool(patientJson['invalidity']),
+        invalidityTxt: patientJson['invalidityTxt']?.toString() ?? '',
+        homeHelp: _parseBool(patientJson['homeHelp']),
+        homeHelpTxt: patientJson['homeHelpTxt']?.toString() ?? '',
+        dependenceTxt: patientJson['dependenceTxt']?.toString() ?? '',
+        caisseRetraitePrincipale:
+            patientJson['caisseRetraitePrincipale']?.toString() ?? '',
+        caissesRetraiteComplementaires:
+            patientJson['caissesRetraiteComplementaires']?.toString() ?? '',
         trustedPerson: TrustedPerson(
           name: trustedPersonJson['name']?.toString() ?? '',
           phone: trustedPersonJson['phone']?.toString() ?? '',
@@ -471,6 +865,20 @@ class NocodbApiClient {
             '',
       ),
       autonomyNotes: json['autonomyNotes']?.toString() ?? '',
+      // Extended dossier-level fields the server maps from the NocoDB row.
+      compteAnah: json['compteAnah']?.toString() ?? '',
+      natureAccompagnement: json['natureAccompagnement']?.toString() ?? '',
+      envoiRapport: json['envoiRapport']?.toString() ?? '',
+      personnesPresentesVisite:
+          json['personnesPresentesVisite']?.toString() ?? '',
+      medicalContext: json['medicalContext'] is Map
+          ? MedicalContext.fromJson(
+              (json['medicalContext'] as Map).cast<String, dynamic>())
+          : null,
+      autonomy: json['autonomy'] is Map
+          ? AutonomyData.fromJson(
+              (json['autonomy'] as Map).cast<String, dynamic>())
+          : null,
       plans: const {
         'PF1': FinancialPlan(id: 'PF1'),
         'PF2': FinancialPlan(id: 'PF2'),
@@ -480,6 +888,37 @@ class NocodbApiClient {
           json['createdAt']?.toString() ?? DateTime.now().toIso8601String(),
       syncState: SyncState.synced,
     );
+  }
+
+  /// Lenient int parser — the server sometimes serialises numeric fields
+  /// as strings ("3") or numbers (3 / 3.0). Returns null on any other
+  /// value so callers can fall back to their own default.
+  int? _parseInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v.trim());
+    return null;
+  }
+
+  /// Lenient double parser (fiscalRevenue etc.).
+  double? _parseDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.trim().replaceAll(',', '.'));
+    return null;
+  }
+
+  /// Lenient bool parser — server-side booleans may come as real `bool`,
+  /// numeric (`0` / `1`) or stringified (`"true"` / `"oui"`).
+  bool _parseBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'oui' || s == 'yes';
+    }
+    return false;
   }
 
   DossierStatus _mapStatus(String? status) {
@@ -513,6 +952,23 @@ class NocodbApiClient {
     }
   }
 
+  WikiItem _mapWikiItem(Map<String, dynamic> json) {
+    final rawTags = json['tags'];
+    final tags = rawTags is List
+        ? rawTags.map((tag) => tag.toString()).toList()
+        : <String>[];
+    return WikiItem(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      imageUrl: json['imageUrl']?.toString() ?? '',
+      tags: tags,
+      category: json['category']?.toString() ?? '',
+      createdAt: json['createdAt']?.toString() ?? '',
+      updatedAt: json['updatedAt']?.toString() ?? '',
+    );
+  }
+
   RetirementFund _mapRetirementFund(Map<String, dynamic> json) {
     return RetirementFund(
       id: json['id']?.toString() ?? '',
@@ -526,6 +982,9 @@ class NocodbApiClient {
       website: json['website']?.toString() ?? '',
       logoUrl: json['logoUrl']?.toString() ?? '',
       lastEditedAt: json['lastEditedAt']?.toString(),
+      createdAt: json['createdAt']?.toString() ??
+          json['created_at']?.toString() ??
+          json['updatedAt']?.toString(),
     );
   }
 

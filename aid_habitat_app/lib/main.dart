@@ -1,26 +1,31 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:sqflite/sqflite.dart' show databaseFactory;
-import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'models/types.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
 import 'services/auth_service.dart';
+import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
+import 'services/sync_engine.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Sur web : bascule sqflite sur le backend WASM+IndexedDB pour que les
-  // appels existants (openDatabase, Database.query, …) fonctionnent tels
-  // quels dans le navigateur.
-  if (kIsWeb) {
-    databaseFactory = databaseFactoryFfiWeb;
-  }
   await DataService().initialize();
+  // Drop stale sync operations that pre-date the current app version —
+  // otherwise their frozen payloads would be pushed to NocoDB at startup
+  // and overwrite fresh remote data with obsolete values.
+  await DataService().purgeStaleSyncOperations();
   await AuthService().initialize();
+  // Restore any Express API session token persisted from a previous login
+  // before making remote calls.
+  await AuthService().restoreRemoteSession();
   await DataService().refreshLocalAuthStateFromRemote();
+  await ConnectivityService().initialize();
+  // Connecte le ConnectivityService au SyncEngine : quand la connexion
+  // revient, le SyncEngine lance automatiquement un push des opérations
+  // en attente (notes, documents, dossiers…) vers NocoDB.
+  ConnectivityService().bindSyncEngine(SyncEngine());
   await initializeDateFormatting('fr_FR', null);
 
   runApp(const MyApp());
