@@ -66,6 +66,141 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Création / modification / suppression / mot de passe explicite
+  // (tout est piloté depuis NocoDB via le backend Express).
+  // ---------------------------------------------------------------------
+
+  Future<void> _openCreateDialog() async {
+    final result = await showDialog<_MemberFormResult>(
+      context: context,
+      builder: (_) => const _MemberFormDialog(),
+    );
+    if (result == null) return;
+    try {
+      await _dataService.createAccessMember(
+        email: result.email,
+        displayName: result.displayName,
+        role: result.role,
+        establishmentId: result.establishmentId,
+        password: result.password,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Membre créé. Enregistré sur NocoDB.')),
+      );
+      await _loadMembers(refreshing: true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Création impossible : $error')),
+      );
+    }
+  }
+
+  Future<void> _openEditDialog(AdminAccessMember member) async {
+    final result = await showDialog<_MemberFormResult>(
+      context: context,
+      builder: (_) => _MemberFormDialog(initial: member),
+    );
+    if (result == null) return;
+    try {
+      await _dataService.updateAccessMember(
+        email: member.email,
+        displayName: result.displayName,
+        establishmentId: result.establishmentId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Membre mis à jour sur NocoDB.')),
+      );
+      await _loadMembers(refreshing: true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Mise à jour impossible : $error')),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete(AdminAccessMember member) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer ce membre ?'),
+        content: Text(
+          'Le compte "${member.displayName}" (${member.email}) sera supprimé '
+          'de NocoDB et ses identifiants seront révoqués.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _dataService.deleteAccessMember(member.email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Membre supprimé.')),
+      );
+      await _loadMembers(refreshing: true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Suppression impossible : $error')),
+      );
+    }
+  }
+
+  Future<void> _openSetPasswordDialog(AdminAccessMember member) async {
+    final password = await showDialog<String>(
+      context: context,
+      builder: (_) => _SetPasswordDialog(email: member.email),
+    );
+    if (password == null || password.isEmpty) return;
+    try {
+      final applied = await _dataService.setAccessPassword(
+        email: member.email,
+        password: password,
+      );
+      if (!mounted) return;
+      setState(() {
+        _members = _members
+            .map((entry) => entry.email == member.email
+                ? AdminAccessMember(
+                    email: entry.email,
+                    displayName: entry.displayName,
+                    role: entry.role,
+                    selectable: entry.selectable,
+                    establishmentLabel: entry.establishmentLabel,
+                    ergoLabel: entry.ergoLabel,
+                    hasPassword: true,
+                    generatedPassword: applied ?? password,
+                    createdAt: entry.createdAt,
+                  )
+                : entry)
+            .toList(growable: false);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mot de passe défini.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de définir le mot de passe : $error')),
+      );
+    }
+  }
+
   Future<void> _reset(AdminAccessMember member) async {
     setState(() => _resettingEmail = member.email);
     try {
@@ -143,6 +278,16 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
                   ],
                 ),
               ),
+              FilledButton.icon(
+                onPressed: _openCreateDialog,
+                icon: const Icon(LucideIcons.userPlus, size: 16),
+                label: const Text('Nouveau membre'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF907CA1),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
               FilledButton.tonal(
                 onPressed: _isRefreshing
                     ? null
@@ -287,7 +432,7 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
                         ),
                         const SizedBox(width: 16),
                         SizedBox(
-                          width: 140,
+                          width: 180,
                           child: Column(
                             children: [
                               OutlinedButton.icon(
@@ -296,10 +441,10 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
                                 label: Text(
                                   _copiedEmail == member.email
                                       ? 'Copié'
-                                      : 'Copier',
+                                      : 'Copier id / mdp',
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               FilledButton.icon(
                                 onPressed: _resettingEmail == member.email
                                     ? null
@@ -315,8 +460,29 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
                                 label: Text(
                                   _resettingEmail == member.email
                                       ? 'Patiente...'
-                                      : 'Réinitialiser',
+                                      : 'Réinit. aléatoire',
                                 ),
+                              ),
+                              const SizedBox(height: 6),
+                              OutlinedButton.icon(
+                                onPressed: () => _openSetPasswordDialog(member),
+                                icon: const Icon(LucideIcons.keyRound, size: 16),
+                                label: const Text('Définir mdp'),
+                              ),
+                              const SizedBox(height: 6),
+                              OutlinedButton.icon(
+                                onPressed: () => _openEditDialog(member),
+                                icon: const Icon(LucideIcons.pencil, size: 16),
+                                label: const Text('Modifier'),
+                              ),
+                              const SizedBox(height: 6),
+                              OutlinedButton.icon(
+                                onPressed: () => _confirmDelete(member),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red.shade700,
+                                ),
+                                icon: const Icon(LucideIcons.trash2, size: 16),
+                                label: const Text('Supprimer'),
                               ),
                             ],
                           ),
@@ -480,3 +646,227 @@ class _MutedPill extends StatelessWidget {
     );
   }
 }
+
+class _MemberFormResult {
+  final String email;
+  final String displayName;
+  final LocalUserRole role;
+  final String? establishmentId;
+  final String? password;
+  const _MemberFormResult({
+    required this.email,
+    required this.displayName,
+    required this.role,
+    this.establishmentId,
+    this.password,
+  });
+}
+
+class _MemberFormDialog extends StatefulWidget {
+  final AdminAccessMember? initial;
+  const _MemberFormDialog({this.initial});
+
+  @override
+  State<_MemberFormDialog> createState() => _MemberFormDialogState();
+}
+
+class _MemberFormDialogState extends State<_MemberFormDialog> {
+  late final TextEditingController _emailCtrl;
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _establishmentCtrl;
+  late final TextEditingController _passwordCtrl;
+  LocalUserRole _role = LocalUserRole.ergo;
+  bool get _isEdit => widget.initial != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final init = widget.initial;
+    _emailCtrl = TextEditingController(text: init?.email ?? '');
+    _nameCtrl = TextEditingController(text: init?.displayName ?? '');
+    _establishmentCtrl = TextEditingController(text: init?.establishmentLabel ?? '');
+    _passwordCtrl = TextEditingController();
+    _role = init?.role ?? LocalUserRole.ergo;
+  }
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _nameCtrl.dispose();
+    _establishmentCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEdit ? 'Modifier le membre' : 'Nouveau membre'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _emailCtrl,
+              enabled: !_isEdit,
+              decoration: InputDecoration(
+                labelText: 'Email',
+                helperText: _isEdit ? 'Non modifiable (clé unique)' : null,
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(labelText: 'Nom affiché'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _establishmentCtrl,
+              decoration: const InputDecoration(
+                labelText: 'ID Établissement (optionnel)',
+                helperText: 'Laisser vide si global',
+              ),
+            ),
+            if (!_isEdit) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<LocalUserRole>(
+                initialValue: _role,
+                decoration: const InputDecoration(labelText: 'Rôle'),
+                items: const [
+                  DropdownMenuItem(value: LocalUserRole.ergo, child: Text('Ergothérapeute')),
+                  DropdownMenuItem(value: LocalUserRole.admin, child: Text('Administrateur')),
+                ],
+                onChanged: (value) => setState(() => _role = value ?? LocalUserRole.ergo),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _passwordCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Mot de passe (optionnel)',
+                  helperText: 'Laisser vide pour génération aléatoire',
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF907CA1)),
+          onPressed: () {
+            final email = _emailCtrl.text.trim().toLowerCase();
+            final name = _nameCtrl.text.trim();
+            if (!_isEdit && (email.isEmpty || !email.contains('@') || name.isEmpty)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Email et nom requis.')),
+              );
+              return;
+            }
+            if (_isEdit && name.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Nom requis.')),
+              );
+              return;
+            }
+            Navigator.pop(
+              context,
+              _MemberFormResult(
+                email: _isEdit ? widget.initial!.email : email,
+                displayName: name,
+                role: _role,
+                establishmentId: _establishmentCtrl.text.trim().isEmpty
+                    ? null
+                    : _establishmentCtrl.text.trim(),
+                password: _passwordCtrl.text.trim().isEmpty
+                    ? null
+                    : _passwordCtrl.text.trim(),
+              ),
+            );
+          },
+          child: Text(_isEdit ? 'Enregistrer' : 'Créer'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SetPasswordDialog extends StatefulWidget {
+  final String email;
+  const _SetPasswordDialog({required this.email});
+
+  @override
+  State<_SetPasswordDialog> createState() => _SetPasswordDialogState();
+}
+
+class _SetPasswordDialogState extends State<_SetPasswordDialog> {
+  final TextEditingController _ctrl = TextEditingController();
+  bool _obscure = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Définir un mot de passe'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.email,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _ctrl,
+              obscureText: _obscure,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Nouveau mot de passe',
+                helperText: '8 caractères minimum',
+                suffixIcon: IconButton(
+                  icon: Icon(_obscure ? LucideIcons.eye : LucideIcons.eyeOff, size: 18),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF907CA1)),
+          onPressed: () {
+            final value = _ctrl.text.trim();
+            if (value.length < 8) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Mot de passe trop court (min 8).')),
+              );
+              return;
+            }
+            Navigator.pop(context, value);
+          },
+          child: const Text('Définir'),
+        ),
+      ],
+    );
+  }
+}
+
