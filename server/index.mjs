@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import express from 'express';
@@ -9,9 +11,56 @@ import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
+import { putObject, statObject } from './storage.mjs';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
+
+// ---------------------------------------------------------------------------
+// Constants (mirrors helpers.mjs — index.mjs is self-contained for Vercel)
+// ---------------------------------------------------------------------------
+const port = Number(process.env.API_PORT || 3001);
+const SERVER_DIR_PATH = path.dirname(fileURLToPath(import.meta.url));
+const DIST_DIR_PATH = path.resolve(SERVER_DIR_PATH, '../dist');
+const DIST_INDEX_PATH = path.join(DIST_DIR_PATH, 'index.html');
+const LOCAL_DATA_DIR_PATH = fileURLToPath(new URL('./data/', import.meta.url));
+const DATA_DIR_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'aidhabitat-data')
+  : LOCAL_DATA_DIR_PATH;
+const DATA_DIR_URL = pathToFileURL(DATA_DIR_PATH.endsWith(path.sep) ? DATA_DIR_PATH : `${DATA_DIR_PATH}${path.sep}`);
+const dataFileUrl = (relativePath) => new URL(relativePath, DATA_DIR_URL);
+const AUTH_STORE_URL = dataFileUrl('auth-store.json');
+const PROFILE_PHOTOS_DIR_URL = dataFileUrl('profile-photos/');
+const DOCUMENTS_DIR_URL = dataFileUrl('documents/');
+const VISIT_PLANS_DIR_URL = dataFileUrl('visit-plans/');
+const WIKI_LIBRARY_DIR_URL = dataFileUrl('wiki-library/');
+const DOCUMENT_STORE_URL = dataFileUrl('documents-store.json');
+const NOTE_PAGES_STORE_URL = dataFileUrl('note-pages-store.json');
+const RETIREMENT_FUNDS_STORE_URL = dataFileUrl('retirement-funds.json');
+const VISIT_RECOMMENDATIONS_STORE_URL = dataFileUrl('visit-recommendations.json');
+const VISIT_RECOMMENDATIONS_TABLE_NAME = process.env.NOCODB_VISIT_RECOMMENDATIONS_TABLE_NAME || 'mobile_visit_recommendations';
+const WIKI_LIBRARY_STORE_URL = dataFileUrl('wikiLibraryStatic.json');
+const BUNDLED_WIKI_LIBRARY_PATH = path.resolve(SERVER_DIR_PATH, '../data/wikiLibraryStatic.json');
+const AUTH_CACHE_TTL_MS = 30_000;
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const ANAH_STATUS_TTL_MS = 60_000;
+const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';
+const ANAH_REGISTRATION_URL = 'https://monprojet.anah.gouv.fr/';
+const APP_PUBLIC_BASE_URL = String(process.env.APP_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '')
+  || (process.env.VERCEL_URL ? `https://${String(process.env.VERCEL_URL).trim()}` : '');
+const LOCALHOST_URL_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i;
+const PROJECT_VERCEL_HOST_PATTERN = /^aid-habitat-manager(?:-[a-z0-9-]+)?\.vercel\.app$/i;
+let anahStatusCache = null;
+let bundledWikiItemsCache = null;
+
+const MEMBER_PROFILES = {
+  'contact@aidhabitat.fr': { displayName: 'Renan', role: 'ADMIN', selectable: false, establishmentId: null, establishmentLabel: '' },
+  'joris.aidhabitat@gmail.com': { displayName: 'Coralie', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+  'joris.balluais@gmail.com': { displayName: 'Christelle', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+};
+const BENEFICIARY_TRUSTED_EMAIL_FIELD_ID = 'c8s1kh1eqqx6xl6';
+const DEFAULT_LEGACY_ERGO_EMAIL = 'joris.aidhabitat@gmail.com';
+let memberRegistryCache = null;
 
 const app = express();
 
@@ -1772,19 +1821,10 @@ const getVisitPlanFileUrl = (dossierId) => {
 };
 
 const readVisitPlanMeta = async (dossierId) => {
-  const targetUrl = getVisitPlanFileUrl(dossierId);
-  try {
-    const stats = await fs.stat(targetUrl);
-    return {
-      publicUrl: getVisitPlanRelativeUrl(dossierId),
-      updatedAt: stats.mtime.toISOString(),
-    };
-  } catch (error) {
-    if (error?.code === 'ENOENT') {
-      return { publicUrl: null, updatedAt: null };
-    }
-    throw error;
-  }
+  const folderName = safeSlug(dossierId, 'dossier');
+  const key = `visit-plans/${folderName}/plan_logement.png`;
+  const { url, updatedAt } = await statObject(key);
+  return { publicUrl: url, updatedAt };
 };
 
 const syncPresetMembersInErgos = async () => {
@@ -2673,19 +2713,20 @@ app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
       return;
     }
 
-    await fs.mkdir(PROFILE_PHOTOS_DIR_URL, { recursive: true });
     const safeEmail = currentUser.email.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     const fileName = `${safeEmail}-${Date.now()}.${extension}`;
-    const filePath = new URL(fileName, PROFILE_PHOTOS_DIR_URL);
-    await fs.writeFile(filePath, buffer);
+    const { url: photoUrl } = await putObject({
+      key: `profile-photos/${fileName}`,
+      buffer,
+      contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+    });
 
-    const relativeUrl = `/uploads/profile-photos/${fileName}`;
     const store = await readAuthStore();
     const credentials = store.users[currentUser.email];
     if (credentials) {
       store.users[currentUser.email] = {
         ...credentials,
-        profilePhotoUrl: relativeUrl,
+        profilePhotoUrl: photoUrl,
       };
       await writeAuthStore(store);
     }
@@ -2693,7 +2734,7 @@ app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
     if (currentUser.ergoRecordId) {
       try {
         await updateRecord(TABLES.ergotherapeutes, currentUser.ergoRecordId, {
-          nom_etablissement_id: relativeUrl,
+          nom_etablissement_id: photoUrl,
         });
       } catch (error) {
         console.warn('[profile-photo] sync NocoDB impossible, photo conservée localement.', error);
@@ -2709,7 +2750,7 @@ app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
       error: null,
       data: {
         user: refreshedUser,
-        photoUrl: resolveClientMediaUrl(relativeUrl),
+        photoUrl: resolveClientMediaUrl(photoUrl),
       },
     });
   } catch (error) {
@@ -2881,11 +2922,13 @@ app.post('/api/wiki-library', requireAuth, async (req, res, next) => {
     const imageDataUrl = stringValue(req.body?.imageDataUrl).trim();
     if (imageDataUrl) {
       const imagePayload = parseImageDataUrl(imageDataUrl);
-      await fs.mkdir(WIKI_LIBRARY_DIR_URL, { recursive: true });
       const fileName = `${safeSlug(title, 'wiki-item')}-${Date.now()}.${imagePayload.extension}`;
-      const targetUrl = new URL(fileName, WIKI_LIBRARY_DIR_URL);
-      await fs.writeFile(targetUrl, imagePayload.buffer);
-      imageUrl = `/uploads/wiki-library/${fileName}`;
+      const { url: uploadedUrl } = await putObject({
+        key: `wiki-library/${fileName}`,
+        buffer: imagePayload.buffer,
+        contentType: `image/${imagePayload.extension === 'jpg' ? 'jpeg' : imagePayload.extension}`,
+      });
+      imageUrl = uploadedUrl;
     }
 
     const item = normalizeWikiItemPayload({
@@ -2959,11 +3002,13 @@ app.put('/api/wiki-library/:itemId', requireAuth, async (req, res, next) => {
     const imageDataUrl = stringValue(req.body?.imageDataUrl).trim();
     if (imageDataUrl) {
       const imagePayload = parseImageDataUrl(imageDataUrl);
-      await fs.mkdir(WIKI_LIBRARY_DIR_URL, { recursive: true });
       const fileName = `${safeSlug(title, 'wiki-item')}-${Date.now()}.${imagePayload.extension}`;
-      const targetUrl = new URL(fileName, WIKI_LIBRARY_DIR_URL);
-      await fs.writeFile(targetUrl, imagePayload.buffer);
-      imageUrl = `/uploads/wiki-library/${fileName}`;
+      const { url: uploadedUrl } = await putObject({
+        key: `wiki-library/${fileName}`,
+        buffer: imagePayload.buffer,
+        contentType: `image/${imagePayload.extension === 'jpg' ? 'jpeg' : imagePayload.extension}`,
+      });
+      imageUrl = uploadedUrl;
     }
 
     const updated = normalizeWikiItemPayload({
@@ -3993,11 +4038,13 @@ app.put('/api/visit-plans/:dossierId', requireAuth, async (req, res, next) => {
 
     const image = parseImageDataUrl(contentBase64);
     const dossierId = field(dossierRecord, 'uuid_source') || req.params.dossierId;
-    const targetUrl = getVisitPlanFileUrl(dossierId);
-    await fs.mkdir(new URL('./', targetUrl), { recursive: true });
-    await fs.writeFile(targetUrl, image.buffer);
-
-    const visitPlan = await readVisitPlanMeta(dossierId);
+    const folderName = safeSlug(dossierId, 'dossier');
+    const { url: planUrl, updatedAt: planUpdatedAt } = await putObject({
+      key: `visit-plans/${folderName}/plan_logement.png`,
+      buffer: image.buffer,
+      contentType: 'image/png',
+    });
+    const visitPlan = { publicUrl: planUrl, updatedAt: planUpdatedAt };
     res.json({
       success: true,
       error: null,
