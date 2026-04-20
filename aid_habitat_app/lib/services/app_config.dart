@@ -4,10 +4,19 @@ class AppConfig {
     defaultValue: '',
   );
 
-  static const appSessionToken = String.fromEnvironment(
+  static const _buildTimeAppSessionToken = String.fromEnvironment(
     'AIDHABITAT_APP_SESSION_TOKEN',
     defaultValue: '',
   );
+
+  static String? _runtimeAppSessionToken;
+
+  static String get appSessionToken =>
+      _runtimeAppSessionToken ?? _buildTimeAppSessionToken;
+
+  static void setAppSessionToken(String token) {
+    _runtimeAppSessionToken = token;
+  }
 
   static bool get hasRemoteConfig =>
       apiBaseUrl.trim().isNotEmpty && appSessionToken.trim().isNotEmpty;

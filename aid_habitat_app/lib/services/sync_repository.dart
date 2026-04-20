@@ -288,6 +288,37 @@ class SyncRepository {
     );
   }
 
+  /// Returns a summary of the first `failed` sync operation (for UI display).
+  /// Returns null if no failed operations exist.
+  Future<Map<String, String?>?> fetchTopFailingOperation() async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'sync_operations',
+      where: 'status = ?',
+      whereArgs: [SyncOperationStatus.failed.name],
+      orderBy: 'updated_at DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return {
+      'id': row['id'] as String?,
+      'entity_type': row['entity_type'] as String?,
+      'operation_type': row['operation_type'] as String?,
+      'last_error': row['last_error'] as String?,
+    };
+  }
+
+  /// Deletes all `failed` operations. Returns the number of deleted rows.
+  Future<int> discardFailedOperations() async {
+    final db = await _database.database;
+    return db.delete(
+      'sync_operations',
+      where: 'status = ?',
+      whereArgs: [SyncOperationStatus.failed.name],
+    );
+  }
+
   Future<void> clearPendingOperationsForEntity(String entityLocalId) async {
     final db = await _database.database;
     await db.delete(

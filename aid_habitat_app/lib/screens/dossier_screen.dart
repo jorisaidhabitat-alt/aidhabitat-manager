@@ -30,11 +30,18 @@ class DossierScreen extends StatefulWidget {
   final VoidCallback onBack;
   final DossierRepository? repository;
 
+  /// If provided, the "Visite Domicile" button will call this callback
+  /// instead of pushing a full-screen route. This keeps the left sidebar
+  /// visible inside the visit report (the parent MainScreen just swaps
+  /// the central content).
+  final VoidCallback? onOpenVisitReport;
+
   const DossierScreen({
     super.key,
     required this.dossier,
     required this.onBack,
     this.repository,
+    this.onOpenVisitReport,
   });
 
   @override
@@ -153,7 +160,10 @@ class _DossierScreenState extends State<DossierScreen> {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(seconds: 2), _save);
+    // 150 ms so the local SQLite write (and the refresh of dossier list /
+    // dashboard / visit report header) is effectively instant. NocoDB
+    // receives the push ~200 ms later via the SyncEngine debounce.
+    _saveTimer = Timer(const Duration(milliseconds: 150), _save);
   }
 
   Future<void> _save() async {
@@ -381,7 +391,7 @@ class _DossierScreenState extends State<DossierScreen> {
         Expanded(
           child: _QuickActionButton(
             icon: LucideIcons.paperclip,
-            label: 'Espace Documents',
+            label: 'Documents',
             subLabel: 'Photos, scans, plans...',
             onTap: () {
               Navigator.push(
@@ -403,6 +413,13 @@ class _DossierScreenState extends State<DossierScreen> {
             label: 'Visite Domicile',
             subLabel: 'Relevés, mesures, photos...',
             onTap: () async {
+              // Prefer the in-shell navigation (callback) so the left
+              // sidebar stays visible. Fallback to Navigator.push only if
+              // the parent didn't wire a handler (isolated testing).
+              if (widget.onOpenVisitReport != null) {
+                widget.onOpenVisitReport!();
+                return;
+              }
               await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -632,8 +649,12 @@ class _DossierScreenState extends State<DossierScreen> {
                   .toList(),
               onChanged: (v) {
                 if (v == null) return;
-                _numberPeople = v;
-                _onChanged();
+                setState(() => _numberPeople = v);
+                // Dropdown selection is a single, deliberate action : no
+                // typing debounce needed, save immediately so the visit
+                // report and the sync engine see the new count at once.
+                _saveTimer?.cancel();
+                _save();
               },
             ),
           ),

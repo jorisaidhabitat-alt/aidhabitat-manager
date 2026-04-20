@@ -2818,6 +2818,109 @@ app.get('/api/admin/access-members', requireAdmin, async (_req, res, next) => {
   }
 });
 
+app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
+  try {
+    const { email, displayName, role, establishmentId, password } = req.body || {};
+    if (!email || !displayName) {
+      return res.status(400).json({ success: false, error: 'email et displayName requis' });
+    }
+    const normalizedEmail = normalizeEmail(email);
+    const { prenom, nom } = splitDisplayName(displayName);
+    const created = await createRecord(TABLES.ergotherapeutes, sanitizeUndefined({
+      uuid_source: crypto.randomUUID(),
+      prenom,
+      nom,
+      email: normalizedEmail,
+      etablissements_id: establishmentId ? Number(establishmentId) : undefined,
+      created_at: new Date().toISOString(),
+    }));
+    // Provision credentials in auth store
+    const store = await readAuthStore();
+    if (!store.users[normalizedEmail]) {
+      const chosenPassword = (password && password.trim()) ? password.trim() : generatePassword(displayName);
+      const salt = randomSecret(16);
+      store.users[normalizedEmail] = {
+        salt,
+        passwordHash: hashPassword(chosenPassword, salt),
+        createdAt: new Date().toISOString(),
+        profilePhotoUrl: '',
+      };
+      store.pendingCredentials[normalizedEmail] = {
+        displayName,
+        password: chosenPassword,
+        role: role === 'ADMIN' ? 'ADMIN' : 'ERGO',
+        createdAt: new Date().toISOString(),
+      };
+      await writeAuthStore(store);
+    }
+    memberRegistryCache = null;
+    const members = await getAdminAccessMembers();
+    const member = members.find((m) => m.email === normalizedEmail) || {
+      email: normalizedEmail,
+      displayName,
+      role: role === 'ADMIN' ? 'ADMIN' : 'ERGO',
+      selectable: true,
+      establishmentLabel: '',
+      ergoLabel: displayName,
+      hasPassword: Boolean(store.users[normalizedEmail]),
+      generatedPassword: store.pendingCredentials[normalizedEmail]?.password || '',
+      createdAt: store.users[normalizedEmail]?.createdAt || null,
+    };
+    res.status(201).json({ success: true, error: null, data: { member } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/api/admin/access-members/:email', requireAdmin, async (req, res, next) => {
+  try {
+    const targetEmail = normalizeEmail(decodeURIComponent(req.params.email));
+    const { displayName, establishmentId } = req.body || {};
+    const records = await queryAll(TABLES.ergotherapeutes, { fields: FIELD_SETS.ergotherapeutes });
+    const existing = records.find((r) => normalizeEmail(field(r, 'email') || asArray(field(r, 'User')).at(0)?.email) === targetEmail);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Membre introuvable' });
+    }
+    const patch = sanitizeUndefined({
+      ...(displayName ? splitDisplayName(displayName) : {}),
+      ...(establishmentId !== undefined ? { etablissements_id: establishmentId ? Number(establishmentId) : null } : {}),
+    });
+    await updateRecord(TABLES.ergotherapeutes, existing.id, patch);
+    memberRegistryCache = null;
+    const members = await getAdminAccessMembers();
+    const member = members.find((m) => m.email === targetEmail);
+    if (!member) {
+      return res.status(404).json({ success: false, error: 'Membre introuvable après mise à jour' });
+    }
+    res.json({ success: true, error: null, data: { member } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/admin/access-members/:email', requireAdmin, async (req, res, next) => {
+  try {
+    const targetEmail = normalizeEmail(decodeURIComponent(req.params.email));
+    const records = await queryAll(TABLES.ergotherapeutes, { fields: FIELD_SETS.ergotherapeutes });
+    const existing = records.find((r) => normalizeEmail(field(r, 'email') || asArray(field(r, 'User')).at(0)?.email) === targetEmail);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Membre introuvable' });
+    }
+    await callNocoTool('deleteRecords', { tableId: TABLES.ergotherapeutes, recordIds: [String(existing.id)] });
+    // Remove from auth store
+    const store = await readAuthStore();
+    if (store.users[targetEmail] || store.pendingCredentials[targetEmail]) {
+      delete store.users[targetEmail];
+      delete store.pendingCredentials[targetEmail];
+      await writeAuthStore(store);
+    }
+    memberRegistryCache = null;
+    res.json({ success: true, error: null, data: {} });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/health', async (_req, res, next) => {
   try {
     const beneficiaires = await queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires });

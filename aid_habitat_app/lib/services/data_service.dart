@@ -98,20 +98,6 @@ class DataService {
     }
   }
 
-  /// Create a new beneficiary + dossier locally (works offline).
-  /// A sync operation is automatically enqueued.
-  Future<Dossier> createDossierOffline({
-    required String firstName,
-    required String lastName,
-    String ergoId = '',
-  }) async {
-    return _dossierRepository.createDossierOffline(
-      firstName: firstName,
-      lastName: lastName,
-      ergoId: ergoId,
-    );
-  }
-
   /// Update patient fields locally and enqueue a sync operation.
   Future<void> updatePatientLocal({
     required String patientLocalId,
@@ -199,6 +185,58 @@ class DataService {
 
   Future<String?> regenerateAccessPassword(String email) async {
     return _nocodbApiClient.regenerateAccessPassword(email);
+  }
+
+  Future<String?> setAccessPassword({
+    required String email,
+    String? password,
+  }) async {
+    return _nocodbApiClient.setAccessPassword(email: email, password: password);
+  }
+
+  Future<AdminAccessMember> createAccessMember({
+    required String email,
+    required String displayName,
+    required LocalUserRole role,
+    String? establishmentId,
+    String? password,
+  }) async {
+    return _nocodbApiClient.createAccessMember(
+      email: email,
+      displayName: displayName,
+      role: role,
+      establishmentId: establishmentId,
+      password: password,
+    );
+  }
+
+  Future<AdminAccessMember> updateAccessMember({
+    required String email,
+    String? displayName,
+    String? establishmentId,
+  }) async {
+    return _nocodbApiClient.updateAccessMember(
+      email: email,
+      displayName: displayName,
+      establishmentId: establishmentId,
+    );
+  }
+
+  Future<void> deleteAccessMember(String email) async {
+    return _nocodbApiClient.deleteAccessMember(email);
+  }
+
+  Future<WikiItem> updateWikiItem(
+    WikiItem item, {
+    String? newImageDataUrl,
+  }) async {
+    final saved = await _nocodbApiClient.updateWikiItem(
+      itemId: item.id,
+      item: item,
+      imageDataUrl: newImageDataUrl,
+    );
+    await _wikiRepository.mergeRemoteItems([saved]);
+    return saved;
   }
 
   Future<List<DocItem>> fetchDocuments(String patientId) async {
@@ -393,4 +431,5 @@ class DataService {
     await _dossierRepository.forceReplaceWithRemote(remoteDossier);
     await _syncRepository.clearPendingOperationsForEntity(remoteDossier.id);
   }
+
 }

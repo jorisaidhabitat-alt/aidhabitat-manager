@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../components/cached_remote_image.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
+import '../services/url_resolver.dart';
 import '../services/wiki_repository.dart';
 
 class WikiScreen extends StatefulWidget {
@@ -21,15 +21,20 @@ class _WikiScreenState extends State<WikiScreen> {
   final WikiRepository _wikiRepository = WikiRepository();
   final DataService _dataService = DataService();
 
+  final TextEditingController _searchController = TextEditingController();
+
   List<WikiItem> _items = const [];
   Set<String> _availableTags = {};
   String? _selectedTag;
   bool _isLoading = true;
   String? _error;
 
+  String get _searchTerm => _searchController.text;
+
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() => setState(() {}));
     _loadItems();
   }
 
@@ -95,19 +100,15 @@ class _WikiScreenState extends State<WikiScreen> {
   }
 
   Future<void> _openItem(WikiItem item) async {
-    final result = await showDialog<_WikiItemEditResult>(
+    final updated = await showDialog<WikiItem>(
       context: context,
       builder: (context) =>
           _WikiItemDialog(item: item, availableTags: _availableTags.toList()),
     );
-    if (result == null) return;
-    final updated = result.item;
+    if (updated == null) return;
 
     try {
-      final saved = await _dataService.updateWikiItem(
-        updated,
-        newImageDataUrl: result.newImageDataUrl,
-      );
+      final saved = await _dataService.updateWikiItem(updated);
       if (!mounted) return;
       setState(() {
         _items = _items
@@ -128,7 +129,7 @@ class _WikiScreenState extends State<WikiScreen> {
     final draft = await showDialog<_WikiItemDraft>(
       context: context,
       builder: (context) =>
-          _WikiCreateDialog(availableTags: _availableTags),
+          _WikiCreateDialog(availableTags: _availableTags.toList()),
     );
     if (draft == null) return;
 
@@ -160,207 +161,228 @@ class _WikiScreenState extends State<WikiScreen> {
 
     final sortedTags = _availableTags.toList()..sort();
 
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Wiki & Inspiration',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Bibliotheque visuelle pour garder des reperes de solutions.',
-            style: TextStyle(color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 24),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _FilterChip(
-                  label: 'Tous',
-                  isActive: _selectedTag == null,
-                  onTap: () => setState(() => _selectedTag = null),
+    return Stack(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Wiki & Inspiration',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
                 ),
-                for (final tag in sortedTags)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: _FilterChip(
-                      label: tag,
-                      isActive: _selectedTag == tag,
-                      onTap: () => setState(
-                        () => _selectedTag = _selectedTag == tag ? null : tag,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Bibliotheque visuelle pour garder des reperes de solutions.',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 24),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _FilterChip(
+                      label: 'Tous',
+                      isActive: _selectedTag == null,
+                      onTap: () => setState(() => _selectedTag = null),
+                    ),
+                    for (final tag in sortedTags)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: _FilterChip(
+                          label: tag,
+                          isActive: _selectedTag == tag,
+                          onTap: () => setState(
+                            () => _selectedTag =
+                                _selectedTag == tag ? null : tag,
+                          ),
+                        ),
                       ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              if (_error != null && _items.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.red),
                     ),
                   ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (_error != null && _items.isEmpty)
-            Expanded(
-              child: Center(
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
-              ),
-            )
-          else if (_filteredItems.isEmpty)
-            const Expanded(child: Center(child: Text('Aucun element trouve')))
-          else
-            Expanded(
-              child: GridView.builder(
-                // Same grid dimensions as the Caisses de retraite screen for
-                // visual consistency: 280px max cell width, 310px main axis
-                // extent, 16px gaps.
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 280,
-                  mainAxisSpacing: 16,
-                  crossAxisSpacing: 16,
-                  mainAxisExtent: 310,
-                ),
-                itemCount: _filteredItems.length,
-                itemBuilder: (context, index) {
-                  final item = _filteredItems[index];
-                  final primaryTag = item.tags.isNotEmpty ? item.tags.first : null;
-                  return InkWell(
-                    onTap: () => _openItem(item),
-                    borderRadius: BorderRadius.circular(28),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.transparent,
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
+                )
+              else if (_filteredItems.isEmpty)
+                const Expanded(
+                  child: Center(child: Text('Aucun element trouve')),
+                )
+              else
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (ctx, constraints) {
+                      final crossAxis = constraints.maxWidth > 1200
+                          ? 5
+                          : constraints.maxWidth > 900
+                              ? 4
+                              : constraints.maxWidth > 600
+                                  ? 3
+                                  : 2;
+                      return GridView.builder(
+                        gridDelegate:
+                            SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxis,
+                          mainAxisSpacing: 24,
+                          crossAxisSpacing: 24,
+                          childAspectRatio: 0.68,
+                        ),
+                        itemCount: _filteredItems.length,
+                        itemBuilder: (context, index) {
+                          final item = _filteredItems[index];
+                          final primaryTag = item.tags.isNotEmpty
+                              ? item.tags.first
+                              : null;
+                          return InkWell(
+                            onTap: () => _openItem(item),
+                            borderRadius: BorderRadius.circular(28),
                             child: Container(
+                              padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: _colorForCategory(item.category),
-                                borderRadius: BorderRadius.circular(20),
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(28),
                               ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(20),
-                                child: item.imageUrl.isNotEmpty
-                                    ? Image.network(
-                                        item.imageUrl,
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        errorBuilder: (_, __, ___) =>
-                                            const Center(
-                                              child: Icon(
-                                                LucideIcons.image,
-                                                size: 42,
-                                                color: Colors.black54,
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: _colorForCategory(
+                                            item.category),
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                      ),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            child: item.imageUrl.isNotEmpty
+                                                ? Image.network(
+                                                    item.imageUrl,
+                                                    fit: BoxFit.cover,
+                                                    width: double.infinity,
+                                                    errorBuilder:
+                                                        (_, __, ___) =>
+                                                            const Center(
+                                                      child: Icon(
+                                                        LucideIcons.image,
+                                                        size: 42,
+                                                        color:
+                                                            Colors.black54,
+                                                      ),
+                                                    ),
+                                                  )
+                                                : const Center(
+                                                    child: Icon(
+                                                      LucideIcons.image,
+                                                      size: 42,
+                                                      color: Colors.black54,
+                                                    ),
+                                                  ),
+                                          ),
+                                          Positioned.fill(
+                                            child: IgnorePointer(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          20),
+                                                  border: Border.all(
+                                                    color: Colors.black
+                                                        .withValues(
+                                                            alpha: 0.1),
+                                                    width: 1,
+                                                  ),
+                                                ),
                                               ),
                                             ),
-                                      )
-                                    : const Center(
-                                        child: Icon(
-                                          LucideIcons.image,
-                                          size: 42,
-                                          color: Colors.black54,
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    const Center(
-                                      child: Icon(
-                                        LucideIcons.image,
-                                        size: 42,
-                                        color: Colors.black54,
-                                      ),
-                                    ),
-                                  // ring-1 ring-black/10 equivalent
-                                  Positioned.fill(
-                                    child: IgnorePointer(
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(12),
-                                          border: Border.all(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.1,
-                                            ),
-                                            width: 1,
                                           ),
-                                        ),
+                                          if (primaryTag != null)
+                                            Positioned(
+                                              left: 8,
+                                              bottom: 8,
+                                              child: Container(
+                                                padding: const EdgeInsets
+                                                    .symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 4,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black
+                                                      .withValues(
+                                                          alpha: 0.55),
+                                                  borderRadius:
+                                                      BorderRadius
+                                                          .circular(6),
+                                                ),
+                                                child: Text(
+                                                  primaryTag,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight:
+                                                        FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                     ),
                                   ),
-                                  // Tag badge overlay bottom-left
-                                  if (primaryTag != null)
-                                    Positioned(
-                                      left: 8,
-                                      bottom: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.55,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          primaryTag,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  if (primaryTag != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      primaryTag.toUpperCase(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF94A3B8),
+                                        letterSpacing: 1.2,
                                       ),
                                     ),
+                                  ],
                                 ],
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            item.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1E293B),
-                            ),
-                          ),
-                          if (primaryTag != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              primaryTag.toUpperCase(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF94A3B8),
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
             ],
           ),
         ),
-        // Floating "+" button (FAB) bottom-right, matches the React layout.
         Positioned(
           right: 24,
           bottom: 24,
@@ -411,10 +433,6 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
   late List<String> _selectedTags;
-  final ImagePicker _imagePicker = ImagePicker();
-  Uint8List? _pickedImageBytes;
-  String _pickedImageExt = 'jpg';
-  bool _pickingImage = false;
 
   @override
   void initState() {
@@ -431,48 +449,6 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickImage() async {
-    setState(() => _pickingImage = true);
-    try {
-      final picked = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        imageQuality: 85,
-      );
-      if (picked == null) return;
-      final bytes = await picked.readAsBytes();
-      final ext = picked.path.split('.').last.toLowerCase();
-      if (!mounted) return;
-      setState(() {
-        _pickedImageBytes = bytes;
-        _pickedImageExt = switch (ext) {
-          'png' => 'png',
-          'webp' => 'webp',
-          'gif' => 'gif',
-          _ => 'jpg',
-        };
-      });
-    } catch (err) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Image indisponible : $err')),
-      );
-    } finally {
-      if (mounted) setState(() => _pickingImage = false);
-    }
-  }
-
-  String? _buildImageDataUrl() {
-    if (_pickedImageBytes == null) return null;
-    final mime = switch (_pickedImageExt) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'gif' => 'image/gif',
-      _ => 'image/jpeg',
-    };
-    return 'data:$mime;base64,${base64Encode(_pickedImageBytes!)}';
   }
 
   @override
@@ -495,19 +471,11 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                   flex: 2,
                   child: Container(
                     color: const Color(0xFFF1F5F9),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        if (_pickedImageBytes != null)
-                          Image.memory(
-                            _pickedImageBytes!,
+                    child: widget.item.imageUrl.isNotEmpty
+                        ? Image.network(
+                            resolveMediaUrl(widget.item.imageUrl),
                             fit: BoxFit.contain,
-                          )
-                        else if (widget.item.imageUrl.isNotEmpty)
-                          CachedRemoteImage(
-                            url: widget.item.imageUrl,
-                            fit: BoxFit.contain,
-                            errorWidget: const Center(
+                            errorBuilder: (_, __, ___) => const Center(
                               child: Icon(
                                 LucideIcons.image,
                                 size: 72,
@@ -515,67 +483,13 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                               ),
                             ),
                           )
-                        else
-                          const Center(
+                        : const Center(
                             child: Icon(
                               LucideIcons.image,
                               size: 72,
                               color: Colors.black54,
                             ),
                           ),
-                        Positioned(
-                          bottom: 16,
-                          left: 16,
-                          child: Material(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            borderRadius: BorderRadius.circular(18),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(18),
-                              onTap: _pickingImage ? null : _pickImage,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 10,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (_pickingImage)
-                                      const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    else
-                                      const Icon(
-                                        LucideIcons.image,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      _pickedImageBytes != null
-                                          ? 'Changer l\'image'
-                                          : (widget.item.imageUrl.isNotEmpty
-                                              ? 'Remplacer l\'image'
-                                              : 'Ajouter une image'),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
                 // Right side: form on white background
@@ -661,14 +575,11 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                           child: FilledButton(
                             onPressed: () {
                               Navigator.of(context).pop(
-                                _WikiItemEditResult(
-                                  item: widget.item.copyWith(
-                                    title: _titleController.text.trim(),
-                                    description:
-                                        _descriptionController.text.trim(),
-                                    tags: _selectedTags,
-                                  ),
-                                  newImageDataUrl: _buildImageDataUrl(),
+                                widget.item.copyWith(
+                                  title: _titleController.text.trim(),
+                                  description:
+                                      _descriptionController.text.trim(),
+                                  tags: _selectedTags,
                                 ),
                               );
                             },
@@ -760,12 +671,6 @@ class _FormLabel extends StatelessWidget {
       ),
     );
   }
-}
-
-class _WikiItemEditResult {
-  const _WikiItemEditResult({required this.item, this.newImageDataUrl});
-  final WikiItem item;
-  final String? newImageDataUrl;
 }
 
 class _WikiItemDraft {

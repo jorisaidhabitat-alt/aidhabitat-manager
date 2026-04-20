@@ -471,34 +471,7 @@ class NocodbSyncService {
     );
   }
 
-  Future<void> _processPatientOperation(
-    SyncOperation operation,
-    Map<String, dynamic> payload,
-  ) async {
-    if (operation.operationType != 'update') {
-      throw Exception(
-        'Opération patient non supportée: ${operation.operationType}',
-      );
-    }
 
-    final patientLocalId = payload['patientLocalId']?.toString();
-    final updates = (payload['updates'] as Map?)?.cast<String, dynamic>();
-    if (patientLocalId == null || updates == null) {
-      throw Exception('Payload patient incomplet');
-    }
-
-    // Resolve remote patient ID from local DB.
-    final remoteId = await _syncRepository.resolveRemotePatientId(patientLocalId);
-    if (remoteId == null || remoteId.isEmpty) {
-      throw Exception('Patient $patientLocalId n\'a pas encore d\'ID remote');
-    }
-
-    // Use the beneficiary PATCH endpoint.
-    await _apiClient.updateDossier(
-      dossierId: remoteId,
-      updates: updates,
-    );
-  }
 
   Future<void> _processDocumentOperation(
     SyncOperation operation,

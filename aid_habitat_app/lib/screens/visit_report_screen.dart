@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-
-import '../components/notes_widget.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
-import 'visit_tabs/accessibility_tab.dart';
-import 'visit_tabs/bathroom_tab.dart';
-import 'visit_tabs/beneficiary_tab.dart';
-import 'visit_tabs/life_context_tab.dart';
-import 'visit_tabs/measurements_tab.dart';
-import 'visit_tabs/plans_tab.dart';
-import 'visit_tabs/recommendations_tab.dart';
-import 'visit_tabs/wc_tab.dart';
+import '../services/dossier_repository.dart';
+import '../components/notes_widget.dart';
+import 'visit_report/beneficiary_tab.dart';
+import 'visit_report/context_tab.dart';
+import 'visit_report/mesures_tab.dart';
+import 'visit_report/accessibility_tab.dart';
+import 'visit_report/bathroom_tab.dart';
+import 'visit_report/wc_tab.dart';
+import 'visit_report/recommendations_tab.dart';
+import 'visit_report/plans_tab.dart';
 
 class VisitReportScreen extends StatefulWidget {
   final Dossier dossier;
@@ -27,29 +28,25 @@ class VisitReportScreen extends StatefulWidget {
 
 class _VisitReportScreenState extends State<VisitReportScreen>
     with SingleTickerProviderStateMixin {
-  static const _tabs = [
-    'B\u00e9n\u00e9ficiaire',
+  late TabController _tabController;
+  final DossierRepository _repository = DossierRepository();
+
+  static const List<String> _tabs = [
+    'Bénéficiaire',
     'Contexte de vie',
     'Mesures',
-    'Accessibilit\u00e9',
+    'Accessibilité',
     'Salle de bain',
     'WC',
-    'Pr\u00e9conisations',
+    'Préconisations',
     'Plans',
   ];
-
-  late TabController _tabController;
-  late Dossier _dossier;
 
   @override
   void initState() {
     super.initState();
-    _dossier = widget.dossier;
     _tabController = TabController(length: _tabs.length, vsync: this);
     _tabController.addListener(_handleTabChange);
-    // Re-read the dossier from the local DB on mount, in case patient
-    // fields changed elsewhere (dashboard, dossiers list, dossier screen).
-    _refreshDossier();
   }
 
   @override
@@ -60,200 +57,163 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   }
 
   void _handleTabChange() {
-    if (!_tabController.indexIsChanging) setState(() {});
-  }
-
-  void _onDossierChanged(Dossier updated) {
-    setState(() => _dossier = updated);
-  }
-
-  /// Re-fetches the dossier from the local database and updates state.
-  /// Called after any tab saves, so every other tab sees fresh patient /
-  /// housing / dossier fields (name, city, etc.) on the next rebuild.
-  Future<void> _refreshDossier() async {
-    final fresh = await _repository.fetchDossierById(widget.dossier.id);
-    if (!mounted || fresh == null) return;
-    // Only rebuild if something actually changed, to avoid flicker.
-    if (fresh.patient.firstName == _dossier.patient.firstName &&
-        fresh.patient.lastName == _dossier.patient.lastName &&
-        fresh.patient.city == _dossier.patient.city &&
-        fresh.patient.zipCode == _dossier.patient.zipCode &&
-        fresh.patient.phone == _dossier.patient.phone &&
-        fresh.patient.email == _dossier.patient.email &&
-        fresh.patient.address == _dossier.patient.address &&
-        fresh.patient.numberPeople == _dossier.patient.numberPeople) {
-      return;
-    }
-    setState(() => _dossier = fresh);
-  }
-
-  Widget _buildTabBar() {
-    return Container(
-      height: 48,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(50),
-      ),
-      child: TabBar(
-        controller: _tabController,
-        isScrollable: true,
-        indicator: BoxDecoration(
-          color: const Color(0xFFD8D0DC),
-          borderRadius: BorderRadius.circular(50),
-        ),
-        indicatorSize: TabBarIndicatorSize.label,
-        indicatorPadding:
-            const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
-        labelColor: const Color(0xFF554a63),
-        unselectedLabelColor: Colors.black87,
-        labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-        labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-        tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
-        dividerColor: Colors.transparent,
-        padding: const EdgeInsets.all(4),
-        tabAlignment: TabAlignment.start,
-        // Disable hover / splash / pressed overlay on tabs so hovering
-        // "Bénéficiaire" (and any other tab) does NOT show a gray fill.
-        overlayColor: WidgetStateProperty.all(Colors.transparent),
-        splashFactory: NoSplash.splashFactory,
-      ),
-    );
-  }
-
-  Widget _buildBackButton() {
-    return InkWell(
-      onTap: widget.onBack,
-      borderRadius: BorderRadius.circular(50),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          LucideIcons.arrowLeft,
-          color: Colors.black87,
-        ),
-      ),
-    );
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _tabController.index;
-    final isPlansTab = currentIndex == 7;
-
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        children: [
-          // ---- Top nav ----
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, size: 18),
-                color: const Color(0xFF554a63),
-                onPressed: widget.onBack,
-                tooltip: 'Retour',
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TabBar(
-                  controller: _tabController,
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  dividerColor: Colors.transparent,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  indicator: BoxDecoration(
-                    color: const Color(0xFFD8D0DC),
-                    borderRadius: BorderRadius.circular(6),
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          children: [
+            // Top Nav
+            Row(
+              children: [
+                InkWell(
+                  onTap: widget.onBack,
+                  borderRadius: BorderRadius.circular(50),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: const Icon(
+                      LucideIcons.arrowLeft,
+                      color: Colors.black87,
+                    ),
                   ),
-                  labelColor: const Color(0xFF554a63),
-                  unselectedLabelColor: const Color(0xFF907CA1),
-                  labelStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  unselectedLabelStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  labelPadding:
-                      const EdgeInsets.symmetric(horizontal: 14),
-                  tabs: _tabs.map((t) => Tab(text: t)).toList(),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+                const SizedBox(width: 32),
+                Expanded(
+                  child: Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(50),
+                      border: Border.all(color: const Color(0xFF597E8D)),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      isScrollable: true,
+                      indicator: BoxDecoration(
+                        color: const Color(0xFFD8D0DC),
+                        borderRadius: BorderRadius.circular(50),
+                      ),
+                      labelColor: const Color(0xFF554a63),
+                      unselectedLabelColor: Colors.black87,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
+                      dividerColor: Colors.transparent,
+                      padding: const EdgeInsets.all(4),
+                      tabAlignment: TabAlignment.start,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
 
-          // ---- Content ----
-          Expanded(
-            child: isPlansTab
-                ? PlansTab(
-                    dossier: _dossier,
-                    tabKey: _tabs[currentIndex],
-                  )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Form column
-                      Expanded(
-                        flex: 1,
-                        child: _buildFormTab(currentIndex),
+            // Content Area
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Form Column
+                  Expanded(
+                    flex: 1,
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.grey.shade200),
                       ),
-                      const SizedBox(width: 16),
-                      Container(
-                        width: 1,
-                        color: const Color(0xFFF1F5F9),
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          BeneficiaryTab(dossier: widget.dossier, repository: _repository),
+                          ContextTab(dossier: widget.dossier, repository: _repository),
+                          MesuresTab(dossier: widget.dossier, repository: _repository),
+                          AccessibilityTab(dossier: widget.dossier, repository: _repository),
+                          BathroomTab(dossier: widget.dossier, repository: _repository),
+                          WcTab(dossier: widget.dossier, repository: _repository),
+                          RecommendationsTab(dossier: widget.dossier, repository: _repository),
+                          PlansTab(dossier: widget.dossier),
+                        ],
                       ),
-                      const SizedBox(width: 16),
-                      // Notes column
-                      Expanded(
-                        flex: 2,
-                        child: ClipRect(
-                          child: NotesWidget(
-                            patientId: _dossier.patient.id,
-                            tabKey: _tabs[currentIndex],
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+
+                  // Right Column: Canvas Notes
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 16,
+                          ),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(24),
+                              topRight: Radius.circular(24),
+                            ),
+                            border: Border(
+                              bottom: BorderSide(color: Color(0xFFF1F5F9)),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                "Notes",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(50),
+                                ),
+                                child: const Text(
+                                  "À jour",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
+                        Expanded(
+                          child: NotesWidget(
+                            patientId: widget.dossier.patient.id,
+                            tabKey: _tabs[_tabController.index],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-          ),
-        ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
-  }
-
-  Widget _buildFormTab(int index) {
-    switch (index) {
-      case 0:
-        return BeneficiaryTab(
-          dossier: _dossier,
-          onDossierChanged: _onDossierChanged,
-        );
-      case 1:
-        return LifeContextTab(
-          dossier: _dossier,
-          onDossierChanged: _onDossierChanged,
-        );
-      case 2:
-        return MeasurementsTab(dossier: _dossier);
-      case 3:
-        return AccessibilityTab(
-          dossier: _dossier,
-          onDossierChanged: _onDossierChanged,
-        );
-      case 4:
-        return BathroomTab(dossier: _dossier);
-      case 5:
-        return WcTab(dossier: _dossier);
-      case 6:
-        return RecommendationsTab(dossier: _dossier);
-      default:
-        return const SizedBox.shrink();
-    }
   }
 }

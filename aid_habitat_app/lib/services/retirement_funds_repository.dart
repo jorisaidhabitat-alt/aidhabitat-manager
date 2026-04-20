@@ -72,6 +72,11 @@ class RetirementFundsRepository {
       website: row['website'] as String,
       logoUrl: row['logo_url'] as String,
       lastEditedAt: row['last_edited_at'] as String?,
+      // The local schema has no dedicated `created_at` column, so fall back
+      // to the row's `updated_at` — the closest proxy for "known since" in
+      // offline mode. When available, the remote `createdAt` will replace
+      // this through the next sync.
+      createdAt: row['updated_at'] as String?,
     );
   }
 }

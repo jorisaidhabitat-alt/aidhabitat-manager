@@ -745,6 +745,123 @@ class NocodbApiClient {
         .toList();
   }
 
+  /// Définit un mot de passe explicite pour [email]. Si [password] est
+  /// null ou vide, demande au serveur une régénération aléatoire.
+  /// Retourne le mot de passe effectivement en vigueur.
+  Future<String?> setAccessPassword({
+    required String email,
+    String? password,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final body = <String, dynamic>{
+      'email': email,
+      if (password != null && password.isNotEmpty)
+        'password': password
+      else
+        'forceReset': true,
+    };
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/api/auth/provision'),
+      headers: _headers,
+      body: jsonEncode(body),
+    ).timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Remote password set failed (${response.statusCode})');
+    }
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final generatedEntries = ((data['generated'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+    final generated = generatedEntries.firstWhere(
+      (entry) => entry['email']?.toString() == email,
+      orElse: () => const {},
+    );
+    return generated['password']?.toString();
+  }
+
+  Future<AdminAccessMember> createAccessMember({
+    required String email,
+    required String displayName,
+    required LocalUserRole role,
+    String? establishmentId,
+    String? password,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/api/admin/access-members'),
+      headers: _headers,
+      body: jsonEncode({
+        'email': email,
+        'displayName': displayName,
+        'role': role == LocalUserRole.admin ? 'ADMIN' : 'ERGO',
+        if (establishmentId != null && establishmentId.isNotEmpty)
+          'establishmentId': establishmentId,
+        if (password != null && password.isNotEmpty) 'password': password,
+      }),
+    ).timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote create member failed (${response.statusCode}): ${response.body}',
+      );
+    }
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final member = (data['member'] as Map?)?.cast<String, dynamic>();
+    if (member == null) {
+      throw Exception('Unexpected create member payload');
+    }
+    return _mapAdminAccessMember(member);
+  }
+
+  Future<AdminAccessMember> updateAccessMember({
+    required String email,
+    String? displayName,
+    String? establishmentId,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final encodedEmail = Uri.encodeComponent(email);
+    final response = await _client.patch(
+      Uri.parse('$_baseUrl/api/admin/access-members/$encodedEmail'),
+      headers: _headers,
+      body: jsonEncode({
+        if (displayName != null) 'displayName': displayName,
+        if (establishmentId != null) 'establishmentId': establishmentId,
+      }),
+    ).timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Remote update member failed (${response.statusCode})');
+    }
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final member = (data['member'] as Map?)?.cast<String, dynamic>();
+    if (member == null) {
+      throw Exception('Unexpected update member payload');
+    }
+    return _mapAdminAccessMember(member);
+  }
+
+  Future<void> deleteAccessMember(String email) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final encodedEmail = Uri.encodeComponent(email);
+    final response = await _client.delete(
+      Uri.parse('$_baseUrl/api/admin/access-members/$encodedEmail'),
+      headers: _headers,
+    ).timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Remote delete member failed (${response.statusCode})');
+    }
+  }
+
   Future<String?> regenerateAccessPassword(String email) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');

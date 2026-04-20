@@ -123,6 +123,7 @@ class RetirementFund {
   final String website;
   final String logoUrl;
   final String? lastEditedAt;
+  final String? createdAt;
 
   const RetirementFund({
     required this.id,
@@ -136,6 +137,7 @@ class RetirementFund {
     required this.website,
     required this.logoUrl,
     this.lastEditedAt,
+    this.createdAt,
   });
 
   RetirementFund copyWith({
@@ -149,6 +151,7 @@ class RetirementFund {
     String? website,
     String? logoUrl,
     String? lastEditedAt,
+    String? createdAt,
   }) {
     return RetirementFund(
       id: id,
@@ -162,6 +165,7 @@ class RetirementFund {
       website: website ?? this.website,
       logoUrl: logoUrl ?? this.logoUrl,
       lastEditedAt: lastEditedAt ?? this.lastEditedAt,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }
@@ -238,6 +242,11 @@ class Occupant {
   final String caisseRetraitePrincipale;
   final String caissesRetraiteComplementaires;
 
+  /// Per-occupant fiscal reference revenue. When the household has several
+  /// occupants, each one has their own RFR value; the household category is
+  /// derived from the sum divided by the number of occupants.
+  final double? fiscalRevenue;
+
   const Occupant({
     this.firstName = '',
     this.lastName = '',
@@ -251,6 +260,7 @@ class Occupant {
     this.numeroSecuriteSociale = '',
     this.caisseRetraitePrincipale = '',
     this.caissesRetraiteComplementaires = '',
+    this.fiscalRevenue,
   });
 
   factory Occupant.fromJson(Map<String, dynamic> json) => Occupant(
@@ -266,6 +276,7 @@ class Occupant {
     numeroSecuriteSociale: json['numeroSecuriteSociale'] as String? ?? '',
     caisseRetraitePrincipale: json['caisseRetraitePrincipale'] as String? ?? '',
     caissesRetraiteComplementaires: json['caissesRetraiteComplementaires'] as String? ?? '',
+    fiscalRevenue: (json['fiscalRevenue'] as num?)?.toDouble(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -281,6 +292,7 @@ class Occupant {
     'numeroSecuriteSociale': numeroSecuriteSociale,
     'caisseRetraitePrincipale': caisseRetraitePrincipale,
     'caissesRetraiteComplementaires': caissesRetraiteComplementaires,
+    'fiscalRevenue': fiscalRevenue,
   };
 
   Occupant copyWith({
@@ -296,6 +308,8 @@ class Occupant {
     String? numeroSecuriteSociale,
     String? caisseRetraitePrincipale,
     String? caissesRetraiteComplementaires,
+    double? fiscalRevenue,
+    bool clearFiscalRevenue = false,
   }) {
     return Occupant(
       firstName: firstName ?? this.firstName,
@@ -313,6 +327,9 @@ class Occupant {
           caisseRetraitePrincipale ?? this.caisseRetraitePrincipale,
       caissesRetraiteComplementaires: caissesRetraiteComplementaires ??
           this.caissesRetraiteComplementaires,
+      fiscalRevenue: clearFiscalRevenue
+          ? null
+          : (fiscalRevenue ?? this.fiscalRevenue),
     );
   }
 }
@@ -416,10 +433,19 @@ class Housing {
   final String typology;
   final bool basement;
   final String basementDescription;
+  final List<String> basementRooms;
   final bool rdc;
   final String rdcDescription;
+  final List<String> rdcRooms;
   final bool floor;
   final String floorDescription;
+  final List<String> floorRooms;
+  final bool secondFloor;
+  final String secondFloorDescription;
+  final List<String> secondFloorRooms;
+  final bool thirdFloor;
+  final String thirdFloorDescription;
+  final List<String> thirdFloorRooms;
   final bool garage;
   final bool veranda;
   final bool balcon;
@@ -462,10 +488,19 @@ class Housing {
     this.typology = '',
     this.basement = false,
     this.basementDescription = '',
+    this.basementRooms = const [],
     this.rdc = false,
     this.rdcDescription = '',
+    this.rdcRooms = const [],
     this.floor = false,
     this.floorDescription = '',
+    this.floorRooms = const [],
+    this.secondFloor = false,
+    this.secondFloorDescription = '',
+    this.secondFloorRooms = const [],
+    this.thirdFloor = false,
+    this.thirdFloorDescription = '',
+    this.thirdFloorRooms = const [],
     this.garage = false,
     this.veranda = false,
     this.balcon = false,
@@ -858,6 +893,7 @@ class VisitRecommendationItem {
   final String wikiTitle;
   final String wikiImageUrl;
   final String wikiTag;
+  final String customTitle;
   final String note;
   final String createdAt;
   final String updatedAt;
@@ -868,27 +904,62 @@ class VisitRecommendationItem {
     this.wikiTitle = '',
     this.wikiImageUrl = '',
     this.wikiTag = '',
+    this.customTitle = '',
     this.note = '',
     this.createdAt = '',
     this.updatedAt = '',
   });
 
-  factory VisitRecommendationItem.fromJson(Map<String, dynamic> json) => VisitRecommendationItem(
-    id: json['id'] as String? ?? '',
-    wikiItemId: json['wikiItemId'] as String? ?? '',
-    wikiTitle: json['wikiTitle'] as String? ?? '',
-    wikiImageUrl: json['wikiImageUrl'] as String? ?? '',
-    wikiTag: json['wikiTag'] as String? ?? '',
-    note: json['note'] as String? ?? '',
-    createdAt: json['createdAt'] as String? ?? '',
-    updatedAt: json['updatedAt'] as String? ?? '',
-  );
+  factory VisitRecommendationItem.fromJson(Map<String, dynamic> json) =>
+      VisitRecommendationItem(
+        id: json['id'] as String? ?? '',
+        wikiItemId: json['wikiItemId'] as String? ?? '',
+        wikiTitle: json['wikiTitle'] as String? ?? '',
+        wikiImageUrl: json['wikiImageUrl'] as String? ?? '',
+        wikiTag: json['wikiTag'] as String? ?? '',
+        customTitle: json['customTitle'] as String? ?? '',
+        note: json['note'] as String? ?? '',
+        createdAt: json['createdAt'] as String? ?? '',
+        updatedAt: json['updatedAt'] as String? ?? '',
+      );
 
   Map<String, dynamic> toJson() => {
-    'id': id, 'wikiItemId': wikiItemId, 'wikiTitle': wikiTitle,
-    'wikiImageUrl': wikiImageUrl, 'wikiTag': wikiTag, 'note': note,
-    'createdAt': createdAt, 'updatedAt': updatedAt,
-  };
+        'id': id,
+        'wikiItemId': wikiItemId,
+        'wikiTitle': wikiTitle,
+        'wikiImageUrl': wikiImageUrl,
+        'wikiTag': wikiTag,
+        'customTitle': customTitle,
+        'note': note,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
+      };
+
+  VisitRecommendationItem copyWith({
+    String? wikiItemId,
+    String? wikiTitle,
+    String? wikiImageUrl,
+    String? wikiTag,
+    String? customTitle,
+    String? note,
+    String? updatedAt,
+  }) {
+    return VisitRecommendationItem(
+      id: id,
+      wikiItemId: wikiItemId ?? this.wikiItemId,
+      wikiTitle: wikiTitle ?? this.wikiTitle,
+      wikiImageUrl: wikiImageUrl ?? this.wikiImageUrl,
+      wikiTag: wikiTag ?? this.wikiTag,
+      customTitle: customTitle ?? this.customTitle,
+      note: note ?? this.note,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  /// Displayed title: customTitle overrides wikiTitle.
+  String get displayTitle =>
+      customTitle.trim().isNotEmpty ? customTitle : wikiTitle;
 }
 
 class Dossier {
