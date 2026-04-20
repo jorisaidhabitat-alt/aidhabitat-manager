@@ -11,7 +11,7 @@ import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
-import { putObject, statObject } from './storage.mjs';
+import { putObject, statObject, getJson, putJson } from './storage.mjs';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -731,27 +731,11 @@ const mapMedicalContext = (contextRecord) => {
   };
 };
 
+const AUTH_STORE_KEY = 'auth-store.json';
+
 const readAuthStore = async () => {
-  try {
-    const raw = await fs.readFile(AUTH_STORE_URL, 'utf8');
-    const parsed = JSON.parse(raw);
-    const users = Object.fromEntries(
-      Object.entries(parsed.users || {}).map(([email, user]) => [
-        email,
-        {
-          ...user,
-          profilePhotoUrl: stringValue(user?.profilePhotoUrl),
-        },
-      ]),
-    );
-    return {
-      version: 1,
-      secret: parsed.secret || randomSecret(),
-      users,
-      pendingCredentials: parsed.pendingCredentials || {},
-    };
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
+  const parsed = await getJson(AUTH_STORE_KEY, null);
+  if (!parsed) {
     return {
       version: 1,
       secret: randomSecret(),
@@ -759,11 +743,25 @@ const readAuthStore = async () => {
       pendingCredentials: {},
     };
   }
+  const users = Object.fromEntries(
+    Object.entries(parsed.users || {}).map(([email, user]) => [
+      email,
+      {
+        ...user,
+        profilePhotoUrl: stringValue(user?.profilePhotoUrl),
+      },
+    ]),
+  );
+  return {
+    version: 1,
+    secret: parsed.secret || randomSecret(),
+    users,
+    pendingCredentials: parsed.pendingCredentials || {},
+  };
 };
 
 const writeAuthStore = async (store) => {
-  await fs.mkdir(DATA_DIR_URL, { recursive: true });
-  await fs.writeFile(AUTH_STORE_URL, JSON.stringify(store, null, 2));
+  await putJson(AUTH_STORE_KEY, store);
 };
 
 const readJsonStore = async (storeUrl, fallbackValue) => {

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Camera, Check, File, FileText, Image as ImageIcon, Loader2, Plus, ScanLine, Upload, X } from 'lucide-react';
+import { ArrowLeft, Camera, Check, CheckSquare, Download, File, FileText, Image as ImageIcon, Loader2, Plus, Save, ScanLine, Square, Upload, X } from 'lucide-react';
 
 import { deleteDocument, fetchDocumentBlob, fetchDocuments, getCachedDocumentBlob, updateDocument, uploadDocument } from '../services/dataService';
 import { AppDocument, Dossier } from '../types';
 import { LoadingProgress, SimpleLoader, useSmoothLoadingState } from './LoadingProgress';
 import { ViewportOverlay } from './ViewportOverlay';
-import { uiActionCardClass, uiChipActiveClass, uiChipBaseClass, uiChipInactiveClass, uiDangerButtonClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from './uiTheme';
+import { uiActionCardClass, uiDangerButtonClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from './uiTheme';
 
 interface DocumentsViewProps {
   dossier: Dossier;
@@ -15,7 +15,6 @@ interface DocumentsViewProps {
   initialIsReady?: boolean;
 }
 
-const AVAILABLE_TAGS = ['Mandat', 'Rapport', 'Facture', 'Devis', 'Cerfa', 'Photo', 'Plan', 'Autre'];
 
 const buildCachedObjectUrls = (documents: AppDocument[]) => {
   if (typeof window === 'undefined') {
@@ -52,19 +51,24 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingMetadata, setIsSavingMetadata] = useState(false);
   const [editingTitle, setEditingTitle] = useState('');
-  const [editingTag, setEditingTag] = useState('Autre');
   const [docToDelete, setDocToDelete] = useState<AppDocument | null>(null);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploadName, setUploadName] = useState('');
-  const [uploadTag, setUploadTag] = useState('Autre');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(initialPreparedAt);
   const [documentObjectUrls, setDocumentObjectUrls] = useState<Record<string, string>>(() => buildCachedObjectUrls(initialDocuments));
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [isGalleryReady, setIsGalleryReady] = useState(initialIsReady);
   const uploadLoadingState = useSmoothLoadingState(isUploading, { minVisibleMs: 520 });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const [inlineTitle, setInlineTitle] = useState('');
+  const [unsavedPromptOpen, setUnsavedPromptOpen] = useState(false);
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
 
   const revokeObjectUrl = useCallback((url?: string) => {
     if (url) {
@@ -212,7 +216,6 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   useEffect(() => {
     if (!selectedDoc) return;
     setEditingTitle(selectedDoc.title);
-    setEditingTag(selectedDoc.tags[0] || 'Autre');
   }, [selectedDoc]);
 
   useEffect(() => {
@@ -229,6 +232,29 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
     Object.values(objectUrlsRef.current).forEach((url) => revokeObjectUrl(url));
   }, [revokeObjectUrl]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+      // Ctrl/Cmd + A : tout sélectionner
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && !isTyping) {
+        event.preventDefault();
+        setIsSelectionMode(true);
+        setSelectedIds(new Set(docs.map((d) => d.id)));
+        return;
+      }
+      // Escape : quitter la sélection
+      if (event.key === 'Escape' && isSelectionMode && !isTyping) {
+        setIsSelectionMode(false);
+        setSelectedIds(new Set());
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [docs, isSelectionMode]);
+
   const resetInputs = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (cameraInputRef.current) cameraInputRef.current.value = '';
@@ -241,7 +267,6 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
     if (file) {
       setPendingFile(file);
       setUploadName(file.name.split('.').slice(0, -1).join('.') || file.name);
-      setUploadTag('Autre');
       setUploadModalOpen(true);
       setShowAddMenu(false);
     }
@@ -259,7 +284,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
       uploadedFile,
       patientName,
       uploadName.trim(),
-      [uploadTag],
+      ['Autre'],
       dossier.id,
     );
 
@@ -313,7 +338,6 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
     setIsSavingMetadata(true);
     const { success, error, document } = await updateDocument(selectedDoc.id, {
       title: editingTitle.trim(),
-      tags: [editingTag],
     });
     setIsSavingMetadata(false);
 
@@ -329,10 +353,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
     }
   };
 
-  const filteredDocs = docs.filter((doc) => {
-    const matchesTag = selectedTag ? doc.tags.includes(selectedTag) : true;
-    return matchesTag;
-  });
+  const filteredDocs = docs;
 
   const documentsStatus = useMemo(() => {
     const hasPending = docs.some((doc) => doc.syncStatus && doc.syncStatus !== 'synced');
@@ -356,6 +377,142 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
       alert('Ouverture du document impossible.');
     }
   }, [ensureDocumentObjectUrl]);
+
+  const handleDownloadDocument = useCallback(async (doc: AppDocument, event?: React.MouseEvent) => {
+    if (event) event.stopPropagation();
+    try {
+      const blob = await fetchDocumentBlob(doc);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = doc.fileName || doc.title || 'document';
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 500);
+    } catch (error) {
+      console.error('DocumentsView: failed to download document', error);
+      alert('Téléchargement impossible.');
+    }
+  }, []);
+
+  const handleDragStart = useCallback(async (doc: AppDocument, event: React.DragEvent) => {
+    try {
+      const extensionFromName = (doc.fileName || '').split('.').pop();
+      const fileExt = extensionFromName
+        || (doc.type === 'image' ? 'jpg' : doc.type === 'pdf' ? 'pdf' : 'bin');
+      const baseName = (doc.fileName && doc.fileName.includes('.'))
+        ? doc.fileName
+        : `${(doc.title || 'document').replace(/[\\/:*?"<>|]/g, '_')}.${fileExt}`;
+      const mime = doc.mimeType || (doc.type === 'image' ? 'image/jpeg' : doc.type === 'pdf' ? 'application/pdf' : 'application/octet-stream');
+
+      // Préfère l'URL publique du serveur (persistante, réutilisable dans un navigateur)
+      // et bascule vers une object URL en dernier recours.
+      let shareableUrl = '';
+      const rawUrl = (doc.url || '').trim();
+      if (rawUrl) {
+        shareableUrl = rawUrl.startsWith('http')
+          ? rawUrl
+          : `${window.location.origin}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+      } else {
+        shareableUrl = documentObjectUrls[doc.id] || await ensureDocumentObjectUrl(doc);
+      }
+
+      event.dataTransfer.effectAllowed = 'copy';
+      // Chrome/Edge : DownloadURL permet le glisser vers le bureau / Finder
+      event.dataTransfer.setData('DownloadURL', `${mime}:${baseName}:${shareableUrl}`);
+      event.dataTransfer.setData('text/uri-list', shareableUrl);
+      event.dataTransfer.setData('text/plain', shareableUrl);
+    } catch (error) {
+      console.error('DocumentsView: drag start failed', error);
+    }
+  }, [documentObjectUrls, ensureDocumentObjectUrl]);
+
+  const handleBulkDownload = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setIsBulkDownloading(true);
+    try {
+      for (const doc of docs) {
+        if (!selectedIds.has(doc.id)) continue;
+        await handleDownloadDocument(doc);
+        // tiny delay so the browser doesn't drop successive downloads
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    } finally {
+      setIsBulkDownloading(false);
+    }
+  }, [docs, handleDownloadDocument, selectedIds]);
+
+  const toggleSelection = useCallback((docId: string, event?: React.MouseEvent) => {
+    if (event) event.stopPropagation();
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((current) => {
+      if (current.size === docs.length) return new Set();
+      return new Set(docs.map((d) => d.id));
+    });
+  }, [docs]);
+
+  const exitSelectionMode = useCallback(() => {
+    setIsSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const startLongPress = useCallback((docId: string) => {
+    cancelLongPress();
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      setIsSelectionMode(true);
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        next.add(docId);
+        return next;
+      });
+      // Retour haptique sur mobile quand dispo
+      if (typeof window !== 'undefined' && 'navigator' in window && 'vibrate' in window.navigator) {
+        try { window.navigator.vibrate(20); } catch { /* no-op */ }
+      }
+    }, 500);
+  }, [cancelLongPress]);
+
+  useEffect(() => () => cancelLongPress(), [cancelLongPress]);
+
+  const handleInlineRename = useCallback(async (docId: string) => {
+    const title = inlineTitle.trim();
+    setInlineEditingId(null);
+    if (!title) return;
+    const current = docs.find((d) => d.id === docId);
+    if (!current || current.title === title) return;
+    const { success, document: updated } = await updateDocument(docId, { title });
+    if (success && updated) {
+      setDocs((prev) => prev.map((d) => d.id === updated.id ? updated : d));
+    }
+  }, [docs, inlineTitle]);
+
+  const hasUnsavedChanges = Boolean(selectedDoc && editingTitle.trim() !== selectedDoc.title);
+
+  const handleCloseModal = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setUnsavedPromptOpen(true);
+      return;
+    }
+    setSelectedDoc(null);
+  }, [hasUnsavedChanges]);
 
   const selectedDocObjectUrl = selectedDoc ? documentObjectUrls[selectedDoc.id] || '' : '';
 
@@ -383,25 +540,44 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             )}
           </div>
         </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {isSelectionMode ? (
+            <>
+              <span className="text-sm font-semibold text-slate-700 mr-2">{selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}</span>
+              <button
+                onClick={toggleSelectAll}
+                className={uiSecondaryButtonClass}
+                title={selectedIds.size === docs.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+              >
+                {selectedIds.size === docs.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+              </button>
+              <button
+                onClick={() => void handleBulkDownload()}
+                disabled={selectedIds.size === 0 || isBulkDownloading}
+                className={`${uiPrimaryButtonClass} disabled:opacity-50`}
+                title="Télécharger la sélection"
+              >
+                {isBulkDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                <span>Télécharger</span>
+              </button>
+              <button onClick={exitSelectionMode} className={uiSecondaryButtonClass} title="Quitter le mode sélection">
+                <X size={16} />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setIsSelectionMode(true)}
+              className={uiSecondaryButtonClass}
+              title="Sélection multiple"
+            >
+              <CheckSquare size={16} />
+              <span>Sélectionner</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
-        <button
-          onClick={() => setSelectedTag(null)}
-          className={`${uiChipBaseClass} whitespace-nowrap text-sm ${!selectedTag ? uiChipActiveClass : uiChipInactiveClass}`}
-        >
-          Tous
-        </button>
-        {AVAILABLE_TAGS.map((tag) => (
-          <button
-            key={tag}
-            onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
-            className={`${uiChipBaseClass} whitespace-nowrap text-sm ${tag === selectedTag ? uiChipActiveClass : uiChipInactiveClass}`}
-          >
-            {tag}
-          </button>
-        ))}
-      </div>
 
       <div className="flex-1 overflow-y-auto pb-48 pr-2">
         {!isGalleryReady ? (
@@ -409,7 +585,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             <SimpleLoader label="Chargement des documents" />
           </div>
         ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6 content-start">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 content-start">
           <div className="relative">
             <button
               onClick={() => setShowAddMenu((current) => !current)}
@@ -433,29 +609,77 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             <input type="file" ref={importInputRef} className="hidden" accept="*" onChange={handleFileSelect} />
           </div>
 
-          {filteredDocs.map((doc) => (
+          {filteredDocs.map((doc) => {
+            const isSelected = selectedIds.has(doc.id);
+            const isEditingThis = inlineEditingId === doc.id;
+            return (
             <div
               key={doc.id}
-              onClick={() => setSelectedDoc(doc)}
-              onTouchEnd={() => setSelectedDoc(doc)}
-              className="flex flex-col items-center gap-2 group cursor-pointer relative text-left"
+              onClick={() => {
+                if (longPressTriggeredRef.current) {
+                  longPressTriggeredRef.current = false;
+                  return;
+                }
+                if (isSelectionMode) {
+                  toggleSelection(doc.id);
+                } else {
+                  setSelectedDoc(doc);
+                }
+              }}
+              onPointerDown={(e) => {
+                // Ne démarre pas le long press si on clique sur un bouton ou l'input
+                const target = e.target as HTMLElement;
+                if (target.closest('button, input')) return;
+                startLongPress(doc.id);
+              }}
+              onPointerUp={cancelLongPress}
+              onPointerLeave={cancelLongPress}
+              onPointerMove={(e) => {
+                // Annule si mouvement significatif (drag d'image par ex.)
+                if (Math.abs(e.movementX) > 4 || Math.abs(e.movementY) > 4) cancelLongPress();
+              }}
+              onContextMenu={(e) => {
+                // Empêche le menu contextuel natif lors d'un long press sur mobile
+                if (longPressTriggeredRef.current) e.preventDefault();
+              }}
+              className="flex flex-col items-center gap-2 group cursor-pointer relative text-left select-none"
             >
-              <div className={`${uiActionCardClass} flex aspect-[3/4] w-full items-center justify-center overflow-hidden`}>
+              <div className={`${uiActionCardClass} flex aspect-[3/4] w-full items-center justify-center overflow-hidden relative`}>
+                {isSelected && (
+                  <div className="absolute inset-0 bg-[#907CA1]/40 z-[5] pointer-events-none" />
+                )}
+                {isSelectionMode && (
+                  <button
+                    onClick={(event) => toggleSelection(doc.id, event)}
+                    className="absolute top-2 left-2 p-1 bg-white border border-slate-300 rounded-md z-10 shadow-sm"
+                    title={isSelected ? 'Désélectionner' : 'Sélectionner'}
+                  >
+                    {isSelected ? <CheckSquare size={14} className="text-[#907CA1]" /> : <Square size={14} className="text-slate-400" />}
+                  </button>
+                )}
+                <button
+                  onClick={(event) => { void handleDownloadDocument(doc, event); }}
+                  className="absolute top-2 right-12 p-2 bg-[#907CA1] hover:bg-[#7a668a] text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-md"
+                  title="Télécharger"
+                >
+                  <Download size={18} />
+                </button>
                 <button
                   onClick={(event) => handleDelete(doc, event)}
-                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                  className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-md"
+                  title="Supprimer"
                 >
-                  <X size={12} />
+                  <X size={18} />
                 </button>
 
-                {doc.tags.length > 0 && (
-                  <div className="absolute top-2 left-2 px-2 py-1 bg-black/50 backdrop-blur-sm rounded-md text-[10px] text-white font-bold z-10">
-                    {doc.tags[0]}
-                  </div>
-                )}
-
                 {doc.type === 'image' && documentObjectUrls[doc.id] ? (
-                  <img src={documentObjectUrls[doc.id]} alt={doc.title} className="w-full h-full object-cover pointer-events-none" />
+                  <img
+                    src={documentObjectUrls[doc.id]}
+                    alt={doc.title}
+                    draggable={!isSelectionMode}
+                    onDragStart={(e) => { void handleDragStart(doc, e); }}
+                    className="w-full h-full object-cover cursor-grab active:cursor-grabbing"
+                  />
                 ) : doc.type === 'pdf' && documentObjectUrls[doc.id] ? (
                   <iframe
                     src={`${documentObjectUrls[doc.id]}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
@@ -468,12 +692,29 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                   </div>
                 )}
               </div>
-              <span className="font-medium text-black text-sm text-center truncate w-full px-2">{doc.title}</span>
+              <input
+                value={isEditingThis ? inlineTitle : doc.title}
+                readOnly={!isEditingThis}
+                onFocus={(e) => {
+                  e.stopPropagation();
+                  setInlineEditingId(doc.id);
+                  setInlineTitle(doc.title);
+                }}
+                onChange={(e) => setInlineTitle(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={() => { if (isEditingThis) void handleInlineRename(doc.id); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.currentTarget.blur(); }
+                  if (e.key === 'Escape') { setInlineEditingId(null); e.currentTarget.blur(); }
+                }}
+                className={`font-medium text-black text-sm text-center w-full px-2 py-0.5 rounded-md outline-none cursor-text transition-colors ${isEditingThis ? 'border border-[#907CA1] bg-white' : 'border border-transparent hover:border-slate-200 bg-transparent truncate'}`}
+              />
               <span className="text-[10px] text-slate-400">
                 {new Date(doc.updatedAt || doc.createdAt).toLocaleDateString('fr-FR')} {new Date(doc.updatedAt || doc.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
               </span>
             </div>
-          ))}
+            );
+          })}
         </div>
         )}
       </div>
@@ -504,20 +745,6 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tag</label>
-                <div className="flex flex-wrap gap-2">
-                  {AVAILABLE_TAGS.map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={() => setUploadTag(tag)}
-                      className={`${uiChipBaseClass} ${uploadTag === tag ? uiChipActiveClass : uiChipInactiveClass}`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <div className="flex justify-end gap-3 mt-6">
@@ -533,7 +760,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
               </button>
               <button
                 onClick={handleConfirmUpload}
-                disabled={!uploadName.trim() || !uploadTag || isUploading}
+                disabled={!uploadName.trim() || isUploading}
                 className={`${uiPrimaryButtonClass} disabled:opacity-50`}
               >
                 {uploadLoadingState.visible ? (
@@ -585,7 +812,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
       {selectedDoc && (
         <ViewportOverlay
           className="fixed inset-0 bg-black/50 z-[80] flex items-center justify-center p-8 backdrop-blur-sm"
-          onClick={() => setSelectedDoc(null)}
+          onClick={handleCloseModal}
         >
           <div
             className={`${uiModalClass} animate-fade-in flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden`}
@@ -603,37 +830,27 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                   }}
                   className="text-xl font-bold bg-transparent outline-none border-b border-transparent focus:border-black transition-colors w-full"
                 />
+                {hasUnsavedChanges && (
+                  <span className="text-xs font-semibold text-amber-600 whitespace-nowrap">• Modifié</span>
+                )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                {AVAILABLE_TAGS.map((tag) => (
-                  <button
-                    key={tag}
-                    onClick={() => setEditingTag(tag)}
-                    className={`${uiChipBaseClass} ${editingTag === tag ? uiChipActiveClass : uiChipInactiveClass}`}
-                  >
-                    {tag}
-                  </button>
-                ))}
                 <button
-                  onClick={() => void handleOpenDocument(selectedDoc)}
-                  className={uiSecondaryButtonClass}
+                  onClick={() => void handleDownloadDocument(selectedDoc)}
+                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors"
+                  title="Télécharger"
                 >
-                  Ouvrir
+                  <Download size={20} />
                 </button>
                 <button
                   onClick={() => void handleSaveMetadata()}
-                  disabled={isSavingMetadata || !editingTitle.trim()}
-                  className={`${uiPrimaryButtonClass} disabled:opacity-50`}
+                  disabled={isSavingMetadata || !editingTitle.trim() || !hasUnsavedChanges}
+                  className="p-2 bg-[#907CA1] hover:bg-[#7a668a] text-white rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Enregistrer"
                 >
-                  {isSavingMetadata ? (
-                    <SimpleLoader
-                      label="Enregistrement"
-                      variant="button"
-                      className="text-white"
-                    />
-                  ) : <><Check size={16} /> Enregistrer</>}
+                  {isSavingMetadata ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
                 </button>
-                <button onClick={() => setSelectedDoc(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                <button onClick={handleCloseModal} className="p-2 hover:bg-slate-200 rounded-full transition-colors" title="Fermer">
                   <X size={24} />
                 </button>
               </div>
@@ -666,6 +883,46 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           </div>
         </ViewportOverlay>
       )}
+
+      {unsavedPromptOpen && selectedDoc && (
+        <ViewportOverlay
+          className="fixed inset-0 bg-black/60 z-[90] flex items-center justify-center p-4 backdrop-blur-sm"
+          onClick={() => setUnsavedPromptOpen(false)}
+        >
+          <div
+            className={`${uiModalClass} w-full max-w-sm p-6`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-2">Modifications non enregistrées</h3>
+            <p className="text-slate-600 mb-6">
+              Souhaitez-vous enregistrer les modifications avant de fermer ?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={async () => {
+                  await handleSaveMetadata();
+                  setUnsavedPromptOpen(false);
+                  setSelectedDoc(null);
+                }}
+                className={uiPrimaryButtonClass}
+              >
+                <Save size={16} />
+                <span>Enregistrer et fermer</span>
+              </button>
+              <button
+                onClick={() => {
+                  setUnsavedPromptOpen(false);
+                  setSelectedDoc(null);
+                }}
+                className={uiSecondaryButtonClass}
+              >
+                Fermer sans enregistrer
+              </button>
+            </div>
+          </div>
+        </ViewportOverlay>
+      )}
+
     </div>
   );
 };

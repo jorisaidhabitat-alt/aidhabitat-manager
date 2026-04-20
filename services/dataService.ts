@@ -1,4 +1,4 @@
-import { AdminAccessMember, AnahStatus, AppDocument, AppUser, Dossier, DossierStatus, HousingType, HeatingMode, NotePage, OccupantIdentity, Patient, Visit, Housing, DiagnosticSanitaires, MesuresAnthropometriques, ObservationsSynthese, RetirementFund, VisitRecommendationItem, WikiLibraryItem } from '../types';
+import { AdminAccessMember, AnahStatus, AppDocument, AppUser, Dossier, DossierStatus, HousingType, HeatingMode, NotePage, OccupantIdentity, Patient, UserRole, Visit, Housing, DiagnosticSanitaires, MesuresAnthropometriques, ObservationsSynthese, RetirementFund, VisitRecommendationItem, WikiLibraryItem } from '../types';
 import { profilsAutorises, nocoDbTokensParEmail, LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
 import { flushPendingReleves, queueReleveForSync } from './releveSync';
 
@@ -1198,7 +1198,8 @@ export const getReferenceDataSnapshot = (): ReferenceData | null => referenceDat
 
 export const loginApp = async (email: string, password: string): Promise<{ success: boolean; error: string | null; user?: AppUser }> => {
   const normalizedEmail = String(email || '').trim().toLowerCase();
-  const profile = profilsAutorises[normalizedEmail as keyof typeof profilsAutorises];
+  const profiles = profilsAutorises as Record<string, { motDePasse: string; role: string; nomDansNocoDb: string } | undefined>;
+  const profile = profiles[normalizedEmail];
 
   if (!profile || profile.motDePasse !== password) {
     clearSessionToken();
@@ -1206,18 +1207,18 @@ export const loginApp = async (email: string, password: string): Promise<{ succe
     return { success: false, error: 'Adresse mail ou mot de passe incorrect' };
   }
 
-  const role = profile.role === 'admin' ? 'ADMIN' : 'ERGO';
+  const role = profile.role === 'admin' ? UserRole.ADMIN : UserRole.ERGO;
   const previousLocalUser = getLocalAppUser();
   const user: AppUser = {
     email: normalizedEmail,
     displayName: profile.nomDansNocoDb,
     role,
-    selectable: role !== 'ADMIN',
+    selectable: role !== UserRole.ADMIN,
     profilePhotoUrl: previousLocalUser?.email === normalizedEmail ? String(previousLocalUser.profilePhotoUrl || '').trim() : '',
-    establishmentId: role === 'ADMIN' ? '' : '2',
-    establishmentLabel: role === 'ADMIN' ? '' : "Aid'habitat",
+    establishmentId: role === UserRole.ADMIN ? '' : '2',
+    establishmentLabel: role === UserRole.ADMIN ? '' : "Aid'habitat",
     ergoRecordId: '',
-    ergoLabel: role === 'ADMIN' ? '' : profile.nomDansNocoDb,
+    ergoLabel: role === UserRole.ADMIN ? '' : profile.nomDansNocoDb,
   };
 
   const encodedEmail = typeof window !== 'undefined' && typeof window.btoa === 'function'
@@ -2767,16 +2768,19 @@ const refreshNoteScopeInBackground = (patientId: string, options: NoteScopeOptio
     return;
   }
 
-  const fallbackOptions = getLegacyFallbackNoteScope(options);
+  const fallbackOptions = getLegacyFallbackNoteScopes(options);
 
   void flushQueuedNoteOperations()
     .then(() => fetchRemoteNotePages(patientId, options))
     .then(async (remotePages) => {
-      if (remotePages.length > 0 || !fallbackOptions) {
+      if (remotePages.length > 0 || fallbackOptions.length === 0) {
         return remotePages;
       }
-
-      return fetchRemoteNotePages(patientId, fallbackOptions);
+      for (const fallbackOption of fallbackOptions) {
+        const fallbackPages = await fetchRemoteNotePages(patientId, fallbackOption);
+        if (fallbackPages.length > 0) return fallbackPages;
+      }
+      return remotePages;
     })
     .then((remotePages) => mergeRemoteNotesIntoLocalStore(remotePages))
     .catch((error) => {
@@ -3234,7 +3238,7 @@ export const updateBeneficiary = async (
 ): Promise<{ success: boolean; error: string | null; data?: { patient?: Patient } }> => {
   const normalizedUpdates = sanitizeBeneficiaryPatchUpdates({ ...updates });
   if (Object.keys(normalizedUpdates).length === 0) {
-    return { success: true, error: null, data: { patient: {} } };
+    return { success: true, error: null, data: { patient: undefined } };
   }
   const patch = mergeBeneficiaryPatch(patientId, normalizedUpdates);
   setBeneficiaryPatch(patch);

@@ -31,6 +31,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   late TabController _tabController;
   final DossierRepository _repository = DossierRepository();
 
+  // Refresh token incrémenté après sauvegarde salle de bain/WC pour que
+  // l'onglet jumeau recharge ses données housing.
+  int _housingRefreshToken = 0;
+
   static const List<String> _tabs = [
     'Bénéficiaire',
     'Contexte de vie',
@@ -41,6 +45,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     'Préconisations',
     'Plans',
   ];
+
+  // Index de l'onglet Plans — plein écran, sans colonne Notes.
+  static const int _kPlansIndex = 7;
 
   @override
   void initState() {
@@ -60,14 +67,21 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     if (mounted) setState(() {});
   }
 
+  void _onHousingSaved() {
+    setState(() => _housingRefreshToken++);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentIndex = _tabController.index;
+    final isPlansTab = currentIndex == _kPlansIndex;
+
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(32.0),
         child: Column(
           children: [
-            // Top Nav
+            // ── Top Nav ──────────────────────────────────────────────────
             Row(
               children: [
                 InkWell(
@@ -87,14 +101,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     ),
                   ),
                 ),
-                const SizedBox(width: 32),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Container(
                     height: 48,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(50),
-                      border: Border.all(color: const Color(0xFF597E8D)),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: TabBar(
                       controller: _tabController,
@@ -104,8 +118,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                         borderRadius: BorderRadius.circular(50),
                       ),
                       labelColor: const Color(0xFF554a63),
-                      unselectedLabelColor: Colors.black87,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      unselectedLabelColor: Colors.black54,
+                      labelStyle:
+                          const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                      unselectedLabelStyle:
+                          const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
                       tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
                       dividerColor: Colors.transparent,
                       padding: const EdgeInsets.all(4),
@@ -115,105 +132,154 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
-            // Content Area
+            // ── Content ──────────────────────────────────────────────────
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Form Column
-                  Expanded(
-                    flex: 1,
-                    child: Container(
+              child: isPlansTab
+                  // Plans : plein écran, pas de colonne Notes
+                  ? Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(color: Colors.grey.shade200),
                       ),
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          BeneficiaryTab(dossier: widget.dossier, repository: _repository),
-                          ContextTab(dossier: widget.dossier, repository: _repository),
-                          MesuresTab(dossier: widget.dossier, repository: _repository),
-                          AccessibilityTab(dossier: widget.dossier, repository: _repository),
-                          BathroomTab(dossier: widget.dossier, repository: _repository),
-                          WcTab(dossier: widget.dossier, repository: _repository),
-                          RecommendationsTab(dossier: widget.dossier, repository: _repository),
-                          PlansTab(dossier: widget.dossier),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 24),
-
-                  // Right Column: Canvas Notes
-                  Expanded(
-                    flex: 2,
-                    child: Column(
+                      child: PlansTab(dossier: widget.dossier),
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 16,
-                          ),
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(24),
-                              topRight: Radius.circular(24),
+                        // Formulaire (55 %)
+                        Expanded(
+                          flex: 55,
+                          child: Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: Colors.grey.shade200),
                             ),
-                            border: Border(
-                              bottom: BorderSide(color: Color(0xFFF1F5F9)),
-                            ),
+                            child: _buildFormTab(currentIndex),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        ),
+                        const SizedBox(width: 16),
+                        // Notes (45 %)
+                        Expanded(
+                          flex: 45,
+                          child: Column(
                             children: [
-                              const Text(
-                                "Notes",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
+                                  horizontal: 20,
+                                  vertical: 14,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(50),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: Radius.circular(24),
+                                    topRight: Radius.circular(24),
+                                  ),
+                                  border: Border(
+                                    bottom:
+                                        BorderSide(color: Color(0xFFF1F5F9)),
+                                  ),
                                 ),
-                                child: const Text(
-                                  "À jour",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Notes',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade100,
+                                        borderRadius:
+                                            BorderRadius.circular(50),
+                                      ),
+                                      child: const Text(
+                                        'Sauvegarde auto',
+                                        style: TextStyle(
+                                            fontSize: 11, color: Colors.grey),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: const BorderRadius.only(
+                                    bottomLeft: Radius.circular(24),
+                                    bottomRight: Radius.circular(24),
+                                  ),
+                                  child: NotesWidget(
+                                    patientId: widget.dossier.patient.id,
+                                    tabKey: _tabs[currentIndex],
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        Expanded(
-                          child: NotesWidget(
-                            patientId: widget.dossier.patient.id,
-                            tabKey: _tabs[_tabController.index],
-                          ),
-                        ),
                       ],
                     ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildFormTab(int index) {
+    switch (index) {
+      case 0:
+        return BeneficiaryTab(
+          dossier: widget.dossier,
+          repository: _repository,
+        );
+      case 1:
+        return ContextTab(
+          dossier: widget.dossier,
+          repository: _repository,
+        );
+      case 2:
+        return MesuresTab(
+          dossier: widget.dossier,
+          repository: _repository,
+        );
+      case 3:
+        return AccessibilityTab(
+          dossier: widget.dossier,
+          repository: _repository,
+        );
+      case 4:
+        return BathroomTab(
+          dossier: widget.dossier,
+          repository: _repository,
+          housingRefreshToken: _housingRefreshToken,
+          onSaved: _onHousingSaved,
+        );
+      case 5:
+        return WcTab(
+          dossier: widget.dossier,
+          repository: _repository,
+          housingRefreshToken: _housingRefreshToken,
+          onSaved: _onHousingSaved,
+        );
+      case 6:
+        return RecommendationsTab(
+          dossier: widget.dossier,
+          repository: _repository,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }

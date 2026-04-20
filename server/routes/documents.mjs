@@ -232,6 +232,24 @@ router.get('/api/mobile-documents/:documentId/content', requireAuth, async (req,
   }
 });
 
+// Endpoint public (sans auth) : l'UUID du document sert de token d'accès.
+// Permet de glisser-déposer des images vers le bureau / Finder / un autre onglet
+// en conservant un URL cliquable depuis n'importe quel navigateur.
+router.get('/public/documents/:documentId/content', async (req, res, next) => {
+  try {
+    const content = await mobileSyncStore.getDocumentContent(req.params.documentId);
+    if (!content) {
+      throw httpError(404, 'Document introuvable');
+    }
+    res.setHeader('Content-Type', content.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(content.buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/public/note-pages/:notePageId/preview', async (req, res, next) => {
   try {
     const notePage = await mobileSyncStore.getNotePageById(req.params.notePageId);

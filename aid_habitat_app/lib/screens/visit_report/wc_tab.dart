@@ -22,11 +22,16 @@ class WcTab extends StatefulWidget {
   /// changes so this tab re-derives its instances from the latest selections.
   final int housingRefreshToken;
 
+  /// Called after a successful auto-save so the parent can refresh sibling
+  /// tabs that depend on the same DiagnosticSanitaire data.
+  final VoidCallback? onSaved;
+
   const WcTab({
     super.key,
     required this.dossier,
     required this.repository,
     this.housingRefreshToken = 0,
+    this.onSaved,
   });
 
   @override
@@ -143,6 +148,7 @@ class _WcTabState extends State<WcTab>
     try {
       await widget.repository
           .upsertDiagnosticSanitaire(widget.dossier.id, _diagnostic!);
+      if (mounted) widget.onSaved?.call();
     } finally {
       if (mounted) setState(() => _saving = false);
     }

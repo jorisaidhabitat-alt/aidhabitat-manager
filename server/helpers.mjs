@@ -8,6 +8,7 @@ import { callNocoTool, closeMcpClient } from './nocodbMcpClient.mjs';
 import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
+import { getJson, putJson, USE_BLOB } from './storage.mjs';
 
 export { callNocoTool, closeMcpClient, getRetirementFundMeta, WIKI_FILTER_TAGS };
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
@@ -660,27 +661,11 @@ export const mapMedicalContext = (contextRecord) => {
   };
 };
 
+const AUTH_STORE_KEY = 'auth-store.json';
+
 export const readAuthStore = async () => {
-  try {
-    const raw = await fs.readFile(AUTH_STORE_URL, 'utf8');
-    const parsed = JSON.parse(raw);
-    const users = Object.fromEntries(
-      Object.entries(parsed.users || {}).map(([email, user]) => [
-        email,
-        {
-          ...user,
-          profilePhotoUrl: stringValue(user?.profilePhotoUrl),
-        },
-      ]),
-    );
-    return {
-      version: 1,
-      secret: parsed.secret || randomSecret(),
-      users,
-      pendingCredentials: parsed.pendingCredentials || {},
-    };
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
+  const parsed = await getJson(AUTH_STORE_KEY, null);
+  if (!parsed) {
     return {
       version: 1,
       secret: randomSecret(),
@@ -688,11 +673,25 @@ export const readAuthStore = async () => {
       pendingCredentials: {},
     };
   }
+  const users = Object.fromEntries(
+    Object.entries(parsed.users || {}).map(([email, user]) => [
+      email,
+      {
+        ...user,
+        profilePhotoUrl: stringValue(user?.profilePhotoUrl),
+      },
+    ]),
+  );
+  return {
+    version: 1,
+    secret: parsed.secret || randomSecret(),
+    users,
+    pendingCredentials: parsed.pendingCredentials || {},
+  };
 };
 
 export const writeAuthStore = async (store) => {
-  await fs.mkdir(DATA_DIR_URL, { recursive: true });
-  await fs.writeFile(AUTH_STORE_URL, JSON.stringify(store, null, 2));
+  await putJson(AUTH_STORE_KEY, store);
 };
 
 export const readJsonStore = async (storeUrl, fallbackValue) => {
@@ -2017,23 +2016,30 @@ export const resolveBeneficiaryAccess = async (appUser, patientId) => {
   };
 };
 
-export const mapStoredDocument = (document) => ({
-  id: document.id,
-  patientId: document.patientId,
-  dossierId: document.dossierId || null,
-  patientFirstName: stringValue(document.patientFirstName),
-  patientLastName: stringValue(document.patientLastName),
-  patientDisplayName: stringValue(document.patientDisplayName),
-  dossierLabel: stringValue(document.dossierLabel),
-  title: document.title,
-  fileName: document.fileName,
-  mimeType: document.mimeType,
-  tags: asArray(document.tags).map((tag) => String(tag)),
-  createdAt: document.createdAt,
-  updatedAt: document.updatedAt,
-  remotePath: document.remotePath || document.relativeUrl || '',
-  publicUrl: document.publicUrl || (document.relativeUrl ? absoluteUrl(document.relativeUrl) : ''),
-});
+export const mapStoredDocument = (document) => {
+  const fallbackPublicUrl = document.id
+    ? absoluteUrl(`/public/documents/${document.id}/content`)
+    : '';
+  return {
+    id: document.id,
+    patientId: document.patientId,
+    dossierId: document.dossierId || null,
+    patientFirstName: stringValue(document.patientFirstName),
+    patientLastName: stringValue(document.patientLastName),
+    patientDisplayName: stringValue(document.patientDisplayName),
+    dossierLabel: stringValue(document.dossierLabel),
+    title: document.title,
+    fileName: document.fileName,
+    mimeType: document.mimeType,
+    tags: asArray(document.tags).map((tag) => String(tag)),
+    createdAt: document.createdAt,
+    updatedAt: document.updatedAt,
+    remotePath: document.remotePath || document.relativeUrl || '',
+    publicUrl: document.publicUrl
+      || (document.relativeUrl ? absoluteUrl(document.relativeUrl) : '')
+      || fallbackPublicUrl,
+  };
+};
 
 export const buildBeneficiaryDocumentContext = ({ beneficiaryRecord, dossierRecord, patientId }) => {
   const patientFirstName = stringValue(field(beneficiaryRecord, 'prenom')).trim();

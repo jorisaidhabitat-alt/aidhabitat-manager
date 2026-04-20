@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { AlertTriangle, ArrowLeft, Bath, Blinds, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Coins, DoorOpen, FolderOpen, Heart, House, ImagePlus, LayoutGrid, MapPin, Plus, Search, ShowerHead, Toilet, Trash2, User } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Ban, Bath, Blinds, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Coins, DoorOpen, FolderOpen, Hand, Heart, House, ImagePlus, LayoutGrid, MapPin, Plus, Search, ShowerHead, Toilet, Trash2, User, Zap } from 'lucide-react';
 import { BathroomLevelInstance, Dossier, HeatingMode, DiagnosticSanitaires, MesuresAnthropometriques, NotePage, ObservationsSynthese, VisitRecommendationItem, VisitReportLocation, WikiLibraryItem, WcLevelInstance } from '../types';
 import { NotesCanvas, buildNotePreviewDataUrlFromContent, type DrawingTool } from './NotesCanvas';
 import { CommuneFieldGroup, type CommuneOption } from './CommuneFieldGroup';
@@ -2675,7 +2675,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
         setActiveTabNotePages(cachedPages);
         const nextPreferredPageNumber = notePageMemoryRef.current[nextKey] ?? 0;
         if (cachedPages.length > 0) {
-            const cachedPageNumbers = Array.from(new Set(cachedPages.map((page) => page.pageNumber))).sort((left, right) => left - right);
+            const cachedPageNumbers = Array.from(new Set<number>(cachedPages.map((page) => page.pageNumber))).sort((left, right) => left - right);
             const nextIndex = cachedPageNumbers.findIndex((pageNumber) => pageNumber === nextPreferredPageNumber);
             setCurrentLocalPage(nextIndex >= 0 ? nextIndex : 0);
         } else {
@@ -3229,13 +3229,13 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         />
                     </div>
                 ) : isPreconisationsTab ? (
-                    <div onBlur={() => { void flushActiveTabSaves(); }} className={`h-full overflow-y-auto rounded-3xl bg-white px-4 custom-scrollbar relative ${hasInnerQuickNav ? 'pt-0 pb-5' : 'py-5'}`}>
+                    <div onBlur={() => { void flushActiveTabSaves(); }} className={`h-full overflow-y-auto rounded-3xl bg-white pl-1 pr-4 custom-scrollbar relative ${hasInnerQuickNav ? 'pt-0 pb-5' : 'py-5'}`}>
                         {renderTabContent()}
                     </div>
                 ) : (
                     <>
                 {/* Form Panel */}
-                <div onBlur={() => { void flushActiveTabSaves(); }} className={`bg-white rounded-3xl px-4 overflow-y-auto custom-scrollbar relative ${hasInnerQuickNav ? 'pt-0 pb-5' : 'py-5'}`}>
+                <div onBlur={() => { void flushActiveTabSaves(); }} className={`bg-white rounded-3xl pl-1 pr-4 overflow-y-auto custom-scrollbar relative ${hasInnerQuickNav ? 'pt-0 pb-5' : 'py-5'}`}>
                     {renderTabContent()}
                 </div>
 
@@ -3404,7 +3404,9 @@ const BeneficiaryForm: React.FC<{
                         value={activeOccupant.birthDate || ''}
                         onChange={v => updateActiveOccupant('birthDate', v)}
                     />
-                    <ReadOnlyField label="Âge" value={activeOccupantAge || 'Non renseigné'} />
+                    <div className="flex items-end justify-center h-full pb-5 -ml-[50px]">
+                        <span className="text-sm font-extrabold text-[#554A63]">{activeOccupantAge ? `${activeOccupantAge} !` : ''}</span>
+                    </div>
                 </div>
             </Section>
             <Section title="Coordonnées">
@@ -3656,13 +3658,7 @@ const MeasuredOptionCard: React.FC<{
         >
             <div className="min-w-0 flex-1">
                 <p className={`text-sm font-semibold ${checked ? 'text-[#554A63]' : 'text-slate-700'}`}>{label}</p>
-                <p className="mt-1 text-xs text-slate-500">
-                    {helper || (checked ? 'Hauteur à renseigner ci-dessous.' : "Touchez pour activer cet équipement.")}
-                </p>
             </div>
-            <span className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-[6px] border ${checked ? 'border-[#907CA1] bg-[#907CA1] text-white' : 'border-slate-300 text-transparent'}`}>
-                <Check size={11} />
-            </span>
         </button>
         {checked && (
             <div className="mt-3 border-t border-[#907CA1]/15 pt-3">
@@ -3771,7 +3767,7 @@ const ContextForm: React.FC<{
             {activeContextSection === 'medical' && (
                 <Section title={
                     <div className="flex items-center justify-between gap-3">
-                        <span>Informations Médicales</span>
+                        <span>Médicales</span>
                         {hasMultipleOccupants && (
                             <div className="flex items-center gap-2">
                                 {displayedOccupants.map((occupant, index) => (
@@ -3779,7 +3775,7 @@ const ContextForm: React.FC<{
                                         key={`context-medical-${index}`}
                                         type="button"
                                         onClick={() => setActiveOccupantIndex(index)}
-                                        className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+                                        className={`flex min-w-[72px] items-center justify-center rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                                             activeOccupantIndex === index
                                                 ? 'border-[#907CA1] bg-[#F4EFF7] text-[#554A63]'
                                                 : 'border-slate-200 bg-white text-slate-400'
@@ -3787,18 +3783,13 @@ const ContextForm: React.FC<{
                                         title={formatOccupantLabel(occupant, index)}
                                         aria-label={`Afficher ${formatOccupantLabel(occupant, index)}`}
                                     >
-                                        <User size={16} />
+                                        {formatOccupantSwitcherLabel(occupant, index)}
                                     </button>
                                 ))}
                             </div>
                         )}
                     </div>
                 }>
-                    {hasMultipleOccupants && (
-                        <div className="mb-3 rounded-2xl border border-[#907CA1]/30 bg-[#F4EFF7] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#554A63]">
-                            {formatOccupantBadgeLabel(displayedOccupants[activeOccupantIndex], activeOccupantIndex)}
-                        </div>
-                    )}
                     <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-1.5">
                         {medicalFlagItems.map((item, index) => (
                             <MedicalFlagRow
@@ -3810,7 +3801,7 @@ const ContextForm: React.FC<{
                             />
                         ))}
                     </div>
-                    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                    <div className="mt-3">
                         <div className="mb-2 flex items-center gap-2">
                             <span className="text-[13px] font-semibold text-slate-700">Mesures</span>
                         </div>
@@ -3846,7 +3837,7 @@ const ContextForm: React.FC<{
                                         key={`context-autonomy-${index}`}
                                         type="button"
                                         onClick={() => setActiveOccupantIndex(index)}
-                                        className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+                                        className={`flex min-w-[72px] items-center justify-center rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                                             activeOccupantIndex === index
                                                 ? 'border-[#907CA1] bg-[#F4EFF7] text-[#554A63]'
                                                 : 'border-slate-200 bg-white text-slate-400'
@@ -3854,7 +3845,7 @@ const ContextForm: React.FC<{
                                         title={formatOccupantLabel(occupant, index)}
                                         aria-label={`Afficher ${formatOccupantLabel(occupant, index)}`}
                                     >
-                                        <User size={16} />
+                                        {formatOccupantSwitcherLabel(occupant, index)}
                                     </button>
                                 ))}
                                 {humanHelpEnabled && (
@@ -3866,11 +3857,6 @@ const ContextForm: React.FC<{
                         </div>
                     }
                 >
-                    {hasMultipleOccupants && (
-                        <div className="mb-3 rounded-2xl border border-[#907CA1]/30 bg-[#F4EFF7] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#554A63]">
-                            {formatOccupantBadgeLabel(displayedOccupants[activeOccupantIndex], activeOccupantIndex)}
-                        </div>
-                    )}
                     <div className={`space-y-4 transition-opacity ${autonomyLocked ? 'opacity-55' : 'opacity-100'}`}>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-1.5">
                             <div className="space-y-2">
@@ -4204,14 +4190,54 @@ const AccessForm: React.FC<{
 
                     <div className="grid gap-1.5 xl:grid-cols-2">
                         <Section title="Chemin d'Accès">
-                            <MultiSelectDropdown label="Contraintes / éléments présents" options={pathOptions} placeholder="Sélectionner un ou plusieurs éléments" />
+                            <div className="flex flex-wrap gap-1.5">
+                                {pathOptions.map((opt) => (
+                                    <button
+                                        key={opt.label}
+                                        type="button"
+                                        onClick={() => opt.onToggle(!opt.checked)}
+                                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                                            opt.checked
+                                                ? 'border-[#907CA1] bg-[#907CA1] text-white'
+                                                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
                         </Section>
 
                         <Section title="Annexes & Motorisations">
-                            <MultiSelectDropdown label="Annexes présentes" options={annexOptions} placeholder="Sélectionner une ou plusieurs annexes" />
+                            <div className="flex flex-wrap gap-1.5">
+                                {annexOptions.map((opt) => (
+                                    <button
+                                        key={opt.label}
+                                        type="button"
+                                        onClick={() => opt.onToggle(!opt.checked)}
+                                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                                            opt.checked
+                                                ? 'border-[#907CA1] bg-[#907CA1] text-white'
+                                                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
                             <div className="mt-0.5 grid grid-cols-2 gap-2">
-                                <Select label="Porte garage" value={data.motorisationPorteGarage || ''} onChange={(v: any) => onChange('motorisationPorteGarage', v)} options={refPorteGarage} placeholder="Sélectionner..." />
-                                <Select label="Portail" value={data.motorisationPortail || ''} onChange={(v: any) => onChange('motorisationPortail', v)} options={refPortail} placeholder="Sélectionner..." />
+                                <IconToggleRow
+                                    label="Porte garage"
+                                    options={refPorteGarage}
+                                    selected={data.motorisationPorteGarage || ''}
+                                    onSelect={(v) => onChange('motorisationPorteGarage', v)}
+                                />
+                                <IconToggleRow
+                                    label="Portail"
+                                    options={refPortail}
+                                    selected={data.motorisationPortail || ''}
+                                    onSelect={(v) => onChange('motorisationPortail', v)}
+                                />
                             </div>
                         </Section>
                     </div>
@@ -4262,20 +4288,21 @@ const SalleDeBainForm: React.FC<{
     );
     const commonBathroomEquipment = BATHROOM_MEASURED_EQUIPMENT.filter((item) => item.requires === 'always');
 
-    const updateWetZoneSelection = (value: string) => {
-        const nextHasBath = value === 'Baignoire' || value === 'Douche + baignoire';
-        const nextHasShower = value === 'Douche' || value === 'Douche + baignoire';
-
-        onInstanceChange(activeInstance.levelField, 'sdbBaignoire', nextHasBath);
-        if (!nextHasBath) {
-            onInstanceChange(activeInstance.levelField, 'sdbBaignoireHauteur', null);
-        }
-
-        onInstanceChange(activeInstance.levelField, 'sdbBacDouche', nextHasShower);
-        if (!nextHasShower) {
-            onInstanceChange(activeInstance.levelField, 'sdbBacDoucheHauteur', null);
-            onInstanceChange(activeInstance.levelField, 'sdbParoiDouche', false);
-            onInstanceChange(activeInstance.levelField, 'sdbParoiDoucheHauteur', null);
+    const toggleWetZone = (zone: 'shower' | 'bath') => {
+        if (zone === 'bath') {
+            const next = !hasBath;
+            onInstanceChange(activeInstance.levelField, 'sdbBaignoire', next);
+            if (!next) {
+                onInstanceChange(activeInstance.levelField, 'sdbBaignoireHauteur', null);
+            }
+        } else {
+            const next = !hasShower;
+            onInstanceChange(activeInstance.levelField, 'sdbBacDouche', next);
+            if (!next) {
+                onInstanceChange(activeInstance.levelField, 'sdbBacDoucheHauteur', null);
+                onInstanceChange(activeInstance.levelField, 'sdbParoiDouche', false);
+                onInstanceChange(activeInstance.levelField, 'sdbParoiDoucheHauteur', null);
+            }
         }
     };
 
@@ -4299,7 +4326,7 @@ const SalleDeBainForm: React.FC<{
             </div>
             <div className="sticky top-0 z-10 -mx-1 rounded-[22px] border border-slate-200 bg-white/95 px-2 py-2 backdrop-blur">
                 <div className="grid grid-cols-2 gap-2">
-                    <QuickNavButton icon={LayoutGrid} label="Équipements" active={activeBathroomSection === 'equipment'} onClick={() => onSectionChange('equipment')} />
+                    <QuickNavButton icon={Bath} label="Équipements" active={activeBathroomSection === 'equipment'} onClick={() => onSectionChange('equipment')} />
                     <QuickNavButton icon={DoorOpen} label="Porte" active={activeBathroomSection === 'door'} onClick={() => onSectionChange('door')} />
                 </div>
             </div>
@@ -4307,45 +4334,47 @@ const SalleDeBainForm: React.FC<{
             {activeBathroomSection === 'equipment' && (
                 <Section title={`Équipements Salle de Bain — ${activeInstance.levelLabel}`}>
                     <div className="space-y-4">
-                        <div>
-                            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-                                Zone d'eau présente
-                            </p>
-                            <div className="flex gap-2">
-                                {(['Douche', 'Baignoire', 'Aucune'] as const).map((option) => (
-                                    <button
-                                        key={option}
-                                        type="button"
-                                        onClick={() => updateWetZoneSelection(option)}
-                                        className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                                            wetZoneSelection === option
-                                                ? 'border-[#907CA1] bg-[#907CA1] text-white'
-                                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
-                                        }`}
-                                    >
-                                        {option}
-                                    </button>
-                                ))}
-                            </div>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => toggleWetZone('shower')}
+                                className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                                    hasShower
+                                        ? 'border-[#907CA1] bg-[#907CA1] text-white'
+                                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
+                                }`}
+                            >
+                                Douche
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => toggleWetZone('bath')}
+                                className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                                    hasBath
+                                        ? 'border-[#907CA1] bg-[#907CA1] text-white'
+                                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
+                                }`}
+                            >
+                                Baignoire
+                            </button>
                         </div>
 
                         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-                            <div className="rounded-[28px] border border-slate-200 bg-slate-50/70 p-4">
-                                <div className="mb-3 flex items-center gap-2">
-                                    <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-[#907CA1] shadow-sm">
-                                        <Bath size={18} />
-                                    </span>
-                                    <div>
-                                        <p className="text-sm font-semibold text-slate-800">Zone douche / baignoire</p>
+                            {wetZoneEquipment.length > 0 && (
+                                <div className="rounded-[28px] border border-slate-200 bg-slate-50/70 p-4">
+                                    <div className="mb-3 flex items-center gap-2">
+                                        <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-[#907CA1] shadow-sm">
+                                            <Bath size={18} />
+                                        </span>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Zone douche / baignoire</p>
+                                        </div>
                                     </div>
-                                </div>
-                                {wetZoneEquipment.length > 0 ? (
                                     <div className="grid gap-3">
                                         {wetZoneEquipment.map(({ enabledField, heightField, label }) => (
                                             <MeasuredOptionCard
                                                 key={enabledField}
                                                 label={label.replace(/^Hauteur\s+/i, '')}
-                                                helper="Touchez pour activer la mesure, puis renseigne la hauteur."
                                                 checked={Boolean(activeInstance[enabledField as keyof BathroomLevelInstance])}
                                                 value={activeInstance[heightField as keyof BathroomLevelInstance]?.toString() || ''}
                                                 onToggle={(checked) => {
@@ -4358,18 +4387,14 @@ const SalleDeBainForm: React.FC<{
                                             />
                                         ))}
                                     </div>
-                                ) : (
-                                    <div className="rounded-[24px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
-                                        Sélectionne d'abord une douche, une baignoire ou les deux pour afficher les équipements associés.
-                                    </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
 
                             <div className="space-y-4">
                                 <div className="rounded-[28px] border border-slate-200 bg-slate-50/70 p-4">
                                     <div className="mb-3 flex items-center gap-2">
                                         <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-[#907CA1] shadow-sm">
-                                            <LayoutGrid size={18} />
+                                            <ShowerHead size={18} />
                                         </span>
                                         <div>
                                             <p className="text-sm font-semibold text-slate-800">Équipements complémentaires</p>
@@ -4380,7 +4405,6 @@ const SalleDeBainForm: React.FC<{
                                             <MeasuredOptionCard
                                                 key={enabledField}
                                                 label={label.replace(/^Hauteur\s+/i, '')}
-                                                helper="Active l'équipement puis indique sa hauteur."
                                                 checked={Boolean(activeInstance[enabledField as keyof BathroomLevelInstance])}
                                                 value={activeInstance[heightField as keyof BathroomLevelInstance]?.toString() || ''}
                                                 onToggle={(checked) => {
@@ -5258,10 +5282,49 @@ const ToggleGroup: React.FC<{ label: string, options: string[], selected: string
     );
 };
 
+const MOTORISATION_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
+    'Manuel': Hand,
+    'Électrique': Zap,
+    'Pas de porte': Ban,
+    'Pas de portail': Ban,
+};
+
+const IconToggleRow: React.FC<{
+    label: string;
+    options: Array<{ id: string; label: string }>;
+    selected: string;
+    onSelect: (value: string) => void;
+}> = ({ label, options, selected, onSelect }) => (
+    <div>
+        <label className="block text-xs font-bold text-slate-500 mb-1">{label}</label>
+        <div className="flex gap-1.5">
+            {options.map((opt) => {
+                const Icon = MOTORISATION_ICONS[opt.label] || Hand;
+                const isActive = selected === opt.label;
+                return (
+                    <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onSelect(isActive ? '' : opt.label)}
+                        title={opt.label}
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl border transition-colors ${
+                            isActive
+                                ? 'border-[#907CA1] bg-[#907CA1] text-white'
+                                : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300'
+                        }`}
+                    >
+                        <Icon size={18} />
+                    </button>
+                );
+            })}
+        </div>
+    </div>
+);
+
 const ReadOnlyField: React.FC<{ label: string; value: string; hint?: string }> = ({ label, value, hint }) => (
     <div className="mb-3">
         <label className="block text-xs font-bold text-slate-500 mb-1">{label}</label>
-        <div className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 text-slate-700">
+        <div className="w-full rounded-xl px-3 py-2 text-sm text-slate-700">
             {value}
         </div>
         {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}

@@ -82,3 +82,63 @@ export const statObject = async (key) => {
     throw error;
   }
 };
+
+/**
+ * Read a JSON object from storage. Returns `fallback` when the key is absent.
+ *
+ * Blob mode: the blob is stored with `access: 'public'` (same as putObject)
+ * and fetched via its public URL. In-memory caching is deliberately left to
+ * the caller — auth-store.json is small and read at most once per request.
+ *
+ * @template T
+ * @param {string} key
+ * @param {T} fallback
+ * @returns {Promise<T>}
+ */
+export const getJson = async (key, fallback) => {
+  if (USE_BLOB) {
+    const result = await list({ prefix: key, limit: 1 });
+    const blob = result.blobs.find((b) => b.pathname === key);
+    if (!blob) return fallback;
+    const response = await fetch(blob.url, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`getJson(${key}) HTTP ${response.status}`);
+    }
+    return await response.json();
+  }
+  const filePath = path.join(_DATA_DIR_PATH, key);
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return fallback;
+    throw error;
+  }
+};
+
+/**
+ * Write a JSON object to storage atomically (same key overwrites previous).
+ *
+ * @param {string} key
+ * @param {unknown} data
+ * @returns {Promise<{ url: string, updatedAt: string }>}
+ */
+export const putJson = async (key, data) => {
+  const payload = JSON.stringify(data, null, 2);
+  if (USE_BLOB) {
+    const blob = await put(key, payload, {
+      access: 'public',
+      contentType: 'application/json; charset=utf-8',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+    return {
+      url: blob.url,
+      updatedAt: blob.uploadedAt?.toISOString() ?? new Date().toISOString(),
+    };
+  }
+  const filePath = path.join(_DATA_DIR_PATH, key);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, payload);
+  return { url: `/uploads/${key}`, updatedAt: new Date().toISOString() };
+};

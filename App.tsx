@@ -674,15 +674,13 @@ const AnahView: React.FC<{ status: AnahStatus | null; isChecking: boolean }> = (
 
   return (
     <div className="space-y-8 pb-8">
-      <div>
-        <h2 className="text-3xl font-bold text-black">Inscription au site de l&apos;Anah</h2>
-      </div>
-
       <div className="bg-white rounded-[32px] border border-slate-200 p-8 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
           <div className="max-w-3xl">
-            <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#907CA1]">Anah</p>
-            <h2 className="mt-3 text-4xl font-bold text-slate-900">MaPrimeAdapt&apos;</h2>
+            <h2 className="text-4xl font-bold text-slate-900">Portail MaPrimeAdapt&apos;</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Agence nationale de l&apos;habitat
+            </p>
             <p className="mt-3 text-slate-600 leading-relaxed">
               L’accès officiel est disponible. L’ouverture se fait sur le site de l’ANAH.
             </p>

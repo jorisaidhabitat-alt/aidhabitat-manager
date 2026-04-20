@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Search, X } from 'lucide-react';
 import wikiLibraryStatic from '../data/wikiLibraryStatic.json';
-import { createWikiLibraryItem, fetchWikiLibrary, preloadImageAssets } from '../services/dataService';
+import { createWikiLibraryItem, fetchWikiLibrary, preloadImageAssets, updateWikiLibraryItem } from '../services/dataService';
 import { WikiLibraryItem } from '../types';
 import { ViewportOverlay } from './ViewportOverlay';
 import { uiChipActiveClass, uiChipBaseClass, uiChipInactiveClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from './uiTheme';
@@ -36,6 +36,8 @@ export const WikiView: React.FC = () => {
   const [createDraft, setCreateDraft] = useState(EMPTY_CREATE_ITEM);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [editDraft, setEditDraft] = useState<{ title: string; description: string; tag: string } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const availableTags = useMemo(() => {
     const tags = new Set(FILTER_TAGS);
@@ -152,9 +154,9 @@ export const WikiView: React.FC = () => {
               key={item.id}
               type="button"
               onClick={() => setSelectedItem(item)}
-              className={`${uiPanelInteractiveClass} group relative p-4 text-left`}
+              className="group relative p-4 text-left rounded-[28px] transition-all duration-200 hover:bg-slate-50"
             >
-              <div className="aspect-square rounded-xl overflow-hidden mb-4 bg-slate-100 relative">
+              <div className="aspect-square rounded-xl overflow-hidden mb-4 bg-slate-100 relative ring-1 ring-black/10">
                 <img
                   src={item.imageUrl}
                   alt={item.title}
@@ -172,7 +174,7 @@ export const WikiView: React.FC = () => {
               </div>
               <div>
                 <div className="w-full">
-                  <p className="font-bold text-slate-800">{item.title}</p>
+                  <p className="font-bold text-slate-800 truncate">{item.title}</p>
                   {item.tags[0] && (
                     <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-slate-400">{item.tags[0]}</p>
                   )}
@@ -186,7 +188,7 @@ export const WikiView: React.FC = () => {
       {selectedItem && (
         <ViewportOverlay
           className="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4 backdrop-blur-sm"
-          onClick={() => setSelectedItem(null)}
+          onClick={() => { setSelectedItem(null); setEditDraft(null); }}
         >
           <div
             className={`${uiModalClass} relative flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden md:h-auto md:flex-row`}
@@ -194,7 +196,7 @@ export const WikiView: React.FC = () => {
           >
             <button
               type="button"
-              onClick={() => setSelectedItem(null)}
+              onClick={() => { setSelectedItem(null); setEditDraft(null); }}
               className="absolute top-4 right-4 z-10 rounded-full bg-black/20 p-2 text-white backdrop-blur-md transition-colors hover:bg-black/40"
             >
               <X size={20} />
@@ -210,25 +212,65 @@ export const WikiView: React.FC = () => {
               />
             </div>
 
-            <div className="w-full md:w-1/3 p-6 flex flex-col gap-6 overflow-y-auto bg-white">
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Titre</p>
-                <h3 className="text-2xl font-bold text-slate-900">{selectedItem.title}</h3>
-              </div>
+            <div className="w-full md:w-1/3 p-6 flex flex-col gap-5 overflow-y-auto bg-white">
+              <FormBlock label="Titre">
+                <input
+                  value={editDraft?.title ?? selectedItem.title}
+                  onChange={(e) => setEditDraft((prev) => ({ title: e.target.value, description: prev?.description ?? selectedItem.description, tag: prev?.tag ?? (selectedItem.tags[0] || '') }))}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-lg font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#907CA1]"
+                />
+              </FormBlock>
 
-              {selectedItem.tags[0] && (
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tag</p>
-                  <div className="inline-flex px-3 py-1.5 rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
-                    {selectedItem.tags[0]}
-                  </div>
-                </div>
-              )}
+              <FormBlock label="Tag">
+                <select
+                  value={editDraft?.tag ?? (selectedItem.tags[0] || '')}
+                  onChange={(e) => setEditDraft((prev) => ({ title: prev?.title ?? selectedItem.title, description: prev?.description ?? selectedItem.description, tag: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-[#907CA1]"
+                >
+                  <option value="">Aucun tag</option>
+                  {availableTags.map((tag) => (
+                    <option key={tag} value={tag}>{tag}</option>
+                  ))}
+                </select>
+              </FormBlock>
 
               <div className="flex-1">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</p>
-                <p className="text-slate-700 leading-relaxed">{selectedItem.description}</p>
+                <FormBlock label="Description">
+                  <textarea
+                    value={editDraft?.description ?? selectedItem.description}
+                    onChange={(e) => setEditDraft((prev) => ({ title: prev?.title ?? selectedItem.title, description: e.target.value, tag: prev?.tag ?? (selectedItem.tags[0] || '') }))}
+                    className="w-full min-h-[120px] rounded-2xl border border-slate-200 px-4 py-3 outline-none resize-y focus:ring-2 focus:ring-[#907CA1] text-slate-700 leading-relaxed"
+                  />
+                </FormBlock>
               </div>
+
+              {editDraft && (
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={async () => {
+                    setIsSaving(true);
+                    try {
+                      const saved = await updateWikiLibraryItem(selectedItem.id, {
+                        title: editDraft.title.trim(),
+                        description: editDraft.description.trim(),
+                        tags: editDraft.tag ? [editDraft.tag] : [],
+                        category: editDraft.tag || 'Autre',
+                      });
+                      setItems((prev) => prev.map((item) => item.id === saved.id ? saved : item));
+                      setSelectedItem(saved);
+                      setEditDraft(null);
+                    } catch {
+                      // keep draft on error
+                    } finally {
+                      setIsSaving(false);
+                    }
+                  }}
+                  className="rounded-2xl bg-[#907CA1] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#7a668a] disabled:opacity-50"
+                >
+                  {isSaving ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+              )}
             </div>
           </div>
         </ViewportOverlay>

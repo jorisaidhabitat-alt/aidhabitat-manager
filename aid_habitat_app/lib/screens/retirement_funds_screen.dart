@@ -80,7 +80,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
     if (updated == null) return;
 
     try {
-      final saved = await _repository.updateFund(updated);
+      final saved = await _dataService.updateRetirementFund(updated);
       if (!mounted) return;
       setState(() {
         _funds = _funds

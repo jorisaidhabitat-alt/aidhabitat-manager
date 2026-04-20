@@ -117,6 +117,9 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [floatingPos, setFloatingPos] = useState<{ x: number; y: number } | null>(null);
   const [floatingSize, setFloatingSize] = useState<{ w: number; h: number }>({ w: 420, h: 340 });
+  const [textAreaHeight, setTextAreaHeight] = useState<number>(92);
+  const splitRef = useRef<{ startY: number; originH: number } | null>(null);
+  const outerContainerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeRef = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
   const floatingNodeRef = useRef<HTMLDivElement>(null);
@@ -182,6 +185,29 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
 
   const handleResizeEnd = useCallback(() => {
     resizeRef.current = null;
+  }, []);
+
+  const handleSplitStart = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    splitRef.current = { startY: e.clientY, originH: textAreaHeight };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [textAreaHeight]);
+
+  const handleSplitMove = useCallback((e: React.PointerEvent) => {
+    if (!splitRef.current) return;
+    e.preventDefault();
+    const dy = e.clientY - splitRef.current.startY;
+    const containerRect = outerContainerRef.current?.getBoundingClientRect();
+    // Reserve ~88px at the bottom for the drawing toolbar so it stays fixed in place
+    const TOOLBAR_RESERVED = 88;
+    const maxH = containerRect ? Math.max(60, containerRect.height - TOOLBAR_RESERVED - 40) : 600;
+    const next = Math.max(40, Math.min(maxH, splitRef.current.originH + dy));
+    setTextAreaHeight(next);
+  }, []);
+
+  const handleSplitEnd = useCallback(() => {
+    splitRef.current = null;
   }, []);
   const textRef = useRef(text);
   const strokesRef = useRef(strokes);
@@ -427,7 +453,7 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
       previewDataUrl: buildNotePreviewDataUrlFromContent({
         text,
         drawingJson,
-        mode,
+        mode: mode as 'freeform' | 'grid',
       }),
     }).catch((error) => {
       console.error('Failed to save note page', error);
@@ -529,6 +555,7 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
 
   return (
     <div
+      ref={outerContainerRef}
       className={`flex-1 flex flex-col bg-white ${
         fillParentHeight ? 'h-full min-h-0' : 'min-h-[460px]'
       } ${
@@ -536,7 +563,10 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
       }`}
     >
       {showText && (
-        <div className="relative px-4 pt-4 pb-3 border-b border-slate-200 bg-slate-50">
+        <div
+          className="relative px-4 pt-4 pb-3 border-b border-slate-200 bg-slate-50"
+          style={{ height: textAreaHeight + 28 }}
+        >
           <textarea
             value={text}
             onChange={(event) => {
@@ -549,7 +579,8 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
               emitDraft({ text: nextText, isDirty: true });
             }}
             placeholder={placeholder}
-            className="w-full h-[92px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 outline-none focus:ring-2 focus:ring-[#907CA1] resize-none"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 outline-none focus:ring-2 focus:ring-[#907CA1] resize-none"
+            style={{ height: textAreaHeight }}
           />
           <button
             type="button"
@@ -559,6 +590,20 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
           >
             <Maximize2 size={16} />
           </button>
+        </div>
+      )}
+
+      {showText && (
+        <div
+          className="relative flex items-center justify-center h-2 bg-slate-100 hover:bg-[#907CA1]/20 transition-colors group"
+          style={{ cursor: 'ns-resize', touchAction: 'none' }}
+          onPointerDown={handleSplitStart}
+          onPointerMove={handleSplitMove}
+          onPointerUp={handleSplitEnd}
+          onPointerCancel={handleSplitEnd}
+          title="Glisser pour redimensionner"
+        >
+          <div className="h-0.5 w-12 rounded-full bg-slate-300 group-hover:bg-[#907CA1] transition-colors" />
         </div>
       )}
 
@@ -644,7 +689,7 @@ export const NotesCanvas: React.FC<NotesCanvasProps> = ({
 
       <div
         ref={containerRef}
-        className={`relative flex-1 ${fillParentHeight ? 'min-h-0' : 'min-h-[340px]'} ${canvasMinHeightClassName || ''}`.trim()}
+        className={`relative flex-1 ${fillParentHeight ? 'min-h-0' : (showText ? 'min-h-[88px]' : 'min-h-[340px]')} ${canvasMinHeightClassName || ''}`.trim()}
         style={canvasBackgroundStyle}
       >
         {backgroundContent && (
