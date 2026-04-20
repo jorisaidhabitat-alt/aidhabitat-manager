@@ -177,6 +177,62 @@ class NocodbApiClient {
     }
   }
 
+  /// GET /api/diagnostic-sanitaires/:dossierId — returns the latest
+  /// persisted SDB + WC instances for the dossier, or null if no record
+  /// has ever been saved server-side.
+  Future<Map<String, dynamic>?> fetchDiagnosticSanitairePayload(
+    String dossierId,
+  ) async {
+    if (!AppConfig.hasRemoteConfig) return null;
+
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/diagnostic-sanitaires/$dossierId'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote diagnostic sanitaires fetch failed (${response.statusCode})',
+      );
+    }
+    final body = response.body.trim();
+    if (body.isEmpty || body == 'null') return null;
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return null;
+  }
+
+  /// GET /api/visit-recommendations/:dossierId — returns the list of
+  /// recommendation items persisted server-side for this dossier.
+  Future<List<Map<String, dynamic>>> fetchVisitRecommendationsPayload(
+    String dossierId,
+  ) async {
+    if (!AppConfig.hasRemoteConfig) return const [];
+
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/visit-recommendations/$dossierId'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote visit recommendations fetch failed (${response.statusCode})',
+      );
+    }
+    final payload = jsonDecode(response.body);
+    if (payload is! Map<String, dynamic>) return const [];
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final items = (data['items'] as List?) ?? const [];
+    return items
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
+  }
+
   /// PUT /api/diagnostic-sanitaires/:dossierId — persists bathroom + WC
   /// instances (arrays) for the given dossier. The server normalises each
   /// instance into the `diagnostic_sanitaires` NocoDB table.
@@ -567,20 +623,29 @@ class NocodbApiClient {
   Future<WikiItem> updateWikiItem({
     required String itemId,
     required WikiItem item,
+    String? imageDataUrl,
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
 
+    final body = <String, dynamic>{
+      'title': item.title,
+      'description': item.description,
+      'tags': item.tags,
+      'category': item.category,
+    };
+    // Only include imageDataUrl when the caller provided a new one —
+    // the server interprets an empty string as "clear the image", which
+    // is not what we want when the user only edited the text fields.
+    if (imageDataUrl != null && imageDataUrl.isNotEmpty) {
+      body['imageDataUrl'] = imageDataUrl;
+    }
+
     final response = await _client.put(
       Uri.parse('$_baseUrl/api/wiki-library/$itemId'),
       headers: _headers,
-      body: jsonEncode({
-        'title': item.title,
-        'description': item.description,
-        'tags': item.tags,
-        'category': item.category,
-      }),
+      body: jsonEncode(body),
     ).timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {

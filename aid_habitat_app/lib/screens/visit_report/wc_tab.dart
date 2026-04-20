@@ -58,6 +58,13 @@ class _WcTabState extends State<WcTab>
   }
 
   Future<void> _load() async {
+    // Pull from server first — dossier GET doesn't include diag row.
+    try {
+      await widget.repository
+          .refreshDiagnosticSanitaireFromRemote(widget.dossier.id);
+    } catch (_) {
+      // offline
+    }
     final result =
         await widget.repository.fetchDiagnosticSanitaire(widget.dossier.id);
     final housingRow =

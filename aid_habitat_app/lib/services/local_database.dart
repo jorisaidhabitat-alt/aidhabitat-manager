@@ -183,6 +183,7 @@ class LocalDatabase {
         establishment_id TEXT,
         ergo_label TEXT,
         is_active INTEGER NOT NULL DEFAULT 1,
+        profile_photo_url TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -192,6 +193,7 @@ class LocalDatabase {
       CREATE TABLE app_session (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         user_local_id TEXT NOT NULL,
+        remote_token TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -258,10 +260,19 @@ class LocalDatabase {
         typology TEXT NOT NULL DEFAULT 'Maison',
         basement INTEGER NOT NULL DEFAULT 0,
         basement_desc TEXT NOT NULL DEFAULT '',
+        basement_rooms_json TEXT NOT NULL DEFAULT '[]',
         rdc INTEGER NOT NULL DEFAULT 0,
         rdc_desc TEXT NOT NULL DEFAULT '',
+        rdc_rooms_json TEXT NOT NULL DEFAULT '[]',
         floor INTEGER NOT NULL DEFAULT 0,
         floor_desc TEXT NOT NULL DEFAULT '',
+        floor_rooms_json TEXT NOT NULL DEFAULT '[]',
+        second_floor INTEGER NOT NULL DEFAULT 0,
+        second_floor_desc TEXT NOT NULL DEFAULT '',
+        second_floor_rooms_json TEXT NOT NULL DEFAULT '[]',
+        third_floor INTEGER NOT NULL DEFAULT 0,
+        third_floor_desc TEXT NOT NULL DEFAULT '',
+        third_floor_rooms_json TEXT NOT NULL DEFAULT '[]',
         garage INTEGER NOT NULL DEFAULT 0,
         veranda INTEGER NOT NULL DEFAULT 0,
         balcon INTEGER NOT NULL DEFAULT 0,
@@ -385,16 +396,18 @@ class LocalDatabase {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)');
 
-    await _seedInitialWorkspace(db);
+    await db.execute(_createWikiItemsSQL);
+    await db.execute(_createRetirementFundsSQL);
+    await db.execute(_createReferenceSyncMetaSQL);
+
+    // No initial seed — the workspace is populated from NocoDB at first login.
   }
 
   Future<void> ensureSeeded() async {
-    final db = await database;
-    final count = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM dossiers'),
-    );
-    if ((count ?? 0) > 0) return;
-    await _seedInitialWorkspace(db);
+    // Seeding removed — dossiers come from NocoDB only (via
+    // DataService.refreshWorkspaceFromRemote). Offline-created dossiers
+    // remain as the user creates them.
+    await database;
   }
 
   Future<void> _seedInitialWorkspace(Database db) async {

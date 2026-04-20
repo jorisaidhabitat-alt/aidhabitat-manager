@@ -133,6 +133,16 @@ class _BathroomTabState extends State<BathroomTab>
   }
 
   Future<void> _load() async {
+    // Pull fresh server copy before reading local — the dossier GET
+    // doesn't include diagnostic_sanitaires, so without this the tab
+    // would show stale data on first open after app restart. Skips
+    // automatically if the local row is pendingSync.
+    try {
+      await widget.repository
+          .refreshDiagnosticSanitaireFromRemote(widget.dossier.id);
+    } catch (_) {
+      // offline — fall back to local copy
+    }
     final result =
         await widget.repository.fetchDiagnosticSanitaire(widget.dossier.id);
     final housingRow =

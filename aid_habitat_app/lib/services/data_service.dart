@@ -340,6 +340,31 @@ class DataService {
     }
   }
 
+  /// Pulls diagnostic sanitaires for [dossierId] from the server and
+  /// merges into SQLite. No-op + returns false when offline or when the
+  /// local row has pending unsynced edits. Errors swallowed.
+  Future<bool> refreshDiagnosticSanitaireFromRemote(String dossierId) async {
+    try {
+      return await _dossierRepository.refreshDiagnosticSanitaireFromRemote(
+        dossierId,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Pulls visit recommendations for [dossierId] from the server and
+  /// merges into SQLite. Same guards/error handling as above.
+  Future<bool> refreshVisitRecommendationsFromRemote(String dossierId) async {
+    try {
+      return await _dossierRepository.refreshVisitRecommendationsFromRemote(
+        dossierId,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<SyncRunResult> runSync() async {
     return _nocodbSyncService.pushPendingChanges();
   }

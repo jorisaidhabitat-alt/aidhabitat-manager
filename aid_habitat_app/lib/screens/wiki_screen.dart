@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/cached_remote_image.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
 import '../services/wiki_repository.dart';
@@ -94,15 +95,19 @@ class _WikiScreenState extends State<WikiScreen> {
   }
 
   Future<void> _openItem(WikiItem item) async {
-    final updated = await showDialog<WikiItem>(
+    final result = await showDialog<_WikiItemEditResult>(
       context: context,
       builder: (context) =>
           _WikiItemDialog(item: item, availableTags: _availableTags.toList()),
     );
-    if (updated == null) return;
+    if (result == null) return;
+    final updated = result.item;
 
     try {
-      final saved = await _dataService.updateWikiItem(updated);
+      final saved = await _dataService.updateWikiItem(
+        updated,
+        newImageDataUrl: result.newImageDataUrl,
+      );
       if (!mounted) return;
       setState(() {
         _items = _items
@@ -208,25 +213,15 @@ class _WikiScreenState extends State<WikiScreen> {
             const Expanded(child: Center(child: Text('Aucun element trouve')))
           else
             Expanded(
-              child: LayoutBuilder(
-                builder: (ctx, constraints) {
-                  // Grille responsive : 5 col large, 4 moyen, 3 tablette, 2 mobile.
-                  final crossAxis = constraints.maxWidth > 1200
-                      ? 5
-                      : constraints.maxWidth > 900
-                          ? 4
-                          : constraints.maxWidth > 600
-                              ? 3
-                              : 2;
-                  return GridView.builder(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxis,
-                  mainAxisSpacing: 24,
-                  crossAxisSpacing: 24,
-                  // Card layout: padding(16) + image(square, ~W-32) + gap(16) +
-                  // title(~22) + gap(4) + subtitle(~14) + padding(16). Ratio
-                  // must leave enough vertical room for the text below.
-                  childAspectRatio: 0.68,
+              child: GridView.builder(
+                // Same grid dimensions as the Caisses de retraite screen for
+                // visual consistency: 280px max cell width, 310px main axis
+                // extent, 16px gaps.
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 280,
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 16,
+                  mainAxisExtent: 310,
                 ),
                 itemCount: _filteredItems.length,
                 itemBuilder: (context, index) {
@@ -360,8 +355,6 @@ class _WikiScreenState extends State<WikiScreen> {
                     ),
                   );
                 },
-              );
-                },
               ),
             ),
             ],
@@ -418,6 +411,10 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
   late List<String> _selectedTags;
+  final ImagePicker _imagePicker = ImagePicker();
+  Uint8List? _pickedImageBytes;
+  String _pickedImageExt = 'jpg';
+  bool _pickingImage = false;
 
   @override
   void initState() {
@@ -434,6 +431,48 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    setState(() => _pickingImage = true);
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      final ext = picked.path.split('.').last.toLowerCase();
+      if (!mounted) return;
+      setState(() {
+        _pickedImageBytes = bytes;
+        _pickedImageExt = switch (ext) {
+          'png' => 'png',
+          'webp' => 'webp',
+          'gif' => 'gif',
+          _ => 'jpg',
+        };
+      });
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image indisponible : $err')),
+      );
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
+    }
+  }
+
+  String? _buildImageDataUrl() {
+    if (_pickedImageBytes == null) return null;
+    final mime = switch (_pickedImageExt) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      _ => 'image/jpeg',
+    };
+    return 'data:$mime;base64,${base64Encode(_pickedImageBytes!)}';
   }
 
   @override
@@ -456,11 +495,19 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                   flex: 2,
                   child: Container(
                     color: const Color(0xFFF1F5F9),
-                    child: widget.item.imageUrl.isNotEmpty
-                        ? Image.network(
-                            resolveMediaUrl(widget.item.imageUrl),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (_pickedImageBytes != null)
+                          Image.memory(
+                            _pickedImageBytes!,
                             fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Center(
+                          )
+                        else if (widget.item.imageUrl.isNotEmpty)
+                          CachedRemoteImage(
+                            url: widget.item.imageUrl,
+                            fit: BoxFit.contain,
+                            errorWidget: const Center(
                               child: Icon(
                                 LucideIcons.image,
                                 size: 72,
@@ -468,13 +515,67 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                               ),
                             ),
                           )
-                        : const Center(
+                        else
+                          const Center(
                             child: Icon(
                               LucideIcons.image,
                               size: 72,
                               color: Colors.black54,
                             ),
                           ),
+                        Positioned(
+                          bottom: 16,
+                          left: 16,
+                          child: Material(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(18),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: _pickingImage ? null : _pickImage,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_pickingImage)
+                                      const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    else
+                                      const Icon(
+                                        LucideIcons.image,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _pickedImageBytes != null
+                                          ? 'Changer l\'image'
+                                          : (widget.item.imageUrl.isNotEmpty
+                                              ? 'Remplacer l\'image'
+                                              : 'Ajouter une image'),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 // Right side: form on white background
@@ -560,11 +661,14 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                           child: FilledButton(
                             onPressed: () {
                               Navigator.of(context).pop(
-                                widget.item.copyWith(
-                                  title: _titleController.text.trim(),
-                                  description:
-                                      _descriptionController.text.trim(),
-                                  tags: _selectedTags,
+                                _WikiItemEditResult(
+                                  item: widget.item.copyWith(
+                                    title: _titleController.text.trim(),
+                                    description:
+                                        _descriptionController.text.trim(),
+                                    tags: _selectedTags,
+                                  ),
+                                  newImageDataUrl: _buildImageDataUrl(),
                                 ),
                               );
                             },
@@ -656,6 +760,12 @@ class _FormLabel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _WikiItemEditResult {
+  const _WikiItemEditResult({required this.item, this.newImageDataUrl});
+  final WikiItem item;
+  final String? newImageDataUrl;
 }
 
 class _WikiItemDraft {

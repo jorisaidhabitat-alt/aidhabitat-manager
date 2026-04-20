@@ -73,6 +73,10 @@ class _AccountDialogState extends State<AccountDialog> {
       }
 
       final photoUrl = await _dataService.uploadProfilePhoto(File(picked.path));
+      // Persist in SQLite so the photo survives offline restarts — the
+      // server URL would otherwise be re-fetched on next boot, but if
+      // the device is offline the avatar falls back to initials.
+      await _authService.updateCurrentUserProfilePhoto(photoUrl);
       if (!mounted) return;
       setState(() {
         _photoUrl = photoUrl;
@@ -160,7 +164,8 @@ class _AccountDialogState extends State<AccountDialog> {
                 height: 180,
                 child: Center(child: CircularProgressIndicator()),
               )
-            : Column(
+            : SingleChildScrollView(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -380,6 +385,7 @@ class _AccountDialogState extends State<AccountDialog> {
                     ),
                   ],
                 ],
+              ),
               ),
       ),
       actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),

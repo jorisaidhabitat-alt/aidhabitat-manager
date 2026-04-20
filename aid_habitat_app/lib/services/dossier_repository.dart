@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'local_database.dart';
+import 'nocodb_api_client.dart';
 import 'sync_engine.dart';
 
 class DossierRepository {
@@ -1686,5 +1687,92 @@ class DossierRepository {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
     SyncEngine().notify();
+  }
+
+  /// Pulls the remote diagnostic sanitaires payload for [dossierId] and
+  /// merges it into SQLite WITHOUT enqueuing a sync operation.
+  ///
+  /// Skips the merge if the local row is currently in `pendingSync` —
+  /// that means the user has uncommitted local edits waiting to be
+  /// pushed, and we don't want to clobber them with the server copy.
+  Future<bool> refreshDiagnosticSanitaireFromRemote(String dossierId) async {
+    final NocodbApiClient api = NocodbApiClient();
+    final remote = await api.fetchDiagnosticSanitairePayload(dossierId);
+    if (remote == null) return false;
+
+    final db = await _database.database;
+    final existing = await db.query(
+      'diagnostic_sanitaires',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
+    if (existing.isNotEmpty &&
+        existing.first['sync_state'] == SyncState.pendingSync.name) {
+      return false;
+    }
+
+    final sdb = (remote['sdbInstances'] as List?) ?? const [];
+    final wc = (remote['wcInstances'] as List?) ?? const [];
+    final now = DateTime.now().toIso8601String();
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'sdb_instances_json': jsonEncode(sdb),
+      'wc_instances_json': jsonEncode(wc),
+      'updated_at': now,
+      'sync_state': SyncState.synced.name,
+    };
+    if (existing.isEmpty) {
+      data['local_id'] = 'diag_${dossierId}_${_uuid()}';
+      await db.insert('diagnostic_sanitaires', data);
+    } else {
+      await db.update(
+        'diagnostic_sanitaires',
+        data,
+        where: 'dossier_local_id = ?',
+        whereArgs: [dossierId],
+      );
+    }
+    return true;
+  }
+
+  /// Pulls the remote visit recommendations for [dossierId] and merges
+  /// them into SQLite WITHOUT enqueuing a sync operation. Skips if the
+  /// local row is in `pendingSync` (uncommitted local edits).
+  Future<bool> refreshVisitRecommendationsFromRemote(String dossierId) async {
+    final NocodbApiClient api = NocodbApiClient();
+    final remoteItems = await api.fetchVisitRecommendationsPayload(dossierId);
+
+    final db = await _database.database;
+    final existing = await db.query(
+      'visit_recommendations',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
+    if (existing.isNotEmpty &&
+        existing.first['sync_state'] == SyncState.pendingSync.name) {
+      return false;
+    }
+
+    final now = DateTime.now().toIso8601String();
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'items_json': jsonEncode(remoteItems),
+      'updated_at': now,
+      'sync_state': SyncState.synced.name,
+    };
+    if (existing.isEmpty) {
+      data['local_id'] = 'rec_${dossierId}_${_uuid()}';
+      await db.insert('visit_recommendations', data);
+    } else {
+      await db.update(
+        'visit_recommendations',
+        data,
+        where: 'dossier_local_id = ?',
+        whereArgs: [dossierId],
+      );
+    }
+    return true;
   }
 }
