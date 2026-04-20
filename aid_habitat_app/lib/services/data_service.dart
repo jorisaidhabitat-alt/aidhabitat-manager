@@ -325,9 +325,15 @@ class DataService {
 
   Future<bool> refreshWorkspaceFromRemote() async {
     try {
-      final remoteDossiers = await _nocodbApiClient.fetchDossiers();
-      if (remoteDossiers.isEmpty) return false;
-      await _dossierRepository.mergeRemoteDossiers(remoteDossiers);
+      // Use the raw-payload path so ALL server-returned fields (including
+      // those with no Dart model representation — cheminement_*, rooms_json,
+      // heating_details_json, medicalContext, autonomy, occupants, etc.)
+      // are persisted to SQLite. UPDATE semantics inside
+      // mergeRemoteDossierPayloads also preserve local-only columns that
+      // the server doesn't know about.
+      final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
+      if (rawPayloads.isEmpty) return false;
+      await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);
       return true;
     } catch (_) {
       return false;

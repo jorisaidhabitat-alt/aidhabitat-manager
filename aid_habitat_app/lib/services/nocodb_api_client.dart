@@ -39,6 +39,16 @@ class NocodbApiClient {
   };
 
   Future<List<Dossier>> fetchDossiers() async {
+    final raw = await fetchDossierPayloads();
+    return raw.map(_mapRemoteDossier).toList();
+  }
+
+  /// Returns raw dossier payloads as returned by the server, untouched.
+  /// Used by the sync pipeline so ALL server-provided fields (including
+  /// those that have no Dart model representation — e.g. `cheminement_*`,
+  /// `*_rooms_json`) can be persisted directly into SQLite without being
+  /// filtered through the Dossier / Patient / Housing model shape.
+  Future<List<Map<String, dynamic>>> fetchDossierPayloads() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
     final response = await _client.get(
@@ -55,10 +65,7 @@ class NocodbApiClient {
       throw Exception('Unexpected dossiers payload');
     }
 
-    return payload
-        .whereType<Map<String, dynamic>>()
-        .map(_mapRemoteDossier)
-        .toList();
+    return payload.whereType<Map<String, dynamic>>().toList();
   }
 
   /// Create a new beneficiary on the server. The server automatically creates
@@ -684,6 +691,12 @@ class NocodbApiClient {
     final trustedPersonJson =
         (patientJson['trustedPerson'] as Map?)?.cast<String, dynamic>() ??
         const {};
+    final occupantsList =
+        (patientJson['occupants'] as List?)
+                ?.whereType<Map>()
+                .map((e) => Occupant.fromJson(e.cast<String, dynamic>()))
+                .toList() ??
+            const <Occupant>[];
 
     return Dossier(
       id: json['id']?.toString() ?? '',
@@ -691,15 +704,30 @@ class NocodbApiClient {
         id: patientJson['id']?.toString() ?? '',
         firstName: patientJson['firstName']?.toString() ?? '',
         lastName: patientJson['lastName']?.toString() ?? '',
+        secondFirstName: patientJson['secondFirstName']?.toString() ?? '',
+        secondLastName: patientJson['secondLastName']?.toString() ?? '',
         birthDate: patientJson['birthDate']?.toString() ?? '',
         phone: patientJson['phone']?.toString() ?? '',
         email: patientJson['email']?.toString() ?? '',
         address: patientJson['address']?.toString() ?? '',
         city: patientJson['city']?.toString() ?? '',
+        cityId: patientJson['cityId']?.toString() ?? '',
         zipCode: patientJson['zipCode']?.toString() ?? '',
         familySituation: patientJson['familySituation']?.toString() ?? '',
         incomeCategory: patientJson['incomeCategory']?.toString() ?? '',
         numberPeople: _parseInt(patientJson['numberPeople']),
+        fiscalRevenue: _parseDouble(patientJson['fiscalRevenue']),
+        occupants: occupantsList,
+        apa: _parseBool(patientJson['apa']),
+        invalidity: _parseBool(patientJson['invalidity']),
+        invalidityTxt: patientJson['invalidityTxt']?.toString() ?? '',
+        homeHelp: _parseBool(patientJson['homeHelp']),
+        homeHelpTxt: patientJson['homeHelpTxt']?.toString() ?? '',
+        dependenceTxt: patientJson['dependenceTxt']?.toString() ?? '',
+        caisseRetraitePrincipale:
+            patientJson['caisseRetraitePrincipale']?.toString() ?? '',
+        caissesRetraiteComplementaires:
+            patientJson['caissesRetraiteComplementaires']?.toString() ?? '',
         trustedPerson: TrustedPerson(
           name: trustedPersonJson['name']?.toString() ?? '',
           phone: trustedPersonJson['phone']?.toString() ?? '',
@@ -720,6 +748,20 @@ class NocodbApiClient {
             '',
       ),
       autonomyNotes: json['autonomyNotes']?.toString() ?? '',
+      // Extended dossier-level fields the server maps from the NocoDB row.
+      compteAnah: json['compteAnah']?.toString() ?? '',
+      natureAccompagnement: json['natureAccompagnement']?.toString() ?? '',
+      envoiRapport: json['envoiRapport']?.toString() ?? '',
+      personnesPresentesVisite:
+          json['personnesPresentesVisite']?.toString() ?? '',
+      medicalContext: json['medicalContext'] is Map
+          ? MedicalContext.fromJson(
+              (json['medicalContext'] as Map).cast<String, dynamic>())
+          : null,
+      autonomy: json['autonomy'] is Map
+          ? AutonomyData.fromJson(
+              (json['autonomy'] as Map).cast<String, dynamic>())
+          : null,
       plans: const {
         'PF1': FinancialPlan(id: 'PF1'),
         'PF2': FinancialPlan(id: 'PF2'),
@@ -740,6 +782,26 @@ class NocodbApiClient {
     if (v is num) return v.toInt();
     if (v is String) return int.tryParse(v.trim());
     return null;
+  }
+
+  /// Lenient double parser (fiscalRevenue etc.).
+  double? _parseDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.trim().replaceAll(',', '.'));
+    return null;
+  }
+
+  /// Lenient bool parser — server-side booleans may come as real `bool`,
+  /// numeric (`0` / `1`) or stringified (`"true"` / `"oui"`).
+  bool _parseBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'oui' || s == 'yes';
+    }
+    return false;
   }
 
   DossierStatus _mapStatus(String? status) {

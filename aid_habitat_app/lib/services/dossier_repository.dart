@@ -281,7 +281,45 @@ class DossierRepository {
         h.year_value AS housing_year_value,
         h.surface AS housing_surface,
         h.heating_mode AS housing_heating_mode,
-        h.accessibility_notes AS housing_accessibility_notes
+        h.accessibility_notes AS housing_accessibility_notes,
+        h.year_construction AS housing_year_construction,
+        h.year_habitation AS housing_year_habitation,
+        h.levels AS housing_levels,
+        h.typology AS housing_typology,
+        h.basement AS housing_basement,
+        h.basement_desc AS housing_basement_desc,
+        h.basement_rooms_json AS housing_basement_rooms,
+        h.rdc AS housing_rdc,
+        h.rdc_desc AS housing_rdc_desc,
+        h.rdc_rooms_json AS housing_rdc_rooms,
+        h.floor AS housing_floor,
+        h.floor_desc AS housing_floor_desc,
+        h.floor_rooms_json AS housing_floor_rooms,
+        h.second_floor AS housing_second_floor,
+        h.second_floor_desc AS housing_second_floor_desc,
+        h.second_floor_rooms_json AS housing_second_floor_rooms,
+        h.third_floor AS housing_third_floor,
+        h.third_floor_desc AS housing_third_floor_desc,
+        h.third_floor_rooms_json AS housing_third_floor_rooms,
+        h.garage AS housing_garage,
+        h.veranda AS housing_veranda,
+        h.balcon AS housing_balcon,
+        h.terrasse AS housing_terrasse,
+        h.jardin AS housing_jardin,
+        h.heating_details_json AS housing_heating_details,
+        h.volets_roulants_manuels_localisation AS housing_volets_man_loc,
+        h.volets_roulants_manuels_entier AS housing_volets_man_entier,
+        h.volets_roulants_electriques_localisation AS housing_volets_elec_loc,
+        h.volets_roulants_electriques_entier AS housing_volets_elec_entier,
+        h.volets_persiennes_localisation AS housing_volets_pers_loc,
+        h.volets_persiennes_entier AS housing_volets_pers_entier,
+        h.porte_garage_id AS housing_porte_garage_id,
+        h.portail_id AS housing_portail_id,
+        h.motorisation_porte_garage AS housing_motorisation_porte_garage,
+        h.motorisation_portail AS housing_motorisation_portail,
+        h.easy_access AS housing_easy_access,
+        h.comments AS housing_comments,
+        h.access_observation AS housing_access_observation
       FROM dossiers d
       INNER JOIN patients p ON p.local_id = d.patient_local_id
       INNER JOIN housings h ON h.local_id = d.housing_local_id
@@ -402,6 +440,369 @@ class DossierRepository {
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
+  }
+
+  /// Merge raw dossier payloads (as returned by `/api/dossiers`) into the
+  /// local SQLite store. Unlike [mergeRemoteDossiers] this path has access
+  /// to the full JSON sent by the server and can therefore persist ALL
+  /// extended columns (number_people, fiscal_revenue, apa, invalidity,
+  /// occupants_json, heating_details_json, per-floor rooms, cheminement_*,
+  /// medical_context_json, autonomy_json, etc.).
+  ///
+  /// UPDATE is used when the row already exists in the `synced` state, so
+  /// columns the server doesn't return (e.g. local-only flags) are NOT
+  /// wiped. INSERT-or-replace is used only for rows that don't exist yet.
+  /// Rows with pending local mutations (sync_state != synced) are skipped,
+  /// exactly like the legacy path.
+  Future<void> mergeRemoteDossierPayloads(
+    List<Map<String, dynamic>> payloads,
+  ) async {
+    if (payloads.isEmpty) return;
+    final db = await _database.database;
+
+    await db.transaction((txn) async {
+      for (final raw in payloads) {
+        final dossierId = raw['id']?.toString() ?? '';
+        if (dossierId.isEmpty) continue;
+
+        final existingDossier = await txn.query(
+          'dossiers',
+          columns: ['sync_state', 'patient_local_id', 'housing_local_id'],
+          where: 'local_id = ?',
+          whereArgs: [dossierId],
+          limit: 1,
+        );
+
+        final existingSyncState = existingDossier.isEmpty
+            ? SyncState.synced
+            : SyncState.values.byName(
+                existingDossier.first['sync_state'] as String,
+              );
+
+        if (existingDossier.isNotEmpty &&
+            existingSyncState != SyncState.synced) {
+          // User has unsync'd local edits — do not overwrite them.
+          continue;
+        }
+
+        final now = DateTime.now().toIso8601String();
+        final patientJson =
+            (raw['patient'] as Map?)?.cast<String, dynamic>() ?? const {};
+        final housingJson =
+            (raw['housing'] as Map?)?.cast<String, dynamic>() ?? const {};
+
+        final patientLocalId = patientJson['id']?.toString() ?? dossierId;
+        final housingLocalId = existingDossier.isEmpty
+            ? 'housing_$dossierId'
+            : existingDossier.first['housing_local_id'] as String;
+
+        // ------------------------------------------------------------------
+        // Patient upsert
+        // ------------------------------------------------------------------
+        final patientData = _buildPatientPayload(raw: patientJson, now: now);
+        patientData['local_id'] = patientLocalId;
+        patientData['remote_patient_id'] = patientLocalId;
+        await _upsertByLocalId(
+          txn: txn,
+          table: 'patients',
+          localId: patientLocalId,
+          data: patientData,
+        );
+
+        // ------------------------------------------------------------------
+        // Housing upsert
+        // ------------------------------------------------------------------
+        final housingData = _buildHousingPayload(raw: housingJson, now: now);
+        housingData['local_id'] = housingLocalId;
+        housingData['remote_housing_id'] = housingLocalId;
+        housingData['patient_local_id'] = patientLocalId;
+        await _upsertByLocalId(
+          txn: txn,
+          table: 'housings',
+          localId: housingLocalId,
+          data: housingData,
+        );
+
+        // ------------------------------------------------------------------
+        // Dossier upsert
+        // ------------------------------------------------------------------
+        final dossierData = _buildDossierPayload(raw: raw, now: now);
+        dossierData['local_id'] = dossierId;
+        dossierData['remote_dossier_id'] = dossierId;
+        dossierData['patient_local_id'] = patientLocalId;
+        dossierData['housing_local_id'] = housingLocalId;
+        dossierData['plans_json'] = jsonEncode(const ['PF1', 'PF2', 'PF3']);
+        dossierData['created_at'] =
+            raw['createdAt']?.toString() ?? now;
+        await _upsertByLocalId(
+          txn: txn,
+          table: 'dossiers',
+          localId: dossierId,
+          data: dossierData,
+        );
+      }
+    });
+  }
+
+  /// Insert or UPDATE a row identified by `local_id`. If a row exists, the
+  /// provided [data] is merged via UPDATE so columns not included in [data]
+  /// keep their current values (important for local-only flags that the
+  /// server doesn't return). Otherwise a fresh INSERT is performed.
+  Future<void> _upsertByLocalId({
+    required Transaction txn,
+    required String table,
+    required String localId,
+    required Map<String, dynamic> data,
+  }) async {
+    final existing = await txn.query(
+      table,
+      columns: ['local_id'],
+      where: 'local_id = ?',
+      whereArgs: [localId],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      await txn.insert(table, data,
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    } else {
+      // `local_id` is the primary key — don't update it.
+      final updateFields = Map<String, dynamic>.from(data)
+        ..remove('local_id');
+      await txn.update(
+        table,
+        updateFields,
+        where: 'local_id = ?',
+        whereArgs: [localId],
+      );
+    }
+  }
+
+  /// Maps a server-returned patient JSON to a SQLite row map covering the
+  /// patients table's persisted columns. Values missing from [raw] fall
+  /// back to safe defaults.
+  Map<String, dynamic> _buildPatientPayload({
+    required Map<String, dynamic> raw,
+    required String now,
+  }) {
+    final trusted = (raw['trustedPerson'] as Map?)?.cast<String, dynamic>() ??
+        const {};
+    return {
+      'first_name': raw['firstName']?.toString() ?? '',
+      'last_name': raw['lastName']?.toString() ?? '',
+      'second_first_name': raw['secondFirstName']?.toString() ?? '',
+      'second_last_name': raw['secondLastName']?.toString() ?? '',
+      'birth_date': raw['birthDate']?.toString() ?? '',
+      'phone': raw['phone']?.toString() ?? '',
+      'email': raw['email']?.toString() ?? '',
+      'address': raw['address']?.toString() ?? '',
+      'city': raw['city']?.toString() ?? '',
+      'city_id': raw['cityId']?.toString() ?? '',
+      'zip_code': raw['zipCode']?.toString() ?? '',
+      'family_situation': raw['familySituation']?.toString() ?? '',
+      'income_category': raw['incomeCategory']?.toString() ?? '',
+      'number_people': _asInt(raw['numberPeople']),
+      'fiscal_revenue': _asDouble(raw['fiscalRevenue']),
+      'occupants_json': raw['occupants'] is List
+          ? jsonEncode(raw['occupants'])
+          : null,
+      'apa': _asBoolInt(raw['apa']),
+      'invalidity': _asBoolInt(raw['invalidity']),
+      'invalidity_txt': raw['invalidityTxt']?.toString() ?? '',
+      'home_help': _asBoolInt(raw['homeHelp']),
+      'home_help_txt': raw['homeHelpTxt']?.toString() ?? '',
+      'dependence_txt': raw['dependenceTxt']?.toString() ?? '',
+      'caisse_retraite_principale':
+          raw['caisseRetraitePrincipale']?.toString() ?? '',
+      'caisses_retraite_complementaires':
+          raw['caissesRetraiteComplementaires']?.toString() ?? '',
+      'trusted_person_json': jsonEncode({
+        'name': trusted['name']?.toString() ?? '',
+        'phone': trusted['phone']?.toString() ?? '',
+        'email': trusted['email']?.toString() ?? '',
+      }),
+      'updated_at': now,
+      'remote_updated_at': now,
+      'sync_state': SyncState.synced.name,
+    };
+  }
+
+  /// Maps a server-returned housing JSON to a SQLite row map covering every
+  /// column persisted in the `housings` table, including the ones that are
+  /// otherwise orphaned (no matching Dart model field): cheminement_*,
+  /// heating_details_json, *_rooms_json, volets_*, etc.
+  Map<String, dynamic> _buildHousingPayload({
+    required Map<String, dynamic> raw,
+    required String now,
+  }) {
+    // React/server heating shape: { electric, gas, oil, heatPump, collective,
+    // wood, pellet, other }. Normalize to our Flutter label keys for storage
+    // (matching what accessibility_tab writes locally).
+    Map<String, dynamic> heatingDetailsJson = const {};
+    final heating = raw['heatingDetails'];
+    if (heating is Map) {
+      heatingDetailsJson = {
+        'Électrique': heating['electric'] == true,
+        'Gaz': heating['gas'] == true,
+        'Fioul': heating['oil'] == true,
+        'Pompe à chaleur': heating['heatPump'] == true,
+        'Bois': heating['wood'] == true,
+        'Granulés': heating['pellet'] == true,
+        'Collectif': heating['collective'] == true,
+        'Autre': heating['other'] == true,
+      };
+    }
+
+    // Primary heating mode (enum — guessed from the first true detail).
+    final heatingMode = heatingDetailsJson['Électrique'] == true
+        ? HeatingMode.ELECTRIC.name
+        : heatingDetailsJson['Gaz'] == true
+            ? HeatingMode.GAS.name
+            : heatingDetailsJson['Bois'] == true ||
+                    heatingDetailsJson['Granulés'] == true
+                ? HeatingMode.WOOD.name
+                : heatingDetailsJson['Fioul'] == true
+                    ? HeatingMode.OIL.name
+                    : HeatingMode.OTHER.name;
+
+    return {
+      'type': _asHousingTypeName(raw['typology']),
+      'year_value': _asInt(raw['yearConstruction']),
+      'surface': _asDouble(raw['surface']),
+      'heating_mode': heatingMode,
+      'accessibility_notes':
+          raw['accessibilityNotes']?.toString() ??
+              raw['accessObservation']?.toString() ??
+              '',
+      'year_construction': raw['yearConstruction']?.toString() ?? '',
+      'year_habitation': raw['yearHabitation']?.toString() ?? '',
+      'levels': _asInt(raw['levels']),
+      'typology': raw['typology']?.toString() ?? 'Maison',
+      'basement': _asBoolInt(raw['basement']),
+      'basement_desc': raw['basementDesc']?.toString() ?? '',
+      'rdc': _asBoolInt(raw['rdc']),
+      'rdc_desc': raw['rdcDesc']?.toString() ?? '',
+      'floor': _asBoolInt(raw['floor']),
+      'floor_desc': raw['floorDesc']?.toString() ?? '',
+      'garage': _asBoolInt(raw['garage']),
+      'veranda': _asBoolInt(raw['veranda']),
+      'balcon': _asBoolInt(raw['balcon']),
+      'terrasse': _asBoolInt(raw['terrasse']),
+      'jardin': _asBoolInt(raw['jardin']),
+      'heating_details_json': jsonEncode(heatingDetailsJson),
+      'volets_roulants_manuels_localisation':
+          raw['voletsRoulantsManuelsLocalisation']?.toString() ?? '',
+      'volets_roulants_manuels_entier':
+          _asBoolInt(raw['voletsRoulantsManuelsEntier']),
+      'volets_roulants_electriques_localisation':
+          raw['voletsRoulantsElectriquesLocalisation']?.toString() ?? '',
+      'volets_roulants_electriques_entier':
+          _asBoolInt(raw['voletsRoulantsElectriquesEntier']),
+      'volets_persiennes_localisation':
+          raw['voletsPersiennesLocalisation']?.toString() ?? '',
+      'volets_persiennes_entier':
+          _asBoolInt(raw['voletsPersiennesEntier']),
+      'cheminement_escalier_exterieur':
+          _asBoolInt(raw['cheminementEscalierExterieur']),
+      'cheminement_escalier_interieur':
+          _asBoolInt(raw['cheminementEscalierInterieur']),
+      'cheminement_pente_douce': _asBoolInt(raw['cheminementPenteDouce']),
+      'cheminement_plat': _asBoolInt(raw['cheminementPlat']),
+      'cheminement_quelques_marches':
+          _asBoolInt(raw['cheminementQuelquesMarches']),
+      'cheminement_par_arriere': _asBoolInt(raw['cheminementParArriere']),
+      'cheminement_seuil_porte': _asBoolInt(raw['cheminementSeuilPorte']),
+      'porte_garage_id': raw['porteGarageId']?.toString() ?? '',
+      'portail_id': raw['portailId']?.toString() ?? '',
+      'motorisation_porte_garage':
+          raw['motorisationPorteGarage']?.toString() ?? '',
+      'motorisation_portail':
+          raw['motorisationPortail']?.toString() ?? '',
+      'easy_access': _asBoolInt(raw['easyAccess']),
+      'comments': raw['comments']?.toString() ?? '',
+      'access_observation': raw['accessObservation']?.toString() ?? '',
+      'updated_at': now,
+      'remote_updated_at': now,
+      'sync_state': SyncState.synced.name,
+    };
+  }
+
+  /// Maps a server-returned dossier JSON to a SQLite row map for `dossiers`.
+  Map<String, dynamic> _buildDossierPayload({
+    required Map<String, dynamic> raw,
+    required String now,
+  }) {
+    return {
+      'status': _asDossierStatusName(raw['status']),
+      'ergo_id': raw['ergoId']?.toString() ?? '',
+      'visit_date': raw['visitDate']?.toString(),
+      'autonomy_notes': raw['autonomyNotes']?.toString() ?? '',
+      'compte_anah': raw['compteAnah']?.toString() ?? '',
+      'nature_accompagnement':
+          raw['natureAccompagnement']?.toString() ?? '',
+      'envoi_rapport': raw['envoiRapport']?.toString() ?? '',
+      'personnes_presentes_visite':
+          raw['personnesPresentesVisite']?.toString() ?? '',
+      'medical_context_json': raw['medicalContext'] is Map
+          ? jsonEncode(raw['medicalContext'])
+          : null,
+      'autonomy_json':
+          raw['autonomy'] is Map ? jsonEncode(raw['autonomy']) : null,
+      'updated_at': now,
+      'remote_updated_at': now,
+      'sync_state': SyncState.synced.name,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Parse helpers (shared by the *Payload builders above)
+  // ---------------------------------------------------------------------------
+
+  int? _asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v.trim());
+    return null;
+  }
+
+  double? _asDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.trim().replaceAll(',', '.'));
+    return null;
+  }
+
+  /// Converts various truthy values (bool, 0/1, "true"/"oui") into SQLite
+  /// 0/1 — matching the app's convention for storing booleans.
+  int _asBoolInt(dynamic v) {
+    if (v is bool) return v ? 1 : 0;
+    if (v is num) return v != 0 ? 1 : 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return (s == 'true' || s == '1' || s == 'oui' || s == 'yes') ? 1 : 0;
+    }
+    return 0;
+  }
+
+  String _asHousingTypeName(dynamic typology) {
+    final label = typology?.toString().trim() ?? '';
+    return label == 'Appartement'
+        ? HousingType.APARTMENT.name
+        : HousingType.HOUSE.name;
+  }
+
+  String _asDossierStatusName(dynamic status) {
+    switch (status?.toString()) {
+      case 'Validé':
+        return DossierStatus.GRANT_VALIDATED.name;
+      case 'En cours':
+        return DossierStatus.IN_PROGRESS.name;
+      case 'Clos':
+        return DossierStatus.CLOSED.name;
+      case 'À visiter':
+      default:
+        return DossierStatus.TO_VISIT.name;
+    }
   }
 
   Future<void> forceReplaceWithRemote(Dossier remote) async {
@@ -718,6 +1119,62 @@ class DossierRepository {
           row['housing_heating_mode'] as String,
         ),
         accessibilityNotes: row['housing_accessibility_notes'] as String,
+        yearConstruction:
+            row['housing_year_construction'] as String? ?? '',
+        yearHabitation: row['housing_year_habitation'] as String? ?? '',
+        levels: row['housing_levels'] as int?,
+        typology: row['housing_typology'] as String? ?? 'Maison',
+        basement: (row['housing_basement'] as int? ?? 0) == 1,
+        basementDescription:
+            row['housing_basement_desc'] as String? ?? '',
+        basementRooms:
+            _decodeRoomsJson(row['housing_basement_rooms'] as String?),
+        rdc: (row['housing_rdc'] as int? ?? 0) == 1,
+        rdcDescription: row['housing_rdc_desc'] as String? ?? '',
+        rdcRooms: _decodeRoomsJson(row['housing_rdc_rooms'] as String?),
+        floor: (row['housing_floor'] as int? ?? 0) == 1,
+        floorDescription: row['housing_floor_desc'] as String? ?? '',
+        floorRooms:
+            _decodeRoomsJson(row['housing_floor_rooms'] as String?),
+        secondFloor: (row['housing_second_floor'] as int? ?? 0) == 1,
+        secondFloorDescription:
+            row['housing_second_floor_desc'] as String? ?? '',
+        secondFloorRooms: _decodeRoomsJson(
+            row['housing_second_floor_rooms'] as String?),
+        thirdFloor: (row['housing_third_floor'] as int? ?? 0) == 1,
+        thirdFloorDescription:
+            row['housing_third_floor_desc'] as String? ?? '',
+        thirdFloorRooms:
+            _decodeRoomsJson(row['housing_third_floor_rooms'] as String?),
+        garage: (row['housing_garage'] as int? ?? 0) == 1,
+        veranda: (row['housing_veranda'] as int? ?? 0) == 1,
+        balcon: (row['housing_balcon'] as int? ?? 0) == 1,
+        terrasse: (row['housing_terrasse'] as int? ?? 0) == 1,
+        jardin: (row['housing_jardin'] as int? ?? 0) == 1,
+        heatingDetails: _decodeHeatingDetails(
+            row['housing_heating_details'] as String?),
+        voletsRoulantsManuelsLocalisation:
+            row['housing_volets_man_loc'] as String? ?? '',
+        voletsRoulantsManuelsEntier:
+            (row['housing_volets_man_entier'] as int? ?? 0) == 1,
+        voletsRoulantsElectriquesLocalisation:
+            row['housing_volets_elec_loc'] as String? ?? '',
+        voletsRoulantsElectriquesEntier:
+            (row['housing_volets_elec_entier'] as int? ?? 0) == 1,
+        voletsPersiennesLocalisation:
+            row['housing_volets_pers_loc'] as String? ?? '',
+        voletsPersiennesEntier:
+            (row['housing_volets_pers_entier'] as int? ?? 0) == 1,
+        porteGarageId: row['housing_porte_garage_id'] as String? ?? '',
+        portailId: row['housing_portail_id'] as String? ?? '',
+        motorisationPorteGarage:
+            row['housing_motorisation_porte_garage'] as String? ?? '',
+        motorisationPortail:
+            row['housing_motorisation_portail'] as String? ?? '',
+        easyAccess: (row['housing_easy_access'] as int? ?? 0) == 1,
+        comments: row['housing_comments'] as String? ?? '',
+        accessObservation:
+            row['housing_access_observation'] as String? ?? '',
       ),
       autonomyNotes: row['dossier_autonomy_notes'] as String,
       plans: const {
@@ -728,6 +1185,28 @@ class DossierRepository {
       createdAt: row['dossier_created_at'] as String,
       syncState: SyncState.values.byName(row['dossier_sync_state'] as String),
     );
+  }
+
+  List<String> _decodeRoomsJson(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded.map((e) => e.toString()).toList(growable: false);
+      }
+    } catch (_) {/* fall through */}
+    return const [];
+  }
+
+  Map<String, bool> _decodeHeatingDetails(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return decoded.map((k, v) => MapEntry(k.toString(), v == true));
+      }
+    } catch (_) {/* fall through */}
+    return const {};
   }
 
   // ---------------------------------------------------------------------------
