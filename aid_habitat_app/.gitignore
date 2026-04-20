@@ -53,3 +53,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Vercel build (clones Flutter SDK into ./flutter on the build image)
+/flutter/
+.vercel/
+
+# sqflite_common_ffi_web setup copies these at build time — re-run
+# `dart run sqflite_common_ffi_web:setup` (also done in vercel-build.sh).
+/web/sqflite_sw.js
+/web/sqlite3.wasm

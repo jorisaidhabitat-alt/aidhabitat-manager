@@ -5,9 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
-import 'app_config.dart';
 import 'local_database.dart';
-import 'nocodb_api_client.dart';
 
 class AuthService {
   AuthService._internal();
@@ -150,25 +148,6 @@ class AuthService {
         .toList();
   }
 
-  /// Persists [photoUrl] as the current user's profile photo in SQLite
-  /// so it survives full-cold restarts even when offline. No-op when no
-  /// user is signed in.
-  Future<void> updateCurrentUserProfilePhoto(String photoUrl) async {
-    final db = await _database.database;
-    final sessionRows = await db.query('app_session', limit: 1);
-    if (sessionRows.isEmpty) return;
-    final userLocalId = sessionRows.first['user_local_id'] as String;
-    await db.update(
-      'app_users',
-      {
-        'profile_photo_url': photoUrl,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      where: 'local_id = ?',
-      whereArgs: [userLocalId],
-    );
-  }
-
   Future<LocalAppUser?> getCurrentUser() async {
     final db = await _database.database;
     final sessionRows = await db.query('app_session', limit: 1);
@@ -211,105 +190,26 @@ class AuthService {
     final salt = row['password_salt'] as String? ?? '';
     final expectedHash = row['password_hash'] as String? ?? '';
     final providedHash = _hashPassword(password, salt);
-    final localPasswordMatches = providedHash == expectedHash;
-
-    // Try the Express API in parallel with the same password. If the server
-    // accepts it, the user gets both a local and a remote session.
-    final remoteToken = await NocodbApiClient().loginToRemote(
-      email: normalizedEmail,
-      password: password,
-    );
-
-    if (!localPasswordMatches && remoteToken == null) {
-      // Neither local nor remote accepted the password.
+    if (providedHash != expectedHash) {
       return const LocalSignInResult(
         success: false,
-        error: 'Mot de passe invalide',
+        error: 'Mot de passe local invalide',
       );
     }
 
-    // If the server accepted the password but the local hash doesn't match,
-    // the user has rotated their password on the admin panel without updating
-    // their device. Sync the local password to match the server one so the
-    // user only ever types a single password.
-    if (!localPasswordMatches && remoteToken != null) {
-      final nextSalt = _generateSalt();
-      await _database.database.then((db) => db.update(
-            'app_users',
-            {
-              'password_salt': nextSalt,
-              'password_hash': _hashPassword(password, nextSalt),
-              'updated_at': DateTime.now().toIso8601String(),
-            },
-            where: 'local_id = ?',
-            whereArgs: [row['local_id']],
-          ));
-    }
-
     final now = DateTime.now().toIso8601String();
-
     await db.insert('app_session', {
       'id': 1,
       'user_local_id': row['local_id'],
-      'remote_token': remoteToken,
       'created_at': now,
       'updated_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
-
-    if (remoteToken != null) {
-      AppConfig.setAppSessionToken(remoteToken);
-    }
 
     final scopes = await _fetchScopesByUserId(db);
     return LocalSignInResult(
       success: true,
       user: _mapUser(row, scopes[row['local_id']] ?? []),
-      hasRemoteSession: remoteToken != null,
     );
-  }
-
-  /// Attempt a remote login with a given password (can differ from the local
-  /// one). Stores the token in SQLite and AppConfig if successful.
-  Future<bool> linkRemoteSession({
-    required String email,
-    required String password,
-  }) async {
-    final token = await NocodbApiClient().loginToRemote(
-      email: email.trim().toLowerCase(),
-      password: password,
-    );
-    if (token == null) return false;
-
-    final db = await _database.database;
-    await db.update(
-      'app_session',
-      {
-        'remote_token': token,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      where: 'id = 1',
-    );
-    AppConfig.setAppSessionToken(token);
-    return true;
-  }
-
-  /// Restore any remote session token persisted from a previous login.
-  Future<void> restoreRemoteSession() async {
-    final db = await _database.database;
-    try {
-      final rows = await db.query(
-        'app_session',
-        columns: ['remote_token'],
-        limit: 1,
-      );
-      if (rows.isEmpty) return;
-      final token = rows.first['remote_token'] as String?;
-      if (token != null && token.isNotEmpty) {
-        AppConfig.setAppSessionToken(token);
-      }
-    } catch (_) {
-      // Column may not exist yet on older schemas — ignore.
-    }
   }
 
   Future<void> signOut() async {
@@ -435,30 +335,20 @@ class AuthService {
           'establishment_id': _nullableValue(remoteUser['establishmentId']),
           'ergo_label': _nullableValue(remoteUser['ergoLabel']),
           'is_active': _remoteIsActive(remoteUser) ? 1 : 0,
-          'profile_photo_url':
-              remoteUser['profilePhotoUrl']?.toString() ?? '',
           'created_at': now,
           'updated_at': now,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       } else {
-        final updates = <String, Object?>{
-          'display_name': remoteUser['displayName']?.toString() ?? email,
-          'role': _mapRemoteRole(remoteUser['role']?.toString()).name,
-          'establishment_id': _nullableValue(remoteUser['establishmentId']),
-          'ergo_label': _nullableValue(remoteUser['ergoLabel']),
-          'is_active': _remoteIsActive(remoteUser) ? 1 : 0,
-          'updated_at': now,
-        };
-        // Only overwrite the local photo when the server actually sent
-        // one — avoids clobbering a just-uploaded photo whose URL hasn't
-        // propagated back through `fetchLocalAuthState` yet.
-        final remotePhoto = remoteUser['profilePhotoUrl']?.toString() ?? '';
-        if (remotePhoto.isNotEmpty) {
-          updates['profile_photo_url'] = remotePhoto;
-        }
         await db.update(
           'app_users',
-          updates,
+          {
+            'display_name': remoteUser['displayName']?.toString() ?? email,
+            'role': _mapRemoteRole(remoteUser['role']?.toString()).name,
+            'establishment_id': _nullableValue(remoteUser['establishmentId']),
+            'ergo_label': _nullableValue(remoteUser['ergoLabel']),
+            'is_active': _remoteIsActive(remoteUser) ? 1 : 0,
+            'updated_at': now,
+          },
           where: 'local_id = ?',
           whereArgs: [localUserId],
         );
@@ -560,7 +450,6 @@ class AuthService {
       role: LocalUserRole.values.byName(row['role'] as String),
       establishmentId: row['establishment_id'] as String?,
       ergoLabel: row['ergo_label'] as String?,
-      profilePhotoUrl: (row['profile_photo_url'] as String?) ?? '',
       scopes: scopes,
     );
   }
@@ -601,14 +490,8 @@ class LocalSignInResult {
   final bool success;
   final String? error;
   final LocalAppUser? user;
-  final bool hasRemoteSession;
 
-  const LocalSignInResult({
-    required this.success,
-    this.error,
-    this.user,
-    this.hasRemoteSession = false,
-  });
+  const LocalSignInResult({required this.success, this.error, this.user});
 }
 
 class PasswordChangeResult {

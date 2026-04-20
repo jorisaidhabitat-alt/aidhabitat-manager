@@ -38,6 +38,10 @@ class _HoverBorderState extends State<HoverBorder> {
           decoration: BoxDecoration(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(widget.borderRadius),
+            border: Border.all(
+              color: _isHovering ? widget.borderColor : Colors.transparent,
+              width: widget.borderWidth,
+            ),
           ),
           child: widget.child,
         ),

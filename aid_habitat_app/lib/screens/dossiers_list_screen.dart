@@ -5,13 +5,11 @@ import '../models/types.dart';
 class DossiersListScreen extends StatefulWidget {
   final List<Dossier> dossiers;
   final Function(Dossier) onSelectDossier;
-  final VoidCallback? onCreateNew;
 
   const DossiersListScreen({
     super.key,
     required this.dossiers,
     required this.onSelectDossier,
-    this.onCreateNew,
   });
 
   @override
@@ -20,7 +18,9 @@ class DossiersListScreen extends StatefulWidget {
 
 class _DossiersListScreenState extends State<DossiersListScreen> {
   String _searchTerm = '';
+  String? _selectedLetter;
   String _sortOrder = 'asc'; // asc, desc, random
+  final List<String> _alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
 
   List<Dossier> get _filteredDossiers {
     List<Dossier> filtered = widget.dossiers.where((d) {
@@ -29,7 +29,11 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             _searchTerm.toLowerCase(),
           ) ||
           d.patient.city.toLowerCase().contains(_searchTerm.toLowerCase());
-      return matchesSearch;
+      final matchesLetter =
+          _selectedLetter == null ||
+          d.patient.lastName.toUpperCase().startsWith(_selectedLetter!) ||
+          d.patient.firstName.toUpperCase().startsWith(_selectedLetter!);
+      return matchesSearch && matchesLetter;
     }).toList();
 
     if (_sortOrder == 'asc') {
@@ -54,15 +58,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     }
   }
 
-  String _initials(Patient patient) {
-    final f = patient.firstName.trim();
-    final l = patient.lastName.trim();
-    if (f.isEmpty && l.isEmpty) return '?';
-    if (f.isEmpty) return l.substring(0, 1).toUpperCase();
-    if (l.isEmpty) return f.substring(0, 1).toUpperCase();
-    return '${f[0]}${l[0]}'.toUpperCase();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -70,18 +65,13 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text(
-                "Mes dossiers",
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const Spacer(),
-            ],
+          const Text(
+            "Mes dossiers",
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
           ),
           const SizedBox(height: 24),
 
@@ -174,6 +164,67 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
               ),
               child: Column(
                 children: [
+                  // Alphabet Bar
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFF1F5F9)),
+                      ),
+                    ),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: _alphabet.map((letter) {
+                          final isSelected = _selectedLetter == letter;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: InkWell(
+                              onTap: () => setState(
+                                () => _selectedLetter = isSelected
+                                    ? null
+                                    : letter,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? const Color(0xFF907CA1)
+                                      : Colors.transparent,
+                                  shape: BoxShape.circle,
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: const Color(
+                                              0xFF907CA1,
+                                            ).withOpacity(0.4),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    letter,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.grey.shade500,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+
                   // List
                   Expanded(
                     child: _filteredDossiers.isEmpty
@@ -207,6 +258,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: Colors.transparent,
+                                    ),
                                   ),
                                   child: Row(
                                     children: [
@@ -219,7 +273,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                         ),
                                         child: Center(
                                           child: Text(
-                                            _initials(dossier.patient),
+                                            "${dossier.patient.firstName[0]}${dossier.patient.lastName[0]}",
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               color: Color(0xFF554a63),
@@ -282,6 +336,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                         decoration: BoxDecoration(
                                           color: Colors.white,
                                           shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.grey.shade200,
+                                          ),
                                         ),
                                         child: const Icon(
                                           LucideIcons.arrowRight,
