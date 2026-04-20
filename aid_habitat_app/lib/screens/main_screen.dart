@@ -182,6 +182,82 @@ class _MainScreenState extends State<MainScreen> {
     _syncEngine.requestSync();
   }
 
+  /// Affiche un dialog décrivant l'opération sync en échec + propose de
+  /// l'ignorer définitivement. Indispensable pour débloquer le bandeau rouge
+  /// quand une modif n'aboutira jamais (ressource supprimée côté serveur,
+  /// payload rejeté par un backend plus strict, etc).
+  Future<void> _showFailingOpDetails() async {
+    final info = await _syncEngine.inspectTopFailure();
+    if (!mounted) return;
+    if (info == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune opération en échec détectée.')),
+      );
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Opération en échec'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _kv('Type', '${info['entityType']} · ${info['operationType']}'),
+            _kv('ID local', info['entityLocalId'] ?? '-'),
+            _kv('Tentatives', info['attemptCount'] ?? '0'),
+            const SizedBox(height: 8),
+            const Text(
+              'Erreur retournée :',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: SelectableText(
+                info['lastError'] ?? '(aucune)',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Fermer'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ignorer cette modification'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || discard != true) return;
+    final removed = await _syncEngine.discardFailedOperations();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$removed opération(s) ignorée(s)')),
+    );
+  }
+
+  Widget _kv(String k, String v) => Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: RichText(
+          text: TextSpan(
+            style: const TextStyle(fontSize: 13, color: Colors.black87),
+            children: [
+              TextSpan(
+                text: '$k : ',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              TextSpan(text: v),
+            ],
+          ),
+        ),
+      );
+
   void _handleCreateNew() {
     setState(() => _activeView = 'create_beneficiary');
   }
@@ -333,6 +409,15 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
             const SizedBox(width: 12),
+            TextButton(
+              onPressed: _showFailingOpDetails,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 2),
+              ),
+              child: const Text('Détails'),
+            ),
             TextButton(
               onPressed: _handleSyncNow,
               style: TextButton.styleFrom(

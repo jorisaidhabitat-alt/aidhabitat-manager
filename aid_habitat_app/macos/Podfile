@@ -1,0 +1,73 @@
+platform :osx, '10.15'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'ephemeral', 'Flutter-Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure \"flutter pub get\" is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Flutter-Generated.xcconfig, then run \"flutter pub get\""
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_macos_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+
+  flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_macos_build_settings(target)
+  end
+
+  # Workaround : le chemin projet contient une apostrophe ("aid'habitat-manager")
+  # qui casse l'eval du script CocoaPods. On remplace l'interpolation naïve
+  # de $1 et EXPANDED_CODE_SIGN_IDENTITY par une version qui protège les
+  # single-quotes internes via le motif '\''.
+  Dir.glob("Pods/Target Support Files/**/*-frameworks.sh").each do |path|
+    original = File.read(path)
+    patched = original
+
+    # Match either  "...entitlements "$1""  OR  "...entitlements '$1'"
+    # (CocoaPods swaps between the two styles between versions) and replace
+    # with a Python shlex.quote call — reliable on every bash version
+    # (bash 3.2 `printf %q` mangles paths that contain a single quote).
+    replacement = <<~'BASH'.strip
+      local escaped_path_for_eval
+      escaped_path_for_eval=$(/usr/bin/python3 -c 'import shlex,sys; sys.stdout.write(shlex.quote(sys.argv[1]))' "$1")
+      local escaped_identity
+      escaped_identity=$(/usr/bin/python3 -c 'import shlex,sys; sys.stdout.write(shlex.quote(sys.argv[1]))' "${EXPANDED_CODE_SIGN_IDENTITY}")
+      local code_sign_cmd="/usr/bin/codesign --force --sign $escaped_identity ${OTHER_CODE_SIGN_FLAGS:-} --preserve-metadata=identifier,entitlements $escaped_path_for_eval"
+    BASH
+
+    # Double-quoted "$1" variant
+    double_q = %Q(local code_sign_cmd="/usr/bin/codesign --force --sign ${EXPANDED_CODE_SIGN_IDENTITY} ${OTHER_CODE_SIGN_FLAGS:-} --preserve-metadata=identifier,entitlements "$1"")
+    # Single-quoted '$1' variant
+    single_q = %Q(local code_sign_cmd="/usr/bin/codesign --force --sign ${EXPANDED_CODE_SIGN_IDENTITY} ${OTHER_CODE_SIGN_FLAGS:-} --preserve-metadata=identifier,entitlements '$1'")
+
+    patched = patched.sub(double_q, replacement)
+    patched = patched.sub(single_q, replacement)
+
+    File.write(path, patched) if patched != original
+  end
+end

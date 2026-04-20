@@ -100,7 +100,6 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.grey.shade200),
             ),
             child: const Icon(Icons.arrow_back, color: Colors.black87),
           ),
@@ -281,7 +280,6 @@ class _VersionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withAlpha(80)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

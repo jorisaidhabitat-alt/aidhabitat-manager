@@ -131,38 +131,22 @@ class _PlansTabState extends State<PlansTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Plans de visite',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
-                ),
-              ),
-              _buildPaginationBar(),
-            ],
-          ),
-        ),
-        Expanded(
-          child: _probed
-              ? PlanCanvas(
-                  key: ValueKey('plans-${widget.dossier.patient.id}-$_currentPage'),
-                  patientId: widget.dossier.patient.id,
-                  tabKey: _kTabKey,
-                  pageNumber: _currentPage,
-                )
-              : const Center(child: CircularProgressIndicator()),
-        ),
-      ],
-    );
+    // Pagination et outils sont maintenant fusionnés dans la toolbar du canvas
+    // (une seule ligne en haut). Pas de titre "Plans de visite" redondant.
+    return _probed
+        ? PlanCanvas(
+            key: ValueKey('plans-${widget.dossier.patient.id}-$_currentPage'),
+            patientId: widget.dossier.patient.id,
+            tabKey: _kTabKey,
+            pageNumber: _currentPage,
+            currentPage: _currentPage,
+            totalPages: _totalPages,
+            onPrevPage: () => _goToPage(_currentPage - 1),
+            onNextPage: () => _goToPage(_currentPage + 1),
+            onAddPage: _addPage,
+            onDeletePage: _deleteCurrentPage,
+          )
+        : const Center(child: CircularProgressIndicator());
   }
 
   Widget _buildPaginationBar() {

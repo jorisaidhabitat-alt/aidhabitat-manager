@@ -14,11 +14,20 @@ import 'sync_repository.dart';
 ///   engine.onConnectivityBack(); // called when network returns
 ///   engine.dispose();            // cleanup on app shutdown
 class SyncEngine {
-  SyncEngine({
+  SyncEngine._internal({
     NocodbSyncService? syncService,
     SyncRepository? syncRepository,
   })  : _syncService = syncService ?? NocodbSyncService(),
         _syncRepository = syncRepository ?? SyncRepository();
+
+  static final SyncEngine _instance = SyncEngine._internal();
+
+  /// Singleton accessor. Repositories call [SyncEngine()] to notify the engine
+  /// after enqueuing a local mutation.
+  factory SyncEngine({
+    NocodbSyncService? syncService,
+    SyncRepository? syncRepository,
+  }) => _instance;
 
   final NocodbSyncService _syncService;
   final SyncRepository _syncRepository;
@@ -27,13 +36,18 @@ class SyncEngine {
   // Configuration
   // ---------------------------------------------------------------------------
 
-  static const Duration _initialDelay = Duration(seconds: 5);
-  static const Duration _maxDelay = Duration(minutes: 15);
-  static const double _backoffMultiplier = 3.0;
-  static const int _maxConsecutiveFailures = 20;
+  static const Duration _initialDelay = Duration(seconds: 2);
+  static const Duration _maxDelay = Duration(minutes: 5);
+  static const double _backoffMultiplier = 2.5;
+  static const int _maxConsecutiveFailures = 10;
 
-  /// Periodic background check interval when idle and online.
-  static const Duration _periodicInterval = Duration(minutes: 5);
+  /// Debounce window for push-on-mutation. Rapid successive mutations (e.g.
+  /// while the user types) collapse into a single sync cycle.
+  static const Duration _notifyDebounce = Duration(milliseconds: 200);
+
+  /// Periodic background check interval when idle and online. Short safety net
+  /// — push-on-mutation should handle most cases.
+  static const Duration _periodicInterval = Duration(seconds: 60);
 
   // ---------------------------------------------------------------------------
   // State
@@ -47,8 +61,10 @@ class SyncEngine {
 
   Timer? _retryTimer;
   Timer? _periodicTimer;
+  Timer? _debounceTimer;
   bool _disposed = false;
   bool _running = false;
+  bool _rerunRequested = false;
   int _consecutiveFailures = 0;
 
   // ---------------------------------------------------------------------------
@@ -69,6 +85,7 @@ class SyncEngine {
     _disposed = true;
     _retryTimer?.cancel();
     _periodicTimer?.cancel();
+    _debounceTimer?.cancel();
     _stateController.close();
   }
 
@@ -81,6 +98,38 @@ class SyncEngine {
   void requestSync() {
     if (_disposed) return;
     _scheduleImmediate();
+  }
+
+  /// Push-on-mutation entry point. Called by repositories right after they
+  /// enqueue a `sync_operations` row. Debounces rapid bursts so the engine
+  /// fires exactly one sync cycle shortly after a flurry of edits.
+  void notify() {
+    if (_disposed) return;
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(_notifyDebounce, () {
+      _scheduleImmediate();
+    });
+  }
+
+  /// Renvoie un résumé de la première opération en échec (pour UI).
+  Future<Map<String, String?>?> inspectTopFailure() =>
+      _syncRepository.fetchTopFailingOperation();
+
+  /// Supprime toutes les opérations en `failed` et réinitialise le compteur
+  /// de retries → débloque le bandeau rouge quand une modif ne pourra jamais
+  /// aboutir (ex: doc déjà supprimé côté serveur).
+  Future<int> discardFailedOperations() async {
+    final removed = await _syncRepository.discardFailedOperations();
+    _consecutiveFailures = 0;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    final pending = await _refreshPendingCount();
+    _emitState(
+      pendingCount: pending,
+      clearError: true,
+      nextRetryAt: null,
+    );
+    return removed;
   }
 
   /// Called when network connectivity is restored. Resets backoff and triggers
@@ -98,7 +147,12 @@ class SyncEngine {
   // ---------------------------------------------------------------------------
 
   void _scheduleImmediate() {
-    if (_running) return;
+    if (_running) {
+      // A sync is already in flight. Queue another cycle so any mutations
+      // that land during this run get pushed right after.
+      _rerunRequested = true;
+      return;
+    }
     // Cancel any pending retry — we're going now.
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -173,12 +227,12 @@ class SyncEngine {
           lastSyncAt: DateTime.now(),
           nextRetryAt: null,
         );
-        // If there are still pending operations (newly enqueued during sync),
-        // run again after a short delay.
-        if (pendingAfter > 0) {
-          _retryTimer?.cancel();
-          _retryTimer = Timer(const Duration(seconds: 2), () {
-            if (!_disposed) _runSync();
+        // If new mutations landed during this run, or operations remain
+        // pending, fire another cycle immediately (no artificial delay).
+        if (_rerunRequested || pendingAfter > 0) {
+          _rerunRequested = false;
+          scheduleMicrotask(() {
+            if (!_disposed) _scheduleImmediate();
           });
         }
       }
@@ -211,12 +265,15 @@ class SyncEngine {
     String? lastError,
     DateTime? lastSyncAt,
     DateTime? nextRetryAt,
+    bool clearError = false,
   }) {
     if (_disposed) return;
     _state = SyncEngineState(
       isSyncing: isSyncing ?? _state.isSyncing,
       pendingCount: pendingCount ?? _state.pendingCount,
-      lastError: lastError ?? (isSyncing == true ? null : _state.lastError),
+      lastError: clearError
+          ? null
+          : (lastError ?? (isSyncing == true ? null : _state.lastError)),
       lastSyncAt: lastSyncAt ?? _state.lastSyncAt,
       nextRetryAt: nextRetryAt ?? _state.nextRetryAt,
     );

@@ -28,5 +28,31 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- `NSAllowsArbitraryLoadsInWebContent` : permet à toutes les WebViews
+		     (WKWebView) de charger des URLs que la policy ATS rejetterait
+		     normalement — sans affaiblir les requêtes HTTP directes du reste
+		     de l'app. C'est la clé recommandée par Apple pour les apps qui
+		     embarquent un navigateur. -->
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<!-- Exception ciblée pour les sous-domaines anah.gouv.fr au cas où
+		     la policy se durcirait dans le futur. -->
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>anah.gouv.fr</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<false/>
+				<key>NSExceptionMinimumTLSVersion</key>
+				<string>TLSv1.0</string>
+			</dict>
+		</dict>
+	</dict>
 </dict>
 </plist>

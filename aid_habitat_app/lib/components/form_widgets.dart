@@ -105,16 +105,23 @@ class FormTextField extends StatefulWidget {
 
 class _FormTextFieldState extends State<FormTextField> {
   late TextEditingController _controller;
+  late FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.value);
+    _focusNode = FocusNode();
   }
 
   @override
   void didUpdateWidget(covariant FormTextField oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Ne jamais écraser le contenu du contrôleur si l'utilisateur a le focus
+    // (il est en train de taper) — cela évite des pertes de caractères lors
+    // d'un re-rendu déclenché par une sauvegarde asynchrone (ex: "jojo" qui
+    // devient "joj").
+    if (_focusNode.hasFocus) return;
     if (oldWidget.value != widget.value && _controller.text != widget.value) {
       _controller.text = widget.value;
     }
@@ -122,6 +129,7 @@ class _FormTextFieldState extends State<FormTextField> {
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -135,6 +143,7 @@ class _FormTextFieldState extends State<FormTextField> {
         const SizedBox(height: 6),
         TextFormField(
           controller: _controller,
+          focusNode: _focusNode,
           readOnly: widget.readOnly,
           keyboardType: widget.keyboardType,
           maxLines: widget.maxLines,
@@ -258,57 +267,125 @@ class FormToggleGroup extends StatelessWidget {
   final String selected;
   final ValueChanged<String>? onChanged;
 
+  /// When true, options are laid out in a Row and each one takes an equal
+  /// share of the full width (using Expanded). Defaults to false to keep the
+  /// original wrap behaviour where each option sizes to its content.
+  final bool expand;
+
+  /// Forces a fixed number of columns (equal-width cells, wrapping onto
+  /// multiple rows). Takes precedence over [expand] when set. Ex: 2 pour
+  /// "Situation familiale" (5 options sur 2 colonnes), 3 pour "Occupation".
+  final int? columns;
+
   const FormToggleGroup({
     super.key,
     required this.label,
     required this.options,
     required this.selected,
     this.onChanged,
+    this.expand = false,
+    this.columns,
   });
 
   @override
   Widget build(BuildContext context) {
+    Widget buildPill(String opt) {
+      final isSelected = opt == selected;
+      return GestureDetector(
+        onTap: () => onChanged?.call(opt),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF907CA1) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF907CA1)
+                  : Colors.grey.shade300,
+            ),
+          ),
+          child: Text(
+            opt,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.black87,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF64748B))),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: Wrap(
-            alignment: WrapAlignment.start,
-            crossAxisAlignment: WrapCrossAlignment.start,
-            spacing: 8,
-            runSpacing: 8,
-            children: options.map((opt) {
-            final isSelected = opt == selected;
-            return GestureDetector(
-              onTap: () => onChanged?.call(opt),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF907CA1) : Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isSelected
-                        ? const Color(0xFF907CA1)
-                        : Colors.grey.shade300,
-                  ),
-                ),
-                child: Text(
-                  opt,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.black87,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
+        if (label.isNotEmpty) ...[
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: Color(0xFF64748B),
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+        ],
+        if (columns != null && columns! > 0)
+          _buildGridRows(options, columns!, buildPill)
+        else if (expand)
+          Row(
+            children: [
+              for (var i = 0; i < options.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(child: buildPill(options[i])),
+              ],
+            ],
+          )
+        else
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.start,
+              crossAxisAlignment: WrapCrossAlignment.start,
+              spacing: 8,
+              runSpacing: 8,
+              children: options.map(buildPill).toList(),
+            ),
+          ),
       ],
+    );
+  }
+
+  /// Renders [options] into a fixed [columns]-wide grid of equal-width
+  /// pills. The last row may have fewer items (remaining cells stay empty
+  /// so the present pills keep the same width as the others).
+  Widget _buildGridRows(
+    List<String> options,
+    int columns,
+    Widget Function(String) buildPill,
+  ) {
+    final rows = <Widget>[];
+    for (var r = 0; r < options.length; r += columns) {
+      final rowChildren = <Widget>[];
+      for (var c = 0; c < columns; c++) {
+        if (c > 0) rowChildren.add(const SizedBox(width: 8));
+        final idx = r + c;
+        rowChildren.add(
+          Expanded(
+            child: idx < options.length
+                ? buildPill(options[idx])
+                : const SizedBox.shrink(),
+          ),
+        );
+      }
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: 8));
+      rows.add(Row(children: rowChildren));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
     );
   }
 }
@@ -459,11 +536,19 @@ class FormSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: padding ?? const EdgeInsets.only(bottom: 20),
+      padding: padding ?? const EdgeInsets.only(bottom: 24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Titre sur sa propre ligne (le titre peut contenir une Row complexe
+          // avec pills d'occupants, boutons, etc. — on ne superpose rien).
           title,
+          // Ligne de séparation pleine largeur sous le titre.
+          const SizedBox(height: 8),
+          Container(
+            height: 1,
+            color: const Color(0xFFE2E8F0),
+          ),
           const SizedBox(height: 12),
           child,
         ],
@@ -503,16 +588,20 @@ class FormTextFieldWithWarning extends StatefulWidget {
 
 class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
   late TextEditingController _controller;
+  late FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.value);
+    _focusNode = FocusNode();
   }
 
   @override
   void didUpdateWidget(covariant FormTextFieldWithWarning oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Idem FormTextField : ne pas écraser la frappe en cours.
+    if (_focusNode.hasFocus) return;
     if (oldWidget.value != widget.value && _controller.text != widget.value) {
       _controller.text = widget.value;
     }
@@ -520,6 +609,7 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -540,6 +630,7 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
         const SizedBox(height: 6),
         TextFormField(
           controller: _controller,
+          focusNode: _focusNode,
           keyboardType: widget.keyboardType,
           style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
@@ -624,15 +715,17 @@ class FormSelectDropdown<T> extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF64748B),
+        if (label.isNotEmpty) ...[
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: Color(0xFF64748B),
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
+          const SizedBox(height: 6),
+        ],
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -869,24 +962,25 @@ class OccupantSwitcher extends StatelessWidget {
               return GestureDetector(
                 onTap: () => onChanged?.call(i),
                 child: Container(
-                  constraints: const BoxConstraints(minWidth: 64),
+                  constraints: const BoxConstraints(minWidth: 72),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: active
-                        ? const Color(0xFFF4EFF7)
-                        : const Color(0xFFF8FAFC),
+                        ? const Color(0xFFE9DFF0)
+                        : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     occupantLabels[i],
                     style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
                       color: active
                           ? const Color(0xFF554A63)
-                          : const Color(0xFF94A3B8),
+                          : const Color(0xFF475569),
                     ),
                   ),
                 ),
@@ -906,32 +1000,9 @@ class SaveStatusIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Ne prend aucune place quand inactif (parité UX : pas d'espace blanc).
-    if (!saving) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 12,
-            height: 12,
-            child: CircularProgressIndicator(
-              strokeWidth: 1.5,
-              color: Color(0xFF907CA1),
-            ),
-          ),
-          SizedBox(width: 6),
-          Text(
-            'Enregistrement...',
-            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-          ),
-        ],
-      ),
-    );
+    // L'enregistrement est automatique et rapide — pas de feedback visuel
+    // pour éviter le flash disgracieux du badge "Enregistrement..." qui
+    // apparaissait puis disparaissait instantanément.
+    return const SizedBox.shrink();
   }
 }

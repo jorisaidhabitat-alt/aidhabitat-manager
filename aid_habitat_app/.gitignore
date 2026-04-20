@@ -33,6 +33,16 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Vercel build (clones Flutter SDK into ./flutter on the build image)
+/flutter/
+.vercel/
+
+# sqflite_common_ffi_web setup copies these here at build time — re-run
+# `dart run sqflite_common_ffi_web:setup` to regenerate (also done by
+# vercel-build.sh on every Vercel deploy).
+/web/sqflite_sw.js
+/web/sqlite3.wasm
+
 # Symbolication related
 app.*.symbols
 

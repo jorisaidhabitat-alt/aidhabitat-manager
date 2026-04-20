@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../components/notes_widget.dart';
@@ -10,6 +14,22 @@ import 'visit_tabs/measurements_tab.dart';
 import 'visit_tabs/plans_tab.dart';
 import 'visit_tabs/recommendations_tab.dart';
 import 'visit_tabs/wc_tab.dart';
+
+/// In-memory cache of the last active tab index per dossier, so navigating
+/// away from the visit report and back returns the user to the same tab
+/// they were on.
+class _VisitReportStateCache {
+  _VisitReportStateCache._();
+  static final Map<String, int> _tabIndex = {};
+  static int getTabIndex(String dossierId) => _tabIndex[dossierId] ?? 0;
+  static void setTabIndex(String dossierId, int index) =>
+      _tabIndex[dossierId] = index;
+
+  /// Last known size of a detached note OS window, reported by the popup
+  /// itself every second. Re-used as the initial size when the user opens
+  /// another popup, so resizing one popup "sticks" for subsequent ones.
+  static Size lastNoteWindowSize = const Size(520, 480);
+}
 
 class VisitReportScreen extends StatefulWidget {
   final Dossier dossier;
@@ -45,15 +65,228 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   void initState() {
     super.initState();
     _dossier = widget.dossier;
-    _tabController = TabController(length: _tabs.length, vsync: this);
+    final initialTabIndex =
+        _VisitReportStateCache.getTabIndex(widget.dossier.id)
+            .clamp(0, _tabs.length - 1);
+    _tabController = TabController(
+      length: _tabs.length,
+      vsync: this,
+      initialIndex: initialTabIndex,
+    );
     _tabController.addListener(_handleTabChange);
-    // Re-read the dossier from the local DB on mount, in case patient
-    // fields changed elsewhere (dashboard, dossiers list, dossier screen).
     _refreshDossier();
+
+    // Register an IPC handler so detached note OS windows can persist
+    // their edits through the main window (they cannot touch SQLite
+    // themselves because sqflite is not registered in secondary engines).
+    //
+    // Sur web (PWA) le navigateur ne peut pas ouvrir de vraies fenêtres
+    // OS secondaires, donc on ne monte pas de handler.
+    if (kIsWeb) return;
+    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+      final args = Map<String, dynamic>.from(call.arguments as Map);
+      switch (call.method) {
+        case 'liveNote':
+          final patientId = args['patientId'] as String;
+          final tabKey = args['tabKey'] as String;
+          final text = args['text'] as String? ?? '';
+          final flush = args['flush'] == true;
+          // 1) INSTANT UI mirror — bump `_liveText` + rebuild so the
+          //    in-app NotesWidget shows the same text this frame.
+          if (mounted) {
+            setState(() {
+              _liveText['${patientId}::$tabKey'] = text;
+            });
+          }
+          // 2) DEBOUNCED PERSIST — schedule a SQLite write +
+          //    sync_operation. A burst of keystrokes collapses into
+          //    exactly one NocoDB push. `flush=true` (popup closing /
+          //    disposing) writes immediately.
+          final key = '${patientId}::$tabKey';
+          _saveDebounce[key]?.cancel();
+          if (flush) {
+            await _persistNoteText(patientId, tabKey, text);
+          } else {
+            _saveDebounce[key] = Timer(
+              const Duration(milliseconds: 400),
+              () => _persistNoteText(patientId, tabKey, text),
+            );
+          }
+          break;
+        case 'reportNoteSize':
+          final w = (args['width'] as num?)?.toDouble();
+          final h = (args['height'] as num?)?.toDouble();
+          if (w != null && h != null && w > 100 && h > 100) {
+            _VisitReportStateCache.lastNoteWindowSize = Size(w, h);
+          }
+          break;
+      }
+    });
+  }
+
+  /// Merges the new text into the existing `drawing_json` (preserving
+  /// strokes) and persists it via DataService, which also enqueues a
+  /// sync_operation so NocoDB receives the change.
+  Future<void> _persistNoteText(
+      String patientId, String tabKey, String text) async {
+    final existingJson = await _dataService.fetchNoteDrawingJson(
+      patientId: patientId,
+      tabKey: tabKey,
+      pageNumber: 0,
+    );
+    List<dynamic> strokes = const [];
+    if (existingJson != null && existingJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(existingJson);
+        if (decoded is Map<String, dynamic>) {
+          // Short-circuit if nothing actually changed — avoids spamming
+          // sync_operations while the user pauses typing.
+          if (decoded['text']?.toString() == text) return;
+          strokes = (decoded['strokes'] as List?) ?? const [];
+        }
+      } catch (_) {}
+    }
+    final merged = jsonEncode({
+      'version': 1,
+      'text': text,
+      'strokes': strokes,
+    });
+    await _dataService.saveNoteDrawingJson(
+      patientId: patientId,
+      tabKey: tabKey,
+      pageNumber: 0,
+      drawingJson: merged,
+    );
+  }
+
+  /// Extracts the `text` field from a drawing_json payload. Returns empty
+  /// string if the JSON is missing / malformed.
+  String _extractTextFromDrawingJson(String? json) {
+    if (json == null || json.isEmpty) return '';
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is Map<String, dynamic>) {
+        return decoded['text']?.toString() ?? '';
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  /// Web fallback : ouvre un modal plein écran qui édite la même note.
+  /// Les changements sont propagés en live dans le `NotesWidget` via le
+  /// même mécanisme `liveText`, et persistés toutes les 400 ms via le
+  /// pipeline `_persistNoteText`.
+  Future<void> _openNoteModalFallback(String sourceTab) async {
+    final existingJson = await _dataService.fetchNoteDrawingJson(
+      patientId: _dossier.patient.id,
+      tabKey: sourceTab,
+      pageNumber: 0,
+    );
+    final initialText = _extractTextFromDrawingJson(existingJson);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final controller = TextEditingController(text: initialText);
+        return Dialog(
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
+          child: SizedBox(
+            width: 720,
+            height: 520,
+            child: Column(
+              children: [
+                Padding(
+                  padding:
+                      const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Note — $sourceTab',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: TextField(
+                      controller: controller,
+                      maxLines: null,
+                      expands: true,
+                      autofocus: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      style:
+                          const TextStyle(fontSize: 14, height: 1.5),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        hintText: 'Écrivez votre note…',
+                      ),
+                      onChanged: (text) {
+                        if (!mounted) return;
+                        setState(() {
+                          _liveText[
+                                  '${_dossier.patient.id}::$sourceTab'] =
+                              text;
+                        });
+                        final key = '${_dossier.patient.id}::$sourceTab';
+                        _saveDebounce[key]?.cancel();
+                        _saveDebounce[key] = Timer(
+                          const Duration(milliseconds: 400),
+                          () => _persistNoteText(
+                              _dossier.patient.id, sourceTab, text),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Forwards an in-app note draft to the detached OS window (if open)
+  /// so typing in the sidebar is mirrored in real time in the popup.
+  void _pushDraftToOpenWindow(String tabKey, String text) {
+    if (kIsWeb) return; // Pas de fenêtre détachée possible sur web.
+    final key = '${_dossier.patient.id}::$tabKey';
+    final windowId = _openNoteWindows[key];
+    if (windowId == null) return;
+    DesktopMultiWindow.invokeMethod(windowId, 'pushNote', {
+      'patientId': _dossier.patient.id,
+      'tabKey': tabKey,
+      'text': text,
+    }).catchError((_) {
+      // The user probably closed the window — drop the entry so we stop
+      // trying to talk to it.
+      _openNoteWindows.remove(key);
+    });
   }
 
   @override
   void dispose() {
+    for (final t in _saveDebounce.values) {
+      t.cancel();
+    }
+    _saveDebounce.clear();
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     super.dispose();
@@ -69,22 +302,65 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   /// Re-fetches the dossier from the local database and updates state.
   /// Called after any tab saves, so every other tab sees fresh patient /
-  /// housing / dossier fields (name, city, etc.) on the next rebuild.
+  /// housing / dossier fields on the next rebuild.
   Future<void> _refreshDossier() async {
     final fresh = await _repository.fetchDossierById(widget.dossier.id);
     if (!mounted || fresh == null) return;
-    // Only rebuild if something actually changed, to avoid flicker.
-    if (fresh.patient.firstName == _dossier.patient.firstName &&
-        fresh.patient.lastName == _dossier.patient.lastName &&
-        fresh.patient.city == _dossier.patient.city &&
-        fresh.patient.zipCode == _dossier.patient.zipCode &&
-        fresh.patient.phone == _dossier.patient.phone &&
-        fresh.patient.email == _dossier.patient.email &&
-        fresh.patient.address == _dossier.patient.address &&
-        fresh.patient.numberPeople == _dossier.patient.numberPeople) {
+    // Always setState — the rebuild cost is minimal and it guarantees
+    // that per-occupant fields (homeHelp, apa, invalidity, fiscalRevenue
+    // inside occupants_json, …) reach the Contexte de vie tab so "Aide
+    // humaine" checkboxes appear/disappear the moment the user toggles
+    // "Aide à domicile" in the Santé tab.
+    setState(() => _dossier = fresh);
+  }
+
+  /// Opens the current tab's note in a SEPARATE OS window that the user
+  /// can drag anywhere on their screen (even outside the Flutter app).
+  /// Text is persisted to the shared SQLite file so both windows stay in
+  /// sync via the 1-second polling in [NoteWindowScreen].
+  Future<void> _openNoteInSeparateWindow(String sourceTab) async {
+    // Sur web : pas de vraie fenêtre OS séparée possible. On ouvre un
+    // modal plein écran à la place (le `NotesWidget` reste synchronisé
+    // via son propre state — inutile de passer par IPC).
+    if (kIsWeb) {
+      _openNoteModalFallback(sourceTab);
       return;
     }
-    setState(() => _dossier = fresh);
+    // Pre-fetch the existing note text in the MAIN engine (which has
+    // sqflite) and pass it inline in the launch payload so the secondary
+    // window can render immediately without a DB call.
+    final existingJson = await _dataService.fetchNoteDrawingJson(
+      patientId: _dossier.patient.id,
+      tabKey: sourceTab,
+      pageNumber: 0,
+    );
+    final initialText = _extractTextFromDrawingJson(existingJson);
+    final payload = jsonEncode({
+      'patientId': _dossier.patient.id,
+      'tabKey': sourceTab,
+      'title': 'Note — $sourceTab',
+      'initialText': initialText,
+    });
+    final window = await DesktopMultiWindow.createWindow(payload);
+    _openNoteWindows['${_dossier.patient.id}::$sourceTab'] = window.windowId;
+    // Seed live text with what's in the DB so the in-app NotesWidget
+    // already shows it as "live" (mirrors the popup's initial content).
+    _liveText['${_dossier.patient.id}::$sourceTab'] = initialText;
+    // Open at whatever size the user last resized a note popup to. The
+    // popup itself reports its size every second via IPC so "format" is
+    // retained across sessions of the visit report screen.
+    window
+      ..setFrame(
+          const Offset(200, 200) & _VisitReportStateCache.lastNoteWindowSize)
+      ..setTitle('Note — $sourceTab')
+      ..show();
+  }
+
+  /// Bumps the housing version to trigger a re-derivation of Salle de
+  /// bain / WC instances from the fresh Accessibilité selections.
+  void _notifyHousingChanged() {
+    if (!mounted) return;
+    setState(() => _housingVersion++);
   }
 
   Widget _buildTabBar() {

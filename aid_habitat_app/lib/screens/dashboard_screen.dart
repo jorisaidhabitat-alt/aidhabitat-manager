@@ -160,7 +160,6 @@ class DashboardScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF7ED),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFFED7AA)),
               ),
               child: Row(
                 children: [
@@ -184,7 +183,7 @@ class DashboardScreen extends StatelessWidget {
                     child: Text(
                       isSyncing
                           ? "Synchronisation en cours..."
-                          : "$pendingSyncCount modification${pendingSyncCount > 1 ? 's' : ''} en attente — sync automatique au retour du réseau",
+                          : "$pendingSyncCount modification${pendingSyncCount > 1 ? 's' : ''} en attente de synchronisation",
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF9A3412),
@@ -652,9 +651,6 @@ class _ActivityChart extends StatelessWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFF1F5F9)), // slate-100
-        ),
       ),
       padding: const EdgeInsets.only(bottom: 24),
       child: Row(
@@ -775,7 +771,7 @@ class _PanelCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)), // slate-200
+// slate-200
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),

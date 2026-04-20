@@ -20,9 +20,7 @@ class DossiersListScreen extends StatefulWidget {
 
 class _DossiersListScreenState extends State<DossiersListScreen> {
   String _searchTerm = '';
-  String? _selectedLetter;
   String _sortOrder = 'asc'; // asc, desc, random
-  final List<String> _alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
 
   List<Dossier> get _filteredDossiers {
     List<Dossier> filtered = widget.dossiers.where((d) {
@@ -31,11 +29,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             _searchTerm.toLowerCase(),
           ) ||
           d.patient.city.toLowerCase().contains(_searchTerm.toLowerCase());
-      final matchesLetter =
-          _selectedLetter == null ||
-          d.patient.lastName.toUpperCase().startsWith(_selectedLetter!) ||
-          d.patient.firstName.toUpperCase().startsWith(_selectedLetter!);
-      return matchesSearch && matchesLetter;
+      return matchesSearch;
     }).toList();
 
     if (_sortOrder == 'asc') {
@@ -87,24 +81,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 ),
               ),
               const Spacer(),
-              if (widget.onCreateNew != null)
-                ElevatedButton.icon(
-                  onPressed: widget.onCreateNew,
-                  icon: const Icon(LucideIcons.plus, size: 18),
-                  label: const Text('Nouveau'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF907CA1),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(50),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 14,
-                    ),
-                    elevation: 0,
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 24),
@@ -198,67 +174,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
               ),
               child: Column(
                 children: [
-                  // Alphabet Bar
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Color(0xFFF1F5F9)),
-                      ),
-                    ),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _alphabet.map((letter) {
-                          final isSelected = _selectedLetter == letter;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8.0),
-                            child: InkWell(
-                              onTap: () => setState(
-                                () => _selectedLetter = isSelected
-                                    ? null
-                                    : letter,
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                              child: Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? const Color(0xFF907CA1)
-                                      : Colors.transparent,
-                                  shape: BoxShape.circle,
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                            color: const Color(
-                                              0xFF907CA1,
-                                            ).withOpacity(0.4),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 4),
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    letter,
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? Colors.white
-                                          : Colors.grey.shade500,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ),
-
                   // List
                   Expanded(
                     child: _filteredDossiers.isEmpty
@@ -292,9 +207,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: Colors.transparent,
-                                    ),
                                   ),
                                   child: Row(
                                     children: [
@@ -370,9 +282,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                         decoration: BoxDecoration(
                                           color: Colors.white,
                                           shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: Colors.grey.shade200,
-                                          ),
                                         ),
                                         child: const Icon(
                                           LucideIcons.arrowRight,
