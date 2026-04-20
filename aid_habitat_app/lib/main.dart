@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:sqflite/sqflite.dart' show databaseFactory;
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'models/types.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
@@ -9,6 +12,12 @@ import 'services/data_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Sur web : bascule sqflite sur le backend WASM+IndexedDB pour que les
+  // appels existants (openDatabase, Database.query, …) fonctionnent tels
+  // quels dans le navigateur.
+  if (kIsWeb) {
+    databaseFactory = databaseFactoryFfiWeb;
+  }
   await DataService().initialize();
   await AuthService().initialize();
   await DataService().refreshLocalAuthStateFromRemote();
