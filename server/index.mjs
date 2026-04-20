@@ -4605,6 +4605,14 @@ const isDirectExecution = process.argv[1]
   ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
   : false;
 
+const warmupRuntime = async () => {
+  try {
+    await loadMemberRegistry({ forceRefresh: true });
+  } catch (error) {
+    console.warn('[auth] Initialisation registre échouée au démarrage, fallback local actif.', error);
+  }
+};
+
 await warmupRuntime();
 
 if (isDirectExecution) {

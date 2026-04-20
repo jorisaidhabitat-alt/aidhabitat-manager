@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'local_database.dart';
+import 'sync_engine.dart';
 
 class NoteRepository {
   NoteRepository({LocalDatabase? database})
@@ -70,6 +71,8 @@ class NoteRepository {
       'created_at': now,
       'updated_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    SyncEngine().notify();
   }
 
   Future<bool> mergeRemoteNotePage({

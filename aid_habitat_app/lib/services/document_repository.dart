@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'local_database.dart';
+import 'sync_engine.dart';
 
 class DocumentRepository {
   DocumentRepository({LocalDatabase? database})
@@ -89,6 +90,8 @@ class DocumentRepository {
       'created_at': now.toIso8601String(),
       'updated_at': now.toIso8601String(),
     });
+
+    SyncEngine().notify();
 
     return _mapRow(row);
   }
