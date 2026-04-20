@@ -42,6 +42,21 @@ class DataService {
     return _dossierRepository.fetchAllDossiers();
   }
 
+  /// Crée un nouveau dossier/bénéficiaire localement. L'ergoId est pris sur
+  /// l'utilisateur connecté. Le dossier retourné est immédiatement utilisable
+  /// dans l'app, et sera poussé sur NocoDB par la prochaine sync.
+  Future<Dossier> createDossier({
+    required String firstName,
+    required String lastName,
+  }) async {
+    final user = await _authService.getCurrentUser();
+    return _dossierRepository.createDossierLocal(
+      firstName: firstName,
+      lastName: lastName,
+      ergoId: user?.id ?? '',
+    );
+  }
+
   Future<List<RetirementFund>> fetchRetirementFunds() async {
     return _nocodbApiClient.fetchRetirementFunds();
   }
@@ -56,6 +71,46 @@ class DataService {
 
   Future<String?> regenerateAccessPassword(String email) async {
     return _nocodbApiClient.regenerateAccessPassword(email);
+  }
+
+  /// Définit un mot de passe explicite (ou régénère si null).
+  Future<String?> setAccessPassword({
+    required String email,
+    String? password,
+  }) async {
+    return _nocodbApiClient.setAccessPassword(email: email, password: password);
+  }
+
+  Future<AdminAccessMember> createAccessMember({
+    required String email,
+    required String displayName,
+    required LocalUserRole role,
+    String? establishmentId,
+    String? password,
+  }) async {
+    return _nocodbApiClient.createAccessMember(
+      email: email,
+      displayName: displayName,
+      role: role,
+      establishmentId: establishmentId,
+      password: password,
+    );
+  }
+
+  Future<AdminAccessMember> updateAccessMember({
+    required String email,
+    String? displayName,
+    String? establishmentId,
+  }) async {
+    return _nocodbApiClient.updateAccessMember(
+      email: email,
+      displayName: displayName,
+      establishmentId: establishmentId,
+    );
+  }
+
+  Future<void> deleteAccessMember(String email) async {
+    return _nocodbApiClient.deleteAccessMember(email);
   }
 
   Future<List<DocItem>> fetchDocuments(String patientId) async {

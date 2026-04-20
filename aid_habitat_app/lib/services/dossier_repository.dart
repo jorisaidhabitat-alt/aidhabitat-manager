@@ -15,6 +15,156 @@ class DossierRepository {
     await _database.ensureSeeded();
   }
 
+  /// Crée un nouveau bénéficiaire (patient + logement + dossier) en local
+  /// avec un minimum de champs obligatoires. Le reste pourra être complété
+  /// ensuite dans l'écran dossier. Enfile 3 sync_operations (patient,
+  /// housing, dossier) pour que NocoDB soit mis à jour dès que le réseau
+  /// revient. Retourne le Dossier inséré (avec IDs locaux).
+  Future<Dossier> createDossierLocal({
+    required String firstName,
+    required String lastName,
+    required String ergoId,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now();
+    final iso = now.toIso8601String();
+    final suffix = now.millisecondsSinceEpoch;
+    final patientLocalId = 'patient_$suffix';
+    final housingLocalId = 'housing_$suffix';
+    final dossierLocalId = 'dossier_$suffix';
+
+    await db.transaction((txn) async {
+      await txn.insert('patients', {
+        'local_id': patientLocalId,
+        'remote_patient_id': null,
+        'first_name': firstName,
+        'last_name': lastName,
+        'birth_date': '',
+        'phone': '',
+        'email': '',
+        'address': '',
+        'city': '',
+        'zip_code': '',
+        'family_situation': 'Seul(e)',
+        'income_category': '',
+        'trusted_person_json': jsonEncode({
+          'name': '',
+          'phone': '',
+          'email': '',
+        }),
+        'updated_at': iso,
+        'remote_updated_at': iso,
+        'sync_state': SyncState.pendingSync.name,
+      });
+
+      await txn.insert('housings', {
+        'local_id': housingLocalId,
+        'remote_housing_id': null,
+        'patient_local_id': patientLocalId,
+        'type': HousingType.HOUSE.name,
+        'year_value': null,
+        'surface': null,
+        'heating_mode': HeatingMode.ELECTRIC.name,
+        'accessibility_notes': '',
+        'updated_at': iso,
+        'remote_updated_at': iso,
+        'sync_state': SyncState.pendingSync.name,
+      });
+
+      await txn.insert('dossiers', {
+        'local_id': dossierLocalId,
+        'remote_dossier_id': null,
+        'patient_local_id': patientLocalId,
+        'housing_local_id': housingLocalId,
+        'status': DossierStatus.GRANT_VALIDATED.name,
+        'ergo_id': ergoId,
+        'visit_date': null,
+        'autonomy_notes': '',
+        'plans_json': jsonEncode(const <String>[]),
+        'created_at': iso,
+        'updated_at': iso,
+        'remote_updated_at': iso,
+        'sync_state': SyncState.pendingSync.name,
+      });
+
+      // Enfile 3 sync_operations pour NocoDB — une par entité, dans
+      // l'ordre de dépendance : patient -> housing -> dossier.
+      for (final op in [
+        {
+          'entity': 'patient',
+          'local': patientLocalId,
+          'payload': jsonEncode({
+            'localId': patientLocalId,
+            'firstName': firstName,
+            'lastName': lastName,
+          }),
+        },
+        {
+          'entity': 'housing',
+          'local': housingLocalId,
+          'payload': jsonEncode({
+            'localId': housingLocalId,
+            'patientLocalId': patientLocalId,
+          }),
+        },
+        {
+          'entity': 'dossier',
+          'local': dossierLocalId,
+          'payload': jsonEncode({
+            'localId': dossierLocalId,
+            'patientLocalId': patientLocalId,
+            'housingLocalId': housingLocalId,
+            'ergoId': ergoId,
+          }),
+        },
+      ]) {
+        await txn.insert('sync_operations', {
+          'id': 'create_${op['entity']}_$suffix',
+          'entity_type': op['entity'],
+          'entity_local_id': op['local'],
+          'operation_type': 'create',
+          'payload_json': op['payload'],
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': iso,
+          'updated_at': iso,
+        });
+      }
+    });
+
+    return Dossier(
+      id: dossierLocalId,
+      patient: Patient(
+        id: patientLocalId,
+        firstName: firstName,
+        lastName: lastName,
+        birthDate: '',
+        phone: '',
+        email: '',
+        address: '',
+        city: '',
+        zipCode: '',
+        familySituation: 'Seul(e)',
+        incomeCategory: '',
+        trustedPerson:
+            TrustedPerson(name: '', phone: '', email: ''),
+      ),
+      status: DossierStatus.GRANT_VALIDATED,
+      ergoId: ergoId,
+      visitDate: null,
+      housing: Housing(
+        type: HousingType.HOUSE,
+        heating: HeatingMode.ELECTRIC,
+        accessibilityNotes: '',
+      ),
+      autonomyNotes: '',
+      plans: const {},
+      createdAt: iso,
+      syncState: SyncState.pendingSync,
+    );
+  }
+
   Future<List<Dossier>> fetchAllDossiers() async {
     final db = await _database.database;
     final rows = await db.rawQuery('''

@@ -1,6 +1,9 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import '../components/sidebar.dart';
 import 'admin_access_screen.dart';
+import 'create_beneficiary_screen.dart';
 import 'dashboard_screen.dart';
 import 'dossiers_list_screen.dart';
 import 'dossier_screen.dart';
@@ -86,6 +89,29 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  Future<void> _handleCreateDossier(String firstName, String lastName) async {
+    final created = await _dataService.createDossier(
+      firstName: firstName,
+      lastName: lastName,
+    );
+    final refreshedDossiers = _authService.filterDossiersForUser(
+      await _dataService.fetchDossiers(),
+      widget.currentUser,
+    );
+    final refreshedPendingOperations = await _dataService
+        .fetchPendingOperations();
+    if (!mounted) return;
+    setState(() {
+      _dossiers = refreshedDossiers;
+      _pendingSyncCount = refreshedPendingOperations.length;
+      _selectedDossier = created;
+      _activeView = 'dossier_detail';
+    });
+    // Tentative de push immédiat vers NocoDB — si hors-ligne, la
+    // sync_operation reste en attente et partira au prochain cycle.
+    unawaited(_dataService.runSync());
+  }
+
   Future<void> _handleSyncNow() async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
@@ -157,6 +183,12 @@ class _MainScreenState extends State<MainScreen> {
         return DossiersListScreen(
           dossiers: _dossiers,
           onSelectDossier: _handleSelectDossier,
+          onCreateDossier: () => _handleViewChange('create_beneficiary'),
+        );
+      case 'create_beneficiary':
+        return CreateBeneficiaryScreen(
+          onCancel: () => _handleViewChange('dossiers'),
+          onCreated: _handleCreateDossier,
         );
       case 'wiki':
         return const WikiScreen();

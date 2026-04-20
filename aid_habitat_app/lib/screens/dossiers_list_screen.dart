@@ -5,11 +5,13 @@ import '../models/types.dart';
 class DossiersListScreen extends StatefulWidget {
   final List<Dossier> dossiers;
   final Function(Dossier) onSelectDossier;
+  final VoidCallback? onCreateDossier;
 
   const DossiersListScreen({
     super.key,
     required this.dossiers,
     required this.onSelectDossier,
+    this.onCreateDossier,
   });
 
   @override
@@ -144,6 +146,37 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                   ),
                 ],
               ),
+              if (widget.onCreateDossier != null) ...[
+                const SizedBox(width: 16),
+                InkWell(
+                  onTap: widget.onCreateDossier,
+                  borderRadius: BorderRadius.circular(50),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF907CA1),
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(LucideIcons.plus,
+                            color: Colors.white, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Nouveau',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 24),
