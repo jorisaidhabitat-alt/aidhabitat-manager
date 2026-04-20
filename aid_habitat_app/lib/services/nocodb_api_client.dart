@@ -177,6 +177,58 @@ class NocodbApiClient {
     }
   }
 
+  /// PUT /api/diagnostic-sanitaires/:dossierId — persists bathroom + WC
+  /// instances (arrays) for the given dossier. The server normalises each
+  /// instance into the `diagnostic_sanitaires` NocoDB table.
+  Future<void> updateDiagnosticSanitaires({
+    required String dossierId,
+    required List<Map<String, dynamic>> sdbInstances,
+    required List<Map<String, dynamic>> wcInstances,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client
+        .put(
+          Uri.parse('$_baseUrl/api/diagnostic-sanitaires/$dossierId'),
+          headers: _headers,
+          body: jsonEncode({
+            'sdbInstances': sdbInstances,
+            'wcInstances': wcInstances,
+          }),
+        )
+        .timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote diagnostic sanitaires update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
+  /// PUT /api/visit-recommendations/:dossierId — replaces the full list of
+  /// recommendations for the dossier. Each item must reference a valid
+  /// wiki library entry (server-side validation).
+  Future<void> updateVisitRecommendations({
+    required String dossierId,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client
+        .put(
+          Uri.parse('$_baseUrl/api/visit-recommendations/$dossierId'),
+          headers: _headers,
+          body: jsonEncode({'items': items}),
+        )
+        .timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote visit recommendations update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
   Future<Map<String, dynamic>> uploadDocument({
     required String patientId,
     required String documentLocalId,

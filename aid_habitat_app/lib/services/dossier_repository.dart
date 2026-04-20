@@ -1455,6 +1455,56 @@ class DossierRepository {
     } else {
       await db.update('contexte_de_vie', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
     }
+
+    // Enqueue a sync operation so the medical context + autonomy reach
+    // NocoDB. We route through the existing /api/dossiers/:id PATCH
+    // endpoint which already knows how to persist medicalContext + autonomy
+    // via upsertContexte server-side. Re-entrant updates on the same
+    // dossier coalesce into a single op via ConflictAlgorithm.replace.
+    final opUpdates = <String, dynamic>{};
+    if (medicalContext != null) {
+      opUpdates['medicalContext'] = medicalContext.toJson();
+    }
+    if (autonomy != null) {
+      opUpdates['autonomy'] = autonomy.toJson();
+    }
+    if (opUpdates.isEmpty) return;
+
+    final opId = 'contexte_update_$dossierId';
+    final existingOp = await db.query('sync_operations',
+        where: 'id = ?', whereArgs: [opId], limit: 1);
+    Map<String, dynamic> merged = opUpdates;
+    if (existingOp.isNotEmpty) {
+      try {
+        final prev = jsonDecode(existingOp.first['payload_json'] as String)
+            as Map<String, dynamic>;
+        final prevUpdates =
+            (prev['updates'] as Map?)?.cast<String, dynamic>();
+        if (prevUpdates != null) {
+          merged = {...prevUpdates, ...opUpdates};
+        }
+      } catch (_) {/* fall through */}
+    }
+    await db.insert(
+      'sync_operations',
+      {
+        'id': opId,
+        'entity_type': 'contexte_de_vie',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'dossierId': dossierId,
+          'updates': merged,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    SyncEngine().notify();
   }
 
   Future<DiagnosticSanitaire?> fetchDiagnosticSanitaire(String dossierId) async {
@@ -1477,10 +1527,12 @@ class DossierRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final existing = await db.query('diagnostic_sanitaires', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final sdbJson = diag.sdbInstances.map((e) => e.toJson()).toList();
+    final wcJson = diag.wcInstances.map((e) => e.toJson()).toList();
     final data = <String, dynamic>{
       'dossier_local_id': dossierId,
-      'sdb_instances_json': jsonEncode(diag.sdbInstances.map((e) => e.toJson()).toList()),
-      'wc_instances_json': jsonEncode(diag.wcInstances.map((e) => e.toJson()).toList()),
+      'sdb_instances_json': jsonEncode(sdbJson),
+      'wc_instances_json': jsonEncode(wcJson),
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
@@ -1490,6 +1542,30 @@ class DossierRepository {
     } else {
       await db.update('diagnostic_sanitaires', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
     }
+
+    // Enqueue push → PUT /api/diagnostic-sanitaires/:dossierId
+    final opId = 'diag_update_$dossierId';
+    await db.insert(
+      'sync_operations',
+      {
+        'id': opId,
+        'entity_type': 'diagnostic_sanitaires',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'dossierId': dossierId,
+          'sdbInstances': sdbJson,
+          'wcInstances': wcJson,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    SyncEngine().notify();
   }
 
   Future<MesuresAnthropometriques?> fetchMesures(String dossierId) async {
@@ -1574,9 +1650,10 @@ class DossierRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final existing = await db.query('visit_recommendations', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final itemsJson = items.map((e) => e.toJson()).toList();
     final data = <String, dynamic>{
       'dossier_local_id': dossierId,
-      'items_json': jsonEncode(items.map((e) => e.toJson()).toList()),
+      'items_json': jsonEncode(itemsJson),
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
@@ -1586,5 +1663,28 @@ class DossierRepository {
     } else {
       await db.update('visit_recommendations', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
     }
+
+    // Enqueue push → PUT /api/visit-recommendations/:dossierId
+    final opId = 'visitrec_update_$dossierId';
+    await db.insert(
+      'sync_operations',
+      {
+        'id': opId,
+        'entity_type': 'visit_recommendations',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'dossierId': dossierId,
+          'items': itemsJson,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    SyncEngine().notify();
   }
 }
