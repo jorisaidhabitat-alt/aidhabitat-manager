@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'local_database.dart';
+import 'sync_engine.dart';
 
 class DossierRepository {
   DossierRepository({LocalDatabase? database})
@@ -132,6 +133,8 @@ class DossierRepository {
       });
     });
 
+    SyncEngine().notify();
+
     return Dossier(
       id: dossierLocalId,
       patient: patient,
@@ -208,6 +211,8 @@ class DossierRepository {
       'created_at': now,
       'updated_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    SyncEngine().notify();
   }
 
   static String _generateLocalId() {
@@ -215,6 +220,17 @@ class DossierRepository {
     final bytes = List<int>.generate(8, (_) => random.nextInt(256));
     final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     return 'local_$hex';
+  }
+
+  /// Fetches a single dossier by its local id, returning null if missing.
+  /// Used by screens that want to re-read fresh patient/housing data after
+  /// a save that happened in a child widget (e.g. the visit report tabs).
+  Future<Dossier?> fetchDossierById(String dossierLocalId) async {
+    final all = await fetchAllDossiers();
+    for (final d in all) {
+      if (d.id == dossierLocalId) return d;
+    }
+    return null;
   }
 
   Future<List<Dossier>> fetchAllDossiers() async {
@@ -229,18 +245,36 @@ class DossierRepository {
         d.autonomy_notes AS dossier_autonomy_notes,
         d.created_at AS dossier_created_at,
         d.sync_state AS dossier_sync_state,
+        d.compte_anah AS dossier_compte_anah,
+        d.nature_accompagnement AS dossier_nature_accompagnement,
+        d.envoi_rapport AS dossier_envoi_rapport,
+        d.personnes_presentes_visite AS dossier_personnes_presentes,
         p.local_id AS patient_local_id,
         p.remote_patient_id AS patient_remote_id,
         p.first_name AS patient_first_name,
         p.last_name AS patient_last_name,
+        p.second_first_name AS patient_second_first_name,
+        p.second_last_name AS patient_second_last_name,
         p.birth_date AS patient_birth_date,
         p.phone AS patient_phone,
         p.email AS patient_email,
         p.address AS patient_address,
         p.city AS patient_city,
+        p.city_id AS patient_city_id,
         p.zip_code AS patient_zip_code,
         p.family_situation AS patient_family_situation,
         p.income_category AS patient_income_category,
+        p.number_people AS patient_number_people,
+        p.fiscal_revenue AS patient_fiscal_revenue,
+        p.occupants_json AS patient_occupants_json,
+        p.apa AS patient_apa,
+        p.invalidity AS patient_invalidity,
+        p.invalidity_txt AS patient_invalidity_txt,
+        p.home_help AS patient_home_help,
+        p.home_help_txt AS patient_home_help_txt,
+        p.dependence_txt AS patient_dependence_txt,
+        p.caisse_retraite_principale AS patient_caisse_retraite_principale,
+        p.caisses_retraite_complementaires AS patient_caisses_retraite_complementaires,
         p.trusted_person_json AS patient_trusted_person_json,
         h.local_id AS housing_local_id,
         h.type AS housing_type,
@@ -320,6 +354,12 @@ class DossierRepository {
           'zip_code': dossier.patient.zipCode,
           'family_situation': dossier.patient.familySituation,
           'income_category': dossier.patient.incomeCategory,
+          // Preserve numberPeople across the pull → merge → UI round-trip.
+          // Without this, ConflictAlgorithm.replace would reset the column
+          // to NULL on every remote refresh, making the dropdown fall back
+          // to "1 occupant" after a restart even when the server still has
+          // the correct value.
+          'number_people': dossier.patient.numberPeople,
           'trusted_person_json': jsonEncode({
             'name': dossier.patient.trustedPerson.name,
             'phone': dossier.patient.trustedPerson.phone,
@@ -425,20 +465,13 @@ class DossierRepository {
     });
   }
 
+  /// Alias kept for the dossier screen's in-place edits. Forwards to
+  /// [updatePatient] so we get the same local write + sync-queue behaviour.
   Future<void> updatePatientFields(
     String patientLocalId,
     Map<String, dynamic> fields,
-  ) async {
-    final db = await _database.database;
-    fields['updated_at'] = DateTime.now().toIso8601String();
-    fields['sync_state'] = SyncState.pendingSync.name;
-    await db.update(
-      'patients',
-      fields,
-      where: 'local_id = ?',
-      whereArgs: [patientLocalId],
-    );
-  }
+  ) =>
+      updatePatient(patientLocalId, fields);
 
   Future<void> updateHousingFields(
     String patientLocalId,
@@ -460,13 +493,99 @@ class DossierRepository {
     Map<String, dynamic> fields,
   ) async {
     final db = await _database.database;
-    fields['updated_at'] = DateTime.now().toIso8601String();
-    fields['sync_state'] = SyncState.pendingSync.name;
+    final now = DateTime.now().toIso8601String();
+    final localFields = Map<String, dynamic>.from(fields);
+    localFields['updated_at'] = now;
+    localFields['sync_state'] = SyncState.pendingSync.name;
     await db.update(
       'dossiers',
-      fields,
+      localFields,
       where: 'local_id = ?',
       whereArgs: [dossierLocalId],
+    );
+
+    final apiUpdates = _mapDossierFieldsToApi(fields);
+    if (apiUpdates.isEmpty) return;
+    await _enqueueEntityUpdate(
+      db,
+      entityType: 'dossier',
+      entityLocalId: dossierLocalId,
+      payloadKey: 'dossierId',
+      updates: apiUpdates,
+      now: now,
+    );
+    SyncEngine().notify();
+  }
+
+  static Map<String, dynamic> _mapDossierFieldsToApi(
+      Map<String, dynamic> fields) {
+    const snakeToCamel = <String, String>{
+      'compte_anah': 'compteAnah',
+      'nature_accompagnement': 'natureAccompagnement',
+      'envoi_rapport': 'envoiRapport',
+      'personnes_presentes_visite': 'personnesPresentesVisite',
+      'ergo_id': 'ergoId',
+      'visit_date': 'visitDate',
+      'status': 'status',
+    };
+    final out = <String, dynamic>{};
+    fields.forEach((key, value) {
+      if (key == 'updated_at' || key == 'sync_state') return;
+      if (snakeToCamel.containsKey(key)) {
+        out[snakeToCamel[key]!] = value;
+      } else {
+        out[key] = value;
+      }
+    });
+    return out;
+  }
+
+  Future<void> _enqueueEntityUpdate(
+    Database db, {
+    required String entityType,
+    required String entityLocalId,
+    required String payloadKey,
+    required Map<String, dynamic> updates,
+    required String now,
+  }) async {
+    final opId = '${entityType}_update_$entityLocalId';
+    final existing = await db.query('sync_operations',
+        where: 'id = ?', whereArgs: [opId], limit: 1);
+    Map<String, dynamic> merged = updates;
+    if (existing.isNotEmpty) {
+      try {
+        final prev = jsonDecode(existing.first['payload_json'] as String)
+            as Map<String, dynamic>;
+        final prevUpdates =
+            (prev['updates'] as Map?)?.cast<String, dynamic>();
+        if (prevUpdates != null) merged = {...prevUpdates, ...updates};
+      } catch (_) {}
+    }
+    final payloadMap = <String, dynamic>{
+      payloadKey: entityLocalId,
+      'updates': merged,
+    };
+    // Also add a generic local-id key so the housing processor can find
+    // the source dossier id (the housing sync needs to resolve the
+    // beneficiary from the dossier).
+    if (entityType == 'housing') {
+      payloadMap['dossierLocalId'] = entityLocalId;
+    }
+    await db.insert(
+      'sync_operations',
+      {
+        'id': opId,
+        'entity_type': entityType,
+        'entity_local_id': entityLocalId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode(payloadMap),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
@@ -520,20 +639,62 @@ class DossierRepository {
         jsonDecode(row['patient_trusted_person_json'] as String)
             as Map<String, dynamic>;
 
+    // Parse the occupants JSON blob (written by the visit report whenever
+    // a per-occupant field is edited). Empty list means "no extra occupant
+    // data yet" — the visit report will fall back to derive a single
+    // occupant from the top-level patient fields.
+    final occupantsRaw =
+        row['patient_occupants_json'] as String? ?? '';
+    List<Occupant> occupants = const [];
+    if (occupantsRaw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(occupantsRaw);
+        if (decoded is List) {
+          occupants = decoded
+              .whereType<Map>()
+              .map((e) => Occupant.fromJson(e.cast<String, dynamic>()))
+              .toList();
+        }
+      } catch (_) {
+        // Ignore invalid JSON — fall back to empty list.
+      }
+    }
+
     return Dossier(
       id: row['dossier_local_id'] as String,
       patient: Patient(
         id: row['patient_local_id'] as String,
         firstName: row['patient_first_name'] as String,
         lastName: row['patient_last_name'] as String,
+        secondFirstName:
+            row['patient_second_first_name'] as String? ?? '',
+        secondLastName:
+            row['patient_second_last_name'] as String? ?? '',
         birthDate: row['patient_birth_date'] as String,
         phone: row['patient_phone'] as String,
         email: row['patient_email'] as String,
         address: row['patient_address'] as String,
         city: row['patient_city'] as String,
+        cityId: row['patient_city_id'] as String? ?? '',
         zipCode: row['patient_zip_code'] as String,
         familySituation: row['patient_family_situation'] as String,
         incomeCategory: row['patient_income_category'] as String,
+        numberPeople: row['patient_number_people'] as int?,
+        fiscalRevenue: (row['patient_fiscal_revenue'] as num?)?.toDouble(),
+        occupants: occupants,
+        apa: (row['patient_apa'] as int? ?? 0) == 1,
+        invalidity: (row['patient_invalidity'] as int? ?? 0) == 1,
+        invalidityTxt:
+            row['patient_invalidity_txt'] as String? ?? '',
+        homeHelp: (row['patient_home_help'] as int? ?? 0) == 1,
+        homeHelpTxt:
+            row['patient_home_help_txt'] as String? ?? '',
+        dependenceTxt:
+            row['patient_dependence_txt'] as String? ?? '',
+        caisseRetraitePrincipale:
+            row['patient_caisse_retraite_principale'] as String? ?? '',
+        caissesRetraiteComplementaires:
+            row['patient_caisses_retraite_complementaires'] as String? ?? '',
         trustedPerson: TrustedPerson(
           name: trustedPersonJson['name'] as String? ?? '',
           phone: trustedPersonJson['phone'] as String? ?? '',
@@ -543,6 +704,12 @@ class DossierRepository {
       status: DossierStatus.values.byName(row['dossier_status'] as String),
       ergoId: row['dossier_ergo_id'] as String,
       visitDate: row['dossier_visit_date'] as String?,
+      compteAnah: row['dossier_compte_anah'] as String? ?? '',
+      natureAccompagnement:
+          row['dossier_nature_accompagnement'] as String? ?? '',
+      envoiRapport: row['dossier_envoi_rapport'] as String? ?? '',
+      personnesPresentesVisite:
+          row['dossier_personnes_presentes'] as String? ?? '',
       housing: Housing(
         type: HousingType.values.byName(row['housing_type'] as String),
         year: row['housing_year_value'] as int?,
@@ -567,21 +734,217 @@ class DossierRepository {
   // Visit report CRUD methods
   // ---------------------------------------------------------------------------
 
-  Future<void> updatePatient(String patientId, Map<String, dynamic> fields) async {
+  /// Updates a patient's fields both locally AND enqueues a remote sync
+  /// operation so NocoDB receives the change when the device is online.
+  ///
+  /// [fields] can mix SQL column names (snake_case like `first_name`,
+  /// `trusted_person_json`) — they are translated to the API's camelCase
+  /// payload keys (`firstName`, `trustedPerson: {…}`, …) before being
+  /// enqueued. Unknown snake_case keys are passed through as-is.
+  Future<void> updatePatient(
+      String patientId, Map<String, dynamic> fields) async {
     final db = await _database.database;
-    fields['updated_at'] = DateTime.now().toIso8601String();
-    fields['sync_state'] = SyncState.pendingSync.name;
-    await db.update('patients', fields, where: 'local_id = ?', whereArgs: [patientId]);
+    final now = DateTime.now().toIso8601String();
+    final localFields = Map<String, dynamic>.from(fields);
+    localFields['updated_at'] = now;
+    localFields['sync_state'] = SyncState.pendingSync.name;
+    await db.update('patients', localFields,
+        where: 'local_id = ?', whereArgs: [patientId]);
+
+    // Translate to API-friendly payload and enqueue a sync op. We merge with
+    // any existing pending op so rapid edits collapse into a single push.
+    final apiUpdates = _mapPatientFieldsToApi(fields);
+    if (apiUpdates.isEmpty) return;
+
+    final opId = 'patient_update_$patientId';
+    final existing = await db.query('sync_operations',
+        where: 'id = ?', whereArgs: [opId], limit: 1);
+    Map<String, dynamic> mergedUpdates = apiUpdates;
+    if (existing.isNotEmpty) {
+      try {
+        final prev = jsonDecode(existing.first['payload_json'] as String)
+            as Map<String, dynamic>;
+        final prevUpdates = (prev['updates'] as Map?)?.cast<String, dynamic>();
+        if (prevUpdates != null) {
+          mergedUpdates = {...prevUpdates, ...apiUpdates};
+        }
+      } catch (_) {
+        // Fall back to the new payload only.
+      }
+    }
+
+    await db.insert(
+      'sync_operations',
+      {
+        'id': opId,
+        'entity_type': 'patient',
+        'entity_local_id': patientId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'patientLocalId': patientId,
+          'updates': mergedUpdates,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    SyncEngine().notify();
   }
 
-  Future<void> updateHousing(String dossierId, Map<String, dynamic> fields) async {
+  /// Maps SQL column names (snake_case) used by the visit-report tabs to
+  /// the camelCase keys expected by the Express API. Also decodes JSON
+  /// blobs (trusted_person_json, occupants_json) into nested structures.
+  static Map<String, dynamic> _mapPatientFieldsToApi(
+      Map<String, dynamic> fields) {
+    const snakeToCamel = <String, String>{
+      'first_name': 'firstName',
+      'last_name': 'lastName',
+      'second_first_name': 'secondFirstName',
+      'second_last_name': 'secondLastName',
+      'birth_date': 'occupant1BirthDate',
+      'phone': 'phone',
+      'email': 'email',
+      'address': 'address',
+      'city': 'city',
+      'city_id': 'cityId',
+      'zip_code': 'zipCode',
+      'family_situation': 'familySituation',
+      'income_category': 'incomeCategory',
+      'fiscal_revenue': 'fiscalRevenue',
+      'number_people': 'numberPeople',
+      'invalidity_txt': 'invalidityTxt',
+      'home_help_txt': 'homeHelpTxt',
+      'dependence_txt': 'dependenceTxt',
+      'caisse_retraite_principale': 'caisseRetraitePrincipale',
+      'caisses_retraite_complementaires': 'caissesRetraiteComplementaires',
+    };
+    final out = <String, dynamic>{};
+    fields.forEach((key, value) {
+      if (key == 'updated_at' || key == 'sync_state') return;
+      if (snakeToCamel.containsKey(key)) {
+        out[snakeToCamel[key]!] = value;
+        return;
+      }
+      // Booleans stored as 0/1 in SQLite — decode back to bool for the API.
+      if (key == 'apa' || key == 'invalidity' || key == 'home_help') {
+        final camel = {
+          'apa': 'apa',
+          'invalidity': 'invalidity',
+          'home_help': 'homeHelp',
+        }[key]!;
+        out[camel] = value == 1 || value == true;
+        return;
+      }
+      if (key == 'trusted_person_json' && value is String && value.isNotEmpty) {
+        try {
+          out['trustedPerson'] = jsonDecode(value);
+        } catch (_) {}
+        return;
+      }
+      if (key == 'occupants_json' && value is String && value.isNotEmpty) {
+        try {
+          out['occupants'] = jsonDecode(value);
+        } catch (_) {}
+        return;
+      }
+      // Pass-through (rare): already camelCase or unknown.
+      out[key] = value;
+    });
+    return out;
+  }
+
+  /// Loads the raw housing row (all columns) for a given dossier id. Used by
+  /// the accessibility tab to access per-level rooms (stored as JSON),
+  /// second/third-floor flags and all extended fields that aren't exposed
+  /// on the [Housing] model.
+  Future<Map<String, dynamic>?> fetchHousingRaw(String dossierId) async {
     final db = await _database.database;
-    final rows = await db.query('dossiers', columns: ['housing_local_id'], where: 'local_id = ?', whereArgs: [dossierId], limit: 1);
+    final rows = await db.query(
+      'dossiers',
+      columns: ['housing_local_id'],
+      where: 'local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final housingId = rows.first['housing_local_id'] as String;
+    final housing = await db.query(
+      'housings',
+      where: 'local_id = ?',
+      whereArgs: [housingId],
+      limit: 1,
+    );
+    if (housing.isEmpty) return null;
+    return Map<String, dynamic>.from(housing.first);
+  }
+
+  Future<void> updateHousing(
+      String dossierId, Map<String, dynamic> fields) async {
+    final db = await _database.database;
+    final rows = await db.query('dossiers',
+        columns: ['housing_local_id'],
+        where: 'local_id = ?',
+        whereArgs: [dossierId],
+        limit: 1);
     if (rows.isEmpty) return;
     final housingId = rows.first['housing_local_id'] as String;
-    fields['updated_at'] = DateTime.now().toIso8601String();
-    fields['sync_state'] = SyncState.pendingSync.name;
-    await db.update('housings', fields, where: 'local_id = ?', whereArgs: [housingId]);
+    final now = DateTime.now().toIso8601String();
+    final localFields = Map<String, dynamic>.from(fields);
+    localFields['updated_at'] = now;
+    localFields['sync_state'] = SyncState.pendingSync.name;
+    await db.update('housings', localFields,
+        where: 'local_id = ?', whereArgs: [housingId]);
+
+    final apiUpdates = _mapHousingFieldsToApi(fields);
+    if (apiUpdates.isEmpty) return;
+    await _enqueueEntityUpdate(
+      db,
+      entityType: 'housing',
+      entityLocalId: dossierId,
+      payloadKey: 'dossierLocalId',
+      updates: apiUpdates,
+      now: now,
+    );
+    SyncEngine().notify();
+  }
+
+  static Map<String, dynamic> _mapHousingFieldsToApi(
+      Map<String, dynamic> fields) {
+    // The /api/logements endpoint accepts snake_case / French keys directly
+    // (see server mapHousingUpdatesToFields). We pass through most keys and
+    // just convert a few known camelCase-only fields.
+    const snakeToCamel = <String, String>{
+      'year_construction': 'yearConstruction',
+      'year_habitation': 'yearHabitation',
+      'surface': 'surface',
+      'levels': 'levels',
+      'typology': 'typology',
+      'easy_access': 'easyAccess',
+      'access_observation': 'accessObservation',
+      'motorisation_porte_garage': 'motorisationPorteGarage',
+      'motorisation_portail': 'motorisationPortail',
+    };
+    final out = <String, dynamic>{};
+    fields.forEach((key, value) {
+      if (key == 'updated_at' || key == 'sync_state') return;
+      if (snakeToCamel.containsKey(key)) {
+        out[snakeToCamel[key]!] = value is int && (key == 'easy_access')
+            ? value == 1
+            : value;
+      } else {
+        // Pass boolean-ish integer columns as bool where obvious.
+        if (value is int && (value == 0 || value == 1)) {
+          out[key] = value == 1;
+        } else {
+          out[key] = value;
+        }
+      }
+    });
+    return out;
   }
 
   Future<Map<String, dynamic>?> fetchContexteDeVie(String dossierId) async {

@@ -120,6 +120,56 @@ class NocodbApiClient {
     }
   }
 
+  /// PATCH /api/beneficiaires/:patientId — updates a beneficiary record.
+  /// The [patientId] is the remote/app beneficiary ID (not the SQLite
+  /// local_id). Payload uses camelCase keys (firstName, lastName,
+  /// trustedPerson: {name, phone, email}, etc.); the server maps them to
+  /// NocoDB column names.
+  Future<void> updateBeneficiary({
+    required String patientId,
+    required Map<String, dynamic> updates,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client
+        .patch(
+          Uri.parse('$_baseUrl/api/beneficiaires/$patientId'),
+          headers: _headers,
+          body: jsonEncode(updates),
+        )
+        .timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote beneficiary update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
+  /// PATCH /api/logements/by-beneficiary/:beneficiaryId — updates a housing
+  /// record linked to the given beneficiary.
+  Future<void> updateLogement({
+    required String beneficiaryId,
+    required Map<String, dynamic> updates,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _client
+        .patch(
+          Uri.parse(
+              '$_baseUrl/api/logements/by-beneficiary/$beneficiaryId'),
+          headers: _headers,
+          body: jsonEncode(updates),
+        )
+        .timeout(_defaultTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote logement update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
   Future<Map<String, dynamic>> uploadDocument({
     required String patientId,
     required String documentLocalId,
@@ -172,6 +222,10 @@ class NocodbApiClient {
     required String tabKey,
     required int pageNumber,
     required String drawingJson,
+    String scopeType = 'dossier_detail',
+    String? scopeId,
+    String? subTabKey,
+    String layoutKind = 'freeform',
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
@@ -182,9 +236,15 @@ class NocodbApiClient {
       headers: _headers,
       body: jsonEncode({
         'patientId': patientId,
+        'scopeType': scopeType,
+        // Fallback: patientId is a valid scopeId for dossier/visit scopes when
+        // the caller doesn't know the exact dossierId.
+        'scopeId': scopeId ?? patientId,
         'tabKey': tabKey,
+        if (subTabKey != null) 'subTabKey': subTabKey,
         'pageNumber': pageNumber,
         'drawingJson': drawingJson,
+        'layoutKind': layoutKind,
       }),
     ).timeout(_defaultTimeout);
 
@@ -639,6 +699,7 @@ class NocodbApiClient {
         zipCode: patientJson['zipCode']?.toString() ?? '',
         familySituation: patientJson['familySituation']?.toString() ?? '',
         incomeCategory: patientJson['incomeCategory']?.toString() ?? '',
+        numberPeople: _parseInt(patientJson['numberPeople']),
         trustedPerson: TrustedPerson(
           name: trustedPersonJson['name']?.toString() ?? '',
           phone: trustedPersonJson['phone']?.toString() ?? '',
@@ -668,6 +729,17 @@ class NocodbApiClient {
           json['createdAt']?.toString() ?? DateTime.now().toIso8601String(),
       syncState: SyncState.synced,
     );
+  }
+
+  /// Lenient int parser — the server sometimes serialises numeric fields
+  /// as strings ("3") or numbers (3 / 3.0). Returns null on any other
+  /// value so callers can fall back to their own default.
+  int? _parseInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v.trim());
+    return null;
   }
 
   DossierStatus _mapStatus(String? status) {
@@ -731,6 +803,9 @@ class NocodbApiClient {
       website: json['website']?.toString() ?? '',
       logoUrl: json['logoUrl']?.toString() ?? '',
       lastEditedAt: json['lastEditedAt']?.toString(),
+      createdAt: json['createdAt']?.toString() ??
+          json['created_at']?.toString() ??
+          json['updatedAt']?.toString(),
     );
   }
 
