@@ -240,6 +240,40 @@ class SyncRepository {
     );
   }
 
+  /// Purge stale sync operations that are almost certainly obsolete and
+  /// would otherwise be replayed every time the app starts, overwriting
+  /// fresh remote data with values captured by a previous app version.
+  ///
+  ///  - any operation in `failed` state (retries exhausted → payload
+  ///    rejected by the current backend schema, not worth pushing again),
+  ///  - `pending` operations whose `created_at` is older than
+  ///    [maxPendingAge] (default 72 h — a comfortable offline window),
+  ///  - `running` operations whose `updated_at` is older than
+  ///    [maxPendingAge] (they should have completed long ago).
+  ///
+  /// Returns the number of rows removed. Safe to call on app boot.
+  Future<int> purgeStalePendingOperations({
+    Duration maxPendingAge = const Duration(hours: 72),
+  }) async {
+    final db = await _database.database;
+    final cutoff = DateTime.now().subtract(maxPendingAge).toIso8601String();
+    return db.delete(
+      'sync_operations',
+      where: '''
+        status = ?
+        OR (status = ? AND created_at < ?)
+        OR (status = ? AND updated_at < ?)
+      ''',
+      whereArgs: [
+        SyncOperationStatus.failed.name,
+        SyncOperationStatus.pending.name,
+        cutoff,
+        SyncOperationStatus.running.name,
+        cutoff,
+      ],
+    );
+  }
+
   Future<void> setEntitySyncState({
     required String entityType,
     required String entityLocalId,

@@ -10,6 +10,7 @@ import 'dossiers_list_screen.dart';
 import 'dossier_screen.dart';
 import 'retirement_funds_screen.dart';
 import 'settings_screen.dart';
+import 'visit_report_screen.dart';
 import 'wiki_screen.dart';
 import '../models/types.dart';
 import '../services/auth_service.dart';
@@ -46,6 +47,10 @@ class _MainScreenState extends State<MainScreen> {
   bool _isSyncing = false;
   bool _isLoading = true;
   bool _isOffline = false;
+  String? _lastSyncError;
+  // True dès que l'utilisateur a cliqué sur Anah au moins une fois — la
+  // WebView est alors maintenue vivante (Offstage) pour préserver la session.
+  bool _anahEverVisited = false;
 
   @override
   void initState() {
@@ -79,14 +84,21 @@ class _MainScreenState extends State<MainScreen> {
     if (!mounted) return;
 
     final wasSyncing = _isSyncing;
+    final previousPendingCount = _pendingSyncCount;
     setState(() {
       _pendingSyncCount = state.pendingCount;
       _isSyncing = state.isSyncing;
+      _lastSyncError = state.lastError;
     });
 
-    // When a sync run finishes, refresh the dossier list to reflect any
-    // remote changes that were pulled or local states that were updated.
-    if (wasSyncing && !state.isSyncing) {
+    // Refresh the dossier list in two situations:
+    //  1) After a sync run completes (remote pulls may have updated data).
+    //  2) As soon as a new local op is enqueued (pending count goes up).
+    //     This makes name / firstName / city edits visible immediately
+    //     everywhere in the app, even while offline — without waiting for
+    //     NocoDB to acknowledge the push.
+    final newOpEnqueued = state.pendingCount > previousPendingCount;
+    if ((wasSyncing && !state.isSyncing) || newOpEnqueued) {
       _refreshDossiers();
     }
   }
@@ -97,7 +109,23 @@ class _MainScreenState extends State<MainScreen> {
       widget.currentUser,
     );
     if (!mounted) return;
-    setState(() => _dossiers = dossiers);
+    // Keep _selectedDossier in sync with the refreshed list so any edit
+    // done in the dossier card (ex: numberPeople, firstName, city…) is
+    // immediately visible when the user opens the visit report.
+    Dossier? refreshedSelected = _selectedDossier;
+    if (_selectedDossier != null) {
+      try {
+        refreshedSelected = dossiers.firstWhere(
+          (d) => d.id == _selectedDossier!.id,
+        );
+      } catch (_) {
+        // Not in list anymore (deleted?) — keep the last snapshot.
+      }
+    }
+    setState(() {
+      _dossiers = dossiers;
+      _selectedDossier = refreshedSelected;
+    });
   }
 
   Future<void> _loadData() async {
@@ -114,18 +142,29 @@ class _MainScreenState extends State<MainScreen> {
       });
     }
 
-    // Start the sync engine — it will handle initial push + periodic refresh.
-    _syncEngine.start();
-
-    // Also pull remote dossiers for the initial view.
+    // IMPORTANT: pull BEFORE starting the sync engine. If we pushed first,
+    // any lingering pending operation (captured by a previous app version
+    // with potentially stale field values) would overwrite the current
+    // remote state before we even saw the fresh server data.
+    //
+    // Running the refresh first is safe even offline: it simply returns
+    // false and we fall through to starting the sync engine which will
+    // push the user's legitimate offline edits as soon as connectivity
+    // returns.
     final didRefresh = await _dataService.refreshWorkspaceFromRemote();
-    if (!didRefresh || !mounted) return;
-    await _refreshDossiers();
+    if (didRefresh && mounted) {
+      await _refreshDossiers();
+    }
+
+    // Only now kick off the sync engine. It will push any legitimate local
+    // pending operations (e.g. offline edits) and schedule periodic checks.
+    _syncEngine.start();
   }
 
   void _handleViewChange(String view) {
     setState(() {
       _activeView = view;
+      if (view == 'anah') _anahEverVisited = true;
       if (view != 'dossier_detail') {
         _selectedDossier = null;
       }
@@ -178,7 +217,11 @@ class _MainScreenState extends State<MainScreen> {
         children: [
           Sidebar(
             currentUser: widget.currentUser,
-            currentView: _activeView == 'dossier_detail'
+            // "dossier_detail" et "visit_report" remappent à l'entrée
+            // Dossiers du menu latéral pour que la mise en surbrillance reste
+            // cohérente — le menu est visible pendant ces deux écrans.
+            currentView: (_activeView == 'dossier_detail' ||
+                    _activeView == 'visit_report')
                 ? 'dossiers'
                 : _activeView,
             onNavigate: _handleViewChange,
@@ -193,40 +236,30 @@ class _MainScreenState extends State<MainScreen> {
                 // Offline banner
                 AnimatedSize(
                   duration: const Duration(milliseconds: 250),
-                  child: _isOffline
-                      ? Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 10,
-                          ),
-                          color: const Color(0xFF475569), // slate-600
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.wifi_off_rounded,
-                                size: 16,
-                                color: Colors.white70,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Mode hors ligne — les modifications seront synchronisees au retour du reseau',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : const SizedBox.shrink(),
+                  child: _buildConnectivityBanner(),
                 ),
                 Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : _buildContent(),
+                      : Stack(
+                          children: [
+                            Positioned.fill(child: _buildContent()),
+                            // Anah WebView : on la garde en arrière-plan dès
+                            // qu'elle a été visitée au moins une fois, pour
+                            // préserver la session et le scroll entre deux
+                            // visites.
+                            if (_anahEverVisited)
+                              Positioned.fill(
+                                child: Offstage(
+                                  offstage: _activeView != 'anah',
+                                  child: TickerMode(
+                                    enabled: _activeView == 'anah',
+                                    child: const AnahScreen(),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                 ),
               ],
             ),
@@ -236,11 +269,110 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  /// Banner at the top of the shell. Three cases (priority order):
+  ///  - offline → blue "mode hors ligne" bar
+  ///  - online but sync has errors → red "sync en échec" bar with message
+  ///  - online, synced → nothing
+  Widget _buildConnectivityBanner() {
+    if (_isOffline) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        color: const Color(0xFF475569),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 16, color: Colors.white70),
+            SizedBox(width: 8),
+            Text(
+              'Mode hors ligne — les modifications seront synchronisées au retour du réseau',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!_isSyncing &&
+        _pendingSyncCount > 0 &&
+        (_lastSyncError?.isNotEmpty ?? false)) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        color: const Color(0xFFDC2626), // red-600
+        child: Row(
+          children: [
+            const Icon(Icons.error_outline, size: 18, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Synchronisation en échec',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  SelectableText(
+                    _lastSyncError ?? '',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            TextButton(
+              onPressed: _handleSyncNow,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 2),
+              ),
+              child: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   Widget _buildContent() {
     if (_activeView == 'dossier_detail' && _selectedDossier != null) {
       return DossierScreen(
         dossier: _selectedDossier!,
         onBack: () => _handleViewChange('dossiers'),
+        onOpenVisitReport: () =>
+            setState(() => _activeView = 'visit_report'),
+      );
+    }
+    if (_activeView == 'visit_report' && _selectedDossier != null) {
+      return VisitReportScreen(
+        dossier: _selectedDossier!,
+        onBack: () async {
+          // Re-fetch the dossier so the back-to-dossier view sees the
+          // fresh name / city edits made inside the visit report.
+          final fresh =
+              await _dataService.fetchDossierById(_selectedDossier!.id);
+          if (!mounted) return;
+          setState(() {
+            if (fresh != null) _selectedDossier = fresh;
+            _activeView = 'dossier_detail';
+          });
+          _refreshDossiers();
+        },
       );
     }
 
@@ -273,7 +405,9 @@ class _MainScreenState extends State<MainScreen> {
       case 'precos':
         return const RetirementFundsScreen();
       case 'anah':
-        return const AnahScreen();
+        // Le widget est géré par le Stack dans le build() — on renvoie un
+        // placeholder transparent pour que l'Offstage visible prenne le focus.
+        return const SizedBox.shrink();
       case 'admin':
         return widget.currentUser.role == LocalUserRole.admin
             ? const AdminAccessScreen()

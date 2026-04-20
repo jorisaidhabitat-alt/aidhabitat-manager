@@ -7,13 +7,25 @@ import 'screens/main_screen.dart';
 import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
+import 'services/sync_engine.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DataService().initialize();
+  // Drop stale sync operations that pre-date the current app version —
+  // otherwise their frozen payloads would be pushed to NocoDB at startup
+  // and overwrite fresh remote data with obsolete values.
+  await DataService().purgeStaleSyncOperations();
   await AuthService().initialize();
+  // Restore any Express API session token persisted from a previous login
+  // before making remote calls.
+  await AuthService().restoreRemoteSession();
   await DataService().refreshLocalAuthStateFromRemote();
   await ConnectivityService().initialize();
+  // Connecte le ConnectivityService au SyncEngine : quand la connexion
+  // revient, le SyncEngine lance automatiquement un push des opérations
+  // en attente (notes, documents, dossiers…) vers NocoDB.
+  ConnectivityService().bindSyncEngine(SyncEngine());
   await initializeDateFormatting('fr_FR', null);
 
   runApp(const MyApp());

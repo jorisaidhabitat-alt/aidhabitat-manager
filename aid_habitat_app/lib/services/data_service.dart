@@ -34,6 +34,20 @@ class DataService {
     await _dossierRepository.initialize();
   }
 
+  /// One-shot cleanup run at app boot: drops sync operations that are
+  /// almost certainly obsolete (failed retries or very old pending ops
+  /// captured by a previous app version). Prevents stale payloads from
+  /// overwriting fresh remote data on startup. Errors are swallowed so
+  /// a corrupted sync_operations table never blocks the app from
+  /// launching.
+  Future<void> purgeStaleSyncOperations() async {
+    try {
+      await _syncRepository.purgeStalePendingOperations();
+    } catch (_) {
+      // ignore — cleanup is best-effort
+    }
+  }
+
   Future<bool> refreshLocalAuthStateFromRemote() async {
     try {
       final remoteUsers = await _nocodbApiClient.fetchLocalAuthState();
@@ -46,6 +60,13 @@ class DataService {
 
   Future<List<Dossier>> fetchDossiers() async {
     return _dossierRepository.fetchAllDossiers();
+  }
+
+  /// Fetches a single dossier by its local id. Used when returning from
+  /// the visit report to refresh the dossier screen's prop with the
+  /// fresh patient / housing data.
+  Future<Dossier?> fetchDossierById(String dossierLocalId) {
+    return _dossierRepository.fetchDossierById(dossierLocalId);
   }
 
   /// Create a new beneficiary + dossier locally (works offline).
