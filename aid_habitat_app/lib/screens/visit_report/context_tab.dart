@@ -685,12 +685,15 @@ class _ContextTabState extends State<ContextTab>
                 final item = occ.autonomy[i];
                 final helpItem =
                     i < occ.humanHelp.length ? occ.humanHelp[i] : null;
+                final helpIsChecked = helpItem?.checked ?? false;
                 return _NumberedCheckRow(
                   index: i + 1,
                   label: item.name,
                   concernChecked: item.checked,
-                  onConcernToggle: locked ? null : () => _toggleAutonomyItem(i),
-                  helpChecked: !item.checked && (helpItem?.checked ?? false),
+                  onConcernToggle: (locked || helpIsChecked)
+                      ? null
+                      : () => _toggleAutonomyItem(i),
+                  helpChecked: !item.checked && helpIsChecked,
                   helpEnabled: homeHelpEnabled && !item.checked,
                   onHelpToggle: () => _toggleHumanHelpItem(i),
                 );
