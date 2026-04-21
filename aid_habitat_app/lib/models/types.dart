@@ -180,6 +180,10 @@ class WikiItem {
   final String createdAt;
   final String updatedAt;
 
+  /// Base64 data URL of an image captured offline and not yet uploaded.
+  /// Always empty for items coming back from the server.
+  final String pendingImageDataUrl;
+
   const WikiItem({
     required this.id,
     required this.title,
@@ -189,6 +193,7 @@ class WikiItem {
     required this.category,
     required this.createdAt,
     required this.updatedAt,
+    this.pendingImageDataUrl = '',
   });
 
   WikiItem copyWith({
@@ -198,6 +203,7 @@ class WikiItem {
     List<String>? tags,
     String? category,
     String? updatedAt,
+    String? pendingImageDataUrl,
   }) {
     return WikiItem(
       id: id,
@@ -208,6 +214,7 @@ class WikiItem {
       category: category ?? this.category,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      pendingImageDataUrl: pendingImageDataUrl ?? this.pendingImageDataUrl,
     );
   }
 }
