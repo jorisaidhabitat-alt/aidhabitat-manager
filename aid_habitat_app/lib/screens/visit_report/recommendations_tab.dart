@@ -46,7 +46,18 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   @override
   void dispose() {
+    // Flush immédiat si un save était en attente (debounce non tiré).
+    // Sinon, toute modif dans les 2 dernières secondes avant fermeture
+    // de l'onglet / app était perdue.
+    final hadPending = _saveDebounce?.isActive ?? false;
     _saveDebounce?.cancel();
+    if (hadPending) {
+      // Fire-and-forget : on écrit en SQLite local + enqueue sync_op
+      // via le repository. Pas de setState (le widget se démonte).
+      widget.repository
+          .saveVisitRecommendations(widget.dossier.id, _items)
+          .catchError((_) {});
+    }
     super.dispose();
   }
 
@@ -77,7 +88,10 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   void _scheduleSave() {
     _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(seconds: 2), _save);
+    // 500 ms : compromis entre éviter de spammer SQLite à chaque touche
+    // et minimiser la fenêtre où une modif peut être perdue si l'app
+    // est fermée brutalement avant que le debounce ne tire.
+    _saveDebounce = Timer(const Duration(milliseconds: 500), _save);
   }
 
   Future<void> _save() async {
