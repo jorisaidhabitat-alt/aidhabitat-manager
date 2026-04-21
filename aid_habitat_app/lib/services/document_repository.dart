@@ -31,6 +31,7 @@ class DocumentRepository {
     required String patientId,
     required File sourceFile,
     List<String> tags = const ['Autre'],
+    String? title,
   }) async {
     final db = await _database.database;
     final now = DateTime.now();
@@ -39,7 +40,9 @@ class DocumentRepository {
         .replaceFirst('.', '')
         .toLowerCase();
     final baseName = p.basename(sourceFile.path);
-    final title = p.basenameWithoutExtension(sourceFile.path);
+    final resolvedTitle = (title != null && title.trim().isNotEmpty)
+        ? title.trim()
+        : p.basenameWithoutExtension(sourceFile.path);
     final localId = 'doc_${now.microsecondsSinceEpoch}';
     final appDir = await getApplicationDocumentsDirectory();
     final docsDir = Directory(
@@ -55,7 +58,7 @@ class DocumentRepository {
     final row = {
       'local_id': localId,
       'patient_local_id': patientId,
-      'title': title,
+      'title': resolvedTitle,
       'file_name': baseName,
       'file_ext': extension,
       'mime_type': _mimeTypeFor(extension),
@@ -79,7 +82,7 @@ class DocumentRepository {
         'patientLocalId': patientId,
         'documentLocalId': localId,
         'localPath': storedPath,
-        'title': title,
+        'title': resolvedTitle,
         'fileName': baseName,
         'mimeType': row['mime_type'],
         'tags': tags,
@@ -94,6 +97,131 @@ class DocumentRepository {
     SyncEngine().notify();
 
     return _mapRow(row);
+  }
+
+  /// Re-upload d'un document existant avec le même `documentLocalId` et un
+  /// fichier "flattened" (image + annotations aplaties). Le serveur remplace
+  /// l'asset existant sur dedup par `documentLocalId`. Appelé après un save
+  /// d'annotation image/PDF — les annotations deviennent ainsi visibles sur
+  /// l'exemplaire NocoDB téléchargé depuis l'app React ou un tiers.
+  Future<void> enqueueAnnotatedReupload({
+    required String documentId,
+    required String flattenedPath,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final row = rows.first;
+    final patientId = row['patient_local_id'] as String;
+    final title = row['title'] as String? ?? 'Document';
+    final originalName = row['file_name'] as String? ?? 'document.bin';
+    // Nom de fichier côté serveur : on force l'extension .png puisque le
+    // flatten produit un PNG (valable aussi pour les PDFs annotés aplatis
+    // à une page).
+    final flatName =
+        '${p.basenameWithoutExtension(originalName)}-annoté.png';
+    final now = DateTime.now().toIso8601String();
+    final tagsJson = row['tags_json'] as String? ?? '[]';
+    final tags = (jsonDecode(tagsJson) as List<dynamic>).cast<String>();
+
+    // Supprime toute opération d'upload en attente pour ce doc — on ne veut
+    // pas pousser successivement deux versions.
+    await db.delete(
+      'sync_operations',
+      where:
+          'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
+      whereArgs: [
+        documentId,
+        'document',
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.failed.name,
+      ],
+    );
+
+    // Marque le doc comme pendingSync pour que l'UI (pastille, compteur)
+    // reflète l'attente.
+    await db.update(
+      'documents',
+      {'sync_state': SyncState.pendingSync.name, 'updated_at': now},
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+    );
+
+    await db.insert('sync_operations', {
+      'id': 'sync_${documentId}_${DateTime.now().microsecondsSinceEpoch}',
+      'entity_type': 'document',
+      'entity_local_id': documentId,
+      'operation_type': 'upload_file',
+      'payload_json': jsonEncode({
+        'patientLocalId': patientId,
+        'documentLocalId': documentId,
+        'localPath': flattenedPath,
+        'title': title,
+        'fileName': flatName,
+        'mimeType': 'image/png',
+        'tags': tags,
+      }),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now,
+      'updated_at': now,
+    });
+
+    SyncEngine().notify();
+  }
+
+  Future<void> updateDocumentMetadata({
+    required String documentId,
+    required String title,
+    required List<String> tags,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    await db.update(
+      'documents',
+      {
+        'title': title,
+        'tags_json': jsonEncode(tags),
+        'updated_at': now,
+        'sync_state': SyncState.pendingSync.name,
+      },
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+    );
+    SyncEngine().notify();
+  }
+
+  Future<void> deleteDocument(String documentId) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    await db.update(
+      'documents',
+      {
+        'pending_delete': 1,
+        'updated_at': now,
+        'sync_state': SyncState.pendingSync.name,
+      },
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+    );
+    // Cancel any pending upload operation — the document is being removed
+    // before it ever reached the remote, so the upload is moot.
+    await db.delete(
+      'sync_operations',
+      where: 'entity_local_id = ? AND status IN (?, ?)',
+      whereArgs: [
+        documentId,
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.failed.name,
+      ],
+    );
+    SyncEngine().notify();
   }
 
   Future<void> mergeRemoteDocuments(

@@ -288,28 +288,41 @@ class SyncRepository {
     );
   }
 
-  /// Returns a summary of the first `failed` sync operation (for UI display).
-  /// Returns null if no failed operations exist.
+  /// Renvoie un résumé court de la première opération en échec — utilisée
+  /// par le bandeau UI pour expliquer à l'utilisateur ce qui bloque.
+  /// Renvoie null si aucune op n'est en `failed`.
   Future<Map<String, String?>?> fetchTopFailingOperation() async {
     final db = await _database.database;
     final rows = await db.query(
       'sync_operations',
+      columns: [
+        'id',
+        'entity_type',
+        'operation_type',
+        'entity_local_id',
+        'last_error',
+        'attempt_count',
+      ],
       where: 'status = ?',
       whereArgs: [SyncOperationStatus.failed.name],
       orderBy: 'updated_at DESC',
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    final row = rows.first;
+    final r = rows.first;
     return {
-      'id': row['id'] as String?,
-      'entity_type': row['entity_type'] as String?,
-      'operation_type': row['operation_type'] as String?,
-      'last_error': row['last_error'] as String?,
+      'id': r['id'] as String?,
+      'entityType': r['entity_type'] as String?,
+      'operationType': r['operation_type'] as String?,
+      'entityLocalId': r['entity_local_id'] as String?,
+      'lastError': r['last_error'] as String?,
+      'attemptCount': '${r['attempt_count'] ?? 0}',
     };
   }
 
-  /// Deletes all `failed` operations. Returns the number of deleted rows.
+  /// Supprime TOUTES les opérations en `failed` — permet à l'utilisateur de
+  /// débloquer le bandeau rouge quand une modification ne pourra jamais
+  /// aboutir (ex: ressource supprimée côté serveur).
   Future<int> discardFailedOperations() async {
     final db = await _database.database;
     return db.delete(

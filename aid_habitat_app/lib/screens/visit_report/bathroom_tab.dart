@@ -73,16 +73,11 @@ class BathroomTab extends StatefulWidget {
   /// latest room selections.
   final int housingRefreshToken;
 
-  /// Called after a successful auto-save so the parent can refresh sibling
-  /// tabs that depend on the same DiagnosticSanitaire data.
-  final VoidCallback? onSaved;
-
   const BathroomTab({
     super.key,
     required this.dossier,
     required this.repository,
     this.housingRefreshToken = 0,
-    this.onSaved,
   });
 
   @override
@@ -244,7 +239,6 @@ class _BathroomTabState extends State<BathroomTab>
         widget.dossier.id,
         _diagnostic!,
       );
-      if (mounted) widget.onSaved?.call();
     } finally {
       if (mounted) setState(() => _saving = false);
     }

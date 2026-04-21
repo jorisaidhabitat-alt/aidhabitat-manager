@@ -4,122 +4,235 @@ import 'package:flutter/material.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/references_service.dart';
-import '../../components/commune_autocomplete.dart';
+import '../../services/retirement_funds_repository.dart';
+import '../../components/commune_field_group.dart';
 import '../../components/form_widgets.dart';
-import '../../components/occupants_editor.dart';
 
+/// Bénéficiaire tab — parité 1:1 avec la version React (`BeneficiaryForm`).
+///
+/// Sous-sections : Profil • Revenus • Santé • Dossier (admin).
+/// Gère plusieurs occupants : certains champs sont "par occupant" (identité,
+/// santé, n° sécu, caisse retraite) avec un sélecteur d'occupant en haut de
+/// la section. Les champs partagés restent sur le bénéficiaire principal
+/// (adresse, téléphone, email, compte Anah, envoi rapport…).
 class BeneficiaryTab extends StatefulWidget {
   final Dossier dossier;
   final DossierRepository repository;
+
+  /// Called after each successful save so the parent can re-fetch the
+  /// dossier and propagate fresh patient fields (name, city, …) to the
+  /// other tabs of the visit report and any other views listening.
+  final VoidCallback? onPatientChanged;
 
   const BeneficiaryTab({
     super.key,
     required this.dossier,
     required this.repository,
+    this.onPatientChanged,
   });
 
   @override
   State<BeneficiaryTab> createState() => _BeneficiaryTabState();
 }
 
-class _BeneficiaryTabState extends State<BeneficiaryTab> {
-  static const _kSubSections = ['Profil', 'Finance', 'Sant\u00e9', 'Admin'];
+class _BeneficiaryTabState extends State<BeneficiaryTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
 
   int _subSectionIndex = 0;
+  int _activeOccupantIndex = 0;
   bool _saving = false;
   Timer? _saveTimer;
 
-  // -- Profil fields --
-  late String _lastName;
-  late String _firstName;
-  late String _birthDate;
+  // Shared (patient-level) fields
   late String _address;
   late String _city;
   late String _zipCode;
   late String _cityId;
   late String _phone;
   late String _email;
-
-  // -- Finance fields --
   late String _familySituation;
-  String _occupationStatus = ''; // no DB column yet
+  String _occupationStatus = '';
   late String _incomeCategory;
-  late double? _fiscalRevenue;
+  double? _fiscalRevenue;
   late int _numberPeople;
-  late List<Occupant> _occupants;
-
-  final ReferencesService _references = ReferencesService();
-  StreamSubscription<ReferencesPayload>? _refSub;
-
-  // -- Sant\u00e9 fields --
-  late bool _apa;
-  late bool _invalidity;
-  late String _invalidityTxt;
-  late bool _homeHelp;
-  late String _homeHelpTxt;
-  late String _dependenceTxt;
   late String _trustedName;
   late String _trustedPhone;
   late String _trustedEmail;
-
-  // -- Admin fields --
   late String _compteAnah;
   late String _envoiRapport;
   late String _personnesPresentesVisite;
-  String _numeroSecuriteSociale = ''; // placeholder, not on Patient model
-  late String _caisseRetraitePrincipale;
-  late String _caissesRetraiteComplementaires;
+
+  // Per-occupant fields
+  late List<Occupant> _occupants;
+
+  // References
+  final ReferencesService _references = ReferencesService();
+  StreamSubscription<ReferencesPayload>? _refSub;
+  List<CommuneOption> _communeOptions = const [];
+  List<String> _retirementFundNames = const [];
+
+  // ANAH options (parity with React ANAH_ACCOUNT_OPTIONS)
+  static const List<FormSelectOption<String>> _anahOptions = [
+    FormSelectOption(value: 'Déjà fait', label: 'Déjà fait'),
+    FormSelectOption(value: 'A vérifier', label: 'A vérifier'),
+    FormSelectOption(value: 'A faire', label: 'A faire'),
+    FormSelectOption(value: 'Mandat', label: 'Mandat'),
+  ];
+
+  // Family situation presets
+  static const List<String> _familySituationOptions = [
+    'Marié',
+    'Célibataire',
+    'Divorcé',
+    'Veuf(ve)',
+    'Concubinage',
+  ];
+
+  // Dependence presets — mirrors NocoDB view `vwje1ceip6mv9bt6`.
+  static const List<String> _dependenceOptions = [
+    'Aucune',
+    'Canne',
+    'Déambulateur',
+    'Fauteuil roulant',
+  ];
+
+  // GIR (Groupe Iso-Ressources) options 1..6, shown when "Reconnaissance
+  // Invalidité" is checked instead of a free-text field.
+  static const List<String> _girOptions = ['1', '2', '3', '4', '5', '6'];
 
   @override
   void initState() {
     super.initState();
     _loadFromDossier();
-
-    // Kick off the references fetch (no-op if already cached) and listen
-    // for the first load so the income category can auto-refresh once the
-    // barèmes arrive.
     _references.ensureLoaded();
     _refSub = _references.onLoaded.listen((_) {
       if (!mounted) return;
+      setState(() => _communeOptions = _mapCommunesToOptions());
       _recomputeIncomeCategory();
     });
+    _communeOptions = _mapCommunesToOptions();
+    _loadRetirementFundNames();
+  }
+
+  List<CommuneOption> _mapCommunesToOptions() {
+    return _references.communes
+        .map((c) => CommuneOption(
+              id: c.id,
+              label: c.label,
+              zipCode: c.zipCode,
+              epciId: c.epciId,
+              epciLabel: c.epciLabel,
+            ))
+        .toList();
+  }
+
+  Future<void> _loadRetirementFundNames() async {
+    try {
+      final funds = await RetirementFundsRepository().fetchAllFunds();
+      if (!mounted) return;
+      setState(() {
+        _retirementFundNames = funds
+            .map((f) => f.name)
+            .where((n) => n.trim().isNotEmpty)
+            .toList()
+          ..sort();
+      });
+    } catch (_) {
+      // silent
+    }
   }
 
   void _loadFromDossier() {
     final p = widget.dossier.patient;
-    _lastName = p.lastName;
-    _firstName = p.firstName;
-    _birthDate = p.birthDate;
     _address = p.address;
     _city = p.city;
     _zipCode = p.zipCode;
     _cityId = p.cityId;
     _phone = p.phone;
     _email = p.email;
-
     _familySituation = p.familySituation;
     _incomeCategory = p.incomeCategory;
     _fiscalRevenue = p.fiscalRevenue;
-    _numberPeople = p.numberPeople != null && p.numberPeople! > 0
-        ? p.numberPeople!
-        : 1;
-    _occupants = List<Occupant>.from(p.occupants);
-
-    _apa = p.apa;
-    _invalidity = p.invalidity;
-    _invalidityTxt = p.invalidityTxt;
-    _homeHelp = p.homeHelp;
-    _homeHelpTxt = p.homeHelpTxt;
-    _dependenceTxt = p.dependenceTxt;
+    _numberPeople =
+        p.numberPeople != null && p.numberPeople! > 0 ? p.numberPeople! : 1;
     _trustedName = p.trustedPerson.name;
     _trustedPhone = p.trustedPerson.phone;
     _trustedEmail = p.trustedPerson.email;
-
     _compteAnah = widget.dossier.compteAnah;
     _envoiRapport = widget.dossier.envoiRapport;
     _personnesPresentesVisite = widget.dossier.personnesPresentesVisite;
-    _caisseRetraitePrincipale = p.caisseRetraitePrincipale;
-    _caissesRetraiteComplementaires = p.caissesRetraiteComplementaires;
+    _occupants = _buildOccupantsFromPatient(p, _numberPeople);
+  }
+
+  List<Occupant> _buildOccupantsFromPatient(Patient p, int count) {
+    final existing = List<Occupant>.from(p.occupants);
+    final fallbacks = <Occupant>[
+      Occupant(
+        firstName: p.firstName,
+        lastName: p.lastName,
+        birthDate: p.birthDate,
+        apa: p.apa,
+        invalidity: p.invalidity,
+        invalidityTxt: p.invalidityTxt,
+        homeHelp: p.homeHelp,
+        homeHelpTxt: p.homeHelpTxt,
+        dependenceTxt: p.dependenceTxt,
+        caisseRetraitePrincipale: p.caisseRetraitePrincipale,
+        caissesRetraiteComplementaires: p.caissesRetraiteComplementaires,
+      ),
+      if (p.secondFirstName.isNotEmpty || p.secondLastName.isNotEmpty)
+        Occupant(
+          firstName: p.secondFirstName,
+          lastName: p.secondLastName,
+        ),
+    ];
+    final merged = <Occupant>[];
+    final targetLen = count < 1 ? 1 : count;
+    for (var i = 0; i < targetLen; i++) {
+      if (i < existing.length) {
+        merged.add(existing[i]);
+      } else if (i < fallbacks.length) {
+        merged.add(fallbacks[i]);
+      } else {
+        merged.add(const Occupant());
+      }
+    }
+    return merged;
+  }
+
+  @override
+  void didUpdateWidget(covariant BeneficiaryTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the parent pushes a fresh dossier (e.g. after an external edit) AND
+    // there is no pending local edit to preserve, re-hydrate so the form
+    // mirrors the latest patient/housing data from SQLite.
+    if (_saveTimer?.isActive == true) return;
+    final oldP = oldWidget.dossier.patient;
+    final newP = widget.dossier.patient;
+    final numberPeopleChanged = oldP.numberPeople != newP.numberPeople;
+    final changed = oldP.firstName != newP.firstName ||
+        oldP.lastName != newP.lastName ||
+        oldP.city != newP.city ||
+        oldP.zipCode != newP.zipCode ||
+        oldP.phone != newP.phone ||
+        oldP.email != newP.email ||
+        oldP.address != newP.address ||
+        oldP.birthDate != newP.birthDate ||
+        oldP.secondFirstName != newP.secondFirstName ||
+        oldP.secondLastName != newP.secondLastName ||
+        numberPeopleChanged ||
+        oldWidget.dossier.compteAnah != widget.dossier.compteAnah ||
+        oldWidget.dossier.envoiRapport != widget.dossier.envoiRapport;
+    if (changed) {
+      setState(() => _loadFromDossier());
+      // If the household size changed, recompute the income category via
+      // the ANAH barème that depends on numberPeople.
+      if (numberPeopleChanged) {
+        _recomputeIncomeCategory();
+      }
+    }
   }
 
   @override
@@ -129,29 +242,38 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
     super.dispose();
   }
 
-  void _recomputeIncomeCategory() {
-    final next = _references.computeIncomeCategory(
-      _numberPeople,
-      _fiscalRevenue,
-    );
-    if (next.isNotEmpty && next != _incomeCategory) {
-      setState(() => _incomeCategory = next);
-      _scheduleSave();
-    }
-  }
+  // ---------------------------------------------------------------------------
+  // Save (debounced)
+  // ---------------------------------------------------------------------------
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(seconds: 2), _save);
+    // 150 ms is short enough that local SQLite writes feel truly instant
+    // (the user sees other tabs update immediately after each keystroke
+    // pause), while still batching rapid successive keystrokes into a
+    // single persist cycle. NocoDB sync follows ~200 ms later via the
+    // SyncEngine debounce.
+    _saveTimer = Timer(const Duration(milliseconds: 150), _save);
+  }
+
+  void _markChanged() {
+    setState(() {});
+    _scheduleSave();
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
+      final primary =
+          _occupants.isNotEmpty ? _occupants.first : const Occupant();
+      final secondary =
+          _occupants.length > 1 ? _occupants[1] : const Occupant();
       await widget.repository.updatePatient(widget.dossier.patient.id, {
-        'first_name': _firstName,
-        'last_name': _lastName,
-        'birth_date': _birthDate,
+        'first_name': primary.firstName,
+        'last_name': primary.lastName,
+        'birth_date': primary.birthDate,
+        'second_first_name': secondary.firstName,
+        'second_last_name': secondary.lastName,
         'address': _address,
         'city': _city,
         'zip_code': _zipCode,
@@ -160,37 +282,95 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
         'email': _email,
         'family_situation': _familySituation,
         'income_category': _incomeCategory,
-        'fiscal_revenue': _fiscalRevenue,
+        // Legacy aggregate column: store the sum of per-occupant RFRs so
+        // backward-compatible consumers keep working.
+        'fiscal_revenue': _totalFiscalRevenue(),
         'number_people': _numberPeople,
-        'occupants_json':
-            jsonEncode(_occupants.map((o) => o.toJson()).toList()),
-        'apa': _apa ? 1 : 0,
-        'invalidity': _invalidity ? 1 : 0,
-        'invalidity_txt': _invalidityTxt,
-        'home_help': _homeHelp ? 1 : 0,
-        'home_help_txt': _homeHelpTxt,
-        'dependence_txt': _dependenceTxt,
+        'apa': primary.apa ? 1 : 0,
+        'invalidity': primary.invalidity ? 1 : 0,
+        'invalidity_txt': primary.invalidityTxt,
+        'home_help': primary.homeHelp ? 1 : 0,
+        'home_help_txt': primary.homeHelpTxt,
+        'dependence_txt': primary.dependenceTxt,
         'trusted_person_json': jsonEncode({
           'name': _trustedName,
           'phone': _trustedPhone,
           'email': _trustedEmail,
         }),
-        'caisse_retraite_principale': _caisseRetraitePrincipale,
-        'caisses_retraite_complementaires': _caissesRetraiteComplementaires,
+        'caisse_retraite_principale': primary.caisseRetraitePrincipale,
+        'caisses_retraite_complementaires':
+            primary.caissesRetraiteComplementaires,
+        'occupants_json':
+            jsonEncode(_occupants.map((o) => o.toJson()).toList()),
       });
       await widget.repository.updateDossierFields(widget.dossier.id, {
         'compte_anah': _compteAnah,
         'envoi_rapport': _envoiRapport,
         'personnes_presentes_visite': _personnesPresentesVisite,
       });
+      // Notify the parent (VisitReportScreen) so it re-fetches the dossier
+      // and propagates the fresh patient data (name / city / …) to every
+      // other tab and to any view listening to the same dossier.
+      widget.onPatientChanged?.call();
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _onChanged() {
-    setState(() {});
+  /// Aggregate household fiscal revenue = sum of every occupant's RFR.
+  /// Falls back to the legacy single [_fiscalRevenue] value if no occupant
+  /// has a per-occupant RFR yet (pre-migration data).
+  double? _totalFiscalRevenue() {
+    final values = _occupants
+        .map((o) => o.fiscalRevenue)
+        .whereType<double>()
+        .toList();
+    if (values.isEmpty) return _fiscalRevenue;
+    var total = 0.0;
+    for (final v in values) {
+      total += v;
+    }
+    return total;
+  }
+
+  void _recomputeIncomeCategory() {
+    final next = _references.computeIncomeCategory(
+      _numberPeople,
+      _totalFiscalRevenue(),
+    );
+    if (next.isNotEmpty && next != _incomeCategory) {
+      setState(() => _incomeCategory = next);
+      _scheduleSave();
+    }
+  }
+
+  void _updateOccupant(int index, Occupant updated) {
+    if (index < 0 || index >= _occupants.length) return;
+    setState(() => _occupants[index] = updated);
     _scheduleSave();
+  }
+
+  List<String> _occupantLabels() {
+    return List<String>.generate(_occupants.length, (i) {
+      final o = _occupants[i];
+      if (o.firstName.isNotEmpty) return o.firstName.split(' ').first;
+      return 'Occ. ${i + 1}';
+    });
+  }
+
+  // Note: numberPeople is controlled from the dossier screen. When it
+  // changes, the visit report's didUpdateWidget re-hydrates _occupants via
+  // _loadFromDossier so the per-occupant sections automatically adapt.
+
+  Occupant get _activeOccupant {
+    if (_occupants.isEmpty) return const Occupant();
+    final idx = _safeOccupantIndex;
+    return _occupants[idx];
+  }
+
+  int get _safeOccupantIndex {
+    if (_occupants.isEmpty) return 0;
+    return _activeOccupantIndex.clamp(0, _occupants.length - 1).toInt();
   }
 
   // ---------------------------------------------------------------------------
@@ -199,28 +379,73 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Save indicator
-          Align(
-            alignment: Alignment.topRight,
-            child: SaveStatusIndicator(saving: _saving),
-          ),
-          const SizedBox(height: 4),
-
-          // Sub-section chips
-          FormSubSectionChips(
-            labels: _kSubSections,
-            selectedIndex: _subSectionIndex,
-            onChanged: (i) => setState(() => _subSectionIndex = i),
-          ),
-
-          // Active sub-section
+          _buildQuickNav(),
+          const SizedBox(height: 16),
           _buildActiveSection(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildQuickNav() {
+    final items = const <_QuickNavItem>[
+      _QuickNavItem(icon: Icons.person_outline, label: 'Profil'),
+      _QuickNavItem(icon: Icons.euro, label: 'Revenus'),
+      _QuickNavItem(icon: Icons.favorite_outline, label: 'Santé'),
+      _QuickNavItem(icon: Icons.folder_open_outlined, label: 'Dossier'),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        children: List.generate(items.length, (i) {
+          final active = i == _subSectionIndex;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _subSectionIndex = i),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
+                decoration: BoxDecoration(
+                  color:
+                      active ? const Color(0xFFD8D0DC) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      items[i].icon,
+                      size: 20,
+                      color: active
+                          ? const Color(0xFF554A63)
+                          : const Color(0xFF64748B),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      items[i].label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: active
+                            ? const Color(0xFF554A63)
+                            : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -241,338 +466,515 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
   }
 
   // ---------------------------------------------------------------------------
-  // Sub-section 1: Profil
+  // Profil
   // ---------------------------------------------------------------------------
 
   Widget _buildProfilSection() {
+    final occ = _activeOccupant;
+    final phoneInvalid = !isValidFrenchPhone(_phone);
+    final emailInvalid = !isValidEmail(_email);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormTextField(
-          label: 'Nom',
-          value: _lastName,
-          readOnly: true,
+        FormSection(
+          title: OccupantSwitcher(
+            title: 'Identité',
+            occupantLabels: _occupantLabels(),
+            activeIndex: _safeOccupantIndex,
+            onChanged: (i) => setState(() => _activeOccupantIndex = i),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: FormTextField(
+                      label: 'Nom',
+                      value: occ.lastName,
+                      onChanged: (v) => _updateOccupant(
+                          _safeOccupantIndex, occ.copyWith(lastName: v)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FormTextField(
+                      label: 'Prénom',
+                      value: occ.firstName,
+                      onChanged: (v) => _updateOccupant(
+                          _safeOccupantIndex, occ.copyWith(firstName: v)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: FormTextField(
+                      label: 'Date de naissance (JJ/MM/AAAA)',
+                      value: _formatBirthDateForInput(occ.birthDate),
+                      keyboardType: TextInputType.datetime,
+                      onChanged: (v) => _updateOccupant(
+                        _safeOccupantIndex,
+                        occ.copyWith(birthDate: _parseBirthDateFromInput(v)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _computeAgeLabel(occ.birthDate),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF554A63),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'Pr\u00e9nom',
-          value: _firstName,
-          readOnly: true,
-        ),
-        const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: FormTextField(
-                label: 'Date de naissance',
-                value: _birthDate,
+        FormSection.text(
+          'Coordonnées',
+          child: Column(
+            children: [
+              FormTextField(
+                label: 'Adresse du logement',
+                value: _address,
                 onChanged: (v) {
-                  _birthDate = v;
-                  _onChanged();
+                  _address = v;
+                  _markChanged();
                 },
               ),
-            ),
-            const SizedBox(width: 12),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Text(
-                _computeAgeLabel(_birthDate),
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF554A63),
-                ),
+              const SizedBox(height: 14),
+              CommuneFieldGroup(
+                city: _city,
+                zipCode: _zipCode,
+                cityId: _cityId,
+                options: _communeOptions,
+                zipLabel: 'Code postal',
+                onChanged: (update) {
+                  setState(() {
+                    if (update.city != null) _city = update.city!;
+                    if (update.zipCode != null) _zipCode = update.zipCode!;
+                    if (update.cityId != null) _cityId = update.cityId!;
+                  });
+                  _scheduleSave();
+                },
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              FormTextFieldWithWarning(
+                label: 'Téléphone',
+                value: _phone,
+                keyboardType: TextInputType.phone,
+                showWarning: phoneInvalid,
+                warningText: 'Numéro français invalide',
+                onChanged: (v) {
+                  _phone = v;
+                  _markChanged();
+                },
+              ),
+              const SizedBox(height: 14),
+              FormTextFieldWithWarning(
+                label: 'Email',
+                value: _email,
+                keyboardType: TextInputType.emailAddress,
+                showWarning: emailInvalid,
+                warningText: 'Adresse mail invalide',
+                onChanged: (v) {
+                  _email = v;
+                  _markChanged();
+                },
+              ),
+            ],
+          ),
         ),
-        const _SectionDivider(),
-        FormTextField(
-          label: 'Adresse',
-          value: _address,
-          onChanged: (v) {
-            _address = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        CommuneAutocomplete(
-          city: _city,
-          zipCode: _zipCode,
-          cityId: _cityId,
-          onSelected: (city, zip, id) {
-            setState(() {
-              _city = city;
-              _zipCode = zip;
-              _cityId = id;
-            });
-            _scheduleSave();
-          },
-          onCityTextChanged: (v) {
-            _city = v;
-            _cityId = '';
-            _onChanged();
-          },
-          onZipTextChanged: (v) {
-            _zipCode = v;
-            _onChanged();
-          },
-        ),
-        const _SectionDivider(),
-        FormTextField(
-          label: 'T\u00e9l\u00e9phone',
-          value: _phone,
-          keyboardType: TextInputType.phone,
-          onChanged: (v) {
-            _phone = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'Email',
-          value: _email,
-          keyboardType: TextInputType.emailAddress,
-          onChanged: (v) {
-            _email = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 24),
       ],
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Sub-section 2: Finance
+  // Finance (Revenus)
   // ---------------------------------------------------------------------------
 
   Widget _buildFinanceSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormToggleGroup(
-          label: 'Situation familiale',
-          options: const [
-            'Mari\u00e9',
-            'C\u00e9libataire',
-            'Divorc\u00e9',
-            'Veuf(ve)',
-            'Concubinage',
-          ],
-          selected: _familySituation,
-          onChanged: (v) {
-            _familySituation = v;
-            _onChanged();
-          },
+        FormSection.text(
+          'Situation',
+          child: Column(
+            children: [
+              FormToggleGroup(
+                label: 'Situation familiale',
+                options: _familySituationOptions,
+                selected: _familySituation,
+                columns: 2,
+                onChanged: (v) {
+                  _familySituation = v;
+                  _markChanged();
+                },
+              ),
+              const SizedBox(height: 14),
+              FormToggleGroup(
+                label: 'Occupation',
+                options: const ['Propriétaire', 'Locataire', 'Usufruitier'],
+                selected: _occupationStatus,
+                columns: 3,
+                onChanged: (v) {
+                  _occupationStatus = v;
+                  _markChanged();
+                },
+              ),
+            ],
+          ),
         ),
-        const _SectionDivider(),
-        FormToggleGroup(
-          label: "Statut d'occupation",
-          options: const ['Propri\u00e9taire', 'Locataire', 'Usufruitier'],
-          selected: _occupationStatus,
-          onChanged: (v) {
-            _occupationStatus = v;
-            _onChanged();
-          },
+        FormSection(
+          title: OccupantSwitcher(
+            title: 'Revenus',
+            occupantLabels: _occupantLabels(),
+            activeIndex: _safeOccupantIndex,
+            onChanged: (i) => setState(() => _activeOccupantIndex = i),
+          ),
+          child: Column(
+            children: [
+              // "Nombre de personnes au foyer" is read-only here — it is
+              // controlled from the "Informations bénéficiaire" card of the
+              // dossier screen (single source of truth for the household
+              // size). Each occupant below has their own RFR field.
+              _buildReadOnlyField(
+                label: 'Nombre de personnes au foyer',
+                value: _numberPeople > 0 ? '$_numberPeople' : '1',
+              ),
+              const SizedBox(height: 14),
+              _buildReadOnlyField(
+                label: 'Catégorie',
+                value: _incomeCategory.isEmpty
+                    ? 'Calcul automatique'
+                    : _incomeCategory,
+                hint:
+                    'Calculée automatiquement à partir de la somme des RFR et du foyer.',
+              ),
+              const SizedBox(height: 14),
+              FormNumberField(
+                label:
+                    'Revenu Fiscal Ref. (${_occupantLabels()[_safeOccupantIndex]})',
+                value: _activeOccupant.fiscalRevenue,
+                unit: '€',
+                onChanged: (v) {
+                  _updateOccupant(
+                    _safeOccupantIndex,
+                    _activeOccupant.copyWith(
+                      fiscalRevenue: v,
+                      clearFiscalRevenue: v == null,
+                    ),
+                  );
+                  _recomputeIncomeCategory();
+                },
+              ),
+            ],
+          ),
         ),
-        const _SectionDivider(),
-        FormToggleGroup(
-          label: "Nombre d'occupants",
-          options: const ['1', '2', '3', '4', '5'],
-          selected: _numberPeople.toString(),
-          onChanged: (v) {
-            final n = int.tryParse(v);
-            if (n == null) return;
-            setState(() {
-              _numberPeople = n;
-              // Resize occupants list to match
-              if (_occupants.length < n) {
-                _occupants = [
-                  ..._occupants,
-                  ...List.generate(n - _occupants.length, (_) => const Occupant()),
-                ];
-              } else if (_occupants.length > n) {
-                _occupants = _occupants.sublist(0, n);
-              }
-            });
-            _recomputeIncomeCategory();
-            _scheduleSave();
-          },
+      ],
+    );
+  }
+
+  Widget _buildReadOnlyField({
+    required String label,
+    required String value,
+    String? hint,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
         ),
-        const SizedBox(height: 14),
-        FormNumberField(
-          label: 'Revenu fiscal de r\u00e9f\u00e9rence',
-          value: _fiscalRevenue,
-          unit: '\u20ac',
-          onChanged: (v) {
-            _fiscalRevenue = v;
-            _recomputeIncomeCategory();
-            _onChanged();
-          },
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'Cat\u00e9gorie revenus (auto-calcul\u00e9)',
-          value: _incomeCategory,
-          readOnly: true,
-        ),
-        const SizedBox(height: 24),
+        if (hint != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            hint,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+          ),
+        ],
       ],
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Sub-section 3: Sant\u00e9
+  // Santé
   // ---------------------------------------------------------------------------
 
   Widget _buildSanteSection() {
+    final occ = _activeOccupant;
+    final trustedPhoneInvalid = !isValidFrenchPhone(_trustedPhone);
+    final trustedEmailInvalid = !isValidEmail(_trustedEmail);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        OccupantsEditor(
-          numberPeople: _numberPeople,
-          occupants: _occupants,
-          onChanged: (n, list) {
-            setState(() {
-              _numberPeople = n;
-              _occupants = list;
-              // Mirror the first occupant onto the primary beneficiary
-              // fields so the existing patient DB columns stay in sync.
-              if (list.isNotEmpty) {
-                final first = list.first;
-                _apa = first.apa;
-                _invalidity = first.invalidity;
-                _invalidityTxt = first.invalidityTxt;
-                _homeHelp = first.homeHelp;
-                _homeHelpTxt = first.homeHelpTxt;
-                _dependenceTxt = first.dependenceTxt;
-                _caisseRetraitePrincipale = first.caisseRetraitePrincipale;
-                _caissesRetraiteComplementaires =
-                    first.caissesRetraiteComplementaires;
-              }
-            });
-            _recomputeIncomeCategory();
-            _scheduleSave();
-          },
+        FormSection(
+          title: OccupantSwitcher(
+            title: 'Santé',
+            occupantLabels: _occupantLabels(),
+            activeIndex: _safeOccupantIndex,
+            onChanged: (i) => setState(() => _activeOccupantIndex = i),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FormCheckbox(
+                label: 'Bénéficiaire APA',
+                value: occ.apa,
+                onChanged: (v) => _updateOccupant(
+                    _safeOccupantIndex, occ.copyWith(apa: v)),
+              ),
+              FormCheckbox(
+                label: 'Reconnaissance Invalidité',
+                value: occ.invalidity,
+                onChanged: (v) => _updateOccupant(
+                    _safeOccupantIndex,
+                    occ.copyWith(
+                      invalidity: v,
+                      invalidityTxt: v ? occ.invalidityTxt : '',
+                    )),
+              ),
+              if (occ.invalidity)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: FormSelectDropdown<String>(
+                    label: '',
+                    value: _girOptions.contains(occ.invalidityTxt.trim())
+                        ? occ.invalidityTxt.trim()
+                        : null,
+                    options: _girOptions
+                        .map((g) =>
+                            FormSelectOption<String>(value: g, label: g))
+                        .toList(),
+                    placeholder: 'Sélectionner un GIR',
+                    onChanged: (v) => _updateOccupant(
+                      _safeOccupantIndex,
+                      occ.copyWith(invalidityTxt: v ?? ''),
+                    ),
+                  ),
+                ),
+              FormCheckbox(
+                label: 'Aide à domicile',
+                value: occ.homeHelp,
+                onChanged: (v) => _updateOccupant(
+                    _safeOccupantIndex,
+                    occ.copyWith(
+                      homeHelp: v,
+                      // homeHelpTxt est géré dans Contexte de vie > Autonomie
+                      // (liste d'items humanHelp) — on efface juste la valeur
+                      // quand l'aide à domicile est décochée.
+                      homeHelpTxt: v ? occ.homeHelpTxt : '',
+                    )),
+              ),
+              const SizedBox(height: 10),
+              FormToggleGroup(
+                label: 'Dépendance',
+                options: _dependenceOptions,
+                columns: 2,
+                selected:
+                    occ.dependenceTxt.isEmpty ? 'Aucune' : occ.dependenceTxt,
+                onChanged: (v) => _updateOccupant(
+                    _safeOccupantIndex,
+                    occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v)),
+              ),
+            ],
+          ),
         ),
-        const _SectionDivider(),
-        const FormSectionHeader(
-          title: 'Personne de confiance',
-          icon: Icons.person_outline,
+        FormSection.text(
+          'Personne de Confiance',
+          child: Column(
+            children: [
+              FormTextField(
+                label: 'Nom',
+                value: _trustedName,
+                onChanged: (v) {
+                  _trustedName = v;
+                  _markChanged();
+                },
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: FormTextFieldWithWarning(
+                      label: 'Téléphone',
+                      value: _trustedPhone,
+                      keyboardType: TextInputType.phone,
+                      showWarning: trustedPhoneInvalid,
+                      warningText: 'Numéro français invalide',
+                      onChanged: (v) {
+                        _trustedPhone = v;
+                        _markChanged();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FormTextFieldWithWarning(
+                      label: 'Email',
+                      value: _trustedEmail,
+                      keyboardType: TextInputType.emailAddress,
+                      showWarning: trustedEmailInvalid,
+                      warningText: 'Adresse mail invalide',
+                      onChanged: (v) {
+                        _trustedEmail = v;
+                        _markChanged();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        FormTextField(
-          label: 'Nom',
-          value: _trustedName,
-          onChanged: (v) {
-            _trustedName = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'T\u00e9l\u00e9phone',
-          value: _trustedPhone,
-          keyboardType: TextInputType.phone,
-          onChanged: (v) {
-            _trustedPhone = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'Email',
-          value: _trustedEmail,
-          keyboardType: TextInputType.emailAddress,
-          onChanged: (v) {
-            _trustedEmail = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 24),
       ],
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Sub-section 4: Admin
+  // Admin (Dossier)
   // ---------------------------------------------------------------------------
 
   Widget _buildAdminSection() {
+    final occ = _activeOccupant;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormToggleGroup(
-          label: 'Cr\u00e9ation compte Anah',
-          options: const [
-            'D\u00e9j\u00e0 fait',
-            'A v\u00e9rifier',
-            'A faire',
-            'Mandat',
-          ],
-          selected: _compteAnah,
-          onChanged: (v) {
-            _compteAnah = v;
-            _onChanged();
-          },
+        FormSection.text(
+          'Informations Administratives',
+          child: FormSelectDropdown<String>(
+            label: 'Création compte Anah',
+            value: _compteAnah.isEmpty ? null : _compteAnah,
+            options: _anahOptions,
+            onChanged: (v) {
+              _compteAnah = v ?? '';
+              _markChanged();
+            },
+          ),
         ),
-        const _SectionDivider(),
-        FormToggleGroup(
-          label: 'Envoi du rapport',
-          options: const ['Mail', 'Courrier'],
-          selected: _envoiRapport,
-          onChanged: (v) {
-            _envoiRapport = v;
-            _onChanged();
-          },
+        FormSection(
+          title: OccupantSwitcher(
+            title: 'Personnel',
+            occupantLabels: _occupantLabels(),
+            activeIndex: _safeOccupantIndex,
+            onChanged: (i) => setState(() => _activeOccupantIndex = i),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: FormTextField(
+                      label: 'N° Sécu',
+                      value: occ.numeroSecuriteSociale,
+                      onChanged: (v) => _updateOccupant(
+                          _safeOccupantIndex,
+                          occ.copyWith(numeroSecuriteSociale: v)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FormTextField(
+                      label: 'Caisse princ.',
+                      value: occ.caisseRetraitePrincipale,
+                      onChanged: (v) => _updateOccupant(
+                          _safeOccupantIndex,
+                          occ.copyWith(caisseRetraitePrincipale: v)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              FormSelectDropdown<String>(
+                label: 'Caisse complém.',
+                value: occ.caissesRetraiteComplementaires.trim().isEmpty
+                    ? null
+                    : occ.caissesRetraiteComplementaires.trim(),
+                options: _retirementFundNames
+                    .map((name) =>
+                        FormSelectOption<String>(value: name, label: name))
+                    .toList(),
+                placeholder: 'Sélectionner une caisse',
+                onChanged: (v) => _updateOccupant(
+                  _safeOccupantIndex,
+                  occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
+                ),
+              ),
+            ],
+          ),
         ),
-        const _SectionDivider(),
-        FormTextField(
-          label: 'Personnes pr\u00e9sentes',
-          value: _personnesPresentesVisite,
-          maxLines: 3,
-          onChanged: (v) {
-            _personnesPresentesVisite = v;
-            _onChanged();
-          },
+        FormSection.text(
+          'Renseignements sur la visite',
+          child: Column(
+            children: [
+              FormToggleGroup(
+                label: 'Envoi du rapport',
+                options: const ['Mail', 'Courrier'],
+                selected: _envoiRapport,
+                columns: 2,
+                onChanged: (v) {
+                  _envoiRapport = v;
+                  _markChanged();
+                },
+              ),
+              const SizedBox(height: 14),
+              FormTextField(
+                label: 'Personnes présentes à la visite',
+                value: _personnesPresentesVisite,
+                onChanged: (v) {
+                  _personnesPresentesVisite = v;
+                  _markChanged();
+                },
+              ),
+            ],
+          ),
         ),
-        const _SectionDivider(),
-        FormTextField(
-          label: 'N\u00b0 S\u00e9curit\u00e9 Sociale',
-          value: _numeroSecuriteSociale,
-          onChanged: (v) {
-            _numeroSecuriteSociale = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'Caisse retraite principale',
-          value: _caisseRetraitePrincipale,
-          onChanged: (v) {
-            _caisseRetraitePrincipale = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: 'Caisses compl\u00e9mentaires',
-          value: _caissesRetraiteComplementaires,
-          onChanged: (v) {
-            _caissesRetraiteComplementaires = v;
-            _onChanged();
-          },
-        ),
-        const SizedBox(height: 24),
       ],
     );
   }
 
-  /// Retourne une étiquette courte type "78 !" pour un affichage compact
-  /// (équivalent du rendu React : âge en violet foncé, sans label).
+  Set<String> _parseComplementaryFunds(String raw) {
+    if (raw.trim().isEmpty) return <String>{};
+    return raw
+        .split(RegExp(r'[,;]'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+  }
+
   String _computeAgeLabel(String birthDate) {
-    final parsed = DateTime.tryParse(birthDate);
+    final parsed = _tryParseBirthDate(birthDate);
     if (parsed == null) return '';
     final now = DateTime.now();
     var age = now.year - parsed.year;
@@ -582,20 +984,58 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
     if (age <= 0) return '';
     return '$age !';
   }
+
+  /// Accepts either an ISO date (YYYY-MM-DD) or a French date (DD/MM/YYYY).
+  /// Returns null when the input can't be parsed.
+  DateTime? _tryParseBirthDate(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return null;
+    // Try ISO first (most common storage format).
+    final iso = DateTime.tryParse(value);
+    if (iso != null) return iso;
+    // Fallback: DD/MM/YYYY or DD-MM-YYYY
+    final parts = value.split(RegExp(r'[/\-.]'));
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    if (year < 1900 || year > 2100) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+    try {
+      return DateTime(year, month, day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Formats a stored birth date for display as DD/MM/YYYY.
+  /// If the stored value is partial / unparseable, returns it unchanged so
+  /// the user can keep typing without disruption.
+  String _formatBirthDateForInput(String stored) {
+    final parsed = _tryParseBirthDate(stored);
+    if (parsed == null) return stored;
+    final d = parsed.day.toString().padLeft(2, '0');
+    final m = parsed.month.toString().padLeft(2, '0');
+    return '$d/$m/${parsed.year}';
+  }
+
+  /// Converts user input (typically DD/MM/YYYY) to ISO (YYYY-MM-DD) for
+  /// storage. Returns the raw input if parsing fails, so intermediate typing
+  /// states don't lose characters.
+  String _parseBirthDateFromInput(String typed) {
+    final parsed = _tryParseBirthDate(typed);
+    if (parsed == null) return typed;
+    final y = parsed.year.toString().padLeft(4, '0');
+    final m = parsed.month.toString().padLeft(2, '0');
+    final d = parsed.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
 }
 
-// -----------------------------------------------------------------------------
-// Small helper widget for dividers between logical groups
-// -----------------------------------------------------------------------------
-
-class _SectionDivider extends StatelessWidget {
-  const _SectionDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Divider(color: Colors.grey.shade200, height: 1),
-    );
-  }
+class _QuickNavItem {
+  final IconData icon;
+  final String label;
+  const _QuickNavItem({required this.icon, required this.label});
 }

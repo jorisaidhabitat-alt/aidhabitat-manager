@@ -6,6 +6,12 @@ import '../models/types.dart';
 import 'local_database.dart';
 import 'sync_engine.dart';
 
+class NoteRow {
+  final String textContent;
+  final String? drawingJson;
+  const NoteRow({required this.textContent, required this.drawingJson});
+}
+
 class NoteRepository {
   NoteRepository({LocalDatabase? database})
     : _database = database ?? LocalDatabase.instance;
@@ -73,6 +79,69 @@ class NoteRepository {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     SyncEngine().notify();
+  }
+
+  /// Fetches the note row for (patientId, tabKey, pageNumber). Returns a
+  /// lightweight record with `textContent` + `drawingJson`. Used by the
+  /// detached note OS window to load its initial content.
+  Future<NoteRow?> fetchNote({
+    required String patientId,
+    required String tabKey,
+    int pageNumber = 0,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'note_pages',
+      columns: ['text_content', 'drawing_json'],
+      where: 'patient_local_id = ? AND tab_key = ? AND page_number = ?',
+      whereArgs: [patientId, tabKey, pageNumber],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return NoteRow(
+      textContent: rows.first['text_content'] as String? ?? '',
+      drawingJson: rows.first['drawing_json'] as String?,
+    );
+  }
+
+  /// Updates only the `text_content` of a note, preserving its drawing.
+  /// Used by the detached OS note window.
+  Future<void> upsertNoteText({
+    required String patientId,
+    required String tabKey,
+    required String textContent,
+    int pageNumber = 0,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final noteId = 'note_${patientId}_${tabKey}_$pageNumber';
+    final existing = await db.query(
+      'note_pages',
+      columns: ['drawing_json'],
+      where: 'patient_local_id = ? AND tab_key = ? AND page_number = ?',
+      whereArgs: [patientId, tabKey, pageNumber],
+      limit: 1,
+    );
+    final drawingJson = existing.isNotEmpty
+        ? (existing.first['drawing_json'] as String? ?? '')
+        : '';
+    await db.insert(
+      'note_pages',
+      {
+        'local_id': noteId,
+        'patient_local_id': patientId,
+        'tab_key': tabKey,
+        'page_number': pageNumber,
+        'text_content': textContent,
+        'drawing_json': drawingJson,
+        'drawing_local_path': null,
+        'drawing_remote_path': null,
+        'drawing_remote_url': null,
+        'updated_at': now,
+        'sync_state': SyncState.pendingSync.name,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<bool> mergeRemoteNotePage({

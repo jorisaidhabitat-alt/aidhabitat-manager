@@ -8,7 +8,7 @@ import '../../components/form_widgets.dart';
 
 /// Contexte de vie tab — parité 1:1 avec la version React (`ContextForm`).
 ///
-/// Sous-sections : Informations médicales + Autonomie.
+/// Sous-sections : Médical + Autonomie.
 /// Gère un état "par occupant" (chaque personne du foyer a ses propres
 /// pathologies, suivi, sensoriel, mesures, autonomie et besoins d'aide
 /// humaine). La section Autonomie peut être verrouillée via le bouton ✓
@@ -150,8 +150,11 @@ class _ContextTabState extends State<ContextTab>
 
   bool _occupantHomeHelpEnabled(int index) {
     final p = widget.dossier.patient;
-    if (index == 0) return p.homeHelp;
+    // Prefer the per-occupant record when it exists (written by the
+    // Bénéficiaire > Santé tab). Fall back to the top-level patient flag
+    // for the primary occupant if no occupants array has been saved yet.
     if (index < p.occupants.length) return p.occupants[index].homeHelp;
+    if (index == 0) return p.homeHelp;
     return false;
   }
 
@@ -396,8 +399,7 @@ class _ContextTabState extends State<ContextTab>
       child: Row(
         children: [
           Expanded(
-            child: _buildNavBtn(
-                LucideIcons.heart, 'Informations médicales', 0),
+            child: _buildNavBtn(LucideIcons.heart, 'Médical', 0),
           ),
           const SizedBox(width: 4),
           Expanded(child: _buildNavBtn(LucideIcons.user, 'Autonomie', 1)),
@@ -417,7 +419,7 @@ class _ContextTabState extends State<ContextTab>
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
@@ -430,6 +432,7 @@ class _ContextTabState extends State<ContextTab>
             Flexible(
               child: Text(
                 label,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -468,7 +471,7 @@ class _ContextTabState extends State<ContextTab>
     ];
     return FormSection(
       title: OccupantSwitcher(
-        title: 'Médicales',
+        title: 'Médical',
         occupantLabels: _occupantLabels,
         activeIndex: _safeIndex,
         onChanged: (i) => setState(() => _activeOccupantIndex = i),
@@ -546,105 +549,107 @@ class _ContextTabState extends State<ContextTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header row with done-toggle + occupant switcher + amber badge.
+        // Ligne 1 : bouton valider + titre AUTONOMIE.
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: _toggleAutonomyDone,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color:
-                          locked ? const Color(0xFF907CA1) : Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.check,
-                      size: 14,
-                      color: locked
-                          ? Colors.white
-                          : const Color(0xFF907CA1).withValues(alpha: 0.55),
-                    ),
-                  ),
+            GestureDetector(
+              onTap: _toggleAutonomyDone,
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: locked ? const Color(0xFF907CA1) : Colors.white,
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(width: 10),
-                const Text(
-                  'AUTONOMIE',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF597E8D),
-                    letterSpacing: 1,
-                  ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.check,
+                  size: 14,
+                  color: locked
+                      ? Colors.white
+                      : const Color(0xFF907CA1).withValues(alpha: 0.55),
                 ),
-              ],
+              ),
             ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+            const SizedBox(width: 10),
+            const Text(
+              'AUTONOMIE',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF597E8D),
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Ligne 2 : pills occupants (toujours côte à côte) + badge "Aide
+        // humaine" optionnel à droite. Même quand il n'y a pas de badge, les
+        // pills restent sur cette ligne.
+        if (_occupantLabels.length > 1 || homeHelpEnabled)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
                 if (_occupantLabels.length > 1)
-                  Wrap(
-                    spacing: 6,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: List.generate(_occupantLabels.length, (i) {
                       final active = i == _safeIndex;
-                      return GestureDetector(
-                        onTap: () =>
-                            setState(() => _activeOccupantIndex = i),
-                        child: Container(
-                          constraints: const BoxConstraints(minWidth: 64),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 5),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: active
-                                ? const Color(0xFFF4EFF7)
-                                : const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            _occupantLabels[i],
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                      return Padding(
+                        padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
+                        child: GestureDetector(
+                          onTap: () =>
+                              setState(() => _activeOccupantIndex = i),
+                          child: Container(
+                            constraints: const BoxConstraints(minWidth: 64),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
                               color: active
-                                  ? const Color(0xFF554A63)
-                                  : const Color(0xFF94A3B8),
+                                  ? const Color(0xFFF4EFF7)
+                                  : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              _occupantLabels[i],
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: active
+                                    ? const Color(0xFF554A63)
+                                    : const Color(0xFF94A3B8),
+                              ),
                             ),
                           ),
                         ),
                       );
                     }),
                   ),
-                if (homeHelpEnabled) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Aide humaine',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFFB45309),
-                        letterSpacing: 0.5,
-                      ),
+              if (homeHelpEnabled) ...[
+                if (_occupantLabels.length > 1) const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    'Aide humaine',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFB45309),
+                      letterSpacing: 0.5,
                     ),
                   ),
-                ],
+                ),
               ],
-            ),
-          ],
-        ),
+            ],
+          ),
         const SizedBox(height: 12),
         Opacity(
           opacity: locked ? 0.55 : 1.0,
@@ -731,7 +736,7 @@ class _MedicalFlagRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
         child: Row(
           children: [
-            // Square checkbox
+            // Square checkbox with visible border
             Container(
               width: 20,
               height: 20,
@@ -739,6 +744,12 @@ class _MedicalFlagRow extends StatelessWidget {
                 color:
                     completed ? const Color(0xFF907CA1) : Colors.white,
                 borderRadius: BorderRadius.circular(5),
+                border: Border.all(
+                  color: completed
+                      ? const Color(0xFF907CA1)
+                      : const Color(0xFFCBD5E1),
+                  width: 1.5,
+                ),
               ),
               alignment: Alignment.center,
               child: Icon(
@@ -825,6 +836,12 @@ class _NumberedCheckRow extends StatelessWidget {
                     ? const Color(0xFF907CA1)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(5),
+                border: Border.all(
+                  color: concernChecked
+                      ? const Color(0xFF907CA1)
+                      : const Color(0xFFCBD5E1),
+                  width: 1.5,
+                ),
               ),
               alignment: Alignment.center,
               child: Icon(
@@ -879,6 +896,12 @@ class _NumberedCheckRow extends StatelessWidget {
                       ? const Color(0xFFFEF3C7)
                       : const Color(0xFFFFFBEB),
                   borderRadius: BorderRadius.circular(5),
+                  border: Border.all(
+                    color: helpChecked
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFFFCD34D),
+                    width: 1.5,
+                  ),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
