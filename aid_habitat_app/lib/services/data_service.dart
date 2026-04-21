@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/types.dart';
+import 'access_members_repository.dart';
 import 'auth_service.dart';
 import 'dossier_repository.dart';
 import 'document_repository.dart';
@@ -29,6 +30,8 @@ class DataService {
   final WikiRepository _wikiRepository = WikiRepository();
   final RetirementFundsRepository _retirementFundsRepository =
       RetirementFundsRepository();
+  final AccessMembersRepository _accessMembersRepository =
+      AccessMembersRepository();
 
   Future<void> initialize() async {
     await _dossierRepository.initialize();
