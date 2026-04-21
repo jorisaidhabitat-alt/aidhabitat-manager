@@ -494,13 +494,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            // Top nav: back button + entête bénéficiaire + tab bar.
+            // Ligne 1 : entête bénéficiaire au-dessus de toute la barre de
+            // navigation (NOM Prénom + adresse complète), avec back button
+            // à gauche.
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 _buildBackButton(),
                 const SizedBox(width: 16),
-                // Entête NOM Prénom / adresse — ne change pas selon l'onglet.
-                Flexible(
+                Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -508,8 +510,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       Text(
                         '${patient.lastName.toUpperCase()} ${patient.firstName}',
                         style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
                           color: Color(0xFF0F172A),
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -529,10 +531,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     ],
                   ),
                 ),
-                const SizedBox(width: 24),
-                Expanded(child: _buildTabBar()),
               ],
             ),
+            const SizedBox(height: 12),
+            // Ligne 2 : barre de navigation des onglets sur toute la largeur.
+            _buildTabBar(),
             const SizedBox(height: 16),
             // Content area — two columns except on Mesures/Plans where the
             // form takes the full width (no notes panel).
