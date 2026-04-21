@@ -769,55 +769,20 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   /// Ligne compacte affichée en mode "replié" pour un champ ayant déjà
   /// une valeur : "Label (valeur)" suivi d'un petit crayon d'édition.
-  /// Tap sur la ligne ou le crayon → [onEdit].
+  /// Tap sur la ligne ou le crayon → [onEdit]. Wrapper autour de
+  /// [CollapsedValueRow] pour garder l'appel fluide côté subclasses.
   Widget _collapsedValueRow({
     required String label,
     required String displayValue,
     required VoidCallback onEdit,
     TextStyle? labelStyle,
-  }) {
-    final effectiveLabelStyle = labelStyle ??
-        const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-          color: Color(0xFF64748B),
-        );
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onEdit,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text.rich(
-                TextSpan(
-                  style: effectiveLabelStyle,
-                  children: [
-                    TextSpan(text: label),
-                    TextSpan(
-                      text: ' ($displayValue)',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            const Icon(
-              Icons.edit_outlined,
-              size: 14,
-              color: Color(0xFF907CA1),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  }) =>
+      CollapsedValueRow(
+        label: label,
+        displayValue: displayValue,
+        onEdit: onEdit,
+        labelStyle: labelStyle,
+      );
 
   /// Case à cocher qui, une fois cochée, affiche directement la liste
   /// des options en pills sous la ligne. Dès qu'une option est choisie,

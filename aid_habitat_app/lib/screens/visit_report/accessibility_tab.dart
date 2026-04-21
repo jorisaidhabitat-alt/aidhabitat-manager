@@ -89,6 +89,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   bool _loaded = false;
   Timer? _saveTimer;
 
+  // Flags de repli : quand true, on affiche la version repliée
+  // "label (valeur) + crayon" ; le tap sur le crayon bascule en mode
+  // saisie/édition.
+  bool _typologyEditing = false;
+  bool _surfaceEditing = false;
+  bool _heatingEditing = false;
+
   // Général
   String _yearConstruction = '';
   String _yearHabitation = '';
@@ -443,16 +450,24 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 1. Type de logement (en premier)
-        FormToggleGroup(
-          label: 'Type de logement',
-          options: const ['Maison', 'Appartement'],
-          selected: _typology,
-          expand: true,
-          onChanged: (v) {
-            _typology = v;
-            _markChanged();
-          },
-        ),
+        if (_typology.isEmpty || _typologyEditing)
+          FormToggleGroup(
+            label: 'Type de logement',
+            options: const ['Maison', 'Appartement'],
+            selected: _typology,
+            expand: true,
+            onChanged: (v) {
+              setState(() => _typologyEditing = false);
+              _typology = v;
+              _markChanged();
+            },
+          )
+        else
+          CollapsedValueRow(
+            label: 'Type de logement',
+            displayValue: _typology,
+            onEdit: () => setState(() => _typologyEditing = true),
+          ),
         const SizedBox(height: 14),
         // 2. Années avec flèche de copie
         Row(
@@ -509,27 +524,56 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         ),
         const SizedBox(height: 14),
         // 3. Surface
-        FormNumberField(
-          label: 'Surface habitable',
-          value: _surface,
-          unit: 'm²',
-          onChanged: (v) {
-            _surface = v;
-            _markChanged();
-          },
-        ),
+        if (_surface == null || _surface == 0 || _surfaceEditing)
+          FormNumberField(
+            label: 'Surface habitable',
+            value: _surface,
+            unit: 'm²',
+            autofocus: _surfaceEditing,
+            onChanged: (v) {
+              _surface = v;
+              _markChanged();
+            },
+            onSubmitted: (_) {
+              if (_surface != null && _surface! > 0) {
+                setState(() => _surfaceEditing = false);
+              }
+            },
+            onTapOutside: () {
+              if (_surface != null && _surface! > 0) {
+                setState(() => _surfaceEditing = false);
+              }
+            },
+          )
+        else
+          CollapsedValueRow(
+            label: 'Surface habitable',
+            displayValue:
+                '${_surface! == _surface!.roundToDouble() ? _surface!.toStringAsFixed(0) : _surface!.toStringAsFixed(1)} m²',
+            onEdit: () => setState(() => _surfaceEditing = true),
+          ),
         const SizedBox(height: 14),
         // 4. Chauffage
-        FormMultiSelectDropdown(
-          label: 'Chauffage',
-          options: _heatingOptions.toList(),
-          selected: _heatingTypes,
-          placeholder: 'Sélectionner le type de chauffage',
-          onChanged: (next) {
-            setState(() => _heatingTypes = next);
-            _scheduleSave();
-          },
-        ),
+        if (_heatingTypes.isEmpty || _heatingEditing)
+          FormMultiSelectDropdown(
+            label: 'Chauffage',
+            options: _heatingOptions.toList(),
+            selected: _heatingTypes,
+            placeholder: 'Sélectionner le type de chauffage',
+            onChanged: (next) {
+              setState(() {
+                _heatingTypes = next;
+                if (next.isNotEmpty) _heatingEditing = false;
+              });
+              _scheduleSave();
+            },
+          )
+        else
+          CollapsedValueRow(
+            label: 'Chauffage',
+            displayValue: _heatingTypes.join(', '),
+            onEdit: () => setState(() => _heatingEditing = true),
+          ),
         const SizedBox(height: 14),
         // 5. Niveaux (ajout dynamique)
         ..._orderedLevels.map((field) {

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
 import 'package:flutter/material.dart';
 // Desktop only (macOS/Windows/Linux). Sur web + mobile, un stub vide est
 // importé — les appels sont shuntés par un garde `kIsWeb` avant exécution.
@@ -76,6 +76,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   final Map<String, Timer> _saveDebounce = {};
   // Sous-section active par onglet — mémorisée lors de la navigation.
   final Map<String, int> _activeSubsectionByTab = {};
+  // Numéros médicaux actifs (Pathologie=1, Suivi=2, Sensoriel=3) —
+  // affichés en badge au-dessus du canvas de la note "Contexte de vie >
+  // Médical" (plus dans le texte de la note).
+  final Set<int> _medicalFlagNumbers = {};
 
   static const List<String> _tabs = [
     'Bénéficiaire',
@@ -211,55 +215,37 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   }
 
   /// Called by ContextTab when the user toggles a numbered medical flag
-  /// (Pathologie=1, Suivi médical=2, Sensoriel=3). On check, append a
-  /// `N - ` marker line to the Contexte de vie note. On uncheck, remove
-  /// the line that starts with that marker — along with anything the
-  /// visitor may have typed on that same line.
+  /// (Pathologie=1, Suivi médical=2, Sensoriel=3). Les numéros actifs
+  /// apparaissent désormais comme badges sur la ZONE DE DESSIN de la
+  /// note "Contexte de vie > Médical" (plus dans le texte — parité
+  /// avec la demande de l'utilisateur).
   Future<void> _handleMedicalFlagToggle(int flagNumber, bool checked) async {
-    // Les drapeaux médicaux appartiennent à la sous-section "Médical".
-    const tabKey = 'Contexte de vie-Médical';
-    final patientId = _dossier.patient.id;
-    final existingJson = await _dataService.fetchNoteDrawingJson(
-      patientId: patientId,
-      tabKey: tabKey,
-      pageNumber: 0,
-    );
-    final currentText = _extractTextFromDrawingJson(existingJson);
-    final nextText = checked
-        ? _addMedicalFlagMarker(currentText, flagNumber)
-        : _removeMedicalFlagMarker(currentText, flagNumber);
-    if (nextText == currentText) return;
-    await _persistNoteText(patientId, tabKey, nextText);
     if (!mounted) return;
     setState(() {
-      _liveText['${patientId}::$tabKey'] = nextText;
+      if (checked) {
+        _medicalFlagNumbers.add(flagNumber);
+      } else {
+        _medicalFlagNumbers.remove(flagNumber);
+      }
     });
   }
 
-  String _addMedicalFlagMarker(String text, int flagNumber) {
-    final marker = '$flagNumber - ';
-    final alreadyPresent =
-        text.startsWith(marker) || text.contains('\n$marker');
-    if (alreadyPresent) return text;
-    final separator = text.isEmpty
-        ? ''
-        : (text.endsWith('\n') ? '' : '\n');
-    return '$text$separator$marker';
-  }
-
-  String _removeMedicalFlagMarker(String text, int flagNumber) {
-    final marker = '$flagNumber - ';
-    if (text.startsWith(marker)) {
-      final newlineIdx = text.indexOf('\n');
-      if (newlineIdx == -1) return '';
-      return text.substring(newlineIdx + 1);
+  /// Derive l'état initial des flags médicaux depuis les données du
+  /// dossier courant (premier occupant). Appelé après chaque rafraîchissement.
+  void _syncMedicalFlagsFromDossier() {
+    final m = _dossier.medicalContext;
+    if (m == null) return;
+    final active = <int>{};
+    if (m.pathology.trim().isNotEmpty) active.add(1);
+    if (m.followUp.trim().isNotEmpty) active.add(2);
+    if (m.sensory.trim().isNotEmpty) active.add(3);
+    if (!setEquals(active, _medicalFlagNumbers)) {
+      setState(() {
+        _medicalFlagNumbers
+          ..clear()
+          ..addAll(active);
+      });
     }
-    final searchFor = '\n$marker';
-    final idx = text.indexOf(searchFor);
-    if (idx == -1) return text;
-    final endOfLine = text.indexOf('\n', idx + searchFor.length);
-    if (endOfLine == -1) return text.substring(0, idx);
-    return text.substring(0, idx) + text.substring(endOfLine);
   }
 
   /// Extracts the `text` field from a drawing_json payload. Returns empty
@@ -413,6 +399,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // humaine" checkboxes appear/disappear the moment the user toggles
     // "Aide à domicile" in the Santé tab.
     setState(() => _dossier = fresh);
+    _syncMedicalFlagsFromDossier();
   }
 
   /// Opens the current tab's note in a SEPARATE OS window that the user
@@ -489,6 +476,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               final section = subsections[i];
               final tabKey = '$activeTab-$section';
               final liveKey = '${_dossier.patient.id}::$tabKey';
+              // Sur "Contexte de vie > Médical", les flags cochés dans
+              // le formulaire apparaissent en badges numérotés sur la
+              // zone de dessin du canvas (plus dans le texte).
+              final isMedical =
+                  tabKey == 'Contexte de vie-Médical';
               return NotesWidget(
                 key: ValueKey(liveKey),
                 patientId: _dossier.patient.id,
@@ -502,6 +494,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 embedded: false,
                 fillParentHeight: true,
                 allowPagination: true,
+                backgroundContent: isMedical
+                    ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
+                    : null,
               );
             }),
           ),
@@ -695,6 +690,78 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       ],
                     ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Badges numérotés affichés en haut-gauche du canvas de dessin, sur la
+/// note "Contexte de vie > Médical". Chaque numéro correspond à un flag
+/// coché dans le formulaire (1=Pathologie, 2=Suivi médical, 3=Sensoriel).
+class _MedicalFlagBadges extends StatelessWidget {
+  const _MedicalFlagBadges({required this.flags});
+  final Set<int> flags;
+
+  static const Map<int, String> _labels = {
+    1: 'Pathologie',
+    2: 'Suivi médical',
+    3: 'Sensoriel',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (flags.isEmpty) return const SizedBox.shrink();
+    final sorted = flags.toList()..sort();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final n in sorted)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD8D0DC),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF907CA1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '$n',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _labels[n] ?? '',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF554A63),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

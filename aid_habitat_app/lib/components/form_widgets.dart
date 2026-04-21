@@ -194,6 +194,9 @@ class FormNumberField extends StatefulWidget {
   final String label;
   final double? value;
   final ValueChanged<double?>? onChanged;
+  final ValueChanged<double?>? onSubmitted;
+  final VoidCallback? onTapOutside;
+  final bool autofocus;
   final String? unit;
 
   const FormNumberField({
@@ -201,6 +204,9 @@ class FormNumberField extends StatefulWidget {
     required this.label,
     this.value,
     this.onChanged,
+    this.onSubmitted,
+    this.onTapOutside,
+    this.autofocus = false,
     this.unit,
   });
 
@@ -210,11 +216,13 @@ class FormNumberField extends StatefulWidget {
 
 class _FormNumberFieldState extends State<FormNumberField> {
   late TextEditingController _controller;
+  late FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.value != null ? widget.value!.toStringAsFixed(widget.value! == widget.value!.roundToDouble() ? 0 : 1) : '');
+    _focusNode = FocusNode();
   }
 
   @override
@@ -228,9 +236,12 @@ class _FormNumberFieldState extends State<FormNumberField> {
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
+
+  double? _parse(String text) => double.tryParse(text.replaceAll(',', '.'));
 
   @override
   Widget build(BuildContext context) {
@@ -241,9 +252,20 @@ class _FormNumberFieldState extends State<FormNumberField> {
         const SizedBox(height: 6),
         TextFormField(
           controller: _controller,
+          focusNode: _focusNode,
+          autofocus: widget.autofocus,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
           style: const TextStyle(fontSize: 14),
+          onFieldSubmitted: widget.onSubmitted == null
+              ? null
+              : (text) => widget.onSubmitted!(_parse(text)),
+          onTapOutside: widget.onTapOutside == null
+              ? null
+              : (_) {
+                  _focusNode.unfocus();
+                  widget.onTapOutside!();
+                },
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -270,6 +292,69 @@ class _FormNumberFieldState extends State<FormNumberField> {
           },
         ),
       ],
+    );
+  }
+}
+
+/// Ligne compacte "Label (valeur)" + crayon d'édition, utilisée
+/// partout où un champ doit se replier visuellement une fois rempli
+/// (situation familiale, caisse princ., num sécu, type de logement…).
+class CollapsedValueRow extends StatelessWidget {
+  final String label;
+  final String displayValue;
+  final VoidCallback onEdit;
+  final TextStyle? labelStyle;
+
+  const CollapsedValueRow({
+    super.key,
+    required this.label,
+    required this.displayValue,
+    required this.onEdit,
+    this.labelStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveLabelStyle = labelStyle ??
+        const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+          color: Color(0xFF64748B),
+        );
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onEdit,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text.rich(
+                TextSpan(
+                  style: effectiveLabelStyle,
+                  children: [
+                    TextSpan(text: label),
+                    TextSpan(
+                      text: ' ($displayValue)',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF334155),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.edit_outlined,
+              size: 14,
+              color: Color(0xFF907CA1),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
