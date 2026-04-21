@@ -102,14 +102,6 @@ class _AnahScreenState extends State<AnahScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Anah',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
-              ),
-            ),
             Text(
               'Portail MaPrimeAdapt\' — Agence nationale de l\'habitat',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
