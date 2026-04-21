@@ -135,7 +135,7 @@ const FIELD_SETS = {
     'revenu_fiscal_reference', 'beneficiaire_apa', 'reconnaissance_invalidite_mdph',
     'reconnaissance_invalidité_mdph_txt', 'aide_a_domicile', 'aide_a_domicile_txt',
     'dependance_particuliere', 'dependance_particuliere_txt', 'personne_confiance',
-    'telephone_personne_confiance', 'mail_personne_confiance', BENEFICIARY_TRUSTED_EMAIL_FIELD_ID, 'numero_securite_sociale_monsieur',
+    'telephone_personne_confiance', 'mail_personne_confiance', 'numero_securite_sociale_monsieur',
     'numero_securite_sociale_madame', 'caisse_retraite_principale', 'caisse_retraite_secondaire',
     'CreatedAt', 'UpdatedAt',
   ],
@@ -1592,10 +1592,7 @@ const mapPatient = (beneficiaryRecord, appBeneficiaryId) => ({
   trustedPerson: {
     name: stringValue(field(beneficiaryRecord, 'personne_confiance')),
     phone: stringValue(field(beneficiaryRecord, 'telephone_personne_confiance')),
-    email: stringValue(firstDefined(
-      field(beneficiaryRecord, 'mail_personne_confiance'),
-      field(beneficiaryRecord, BENEFICIARY_TRUSTED_EMAIL_FIELD_ID),
-    )),
+    email: stringValue(field(beneficiaryRecord, 'mail_personne_confiance')),
   },
   numeroSecuriteSocialeMonsieur: stringValue(field(beneficiaryRecord, 'numero_securite_sociale_monsieur')),
   numeroSecuriteSocialeMadame: stringValue(field(beneficiaryRecord, 'numero_securite_sociale_madame')),
