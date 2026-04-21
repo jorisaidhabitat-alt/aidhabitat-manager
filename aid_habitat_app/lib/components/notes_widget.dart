@@ -233,6 +233,7 @@ class NotesWidget extends StatefulWidget {
     this.onExpandToTab,
     this.externalRefreshToken = 0,
     this.liveText,
+    this.leadingNavWidget,
   });
 
   // Identifiants / titre
@@ -260,6 +261,11 @@ class NotesWidget extends StatefulWidget {
   /// notes widget does NOT show its floating text modal — it delegates to
   /// the parent, which can e.g. open a real new tab in a TabBar.
   final VoidCallback? onExpandToTab;
+
+  /// Widget optionnel affiché à gauche dans la ligne de navigation
+  /// (même ligne que les flèches undo/redo). Utilisé par ex. par
+  /// MesuresTab pour injecter le sélecteur d'occupant.
+  final Widget? leadingNavWidget;
 
   // Contenu initial
   final String initialText;
@@ -1050,6 +1056,10 @@ class _NotesWidgetState extends State<NotesWidget> {
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
       child: Row(
         children: [
+          if (widget.leadingNavWidget != null) ...[
+            widget.leadingNavWidget!,
+            const SizedBox(width: 8),
+          ],
           if (widget.allowPagination) ...[
             _HeaderIconButton(
               icon: LucideIcons.chevronLeft,

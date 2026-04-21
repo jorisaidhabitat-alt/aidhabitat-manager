@@ -1098,84 +1098,129 @@ class _DateOfBirthField extends StatelessWidget {
   }) {
     assert(labels.length == values.length);
     final initialIdx = values.indexOf(initialValue);
-    // Chaque "ligne" fait 3 items → on scrolle vers la rangée de l'initial.
     final scrollCtrl = ScrollController(
       initialScrollOffset:
           initialIdx > 5 ? ((initialIdx ~/ 3) - 1) * 56.0 : 0,
     );
     return showDialog<int>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF0F172A),
-          ),
-        ),
-        contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-        content: SizedBox(
-          width: 320,
-          height: 360,
-          child: Scrollbar(
-            controller: scrollCtrl,
-            child: GridView.builder(
-              controller: scrollCtrl,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 2.2,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        // `pending` = sélection en cours (sert à animer le pavé qu'on vient
+        // de toucher avant que le dialog ne se ferme). On pop avec un léger
+        // délai pour laisser l'AnimatedContainer jouer sa transition.
+        int pending = initialValue;
+        bool closing = false;
+        return StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.white,
+            title: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
               ),
-              itemCount: values.length,
-              itemBuilder: (_, i) {
-                final isSelected = values[i] == initialValue;
-                return InkWell(
-                  onTap: () => Navigator.pop(dialogCtx, values[i]),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF0F172A)
-                          : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      labels[i],
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: isSelected
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                        color: isSelected
-                            ? Colors.white
-                            : const Color(0xFF0F172A),
-                      ),
-                    ),
+            ),
+            contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            content: SizedBox(
+              width: 320,
+              height: 360,
+              child: Scrollbar(
+                controller: scrollCtrl,
+                child: GridView.builder(
+                  controller: scrollCtrl,
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 2.2,
                   ),
-                );
-              },
-            ),
-          ),
-        ),
-        actionsPadding: const EdgeInsets.only(right: 16, bottom: 8),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, null),
-            child: const Text(
-              'Annuler',
-              style: TextStyle(
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
+                  itemCount: values.length,
+                  itemBuilder: (_, i) {
+                    final isSelected = values[i] == pending;
+                    return InkWell(
+                      onTap: closing
+                          ? null
+                          : () {
+                              setLocal(() {
+                                pending = values[i];
+                                closing = true;
+                              });
+                              // Laisse l'animation jouer avant de fermer.
+                              Future.delayed(
+                                const Duration(milliseconds: 220),
+                                () {
+                                  if (Navigator.of(dialogCtx).canPop()) {
+                                    Navigator.pop(dialogCtx, values[i]);
+                                  }
+                                },
+                              );
+                            },
+                      borderRadius: BorderRadius.circular(12),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF0F172A)
+                              : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF0F172A)
+                                        .withValues(alpha: 0.25),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : const [],
+                        ),
+                        transform: Matrix4.identity()
+                          ..scale(isSelected ? 1.06 : 1.0),
+                        transformAlignment: Alignment.center,
+                        child: AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: isSelected
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF0F172A),
+                          ),
+                          child: Text(labels[i]),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
+            actionsPadding: const EdgeInsets.only(right: 16, bottom: 8),
+            actions: [
+              TextButton(
+                onPressed: closing
+                    ? null
+                    : () => Navigator.pop(dialogCtx, null),
+                child: const Text(
+                  'Annuler',
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

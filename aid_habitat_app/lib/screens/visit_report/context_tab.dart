@@ -852,28 +852,37 @@ class _NumberedCheckRow extends StatelessWidget {
         children: [
           GestureDetector(
             onTap: onConcernToggle,
-            child: Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: concernChecked
-                    ? const Color(0xFF94A3B8)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(5),
-                border: Border.all(
-                  color: concernChecked
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF907CA1),
-                  width: 1.5,
+            child: Builder(builder: (_) {
+              final disabled = onConcernToggle == null;
+              Color fillColor;
+              Color borderColor;
+              if (disabled && !concernChecked) {
+                // Very light gray when the row is locked out by "aide humaine"
+                fillColor = const Color(0xFFF1F5F9);
+                borderColor = const Color(0xFFE2E8F0);
+              } else if (concernChecked) {
+                fillColor = const Color(0xFF94A3B8);
+                borderColor = const Color(0xFF94A3B8);
+              } else {
+                fillColor = Colors.white;
+                borderColor = const Color(0xFF907CA1);
+              }
+              return Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: borderColor, width: 1.5),
                 ),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.check,
-                size: 12,
-                color: concernChecked ? Colors.white : Colors.transparent,
-              ),
-            ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.check,
+                  size: 12,
+                  color: concernChecked ? Colors.white : Colors.transparent,
+                ),
+              );
+            }),
           ),
           const SizedBox(width: 10),
           Container(
