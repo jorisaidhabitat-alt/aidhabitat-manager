@@ -520,14 +520,18 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     ),
                   ),
                   const SizedBox(width: 12),
+                  // Âge calculé à droite du champ date de naissance — texte
+                  // brut, SANS fond ni bordure (demande utilisateur).
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(
                       _computeAgeLabel(occ.birthDate),
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF554A63),
+                        decoration: TextDecoration.none,
+                        backgroundColor: Colors.transparent,
                       ),
                     ),
                   ),
