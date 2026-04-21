@@ -752,50 +752,6 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     _scheduleSave();
   }
 
-  // ---------------------------------------------------------------------------
-  // Volets
-  // ---------------------------------------------------------------------------
-
-  Widget _buildVoletsSection() {
-    return Column(
-      children: [
-        _buildVoletRow(
-            'Roulants manuels',
-            _voletsManStatus,
-            _voletsManLoc,
-            (s) => setState(() {
-              _voletsManStatus = s;
-              if (s != 'Localisé') _voletsManLoc = '';
-            }),
-            (l) => setState(() => _voletsManLoc = l),
-          ),
-          const SizedBox(height: 10),
-          _buildVoletRow(
-            'Roulants électriques',
-            _voletsElecStatus,
-            _voletsElecLoc,
-            (s) => setState(() {
-              _voletsElecStatus = s;
-              if (s != 'Localisé') _voletsElecLoc = '';
-            }),
-            (l) => setState(() => _voletsElecLoc = l),
-          ),
-          const SizedBox(height: 10),
-          _buildVoletRow(
-            'Persiennes',
-            _voletsPersStatus,
-            _voletsPersLoc,
-            (s) => setState(() {
-              _voletsPersStatus = s;
-              if (s != 'Localisé') _voletsPersLoc = '';
-            }),
-            (l) => setState(() => _voletsPersLoc = l),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildVoletRow(
     String label,
     String status,
