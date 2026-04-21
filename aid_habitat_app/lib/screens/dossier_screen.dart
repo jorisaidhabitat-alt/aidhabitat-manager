@@ -53,6 +53,7 @@ class _DossierScreenState extends State<DossierScreen> {
 
   Timer? _saveTimer;
   bool _saving = false;
+  bool _isBeneficiaryLocked = true;
 
   // Editable fields shown in the card
   late String _firstName;
@@ -410,7 +411,7 @@ class _DossierScreenState extends State<DossierScreen> {
         Expanded(
           child: _QuickActionButton(
             icon: LucideIcons.home,
-            label: 'Visite Domicile',
+            label: 'VAD',
             subLabel: 'Relevés, mesures, photos...',
             onTap: () async {
               // Prefer the in-shell navigation (callback) so the left
@@ -514,6 +515,25 @@ class _DossierScreenState extends State<DossierScreen> {
                 ),
               ),
               SaveStatusIndicator(saving: _saving),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: _isBeneficiaryLocked ? 'Modifier' : 'Verrouiller',
+                icon: Icon(
+                  _isBeneficiaryLocked ? LucideIcons.pencil : LucideIcons.check,
+                  size: 18,
+                  color: const Color(0xFF64748B),
+                ),
+                splashRadius: 20,
+                onPressed: () {
+                  if (!_isBeneficiaryLocked) {
+                    _saveTimer?.cancel();
+                    _save();
+                  }
+                  setState(() {
+                    _isBeneficiaryLocked = !_isBeneficiaryLocked;
+                  });
+                },
+              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -532,63 +552,111 @@ class _DossierScreenState extends State<DossierScreen> {
                     emphasized: true,
                   ),
                   const SizedBox(height: 12),
-                  // 2. Prénom + Nom (editable)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: FormTextField(
-                          label: 'Prénom',
-                          value: _firstName,
-                          onChanged: (v) {
-                            _firstName = v;
-                            _onChanged();
-                          },
+                  // 2. Prénom + Nom (editable when unlocked)
+                  if (_isBeneficiaryLocked)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _ReadonlyField(
+                            label: 'Prénom',
+                            value: _firstName.trim().isEmpty
+                                ? 'Non renseigné'
+                                : _firstName,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FormTextField(
-                          label: 'Nom',
-                          value: _lastName,
-                          onChanged: (v) {
-                            _lastName = v;
-                            _onChanged();
-                          },
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _ReadonlyField(
+                            label: 'Nom',
+                            value: _lastName.trim().isEmpty
+                                ? 'Non renseigné'
+                                : _lastName,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: FormTextField(
+                            label: 'Prénom',
+                            value: _firstName,
+                            onChanged: (v) {
+                              _firstName = v;
+                              _onChanged();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FormTextField(
+                            label: 'Nom',
+                            value: _lastName,
+                            onChanged: (v) {
+                              _lastName = v;
+                              _onChanged();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: 12),
                   // 3. Occupants + Ville (zip hidden)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _buildOccupantsDropdown()),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CommuneFieldGroup(
-                          city: _city,
-                          zipCode: _zipCode,
-                          cityId: _cityId,
-                          options: _communeOptions,
-                          showZipField: false,
-                          onChanged: (update) {
-                            setState(() {
-                              if (update.city != null) _city = update.city!;
-                              if (update.zipCode != null) {
-                                _zipCode = update.zipCode!;
-                              }
-                              if (update.cityId != null) {
-                                _cityId = update.cityId!;
-                              }
-                            });
-                            _scheduleSave();
-                          },
+                  if (_isBeneficiaryLocked)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _ReadonlyField(
+                            label: 'Occupants',
+                            value: _numberPeople == '1'
+                                ? '1 occupant'
+                                : '$_numberPeople occupants',
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _ReadonlyField(
+                            label: 'Ville',
+                            value: _city.trim().isEmpty
+                                ? 'Non renseignée'
+                                : _city,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _buildOccupantsDropdown()),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: CommuneFieldGroup(
+                            city: _city,
+                            zipCode: _zipCode,
+                            cityId: _cityId,
+                            options: _communeOptions,
+                            showZipField: false,
+                            onChanged: (update) {
+                              setState(() {
+                                if (update.city != null) _city = update.city!;
+                                if (update.zipCode != null) {
+                                  _zipCode = update.zipCode!;
+                                }
+                                if (update.cityId != null) {
+                                  _cityId = update.cityId!;
+                                }
+                              });
+                              _scheduleSave();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: 12),
                   // 4. Commentaire projet (read-only, multiline)
                   _ReadonlyField(
