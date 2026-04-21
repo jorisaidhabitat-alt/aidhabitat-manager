@@ -607,7 +607,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
 
     final formPanel = Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
