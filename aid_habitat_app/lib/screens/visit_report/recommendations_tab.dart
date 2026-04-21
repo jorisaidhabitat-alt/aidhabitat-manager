@@ -617,3 +617,82 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
     );
   }
 }
+
+// =============================================================================
+// Titre inline éditable (sans cadre) — utilisé pour le titre de chaque
+// préconisation. Stocke dans `customTitle`. Affiche un hint grisé quand
+// vide. N'écrase pas la saisie de l'utilisateur quand un rebuild asynchrone
+// survient (même logique que FormTextField).
+// =============================================================================
+
+class _InlineTitleField extends StatefulWidget {
+  final String value;
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  const _InlineTitleField({
+    required this.value,
+    required this.hint,
+    required this.onChanged,
+  });
+
+  @override
+  State<_InlineTitleField> createState() => _InlineTitleFieldState();
+}
+
+class _InlineTitleFieldState extends State<_InlineTitleField> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineTitleField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_focusNode.hasFocus) return;
+    if (oldWidget.value != widget.value && _controller.text != widget.value) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      focusNode: _focusNode,
+      maxLines: 2,
+      minLines: 1,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF334155),
+      ),
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: EdgeInsets.zero,
+        border: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        hintText: widget.hint,
+        hintStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF94A3B8),
+        ),
+      ),
+      onChanged: widget.onChanged,
+    );
+  }
+}

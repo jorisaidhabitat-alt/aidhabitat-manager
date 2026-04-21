@@ -456,7 +456,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
           _divider(),
           // Symboles architecturaux (glisser-déposer pour placer).
-          _toolBtn(PlanTool.wall, LucideIcons.slashSquare, 'Mur'),
+          _toolBtn(PlanTool.wall, LucideIcons.rectangleHorizontal, 'Mur'),
           _toolBtn(PlanTool.window, LucideIcons.appWindow, 'Fenêtre'),
           _toolBtn(PlanTool.door, LucideIcons.doorOpen, 'Porte'),
           _toolBtn(PlanTool.toilet, LucideIcons.armchair, 'WC'),
@@ -807,8 +807,10 @@ class _DrawPainter extends CustomPainter {
     switch (s.tool) {
       case PlanTool.pen:
       case PlanTool.eraser:
+      case PlanTool.highlighter:
         if (s.points.length == 1) {
-          canvas.drawCircle(s.points.first, s.size / 2, paint..style = PaintingStyle.fill);
+          canvas.drawCircle(s.points.first, s.size / 2,
+              paint..style = PaintingStyle.fill);
           return;
         }
         final path = Path()..moveTo(s.points.first.dx, s.points.first.dy);
@@ -830,7 +832,137 @@ class _DrawPainter extends CustomPainter {
         final r = Rect.fromPoints(s.points[0], s.points[1]);
         canvas.drawRect(r, paint);
         break;
+      case PlanTool.wall:
+        if (s.points.length < 2) return;
+        // Mur = ligne épaisse noire entre deux points.
+        canvas.drawLine(s.points[0], s.points[1], paint);
+        break;
+      case PlanTool.window:
+        if (s.points.length < 2) return;
+        _paintWindow(canvas, s.points[0], s.points[1], paint);
+        break;
+      case PlanTool.door:
+        if (s.points.length < 2) return;
+        _paintDoor(canvas, s.points[0], s.points[1], paint);
+        break;
+      case PlanTool.toilet:
+        if (s.points.length < 2) return;
+        _paintToilet(canvas, s.points[0], s.points[1], paint);
+        break;
+      case PlanTool.shower:
+        if (s.points.length < 2) return;
+        _paintShower(canvas, s.points[0], s.points[1], paint);
+        break;
+      case PlanTool.bath:
+        if (s.points.length < 2) return;
+        _paintBath(canvas, s.points[0], s.points[1], paint);
+        break;
     }
+  }
+
+  // --- Symboles architecturaux ------------------------------------------
+
+  /// Fenêtre : double ligne parallèle (paroi de mur percée).
+  static void _paintWindow(Canvas canvas, Offset a, Offset b, Paint paint) {
+    final dir = b - a;
+    final length = dir.distance;
+    if (length < 1) return;
+    final perp = Offset(-dir.dy, dir.dx) / length * 4;
+    final thin = Paint()
+      ..color = paint.color
+      ..strokeWidth = paint.strokeWidth.clamp(1.5, 3.0)
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(a + perp, b + perp, thin);
+    canvas.drawLine(a - perp, b - perp, thin);
+  }
+
+  /// Porte : segment fixe + arc 90° indiquant le sens d'ouverture.
+  /// Le sens est dérivé de la direction du drag (a → b).
+  static void _paintDoor(Canvas canvas, Offset a, Offset b, Paint paint) {
+    final dir = b - a;
+    final radius = dir.distance;
+    if (radius < 2) return;
+    final thin = Paint()
+      ..color = paint.color
+      ..strokeWidth = paint.strokeWidth.clamp(1.5, 3.0)
+      ..style = PaintingStyle.stroke;
+    // Battant fermé (ligne pleine) vers b.
+    canvas.drawLine(a, b, thin);
+    // Arc 90° en pointillés simulant l'ouverture.
+    final startAngle = (b - a).direction;
+    final arcRect = Rect.fromCircle(center: a, radius: radius);
+    final dashed = Paint()
+      ..color = paint.color.withValues(alpha: 0.6)
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke;
+    canvas.drawArc(arcRect, startAngle, 1.5708 /* 90° */, false, dashed);
+  }
+
+  /// Toilettes : réservoir (petit rectangle) + cuvette (ovale).
+  /// L'axe long va de `a` (base réservoir) vers `b` (avant cuvette).
+  static void _paintToilet(Canvas canvas, Offset a, Offset b, Paint paint) {
+    final center = Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+    final length = (b - a).distance.clamp(40.0, 400.0);
+    final angle = (b - a).direction;
+    final width = length * 0.55;
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(angle);
+    final stroke = Paint()
+      ..color = paint.color
+      ..strokeWidth = 1.8
+      ..style = PaintingStyle.stroke;
+    // Cuvette (ovale, côté "b")
+    final bowl = Rect.fromCenter(
+      center: Offset(length * 0.15, 0),
+      width: length * 0.7,
+      height: width,
+    );
+    canvas.drawOval(bowl, stroke);
+    // Réservoir (rectangle, côté "a")
+    final tank = Rect.fromCenter(
+      center: Offset(-length * 0.35, 0),
+      width: length * 0.3,
+      height: width * 0.8,
+    );
+    canvas.drawRect(tank, stroke);
+    canvas.restore();
+  }
+
+  /// Douche : carré avec croix en pointillés (évacuation centrale).
+  static void _paintShower(Canvas canvas, Offset a, Offset b, Paint paint) {
+    final r = Rect.fromPoints(a, b);
+    final stroke = Paint()
+      ..color = paint.color
+      ..strokeWidth = 1.8
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(r, stroke);
+    final c = r.center;
+    final dashed = Paint()
+      ..color = paint.color.withValues(alpha: 0.6)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(r.topLeft, r.bottomRight, dashed);
+    canvas.drawLine(r.topRight, r.bottomLeft, dashed);
+    canvas.drawCircle(c, 3, stroke..style = PaintingStyle.fill);
+  }
+
+  /// Baignoire : rectangle arrondi + bonde (petit cercle).
+  static void _paintBath(Canvas canvas, Offset a, Offset b, Paint paint) {
+    final r = Rect.fromPoints(a, b);
+    final rr = RRect.fromRectAndRadius(r, const Radius.circular(14));
+    final stroke = Paint()
+      ..color = paint.color
+      ..strokeWidth = 1.8
+      ..style = PaintingStyle.stroke;
+    canvas.drawRRect(rr, stroke);
+    // Bonde au 1/5 d'un côté.
+    final side = r.width < r.height ? r.width : r.height;
+    final drainCenter = Offset(
+      r.left + r.width * 0.20,
+      r.top + r.height * 0.50,
+    );
+    canvas.drawCircle(drainCenter, side * 0.06, stroke);
   }
 
   @override
