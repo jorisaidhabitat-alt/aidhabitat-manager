@@ -178,6 +178,34 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
+  /// Called by ContextTab when the user checks a numbered medical flag
+  /// (Pathologie=1, Suivi médical=2, Sensoriel=3). Appends a `N - ` line
+  /// to the Contexte de vie note so the visitor can jot down what the
+  /// flag refers to. Skips when the marker is already present.
+  Future<void> _appendMedicalFlagMarker(int flagNumber) async {
+    const tabKey = 'Contexte de vie';
+    final patientId = _dossier.patient.id;
+    final existingJson = await _dataService.fetchNoteDrawingJson(
+      patientId: patientId,
+      tabKey: tabKey,
+      pageNumber: 0,
+    );
+    final currentText = _extractTextFromDrawingJson(existingJson);
+    final marker = '$flagNumber - ';
+    final alreadyPresent = currentText.startsWith(marker) ||
+        currentText.contains('\n$marker');
+    if (alreadyPresent) return;
+    final separator = currentText.isEmpty
+        ? ''
+        : (currentText.endsWith('\n') ? '' : '\n');
+    final nextText = '$currentText$separator$marker';
+    await _persistNoteText(patientId, tabKey, nextText);
+    if (!mounted) return;
+    setState(() {
+      _liveText['${patientId}::$tabKey'] = nextText;
+    });
+  }
+
   /// Extracts the `text` field from a drawing_json payload. Returns empty
   /// string if the JSON is missing / malformed.
   String _extractTextFromDrawingJson(String? json) {
@@ -447,7 +475,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           repository: _repository,
           onPatientChanged: _refreshDossier,
         ),
-        ContextTab(dossier: _dossier, repository: _repository),
+        ContextTab(
+          dossier: _dossier,
+          repository: _repository,
+          onMedicalFlagChecked: _appendMedicalFlagMarker,
+        ),
         MesuresTab(dossier: _dossier, repository: _repository),
         AccessibilityTab(
           dossier: _dossier,
