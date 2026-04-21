@@ -1,20 +1,20 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar } from './components/layout/Sidebar';
 import { AnahStatus, AppDocument, AppUser, Dossier, Visit, VisitReportLocation } from './types';
 import { Building, ExternalLink, Globe, WifiOff } from 'lucide-react';
 import { fetchAnahStatus, fetchCurrentAppUser, fetchDossiers, fetchLocalSnapshot, generateVisitsFromDossiers, logoutApp, preloadDocumentsView } from './services/dataService';
-import { LoginView } from './components/LoginView';
-import { SimpleLoader } from './components/LoadingProgress';
-import { VisitReportView } from './components/VisitReportView';
+import { LoginView } from './components/auth/LoginView';
+import { SimpleLoader } from './components/shared/LoadingProgress';
+import { VisitReportView } from './components/pages/dossier/visit-report/VisitReportView';
 import { flushPendingReleves, registerPendingRelevesSync } from './services/releveSync';
 
-const loadDashboardView = () => import('./components/Dashboard');
-const loadDossierView = () => import('./components/DossierView');
-const loadAdminPanel = () => import('./components/AdminPanel');
-const loadDocumentsView = () => import('./components/DocumentsView');
-const loadSettingsView = () => import('./components/SettingsView');
-const loadWikiView = () => import('./components/WikiView');
-const loadRetirementFundsView = () => import('./components/RetirementFundsView');
+const loadDashboardView = () => import('./components/pages/dashboard/Dashboard');
+const loadDossierView = () => import('./components/pages/dossier/DossierView');
+const loadAdminPanel = () => import('./components/pages/admin/AdminPanel');
+const loadDocumentsView = () => import('./components/pages/dossier/DocumentsView');
+const loadSettingsView = () => import('./components/pages/settings/SettingsView');
+const loadWikiView = () => import('./components/pages/wiki/WikiView');
+const loadRetirementFundsView = () => import('./components/pages/retirement-funds/RetirementFundsView');
 
 const Dashboard = lazy(() => loadDashboardView().then((module) => ({ default: module.Dashboard })));
 const DossierView = lazy(() => loadDossierView().then((module) => ({ default: module.DossierView })));

@@ -75,8 +75,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   final Set<int> _dependenceCommittedIndices = {};
   // Flags "en cours d'édition" pour les champs globaux qui basculent en
   // repli "label (valeur) + crayon".
-  bool _familySituationEditing = false;
-  bool _occupationEditing = false;
   bool _envoiRapportEditing = false;
   bool _compteAnahEditing = false;
   final Set<int> _caissePrincEditingIndices = {};
@@ -637,42 +635,58 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         // pour faciliter le choix initial. Dès qu'une situation est
         // choisie, on bascule en menu déroulant compact avec la valeur
         // sélectionnée — gain de place visuel.
-        if (_familySituation.isEmpty || _familySituationEditing)
+        if (_familySituation.isEmpty)
           FormToggleGroup(
             label: 'Situation familiale',
             options: _familySituationOptions,
             selected: _familySituation,
             columns: 2,
             onChanged: (v) {
-              setState(() => _familySituationEditing = false);
               _familySituation = v;
               _markChanged();
             },
           )
         else
-          _collapsedValueRow(
+          FormSelectDropdown<String>(
             label: 'Situation familiale',
-            displayValue: _familySituation,
-            onEdit: () => setState(() => _familySituationEditing = true),
+            value: _familySituationOptions.contains(_familySituation)
+                ? _familySituation
+                : null,
+            options: _familySituationOptions
+                .map((o) => FormSelectOption<String>(value: o, label: o))
+                .toList(),
+            placeholder: 'Sélectionner',
+            onChanged: (v) {
+              _familySituation = v ?? '';
+              _markChanged();
+            },
           ),
         const SizedBox(height: 14),
-        if (_occupationStatus.isEmpty || _occupationEditing)
+        if (_occupationStatus.isEmpty)
           FormToggleGroup(
             label: 'Occupation',
             options: _occupationOptions,
             selected: _occupationStatus,
             columns: 3,
             onChanged: (v) {
-              setState(() => _occupationEditing = false);
               _occupationStatus = v;
               _markChanged();
             },
           )
         else
-          _collapsedValueRow(
+          FormSelectDropdown<String>(
             label: 'Occupation',
-            displayValue: _occupationStatus,
-            onEdit: () => setState(() => _occupationEditing = true),
+            value: _occupationOptions.contains(_occupationStatus)
+                ? _occupationStatus
+                : null,
+            options: _occupationOptions
+                .map((o) => FormSelectOption<String>(value: o, label: o))
+                .toList(),
+            placeholder: 'Sélectionner',
+            onChanged: (v) {
+              _occupationStatus = v ?? '';
+              _markChanged();
+            },
           ),
         const SizedBox(height: 24),
       ],
