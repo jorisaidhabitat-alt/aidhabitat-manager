@@ -854,13 +854,13 @@ class _NumberedCheckRow extends StatelessWidget {
               height: 20,
               decoration: BoxDecoration(
                 color: concernChecked
-                    ? const Color(0xFF907CA1)
+                    ? const Color(0xFF94A3B8)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(5),
                 border: Border.all(
                   color: concernChecked
-                      ? const Color(0xFF907CA1)
-                      : const Color(0xFFCBD5E1),
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF907CA1),
                   width: 1.5,
                 ),
               ),
@@ -878,8 +878,8 @@ class _NumberedCheckRow extends StatelessWidget {
             height: 24,
             decoration: BoxDecoration(
               color: concernChecked
-                  ? const Color(0xFFE9DFF0)
-                  : Colors.white,
+                  ? Colors.white
+                  : const Color(0xFFE9DFF0),
               shape: BoxShape.circle,
             ),
             alignment: Alignment.center,
