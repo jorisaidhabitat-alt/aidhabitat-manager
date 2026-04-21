@@ -701,43 +701,55 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildSanteSection() {
-    final occ = _activeOccupant;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --- Bloc "Santé" (titre de section retiré) --------------------
-        // Label "Aides" même style que "Dépendance" /
-        // "Personnes présentes à la visite" (FormToggleGroup label :
-        // 13px, w600, slate-500). Sur la même ligne que le sélecteur
-        // d'occupant quand le foyer a 2+ personnes.
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Expanded(
-              child: Text(
-                'Aides',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-            ),
-            if (_occupantLabels().length > 1)
-              OccupantSwitcher(
-                title: '',
-                occupantLabels: _occupantLabels(),
-                activeIndex: _safeOccupantIndex,
-                onChanged: (i) => setState(() => _activeOccupantIndex = i),
-              ),
-          ],
+        // --- Blocs Aides + Dépendance empilés par occupant, labels
+        // personnalisés avec le prénom quand le foyer a 2+ personnes.
+        for (int i = 0; i < _occupants.length; i++) ...[
+          if (i > 0) const SizedBox(height: 24),
+          _buildAidesDependenceBlock(i),
+        ],
+        const SizedBox(height: 24),
+
+        // --- Bloc "Visite" (titre retiré) -------------------------------
+        FormTextField(
+          label: 'Personnes présentes à la visite',
+          value: _personnesPresentesVisite,
+          onChanged: (v) {
+            _personnesPresentesVisite = v;
+            _markChanged();
+          },
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildAidesDependenceBlock(int index) {
+    final occ = _occupants[index];
+    final firstName = occ.firstName.trim().split(' ').first;
+    final hasMultiple = _occupants.length > 1;
+    final suffix = hasMultiple
+        ? (firstName.isNotEmpty ? ' de $firstName' : " de l'occupant ${index + 1}")
+        : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Aides$suffix',
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
         ),
         const SizedBox(height: 8),
         FormCheckbox(
           label: 'Bénéficiaire APA',
           value: occ.apa,
           onChanged: (v) => _updateOccupant(
-              _safeOccupantIndex,
+              index,
               occ.copyWith(
                 apa: v,
                 apaGir: v ? occ.apaGir : '',
@@ -759,7 +771,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                   .toList(),
               placeholder: 'Sélectionner un GIR',
               onChanged: (v) => _updateOccupant(
-                _safeOccupantIndex,
+                index,
                 occ.copyWith(apaGir: v ?? ''),
               ),
             ),
@@ -768,7 +780,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           label: 'Reconnaissance Invalidité',
           value: occ.invalidity,
           onChanged: (v) => _updateOccupant(
-              _safeOccupantIndex,
+              index,
               occ.copyWith(
                 invalidity: v,
                 invalidityTxt: v ? occ.invalidityTxt : '',
@@ -787,7 +799,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                   .toList(),
               placeholder: 'Sélectionner un taux',
               onChanged: (v) => _updateOccupant(
-                _safeOccupantIndex,
+                index,
                 occ.copyWith(invalidityTxt: v ?? ''),
               ),
             ),
@@ -796,7 +808,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           label: 'Aide à domicile',
           value: occ.homeHelp,
           onChanged: (v) => _updateOccupant(
-              _safeOccupantIndex,
+              index,
               occ.copyWith(
                 homeHelp: v,
                 homeHelpTxt: v ? occ.homeHelpTxt : '',
@@ -804,26 +816,14 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         ),
         const SizedBox(height: 10),
         FormToggleGroup(
-          label: 'Dépendance',
+          label: 'Dépendance$suffix',
           options: _dependenceOptions,
           columns: 2,
           selected: occ.dependenceTxt.isEmpty ? 'Aucune' : occ.dependenceTxt,
           onChanged: (v) => _updateOccupant(
-              _safeOccupantIndex,
+              index,
               occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v)),
         ),
-        const SizedBox(height: 24),
-
-        // --- Bloc "Visite" (titre retiré) -------------------------------
-        FormTextField(
-          label: 'Personnes présentes à la visite',
-          value: _personnesPresentesVisite,
-          onChanged: (v) {
-            _personnesPresentesVisite = v;
-            _markChanged();
-          },
-        ),
-        const SizedBox(height: 24),
       ],
     );
   }
