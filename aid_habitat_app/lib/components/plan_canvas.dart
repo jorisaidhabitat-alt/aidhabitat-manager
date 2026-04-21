@@ -23,7 +23,21 @@ const Color _kTeal = Color(0xFF597E8D);
 // Stroke model
 // ---------------------------------------------------------------------------
 
-enum PlanTool { pen, line, rect, eraser }
+enum PlanTool {
+  pen,
+  highlighter,
+  line,
+  rect,
+  // Symboles architecturaux — placés par glisser-déposer (P0→P1 définit
+  // la position, la taille et l'orientation).
+  wall,
+  window,
+  door,
+  toilet,
+  shower,
+  bath,
+  eraser,
+}
 
 class _PlanStroke {
   final PlanTool tool;
@@ -238,24 +252,55 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   void _onPanStart(DragStartDetails d) {
     final pt = _localPoint(d.globalPosition);
+    // Couleur et taille dépendent de l'outil.
+    int colorForStroke;
+    double sizeForStroke;
+    switch (_tool) {
+      case PlanTool.eraser:
+        colorForStroke = 0x00000000;
+        sizeForStroke = 24;
+        break;
+      case PlanTool.highlighter:
+        // 35% d'opacité → effet fluo par-dessus le contenu existant.
+        colorForStroke = (_penColor & 0x00FFFFFF) | 0x59000000;
+        sizeForStroke = _penSize * 4;
+        break;
+      case PlanTool.wall:
+        // Mur : épaisseur multipliée, noir plein.
+        colorForStroke = 0xFF0F172A;
+        sizeForStroke = (_penSize * 3).clamp(6, 24);
+        break;
+      default:
+        colorForStroke = _penColor;
+        sizeForStroke = _penSize;
+    }
     final stroke = _PlanStroke(
       tool: _tool,
-      color: _tool == PlanTool.eraser ? 0x00000000 : _penColor,
-      size: _tool == PlanTool.eraser ? 24 : _penSize,
+      color: colorForStroke,
+      size: sizeForStroke,
       points: [pt],
     );
     setState(() => _current = stroke);
   }
+
+  /// Outils "tracé libre" qui accumulent des points pendant le drag.
+  /// Tous les autres (line/rect/symboles architecturaux) conservent un
+  /// couple [start, current] pour dessiner la forme dynamiquement.
+  static const _freehandTools = {
+    PlanTool.pen,
+    PlanTool.highlighter,
+    PlanTool.eraser,
+  };
 
   void _onPanUpdate(DragUpdateDetails d) {
     final cur = _current;
     if (cur == null) return;
     final pt = _localPoint(d.globalPosition);
     setState(() {
-      if (cur.tool == PlanTool.pen || cur.tool == PlanTool.eraser) {
+      if (_freehandTools.contains(cur.tool)) {
         cur.points.add(pt);
       } else {
-        // Shape: always [start, current]
+        // Shape/symbole : toujours [start, current]
         if (cur.points.length < 2) {
           cur.points.add(pt);
         } else {
@@ -268,10 +313,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
   void _onPanEnd(DragEndDetails details) {
     final cur = _current;
     if (cur == null) return;
-    if ((cur.tool == PlanTool.pen || cur.tool == PlanTool.eraser) &&
-        cur.points.length < 2) {
+    if (_freehandTools.contains(cur.tool) && cur.points.length < 2) {
       // Ensure a dot renders by duplicating the point
       cur.points.add(cur.points.first.translate(0.1, 0));
+    }
+    // Symbole architectural posé en tap (sans drag) → on se donne une
+    // taille par défaut pour que l'objet apparaisse quand même.
+    if (!_freehandTools.contains(cur.tool) && cur.points.length < 2) {
+      cur.points.add(cur.points.first.translate(60, 40));
     }
     setState(() {
       _strokes.add(cur);
@@ -399,34 +448,59 @@ class _PlanCanvasState extends State<PlanCanvas> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          // Outils de tracé.
           _toolBtn(PlanTool.pen, LucideIcons.penTool, 'Crayon'),
+          _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
           _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
           _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
           _divider(),
-          // Palette de couleurs fixe — pas de bouton "autre couleur".
+          // Symboles architecturaux (glisser-déposer pour placer).
+          _toolBtn(PlanTool.wall, LucideIcons.slashSquare, 'Mur'),
+          _toolBtn(PlanTool.window, LucideIcons.appWindow, 'Fenêtre'),
+          _toolBtn(PlanTool.door, LucideIcons.doorOpen, 'Porte'),
+          _toolBtn(PlanTool.toilet, LucideIcons.armchair, 'WC'),
+          _toolBtn(PlanTool.shower, LucideIcons.droplets, 'Douche'),
+          _toolBtn(PlanTool.bath, LucideIcons.bath, 'Baignoire'),
+          _divider(),
+          // Palette de couleurs.
           ..._presetColors.map((c) => _colorDot(c)),
           _divider(),
-          SizedBox(
-            width: 100,
-            child: Slider(
-              value: _penSize,
-              min: 1,
-              max: 10,
-              divisions: 9,
-              activeColor: _kTeal,
-              onChanged: (v) => setState(() => _penSize = v),
+          // Épaisseur du trait : − / valeur / +
+          _sizeStepButton(
+            icon: LucideIcons.minus,
+            tooltip: 'Diminuer l\'épaisseur',
+            onTap: _penSize > 1
+                ? () => setState(() => _penSize = (_penSize - 1).clamp(1, 20))
+                : null,
+          ),
+          Container(
+            constraints: const BoxConstraints(minWidth: 28),
+            alignment: Alignment.center,
+            child: Text(
+              '${_penSize.toInt()}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF334155),
+              ),
             ),
           ),
-          Text('${_penSize.toInt()}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          const SizedBox(width: 12),
+          _sizeStepButton(
+            icon: LucideIcons.plus,
+            tooltip: 'Augmenter l\'épaisseur',
+            onTap: _penSize < 20
+                ? () => setState(() => _penSize = (_penSize + 1).clamp(1, 20))
+                : null,
+          ),
+          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(LucideIcons.download, size: 18),
             color: Colors.grey.shade600,
             tooltip: 'Télécharger le plan',
             onPressed: _downloadPng,
           ),
+          // "Effacer tout" (corbeille pleine = tout jeter).
           IconButton(
             icon: const Icon(LucideIcons.trash2, size: 18),
             color: Colors.red.shade400,
@@ -464,14 +538,47 @@ class _PlanCanvasState extends State<PlanCanvas> {
               tooltip: 'Ajouter une page',
               onPressed: widget.onAddPage,
             ),
+            // "Supprimer la page" : icône fichier barré pour différencier
+            // de l'action "Effacer tout" (corbeille) juste au-dessus.
             IconButton(
-              icon: const Icon(LucideIcons.trash2, size: 18),
+              icon: const Icon(LucideIcons.fileX, size: 18),
               color: const Color(0xFFB91C1C),
               tooltip: 'Supprimer la page',
               onPressed: widget.totalPages! > 1 ? widget.onDeletePage : null,
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _sizeStepButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onTap,
+  }) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 14,
+            color: enabled
+                ? const Color(0xFF334155)
+                : const Color(0xFFCBD5E1),
+          ),
+        ),
       ),
     );
   }

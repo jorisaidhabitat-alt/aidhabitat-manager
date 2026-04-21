@@ -297,11 +297,22 @@ class _RecommendationCard extends StatelessWidget {
         ? item.customTitle.trim()
         : item.wikiTitle.trim();
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,15 +368,14 @@ class _RecommendationCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF334155),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    // Titre modifiable inline — pas de cadre, typographie
+                    // "titre de carte" (16 w700). Hint affiché si vide
+                    // pour suggérer à l'utilisateur de saisir.
+                    _InlineTitleField(
+                      value: item.customTitle,
+                      hint: title.isNotEmpty ? title : 'Titre…',
+                      onChanged: (v) =>
+                          onChange(item.copyWith(customTitle: v)),
                     ),
                     const SizedBox(height: 6),
                     TextButton.icon(
@@ -382,13 +392,6 @@ class _RecommendationCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    FormTextField(
-                      label: 'Titre personnalisé',
-                      value: item.customTitle,
-                      onChanged: (v) =>
-                          onChange(item.copyWith(customTitle: v)),
-                    ),
-                    const SizedBox(height: 10),
                     FormTextField(
                       label: 'Note',
                       value: item.note,
