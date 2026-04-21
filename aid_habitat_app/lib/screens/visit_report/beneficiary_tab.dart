@@ -839,10 +839,8 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     required VoidCallback onEditRequested,
   }) {
     final hasValue = value.isNotEmpty;
-    final showList = checked && (!hasValue || editing);
-    final displayLabel = (checked && hasValue && !editing)
-        ? '$label (${valueDisplay(value)})'
-        : label;
+    final collapsed = checked && hasValue && !editing;
+    final showList = checked && !collapsed;
     final pillLabels = options.map(optionLabel).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -882,16 +880,42 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                   onTap: () {
                     if (!checked) {
                       onCheckedChanged(true);
-                    } else if (hasValue && !editing) {
+                    } else if (collapsed) {
                       onEditRequested();
                     }
                   },
-                  child: Text(
-                    displayLabel,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF334155),
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text.rich(
+                          TextSpan(
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF334155),
+                            ),
+                            children: [
+                              TextSpan(text: label),
+                              if (collapsed)
+                                TextSpan(
+                                  text: ' (${valueDisplay(value)})',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (collapsed) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.edit_outlined,
+                          size: 14,
+                          color: Color(0xFF907CA1),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
