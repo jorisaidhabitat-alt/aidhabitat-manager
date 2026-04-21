@@ -9,6 +9,7 @@ import '../models/types.dart';
 import '../services/data_service.dart';
 import '../services/url_resolver.dart';
 import '../services/wiki_repository.dart';
+import '../widgets/cached_media_image.dart';
 
 class WikiScreen extends StatefulWidget {
   const WikiScreen({super.key});
@@ -263,15 +264,17 @@ class _WikiScreenState extends State<WikiScreen> {
                                           ClipRRect(
                                             borderRadius:
                                                 BorderRadius.circular(20),
-                                            child: item.imageUrl.isNotEmpty
-                                                ? Image.network(
-                                                    resolveMediaUrl(
+                                            child: (item.imageUrl.isNotEmpty ||
+                                                    item.pendingImageDataUrl
+                                                        .isNotEmpty)
+                                                ? CachedMediaImage(
+                                                    url: resolveMediaUrl(
                                                         item.imageUrl),
+                                                    pendingDataUrl: item
+                                                        .pendingImageDataUrl,
                                                     fit: BoxFit.cover,
                                                     width: double.infinity,
-                                                    errorBuilder:
-                                                        (_, __, ___) =>
-                                                            const Center(
+                                                    placeholder: const Center(
                                                       child: Icon(
                                                         LucideIcons.image,
                                                         size: 42,
@@ -461,11 +464,13 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                   flex: 2,
                   child: Container(
                     color: const Color(0xFFF1F5F9),
-                    child: widget.item.imageUrl.isNotEmpty
-                        ? Image.network(
-                            resolveMediaUrl(widget.item.imageUrl),
+                    child: (widget.item.imageUrl.isNotEmpty ||
+                            widget.item.pendingImageDataUrl.isNotEmpty)
+                        ? CachedMediaImage(
+                            url: resolveMediaUrl(widget.item.imageUrl),
+                            pendingDataUrl: widget.item.pendingImageDataUrl,
                             fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Center(
+                            placeholder: const Center(
                               child: Icon(
                                 LucideIcons.image,
                                 size: 72,

@@ -104,6 +104,7 @@ class WikiRepository {
       category: category,
       createdAt: now,
       updatedAt: now,
+      pendingImageDataUrl: imageDataUrl,
     );
 
     await db.transaction((txn) async {
@@ -297,6 +298,8 @@ class WikiRepository {
       category: row['category'] as String,
       createdAt: row['created_at'] as String,
       updatedAt: row['updated_at'] as String,
+      pendingImageDataUrl:
+          (row['pending_image_data_url'] as String?) ?? '',
     );
   }
 }

@@ -519,36 +519,25 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // Profil
   // ---------------------------------------------------------------------------
 
-  Widget _buildProfilSection() {
-    final occ = _activeOccupant;
-    final phoneInvalid = !isValidFrenchPhone(_phone);
-    final emailInvalid = !isValidEmail(_email);
+  Widget _buildBirthDateRow(int index) {
+    final occ = _occupants[index];
+    final firstName = occ.firstName.trim().split(' ').first;
+    final hasMultiple = _occupants.length > 1;
+    final label = hasMultiple
+        ? (firstName.isNotEmpty
+            ? 'Date de naissance de $firstName'
+            : "Date de naissance de l'occupant ${index + 1}")
+        : 'Date de naissance';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --- Bloc "Identité" (titre retiré à la demande du user) --------
-        // Ligne "label Date de naissance" à gauche + sélecteur d'occupant
-        // à droite (quand il y a plusieurs occupants).
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Text(
-              'Date de naissance',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: Color(0xFF64748B),
-              ),
-            ),
-            const Spacer(),
-            if (_occupantLabels().length > 1)
-              OccupantSwitcher(
-                title: '',
-                occupantLabels: _occupantLabels(),
-                activeIndex: _safeOccupantIndex,
-                onChanged: (i) => setState(() => _activeOccupantIndex = i),
-              ),
-          ],
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
         ),
         const SizedBox(height: 6),
         Row(
@@ -560,7 +549,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 birthDate: occ.birthDate,
                 showLabel: false,
                 onChanged: (iso) => _updateOccupant(
-                  _safeOccupantIndex,
+                  index,
                   occ.copyWith(birthDate: iso),
                 ),
               ),
@@ -579,6 +568,22 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             ),
           ],
         ),
+      ],
+    );
+  }
+
+  Widget _buildProfilSection() {
+    final phoneInvalid = !isValidFrenchPhone(_phone);
+    final emailInvalid = !isValidEmail(_email);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- Bloc "Identité" : un champ Date de naissance par occupant,
+        // empilés verticalement avec un label personnalisé au-dessus.
+        for (int i = 0; i < _occupants.length; i++) ...[
+          if (i > 0) const SizedBox(height: 14),
+          _buildBirthDateRow(i),
+        ],
         const SizedBox(height: 24),
 
         // --- Bloc "Coordonnées" (titre retiré à la demande du user) -----
