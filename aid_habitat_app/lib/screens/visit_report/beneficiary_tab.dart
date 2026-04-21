@@ -69,6 +69,18 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   final Set<int> _apaEditingIndices = {};
   final Set<int> _invalidityEditingIndices = {};
   final Set<int> _dependenceEditingIndices = {};
+  // Indices d'occupants ayant confirmé un choix de dépendance (y compris
+  // "Aucune" → stocké ''). Sert à distinguer "jamais renseigné" (pills
+  // affichés) de "Aucune choisi explicitement" (repli avec "(Aucune)").
+  final Set<int> _dependenceCommittedIndices = {};
+  // Flags "en cours d'édition" pour les champs globaux qui basculent en
+  // repli "label (valeur) + crayon".
+  bool _familySituationEditing = false;
+  bool _occupationEditing = false;
+  bool _envoiRapportEditing = false;
+  bool _compteAnahEditing = false;
+  final Set<int> _caissePrincEditingIndices = {};
+  final Set<int> _caisseComplEditingIndices = {};
 
   // Shared (patient-level) fields
   late String _address;
@@ -220,6 +232,15 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     _envoiRapport = widget.dossier.envoiRapport;
     _personnesPresentesVisite = widget.dossier.personnesPresentesVisite;
     _occupants = _buildOccupantsFromPatient(p, _numberPeople);
+    // Initialise les "committed" à partir des valeurs déjà enregistrées :
+    // un occupant avec une dépendance non vide a forcément choisi une
+    // option → on affiche l'état replié plutôt que les pills.
+    _dependenceCommittedIndices
+      ..clear()
+      ..addAll([
+        for (int i = 0; i < _occupants.length; i++)
+          if (_occupants[i].dependenceTxt.trim().isNotEmpty) i,
+      ]);
   }
 
   List<Occupant> _buildOccupantsFromPatient(Patient p, int count) {
@@ -747,12 +768,63 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     );
   }
 
+  /// Ligne compacte affichée en mode "replié" pour un champ ayant déjà
+  /// une valeur : "Label (valeur)" suivi d'un petit crayon d'édition.
+  /// Tap sur la ligne ou le crayon → [onEdit].
+  Widget _collapsedValueRow({
+    required String label,
+    required String displayValue,
+    required VoidCallback onEdit,
+    TextStyle? labelStyle,
+  }) {
+    final effectiveLabelStyle = labelStyle ??
+        const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+          color: Color(0xFF64748B),
+        );
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onEdit,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text.rich(
+                TextSpan(
+                  style: effectiveLabelStyle,
+                  children: [
+                    TextSpan(text: label),
+                    TextSpan(
+                      text: ' ($displayValue)',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF334155),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.edit_outlined,
+              size: 14,
+              color: Color(0xFF907CA1),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Case à cocher qui, une fois cochée, affiche directement la liste
   /// des options en pills sous la ligne. Dès qu'une option est choisie,
   /// la liste disparaît et la valeur est affichée entre parenthèses à
-  /// côté du label (ex. "Bénéficiaire APA (GIR 6)"). Toucher la zone
-  /// texte du label en état replié rouvre la liste pour modifier le
-  /// choix.
+  /// côté du label (ex. "Bénéficiaire APA (GIR 6)") avec un petit crayon
+  /// pour rouvrir la liste.
   Widget _buildCollapsibleOptionCheckbox({
     required String label,
     required bool checked,
