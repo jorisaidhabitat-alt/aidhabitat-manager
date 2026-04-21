@@ -346,6 +346,9 @@ class _NotesWidgetState extends State<NotesWidget> {
   // Stroke en cours
   _Stroke? _activeStroke;
 
+  // Dernière position de la gomme (pour interpoler les trous entre deux events)
+  Offset? _lastEraserPos;
+
   // Undo / redo (bonus par rapport à React)
   final List<List<_Stroke>> _undoStack = <List<_Stroke>>[];
   final List<List<_Stroke>> _redoStack = <List<_Stroke>>[];
@@ -747,7 +750,9 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (_canvasSize.isEmpty) return;
     if (_activeTool == NoteTool.eraser) {
       _pushUndo();
-      _eraseAt(_normalize(details.localPosition));
+      final pt = _normalize(details.localPosition);
+      _lastEraserPos = pt;
+      _eraseAt(pt);
       return;
     }
     _pushUndo();
@@ -764,7 +769,9 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _onDrawUpdate(DragUpdateDetails details) {
     if (_canvasSize.isEmpty) return;
     if (_activeTool == NoteTool.eraser) {
-      _eraseAt(_normalize(details.localPosition));
+      final pt = _normalize(details.localPosition);
+      _eraseAlongPath(_lastEraserPos, pt);
+      _lastEraserPos = pt;
       return;
     }
     final stroke = _activeStroke;
@@ -783,6 +790,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   void _onDrawEnd(DragEndDetails details) {
+    _lastEraserPos = null;
     final stroke = _activeStroke;
     if (stroke == null) return;
     setState(() {

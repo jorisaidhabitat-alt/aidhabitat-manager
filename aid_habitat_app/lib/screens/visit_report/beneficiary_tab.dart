@@ -608,13 +608,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             _markChanged();
           },
         ),
-        const SizedBox(height: 14),
-        // Source de vérité : champ "Informations bénéficiaire" de la
-        // fiche dossier. Read-only ici.
-        _buildReadOnlyField(
-          label: 'Nombre de personnes au foyer',
-          value: _numberPeople > 0 ? '$_numberPeople' : '1',
-        ),
         const SizedBox(height: 24),
       ],
     );
