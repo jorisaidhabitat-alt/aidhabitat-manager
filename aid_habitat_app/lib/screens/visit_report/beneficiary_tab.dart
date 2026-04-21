@@ -525,10 +525,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             const SizedBox(width: 12),
             Expanded(
               flex: 1,
-              // Léger padding top pour descendre l'âge d'un chouïa et
-              // l'aligner visuellement avec le milieu du cadre date.
+              // Padding top pour aligner verticalement l'âge avec le milieu
+              // du cadre date (label + input ≈ 60 px, donc centré ~ 22 px).
               child: Padding(
-                padding: const EdgeInsets.only(top: 10),
+                padding: const EdgeInsets.only(top: 22),
                 child: Text(
                   _computeAgeLabel(occ.birthDate),
                   style: const TextStyle(
@@ -1065,8 +1065,12 @@ class _DateOfBirthField extends StatelessWidget {
       // Override du thème du DatePicker — l'app utilise un seedColor rose/
       // lilas (0xFF907CA1) qui donnait un fond rosé sur toute la bannière
       // du picker. On force un thème neutre (fond blanc, accents sombres).
+      // Le MediaQuery force une taille "portrait" étroite (340 × 600) pour
+      // que le header s'affiche AU-DESSUS du calendrier et non à gauche
+      // (preview latérale supprimée).
       builder: (ctx, child) {
         final base = Theme.of(ctx);
+        final mediaQuery = MediaQuery.of(ctx);
         return Theme(
           data: base.copyWith(
             colorScheme: const ColorScheme.light(
@@ -1082,7 +1086,12 @@ class _DateOfBirthField extends StatelessWidget {
               surfaceTintColor: Colors.white,
             ),
           ),
-          child: child!,
+          child: MediaQuery(
+            data: mediaQuery.copyWith(
+              size: const Size(340, 600),
+            ),
+            child: child!,
+          ),
         );
       },
     );
