@@ -171,6 +171,9 @@ class NocodbSyncService {
       case 'patient':
         await _processPatientOperation(operation, payload);
         return;
+      case 'housing':
+        await _processHousingOperation(operation, payload);
+        return;
       case 'document':
         await _processDocumentOperation(operation, payload);
         return;

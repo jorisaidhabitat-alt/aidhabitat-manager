@@ -491,6 +491,12 @@ class _BathroomTabState extends State<BathroomTab>
                     ? const Color(0xFFFEF3C7)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: a.sdbSolGlissant
+                      ? const Color(0xFFD97706)
+                      : const Color(0xFFFCD34D),
+                  width: 1.5,
+                ),
               ),
               child: Row(
                 children: [
@@ -773,6 +779,10 @@ class _WetZoneButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? const Color(0xFF907CA1) : Colors.white,
           borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: const Color(0xFF907CA1),
+            width: 1.5,
+          ),
         ),
         child: Text(
           label,
