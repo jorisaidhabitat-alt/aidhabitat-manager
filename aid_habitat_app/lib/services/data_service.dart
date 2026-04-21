@@ -109,6 +109,10 @@ class DataService {
     );
   }
 
+  /// Creates a wiki item with an offline-first flow: the record is written
+  /// to SQLite immediately (with a `local_draft_*` id) and a sync operation
+  /// is enqueued. Works without network — the row is picked up by the sync
+  /// engine as soon as connectivity returns.
   Future<WikiItem> createWikiItem({
     required String title,
     required String description,
@@ -116,15 +120,13 @@ class DataService {
     required List<String> tags,
     String imageDataUrl = '',
   }) async {
-    final created = await _nocodbApiClient.createWikiItem(
+    return _wikiRepository.createLocalDraft(
       title: title,
       description: description,
       category: category,
       tags: tags,
       imageDataUrl: imageDataUrl,
     );
-    await _wikiRepository.mergeRemoteItems([created]);
-    return created;
   }
 
   /// Uploads a [File] as the current user's profile photo.
@@ -234,17 +236,17 @@ class DataService {
     return _nocodbApiClient.deleteAccessMember(email);
   }
 
+  /// Updates a wiki item offline-first: edits are persisted to SQLite and a
+  /// sync operation is enqueued. If [newImageDataUrl] is provided, it is
+  /// stored in `pending_image_data_url` and uploaded on next sync.
   Future<WikiItem> updateWikiItem(
     WikiItem item, {
     String? newImageDataUrl,
   }) async {
-    final saved = await _nocodbApiClient.updateWikiItem(
-      itemId: item.id,
-      item: item,
+    return _wikiRepository.updateLocalItem(
+      item,
       imageDataUrl: newImageDataUrl,
     );
-    await _wikiRepository.mergeRemoteItems([saved]);
-    return saved;
   }
 
   Future<List<DocItem>> fetchDocuments(String patientId) async {

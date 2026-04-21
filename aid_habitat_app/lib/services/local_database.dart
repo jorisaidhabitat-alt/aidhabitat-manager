@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 6;
+  static const _dbVersion = 7;
 
   Database? _database;
 
@@ -51,6 +51,9 @@ class LocalDatabase {
     }
     if (oldVersion < 6) {
       await _migrateV5ToV6(db);
+    }
+    if (oldVersion < 7) {
+      await _migrateV6ToV7(db);
     }
   }
 
@@ -113,6 +116,41 @@ class LocalDatabase {
     await _createTableIfMissing(db, 'visit_recommendations', _createVisitRecommendationsSQL);
   }
 
+  /// v6 → v7: Offline capability for admin access, wiki creation/edit,
+  /// retirement fund edit, and profile photo upload. All of these used to
+  /// bypass the sync queue and fail silently when offline.
+  ///
+  ///  - `access_members` table: cache of admin access members so the
+  ///    admin panel works offline and so new ergos provisioned remotely
+  ///    can log in offline after the first sync.
+  ///  - `wiki_items.pending_image_data_url`: base64 data URL of a wiki
+  ///    image captured offline, uploaded on next sync then cleared.
+  ///  - `retirement_funds.pending_logo_data_url`: same pattern for fund
+  ///    logos edited offline.
+  ///  - `app_users.pending_photo_data_url`: same pattern for profile
+  ///    photos uploaded offline.
+  ///  - `app_users.sync_state`: marks users with pending profile photo
+  ///    uploads so the sync engine can find them.
+  Future<void> _migrateV6ToV7(Database db) async {
+    await _createTableIfMissing(db, 'access_members', _createAccessMembersSQL);
+    await _addColumnIfMissing(
+      db, 'wiki_items', 'pending_image_data_url', 'TEXT');
+    await _addColumnIfMissing(
+      db, 'wiki_items', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+    await _addColumnIfMissing(
+      db, 'retirement_funds', 'pending_logo_data_url', 'TEXT');
+    await _addColumnIfMissing(
+      db, 'retirement_funds', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+    await _addColumnIfMissing(
+      db, 'app_users', 'pending_photo_data_url', 'TEXT');
+    await _addColumnIfMissing(
+      db, 'app_users', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_access_members_sync '
+      'ON access_members(sync_state)',
+    );
+  }
+
   static const _createWikiItemsSQL = '''
     CREATE TABLE wiki_items (
       id TEXT PRIMARY KEY,
@@ -123,7 +161,9 @@ class LocalDatabase {
       category TEXT NOT NULL DEFAULT '',
       created_at TEXT,
       updated_at TEXT,
-      last_synced_at TEXT NOT NULL
+      last_synced_at TEXT NOT NULL,
+      pending_image_data_url TEXT,
+      sync_state TEXT NOT NULL DEFAULT 'synced'
     )
   ''';
 
@@ -140,7 +180,28 @@ class LocalDatabase {
       website TEXT NOT NULL DEFAULT '',
       logo_url TEXT NOT NULL DEFAULT '',
       last_edited_at TEXT,
-      last_synced_at TEXT NOT NULL
+      last_synced_at TEXT NOT NULL,
+      pending_logo_data_url TEXT,
+      sync_state TEXT NOT NULL DEFAULT 'synced'
+    )
+  ''';
+
+  static const _createAccessMembersSQL = '''
+    CREATE TABLE access_members (
+      email TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      selectable INTEGER NOT NULL DEFAULT 1,
+      establishment_label TEXT NOT NULL DEFAULT '',
+      ergo_label TEXT NOT NULL DEFAULT '',
+      has_password INTEGER NOT NULL DEFAULT 0,
+      generated_password TEXT NOT NULL DEFAULT '',
+      created_at TEXT,
+      updated_at TEXT NOT NULL,
+      last_synced_at TEXT NOT NULL,
+      sync_state TEXT NOT NULL DEFAULT 'synced',
+      pending_delete INTEGER NOT NULL DEFAULT 0,
+      pending_password TEXT
     )
   ''';
 
@@ -258,6 +319,8 @@ class LocalDatabase {
         ergo_label TEXT,
         is_active INTEGER NOT NULL DEFAULT 1,
         profile_photo_url TEXT NOT NULL DEFAULT '',
+        pending_photo_data_url TEXT,
+        sync_state TEXT NOT NULL DEFAULT 'synced',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -460,6 +523,7 @@ class LocalDatabase {
     await db.execute(_createWikiItemsSQL);
     await db.execute(_createRetirementFundsSQL);
     await db.execute(_createReferenceSyncMetaSQL);
+    await db.execute(_createAccessMembersSQL);
 
     // Per-dossier offline tables (visit report sections + recommendations)
     await db.execute(_createContexteDeVieSQL);
@@ -476,6 +540,7 @@ class LocalDatabase {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_access_members_sync ON access_members(sync_state)');
 
     // No initial seed — the workspace is populated from NocoDB at first login.
   }

@@ -474,7 +474,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
   static const Map<PlanTool, Size> _defaultSymbolSize = {
     PlanTool.window: Size(120, 8),
     PlanTool.door: Size(80, 80),
-    PlanTool.toilet: Size(60, 100),
+    // WC : plus petit + plus large (proportions cuvette réelle ~2:1,
+    // l'axe long étant horizontal). Orientable ensuite via la rotation.
+    PlanTool.toilet: Size(68, 40),
     PlanTool.shower: Size(90, 90),
     PlanTool.bath: Size(170, 75),
   };
@@ -579,16 +581,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           // Outils de tracé.
-          _toolBtn(PlanTool.pen, LucideIcons.penTool, 'Crayon'),
+          _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
           _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
           _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
           _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
           _toolBtn(PlanTool.wall, LucideIcons.rectangleHorizontal, 'Mur'),
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
-          _divider(),
-          // Menu déroulant "Insérer un élément" — symboles architecturaux
-          // (fenêtre, porte, WC, douche, baignoire). Au choix, l'élément
-          // apparaît au centre du canvas avec poignées de taille + rotation.
+          // "Insérer un élément" juste après la gomme, même ligne.
           _buildInsertSymbolMenu(),
           _divider(),
           // Palette de couleurs.
@@ -702,46 +701,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
-  // Menu déroulant "Insérer un élément" — remplace les 5 boutons dédiés
-  // (fenêtre, porte, WC, douche, baignoire). À la sélection, le symbole
-  // apparaît au centre du canvas, taille par défaut, sélectionné pour
-  // manipulation immédiate.
+  // Menu "Insérer un élément" — ouvre un overlay custom en grille 3
+  // colonnes au lieu du PopupMenu linéaire natif.
+  final GlobalKey _insertMenuKey = GlobalKey();
+
   Widget _buildInsertSymbolMenu() {
-    return PopupMenuButton<PlanTool>(
-      tooltip: '',
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
-      elevation: 6,
-      onSelected: _insertSymbolAtCenter,
-      itemBuilder: (ctx) => const [
-        PopupMenuItem(
-          value: PlanTool.window,
-          child: _SymbolMenuRow(
-              icon: LucideIcons.appWindow, label: 'Fenêtre'),
-        ),
-        PopupMenuItem(
-          value: PlanTool.door,
-          child: _SymbolMenuRow(
-              icon: LucideIcons.doorOpen, label: 'Porte'),
-        ),
-        PopupMenuItem(
-          value: PlanTool.toilet,
-          child: _SymbolMenuRow(
-              icon: LucideIcons.armchair, label: 'WC'),
-        ),
-        PopupMenuItem(
-          value: PlanTool.shower,
-          child: _SymbolMenuRow(
-              icon: LucideIcons.droplets, label: 'Douche'),
-        ),
-        PopupMenuItem(
-          value: PlanTool.bath,
-          child: _SymbolMenuRow(
-              icon: LucideIcons.bath, label: 'Baignoire'),
-        ),
-      ],
+    return GestureDetector(
+      key: _insertMenuKey,
+      onTap: _openInsertSymbolOverlay,
       child: Container(
         height: 32,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -769,6 +736,44 @@ class _PlanCanvasState extends State<PlanCanvas> {
         ),
       ),
     );
+  }
+
+  Future<void> _openInsertSymbolOverlay() async {
+    final ctx = _insertMenuKey.currentContext;
+    if (ctx == null) return;
+    final RenderBox button = ctx.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(
+          Offset(0, button.size.height + 6),
+          ancestor: overlay,
+        ),
+        button.localToGlobal(
+          button.size.bottomRight(Offset.zero) + const Offset(0, 6),
+          ancestor: overlay,
+        ),
+      ),
+      Offset.zero & overlay.size,
+    );
+    final tool = await showMenu<PlanTool>(
+      context: context,
+      position: position,
+      color: Colors.white,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      items: [
+        PopupMenuItem<PlanTool>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: _SymbolGridMenu(
+            onPick: (t) => Navigator.of(context).pop(t),
+          ),
+        ),
+      ],
+    );
+    if (tool != null) _insertSymbolAtCenter(tool);
   }
 
   Widget _sizeStepButton({
@@ -955,11 +960,68 @@ class _PlanCanvasState extends State<PlanCanvas> {
                     ),
                   ),
                 ),
+              // Bouton "Supprimer l'élément" flottant — cliquable, affiché
+              // en haut-droite du bounding box du symbole sélectionné.
+              if (_selectedIndex >= 0 &&
+                  _selectedIndex < _strokes.length &&
+                  _symbolTools.contains(_strokes[_selectedIndex].tool))
+                _buildDeleteButtonForSelected(),
             ],
           );
         },
       ),
     );
+  }
+
+  /// Calcule la position en coord. canvas du coin haut-droit tourné du
+  /// symbole sélectionné, et place un petit bouton "corbeille" à côté.
+  Widget _buildDeleteButtonForSelected() {
+    final sel = _strokes[_selectedIndex];
+    final bounds = sel.symbolLocalBounds;
+    if (bounds == null) return const SizedBox.shrink();
+    final center = sel.points.first;
+    // Coin haut-droit local.
+    final localTR = Offset(bounds.right, bounds.top);
+    // Transforme en coord. canvas en appliquant la rotation.
+    final relative = localTR - center;
+    final cos = math.cos(sel.rotation);
+    final sin = math.sin(sel.rotation);
+    final rotated = Offset(
+      relative.dx * cos - relative.dy * sin,
+      relative.dx * sin + relative.dy * cos,
+    );
+    final canvasPoint = center + rotated;
+    // On place le bouton légèrement décalé au-dessus-à-droite du coin.
+    final btnLeft = canvasPoint.dx + 10;
+    final btnTop = canvasPoint.dy - 38;
+    return Positioned(
+      left: btnLeft,
+      top: btnTop,
+      child: Material(
+        color: Colors.red.shade600,
+        shape: const CircleBorder(),
+        elevation: 4,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: _deleteSelectedSymbol,
+          child: const SizedBox(
+            width: 30,
+            height: 30,
+            child: Icon(LucideIcons.trash2, color: Colors.white, size: 16),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _deleteSelectedSymbol() {
+    if (_selectedIndex < 0 || _selectedIndex >= _strokes.length) return;
+    setState(() {
+      _strokes.removeAt(_selectedIndex);
+      _selectedIndex = -1;
+      _activeHandle = null;
+    });
+    _scheduleSave();
   }
 
   // ---------------------------------------------------------------------
@@ -1094,28 +1156,63 @@ class _PlanCanvasState extends State<PlanCanvas> {
 /// Identifie quelle poignée est active durant un drag (ou le corps).
 enum _SymbolHandle { topLeft, topRight, bottomLeft, bottomRight, rotate, body }
 
-/// Petite ligne d'un PopupMenuItem pour le menu "Insérer un élément".
-class _SymbolMenuRow extends StatelessWidget {
-  const _SymbolMenuRow({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
+/// Grille 3 colonnes affichée dans un PopupMenuItem unique pour le menu
+/// "Insérer un élément".
+class _SymbolGridMenu extends StatelessWidget {
+  const _SymbolGridMenu({required this.onPick});
+  final ValueChanged<PlanTool> onPick;
+
+  static const List<({PlanTool tool, IconData icon, String label})> _items = [
+    (tool: PlanTool.window, icon: LucideIcons.appWindow, label: 'Fenêtre'),
+    (tool: PlanTool.door, icon: LucideIcons.doorOpen, label: 'Porte'),
+    (tool: PlanTool.toilet, icon: LucideIcons.armchair, label: 'WC'),
+    (tool: PlanTool.shower, icon: LucideIcons.droplets, label: 'Douche'),
+    (tool: PlanTool.bath, icon: LucideIcons.bath, label: 'Baignoire'),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: const Color(0xFF334155)),
-        const SizedBox(width: 10),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF0F172A),
-          ),
+    return SizedBox(
+      width: 280,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: _items.map((item) {
+            return SizedBox(
+              width: (280 - 16 - 12) / 3, // 3 colonnes
+              height: 72,
+              child: InkWell(
+                onTap: () => onPick(item.tool),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(item.icon,
+                          size: 22, color: const Color(0xFF334155)),
+                      const SizedBox(height: 6),
+                      Text(
+                        item.label,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
-      ],
+      ),
     );
   }
 }

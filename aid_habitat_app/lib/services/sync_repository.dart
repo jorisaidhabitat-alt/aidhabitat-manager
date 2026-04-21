@@ -369,21 +369,31 @@ class SyncRepository {
     required String entityLocalId,
     required SyncState syncState,
   }) async {
-    final table = switch (entityType) {
-      'dossier' => 'dossiers',
-      'document' => 'documents',
-      'note_page' => 'note_pages',
+    final binding = switch (entityType) {
+      'dossier' => const _EntityBinding('dossiers', 'local_id'),
+      'document' => const _EntityBinding('documents', 'local_id'),
+      'note_page' => const _EntityBinding('note_pages', 'local_id'),
+      'wiki_item' => const _EntityBinding('wiki_items', 'id'),
+      'retirement_fund' => const _EntityBinding('retirement_funds', 'id'),
+      'access_member' => const _EntityBinding('access_members', 'email'),
+      'profile_photo' => const _EntityBinding('app_users', 'local_id'),
       _ => null,
     };
-    if (table == null) return;
+    if (binding == null) return;
 
     await db.update(
-      table,
+      binding.table,
       {'sync_state': syncState.name},
-      where: 'local_id = ?',
+      where: '${binding.idColumn} = ?',
       whereArgs: [entityLocalId],
     );
   }
 }
 
 const undefined = Object();
+
+class _EntityBinding {
+  final String table;
+  final String idColumn;
+  const _EntityBinding(this.table, this.idColumn);
+}

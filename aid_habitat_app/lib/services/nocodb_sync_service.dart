@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:sqflite/sqflite.dart';
+
 import '../models/types.dart';
 import 'app_config.dart';
 import 'local_database.dart';
@@ -188,6 +190,18 @@ class NocodbSyncService {
         return;
       case 'visit_recommendations':
         await _processVisitRecommendationsOperation(operation, payload);
+        return;
+      case 'wiki_item':
+        await _processWikiItemOperation(operation, payload);
+        return;
+      case 'retirement_fund':
+        await _processRetirementFundOperation(operation, payload);
+        return;
+      case 'access_member':
+        await _processAccessMemberOperation(operation, payload);
+        return;
+      case 'profile_photo':
+        await _processProfilePhotoOperation(operation, payload);
         return;
       default:
         throw Exception(
@@ -524,6 +538,310 @@ class NocodbSyncService {
       documentLocalId: operation.entityLocalId,
       remotePath: uploaded['remotePath']?.toString() ?? '',
       publicUrl: uploaded['publicUrl']?.toString() ?? '',
+    );
+  }
+
+  /// Pushes a wiki item create/update. For `create`, the local row was
+  /// inserted with a temporary `local_draft_*` id — after the remote call
+  /// returns, we swap the local id for the server-assigned one so future
+  /// edits go through `update` instead of `create`. The pending image data
+  /// URL column is cleared on success so it's not re-uploaded.
+  Future<void> _processWikiItemOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    final db = await LocalDatabase.instance.database;
+    final imageDataUrl = payload['imageDataUrl']?.toString() ?? '';
+
+    if (operation.operationType == 'create') {
+      final title = payload['title']?.toString() ?? '';
+      final description = payload['description']?.toString() ?? '';
+      final category = payload['category']?.toString() ?? '';
+      final tags = (payload['tags'] as List?)
+              ?.map((t) => t.toString())
+              .toList() ??
+          const <String>[];
+      final localId = operation.entityLocalId;
+
+      if (title.isEmpty) throw Exception('Titre wiki obligatoire');
+
+      final saved = await _apiClient.createWikiItem(
+        title: title,
+        description: description,
+        category: category,
+        tags: tags,
+        imageDataUrl: imageDataUrl,
+      );
+      // Replace the local draft row (id = localId) with the remote one.
+      await db.transaction((txn) async {
+        await txn.delete(
+          'wiki_items',
+          where: 'id = ?',
+          whereArgs: [localId],
+        );
+        final now = DateTime.now().toIso8601String();
+        await txn.insert('wiki_items', {
+          'id': saved.id,
+          'title': saved.title,
+          'description': saved.description,
+          'image_url': saved.imageUrl,
+          'tags_json': jsonEncode(saved.tags),
+          'category': saved.category,
+          'created_at': saved.createdAt,
+          'updated_at': saved.updatedAt,
+          'last_synced_at': now,
+          'pending_image_data_url': null,
+          'sync_state': SyncState.synced.name,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      });
+      return;
+    }
+
+    if (operation.operationType == 'update') {
+      final itemId = payload['itemId']?.toString() ?? operation.entityLocalId;
+      final title = payload['title']?.toString() ?? '';
+      final description = payload['description']?.toString() ?? '';
+      final category = payload['category']?.toString() ?? '';
+      final tags = (payload['tags'] as List?)
+              ?.map((t) => t.toString())
+              .toList() ??
+          const <String>[];
+
+      final saved = await _apiClient.updateWikiItem(
+        itemId: itemId,
+        item: WikiItem(
+          id: itemId,
+          title: title,
+          description: description,
+          imageUrl: payload['imageUrl']?.toString() ?? '',
+          tags: tags,
+          category: category,
+          createdAt: payload['createdAt']?.toString() ?? '',
+          updatedAt: payload['updatedAt']?.toString() ?? '',
+        ),
+        imageDataUrl: imageDataUrl.isEmpty ? null : imageDataUrl,
+      );
+      final now = DateTime.now().toIso8601String();
+      await db.update(
+        'wiki_items',
+        {
+          'title': saved.title,
+          'description': saved.description,
+          'image_url': saved.imageUrl,
+          'tags_json': jsonEncode(saved.tags),
+          'category': saved.category,
+          'updated_at': saved.updatedAt,
+          'last_synced_at': now,
+          'pending_image_data_url': null,
+          'sync_state': SyncState.synced.name,
+        },
+        where: 'id = ?',
+        whereArgs: [itemId],
+      );
+      return;
+    }
+
+    throw Exception('Opération wiki_item non supportée: ${operation.operationType}');
+  }
+
+  /// Pushes a retirement fund update. The fund payload comes fully serialized
+  /// from the repository.
+  Future<void> _processRetirementFundOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    if (operation.operationType != 'update') {
+      throw Exception(
+        'Opération retirement_fund non supportée: ${operation.operationType}',
+      );
+    }
+    final fundId = payload['fundId']?.toString() ?? operation.entityLocalId;
+    final fundMap = (payload['fund'] as Map?)?.cast<String, dynamic>();
+    if (fundMap == null) throw Exception('Payload retirement_fund incomplet');
+
+    final fund = RetirementFund(
+      id: fundId,
+      name: fundMap['name']?.toString() ?? '',
+      phone: fundMap['phone']?.toString() ?? '',
+      audience: fundMap['audience']?.toString() ?? '',
+      requestMethod: fundMap['requestMethod']?.toString() ?? '',
+      requestDelay: fundMap['requestDelay']?.toString() ?? '',
+      aidAmount: fundMap['aidAmount']?.toString() ?? '',
+      therapistNote: fundMap['therapistNote']?.toString() ?? '',
+      website: fundMap['website']?.toString() ?? '',
+      logoUrl: fundMap['logoUrl']?.toString() ?? '',
+    );
+
+    final saved = await _apiClient.updateRetirementFund(
+      fundId: fundId,
+      fund: fund,
+    );
+
+    final db = await LocalDatabase.instance.database;
+    final now = DateTime.now().toIso8601String();
+    await db.update(
+      'retirement_funds',
+      {
+        'name': saved.name,
+        'phone': saved.phone,
+        'audience': saved.audience,
+        'request_method': saved.requestMethod,
+        'request_delay': saved.requestDelay,
+        'aid_amount': saved.aidAmount,
+        'therapist_note': saved.therapistNote,
+        'website': saved.website,
+        'logo_url': saved.logoUrl,
+        'last_edited_at': saved.lastEditedAt,
+        'last_synced_at': now,
+        'pending_logo_data_url': null,
+        'sync_state': SyncState.synced.name,
+      },
+      where: 'id = ?',
+      whereArgs: [fundId],
+    );
+  }
+
+  /// Pushes an admin access member mutation. Supports create / update /
+  /// delete / set_password. After successful create/update, the local row is
+  /// updated with the server-normalized fields.
+  Future<void> _processAccessMemberOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    final db = await LocalDatabase.instance.database;
+    final email = payload['email']?.toString() ?? operation.entityLocalId;
+
+    switch (operation.operationType) {
+      case 'create':
+        final displayName = payload['displayName']?.toString() ?? '';
+        final roleName = payload['role']?.toString() ?? 'ergo';
+        final role = roleName.toLowerCase() == 'admin'
+            ? LocalUserRole.admin
+            : LocalUserRole.ergo;
+        final establishmentId = payload['establishmentId']?.toString();
+        final password = payload['password']?.toString();
+        final saved = await _apiClient.createAccessMember(
+          email: email,
+          displayName: displayName,
+          role: role,
+          establishmentId:
+              (establishmentId != null && establishmentId.isNotEmpty)
+                  ? establishmentId
+                  : null,
+          password: (password != null && password.isNotEmpty) ? password : null,
+        );
+        await _persistAccessMember(db, saved);
+        return;
+
+      case 'update':
+        final displayName = payload['displayName']?.toString();
+        final establishmentId = payload['establishmentId']?.toString();
+        final saved = await _apiClient.updateAccessMember(
+          email: email,
+          displayName: displayName,
+          establishmentId: establishmentId,
+        );
+        await _persistAccessMember(db, saved);
+        return;
+
+      case 'delete':
+        await _apiClient.deleteAccessMember(email);
+        await db.delete(
+          'access_members',
+          where: 'email = ?',
+          whereArgs: [email],
+        );
+        return;
+
+      case 'set_password':
+        final password = payload['password']?.toString();
+        final newPassword = await _apiClient.setAccessPassword(
+          email: email,
+          password: (password != null && password.isNotEmpty) ? password : null,
+        );
+        if (newPassword != null && newPassword.isNotEmpty) {
+          await db.update(
+            'access_members',
+            {
+              'generated_password': newPassword,
+              'has_password': 1,
+              'pending_password': null,
+              'sync_state': SyncState.synced.name,
+              'updated_at': DateTime.now().toIso8601String(),
+            },
+            where: 'email = ?',
+            whereArgs: [email],
+          );
+        } else {
+          await db.update(
+            'access_members',
+            {
+              'pending_password': null,
+              'sync_state': SyncState.synced.name,
+              'updated_at': DateTime.now().toIso8601String(),
+            },
+            where: 'email = ?',
+            whereArgs: [email],
+          );
+        }
+        return;
+
+      default:
+        throw Exception(
+          'Opération access_member non supportée: ${operation.operationType}',
+        );
+    }
+  }
+
+  Future<void> _persistAccessMember(Database db, AdminAccessMember m) async {
+    final now = DateTime.now().toIso8601String();
+    await db.insert('access_members', {
+      'email': m.email,
+      'display_name': m.displayName,
+      'role': m.role.name,
+      'selectable': m.selectable ? 1 : 0,
+      'establishment_label': m.establishmentLabel,
+      'ergo_label': m.ergoLabel,
+      'has_password': m.hasPassword ? 1 : 0,
+      'generated_password': m.generatedPassword,
+      'created_at': m.createdAt,
+      'updated_at': now,
+      'last_synced_at': now,
+      'sync_state': SyncState.synced.name,
+      'pending_delete': 0,
+      'pending_password': null,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Pushes a profile photo upload. The local row keeps its SQLite-encoded
+  /// data URL until the server returns the resolved public URL.
+  Future<void> _processProfilePhotoOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    if (operation.operationType != 'upload') {
+      throw Exception(
+        'Opération profile_photo non supportée: ${operation.operationType}',
+      );
+    }
+    final userLocalId = payload['userLocalId']?.toString() ??
+        operation.entityLocalId;
+    final dataUrl = payload['imageDataUrl']?.toString() ?? '';
+    if (dataUrl.isEmpty) throw Exception('Payload profile_photo incomplet');
+
+    final photoUrl = await _apiClient.uploadProfilePhoto(dataUrl);
+
+    final db = await LocalDatabase.instance.database;
+    await db.update(
+      'app_users',
+      {
+        'profile_photo_url': photoUrl,
+        'pending_photo_data_url': null,
+        'sync_state': SyncState.synced.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'local_id = ?',
+      whereArgs: [userLocalId],
     );
   }
 
