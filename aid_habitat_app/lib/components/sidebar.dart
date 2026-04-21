@@ -154,47 +154,6 @@ class _SidebarState extends State<Sidebar> {
             }).toList(),
           ),
 
-          // Sync status indicator (passive — sync is automatic on network return)
-          if (widget.isSyncing || widget.pendingSyncCount > 0)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Tooltip(
-                message: widget.isSyncing
-                    ? 'Synchronisation automatique en cours…'
-                    : '${widget.pendingSyncCount} modification${widget.pendingSyncCount > 1 ? 's' : ''} en attente',
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: widget.isSyncing
-                        ? const Color(0xFFFFF7ED)
-                        : const Color(0xFFFEF3C7),
-                    shape: BoxShape.circle,
-                  ),
-                  child: widget.isSyncing
-                      ? const Center(
-                          child: SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFFFB923C),
-                            ),
-                          ),
-                        )
-                      : Center(
-                          child: Text(
-                            '${widget.pendingSyncCount}',
-                            style: const TextStyle(
-                              color: Color(0xFFD97706),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-            ),
 
           // Profile / Bottom — single avatar button that opens the account
           // dialog (profile photo, password, logout, admin access).
