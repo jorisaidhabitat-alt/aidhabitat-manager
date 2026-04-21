@@ -432,13 +432,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   Widget _buildGeneral() {
     return Column(
       children: [
-        FormSection.text(
-          'Informations Générales',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. Type de logement (en premier)
-              FormToggleGroup(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Type de logement (en premier)
+            FormToggleGroup(
                 label: 'Type de logement',
                 options: const ['Maison', 'Appartement'],
                 selected: _typology,
@@ -545,21 +543,18 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         .where((c) => !_orderedLevels.contains(c.field))
         .toList();
 
-    return FormSection.text(
-      'Niveaux',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ..._orderedLevels.map((field) {
-            final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildLevelCard(cfg),
-            );
-          }),
-          if (available.isNotEmpty) _buildAddLevelButton(available),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ..._orderedLevels.map((field) {
+          final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildLevelCard(cfg),
+          );
+        }),
+        if (available.isNotEmpty) _buildAddLevelButton(available),
+      ],
     );
   }
 
@@ -747,11 +742,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildVoletsSection() {
-    return FormSection.text(
-      'Volets',
-      child: Column(
-        children: [
-          _buildVoletRow(
+    return Column(
+      children: [
+        _buildVoletRow(
             'Roulants manuels',
             _voletsManStatus,
             _voletsManLoc,
