@@ -216,13 +216,16 @@ class _RecommendationsTabState extends State<RecommendationsTab>
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _items.length,
               onReorder: _reorderItem,
-              buildDefaultDragHandles: _items.length > 1,
+              // Drag handle géré manuellement dans la carte (icône en haut
+              // à droite de la carte, dans _RecommendationCard).
+              buildDefaultDragHandles: false,
               itemBuilder: (context, i) {
                 final item = _items[i];
                 return _RecommendationCard(
                   key: ValueKey(item.id),
                   item: item,
                   index: i,
+                  reorderable: _items.length > 1,
                   onChange: (updated) => _updateItem(i, updated),
                   onRemove: () => _removeItem(i),
                   onPickWiki: () => _openPicker(i),
@@ -279,6 +282,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 class _RecommendationCard extends StatelessWidget {
   final VisitRecommendationItem item;
   final int index;
+  final bool reorderable;
   final ValueChanged<VisitRecommendationItem> onChange;
   final VoidCallback onRemove;
   final VoidCallback onPickWiki;
@@ -287,6 +291,7 @@ class _RecommendationCard extends StatelessWidget {
     super.key,
     required this.item,
     required this.index,
+    required this.reorderable,
     required this.onChange,
     required this.onRemove,
     required this.onPickWiki,
@@ -295,6 +300,9 @@ class _RecommendationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasWiki = item.wikiItemId.isNotEmpty || item.wikiImageUrl.isNotEmpty;
+    final title = item.customTitle.trim().isNotEmpty
+        ? item.customTitle.trim()
+        : 'Préconisation ${index + 1}';
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -302,20 +310,102 @@ class _RecommendationCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          // Bloc gauche : titre + inputs.
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Ligne titre (custom) — sans tag, sans pastille.
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF334155),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  onPressed: onPickWiki,
+                  icon: const Icon(Icons.swap_horiz, size: 14),
+                  label: Text(hasWiki
+                      ? 'Changer la fiche wiki'
+                      : 'Choisir une fiche wiki'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF907CA1),
+                    padding: EdgeInsets.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    minimumSize: Size.zero,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FormTextField(
+                  label: 'Titre personnalisé',
+                  value: item.customTitle,
+                  onChanged: (v) => onChange(item.copyWith(customTitle: v)),
+                ),
+                const SizedBox(height: 10),
+                FormTextField(
+                  label: 'Note',
+                  value: item.note,
+                  maxLines: 3,
+                  onChanged: (v) => onChange(item.copyWith(note: v)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          // Bloc droit : drag handle (haut-droite) + grande image.
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Image thumbnail or placeholder
+              // Drag handle + bouton supprimer sur la même ligne en haut-
+              // droite de la carte.
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (reorderable)
+                    ReorderableDragStartListener(
+                      index: index,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.grab,
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.drag_indicator,
+                            size: 20,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  IconButton(
+                    onPressed: onRemove,
+                    icon: const Icon(Icons.close, size: 18),
+                    color: const Color(0xFF94A3B8),
+                    tooltip: 'Supprimer',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
               GestureDetector(
                 onTap: onPickWiki,
                 child: Container(
-                  width: 84,
-                  height: 84,
+                  width: 180,
+                  height: 180,
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                   alignment: Alignment.center,
                   clipBehavior: Clip.antiAlias,
@@ -323,87 +413,21 @@ class _RecommendationCard extends StatelessWidget {
                       ? Image.network(
                           resolveMediaUrl(item.wikiImageUrl),
                           fit: BoxFit.cover,
-                          width: 84,
-                          height: 84,
-                          errorBuilder: (_, __, ___) =>
-                              const Icon(Icons.image_outlined,
-                                  color: Color(0xFF94A3B8)),
-                        )
-                      : const Icon(Icons.add_photo_alternate_outlined,
-                          color: Color(0xFF907CA1), size: 26),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.displayTitle.isNotEmpty
-                          ? item.displayTitle
-                          : 'Préconisation ${index + 1}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    if (item.wikiTag.isNotEmpty)
-                      Container(
-                        margin: const EdgeInsets.only(top: 4),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          item.wikiTag,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF475569),
+                          width: 180,
+                          height: 180,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.image_outlined,
+                            color: Color(0xFF94A3B8),
                           ),
+                        )
+                      : const Icon(
+                          Icons.add_photo_alternate_outlined,
+                          color: Color(0xFF907CA1),
+                          size: 40,
                         ),
-                      ),
-                    const SizedBox(height: 6),
-                    TextButton.icon(
-                      onPressed: onPickWiki,
-                      icon: const Icon(Icons.swap_horiz, size: 14),
-                      label: Text(hasWiki
-                          ? 'Changer la fiche wiki'
-                          : 'Choisir une fiche wiki'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF907CA1),
-                        padding: EdgeInsets.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        minimumSize: Size.zero,
-                      ),
-                    ),
-                  ],
                 ),
-              ),
-              IconButton(
-                onPressed: onRemove,
-                icon: const Icon(Icons.close, size: 18),
-                color: const Color(0xFF94A3B8),
-                tooltip: 'Supprimer',
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          FormTextField(
-            label: 'Titre personnalisé',
-            value: item.customTitle,
-            onChanged: (v) => onChange(item.copyWith(customTitle: v)),
-          ),
-          const SizedBox(height: 10),
-          FormTextField(
-            label: 'Note',
-            value: item.note,
-            maxLines: 3,
-            onChanged: (v) => onChange(item.copyWith(note: v)),
           ),
         ],
       ),
