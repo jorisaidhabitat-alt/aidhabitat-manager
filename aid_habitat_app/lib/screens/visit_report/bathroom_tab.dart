@@ -485,49 +485,28 @@ class _BathroomTabState extends State<BathroomTab>
           GestureDetector(
             onTap: () => _updateActive(_copy(a, sdbSolGlissant: !a.sdbSolGlissant)),
             child: Container(
-              padding: const EdgeInsets.all(12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: a.sdbSolGlissant
-                    ? const Color(0xFFFEF3C7)
+                    ? const Color(0xFF907CA1)
                     : Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: a.sdbSolGlissant
-                      ? const Color(0xFFD97706)
-                      : const Color(0xFFFCD34D),
-                  width: 1.5,
+                      ? const Color(0xFF907CA1)
+                      : Colors.grey.shade300,
                 ),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: a.sdbSolGlissant
-                          ? Colors.white
-                          : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.warning_amber_rounded,
-                      size: 20,
-                      color: a.sdbSolGlissant
-                          ? const Color(0xFFD97706)
-                          : const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Sol glissant',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
-                    ),
-                  ),
-                ],
+              child: Text(
+                'Sol glissant',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: a.sdbSolGlissant ? Colors.white : Colors.black87,
+                ),
               ),
             ),
           ),
