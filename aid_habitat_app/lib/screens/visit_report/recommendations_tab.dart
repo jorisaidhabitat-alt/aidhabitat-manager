@@ -200,13 +200,6 @@ class _RecommendationsTabState extends State<RecommendationsTab>
               if (_saving) const SaveStatusIndicator(saving: true),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            _items.length > 1
-                ? 'Glissez pour réordonner. ${_items.length} items.'
-                : 'Ajoutez des préconisations depuis la bibliothèque wiki.',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-          ),
           const SizedBox(height: 16),
           if (_items.isEmpty)
             _buildEmpty()
@@ -300,9 +293,12 @@ class _RecommendationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasWiki = item.wikiItemId.isNotEmpty || item.wikiImageUrl.isNotEmpty;
+    // Titre affiché : customTitle si renseigné, sinon le titre de l'item
+    // bibliothèque wiki ajouté. Si aucun des deux → titre vide (le TextField
+    // "Titre personnalisé" en-dessous reste là pour saisir manuellement).
     final title = item.customTitle.trim().isNotEmpty
         ? item.customTitle.trim()
-        : 'Préconisation ${index + 1}';
+        : item.wikiTitle.trim();
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
