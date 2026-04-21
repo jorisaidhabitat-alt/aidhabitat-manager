@@ -5,8 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
-import '../services/auth_service.dart';
 import '../services/data_service.dart';
+import 'cached_remote_image.dart';
 
 class AccountDialog extends StatefulWidget {
   const AccountDialog({
@@ -31,7 +31,6 @@ class AccountDialog extends StatefulWidget {
 }
 
 class _AccountDialogState extends State<AccountDialog> {
-  final AuthService _authService = AuthService();
   final DataService _dataService = DataService();
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -62,14 +61,16 @@ class _AccountDialogState extends State<AccountDialog> {
         return;
       }
 
-      final photoUrl = await _dataService.uploadProfilePhoto(File(picked.path));
-      // Persist in SQLite so the photo survives offline restarts — the
-      // server URL would otherwise be re-fetched on next boot, but if
-      // the device is offline the avatar falls back to initials.
-      await _authService.updateCurrentUserProfilePhoto(photoUrl);
+      // Offline-first: [uploadProfilePhoto] stores the data URL locally
+      // (`app_users.pending_photo_data_url`) and enqueues a `profile_photo`
+      // sync op — no network call is made here. The returned value is the
+      // freshly-built base64 data URL, which we use to paint the avatar
+      // immediately.
+      final photoDataUrl =
+          await _dataService.uploadProfilePhoto(File(picked.path));
       if (!mounted) return;
       setState(() {
-        _photoUrl = photoUrl;
+        _photoUrl = photoDataUrl;
         _isUploadingPhoto = false;
       });
     } catch (err) {
@@ -115,18 +116,34 @@ class _AccountDialogState extends State<AccountDialog> {
                             Container(
                               width: 88,
                               height: 88,
-                              decoration: BoxDecoration(
+                              decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: const Color(0xFFF3F0F5),
-                                image: _photoUrl.isNotEmpty
-                                    ? DecorationImage(
-                                        image: NetworkImage(_photoUrl),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
+                                color: Color(0xFFF3F0F5),
                               ),
+                              clipBehavior: Clip.antiAlias,
                               child: _photoUrl.isNotEmpty
-                                  ? null
+                                  ? CachedRemoteImage(
+                                      url: _photoUrl.startsWith('data:')
+                                          ? ''
+                                          : _photoUrl,
+                                      pendingDataUrl:
+                                          _photoUrl.startsWith('data:')
+                                              ? _photoUrl
+                                              : null,
+                                      fit: BoxFit.cover,
+                                      width: 88,
+                                      height: 88,
+                                      errorWidget: Center(
+                                        child: Text(
+                                          _initials(),
+                                          style: const TextStyle(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF554A63),
+                                          ),
+                                        ),
+                                      ),
+                                    )
                                   : Center(
                                       child: Text(
                                         _initials(),
