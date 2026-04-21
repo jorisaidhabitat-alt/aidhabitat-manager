@@ -706,33 +706,42 @@ class _PlanCanvasState extends State<PlanCanvas> {
   final GlobalKey _insertMenuKey = GlobalKey();
 
   Widget _buildInsertSymbolMenu() {
-    return GestureDetector(
-      key: _insertMenuKey,
-      onTap: _openInsertSymbolOverlay,
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: _kTeal,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(LucideIcons.plus, size: 14, color: Colors.white),
-            SizedBox(width: 6),
-            Text(
-              'Insérer un élément',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
+    // Bouton compact — largeur ajustée au contenu (IntrinsicWidth) pour
+    // ne pas monopoliser la ligne dans le Wrap de la toolbar. Reste
+    // reconnaissable (fond teal + chevron) mais tient au même niveau
+    // que les autres outils (gomme, crayon, rectangle…).
+    return IntrinsicWidth(
+      child: GestureDetector(
+        key: _insertMenuKey,
+        onTap: _openInsertSymbolOverlay,
+        child: Tooltip(
+          message: 'Insérer un élément',
+          child: Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _kTeal,
+              borderRadius: BorderRadius.circular(999),
             ),
-            SizedBox(width: 4),
-            Icon(LucideIcons.chevronDown, size: 14, color: Colors.white),
-          ],
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(LucideIcons.plus, size: 14, color: Colors.white),
+                SizedBox(width: 6),
+                Text(
+                  'Insérer',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(width: 2),
+                Icon(LucideIcons.chevronDown, size: 12, color: Colors.white),
+              ],
+            ),
+          ),
         ),
       ),
     );

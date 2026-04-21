@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -12,10 +13,15 @@ import '../services/url_resolver.dart';
 ///
 /// Supports both raster formats (png/jpg/jpeg/webp/gif) and SVG. Falls back
 /// to [placeholder] while loading and to [errorWidget] on failure.
+///
+/// When [pendingDataUrl] is a non-empty base64 data URL (e.g. an image
+/// captured offline and not yet uploaded), it takes priority over [url] —
+/// this keeps just-created items visible before their first sync.
 class CachedRemoteImage extends StatefulWidget {
   const CachedRemoteImage({
     super.key,
     required this.url,
+    this.pendingDataUrl,
     this.fit = BoxFit.cover,
     this.width,
     this.height,
@@ -25,6 +31,7 @@ class CachedRemoteImage extends StatefulWidget {
   });
 
   final String url;
+  final String? pendingDataUrl;
   final BoxFit fit;
   final double? width;
   final double? height;
@@ -42,6 +49,7 @@ class CachedRemoteImage extends StatefulWidget {
 class _CachedRemoteImageState extends State<CachedRemoteImage> {
   File? _file;
   Uint8List? _svgBytes;
+  Uint8List? _pendingBytes;
   bool _loading = true;
   bool _failed = false;
 
@@ -54,10 +62,11 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
   @override
   void didUpdateWidget(CachedRemoteImage old) {
     super.didUpdateWidget(old);
-    if (old.url != widget.url) {
+    if (old.url != widget.url || old.pendingDataUrl != widget.pendingDataUrl) {
       setState(() {
         _file = null;
         _svgBytes = null;
+        _pendingBytes = null;
         _loading = true;
         _failed = false;
       });
@@ -65,7 +74,30 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
     }
   }
 
+  Uint8List? _decodeDataUrl(String dataUrl) {
+    final comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    try {
+      return base64Decode(dataUrl.substring(comma + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _load() async {
+    // Priority: locally-captured image (offline create/update) shown as-is.
+    final pending = widget.pendingDataUrl?.trim() ?? '';
+    if (pending.isNotEmpty) {
+      final bytes = _decodeDataUrl(pending);
+      if (bytes != null && mounted) {
+        setState(() {
+          _pendingBytes = bytes;
+          _loading = false;
+        });
+        return;
+      }
+    }
+
     final svg = isSvgUrl(widget.url);
     try {
       if (svg) {
@@ -112,6 +144,16 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return widget.placeholder ?? const _DefaultPlaceholder();
+    if (_pendingBytes != null) {
+      return Image.memory(
+        _pendingBytes!,
+        fit: widget.fit,
+        width: widget.width,
+        height: widget.height,
+        errorBuilder: (_, __, ___) =>
+            widget.errorWidget ?? const _DefaultError(),
+      );
+    }
     if (_failed) return widget.errorWidget ?? const _DefaultError();
     if (_svgBytes != null) {
       return SvgPicture.memory(

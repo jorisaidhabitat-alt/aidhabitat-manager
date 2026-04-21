@@ -164,12 +164,12 @@ class DataService {
     return _retirementFundsRepository.fetchAllFunds();
   }
 
+  /// Returns the list of retirement-fund names to populate the beneficiary
+  /// tab picker. Derived from the local `retirement_funds` cache so it
+  /// works offline — upstream, the server exposes the same table under
+  /// `/api/retirement-funds-principal`, so there is no divergence.
   Future<List<String>> fetchPrincipalRetirementFundNames() async {
-    try {
-      return await _nocodbApiClient.fetchPrincipalRetirementFundNames();
-    } catch (_) {
-      return const [];
-    }
+    return _retirementFundsRepository.fetchAllNames();
   }
 
   Future<bool> refreshRetirementFundsFromRemote() async {
@@ -183,28 +183,58 @@ class DataService {
     }
   }
 
+  /// Offline-first retirement fund update: writes to SQLite immediately
+  /// and enqueues a sync operation. The fund is pushed to the server when
+  /// connectivity returns.
   Future<RetirementFund> updateRetirementFund(RetirementFund fund) async {
-    final saved = await _nocodbApiClient.updateRetirementFund(
-      fundId: fund.id,
-      fund: fund,
-    );
-    await _retirementFundsRepository.upsertFund(saved);
-    return saved;
+    return _retirementFundsRepository.updateLocalFund(fund);
   }
 
+  /// Returns the locally-cached admin access members. Always succeeds, even
+  /// offline — the cache is populated on first online login and kept fresh
+  /// via [refreshAdminAccessMembersFromRemote].
   Future<List<AdminAccessMember>> fetchAdminAccessMembers() async {
-    return _nocodbApiClient.fetchAdminAccessMembers();
+    return _accessMembersRepository.fetchAll();
   }
 
-  Future<String?> regenerateAccessPassword(String email) async {
-    return _nocodbApiClient.regenerateAccessPassword(email);
+  /// Pulls the latest admin access list from the server and merges into
+  /// SQLite. Errors are swallowed so the caller can safely invoke this in
+  /// the background after a local-cache read.
+  Future<bool> refreshAdminAccessMembersFromRemote() async {
+    try {
+      final remote = await _nocodbApiClient.fetchAdminAccessMembers();
+      if (remote.isEmpty) return false;
+      await _accessMembersRepository.mergeRemoteMembers(remote);
+      // Propagate to app_users so new ergos can log in offline after sync.
+      await _authService.mergeRemoteUsers(
+        remote.map(_accessMemberToAuthUserMap).toList(),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
-  Future<String?> setAccessPassword({
+  /// Returns the effective password to display for [email] — prefers the
+  /// locally-pending one so just-set passwords show up before sync.
+  Future<String?> fetchAdminAccessEffectivePassword(String email) async {
+    return _accessMembersRepository.fetchEffectivePassword(email);
+  }
+
+  Future<void> regenerateAccessPassword(String email) async {
+    // Null password → server regenerates one; result lands in SQLite via the
+    // sync processor.
+    await _accessMembersRepository.setLocalPassword(email: email);
+  }
+
+  Future<void> setAccessPassword({
     required String email,
     String? password,
   }) async {
-    return _nocodbApiClient.setAccessPassword(email: email, password: password);
+    await _accessMembersRepository.setLocalPassword(
+      email: email,
+      password: password,
+    );
   }
 
   Future<AdminAccessMember> createAccessMember({
@@ -214,7 +244,7 @@ class DataService {
     String? establishmentId,
     String? password,
   }) async {
-    return _nocodbApiClient.createAccessMember(
+    return _accessMembersRepository.createLocalMember(
       email: email,
       displayName: displayName,
       role: role,
@@ -228,7 +258,7 @@ class DataService {
     String? displayName,
     String? establishmentId,
   }) async {
-    return _nocodbApiClient.updateAccessMember(
+    return _accessMembersRepository.updateLocalMember(
       email: email,
       displayName: displayName,
       establishmentId: establishmentId,
@@ -236,7 +266,21 @@ class DataService {
   }
 
   Future<void> deleteAccessMember(String email) async {
-    return _nocodbApiClient.deleteAccessMember(email);
+    return _accessMembersRepository.deleteLocalMember(email);
+  }
+
+  /// Converts an [AdminAccessMember] into the shape [AuthService.mergeRemoteUsers]
+  /// expects so new ergos provisioned on the server can log in offline.
+  Map<String, dynamic> _accessMemberToAuthUserMap(AdminAccessMember m) {
+    return {
+      'email': m.email,
+      'displayName': m.displayName,
+      'role': m.role == LocalUserRole.admin ? 'ADMIN' : 'ERGO',
+      'establishmentId': m.establishmentLabel,
+      'ergoLabel': m.ergoLabel,
+      'isActive': m.selectable,
+      'scopes': const <Map<String, dynamic>>[],
+    };
   }
 
   /// Updates a wiki item offline-first: edits are persisted to SQLite and a

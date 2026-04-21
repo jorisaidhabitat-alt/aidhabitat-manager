@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/cached_remote_image.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
 import '../services/url_resolver.dart';
 import '../services/wiki_repository.dart';
-import '../widgets/cached_media_image.dart';
 
 class WikiScreen extends StatefulWidget {
   const WikiScreen({super.key});
@@ -267,7 +267,7 @@ class _WikiScreenState extends State<WikiScreen> {
                                             child: (item.imageUrl.isNotEmpty ||
                                                     item.pendingImageDataUrl
                                                         .isNotEmpty)
-                                                ? CachedMediaImage(
+                                                ? CachedRemoteImage(
                                                     url: resolveMediaUrl(
                                                         item.imageUrl),
                                                     pendingDataUrl: item
@@ -466,7 +466,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                     color: const Color(0xFFF1F5F9),
                     child: (widget.item.imageUrl.isNotEmpty ||
                             widget.item.pendingImageDataUrl.isNotEmpty)
-                        ? CachedMediaImage(
+                        ? CachedRemoteImage(
                             url: resolveMediaUrl(widget.item.imageUrl),
                             pendingDataUrl: widget.item.pendingImageDataUrl,
                             fit: BoxFit.contain,

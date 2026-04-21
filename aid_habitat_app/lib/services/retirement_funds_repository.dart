@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'local_database.dart';
+import 'media_cache_service.dart';
+import 'sync_engine.dart';
 
 class RetirementFundsRepository {
   RetirementFundsRepository({LocalDatabase? database})
@@ -21,6 +26,19 @@ class RetirementFundsRepository {
 
     await db.transaction((txn) async {
       for (final fund in remoteFunds) {
+        final existing = await txn.query(
+          'retirement_funds',
+          columns: ['sync_state'],
+          where: 'id = ?',
+          whereArgs: [fund.id],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final syncState = existing.first['sync_state'] as String?;
+          if (syncState != null && syncState != SyncState.synced.name) {
+            continue; // preserve local pending mutation
+          }
+        }
         final now = DateTime.now().toIso8601String();
         await txn.insert('retirement_funds', {
           'id': fund.id,
@@ -35,9 +53,24 @@ class RetirementFundsRepository {
           'logo_url': fund.logoUrl,
           'last_edited_at': fund.lastEditedAt,
           'last_synced_at': now,
+          'pending_logo_data_url': null,
+          'sync_state': SyncState.synced.name,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
+
+    unawaited(_prefetchLogos(remoteFunds));
+  }
+
+  Future<void> _prefetchLogos(List<RetirementFund> funds) async {
+    final urls = funds
+        .map((f) => f.logoUrl.trim())
+        .where((u) => u.isNotEmpty)
+        .toSet();
+    if (urls.isEmpty) return;
+    try {
+      await MediaCacheService.instance.prefetchAll(urls);
+    } catch (_) {}
   }
 
   Future<void> upsertFund(RetirementFund fund) async {
@@ -56,7 +89,82 @@ class RetirementFundsRepository {
       'logo_url': fund.logoUrl,
       'last_edited_at': fund.lastEditedAt,
       'last_synced_at': now,
+      'sync_state': SyncState.synced.name,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Offline-first update: writes the fund locally (sync_state = pendingSync)
+  /// and enqueues a sync operation. Returns the updated fund so the UI can
+  /// render it immediately.
+  Future<RetirementFund> updateLocalFund(RetirementFund fund) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+
+    await db.transaction((txn) async {
+      await txn.update(
+        'retirement_funds',
+        {
+          'name': fund.name,
+          'phone': fund.phone,
+          'audience': fund.audience,
+          'request_method': fund.requestMethod,
+          'request_delay': fund.requestDelay,
+          'aid_amount': fund.aidAmount,
+          'therapist_note': fund.therapistNote,
+          'website': fund.website,
+          'logo_url': fund.logoUrl,
+          'last_edited_at': now,
+          'sync_state': SyncState.pendingSync.name,
+        },
+        where: 'id = ?',
+        whereArgs: [fund.id],
+      );
+
+      await txn.insert('sync_operations', {
+        'id': 'rfund_update_${fund.id}_'
+            '${DateTime.now().microsecondsSinceEpoch}',
+        'entity_type': 'retirement_fund',
+        'entity_local_id': fund.id,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'fundId': fund.id,
+          'fund': {
+            'name': fund.name,
+            'phone': fund.phone,
+            'audience': fund.audience,
+            'requestMethod': fund.requestMethod,
+            'requestDelay': fund.requestDelay,
+            'aidAmount': fund.aidAmount,
+            'therapistNote': fund.therapistNote,
+            'website': fund.website,
+            'logoUrl': fund.logoUrl,
+          },
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+
+    SyncEngine().notify();
+    return fund.copyWith(lastEditedAt: now);
+  }
+
+  /// Returns all fund names sorted A→Z from the local cache. Used to feed
+  /// the retirement-fund picker on the beneficiary tab offline.
+  Future<List<String>> fetchAllNames() async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'retirement_funds',
+      columns: ['name'],
+      orderBy: 'name ASC',
+    );
+    return rows
+        .map((r) => (r['name'] as String?)?.trim() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
   }
 
   RetirementFund _mapRow(Map<String, Object?> row) {

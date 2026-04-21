@@ -1651,6 +1651,10 @@ class DossierRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final existing = await db.query('visit_recommendations', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    // EN LOCAL : on persiste TOUS les items (y compris ceux sans fiche
+    // wiki liée) → une préconisation "vide" en cours de saisie n'est pas
+    // perdue si l'app redémarre avant que l'utilisateur ait choisi
+    // l'item bibliothèque.
     final itemsJson = items.map((e) => e.toJson()).toList();
     final data = <String, dynamic>{
       'dossier_local_id': dossierId,
@@ -1665,28 +1669,45 @@ class DossierRepository {
       await db.update('visit_recommendations', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
     }
 
+    // VERS LE SERVEUR : on ne pousse que les items COMPLETS (wikiItemId
+    // non vide). Le serveur refuse (400) toute préconisation non liée à
+    // une fiche wiki. Si aucun item complet, on skip le sync_op.
+    final syncItems = items
+        .where((item) => item.wikiItemId.trim().isNotEmpty)
+        .map((e) => e.toJson())
+        .toList();
+
     // Enqueue push → PUT /api/visit-recommendations/:dossierId
     final opId = 'visitrec_update_$dossierId';
-    await db.insert(
-      'sync_operations',
-      {
-        'id': opId,
-        'entity_type': 'visit_recommendations',
-        'entity_local_id': dossierId,
-        'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'dossierId': dossierId,
-          'items': itemsJson,
-        }),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    SyncEngine().notify();
+    if (syncItems.isNotEmpty || items.isEmpty) {
+      // `items.isEmpty` = l'utilisateur a tout supprimé, on push la liste
+      // vide pour que le serveur retire ses records. Sinon on attend
+      // qu'au moins un item ait une fiche wiki liée.
+      await db.insert(
+        'sync_operations',
+        {
+          'id': opId,
+          'entity_type': 'visit_recommendations',
+          'entity_local_id': dossierId,
+          'operation_type': 'update',
+          'payload_json': jsonEncode({
+            'dossierId': dossierId,
+            'items': syncItems,
+          }),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      SyncEngine().notify();
+    } else {
+      // Aucun item complet à pousser. Retire l'éventuelle sync_op
+      // précédente (sinon elle ré-échouerait avec le même 400).
+      await db.delete('sync_operations', where: 'id = ?', whereArgs: [opId]);
+    }
   }
 
   /// Pulls the remote diagnostic sanitaires payload for [dossierId] and

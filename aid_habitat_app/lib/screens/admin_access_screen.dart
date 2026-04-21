@@ -28,6 +28,9 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
     _loadMembers();
   }
 
+  /// Offline-first load: SQLite first for instant paint, then a background
+  /// refresh from NocoDB (silently ignored when offline). Errors do not
+  /// surface the "Impossible de charger" banner unless the cache is empty.
   Future<void> _loadMembers({bool refreshing = false}) async {
     if (refreshing) {
       setState(() => _isRefreshing = true);
@@ -36,21 +39,38 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
     }
 
     try {
-      final members = await _dataService.fetchAdminAccessMembers();
+      final cached = await _dataService.fetchAdminAccessMembers();
       if (!mounted) return;
       setState(() {
-        _members = members;
-        _error = null;
+        _members = cached;
+        _error = cached.isEmpty ? _error : null;
         _isLoading = false;
-        _isRefreshing = false;
       });
+
+      // Background refresh — silent when offline. When it succeeds, the
+      // local cache is updated and we re-read it for a freshened view.
+      final didRefresh =
+          await _dataService.refreshAdminAccessMembersFromRemote();
+      if (!mounted) return;
+      if (didRefresh) {
+        final fresh = await _dataService.fetchAdminAccessMembers();
+        if (!mounted) return;
+        setState(() {
+          _members = fresh;
+          _error = null;
+        });
+      } else if (cached.isEmpty) {
+        setState(() => _error =
+            'Aucun accès disponible hors-ligne — connectez-vous pour synchroniser.');
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Impossible de charger les accès';
+        _error = _members.isEmpty ? 'Impossible de charger les accès' : null;
         _isLoading = false;
-        _isRefreshing = false;
       });
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
     }
   }
 
@@ -87,7 +107,9 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Membre créé. Enregistré sur NocoDB.')),
+        const SnackBar(
+          content: Text('Membre créé localement. Synchronisation en file.'),
+        ),
       );
       await _loadMembers(refreshing: true);
     } catch (error) {
@@ -112,7 +134,9 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Membre mis à jour sur NocoDB.')),
+        const SnackBar(
+          content: Text('Modifications enregistrées localement.'),
+        ),
       );
       await _loadMembers(refreshing: true);
     } catch (error) {
@@ -168,30 +192,17 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
     );
     if (password == null || password.isEmpty) return;
     try {
-      final applied = await _dataService.setAccessPassword(
+      await _dataService.setAccessPassword(
         email: member.email,
         password: password,
       );
       if (!mounted) return;
-      setState(() {
-        _members = _members
-            .map((entry) => entry.email == member.email
-                ? AdminAccessMember(
-                    email: entry.email,
-                    displayName: entry.displayName,
-                    role: entry.role,
-                    selectable: entry.selectable,
-                    establishmentLabel: entry.establishmentLabel,
-                    ergoLabel: entry.ergoLabel,
-                    hasPassword: true,
-                    generatedPassword: applied ?? password,
-                    createdAt: entry.createdAt,
-                  )
-                : entry)
-            .toList(growable: false);
-      });
+      await _loadMembers(refreshing: true);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mot de passe défini.')),
+        const SnackBar(
+          content: Text('Mot de passe enregistré localement.'),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
@@ -204,32 +215,18 @@ class _AdminAccessScreenState extends State<AdminAccessScreen> {
   Future<void> _reset(AdminAccessMember member) async {
     setState(() => _resettingEmail = member.email);
     try {
-      final password = await _dataService.regenerateAccessPassword(
-        member.email,
-      );
+      await _dataService.regenerateAccessPassword(member.email);
       if (!mounted) return;
-      setState(() {
-        _members = _members
-            .map(
-              (entry) => entry.email == member.email
-                  ? AdminAccessMember(
-                      email: entry.email,
-                      displayName: entry.displayName,
-                      role: entry.role,
-                      selectable: entry.selectable,
-                      establishmentLabel: entry.establishmentLabel,
-                      ergoLabel: entry.ergoLabel,
-                      hasPassword: true,
-                      generatedPassword: password ?? entry.generatedPassword,
-                      createdAt: entry.createdAt,
-                    )
-                  : entry,
-            )
-            .toList(growable: false);
-        _resettingEmail = null;
-      });
+      await _loadMembers(refreshing: true);
+      if (!mounted) return;
+      setState(() => _resettingEmail = null);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mot de passe réinitialisé')),
+        const SnackBar(
+          content: Text(
+            'Réinitialisation demandée. Le nouveau mot de passe apparaîtra '
+            'après synchronisation.',
+          ),
+        ),
       );
     } catch (_) {
       if (!mounted) return;
