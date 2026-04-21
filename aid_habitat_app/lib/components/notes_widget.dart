@@ -1379,11 +1379,17 @@ class _NotesWidgetState extends State<NotesWidget> {
                         onPanEnd: _onDrawEnd,
                         child: MouseRegion(
                           cursor: SystemMouseCursors.precise,
-                          child: CustomPaint(
-                            size: size,
-                            painter: _StrokePainter(
-                              strokes: _strokes,
-                              activeStroke: _activeStroke,
+                          // ClipRect : aucun trait (ni gomme) ne peut
+                          // déborder de la zone de dessin — même si le
+                          // strokeCap.round sort naturellement d'un
+                          // demi-rayon aux extrémités.
+                          child: ClipRect(
+                            child: CustomPaint(
+                              size: size,
+                              painter: _StrokePainter(
+                                strokes: _strokes,
+                                activeStroke: _activeStroke,
+                              ),
                             ),
                           ),
                         ),

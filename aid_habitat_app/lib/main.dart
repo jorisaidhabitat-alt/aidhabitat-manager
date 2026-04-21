@@ -111,6 +111,33 @@ class MyApp extends StatelessWidget {
             borderRadius: BorderRadius.circular(24),
           ),
         ),
+        // Force white backgrounds on dialogs and dropdown menus —
+        // Material 3's tinted surfaceContainer gives them a pink/lavender
+        // tint that clashes with the rest of the UI.
+        dialogTheme: const DialogThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+        ),
+        popupMenuTheme: const PopupMenuThemeData(
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+        ),
+        menuTheme: const MenuThemeData(
+          style: MenuStyle(
+            backgroundColor: WidgetStatePropertyAll(Colors.white),
+            surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+          ),
+        ),
+        dropdownMenuTheme: const DropdownMenuThemeData(
+          menuStyle: MenuStyle(
+            backgroundColor: WidgetStatePropertyAll(Colors.white),
+            surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+          ),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+        ),
         useMaterial3: true,
       ),
       home: const AuthRoot(),
