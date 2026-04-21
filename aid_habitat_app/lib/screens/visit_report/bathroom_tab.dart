@@ -100,7 +100,7 @@ class _EquipDef {
 const List<_EquipDef> _kEquipment = [
   _EquipDef('sdbBaignoire', 'Baignoire', _EquipRequires.bath),
   _EquipDef('sdbBacDouche', 'Bac à douche', _EquipRequires.shower),
-  _EquipDef('sdbParoiDouche', 'Paroi de douche', _EquipRequires.shower),
+  _EquipDef('sdbParoiDouche', 'Paroi de douche', _EquipRequires.always),
   _EquipDef('sdbVasqueSuspendue', 'Vasque suspendue', _EquipRequires.always),
   _EquipDef('sdbVasqueColonne', 'Vasque sur colonne', _EquipRequires.always),
   _EquipDef('sdbMeubleVasque', 'Meuble vasque', _EquipRequires.always),
@@ -118,7 +118,6 @@ class _BathroomTabState extends State<BathroomTab>
   bool _loaded = false;
   Timer? _saveTimer;
   int _activeLevelIndex = 0;
-  int _subSection = 0; // 0 = equipment, 1 = door
 
   @override
   void initState() {
@@ -323,10 +322,10 @@ class _BathroomTabState extends State<BathroomTab>
           if (_instances.isEmpty)
             _buildEmptyState()
           else ...[
-            const SizedBox(height: 12),
-            _buildQuickNav(),
             const SizedBox(height: 16),
-            if (_subSection == 0) _buildEquipment() else _buildDoor(),
+            _buildEquipment(),
+            const SizedBox(height: 16),
+            _buildDoor(),
           ],
         ],
       ),
@@ -392,62 +391,6 @@ class _BathroomTabState extends State<BathroomTab>
     );
   }
 
-  Widget _buildQuickNav() {
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-              child: _buildNavBtn(
-                  LucideIcons.bath, 'Équipements', 0)),
-          const SizedBox(width: 4),
-          Expanded(
-              child:
-                  _buildNavBtn(LucideIcons.doorOpen, 'Porte', 1)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavBtn(IconData icon, String label, int index) {
-    final active = _subSection == index;
-    return GestureDetector(
-      onTap: () => setState(() => _subSection = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFFD8D0DC) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            Icon(icon,
-                size: 16,
-                color: active
-                    ? const Color(0xFF554A63)
-                    : const Color(0xFF64748B)),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: active
-                    ? const Color(0xFF554A63)
-                    : const Color(0xFF64748B),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Equipment sub-section
   // ---------------------------------------------------------------------------
@@ -456,14 +399,13 @@ class _BathroomTabState extends State<BathroomTab>
     final a = _active!;
     final hasShower = a.sdbBacDouche;
     final hasBath = a.sdbBaignoire;
-    final wetZoneItems = _kEquipment
-        .where((e) =>
-            (e.requires == _EquipRequires.bath && hasBath) ||
-            (e.requires == _EquipRequires.shower && hasShower))
-        .toList();
     final commonItems = _kEquipment
         .where((e) => e.requires == _EquipRequires.always)
         .toList();
+    final selectedCommon = <String>{
+      for (final it in commonItems)
+        if (_getEquipmentEnabled(a, it.enabledField)) it.label,
+    };
 
     return FormSection.text(
       'Équipements Salle de Bain — ${a.levelLabel}',
@@ -490,21 +432,35 @@ class _BathroomTabState extends State<BathroomTab>
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          if (wetZoneItems.isNotEmpty) ...[
-            _buildEquipmentCard(
-              icon: LucideIcons.bath,
-              title: 'Zone douche / baignoire',
-              items: wetZoneItems,
-              instance: a,
-            ),
+          if (hasShower) ...[
             const SizedBox(height: 12),
+            FormNumberField(
+              label: 'Hauteur douche',
+              value: a.sdbBacDoucheHauteur,
+              unit: 'cm',
+              onChanged: (v) => _updateActive(_setEquipmentOnInstance(
+                  a, 'sdbBacDouche',
+                  height: v, clearHeight: v == null)),
+            ),
           ],
-          _buildEquipmentCard(
-            icon: LucideIcons.showerHead,
-            title: 'Équipements complémentaires',
-            items: commonItems,
-            instance: a,
+          if (hasBath) ...[
+            const SizedBox(height: 12),
+            FormNumberField(
+              label: 'Hauteur baignoire',
+              value: a.sdbBaignoireHauteur,
+              unit: 'cm',
+              onChanged: (v) => _updateActive(_setEquipmentOnInstance(
+                  a, 'sdbBaignoire',
+                  height: v, clearHeight: v == null)),
+            ),
+          ],
+          const SizedBox(height: 16),
+          FormMultiSelectDropdown(
+            label: 'Équipements complémentaires',
+            options: [for (final it in commonItems) it.label],
+            selected: selectedCommon,
+            onChanged: (next) => _applyCommonSelection(commonItems, next),
+            placeholder: 'Sélectionner les équipements...',
           ),
           const SizedBox(height: 12),
           GestureDetector(

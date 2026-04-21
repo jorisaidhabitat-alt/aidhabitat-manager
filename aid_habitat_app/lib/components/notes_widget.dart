@@ -1076,11 +1076,8 @@ class _NotesWidgetState extends State<NotesWidget> {
       children: [
         if (widget.showText) _buildTextEditor(),
         if (widget.showText) _buildSplitter(),
-        // La barre de contrôles au-dessus du canvas (page prev/next,
-        // supprimer, undo/redo) a été retirée — la fonction "ajouter une
-        // page" est désormais portée par le FAB violet en bas-droite et
-        // les autres actions sont couvertes par la toolbar de dessin
-        // (outils + palette + tout effacer).
+        if (widget.allowPagination || !widget.embedded) _buildPageNavRow(),
+        if (!widget.embedded) const Divider(height: 1),
         // Parité React : réserver au moins ~88px au canvas quand le texte est
         // visible (espace nécessaire pour que la toolbar reste en place).
         Expanded(
