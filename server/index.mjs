@@ -1911,6 +1911,41 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
     }
   }
 
+  // Synchronise le mot de passe NocoDB avec l'auth-store :
+  //  - Si mot_de_passe est renseigné → on hache avec scrypt et on stocke le hash.
+  //    Un checksum sha256 du texte brut permet de détecter les changements sans
+  //    stocker le mot de passe lui-même côté serveur.
+  //  - Si mot_de_passe est vide → on supprime les champs noco* de l'auth-store
+  //    (retour au mot de passe auto-généré).
+  // Dans tous les cas, nocoPassword est effacé de l'objet membre en mémoire.
+  for (const member of members) {
+    const plain = member.nocoPassword;
+    member.nocoPassword = null; // jamais conservé en clair en mémoire
+
+    if (plain) {
+      const checksum = crypto.createHash('sha256').update(plain).digest('hex');
+      const stored = store.users[member.email];
+      if (stored?.nocoPasswordChecksum !== checksum) {
+        const salt = randomSecret(16);
+        store.users[member.email] = {
+          ...(stored || { createdAt: new Date().toISOString(), profilePhotoUrl: '' }),
+          nocoPasswordHash: hashPassword(plain, salt),
+          nocoPasswordSalt: salt,
+          nocoPasswordChecksum: checksum,
+        };
+        storeMutated = true;
+      }
+    } else {
+      // Mot de passe NocoDB effacé → retirer les champs noco* de l'auth-store
+      const stored = store.users[member.email];
+      if (stored?.nocoPasswordHash) {
+        const { nocoPasswordHash: _h, nocoPasswordSalt: _s, nocoPasswordChecksum: _c, ...rest } = stored;
+        store.users[member.email] = rest;
+        storeMutated = true;
+      }
+    }
+  }
+
   if (storeMutated) {
     await writeAuthStore(store);
   }
@@ -2619,20 +2654,18 @@ app.post('/api/auth/login', async (req, res, next) => {
       return;
     }
 
-    let isValid = false;
+    const credentials = store.users[email];
+    if (!credentials) {
+      res.status(401).json({ success: false, error: 'Aucun mot de passe généré pour ce membre' });
+      return;
+    }
 
-    if (member.nocoPassword) {
-      // Priorité 1 : mot de passe défini directement dans NocoDB (texte brut).
-      // L'administrateur peut le modifier ou le remettre à zéro depuis l'interface
-      // NocoDB sans passer par l'auth-store.
-      isValid = password === member.nocoPassword;
+    let isValid = false;
+    if (credentials.nocoPasswordHash) {
+      // Priorité 1 : hash du mot de passe NocoDB (scrypt, jamais stocké en clair).
+      isValid = credentials.nocoPasswordHash === hashPassword(password, credentials.nocoPasswordSalt);
     } else {
-      // Priorité 2 : fallback sur l'auth-store hashé (comportement historique).
-      const credentials = store.users[email];
-      if (!credentials) {
-        res.status(401).json({ success: false, error: 'Aucun mot de passe généré pour ce membre' });
-        return;
-      }
+      // Priorité 2 : fallback sur le mot de passe auto-généré (comportement historique).
       isValid = credentials.passwordHash === hashPassword(password, credentials.salt);
     }
 
@@ -2642,14 +2675,12 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
 
     const token = await signSessionToken(email);
-    // Ne pas exposer nocoPassword au client.
-    const { nocoPassword: _omit, ...memberPayload } = member;
     res.json({
       success: true,
       error: null,
       data: {
         token,
-        user: memberPayload,
+        user: member,
       },
     });
   } catch (error) {
