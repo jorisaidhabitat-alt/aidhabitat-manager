@@ -81,6 +81,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   bool _compteAnahEditing = false;
   final Set<int> _caissePrincEditingIndices = {};
   final Set<int> _caisseComplEditingIndices = {};
+  final Set<int> _numeroSecuEditingIndices = {};
 
   // Shared (patient-level) fields
   late String _address;
@@ -1065,8 +1066,11 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final suffix = hasMultiple
         ? (firstName.isNotEmpty ? ' de $firstName' : " de l'occupant ${index + 1}")
         : '';
+    final numeroSecu = occ.numeroSecuriteSociale.trim();
     final caissePrinc = occ.caisseRetraitePrincipale.trim();
     final caisseCompl = occ.caissesRetraiteComplementaires.trim();
+    final numeroSecuCollapsed = numeroSecu.isNotEmpty &&
+        !_numeroSecuEditingIndices.contains(index);
     final caissePrincCollapsed = caissePrinc.isNotEmpty &&
         !_caissePrincEditingIndices.contains(index);
     final caisseComplCollapsed = caisseCompl.isNotEmpty &&
@@ -1074,12 +1078,31 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormTextField(
-          label: 'N° Sécu$suffix',
-          value: occ.numeroSecuriteSociale,
-          onChanged: (v) => _updateOccupant(
-              index, occ.copyWith(numeroSecuriteSociale: v)),
-        ),
+        if (numeroSecuCollapsed)
+          _collapsedValueRow(
+            label: 'N° Sécu$suffix',
+            displayValue: numeroSecu,
+            onEdit: () =>
+                setState(() => _numeroSecuEditingIndices.add(index)),
+          )
+        else
+          FormTextField(
+            label: 'N° Sécu$suffix',
+            value: occ.numeroSecuriteSociale,
+            autofocus: _numeroSecuEditingIndices.contains(index),
+            onChanged: (v) => _updateOccupant(
+                index, occ.copyWith(numeroSecuriteSociale: v)),
+            onSubmitted: (_) {
+              if (occ.numeroSecuriteSociale.trim().isNotEmpty) {
+                setState(() => _numeroSecuEditingIndices.remove(index));
+              }
+            },
+            onTapOutside: () {
+              if (occ.numeroSecuriteSociale.trim().isNotEmpty) {
+                setState(() => _numeroSecuEditingIndices.remove(index));
+              }
+            },
+          ),
         const SizedBox(height: 14),
         if (caissePrincCollapsed)
           _collapsedValueRow(

@@ -83,6 +83,9 @@ class FormTextField extends StatefulWidget {
   final String label;
   final String value;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onTapOutside;
+  final bool autofocus;
   final bool readOnly;
   final TextInputType? keyboardType;
   final String? suffix;
@@ -93,6 +96,9 @@ class FormTextField extends StatefulWidget {
     required this.label,
     this.value = '',
     this.onChanged,
+    this.onSubmitted,
+    this.onTapOutside,
+    this.autofocus = false,
     this.readOnly = false,
     this.keyboardType,
     this.suffix,
@@ -145,9 +151,17 @@ class _FormTextFieldState extends State<FormTextField> {
           controller: _controller,
           focusNode: _focusNode,
           readOnly: widget.readOnly,
+          autofocus: widget.autofocus,
           keyboardType: widget.keyboardType,
           maxLines: widget.maxLines,
           style: const TextStyle(fontSize: 14),
+          onFieldSubmitted: widget.onSubmitted,
+          onTapOutside: widget.onTapOutside == null
+              ? null
+              : (_) {
+                  _focusNode.unfocus();
+                  widget.onTapOutside!();
+                },
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
