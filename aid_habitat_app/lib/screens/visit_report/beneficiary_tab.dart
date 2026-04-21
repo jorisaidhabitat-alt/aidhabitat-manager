@@ -669,36 +669,34 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --- Bloc "Santé" (titre retiré) --------------------------------
-        if (_occupantLabels().length > 1) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
+        // --- Bloc "Santé" (titre de section retiré) --------------------
+        // Label "Aides et reconnaissance" même style que "Dépendance" /
+        // "Personnes présentes à la visite" (FormToggleGroup label :
+        // 13px, w600, slate-500). Sur la même ligne que le sélecteur
+        // d'occupant quand le foyer a 2+ personnes.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Expanded(
+              child: Text(
+                'Aides et reconnaissance',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ),
+            if (_occupantLabels().length > 1)
               OccupantSwitcher(
                 title: '',
                 occupantLabels: _occupantLabels(),
                 activeIndex: _safeOccupantIndex,
                 onChanged: (i) => setState(() => _activeOccupantIndex = i),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-        ],
-        // Small label above the 3 status checkboxes (APA / Invalidité /
-        // Aide à domicile) — same visual weight as the other in-form
-        // field labels ("Dépendance", etc.).
-        const Padding(
-          padding: EdgeInsets.only(bottom: 8),
-          child: Text(
-            'Aides et reconnaissance',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF334155),
-              letterSpacing: 0.2,
-            ),
-          ),
+          ],
         ),
+        const SizedBox(height: 8),
         FormCheckbox(
           label: 'Bénéficiaire APA',
           value: occ.apa,
@@ -1190,9 +1188,7 @@ class _DateOfBirthField extends StatelessWidget {
                           curve: Curves.easeOut,
                           style: TextStyle(
                             fontSize: 15,
-                            fontWeight: isSelected
-                                ? FontWeight.w800
-                                : FontWeight.w600,
+                            fontWeight: FontWeight.w400,
                             color: isSelected
                                 ? Colors.white
                                 : const Color(0xFF0F172A),
@@ -1319,9 +1315,7 @@ class _DateOfBirthField extends StatelessWidget {
                           '$dayNumber',
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: isSelected
-                                ? FontWeight.w800
-                                : FontWeight.w500,
+                            fontWeight: FontWeight.w400,
                             color: isSelected
                                 ? Colors.white
                                 : const Color(0xFF0F172A),
