@@ -921,13 +921,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   child: const SizedBox.expand(),
                 ),
               ),
-              // Draw area — remplit tout le canvas (plus de bandes de règles).
+              // Draw area — remplit tout le canvas.
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onPanStart: _onPanStart,
-                  onPanUpdate: _onPanUpdate,
-                  onPanEnd: _onPanEnd,
+                  onTapDown: _onCanvasTapDown,
+                  onPanStart: _onPanStartRouted,
+                  onPanUpdate: _onPanUpdateRouted,
+                  onPanEnd: _onPanEndRouted,
                   child: MouseRegion(
                     cursor: _tool == PlanTool.eraser
                         ? SystemMouseCursors.cell
@@ -943,12 +944,248 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   ),
                 ),
               ),
+              // Overlay des poignées quand un symbole est sélectionné.
+              if (_selectedIndex >= 0 && _selectedIndex < _strokes.length)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _HandlesPainter(
+                        stroke: _strokes[_selectedIndex],
+                      ),
+                    ),
+                  ),
+                ),
             ],
           );
         },
       ),
     );
   }
+
+  // ---------------------------------------------------------------------
+  // Gestures routing — distingue tracé libre vs manipulation de symbole.
+  // ---------------------------------------------------------------------
+
+  void _onCanvasTapDown(TapDownDetails d) {
+    // Un tap rapide = soit sélectionner un symbole existant, soit
+    // désélectionner. Le tracé libre se déclenche seulement sur pan.
+    final pt = _localPoint(d.globalPosition);
+    // On regarde d'abord le symbole sélectionné (poignées prioritaires).
+    if (_selectedIndex >= 0) {
+      final sel = _strokes[_selectedIndex];
+      final h = _handleAt(sel, pt);
+      if (h != null && h != _SymbolHandle.body) return; // drag prendra la main
+    }
+    // Sinon, on cherche un symbole sous le tap (du plus récent au plus
+    // ancien pour privilégier le top visuel).
+    for (var i = _strokes.length - 1; i >= 0; i--) {
+      final s = _strokes[i];
+      if (!_symbolTools.contains(s.tool)) continue;
+      final h = _handleAt(s, pt);
+      if (h != null) {
+        setState(() => _selectedIndex = i);
+        return;
+      }
+    }
+    // Rien trouvé → désélection.
+    if (_selectedIndex != -1) {
+      setState(() => _selectedIndex = -1);
+    }
+  }
+
+  void _onPanStartRouted(DragStartDetails d) {
+    final pt = _localPoint(d.globalPosition);
+    // Si on a un symbole sélectionné, tester les poignées / corps.
+    if (_selectedIndex >= 0) {
+      final sel = _strokes[_selectedIndex];
+      final h = _handleAt(sel, pt);
+      if (h != null) {
+        _activeHandle = h;
+        _dragAnchor = pt;
+        _dragInitialCenter = sel.points[0];
+        _dragInitialCorner = sel.points[1];
+        _dragInitialRotation = sel.rotation;
+        return;
+      }
+    }
+    // Sinon, comportement tracé libre existant.
+    _onPanStart(d);
+  }
+
+  void _onPanUpdateRouted(DragUpdateDetails d) {
+    if (_activeHandle != null) {
+      _updateSelectedSymbol(d.globalPosition);
+      return;
+    }
+    _onPanUpdate(d);
+  }
+
+  void _onPanEndRouted(DragEndDetails d) {
+    if (_activeHandle != null) {
+      setState(() {
+        _activeHandle = null;
+        _dragAnchor = null;
+        _dragInitialCenter = null;
+        _dragInitialCorner = null;
+        _dragInitialRotation = null;
+      });
+      _scheduleSave();
+      return;
+    }
+    _onPanEnd(d);
+  }
+
+  void _updateSelectedSymbol(Offset globalPoint) {
+    final handle = _activeHandle;
+    if (handle == null || _selectedIndex < 0) return;
+    final sel = _strokes[_selectedIndex];
+    final pt = _localPoint(globalPoint);
+    final initCenter = _dragInitialCenter!;
+    final initCorner = _dragInitialCorner!;
+    final initRotation = _dragInitialRotation!;
+    final anchor = _dragAnchor!;
+
+    switch (handle) {
+      case _SymbolHandle.body:
+        // Déplacement : delta appliqué au centre ET au corner (pour
+        // garder la taille constante).
+        final delta = pt - anchor;
+        setState(() {
+          sel.points[0] = initCenter + delta;
+          sel.points[1] = initCorner + delta;
+        });
+        break;
+      case _SymbolHandle.rotate:
+        // Nouvel angle = angle entre le centre et le curseur.
+        final vec = pt - initCenter;
+        // Décaler de 90° car la poignée rotation est au-dessus.
+        final newAngle = math.atan2(vec.dy, vec.dx) + math.pi / 2;
+        setState(() => sel.rotation = newAngle);
+        break;
+      default:
+        // Redimensionnement par un coin — on convertit le pt en local
+        // non tourné, puis on update le corner.
+        final local = _toSymbolLocal(sel, pt);
+        final halfW = (local.dx - initCenter.dx).abs().clamp(8, 2000);
+        final halfH = (local.dy - initCenter.dy).abs().clamp(8, 2000);
+        setState(() {
+          // On conserve le signe original du corner (quadrant).
+          final sx = (initCorner.dx - initCenter.dx) >= 0 ? 1 : -1;
+          final sy = (initCorner.dy - initCenter.dy) >= 0 ? 1 : -1;
+          sel.points[1] = Offset(
+            initCenter.dx + halfW * sx,
+            initCenter.dy + halfH * sy,
+          );
+          // Restaurer l'angle initial (pas de rotation pendant resize).
+          sel.rotation = initRotation;
+        });
+    }
+  }
+}
+
+/// Identifie quelle poignée est active durant un drag (ou le corps).
+enum _SymbolHandle { topLeft, topRight, bottomLeft, bottomRight, rotate, body }
+
+/// Petite ligne d'un PopupMenuItem pour le menu "Insérer un élément".
+class _SymbolMenuRow extends StatelessWidget {
+  const _SymbolMenuRow({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFF334155)),
+        const SizedBox(width: 10),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Painter overlay qui dessine les 4 poignées de coin + la flèche de
+/// rotation autour du symbole sélectionné.
+class _HandlesPainter extends CustomPainter {
+  _HandlesPainter({required this.stroke});
+  final _PlanStroke stroke;
+
+  static const double _handleRadius = 6.0;
+  static const double _rotateOffset = 34.0;
+  static const Color _accent = Color(0xFF597E8D);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = stroke.symbolLocalBounds;
+    if (bounds == null) return;
+    final center = stroke.points.first;
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(stroke.rotation);
+    canvas.translate(-center.dx, -center.dy);
+
+    // Cadre fin en pointillés.
+    final frame = Paint()
+      ..color = _accent.withValues(alpha: 0.6)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(bounds, frame);
+
+    // Ligne vers la poignée rotation.
+    final rotateTop = Offset(bounds.center.dx, bounds.top - _rotateOffset);
+    canvas.drawLine(
+      Offset(bounds.center.dx, bounds.top),
+      rotateTop,
+      frame,
+    );
+
+    // 4 coins.
+    final handleFill = Paint()..color = _accent;
+    final handleBorder = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    for (final pt in [
+      bounds.topLeft,
+      bounds.topRight,
+      bounds.bottomLeft,
+      bounds.bottomRight,
+    ]) {
+      canvas.drawCircle(pt, _handleRadius, handleFill);
+      canvas.drawCircle(pt, _handleRadius, handleBorder);
+    }
+
+    // Poignée rotation : cercle + icône flèche simplifiée.
+    canvas.drawCircle(rotateTop, _handleRadius + 2, handleFill);
+    canvas.drawCircle(rotateTop, _handleRadius + 2, handleBorder);
+    // Mini "↻" en dessinant un arc.
+    final arcPaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    canvas.drawArc(
+      Rect.fromCircle(center: rotateTop, radius: 3.5),
+      -math.pi / 2,
+      math.pi * 1.5,
+      false,
+      arcPaint,
+    );
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _HandlesPainter oldDelegate) =>
+      oldDelegate.stroke != stroke;
 }
 
 // ---------------------------------------------------------------------------

@@ -391,51 +391,48 @@ class _RecommendationCard extends StatelessWidget {
             )
           else
             const SizedBox(width: 10),
-              // Bloc droit : grande image (remontée, légèrement à gauche
-              // car la croix X vient à sa droite).
-              GestureDetector(
-                onTap: onPickWiki,
-                child: Container(
-                  width: 180,
-                  height: 180,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  alignment: Alignment.center,
-                  clipBehavior: Clip.antiAlias,
-                  child: hasWiki && item.wikiImageUrl.isNotEmpty
-                      ? Image.network(
-                          resolveMediaUrl(item.wikiImageUrl),
-                          fit: BoxFit.cover,
-                          width: 180,
-                          height: 180,
-                          errorBuilder: (_, __, ___) => const Icon(
-                            Icons.image_outlined,
-                            color: Color(0xFF94A3B8),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.add_photo_alternate_outlined,
-                          color: Color(0xFF907CA1),
-                          size: 40,
-                        ),
-                ),
+          // Bloc droit : grande image.
+          GestureDetector(
+            onTap: onPickWiki,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(16),
               ),
-              const SizedBox(width: 4),
-              // Bouton supprimer, collé à droite de l'image.
-              IconButton(
-                onPressed: onRemove,
-                icon: const Icon(Icons.close, size: 18),
-                color: const Color(0xFF94A3B8),
-                tooltip: 'Supprimer',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 28,
-                  minHeight: 28,
-                ),
-              ),
-            ],
+              alignment: Alignment.center,
+              clipBehavior: Clip.antiAlias,
+              child: hasWiki && item.wikiImageUrl.isNotEmpty
+                  ? Image.network(
+                      resolveMediaUrl(item.wikiImageUrl),
+                      fit: BoxFit.cover,
+                      width: 180,
+                      height: 180,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.image_outlined,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: Color(0xFF907CA1),
+                      size: 40,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          // Bouton supprimer, collé à droite de l'image.
+          IconButton(
+            onPressed: onRemove,
+            icon: const Icon(Icons.close, size: 18),
+            color: const Color(0xFF94A3B8),
+            tooltip: 'Supprimer',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 28,
+              minHeight: 28,
+            ),
           ),
         ],
       ),
