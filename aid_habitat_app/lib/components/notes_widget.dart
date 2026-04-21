@@ -800,16 +800,13 @@ class _NotesWidgetState extends State<NotesWidget> {
     _markDirty();
   }
 
-  // Distance entre un point [p] et le segment [a, b] — géométrie standard
-  // (projection orthogonale, clampée aux extrémités). Utilisée par la
-  // gomme pour tester en une seule passe si un point du tracé existant
-  // tombe dans la bande balayée par le mouvement du curseur.
-  double _distanceToSegment(Offset p, Offset a, Offset b) {
+  // Distance entre un point [p] et le segment [a, b] — projection
+  // orthogonale clampée aux extrémités.
+  double _distPointSegment(Offset p, Offset a, Offset b) {
     final abx = b.dx - a.dx;
     final aby = b.dy - a.dy;
     final lenSq = abx * abx + aby * aby;
     if (lenSq < 1e-12) {
-      // Segment dégénéré → distance point-point.
       final dx = p.dx - a.dx;
       final dy = p.dy - a.dy;
       return math.sqrt(dx * dx + dy * dy);
@@ -826,18 +823,55 @@ class _NotesWidgetState extends State<NotesWidget> {
     return math.sqrt(dx * dx + dy * dy);
   }
 
+  // Distance minimale entre deux segments [a1,a2] et [b1,b2]. Zéro si
+  // intersection. Sinon, min des 4 distances point-vers-l'autre-segment.
+  // Cruciale pour que la gomme efface les traits même quand elle passe
+  // ENTRE deux points consécutifs d'un stroke dessiné rapidement (les
+  // points peuvent être espacés de plusieurs px).
+  double _distSegmentSegment(Offset a1, Offset a2, Offset b1, Offset b2) {
+    // Test rapide d'intersection : si les segments se croisent, dist = 0.
+    if (_segmentsIntersect(a1, a2, b1, b2)) return 0.0;
+    final d1 = _distPointSegment(a1, b1, b2);
+    final d2 = _distPointSegment(a2, b1, b2);
+    final d3 = _distPointSegment(b1, a1, a2);
+    final d4 = _distPointSegment(b2, a1, a2);
+    return math.min(math.min(d1, d2), math.min(d3, d4));
+  }
+
+  bool _segmentsIntersect(Offset p1, Offset p2, Offset p3, Offset p4) {
+    double ccw(Offset a, Offset b, Offset c) =>
+        (b.dx - a.dx) * (c.dy - a.dy) - (b.dy - a.dy) * (c.dx - a.dx);
+    final d1 = ccw(p3, p4, p1);
+    final d2 = ccw(p3, p4, p2);
+    final d3 = ccw(p1, p2, p3);
+    final d4 = ccw(p1, p2, p4);
+    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+      return true;
+    }
+    return false;
+  }
+
   // Calcule la liste de strokes résultant du passage de la gomme entre
-  // [from] et [to] (bande circulaire de rayon [hitDistance]). Une seule
-  // passe sur les strokes → pas de saccade même en mouvement rapide.
+  // [from] et [to] (bande circulaire de rayon [hitDistance]). Teste
+  // chaque SEGMENT (paire de points consécutifs) du stroke vs le
+  // segment de gomme — pas juste les points isolés — pour un effaçage
+  // pixel-précis même quand le stroke a des points très espacés.
   List<_Stroke>? _computeEraseSegment(List<_Stroke> input,
       Offset from, Offset to, double hitDistance) {
     final next = <_Stroke>[];
     var changed = false;
     for (final stroke in input) {
       if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
-        final hit = stroke.points.any(
-          (p) => _distanceToSegment(p, from, to) < hitDistance,
-        );
+        // Line/rect : 2 points, un seul segment à tester.
+        if (stroke.points.length < 2) {
+          next.add(stroke);
+          continue;
+        }
+        final hit = _distSegmentSegment(
+              stroke.points[0], stroke.points[1], from, to,
+            ) <
+            hitDistance;
         if (hit) {
           changed = true;
         } else {
@@ -845,33 +879,62 @@ class _NotesWidgetState extends State<NotesWidget> {
         }
         continue;
       }
-      final segments = <List<Offset>>[];
-      var current = <Offset>[];
+      // Pen/highlighter : liste de points. Pour chaque segment du stroke,
+      // on teste la distance au segment de gomme. Si < hitDistance, les
+      // DEUX points aux extrémités sont marqués "effacés" → le stroke
+      // se coupe proprement.
+      final pts = stroke.points;
+      final n = pts.length;
+      if (n == 0) {
+        next.add(stroke);
+        continue;
+      }
+      final erased = List<bool>.filled(n, false);
       var anyHit = false;
-      for (final p in stroke.points) {
-        if (_distanceToSegment(p, from, to) < hitDistance) {
+      if (n == 1) {
+        // Stroke-point unique : distance point-segment.
+        if (_distPointSegment(pts[0], from, to) < hitDistance) {
+          erased[0] = true;
           anyHit = true;
-          if (current.isNotEmpty) {
-            segments.add(current);
-            current = <Offset>[];
+        }
+      } else {
+        for (var i = 0; i < n - 1; i++) {
+          if (_distSegmentSegment(pts[i], pts[i + 1], from, to) <
+              hitDistance) {
+            erased[i] = true;
+            erased[i + 1] = true;
+            anyHit = true;
           }
-        } else {
-          current.add(p);
         }
       }
-      if (current.isNotEmpty) segments.add(current);
       if (!anyHit) {
         next.add(stroke);
         continue;
       }
       changed = true;
-      for (final seg in segments) {
-        if (seg.length < 2) continue;
+      // Segmente le stroke autour des points effacés.
+      var current = <Offset>[];
+      for (var i = 0; i < n; i++) {
+        if (erased[i]) {
+          if (current.length >= 2) {
+            next.add(_Stroke(
+              tool: stroke.tool,
+              color: stroke.color,
+              size: stroke.size,
+              points: current,
+            ));
+          }
+          current = <Offset>[];
+        } else {
+          current.add(pts[i]);
+        }
+      }
+      if (current.length >= 2) {
         next.add(_Stroke(
           tool: stroke.tool,
           color: stroke.color,
           size: stroke.size,
-          points: seg,
+          points: current,
         ));
       }
     }
