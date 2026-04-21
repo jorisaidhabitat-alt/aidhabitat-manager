@@ -530,8 +530,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF554A63),
-                        decoration: TextDecoration.none,
-                        backgroundColor: Colors.transparent,
                       ),
                     ),
                   ),
@@ -950,8 +948,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final hadBirthday = (now.month > parsed.month) ||
         (now.month == parsed.month && now.day >= parsed.day);
     if (!hadBirthday) age -= 1;
-    if (age <= 0) return '';
-    return '$age !';
+    // Afficher même les âges 0 (nouveau-né / enfant < 1 an). On filtre
+    // seulement les dates futures (négatives).
+    if (age < 0) return '';
+    return '$age ans !';
   }
 
   /// Accepts either an ISO date (YYYY-MM-DD) or a French date (DD/MM/YYYY).
