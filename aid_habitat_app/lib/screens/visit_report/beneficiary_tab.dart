@@ -109,9 +109,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   // Family situation presets
   static const List<String> _familySituationOptions = [
-    'Marié',
+    'Marié(e)',
     'Célibataire',
-    'Divorcé',
+    'Divorcé(e)',
     'Veuf(ve)',
     'Concubinage',
   ];
@@ -629,7 +629,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         else
           FormSelectDropdown<String>(
             label: 'Situation familiale',
-            value: _familySituation,
+            value: _familySituationOptions.contains(_familySituation)
+                ? _familySituation
+                : null,
             options: _familySituationOptions
                 .map((o) => FormSelectOption<String>(value: o, label: o))
                 .toList(),
@@ -654,7 +656,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         else
           FormSelectDropdown<String>(
             label: 'Occupation',
-            value: _occupationStatus,
+            value: _occupationOptions.contains(_occupationStatus)
+                ? _occupationStatus
+                : null,
             options: _occupationOptions
                 .map((o) => FormSelectOption<String>(value: o, label: o))
                 .toList(),
