@@ -207,8 +207,21 @@ class _RecommendationsTabState extends State<RecommendationsTab>
               itemCount: _items.length,
               onReorder: _reorderItem,
               // Drag handle géré manuellement dans la carte (icône en haut
-              // à droite de la carte, dans _RecommendationCard).
+              // au centre de la carte, dans _RecommendationCard).
               buildDefaultDragHandles: false,
+              // Pendant le drag, préserver l'apparence de la carte (radius
+              // 24, transparence, légère élévation) — sans proxyDecorator,
+              // Flutter entoure la carte d'un Material carré qui casse le
+              // border radius arrondi.
+              proxyDecorator: (child, index, animation) {
+                return Material(
+                  color: Colors.transparent,
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(24),
+                  clipBehavior: Clip.antiAlias,
+                  child: child,
+                );
+              },
               itemBuilder: (context, i) {
                 final item = _items[i];
                 return _RecommendationCard(
@@ -333,29 +346,18 @@ class _RecommendationCard extends StatelessWidget {
                         cursor: SystemMouseCursors.grab,
                         child: Padding(
                           padding: const EdgeInsets.all(4),
+                          // drag_handle (3 traits horizontaux) — orientation
+                          // horizontale demandée par l'utilisateur, au lieu
+                          // de drag_indicator qui est vertical (6 points).
                           child: Icon(
-                            Icons.drag_indicator,
-                            size: 20,
+                            Icons.drag_handle,
+                            size: 22,
                             color: const Color(0xFF94A3B8),
                           ),
                         ),
                       ),
                     ),
                   ),
-                Align(
-                  alignment: Alignment.topRight,
-                  child: IconButton(
-                    onPressed: onRemove,
-                    icon: const Icon(Icons.close, size: 18),
-                    color: const Color(0xFF94A3B8),
-                    tooltip: 'Supprimer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 28,
-                      minHeight: 28,
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -401,8 +403,9 @@ class _RecommendationCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 14),
-              // Bloc droit : grande image.
+              const SizedBox(width: 10),
+              // Bloc droit : grande image (remontée, légèrement à gauche
+              // car la croix X vient à sa droite).
               GestureDetector(
                 onTap: onPickWiki,
                 child: Container(
@@ -430,6 +433,19 @@ class _RecommendationCard extends StatelessWidget {
                           color: Color(0xFF907CA1),
                           size: 40,
                         ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              // Bouton supprimer, collé à droite de l'image.
+              IconButton(
+                onPressed: onRemove,
+                icon: const Icon(Icons.close, size: 18),
+                color: const Color(0xFF94A3B8),
+                tooltip: 'Supprimer',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 28,
+                  minHeight: 28,
                 ),
               ),
             ],
