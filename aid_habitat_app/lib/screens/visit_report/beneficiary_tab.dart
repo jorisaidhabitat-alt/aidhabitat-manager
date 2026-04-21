@@ -636,58 +636,42 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         // pour faciliter le choix initial. Dès qu'une situation est
         // choisie, on bascule en menu déroulant compact avec la valeur
         // sélectionnée — gain de place visuel.
-        if (_familySituation.isEmpty)
+        if (_familySituation.isEmpty || _familySituationEditing)
           FormToggleGroup(
             label: 'Situation familiale',
             options: _familySituationOptions,
             selected: _familySituation,
             columns: 2,
             onChanged: (v) {
+              setState(() => _familySituationEditing = false);
               _familySituation = v;
               _markChanged();
             },
           )
         else
-          FormSelectDropdown<String>(
+          _collapsedValueRow(
             label: 'Situation familiale',
-            value: _familySituationOptions.contains(_familySituation)
-                ? _familySituation
-                : null,
-            options: _familySituationOptions
-                .map((o) => FormSelectOption<String>(value: o, label: o))
-                .toList(),
-            placeholder: 'Sélectionner',
-            onChanged: (v) {
-              _familySituation = v ?? '';
-              _markChanged();
-            },
+            displayValue: _familySituation,
+            onEdit: () => setState(() => _familySituationEditing = true),
           ),
         const SizedBox(height: 14),
-        if (_occupationStatus.isEmpty)
+        if (_occupationStatus.isEmpty || _occupationEditing)
           FormToggleGroup(
             label: 'Occupation',
             options: _occupationOptions,
             selected: _occupationStatus,
             columns: 3,
             onChanged: (v) {
+              setState(() => _occupationEditing = false);
               _occupationStatus = v;
               _markChanged();
             },
           )
         else
-          FormSelectDropdown<String>(
+          _collapsedValueRow(
             label: 'Occupation',
-            value: _occupationOptions.contains(_occupationStatus)
-                ? _occupationStatus
-                : null,
-            options: _occupationOptions
-                .map((o) => FormSelectOption<String>(value: o, label: o))
-                .toList(),
-            placeholder: 'Sélectionner',
-            onChanged: (v) {
-              _occupationStatus = v ?? '';
-              _markChanged();
-            },
+            displayValue: _occupationStatus,
+            onEdit: () => setState(() => _occupationEditing = true),
           ),
         const SizedBox(height: 24),
       ],
@@ -950,40 +934,30 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final occ = _occupants[index];
     final value = occ.dependenceTxt.trim();
     final editing = _dependenceEditingIndices.contains(index);
-    final hasValue = value.isNotEmpty;
-    final showList = !hasValue || editing;
-    final displayLabel = (hasValue && !editing)
-        ? 'Dépendance$suffix ($value)'
-        : 'Dépendance$suffix';
-    if (showList) {
-      return FormToggleGroup(
-        label: displayLabel,
-        options: _dependenceOptions,
-        columns: 2,
-        selected: hasValue ? value : 'Aucune',
-        onChanged: (v) {
-          setState(() => _dependenceEditingIndices.remove(index));
-          _updateOccupant(
-            index,
-            occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v),
-          );
-        },
+    final committed = _dependenceCommittedIndices.contains(index);
+    final collapsed = committed && !editing;
+    if (collapsed) {
+      return _collapsedValueRow(
+        label: 'Dépendance$suffix',
+        displayValue: value.isEmpty ? 'Aucune' : value,
+        onEdit: () => setState(() => _dependenceEditingIndices.add(index)),
       );
     }
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _dependenceEditingIndices.add(index)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Text(
-          displayLabel,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF64748B),
-          ),
-        ),
-      ),
+    return FormToggleGroup(
+      label: 'Dépendance$suffix',
+      options: _dependenceOptions,
+      columns: 2,
+      selected: value.isEmpty ? 'Aucune' : value,
+      onChanged: (v) {
+        setState(() {
+          _dependenceEditingIndices.remove(index);
+          _dependenceCommittedIndices.add(index);
+        });
+        _updateOccupant(
+          index,
+          occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v),
+        );
+      },
     );
   }
 
@@ -1091,10 +1065,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final suffix = hasMultiple
         ? (firstName.isNotEmpty ? ' de $firstName' : " de l'occupant ${index + 1}")
         : '';
+    final caissePrinc = occ.caisseRetraitePrincipale.trim();
+    final caisseCompl = occ.caissesRetraiteComplementaires.trim();
+    final caissePrincCollapsed = caissePrinc.isNotEmpty &&
+        !_caissePrincEditingIndices.contains(index);
+    final caisseComplCollapsed = caisseCompl.isNotEmpty &&
+        !_caisseComplEditingIndices.contains(index);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: FormTextField(
@@ -1106,40 +1087,62 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: FormSelectDropdown<String>(
-                label: 'Caisse princ.$suffix',
-                value: occ.caisseRetraitePrincipale.trim().isEmpty
-                    ? null
-                    : occ.caisseRetraitePrincipale.trim(),
-                options: _principalFundNames
-                    .map((name) =>
-                        FormSelectOption<String>(value: name, label: name))
-                    .toList(),
-                placeholder: 'Sélectionner...',
-                onChanged: (v) => _updateOccupant(
-                  index,
-                  occ.copyWith(caisseRetraitePrincipale: v ?? ''),
-                ),
-              ),
+              child: caissePrincCollapsed
+                  ? _collapsedValueRow(
+                      label: 'Caisse princ.$suffix',
+                      displayValue: caissePrinc,
+                      onEdit: () => setState(
+                        () => _caissePrincEditingIndices.add(index),
+                      ),
+                    )
+                  : FormSelectDropdown<String>(
+                      label: 'Caisse princ.$suffix',
+                      value: _principalFundNames.contains(caissePrinc)
+                          ? caissePrinc
+                          : null,
+                      options: _principalFundNames
+                          .map((name) =>
+                              FormSelectOption<String>(value: name, label: name))
+                          .toList(),
+                      placeholder: 'Sélectionner...',
+                      onChanged: (v) {
+                        setState(() => _caissePrincEditingIndices.remove(index));
+                        _updateOccupant(
+                          index,
+                          occ.copyWith(caisseRetraitePrincipale: v ?? ''),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
         const SizedBox(height: 14),
-        FormSelectDropdown<String>(
-          label: 'Caisse complém.$suffix',
-          value: occ.caissesRetraiteComplementaires.trim().isEmpty
-              ? null
-              : occ.caissesRetraiteComplementaires.trim(),
-          options: _retirementFundNames
-              .map((name) =>
-                  FormSelectOption<String>(value: name, label: name))
-              .toList(),
-          placeholder: 'Sélectionner une caisse',
-          onChanged: (v) => _updateOccupant(
-            index,
-            occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
+        if (caisseComplCollapsed)
+          _collapsedValueRow(
+            label: 'Caisse complém.$suffix',
+            displayValue: caisseCompl,
+            onEdit: () =>
+                setState(() => _caisseComplEditingIndices.add(index)),
+          )
+        else
+          FormSelectDropdown<String>(
+            label: 'Caisse complém.$suffix',
+            value: _retirementFundNames.contains(caisseCompl)
+                ? caisseCompl
+                : null,
+            options: _retirementFundNames
+                .map((name) =>
+                    FormSelectOption<String>(value: name, label: name))
+                .toList(),
+            placeholder: 'Sélectionner une caisse',
+            onChanged: (v) {
+              setState(() => _caisseComplEditingIndices.remove(index));
+              _updateOccupant(
+                index,
+                occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
+              );
+            },
           ),
-        ),
       ],
     );
   }
@@ -1203,28 +1206,44 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         const SizedBox(height: 24),
 
         // --- Bloc "Renseignements sur la visite" (titre retiré) ---------
-        FormToggleGroup(
-          label: 'Envoi du rapport',
-          options: const ['Mail', 'Courrier'],
-          selected: _envoiRapport,
-          columns: 2,
-          onChanged: (v) {
-            _envoiRapport = v;
-            _markChanged();
-          },
-        ),
+        if (_envoiRapport.isEmpty || _envoiRapportEditing)
+          FormToggleGroup(
+            label: 'Envoi du rapport',
+            options: const ['Mail', 'Courrier'],
+            selected: _envoiRapport,
+            columns: 2,
+            onChanged: (v) {
+              setState(() => _envoiRapportEditing = false);
+              _envoiRapport = v;
+              _markChanged();
+            },
+          )
+        else
+          _collapsedValueRow(
+            label: 'Envoi du rapport',
+            displayValue: _envoiRapport,
+            onEdit: () => setState(() => _envoiRapportEditing = true),
+          ),
         const SizedBox(height: 24),
 
         // --- Bloc "Informations Administratives" (titre retiré) ---------
-        FormSelectDropdown<String>(
-          label: 'Création compte Anah',
-          value: _compteAnah.isEmpty ? null : _compteAnah,
-          options: _anahOptions,
-          onChanged: (v) {
-            _compteAnah = v ?? '';
-            _markChanged();
-          },
-        ),
+        if (_compteAnah.isEmpty || _compteAnahEditing)
+          FormSelectDropdown<String>(
+            label: 'Création compte Anah',
+            value: _compteAnah.isEmpty ? null : _compteAnah,
+            options: _anahOptions,
+            onChanged: (v) {
+              setState(() => _compteAnahEditing = false);
+              _compteAnah = v ?? '';
+              _markChanged();
+            },
+          )
+        else
+          _collapsedValueRow(
+            label: 'Création compte Anah',
+            displayValue: _compteAnah,
+            onEdit: () => setState(() => _compteAnahEditing = true),
+          ),
       ],
     );
   }
