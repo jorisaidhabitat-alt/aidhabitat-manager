@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppUser, Dossier, NotePage, OccupantIdentity } from '../types';
 import {
   ArrowRight, Search, ChevronRight, Plus, ChevronDown,
-  Paperclip, Home, User, Phone, MapPin, Calendar, Activity, ArrowLeft, X
+  Paperclip, Home, User, Phone, MapPin, Calendar, Activity, ArrowLeft, X, Pencil, Check
 } from 'lucide-react';
 import { NotesCanvas, buildNotePreviewDataUrlFromContent } from './NotesCanvas';
 import { CommuneFieldGroup, type CommuneOption } from './CommuneFieldGroup';
@@ -624,6 +624,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
   }, []);
 
   const [editForm, setEditForm] = useState(() => buildEditFormFromPatient(dossier.patient));
+  const [isBeneficiaryLocked, setIsBeneficiaryLocked] = useState(true);
   const [isNoteSaving, setIsNoteSaving] = useState(false);
   const [noteDraft, setNoteDraft] = useState({
     text: '',
@@ -1039,7 +1040,21 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
                 <User className="text-slate-400" />
                 <h3 className="font-bold text-lg text-slate-800">Informations Bénéficiaire</h3>
               </div>
-              <InfoBadge value={displayedIncomeCategory} />
+              <div className="flex items-center gap-2">
+                <InfoBadge value={displayedIncomeCategory} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isBeneficiaryLocked) persistBeneficiaryDraft(true);
+                    setIsBeneficiaryLocked((previous) => !previous);
+                  }}
+                  className={uiIconButtonClass}
+                  aria-label={isBeneficiaryLocked ? 'Modifier les informations' : 'Verrouiller les informations'}
+                  title={isBeneficiaryLocked ? 'Modifier' : 'Verrouiller'}
+                >
+                  {isBeneficiaryLocked ? <Pencil size={16} /> : <Check size={16} />}
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3 animate-in fade-in duration-200">
@@ -1051,38 +1066,63 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
                 />
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <EditableInfoField
-                  label="Prénom"
-                  value={editForm.firstName}
-                  onChange={(value) => setEditForm((previous) => ({ ...previous, firstName: value }))}
-                  onBlur={() => persistBeneficiaryDraft(true)}
-                />
-                <EditableInfoField
-                  label="Nom"
-                  value={editForm.lastName}
-                  onChange={(value) => setEditForm((previous) => ({ ...previous, lastName: value }))}
-                  onBlur={() => persistBeneficiaryDraft(true)}
-                />
+                {isBeneficiaryLocked ? (
+                  <>
+                    <ReadOnlyInfoField label="Prénom" value={editForm.firstName || 'Non renseigné'} />
+                    <ReadOnlyInfoField label="Nom" value={editForm.lastName || 'Non renseigné'} />
+                  </>
+                ) : (
+                  <>
+                    <EditableInfoField
+                      label="Prénom"
+                      value={editForm.firstName}
+                      onChange={(value) => setEditForm((previous) => ({ ...previous, firstName: value }))}
+                      onBlur={() => persistBeneficiaryDraft(true)}
+                    />
+                    <EditableInfoField
+                      label="Nom"
+                      value={editForm.lastName}
+                      onChange={(value) => setEditForm((previous) => ({ ...previous, lastName: value }))}
+                      onBlur={() => persistBeneficiaryDraft(true)}
+                    />
+                  </>
+                )}
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <SelectInfoField
-                  label="Occupants"
-                  value={editForm.numberPeople}
-                  onChange={(value) => setEditForm((previous) => ({ ...previous, numberPeople: value }))}
-                  onBlur={() => persistBeneficiaryDraft(true)}
-                  options={OCCUPANT_OPTIONS}
-                />
-                <CommuneFieldGroup
-                  city={editForm.city}
-                  zipCode={editForm.zipCode}
-                  cityId={editForm.cityId}
-                  options={communeOptions}
-                  onChange={(updates) => setEditForm((previous) => ({ ...previous, ...updates }))}
-                  onBlur={() => persistBeneficiaryDraft(true)}
-                  zipLabel="Code postal"
-                  cityLabel="Ville"
-                  showZipField={false}
-                />
+                {isBeneficiaryLocked ? (
+                  <>
+                    <ReadOnlyInfoField
+                      label="Occupants"
+                      value={
+                        OCCUPANT_OPTIONS.find((option) => option.value === editForm.numberPeople)?.label
+                          || editForm.numberPeople
+                          || 'Non renseigné'
+                      }
+                    />
+                    <ReadOnlyInfoField label="Ville" value={editForm.city || 'Non renseignée'} />
+                  </>
+                ) : (
+                  <>
+                    <SelectInfoField
+                      label="Occupants"
+                      value={editForm.numberPeople}
+                      onChange={(value) => setEditForm((previous) => ({ ...previous, numberPeople: value }))}
+                      onBlur={() => persistBeneficiaryDraft(true)}
+                      options={OCCUPANT_OPTIONS}
+                    />
+                    <CommuneFieldGroup
+                      city={editForm.city}
+                      zipCode={editForm.zipCode}
+                      cityId={editForm.cityId}
+                      options={communeOptions}
+                      onChange={(updates) => setEditForm((previous) => ({ ...previous, ...updates }))}
+                      onBlur={() => persistBeneficiaryDraft(true)}
+                      zipLabel="Code postal"
+                      cityLabel="Ville"
+                      showZipField={false}
+                    />
+                  </>
+                )}
               </div>
               <ReadOnlyInfoField
                 label="Commentaire projet"
