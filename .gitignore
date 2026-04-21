@@ -35,3 +35,7 @@ tmp/
 
 # Sensitive runtime data
 server/data/auth-store.json
+
+# Claude Code runtime
+.claude/worktrees/
+.claude/scheduled_tasks.lock
