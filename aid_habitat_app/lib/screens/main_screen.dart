@@ -43,6 +43,13 @@ class _MainScreenState extends State<MainScreen> {
   String _activeView = 'dashboard';
   Dossier? _selectedDossier;
   List<Dossier> _dossiers = [];
+  // Dernier état "profond" visité dans l'arbre Dossiers (dossier_detail
+  // ou visit_report). Utilisé pour restaurer le contexte quand l'user
+  // clique à nouveau sur "Dossiers" dans la sidebar après être allé
+  // ailleurs (wiki, anah, dashboard…). Un 2e clic consécutif = reset
+  // vers la liste.
+  String? _lastDossierTreeView;
+  Dossier? _lastDossierTreeSelected;
   int _pendingSyncCount = 0;
   bool _isSyncing = false;
   bool _isLoading = true;
@@ -161,11 +168,44 @@ class _MainScreenState extends State<MainScreen> {
     _syncEngine.start();
   }
 
+  bool _isDossierTreeView(String view) =>
+      view == 'dossier_detail' || view == 'visit_report';
+
   void _handleViewChange(String view) {
     setState(() {
+      // Cas spécial : clic sur "Dossiers" dans la sidebar.
+      if (view == 'dossiers') {
+        final comingFromOutside = !_isDossierTreeView(_activeView)
+            && _activeView != 'dossiers';
+        // 1er clic après être parti ailleurs + un état profond sauvegardé
+        // → restaurer exactement la page où on était (dossier_detail ou
+        // visit_report du dernier bénéficiaire ouvert).
+        if (comingFromOutside
+            && _lastDossierTreeView != null
+            && _lastDossierTreeSelected != null) {
+          _activeView = _lastDossierTreeView!;
+          _selectedDossier = _lastDossierTreeSelected;
+          return;
+        }
+        // Sinon (déjà dans l'arbre, déjà sur la liste, ou pas d'état
+        // sauvegardé) → liste plate. Un 2e clic consécutif tombe ici.
+        _activeView = 'dossiers';
+        _selectedDossier = null;
+        _lastDossierTreeView = null;
+        _lastDossierTreeSelected = null;
+        return;
+      }
+
+      // Cas : on quitte l'arbre dossiers (vers wiki / anah / dashboard…).
+      // Mémoriser le dernier état profond pour pouvoir le restaurer.
+      if (_isDossierTreeView(_activeView) && !_isDossierTreeView(view)) {
+        _lastDossierTreeView = _activeView;
+        _lastDossierTreeSelected = _selectedDossier;
+      }
+
       _activeView = view;
       if (view == 'anah') _anahEverVisited = true;
-      if (view != 'dossier_detail') {
+      if (!_isDossierTreeView(view)) {
         _selectedDossier = null;
       }
     });
@@ -175,6 +215,9 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {
       _selectedDossier = dossier;
       _activeView = 'dossier_detail';
+      // Ouvrir un nouveau dossier remplace l'état profond mémorisé.
+      _lastDossierTreeView = 'dossier_detail';
+      _lastDossierTreeSelected = dossier;
     });
   }
 
