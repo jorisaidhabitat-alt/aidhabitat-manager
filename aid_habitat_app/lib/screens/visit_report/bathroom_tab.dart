@@ -426,11 +426,10 @@ class _BathroomTabState extends State<BathroomTab>
         if (_getEquipmentEnabled(a, it.enabledField)) it.label,
     };
 
-    return FormSection.text(
-      'Équipements Salle de Bain — ${a.levelLabel}',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Titre "Équipements Salle de Bain — …" retiré.
           // Wet zone toggles
           Row(
             children: [
@@ -510,9 +509,9 @@ class _BathroomTabState extends State<BathroomTab>
               ),
             ),
           ),
+          const SizedBox(height: 24),
         ],
-      ),
-    );
+      );
   }
 
   // ---------------------------------------------------------------------------
@@ -521,37 +520,36 @@ class _BathroomTabState extends State<BathroomTab>
 
   Widget _buildDoor() {
     final a = _active!;
-    return FormSection.text(
-      'Porte Salle de Bain — ${a.levelLabel}',
-      child: Column(
-        children: [
-          FormToggleGroup(
-            label: 'Largeur de porte',
-            options: const ['Suffisante', 'À revoir'],
-            selected: a.porteSdbLargeurSuffisante ? 'Suffisante' : 'À revoir',
-            expand: true,
-            onChanged: (v) => _updateActive(
-                _copy(a, porteSdbLargeurSuffisante: v == 'Suffisante')),
-          ),
-          const SizedBox(height: 14),
-          FormNumberField(
-            label: 'Dimension de porte',
-            value: a.porteSdbDimension,
-            unit: 'cm',
-            onChanged: (v) =>
-                _updateActive(_copy(a, porteSdbDimension: v, porteSdbDimensionNull: v == null)),
-          ),
-          const SizedBox(height: 14),
-          FormToggleGroup(
-            label: "Sens d'ouverture",
-            options: const ['Intérieur', 'Extérieur'],
-            selected: a.porteSdbSensAdapte ? 'Intérieur' : 'Extérieur',
-            expand: true,
-            onChanged: (v) => _updateActive(
-                _copy(a, porteSdbSensAdapte: v == 'Intérieur')),
-          ),
-        ],
-      ),
+    // Titre "Porte Salle de Bain — …" retiré.
+    return Column(
+      children: [
+        FormToggleGroup(
+          label: 'Largeur de porte',
+          options: const ['Suffisante', 'À revoir'],
+          selected: a.porteSdbLargeurSuffisante ? 'Suffisante' : 'À revoir',
+          expand: true,
+          onChanged: (v) => _updateActive(
+              _copy(a, porteSdbLargeurSuffisante: v == 'Suffisante')),
+        ),
+        const SizedBox(height: 14),
+        FormNumberField(
+          label: 'Dimension de porte',
+          value: a.porteSdbDimension,
+          unit: 'cm',
+          onChanged: (v) =>
+              _updateActive(_copy(a, porteSdbDimension: v, porteSdbDimensionNull: v == null)),
+        ),
+        const SizedBox(height: 14),
+        FormToggleGroup(
+          label: "Sens d'ouverture",
+          options: const ['Intérieur', 'Extérieur'],
+          selected: a.porteSdbSensAdapte ? 'Intérieur' : 'Extérieur',
+          expand: true,
+          onChanged: (v) => _updateActive(
+              _copy(a, porteSdbSensAdapte: v == 'Intérieur')),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 

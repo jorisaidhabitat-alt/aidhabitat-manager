@@ -322,80 +322,78 @@ class _WcTabState extends State<WcTab>
 
   Widget _buildMain() {
     final a = _active!;
-    return FormSection.text(
-      'Équipements WC — ${a.levelLabel}',
-      child: Column(
-        children: [
-          FormToggleGroup(
-            label: 'Hauteur de cuvette',
-            options: const ['Bonne hauteur', 'Trop basse'],
-            selected: a.wcCuvetteTropBasse ? 'Trop basse' : 'Bonne hauteur',
-            onChanged: (v) {
-              final isLow = v == 'Trop basse';
-              _updateActive(_copy(a,
-                  wcCuvetteBonneHauteur: !isLow, wcCuvetteTropBasse: isLow));
-            },
-          ),
-          const SizedBox(height: 14),
-          FormNumberField(
-            label: 'Hauteur cuvette',
-            value: a.wcCuvetteHauteur,
-            unit: 'cm',
-            onChanged: (v) => _updateActive(_copy(a,
-                wcCuvetteHauteur: v, wcCuvetteHauteurNull: v == null)),
-          ),
-          const SizedBox(height: 14),
-          FormToggleGroup(
-            label: 'Barre de relèvement',
-            options: const ['Présente', 'Absente'],
-            selected: a.wcBarreRelevement ? 'Présente' : 'Absente',
-            onChanged: (v) => _updateActive(
-                _copy(a, wcBarreRelevement: v == 'Présente')),
-          ),
-          const SizedBox(height: 14),
-          FormTextField(
-            label: "Observations sur l'utilisation",
-            value: a.observationEquipementsUtilisation,
-            maxLines: 3,
-            onChanged: (v) => _updateActive(
-                _copy(a, observationEquipementsUtilisation: v)),
-          ),
-        ],
-      ),
+    // Titre "Équipements WC — …" retiré.
+    return Column(
+      children: [
+        FormToggleGroup(
+          label: 'Hauteur de cuvette',
+          options: const ['Bonne hauteur', 'Trop basse'],
+          selected: a.wcCuvetteTropBasse ? 'Trop basse' : 'Bonne hauteur',
+          onChanged: (v) {
+            final isLow = v == 'Trop basse';
+            _updateActive(_copy(a,
+                wcCuvetteBonneHauteur: !isLow, wcCuvetteTropBasse: isLow));
+          },
+        ),
+        const SizedBox(height: 14),
+        FormNumberField(
+          label: 'Hauteur cuvette',
+          value: a.wcCuvetteHauteur,
+          unit: 'cm',
+          onChanged: (v) => _updateActive(_copy(a,
+              wcCuvetteHauteur: v, wcCuvetteHauteurNull: v == null)),
+        ),
+        const SizedBox(height: 14),
+        FormToggleGroup(
+          label: 'Barre de relèvement',
+          options: const ['Présente', 'Absente'],
+          selected: a.wcBarreRelevement ? 'Présente' : 'Absente',
+          onChanged: (v) => _updateActive(
+              _copy(a, wcBarreRelevement: v == 'Présente')),
+        ),
+        const SizedBox(height: 14),
+        FormTextField(
+          label: "Observations sur l'utilisation",
+          value: a.observationEquipementsUtilisation,
+          maxLines: 3,
+          onChanged: (v) => _updateActive(
+              _copy(a, observationEquipementsUtilisation: v)),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 
   Widget _buildDoor() {
     final a = _active!;
-    return FormSection.text(
-      'Porte WC — ${a.levelLabel}',
-      child: Column(
-        children: [
-          FormToggleGroup(
-            label: 'Largeur de porte',
-            options: const ['Suffisante', 'À revoir'],
-            selected: a.porteWcLargeurSuffisante ? 'Suffisante' : 'À revoir',
-            onChanged: (v) => _updateActive(
-                _copy(a, porteWcLargeurSuffisante: v == 'Suffisante')),
-          ),
-          const SizedBox(height: 14),
-          FormNumberField(
-            label: 'Dimension de porte',
-            value: a.porteWcDimension,
-            unit: 'cm',
-            onChanged: (v) => _updateActive(_copy(a,
-                porteWcDimension: v, porteWcDimensionNull: v == null)),
-          ),
-          const SizedBox(height: 14),
-          FormToggleGroup(
-            label: "Sens d'ouverture",
-            options: const ['Intérieur', 'Extérieur'],
-            selected: a.porteWcSensAdapte ? 'Intérieur' : 'Extérieur',
-            onChanged: (v) => _updateActive(
-                _copy(a, porteWcSensAdapte: v == 'Intérieur')),
-          ),
-        ],
-      ),
+    // Titre "Porte WC — …" retiré.
+    return Column(
+      children: [
+        FormToggleGroup(
+          label: 'Largeur de porte',
+          options: const ['Suffisante', 'À revoir'],
+          selected: a.porteWcLargeurSuffisante ? 'Suffisante' : 'À revoir',
+          onChanged: (v) => _updateActive(
+              _copy(a, porteWcLargeurSuffisante: v == 'Suffisante')),
+        ),
+        const SizedBox(height: 14),
+        FormNumberField(
+          label: 'Dimension de porte',
+          value: a.porteWcDimension,
+          unit: 'cm',
+          onChanged: (v) => _updateActive(_copy(a,
+              porteWcDimension: v, porteWcDimensionNull: v == null)),
+        ),
+        const SizedBox(height: 14),
+        FormToggleGroup(
+          label: "Sens d'ouverture",
+          options: const ['Intérieur', 'Extérieur'],
+          selected: a.porteWcSensAdapte ? 'Intérieur' : 'Extérieur',
+          onChanged: (v) => _updateActive(
+              _copy(a, porteWcSensAdapte: v == 'Intérieur')),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 

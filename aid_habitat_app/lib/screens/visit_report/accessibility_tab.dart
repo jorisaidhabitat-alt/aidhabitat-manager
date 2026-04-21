@@ -228,6 +228,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     if ((row?['balcon'] as int? ?? 0) == 1) _annexes.add('Balcon');
     if ((row?['terrasse'] as int? ?? 0) == 1) _annexes.add('Terrasse');
     if ((row?['jardin'] as int? ?? 0) == 1) _annexes.add('Jardin');
+    // Sync Garage depuis les pièces des niveaux : si "Garage" est coché
+    // dans n'importe quel niveau, l'annexe Garage est automatiquement activée.
+    if (_levelRooms.values.any((rooms) => rooms.contains('Garage'))) {
+      _annexes.add('Garage');
+    }
 
     final rawGarage =
         (row?['motorisation_porte_garage'] as String?) ?? h.motorisationPorteGarage;
@@ -592,6 +597,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         _scheduleSave();
       },
       child: Container(
+        width: double.infinity,
         padding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
@@ -600,7 +606,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
         ),
         child: const Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.add, size: 16, color: Color(0xFF554A63)),
             SizedBox(width: 8),
@@ -685,6 +692,16 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                       next.remove(room);
                     }
                     _levelRooms[cfg.field] = next;
+                    // Sync Garage annexe : coché dans un niveau → coché dans Annexes
+                    if (room == 'Garage') {
+                      if (v) {
+                        _annexes.add('Garage');
+                      } else {
+                        final stillPresent = _levelRooms.values
+                            .any((rooms) => rooms.contains('Garage'));
+                        if (!stillPresent) _annexes.remove('Garage');
+                      }
+                    }
                   });
                   _scheduleSave();
                 },
@@ -803,23 +820,31 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Accès depuis la rue (toggle simple, sans observation ni chemin)
-        FormSection.text(
-          'Accès Depuis la Rue',
-          child: FormToggleGroup(
-            label: '',
-            options: const ['Facile', 'À revoir'],
-            selected: _easyAccess ? 'Facile' : 'À revoir',
-            expand: true,
-            onChanged: (v) {
-              setState(() => _easyAccess = v == 'Facile');
-              _scheduleSave();
-            },
-          ),
+        const Text('Accès depuis la rue',
+            style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: Color(0xFF64748B))),
+        const SizedBox(height: 8),
+        FormToggleGroup(
+          label: '',
+          options: const ['Facile', 'À revoir'],
+          selected: _easyAccess ? 'Facile' : 'À revoir',
+          expand: true,
+          onChanged: (v) {
+            setState(() => _easyAccess = v == 'Facile');
+            _scheduleSave();
+          },
         ),
+        const SizedBox(height: 16),
         // Annexes + motorisations conditionnelles
-        FormSection.text(
-          'Annexes',
-          child: Column(
+        const Text('Annexes',
+            style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: Color(0xFF64748B))),
+        const SizedBox(height: 8),
+        Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Wrap(
@@ -897,7 +922,6 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               ],
             ],
           ),
-        ),
       ],
     );
   }
