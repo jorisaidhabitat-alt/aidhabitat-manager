@@ -39,17 +39,37 @@ enum PlanTool {
   eraser,
 }
 
+/// Ensemble des outils qui produisent un SYMBOLE placé (pas un stroke de
+/// tracé libre). Ces symboles sont sélectionnables et manipulables avec
+/// des poignées (4 coins pour la taille + 1 flèche pour la rotation).
+const Set<PlanTool> _symbolTools = {
+  PlanTool.window,
+  PlanTool.door,
+  PlanTool.toilet,
+  PlanTool.shower,
+  PlanTool.bath,
+};
+
 class _PlanStroke {
   final PlanTool tool;
   final int color; // ARGB
   final double size;
-  final List<Offset> points; // pen/eraser: list. line: [start,end]. rect: [topLeft, bottomRight]
+  /// pen/highlighter/eraser : liste de points.
+  /// line/rect/wall : [start, end].
+  /// Symboles (window/door/toilet/shower/bath) : [centerPoint, cornerPoint]
+  /// où le rectangle englobant (non tourné) est centré sur centerPoint
+  /// et va jusqu'à cornerPoint en coordonnées LOCALES (avant rotation).
+  final List<Offset> points;
+  /// Rotation (radians, horaire). N'a de sens que pour les symboles
+  /// architecturaux. Par défaut 0 (pas de rotation).
+  double rotation;
 
   _PlanStroke({
     required this.tool,
     required this.color,
     required this.size,
     required this.points,
+    this.rotation = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -57,6 +77,7 @@ class _PlanStroke {
         'color': color,
         'size': size,
         'points': points.map((p) => [p.dx, p.dy]).toList(),
+        if (rotation != 0) 'rotation': rotation,
       };
 
   static _PlanStroke? fromJson(Map<String, dynamic> json) {
@@ -75,15 +96,33 @@ class _PlanStroke {
           (pt[1] as num).toDouble(),
         );
       }).toList();
+      final rotation = (json['rotation'] as num?)?.toDouble() ?? 0.0;
       return _PlanStroke(
         tool: tool,
         color: color,
         size: size,
         points: points,
+        rotation: rotation,
       );
     } catch (_) {
       return null;
     }
+  }
+
+  /// Rectangle englobant LOCAL (sans rotation) du symbole. [center] est
+  /// au milieu, les dimensions proviennent de la différence avec
+  /// cornerPoint. Utilisé pour rendre + hit-test.
+  Rect? get symbolLocalBounds {
+    if (!_symbolTools.contains(tool) || points.length < 2) return null;
+    final c = points[0];
+    final corner = points[1];
+    final halfW = (corner.dx - c.dx).abs();
+    final halfH = (corner.dy - c.dy).abs();
+    return Rect.fromCenter(
+      center: c,
+      width: (halfW * 2).clamp(16, 4000),
+      height: (halfH * 2).clamp(16, 4000),
+    );
   }
 }
 
@@ -130,6 +169,17 @@ class _PlanCanvasState extends State<PlanCanvas> {
   PlanTool _tool = PlanTool.pen;
   int _penColor = 0xFF1A1A1A;
   double _penSize = 2;
+
+  // Sélection d'un symbole architectural placé — -1 = rien de sélectionné.
+  int _selectedIndex = -1;
+  // Action en cours sur le symbole sélectionné (drag d'une poignée, du
+  // corps, rotation). `null` entre les gestures.
+  _SymbolHandle? _activeHandle;
+  // Backup pour les drags (valeurs initiales du symbole au début du geste).
+  Offset? _dragAnchor;
+  Offset? _dragInitialCenter;
+  Offset? _dragInitialCorner;
+  double? _dragInitialRotation;
 
   // Committed strokes
   final List<_PlanStroke> _strokes = [];
@@ -453,46 +503,20 @@ class _PlanCanvasState extends State<PlanCanvas> {
           _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
           _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
           _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
+          _toolBtn(PlanTool.wall, LucideIcons.rectangleHorizontal, 'Mur'),
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
           _divider(),
-          // Symboles architecturaux (glisser-déposer pour placer).
-          _toolBtn(PlanTool.wall, LucideIcons.rectangleHorizontal, 'Mur'),
-          _toolBtn(PlanTool.window, LucideIcons.appWindow, 'Fenêtre'),
-          _toolBtn(PlanTool.door, LucideIcons.doorOpen, 'Porte'),
-          _toolBtn(PlanTool.toilet, LucideIcons.armchair, 'WC'),
-          _toolBtn(PlanTool.shower, LucideIcons.droplets, 'Douche'),
-          _toolBtn(PlanTool.bath, LucideIcons.bath, 'Baignoire'),
+          // Menu déroulant "Insérer un élément" — symboles architecturaux
+          // (fenêtre, porte, WC, douche, baignoire). Au choix, l'élément
+          // apparaît au centre du canvas avec poignées de taille + rotation.
+          _buildInsertSymbolMenu(),
           _divider(),
           // Palette de couleurs.
           ..._presetColors.map((c) => _colorDot(c)),
           _divider(),
-          // Épaisseur du trait : − / valeur / +
-          _sizeStepButton(
-            icon: LucideIcons.minus,
-            tooltip: 'Diminuer l\'épaisseur',
-            onTap: _penSize > 1
-                ? () => setState(() => _penSize = (_penSize - 1).clamp(1, 20))
-                : null,
-          ),
-          Container(
-            constraints: const BoxConstraints(minWidth: 28),
-            alignment: Alignment.center,
-            child: Text(
-              '${_penSize.toInt()}',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF334155),
-              ),
-            ),
-          ),
-          _sizeStepButton(
-            icon: LucideIcons.plus,
-            tooltip: 'Augmenter l\'épaisseur',
-            onTap: _penSize < 20
-                ? () => setState(() => _penSize = (_penSize + 1).clamp(1, 20))
-                : null,
-          ),
+          // Épaisseur : pill indissociable [− | N | +]. Le Container
+          // empêche le Wrap de séparer ces 3 éléments sur deux lignes.
+          _buildThicknessPill(),
           const SizedBox(width: 4),
           IconButton(
             icon: const Icon(LucideIcons.download, size: 18),
@@ -548,6 +572,121 @@ class _PlanCanvasState extends State<PlanCanvas> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  // Pill − | N | + garantie toujours sur une même ligne (Container seul,
+  // Wrap ne peut pas le découper).
+  Widget _buildThicknessPill() {
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _sizeStepButton(
+            icon: LucideIcons.minus,
+            tooltip: "Diminuer l'épaisseur",
+            onTap: _penSize > 1
+                ? () =>
+                    setState(() => _penSize = (_penSize - 1).clamp(1, 20))
+                : null,
+          ),
+          Container(
+            constraints: const BoxConstraints(minWidth: 24),
+            alignment: Alignment.center,
+            child: Text(
+              '${_penSize.toInt()}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF334155),
+              ),
+            ),
+          ),
+          _sizeStepButton(
+            icon: LucideIcons.plus,
+            tooltip: "Augmenter l'épaisseur",
+            onTap: _penSize < 20
+                ? () =>
+                    setState(() => _penSize = (_penSize + 1).clamp(1, 20))
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Menu déroulant "Insérer un élément" — remplace les 5 boutons dédiés
+  // (fenêtre, porte, WC, douche, baignoire). À la sélection, le symbole
+  // apparaît au centre du canvas, taille par défaut, sélectionné pour
+  // manipulation immédiate.
+  Widget _buildInsertSymbolMenu() {
+    return PopupMenuButton<PlanTool>(
+      tooltip: '',
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      elevation: 6,
+      onSelected: _insertSymbolAtCenter,
+      itemBuilder: (ctx) => const [
+        PopupMenuItem(
+          value: PlanTool.window,
+          child: _SymbolMenuRow(
+              icon: LucideIcons.appWindow, label: 'Fenêtre'),
+        ),
+        PopupMenuItem(
+          value: PlanTool.door,
+          child: _SymbolMenuRow(
+              icon: LucideIcons.doorOpen, label: 'Porte'),
+        ),
+        PopupMenuItem(
+          value: PlanTool.toilet,
+          child: _SymbolMenuRow(
+              icon: LucideIcons.armchair, label: 'WC'),
+        ),
+        PopupMenuItem(
+          value: PlanTool.shower,
+          child: _SymbolMenuRow(
+              icon: LucideIcons.droplets, label: 'Douche'),
+        ),
+        PopupMenuItem(
+          value: PlanTool.bath,
+          child: _SymbolMenuRow(
+              icon: LucideIcons.bath, label: 'Baignoire'),
+        ),
+      ],
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _kTeal,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.plus, size: 14, color: Colors.white),
+            SizedBox(width: 6),
+            Text(
+              'Insérer un élément',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(width: 4),
+            Icon(LucideIcons.chevronDown, size: 14, color: Colors.white),
+          ],
+        ),
       ),
     );
   }
