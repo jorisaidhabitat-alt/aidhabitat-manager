@@ -800,18 +800,16 @@ class _NotesWidgetState extends State<NotesWidget> {
     _markDirty();
   }
 
-  void _eraseAt(Offset normalizedPoint) {
-    final threshold =
-        (_eraserSize / 2) / math.max(1.0, _canvasSize.shortestSide);
-    final hitDistance = threshold * 2;
+  // Calcule la liste de strokes résultant de l'effacement d'un point.
+  // Retourne null si aucun trait n'a été touché (pas de setState nécessaire).
+  List<_Stroke>? _computeErase(
+      List<_Stroke> input, Offset point, double hitDistance) {
     final next = <_Stroke>[];
     var changed = false;
-    for (final stroke in _strokes) {
-      // Geometric primitives (line/rect) can't be split meaningfully —
-      // erase the whole primitive when any control point is hit.
+    for (final stroke in input) {
       if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
-        final hit = stroke.points
-            .any((p) => (p - normalizedPoint).distance < hitDistance);
+        final hit =
+            stroke.points.any((p) => (p - point).distance < hitDistance);
         if (hit) {
           changed = true;
         } else {
@@ -819,14 +817,11 @@ class _NotesWidgetState extends State<NotesWidget> {
         }
         continue;
       }
-      // Freehand (pen/highlighter): split around erased points so the
-      // eraser only removes the touched portion, not the whole trait.
       final segments = <List<Offset>>[];
       var current = <Offset>[];
       var anyHit = false;
       for (final p in stroke.points) {
-        final isHit = (p - normalizedPoint).distance < hitDistance;
-        if (isHit) {
+        if ((p - point).distance < hitDistance) {
           anyHit = true;
           if (current.isNotEmpty) {
             segments.add(current);
@@ -852,9 +847,54 @@ class _NotesWidgetState extends State<NotesWidget> {
         ));
       }
     }
-    if (!changed) return;
+    return changed ? next : null;
+  }
+
+  // Efface un point unique (utilisé au début du tracé).
+  void _eraseAt(Offset point) {
+    final hitDistance =
+        _eraserSize / math.max(1.0, _canvasSize.shortestSide);
+    final next = _computeErase(_strokes, point, hitDistance);
+    if (next == null) return;
     setState(() => _pageStrokes[_currentPage] = next);
     _markDirty();
+  }
+
+  // Efface en interpolant entre [from] et [to] pour combler les trous
+  // quand le doigt se déplace vite. Un seul setState à la fin pour ne pas
+  // saccader.
+  void _eraseAlongPath(Offset? from, Offset to) {
+    final hitDistance =
+        _eraserSize / math.max(1.0, _canvasSize.shortestSide);
+    if (from == null) {
+      _eraseAt(to);
+      return;
+    }
+    final delta = to - from;
+    final dist = delta.distance;
+    // Pas d'interpolation si le mouvement est plus petit que le rayon —
+    // un seul appel suffit.
+    final step = hitDistance * 0.6;
+    var strokes = _strokes;
+    if (dist <= step) {
+      final next = _computeErase(strokes, to, hitDistance);
+      if (next == null) return;
+      setState(() => _pageStrokes[_currentPage] = next);
+      _markDirty();
+      return;
+    }
+    // Interpoler plusieurs points le long du segment, tout batché.
+    final steps = (dist / step).ceil().clamp(1, 64);
+    for (var i = 1; i <= steps; i++) {
+      final t = i / steps;
+      final pt = Offset(from.dx + delta.dx * t, from.dy + delta.dy * t);
+      final next = _computeErase(strokes, pt, hitDistance);
+      if (next != null) strokes = next;
+    }
+    if (!identical(strokes, _strokes)) {
+      setState(() => _pageStrokes[_currentPage] = strokes);
+      _markDirty();
+    }
   }
 
   // ---------------------------------------------------------------------------
