@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../models/types.dart';
+import '../../services/data_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/references_service.dart';
 import '../../services/retirement_funds_repository.dart';
@@ -72,6 +73,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   StreamSubscription<ReferencesPayload>? _refSub;
   List<CommuneOption> _communeOptions = const [];
   List<String> _retirementFundNames = const [];
+  List<String> _principalFundNames = const [];
 
   // ANAH options (parity with React ANAH_ACCOUNT_OPTIONS)
   static const List<FormSelectOption<String>> _anahOptions = [
@@ -130,6 +132,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     });
     _communeOptions = _mapCommunesToOptions();
     _loadRetirementFundNames();
+    _loadPrincipalFundNames();
   }
 
   List<CommuneOption> _mapCommunesToOptions() {
@@ -154,6 +157,18 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             .where((n) => n.trim().isNotEmpty)
             .toList()
           ..sort();
+      });
+    } catch (_) {
+      // silent
+    }
+  }
+
+  Future<void> _loadPrincipalFundNames() async {
+    try {
+      final names = await DataService().fetchPrincipalRetirementFundNames();
+      if (!mounted) return;
+      setState(() {
+        _principalFundNames = names.toList()..sort();
       });
     } catch (_) {
       // silent
@@ -827,12 +842,20 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: FormTextField(
+              child: FormSelectDropdown<String>(
                 label: 'Caisse princ.',
-                value: occ.caisseRetraitePrincipale,
+                value: occ.caisseRetraitePrincipale.trim().isEmpty
+                    ? null
+                    : occ.caisseRetraitePrincipale.trim(),
+                options: _principalFundNames
+                    .map((name) =>
+                        FormSelectOption<String>(value: name, label: name))
+                    .toList(),
+                placeholder: 'Sélectionner...',
                 onChanged: (v) => _updateOccupant(
-                    _safeOccupantIndex,
-                    occ.copyWith(caisseRetraitePrincipale: v)),
+                  _safeOccupantIndex,
+                  occ.copyWith(caisseRetraitePrincipale: v ?? ''),
+                ),
               ),
             ),
           ],

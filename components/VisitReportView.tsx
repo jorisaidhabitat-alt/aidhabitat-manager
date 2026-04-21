@@ -887,6 +887,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     const [refEtablissements, setRefEtablissements] = useState<RefOption[]>([]);
     const [refCommunes, setRefCommunes] = useState<CommuneOption[]>([]);
     const [retirementFundOptions, setRetirementFundOptions] = useState<string[]>([]);
+    const [principalRetirementFundOptions, setPrincipalRetirementFundOptions] = useState<string[]>([]);
     const [wikiLibraryItems, setWikiLibraryItems] = useState<WikiLibraryItem[]>(STATIC_WIKI_ITEMS);
     const isAutosaveReadyRef = useRef(false);
     const beneficiarySnapshotRef = useRef<string | null>(null);
@@ -984,6 +985,18 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
             } catch (error) {
                 console.error('Failed to load retirement funds', error);
                 setRetirementFundOptions([]);
+            }
+            try {
+                const principalFunds = await fetchPrincipalRetirementFunds();
+                setPrincipalRetirementFundOptions(
+                    principalFunds
+                        .map((fund) => String(fund.name || '').trim())
+                        .filter(Boolean)
+                        .sort((left, right) => left.localeCompare(right)),
+                );
+            } catch (error) {
+                console.error('Failed to load principal retirement funds', error);
+                setPrincipalRetirementFundOptions([]);
             }
             const wikiItems = await fetchWikiLibrary();
             if (wikiItems.length > 0) {
@@ -3076,6 +3089,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         refSituations={refSituations}
                         refDependances={refDependances}
                         retirementFundOptions={retirementFundOptions}
+                        principalRetirementFundOptions={principalRetirementFundOptions}
                         refCommunes={refCommunes}
                     />
                 );
@@ -3289,6 +3303,7 @@ const BeneficiaryForm: React.FC<{
     refSituations: RefOption[],
     refDependances: RefOption[],
     retirementFundOptions: string[],
+    principalRetirementFundOptions: string[],
     refCommunes: CommuneOption[]
 }> = ({
     data,
@@ -3302,6 +3317,7 @@ const BeneficiaryForm: React.FC<{
     refSituations,
     refDependances,
     retirementFundOptions,
+    principalRetirementFundOptions,
     refCommunes
 }) => {
     const phoneInvalid = !isValidFrenchPhone(data.phone);
@@ -3535,7 +3551,13 @@ const BeneficiaryForm: React.FC<{
                 <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-2">
                         <Input label="N° Sécu" value={activeOccupant.numeroSecuriteSociale || ''} onChange={v => updateActiveOccupant('numeroSecuriteSociale', v)} placeholder="1 23 45 67..." />
-                        <Input label="Caisse princ." value={activeOccupant.caisseRetraitePrincipale || ''} onChange={v => updateActiveOccupant('caisseRetraitePrincipale', v)} placeholder="Ex: CARSAT..." />
+                        <Select
+                            label="Caisse princ."
+                            value={activeOccupant.caisseRetraitePrincipale || ''}
+                            onChange={v => updateActiveOccupant('caisseRetraitePrincipale', v)}
+                            options={principalRetirementFundOptions.map((name) => ({ id: name, label: name }))}
+                            placeholder="Sélectionner..."
+                        />
                     </div>
                     <MultiSelectDropdown
                         label="Caisses complém."

@@ -690,6 +690,29 @@ class NocodbApiClient {
         .toList();
   }
 
+  Future<List<String>> fetchPrincipalRetirementFundNames() async {
+    if (!AppConfig.hasRemoteConfig) return const [];
+
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/api/retirement-funds-principal'),
+      headers: _headers,
+    ).timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote principal retirement funds fetch failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ((data['funds'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => (item['name'] ?? '').toString().trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
+  }
+
   Future<RetirementFund> updateRetirementFund({
     required String fundId,
     required RetirementFund fund,

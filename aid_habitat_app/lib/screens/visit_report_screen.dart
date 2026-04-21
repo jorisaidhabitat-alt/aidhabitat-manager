@@ -80,6 +80,18 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     'Plans',
   ];
 
+  /// Sous-sections de chaque onglet. Le panneau notes à droite affiche
+  /// une note indépendante par sous-section (tabKey = '$tab-$section').
+  /// Les onglets absents de cette map (Mesures, Plans, Préconisations)
+  /// sont en pleine largeur et n'ont pas de panneau notes latéral.
+  static const Map<String, List<String>> _tabSubsections = {
+    'Bénéficiaire': ['Profil', 'Foyer', 'Santé', 'Admin'],
+    'Contexte de vie': ['Médical', 'Autonomie'],
+    'Accessibilité': ['Général', 'Intérieur', 'Extérieur', 'Volets'],
+    'Salle de bain': ['Équipements', 'Porte'],
+    'WC': ['Config. & équipements', 'Porte'],
+  };
+
   @override
   void initState() {
     super.initState();
@@ -184,7 +196,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// the line that starts with that marker — along with anything the
   /// visitor may have typed on that same line.
   Future<void> _handleMedicalFlagToggle(int flagNumber, bool checked) async {
-    const tabKey = 'Contexte de vie';
+    // Les drapeaux médicaux appartiennent à la sous-section "Médical".
+    const tabKey = 'Contexte de vie-Médical';
     final patientId = _dossier.patient.id;
     final existingJson = await _dataService.fetchNoteDrawingJson(
       patientId: patientId,
@@ -431,6 +444,37 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     setState(() => _housingVersion++);
   }
 
+  /// Construit le panneau notes à droite : une note indépendante par
+  /// sous-section, scrollable verticalement.
+  Widget _buildNotesPanel(String activeTab, List<String> subsections) {
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      itemCount: subsections.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      itemBuilder: (_, i) {
+        final section = subsections[i];
+        final tabKey = '$activeTab-$section';
+        final liveKey = '${_dossier.patient.id}::$tabKey';
+        return SizedBox(
+          height: 268,
+          child: NotesWidget(
+            key: ValueKey(liveKey),
+            patientId: _dossier.patient.id,
+            tabKey: tabKey,
+            title: section,
+            liveText: _liveText[liveKey],
+            onDraftChange: (draft) => _pushDraftToOpenWindow(tabKey, draft.text),
+            onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
+            showSaveButton: false,
+            embedded: false,
+            fillParentHeight: false,
+            allowPagination: true,
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildTabBar() {
     return Container(
       height: 48,
@@ -486,9 +530,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   @override
   Widget build(BuildContext context) {
     final activeTab = _tabs[_tabController.index];
-    final isFullWidth = activeTab == 'Mesures' ||
-        activeTab == 'Plans' ||
-        activeTab == 'Préconisations';
+    // Sous-sections de l'onglet courant — null pour Mesures/Plans/Préconisations
+    final subsections = _tabSubsections[activeTab];
 
     final tabView = TabBarView(
       controller: _tabController,
@@ -595,7 +638,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // Content area — two columns except on Mesures/Plans where the
             // form takes the full width (no notes panel).
             Expanded(
-              child: isFullWidth
+              child: (subsections == null || subsections.isEmpty)
                   ? formPanel
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -604,16 +647,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                         const SizedBox(width: 24),
                         Expanded(
                           flex: 2,
-                          child: NotesWidget(
-                            patientId: _dossier.patient.id,
-                            tabKey: activeTab,
-                            liveText: _liveText[
-                                '${_dossier.patient.id}::$activeTab'],
-                            onDraftChange: (draft) =>
-                                _pushDraftToOpenWindow(activeTab, draft.text),
-                            onExpandToTab: () =>
-                                _openNoteInSeparateWindow(activeTab),
-                          ),
+                          child: _buildNotesPanel(activeTab, subsections),
                         ),
                       ],
                     ),

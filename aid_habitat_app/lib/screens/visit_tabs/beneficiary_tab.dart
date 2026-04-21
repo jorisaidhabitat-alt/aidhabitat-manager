@@ -27,6 +27,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
   int _subSection = 0;
   Timer? _saveTimer;
   bool _loaded = false;
+  List<String> _principalFundNames = const [];
 
   static const _sections = ['Identit\u00e9', 'Revenus', 'Sant\u00e9', 'Administratif'];
 
@@ -37,6 +38,19 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
   void initState() {
     super.initState();
     _loadFormData();
+    _loadPrincipalFundNames();
+  }
+
+  Future<void> _loadPrincipalFundNames() async {
+    try {
+      final names = await _dataService.fetchPrincipalRetirementFundNames();
+      if (!mounted) return;
+      setState(() {
+        _principalFundNames = names.toList()..sort();
+      });
+    } catch (_) {
+      // silent
+    }
   }
 
   @override
@@ -325,10 +339,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab> {
           initialValue: _formData['numeroSecuriteSociale']?.toString() ?? '',
           onChanged: (v) => _onFormChanged('numeroSecuriteSociale', v),
         ),
-        VTextField(
+        VDropdown(
           label: 'Caisse de retraite principale',
-          initialValue:
-              _formData['caisseRetraitePrincipale']?.toString() ?? '',
+          options: _principalFundNames,
+          selected: _formData['caisseRetraitePrincipale']?.toString() ?? '',
           onChanged: (v) => _onFormChanged('caisseRetraitePrincipale', v),
         ),
         VTextField(

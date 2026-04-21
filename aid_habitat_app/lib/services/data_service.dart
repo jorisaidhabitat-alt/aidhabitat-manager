@@ -159,6 +159,14 @@ class DataService {
     return _retirementFundsRepository.fetchAllFunds();
   }
 
+  Future<List<String>> fetchPrincipalRetirementFundNames() async {
+    try {
+      return await _nocodbApiClient.fetchPrincipalRetirementFundNames();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<bool> refreshRetirementFundsFromRemote() async {
     try {
       final remoteFunds = await _nocodbApiClient.fetchRetirementFunds();
