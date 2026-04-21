@@ -490,73 +490,73 @@ class _ContextTabState extends State<ContextTab>
           label: 'Sensoriel',
           completed: occ.medical.sensory.trim().isNotEmpty),
     ];
-    return FormSection(
-      title: OccupantSwitcher(
-        title: 'Médical',
-        occupantLabels: _occupantLabels,
-        activeIndex: _safeIndex,
-        onChanged: (i) => setState(() => _activeOccupantIndex = i),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                for (var i = 0; i < flags.length; i++)
-                  _MedicalFlagRow(
-                    index: i + 1,
-                    label: flags[i].label,
-                    completed: flags[i].completed,
-                    onToggle: () => _toggleMedicalFlag(flags[i].key),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Mesures',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF334155),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
-          const SizedBox(height: 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Titre "Médical" retiré. Sélecteur d'occupant conservé à droite
+        // quand le foyer a plusieurs personnes.
+        if (_occupantLabels.length > 1) ...[
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Expanded(
-                child: FormNumberField(
-                  label: 'Taille',
-                  value: double.tryParse(
-                      occ.medical.heightCm.replaceAll(',', '.')),
-                  unit: 'cm',
-                  onChanged: (v) =>
-                      _updateMedical(heightCm: v?.toStringAsFixed(0) ?? ''),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FormNumberField(
-                  label: 'Poids',
-                  value: double.tryParse(
-                      occ.medical.weightKg.replaceAll(',', '.')),
-                  unit: 'kg',
-                  onChanged: (v) =>
-                      _updateMedical(weightKg: v?.toStringAsFixed(1) ?? ''),
-                ),
+              OccupantSwitcher(
+                title: '',
+                occupantLabels: _occupantLabels,
+                activeIndex: _safeIndex,
+                onChanged: (i) => setState(() => _activeOccupantIndex = i),
               ),
             ],
           ),
+          const SizedBox(height: 12),
         ],
-      ),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < flags.length; i++)
+                _MedicalFlagRow(
+                  index: i + 1,
+                  label: flags[i].label,
+                  completed: flags[i].completed,
+                  onToggle: () => _toggleMedicalFlag(flags[i].key),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Titre "Mesures" + divider retirés — on garde juste les deux
+        // champs Taille / Poids côte à côte.
+        Row(
+          children: [
+            Expanded(
+              child: FormNumberField(
+                label: 'Taille',
+                value: double.tryParse(
+                    occ.medical.heightCm.replaceAll(',', '.')),
+                unit: 'cm',
+                onChanged: (v) =>
+                    _updateMedical(heightCm: v?.toStringAsFixed(0) ?? ''),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FormNumberField(
+                label: 'Poids',
+                value: double.tryParse(
+                    occ.medical.weightKg.replaceAll(',', '.')),
+                unit: 'kg',
+                onChanged: (v) =>
+                    _updateMedical(weightKg: v?.toStringAsFixed(1) ?? ''),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 
