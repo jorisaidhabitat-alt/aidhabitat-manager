@@ -158,12 +158,17 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // La NSWindow secondaire a déjà `titlebarAppearsTransparent + titleVisibility.hidden
+    // + fullSizeContentView` (cf. plugin desktop_multi_window). La title bar
+    // macOS (28 px) reste interactive pour afficher les 3 pastilles rouge/
+    // jaune/vert, mais elle est transparente. Notre contenu Flutter glisse
+    // donc sous cette bande — un padding-top aligne le titre verticalement
+    // avec les pastilles, et le padding-left leur laisse la place.
     return Scaffold(
       body: Column(
         children: [
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.fromLTRB(82, 6, 14, 6),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
@@ -172,23 +177,16 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.drag_indicator,
-                    size: 18, color: Color(0xFF94A3B8)),
-                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     widget.title,
                     style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
                       color: Color(0xFF334155),
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  onPressed: _closeWindow,
-                  tooltip: 'Fermer',
                 ),
               ],
             ),
