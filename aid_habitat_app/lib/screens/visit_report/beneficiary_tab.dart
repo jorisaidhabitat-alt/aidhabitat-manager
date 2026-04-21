@@ -60,7 +60,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     setState(() => _subSectionIndex = i);
     widget.onSubSectionChanged?.call(i);
   }
-  int _activeOccupantIndex = 0;
   bool _saving = false;
   Timer? _saveTimer;
 
@@ -400,28 +399,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     _scheduleSave();
   }
 
-  List<String> _occupantLabels() {
-    return List<String>.generate(_occupants.length, (i) {
-      final o = _occupants[i];
-      if (o.firstName.isNotEmpty) return o.firstName.split(' ').first;
-      return 'Occ. ${i + 1}';
-    });
-  }
-
   // Note: numberPeople is controlled from the dossier screen. When it
   // changes, the visit report's didUpdateWidget re-hydrates _occupants via
   // _loadFromDossier so the per-occupant sections automatically adapt.
-
-  Occupant get _activeOccupant {
-    if (_occupants.isEmpty) return const Occupant();
-    final idx = _safeOccupantIndex;
-    return _occupants[idx];
-  }
-
-  int get _safeOccupantIndex {
-    if (_occupants.isEmpty) return 0;
-    return _activeOccupantIndex.clamp(0, _occupants.length - 1).toInt();
-  }
 
   // ---------------------------------------------------------------------------
   // Build
@@ -831,6 +811,66 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // ---------------------------------------------------------------------------
   // Admin (ex-Dossier)
   // ---------------------------------------------------------------------------
+
+  Widget _buildAdminPersonalBlock(int index) {
+    final occ = _occupants[index];
+    final firstName = occ.firstName.trim().split(' ').first;
+    final hasMultiple = _occupants.length > 1;
+    final suffix = hasMultiple
+        ? (firstName.isNotEmpty ? ' de $firstName' : " de l'occupant ${index + 1}")
+        : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: FormTextField(
+                label: 'N° Sécu$suffix',
+                value: occ.numeroSecuriteSociale,
+                onChanged: (v) => _updateOccupant(
+                    index, occ.copyWith(numeroSecuriteSociale: v)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FormSelectDropdown<String>(
+                label: 'Caisse princ.$suffix',
+                value: occ.caisseRetraitePrincipale.trim().isEmpty
+                    ? null
+                    : occ.caisseRetraitePrincipale.trim(),
+                options: _principalFundNames
+                    .map((name) =>
+                        FormSelectOption<String>(value: name, label: name))
+                    .toList(),
+                placeholder: 'Sélectionner...',
+                onChanged: (v) => _updateOccupant(
+                  index,
+                  occ.copyWith(caisseRetraitePrincipale: v ?? ''),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        FormSelectDropdown<String>(
+          label: 'Caisse complém.$suffix',
+          value: occ.caissesRetraiteComplementaires.trim().isEmpty
+              ? null
+              : occ.caissesRetraiteComplementaires.trim(),
+          options: _retirementFundNames
+              .map((name) =>
+                  FormSelectOption<String>(value: name, label: name))
+              .toList(),
+          placeholder: 'Sélectionner une caisse',
+          onChanged: (v) => _updateOccupant(
+            index,
+            occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildAdminSection() {
     final trustedPhoneInvalid = !isValidFrenchPhone(_trustedPhone);
