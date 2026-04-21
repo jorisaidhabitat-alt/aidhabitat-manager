@@ -274,7 +274,7 @@ class _WikiScreenState extends State<WikiScreen> {
                                                         .pendingImageDataUrl,
                                                     fit: BoxFit.cover,
                                                     width: double.infinity,
-                                                    placeholder: const Center(
+                                                    errorWidget: const Center(
                                                       child: Icon(
                                                         LucideIcons.image,
                                                         size: 42,
@@ -470,7 +470,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                             url: resolveMediaUrl(widget.item.imageUrl),
                             pendingDataUrl: widget.item.pendingImageDataUrl,
                             fit: BoxFit.contain,
-                            placeholder: const Center(
+                            errorWidget: const Center(
                               child: Icon(
                                 LucideIcons.image,
                                 size: 72,
