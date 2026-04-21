@@ -1184,6 +1184,7 @@ class _SymbolGridMenu extends StatelessWidget {
     (tool: PlanTool.toilet, icon: LucideIcons.armchair, label: 'WC'),
     (tool: PlanTool.shower, icon: LucideIcons.droplets, label: 'Douche'),
     (tool: PlanTool.bath, icon: LucideIcons.bath, label: 'Baignoire'),
+    (tool: PlanTool.sink, icon: LucideIcons.hand, label: 'Lavabo'),
   ];
 
   @override
@@ -1419,6 +1420,7 @@ class _DrawPainter extends CustomPainter {
       case PlanTool.toilet:
       case PlanTool.shower:
       case PlanTool.bath:
+      case PlanTool.sink:
         if (s.points.length < 2) return;
         _paintSymbol(canvas, s);
         break;
@@ -1463,6 +1465,9 @@ class _DrawPainter extends CustomPainter {
         break;
       case PlanTool.bath:
         _paintBathLocal(canvas, rect, stroke);
+        break;
+      case PlanTool.sink:
+        _paintSinkLocal(canvas, rect, stroke);
         break;
       default:
         break;
@@ -1534,6 +1539,30 @@ class _DrawPainter extends CustomPainter {
     canvas.drawCircle(
       r.center,
       3,
+      Paint()..color = stroke.color,
+    );
+  }
+
+  /// Lavabo : rectangle arrondi englobant (meuble), vasque ovale
+  /// centrée légèrement décalée vers l'avant, et 1 point (robinet) au
+  /// fond. Axe long = largeur horizontale dans le repère local.
+  static void _paintSinkLocal(Canvas canvas, Rect r, Paint stroke) {
+    // Meuble / plan de travail = rectangle arrondi.
+    final furniture =
+        RRect.fromRectAndRadius(r, const Radius.circular(6));
+    canvas.drawRRect(furniture, stroke);
+    // Vasque = ovale centré, 70% largeur / 60% hauteur.
+    final basin = Rect.fromCenter(
+      center: Offset(r.center.dx, r.center.dy + r.height * 0.05),
+      width: r.width * 0.72,
+      height: r.height * 0.60,
+    );
+    canvas.drawOval(basin, stroke);
+    // Robinet : petit cercle plein en arrière (haut) du meuble.
+    final tapCenter = Offset(r.center.dx, r.top + r.height * 0.18);
+    canvas.drawCircle(
+      tapCenter,
+      (r.height * 0.08).clamp(2, 6),
       Paint()..color = stroke.color,
     );
   }

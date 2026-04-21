@@ -1776,12 +1776,32 @@ class DossierRepository {
       return false;
     }
 
+    // MERGE remote + drafts locaux (items sans wikiItemId, non pushés car
+    // le serveur les refuse). Sans ce merge, un draft en cours de saisie
+    // serait perdu au prochain refresh après le push des items complets.
+    final List<Map<String, dynamic>> localDrafts = [];
+    if (existing.isNotEmpty) {
+      final raw = existing.first['items_json'] as String? ?? '[]';
+      try {
+        final decoded = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+        for (final item in decoded) {
+          final wikiId = (item['wikiItemId'] as String?) ?? '';
+          if (wikiId.trim().isEmpty) localDrafts.add(item);
+        }
+      } catch (_) {}
+    }
+    final merged = [...remoteItems, ...localDrafts];
+
     final now = DateTime.now().toIso8601String();
     final data = <String, dynamic>{
       'dossier_local_id': dossierId,
-      'items_json': jsonEncode(remoteItems),
+      'items_json': jsonEncode(merged),
       'updated_at': now,
-      'sync_state': SyncState.synced.name,
+      // Si on a des drafts, on garde pendingSync pour que le prochain
+      // refresh ne tente pas de les écraser. Sinon synced.
+      'sync_state': localDrafts.isEmpty
+          ? SyncState.synced.name
+          : SyncState.pendingSync.name,
     };
     if (existing.isEmpty) {
       data['local_id'] = 'rec_${dossierId}_${_uuid()}';
