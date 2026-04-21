@@ -178,14 +178,6 @@ class _SidebarState extends State<Sidebar> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: const Color(0xFF907CA1),
-                    image: widget.currentUser.profilePhotoUrl.isNotEmpty
-                        ? DecorationImage(
-                            image: NetworkImage(
-                              widget.currentUser.profilePhotoUrl,
-                            ),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.1),
@@ -194,8 +186,27 @@ class _SidebarState extends State<Sidebar> {
                       ),
                     ],
                   ),
-                  child: widget.currentUser.profilePhotoUrl.isNotEmpty
-                      ? null
+                  clipBehavior: Clip.antiAlias,
+                  child: (widget.currentUser.profilePhotoUrl.isNotEmpty ||
+                          widget.currentUser
+                              .pendingProfilePhotoDataUrl.isNotEmpty)
+                      ? CachedRemoteImage(
+                          url: widget.currentUser.profilePhotoUrl,
+                          pendingDataUrl: widget
+                              .currentUser.pendingProfilePhotoDataUrl,
+                          fit: BoxFit.cover,
+                          width: 48,
+                          height: 48,
+                          errorWidget: Center(
+                            child: Text(
+                              _initials(widget.currentUser.displayName),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        )
                       : Center(
                           child: Text(
                             _initials(widget.currentUser.displayName),
