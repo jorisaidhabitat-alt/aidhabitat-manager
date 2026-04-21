@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
+import '../services/references_service.dart';
 
 class DossiersListScreen extends StatefulWidget {
   final List<Dossier> dossiers;
@@ -19,25 +23,81 @@ class DossiersListScreen extends StatefulWidget {
 }
 
 class _DossiersListScreenState extends State<DossiersListScreen> {
+  final ReferencesService _references = ReferencesService();
+  StreamSubscription<ReferencesPayload>? _refsSub;
+
   String _searchTerm = '';
-  String _sortOrder = 'asc'; // asc, desc, random
+  String _sortOrder = 'asc'; // asc, desc, epci
+
+  @override
+  void initState() {
+    super.initState();
+    // Trigger a references load (communes + EPCI mapping). If already
+    // loaded, this is a no-op.
+    _references.ensureLoaded();
+    _refsSub = _references.onLoaded.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _refsSub?.cancel();
+    super.dispose();
+  }
+
+  /// Resolves the EPCI ("communauté de commune") label for a dossier by
+  /// joining its patient.city on the NocoDB communes table. Prefers a
+  /// match by cityId (precise), falls back on label (case-insensitive).
+  /// Returns empty string if no match.
+  String _epciFor(Dossier d) {
+    if (!_references.isLoaded) return '';
+    final cityId = d.patient.cityId.trim();
+    final city = d.patient.city.trim().toLowerCase();
+    final zip = d.patient.zipCode.trim();
+
+    for (final ref in _references.communes) {
+      if (cityId.isNotEmpty && ref.id == cityId) return ref.epciLabel;
+    }
+    for (final ref in _references.communes) {
+      if (ref.label.toLowerCase() == city) return ref.epciLabel;
+    }
+    if (zip.isNotEmpty) {
+      for (final ref in _references.communes) {
+        if (ref.zipCode == zip) return ref.epciLabel;
+      }
+    }
+    return '';
+  }
 
   List<Dossier> get _filteredDossiers {
     List<Dossier> filtered = widget.dossiers.where((d) {
-      final matchesSearch =
-          d.patient.lastName.toLowerCase().contains(
-            _searchTerm.toLowerCase(),
-          ) ||
-          d.patient.city.toLowerCase().contains(_searchTerm.toLowerCase());
-      return matchesSearch;
+      final term = _searchTerm.toLowerCase();
+      if (term.isEmpty) return true;
+      final haystack =
+          '${d.patient.lastName} ${d.patient.firstName} ${d.patient.city} ${_epciFor(d)}'
+              .toLowerCase();
+      return haystack.contains(term);
     }).toList();
 
     if (_sortOrder == 'asc') {
       filtered.sort((a, b) => a.patient.lastName.compareTo(b.patient.lastName));
     } else if (_sortOrder == 'desc') {
       filtered.sort((a, b) => b.patient.lastName.compareTo(a.patient.lastName));
-    } else {
-      filtered.shuffle();
+    } else if (_sortOrder == 'epci') {
+      filtered.sort((a, b) {
+        final epciA = _epciFor(a);
+        final epciB = _epciFor(b);
+        // Empty EPCI goes last so user-visible sort starts with real EPCI.
+        if (epciA.isEmpty && epciB.isEmpty) {
+          return a.patient.lastName.compareTo(b.patient.lastName);
+        }
+        if (epciA.isEmpty) return 1;
+        if (epciB.isEmpty) return -1;
+        final cmp = epciA.toLowerCase().compareTo(epciB.toLowerCase());
+        if (cmp != 0) return cmp;
+        return a.patient.lastName.compareTo(b.patient.lastName);
+      });
     }
 
     return filtered;
@@ -49,8 +109,10 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         return 'de A à Z';
       case 'desc':
         return 'de Z à A';
+      case 'epci':
+        return 'Par communauté de commune';
       default:
-        return 'Aléatoire';
+        return 'de A à Z';
     }
   }
 
@@ -61,6 +123,15 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     if (f.isEmpty) return l.substring(0, 1).toUpperCase();
     if (l.isEmpty) return f.substring(0, 1).toUpperCase();
     return '${f[0]}${l[0]}'.toUpperCase();
+  }
+
+  String _formatVisitDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '';
+    try {
+      return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw));
+    } catch (_) {
+      return raw;
+    }
   }
 
   @override
@@ -99,7 +170,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     borderRadius: BorderRadius.circular(50),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.02),
+                        color: Colors.black.withValues(alpha: 0.02),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -128,7 +199,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     borderRadius: BorderRadius.circular(50),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.02),
+                        color: Colors.black.withValues(alpha: 0.02),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -149,8 +220,8 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                   const PopupMenuItem(value: 'asc', child: Text("de A à Z")),
                   const PopupMenuItem(value: 'desc', child: Text("de Z à A")),
                   const PopupMenuItem(
-                    value: 'random',
-                    child: Text("Aléatoire"),
+                    value: 'epci',
+                    child: Text("Par communauté de commune"),
                   ),
                 ],
               ),
@@ -166,7 +237,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 borderRadius: BorderRadius.circular(32),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
+                    color: Colors.black.withValues(alpha: 0.02),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -199,6 +270,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                             itemCount: _filteredDossiers.length,
                             itemBuilder: (context, index) {
                               final dossier = _filteredDossiers[index];
+                              final visitDate =
+                                  _formatVisitDate(dossier.visitDate);
+                              final epci = _epciFor(dossier);
                               return InkWell(
                                 onTap: () => widget.onSelectDossier(dossier),
                                 borderRadius: BorderRadius.circular(16),
@@ -242,6 +316,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                                 color: Colors.black87,
                                               ),
                                             ),
+                                            const SizedBox(height: 2),
                                             Row(
                                               children: [
                                                 Icon(
@@ -250,15 +325,70 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                                   color: Colors.grey.shade500,
                                                 ),
                                                 const SizedBox(width: 4),
-                                                Text(
-                                                  dossier.patient.city,
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    color: Colors.grey.shade500,
+                                                Flexible(
+                                                  child: Text(
+                                                    dossier.patient.city,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      color:
+                                                          Colors.grey.shade500,
+                                                    ),
                                                   ),
                                                 ),
+                                                if (epci.isNotEmpty) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    width: 3,
+                                                    height: 3,
+                                                    decoration: BoxDecoration(
+                                                      color: Colors
+                                                          .grey.shade400,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Flexible(
+                                                    child: Text(
+                                                      epci,
+                                                      overflow: TextOverflow
+                                                          .ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 13,
+                                                        color: Colors
+                                                            .grey.shade600,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ],
                                             ),
+                                            if (visitDate.isNotEmpty) ...[
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    LucideIcons.calendar,
+                                                    size: 13,
+                                                    color: const Color(
+                                                        0xFF907CA1),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    "Visite : $visitDate",
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Color(0xFF907CA1),
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ),
@@ -279,7 +409,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                       Container(
                                         width: 40,
                                         height: 40,
-                                        decoration: BoxDecoration(
+                                        decoration: const BoxDecoration(
                                           color: Colors.white,
                                           shape: BoxShape.circle,
                                         ),
