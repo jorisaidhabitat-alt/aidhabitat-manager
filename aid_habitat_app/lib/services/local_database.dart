@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 5;
+  static const _dbVersion = 6;
 
   Database? _database;
 
@@ -48,6 +48,9 @@ class LocalDatabase {
     }
     if (oldVersion < 5) {
       await _migrateV4ToV5(db);
+    }
+    if (oldVersion < 6) {
+      await _migrateV5ToV6(db);
     }
   }
 
@@ -98,6 +101,18 @@ class LocalDatabase {
     await _createTableIfMissing(db, 'reference_sync_meta', _createReferenceSyncMetaSQL);
   }
 
+  /// v5 → v6: Add per-dossier offline tables used by DossierRepository for
+  /// the 4 visit-report medical/sanitaire/measurement/observation sections
+  /// plus the visit recommendations list. Without these, every read/write
+  /// against them raises "no such table" and silently drops offline data.
+  Future<void> _migrateV5ToV6(Database db) async {
+    await _createTableIfMissing(db, 'contexte_de_vie', _createContexteDeVieSQL);
+    await _createTableIfMissing(db, 'diagnostic_sanitaires', _createDiagnosticSanitairesSQL);
+    await _createTableIfMissing(db, 'mesures_anthropometriques', _createMesuresAnthropometriquesSQL);
+    await _createTableIfMissing(db, 'observations_synthese', _createObservationsSyntheseSQL);
+    await _createTableIfMissing(db, 'visit_recommendations', _createVisitRecommendationsSQL);
+  }
+
   static const _createWikiItemsSQL = '''
     CREATE TABLE wiki_items (
       id TEXT PRIMARY KEY,
@@ -133,6 +148,65 @@ class LocalDatabase {
     CREATE TABLE reference_sync_meta (
       table_name TEXT PRIMARY KEY,
       last_synced_at TEXT NOT NULL
+    )
+  ''';
+
+  static const _createContexteDeVieSQL = '''
+    CREATE TABLE contexte_de_vie (
+      local_id TEXT PRIMARY KEY,
+      dossier_local_id TEXT NOT NULL UNIQUE,
+      patient_local_id TEXT,
+      medical_context_json TEXT,
+      autonomy_json TEXT,
+      updated_at TEXT NOT NULL,
+      sync_state TEXT NOT NULL DEFAULT 'synced'
+    )
+  ''';
+
+  static const _createDiagnosticSanitairesSQL = '''
+    CREATE TABLE diagnostic_sanitaires (
+      local_id TEXT PRIMARY KEY,
+      dossier_local_id TEXT NOT NULL UNIQUE,
+      sdb_instances_json TEXT,
+      wc_instances_json TEXT,
+      updated_at TEXT NOT NULL,
+      sync_state TEXT NOT NULL DEFAULT 'synced'
+    )
+  ''';
+
+  static const _createMesuresAnthropometriquesSQL = '''
+    CREATE TABLE mesures_anthropometriques (
+      local_id TEXT PRIMARY KEY,
+      dossier_local_id TEXT NOT NULL UNIQUE,
+      debout_hauteur_coude REAL,
+      assis_hauteur_assise REAL,
+      assis_profondeur_genoux REAL,
+      assis_hauteur_coudes REAL,
+      observations TEXT,
+      updated_at TEXT NOT NULL,
+      sync_state TEXT NOT NULL DEFAULT 'synced'
+    )
+  ''';
+
+  static const _createObservationsSyntheseSQL = '''
+    CREATE TABLE observations_synthese (
+      local_id TEXT PRIMARY KEY,
+      dossier_local_id TEXT NOT NULL UNIQUE,
+      observation_equipements TEXT,
+      projet_souhait_usage TEXT,
+      resume_preconisations TEXT,
+      updated_at TEXT NOT NULL,
+      sync_state TEXT NOT NULL DEFAULT 'synced'
+    )
+  ''';
+
+  static const _createVisitRecommendationsSQL = '''
+    CREATE TABLE visit_recommendations (
+      local_id TEXT PRIMARY KEY,
+      dossier_local_id TEXT NOT NULL UNIQUE,
+      items_json TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT NOT NULL,
+      sync_state TEXT NOT NULL DEFAULT 'synced'
     )
   ''';
 
@@ -387,6 +461,13 @@ class LocalDatabase {
     await db.execute(_createRetirementFundsSQL);
     await db.execute(_createReferenceSyncMetaSQL);
 
+    // Per-dossier offline tables (visit report sections + recommendations)
+    await db.execute(_createContexteDeVieSQL);
+    await db.execute(_createDiagnosticSanitairesSQL);
+    await db.execute(_createMesuresAnthropometriquesSQL);
+    await db.execute(_createObservationsSyntheseSQL);
+    await db.execute(_createVisitRecommendationsSQL);
+
     // Indexes for common queries
     await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_patient ON dossiers(patient_local_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_sync ON dossiers(sync_state)');
@@ -395,10 +476,6 @@ class LocalDatabase {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)');
-
-    await db.execute(_createWikiItemsSQL);
-    await db.execute(_createRetirementFundsSQL);
-    await db.execute(_createReferenceSyncMetaSQL);
 
     // No initial seed — the workspace is populated from NocoDB at first login.
   }

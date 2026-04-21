@@ -800,16 +800,44 @@ class _NotesWidgetState extends State<NotesWidget> {
     _markDirty();
   }
 
-  // Calcule la liste de strokes résultant de l'effacement d'un point.
-  // Retourne null si aucun trait n'a été touché (pas de setState nécessaire).
-  List<_Stroke>? _computeErase(
-      List<_Stroke> input, Offset point, double hitDistance) {
+  // Distance entre un point [p] et le segment [a, b] — géométrie standard
+  // (projection orthogonale, clampée aux extrémités). Utilisée par la
+  // gomme pour tester en une seule passe si un point du tracé existant
+  // tombe dans la bande balayée par le mouvement du curseur.
+  double _distanceToSegment(Offset p, Offset a, Offset b) {
+    final abx = b.dx - a.dx;
+    final aby = b.dy - a.dy;
+    final lenSq = abx * abx + aby * aby;
+    if (lenSq < 1e-12) {
+      // Segment dégénéré → distance point-point.
+      final dx = p.dx - a.dx;
+      final dy = p.dy - a.dy;
+      return math.sqrt(dx * dx + dy * dy);
+    }
+    final apx = p.dx - a.dx;
+    final apy = p.dy - a.dy;
+    var t = (apx * abx + apy * aby) / lenSq;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    final projx = a.dx + abx * t;
+    final projy = a.dy + aby * t;
+    final dx = p.dx - projx;
+    final dy = p.dy - projy;
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Calcule la liste de strokes résultant du passage de la gomme entre
+  // [from] et [to] (bande circulaire de rayon [hitDistance]). Une seule
+  // passe sur les strokes → pas de saccade même en mouvement rapide.
+  List<_Stroke>? _computeEraseSegment(List<_Stroke> input,
+      Offset from, Offset to, double hitDistance) {
     final next = <_Stroke>[];
     var changed = false;
     for (final stroke in input) {
       if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
-        final hit =
-            stroke.points.any((p) => (p - point).distance < hitDistance);
+        final hit = stroke.points.any(
+          (p) => _distanceToSegment(p, from, to) < hitDistance,
+        );
         if (hit) {
           changed = true;
         } else {
@@ -821,7 +849,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       var current = <Offset>[];
       var anyHit = false;
       for (final p in stroke.points) {
-        if ((p - point).distance < hitDistance) {
+        if (_distanceToSegment(p, from, to) < hitDistance) {
           anyHit = true;
           if (current.isNotEmpty) {
             segments.add(current);
@@ -850,19 +878,22 @@ class _NotesWidgetState extends State<NotesWidget> {
     return changed ? next : null;
   }
 
-  // Efface un point unique (utilisé au début du tracé).
+  // Efface un point unique (utilisé au début du tracé, avant qu'on ait
+  // un segment).
   void _eraseAt(Offset point) {
     final hitDistance =
         _eraserSize / math.max(1.0, _canvasSize.shortestSide);
-    final next = _computeErase(_strokes, point, hitDistance);
+    final next = _computeEraseSegment(_strokes, point, point, hitDistance);
     if (next == null) return;
     setState(() => _pageStrokes[_currentPage] = next);
     _markDirty();
   }
 
-  // Efface en interpolant entre [from] et [to] pour combler les trous
-  // quand le doigt se déplace vite. Un seul setState à la fin pour ne pas
-  // saccader.
+  // Efface la bande balayée entre [from] et [to] en une seule passe.
+  // Précédemment : boucle de jusqu'à 64 itérations, chacune scannant tous
+  // les strokes → saccades visibles quand on efface vite ou avec beaucoup
+  // de traits. Maintenant : un seul `_computeEraseSegment` qui teste la
+  // distance point-segment → O(n) au lieu de O(n×64).
   void _eraseAlongPath(Offset? from, Offset to) {
     final hitDistance =
         _eraserSize / math.max(1.0, _canvasSize.shortestSide);
@@ -870,31 +901,10 @@ class _NotesWidgetState extends State<NotesWidget> {
       _eraseAt(to);
       return;
     }
-    final delta = to - from;
-    final dist = delta.distance;
-    // Pas d'interpolation si le mouvement est plus petit que le rayon —
-    // un seul appel suffit.
-    final step = hitDistance * 0.6;
-    var strokes = _strokes;
-    if (dist <= step) {
-      final next = _computeErase(strokes, to, hitDistance);
-      if (next == null) return;
-      setState(() => _pageStrokes[_currentPage] = next);
-      _markDirty();
-      return;
-    }
-    // Interpoler plusieurs points le long du segment, tout batché.
-    final steps = (dist / step).ceil().clamp(1, 64);
-    for (var i = 1; i <= steps; i++) {
-      final t = i / steps;
-      final pt = Offset(from.dx + delta.dx * t, from.dy + delta.dy * t);
-      final next = _computeErase(strokes, pt, hitDistance);
-      if (next != null) strokes = next;
-    }
-    if (!identical(strokes, _strokes)) {
-      setState(() => _pageStrokes[_currentPage] = strokes);
-      _markDirty();
-    }
+    final next = _computeEraseSegment(_strokes, from, to, hitDistance);
+    if (next == null) return;
+    setState(() => _pageStrokes[_currentPage] = next);
+    _markDirty();
   }
 
   // ---------------------------------------------------------------------------
@@ -1134,8 +1144,13 @@ class _NotesWidgetState extends State<NotesWidget> {
                   : null,
               tooltip: 'Page suivante',
             ),
-            // Bouton "+" déplacé en FAB sur le canvas (bas droite, fond
-            // violet) — évite le doublon dans le header.
+            // Bouton "+" à côté de la pagination — fond violet pour
+            // signaler l'action primaire "ajouter une page de dessin".
+            _VioletHeaderIconButton(
+              icon: LucideIcons.plus,
+              onTap: _totalPages < widget.maxPages ? _addPage : null,
+              tooltip: 'Nouvelle page (dessin)',
+            ),
             _HeaderIconButton(
               icon: LucideIcons.trash2,
               onTap: (_totalPages > 1 &&
@@ -1317,14 +1332,8 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (!widget.toolbarInFooter) _positionedToolbar(),
         // Popover palette couleur (positionnée au-dessus/en-dessous de la toolbar).
         if (!widget.toolbarInFooter && _showColorPalette) _positionedPalette(),
-        // FAB "+" en bas à droite du canvas — ajoute une nouvelle page de
-        // dessin. Fond violet (couleur d'accent), icône blanche.
-        if (widget.allowPagination && _totalPages < widget.maxPages)
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: _AddPageFab(onTap: _addPage),
-          ),
+        // Le "+" pour ajouter une page est désormais dans le header à
+        // côté de la pagination (cf. _buildPageNavRow) — plus de FAB.
       ],
     );
   }
@@ -2199,31 +2208,40 @@ Future<void> _copyToClipboard(String value) async {
   await Clipboard.setData(ClipboardData(text: value));
 }
 
-/// Floating Action Button "Nouvelle page" — violet, bas-droite du canvas.
-class _AddPageFab extends StatelessWidget {
-  const _AddPageFab({required this.onTap});
+/// Variante violette de `_HeaderIconButton` — même taille / padding que
+/// les autres boutons du header de note, mais fond violet + icône
+/// blanche pour signaler l'action primaire "ajouter une page".
+class _VioletHeaderIconButton extends StatelessWidget {
+  const _VioletHeaderIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+  });
 
-  final VoidCallback onTap;
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String tooltip;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: _kAccentColor,
-      shape: const CircleBorder(),
-      elevation: 4,
-      shadowColor: Colors.black.withValues(alpha: 0.25),
-      child: Tooltip(
-        message: 'Nouvelle page (dessin)',
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: enabled
+            ? _kAccentColor
+            : _kAccentColor.withValues(alpha: 0.35),
+        shape: const CircleBorder(),
         child: InkWell(
           onTap: onTap,
           customBorder: const CircleBorder(),
-          child: const SizedBox(
-            width: 52,
-            height: 52,
+          child: SizedBox(
+            width: 32,
+            height: 32,
             child: Icon(
-              LucideIcons.plus,
+              icon,
+              size: 18,
               color: Colors.white,
-              size: 24,
             ),
           ),
         ),
