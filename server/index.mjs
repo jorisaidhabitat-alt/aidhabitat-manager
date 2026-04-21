@@ -1926,29 +1926,9 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
 };
 
 const loadMemberRegistryForAuth = async () => {
-  if (memberRegistryCache?.value) {
-    return memberRegistryCache.value;
-  }
-
-  try {
-    const store = await readAuthStore();
-    const members = buildFallbackMembers().map((member) => ({
-      ...member,
-      profilePhotoUrl: resolveStoredProfilePhotoUrl(store, member.email) || member.profilePhotoUrl || '',
-    }));
-    return { members, store };
-  } catch (error) {
-    console.error('[auth] Impossible de charger le registre local, utilisation du fallback mémoire.', error);
-    return {
-      members: buildFallbackMembers(),
-      store: {
-        version: 1,
-        secret: randomSecret(),
-        users: {},
-        pendingCredentials: {},
-      },
-    };
-  }
+  // Délègue à loadMemberRegistry qui charge les membres depuis NocoDB
+  // (avec mot_de_passe) et tient le cache à jour.
+  return loadMemberRegistry();
 };
 
 const signSessionToken = async (email) => {
