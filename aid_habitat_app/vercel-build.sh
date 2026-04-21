@@ -30,5 +30,18 @@ dart run sqflite_common_ffi_web:setup
 flutter build web --release \
   --dart-define=AIDHABITAT_API_BASE_URL="$AIDHABITAT_API_BASE_URL"
 
+# Copy the wiki offline image library into the PWA output so `Image.network`
+# calls to `/wiki-offline/...` resolve on the PWA origin (otherwise the
+# Vercel rewrite `/(.*)→/index.html` would serve the SPA shell instead of
+# the actual JPEG/PNG bytes).
+if [ -d "../public/wiki-offline" ]; then
+  echo "[vercel-build] copying wiki-offline library into build/web/"
+  cp -R ../public/wiki-offline build/web/wiki-offline
+fi
+if [ -d "../public/retirement-logos" ]; then
+  echo "[vercel-build] copying retirement-logos into build/web/"
+  cp -R ../public/retirement-logos build/web/retirement-logos
+fi
+
 echo "[vercel-build] build/web produced:"
 ls -lah build/web | head -20
