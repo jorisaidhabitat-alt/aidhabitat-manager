@@ -430,40 +430,20 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                               ),
                                             ),
                                             const SizedBox(height: 2),
-                                            Row(
-                                              children: [
-                                                Icon(
-                                                  LucideIcons.mapPin,
-                                                  size: 14,
-                                                  color: Colors.grey.shade500,
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Flexible(
-                                                  child: Text(
-                                                    address,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      color:
-                                                          Colors.grey.shade500,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            if (epci.isNotEmpty) ...[
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                epci,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey.shade600,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
+                                            // Full address, bullet, then
+                                            // communauté de commune — single
+                                            // line, ellipsis on overflow.
+                                            Text(
+                                              epci.isNotEmpty
+                                                  ? '$address  •  $epci'
+                                                  : address,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.grey.shade500,
                                               ),
-                                            ],
+                                            ),
                                           ],
                                         ),
                                       ),
@@ -634,21 +614,36 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: TextField(
-                  controller: _searchController,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'Rechercher…',
-                    border: InputBorder.none,
-                    isDense: true,
-                    prefixIcon: Icon(LucideIcons.search, size: 14),
-                  ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      LucideIcons.search,
+                      size: 16,
+                      color: Color(0xFF64748B),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        autofocus: true,
+                        // textAlignVertical + collapsed decoration keeps the
+                        // hint "Rechercher…" vertically centered next to
+                        // the loupe icon on all platforms.
+                        textAlignVertical: TextAlignVertical.center,
+                        decoration: const InputDecoration.collapsed(
+                          hintText: 'Rechercher…',
+                          hintStyle: TextStyle(
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

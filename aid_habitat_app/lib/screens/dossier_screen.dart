@@ -66,6 +66,7 @@ class _DossierScreenState extends State<DossierScreen> {
   // Readonly fields
   late String _natureAccompagnement;
   late String _incomeCategory;
+  double? _fiscalRevenue;
 
   // Project comment (async-loaded)
   String _projectComment = '';
@@ -122,6 +123,7 @@ class _DossierScreenState extends State<DossierScreen> {
     _cityId = p.cityId;
     _incomeCategory = p.incomeCategory;
     _natureAccompagnement = widget.dossier.natureAccompagnement;
+    _fiscalRevenue = _householdFiscalRevenue(p);
 
     final n = p.numberPeople ?? 0;
     if (n <= 0) {
@@ -200,6 +202,31 @@ class _DossierScreenState extends State<DossierScreen> {
   ///  - `ergo` → "Ergo"
   ///  - `complet` → "Complet"
   ///  - anything else → the raw value (or empty placeholder)
+  /// Household RFR: sum of every occupant's RFR, or the legacy patient-level
+  /// value when no per-occupant data exists (pre-migration records).
+  double? _householdFiscalRevenue(Patient p) {
+    final values = p.occupants
+        .map((o) => o.fiscalRevenue)
+        .whereType<double>()
+        .toList();
+    if (values.isEmpty) return p.fiscalRevenue;
+    var total = 0.0;
+    for (final v in values) {
+      total += v;
+    }
+    return total;
+  }
+
+  String _formatFiscalRevenue(double? value) {
+    if (value == null || value <= 0) return 'Non renseigné';
+    final fmt = NumberFormat.currency(
+      locale: 'fr_FR',
+      symbol: '€',
+      decimalDigits: 0,
+    );
+    return fmt.format(value);
+  }
+
   String _formatAccompanimentType(String raw) {
     final v = raw.trim().toLowerCase();
     switch (v) {
@@ -463,6 +490,7 @@ class _DossierScreenState extends State<DossierScreen> {
       _cityId = fresh.patient.cityId;
       _incomeCategory = fresh.patient.incomeCategory;
       _natureAccompagnement = fresh.natureAccompagnement;
+      _fiscalRevenue = _householdFiscalRevenue(fresh.patient);
       final n = fresh.patient.numberPeople ?? 0;
       if (n <= 0) {
         _numberPeople = '1';
@@ -507,9 +535,13 @@ class _DossierScreenState extends State<DossierScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (_incomeCategory.trim().isNotEmpty) ...[
+                    if (_formatAccompanimentType(_natureAccompagnement)
+                        .trim()
+                        .isNotEmpty) ...[
                       const SizedBox(width: 10),
-                      _IncomeBadge(value: _incomeCategory),
+                      _IncomeBadge(
+                        value: _formatAccompanimentType(_natureAccompagnement),
+                      ),
                     ],
                   ],
                 ),
@@ -517,7 +549,7 @@ class _DossierScreenState extends State<DossierScreen> {
               SaveStatusIndicator(saving: _saving),
               const SizedBox(width: 8),
               IconButton(
-                tooltip: _isBeneficiaryLocked ? 'Modifier' : 'Verrouiller',
+                tooltip: _isBeneficiaryLocked ? 'Modifier' : 'Valider',
                 icon: Icon(
                   _isBeneficiaryLocked ? LucideIcons.pencil : LucideIcons.check,
                   size: 18,
@@ -542,14 +574,27 @@ class _DossierScreenState extends State<DossierScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Type d'accompagnement (read-only, emphasized)
-                  _ReadonlyField(
-                    label: "Type d'accompagnement",
-                    value: _formatAccompanimentType(_natureAccompagnement)
-                            .isEmpty
-                        ? 'Non renseigné'
-                        : _formatAccompanimentType(_natureAccompagnement),
-                    emphasized: true,
+                  // 1. Revenu fiscal de référence + Catégorie de revenu
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _ReadonlyField(
+                          label: 'Revenu fiscal de référence',
+                          value: _formatFiscalRevenue(_fiscalRevenue),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _ReadonlyField(
+                          label: 'Catégorie de revenu',
+                          value: _incomeCategory.trim().isEmpty
+                              ? 'Non renseignée'
+                              : _incomeCategory,
+                          emphasized: true,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   // 2. Prénom + Nom (editable when unlocked)
