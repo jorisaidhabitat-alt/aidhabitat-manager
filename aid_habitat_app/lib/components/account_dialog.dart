@@ -34,17 +34,8 @@ class _AccountDialogState extends State<AccountDialog> {
   final AuthService _authService = AuthService();
   final DataService _dataService = DataService();
   final ImagePicker _imagePicker = ImagePicker();
-  final TextEditingController _currentPasswordController =
-      TextEditingController();
-  final TextEditingController _nextPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
 
-  bool _isBootstrapPasswordActive = false;
-  bool _isLoading = true;
-  bool _isSubmitting = false;
   bool _isUploadingPhoto = false;
-  String? _error;
   String? _photoError;
   late String _photoUrl;
 
@@ -52,7 +43,6 @@ class _AccountDialogState extends State<AccountDialog> {
   void initState() {
     super.initState();
     _photoUrl = widget.currentUser.profilePhotoUrl;
-    _loadState();
   }
 
   Future<void> _pickAndUploadPhoto() async {
@@ -99,54 +89,6 @@ class _AccountDialogState extends State<AccountDialog> {
     return (parts.first[0] + parts.last[0]).toUpperCase();
   }
 
-  Future<void> _loadState() async {
-    final isBootstrapPasswordActive = await _authService
-        .isUsingBootstrapPassword(widget.currentUser.id);
-    if (!mounted) return;
-    setState(() {
-      _isBootstrapPasswordActive = isBootstrapPasswordActive;
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _submit() async {
-    if (_nextPasswordController.text != _confirmPasswordController.text) {
-      setState(() {
-        _error = 'La confirmation ne correspond pas au nouveau mot de passe';
-      });
-      return;
-    }
-
-    setState(() {
-      _error = null;
-      _isSubmitting = true;
-    });
-
-    final result = await _authService.changePassword(
-      userId: widget.currentUser.id,
-      currentPassword: _currentPasswordController.text,
-      nextPassword: _nextPasswordController.text,
-    );
-
-    if (!mounted) return;
-    if (!result.success) {
-      setState(() {
-        _isSubmitting = false;
-        _error = result.error ?? 'Impossible de mettre à jour le mot de passe';
-      });
-      return;
-    }
-
-    Navigator.of(context).pop(true);
-  }
-
-  @override
-  void dispose() {
-    _currentPasswordController.dispose();
-    _nextPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -159,12 +101,7 @@ class _AccountDialogState extends State<AccountDialog> {
       ),
       content: SizedBox(
         width: 440,
-        child: _isLoading
-            ? const SizedBox(
-                height: 180,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : SingleChildScrollView(
+        child: SingleChildScrollView(
                 child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -286,7 +223,7 @@ class _AccountDialogState extends State<AccountDialog> {
                     children: [
                       if (widget.onOpenAdmin != null)
                         OutlinedButton.icon(
-                          onPressed: _isSubmitting
+                          onPressed: _isUploadingPhoto
                               ? null
                               : () {
                                   Navigator.of(context).pop();
@@ -301,7 +238,7 @@ class _AccountDialogState extends State<AccountDialog> {
                         ),
                       if (widget.onLogout != null)
                         OutlinedButton.icon(
-                          onPressed: _isSubmitting
+                          onPressed: _isUploadingPhoto
                               ? null
                               : () async {
                                   Navigator.of(context).pop();
@@ -316,74 +253,6 @@ class _AccountDialogState extends State<AccountDialog> {
                         ),
                     ],
                   ),
-                  if (_isBootstrapPasswordActive) ...[
-                    const SizedBox(height: 18),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFFBEB),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const Text(
-                        'Le mot de passe initial du poste est encore actif. Remplacez-le avant usage terrain.',
-                        style: TextStyle(
-                          color: Color(0xFF92400E),
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 22),
-                  const Text(
-                    'Mot de passe actuel',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _currentPasswordController,
-                    obscureText: true,
-                    enabled: !_isSubmitting,
-                    decoration: _inputDecoration(
-                      hintText: 'Saisir le mot de passe actuel',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Nouveau mot de passe',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _nextPasswordController,
-                    obscureText: true,
-                    enabled: !_isSubmitting,
-                    decoration: _inputDecoration(
-                      hintText: '8 caractères minimum',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Confirmer le mot de passe',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _confirmPasswordController,
-                    obscureText: true,
-                    enabled: !_isSubmitting,
-                    decoration: _inputDecoration(
-                      hintText: 'Ressaisir le nouveau mot de passe',
-                    ),
-                    onSubmitted: (_) => _submit(),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      _error!,
-                      style: const TextStyle(color: Color(0xFFB91C1C)),
-                    ),
-                  ],
                 ],
               ),
               ),
@@ -391,39 +260,11 @@ class _AccountDialogState extends State<AccountDialog> {
       actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       actions: [
         TextButton(
-          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(),
           child: const Text('Fermer'),
-        ),
-        FilledButton(
-          onPressed: _isLoading || _isSubmitting ? null : _submit,
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF907CA1),
-            foregroundColor: Colors.white,
-          ),
-          child: _isSubmitting
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Text('Mettre à jour'),
         ),
       ],
     );
   }
 
-  InputDecoration _inputDecoration({required String hintText}) {
-    return InputDecoration(
-      hintText: hintText,
-      filled: true,
-      fillColor: const Color(0xFFF8FAFC),
-      border: InputBorder.none,
-      enabledBorder: InputBorder.none,
-      focusedBorder: InputBorder.none,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-    );
-  }
 }
