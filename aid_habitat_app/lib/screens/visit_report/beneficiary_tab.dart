@@ -1042,12 +1042,12 @@ class _DateOfBirthField extends StatelessWidget {
     final initial = _parse(birthDate) ?? DateTime(1960, 1, 1);
     final now = DateTime.now();
 
-    // 1) Année (plus récent en haut : now.year → 1900)
+    // 1) Année — grille 3 colonnes, du plus récent au plus ancien.
     final years = List<int>.generate(
       now.year - 1900 + 1,
       (i) => now.year - i,
     );
-    final year = await _pickFromList(
+    final year = await _pickFromGrid(
       context,
       title: 'Année de naissance',
       labels: years.map((y) => y.toString()).toList(),
@@ -1056,14 +1056,14 @@ class _DateOfBirthField extends StatelessWidget {
     );
     if (year == null) return;
 
-    // 2) Mois
+    // 2) Mois — grille 3 colonnes, 12 mois FR abrégés pour tenir large.
     const monthNames = [
-      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+      'Janv.', 'Févr.', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.',
     ];
     if (!context.mounted) return;
     final months = List<int>.generate(12, (i) => i + 1);
-    final month = await _pickFromList(
+    final month = await _pickFromGrid(
       context,
       title: 'Mois',
       labels: monthNames,
@@ -1072,18 +1072,13 @@ class _DateOfBirthField extends StatelessWidget {
     );
     if (month == null) return;
 
-    // 3) Jour — plafonné au nombre de jours du mois choisi (gère années
-    // bissextiles via DateTime(year, month+1, 0).day).
-    final daysInMonth = DateTime(year, month + 1, 0).day;
+    // 3) Jour — vrai calendrier (7 colonnes L M M J V S D).
     if (!context.mounted) return;
-    final days = List<int>.generate(daysInMonth, (i) => i + 1);
-    final day = await _pickFromList(
+    final day = await _pickDayCalendar(
       context,
-      title: 'Jour',
-      labels: days.map((d) => d.toString()).toList(),
-      values: days,
-      initialValue:
-          initial.day <= daysInMonth ? initial.day : 1,
+      year: year,
+      month: month,
+      initialDay: initial.day,
     );
     if (day == null) return;
 
@@ -1093,9 +1088,8 @@ class _DateOfBirthField extends StatelessWidget {
     onChanged('$y-$m-$d');
   }
 
-  /// Dialog de sélection simple (liste scrollable, un item par ligne).
-  /// Retourne la valeur associée à l'item choisi, ou null si annulé.
-  Future<int?> _pickFromList(
+  /// Grille de sélection (3 colonnes), utilisée pour année et mois.
+  Future<int?> _pickFromGrid(
     BuildContext context, {
     required String title,
     required List<String> labels,
@@ -1104,9 +1098,10 @@ class _DateOfBirthField extends StatelessWidget {
   }) {
     assert(labels.length == values.length);
     final initialIdx = values.indexOf(initialValue);
+    // Chaque "ligne" fait 3 items → on scrolle vers la rangée de l'initial.
     final scrollCtrl = ScrollController(
       initialScrollOffset:
-          initialIdx > 3 ? (initialIdx - 2) * 48.0 : 0,
+          initialIdx > 5 ? ((initialIdx ~/ 3) - 1) * 56.0 : 0,
     );
     return showDialog<int>(
       context: context,
@@ -1121,40 +1116,176 @@ class _DateOfBirthField extends StatelessWidget {
             color: Color(0xFF0F172A),
           ),
         ),
-        contentPadding: EdgeInsets.zero,
+        contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
         content: SizedBox(
-          width: 280,
+          width: 320,
           height: 360,
           child: Scrollbar(
             controller: scrollCtrl,
-            child: ListView.builder(
+            child: GridView.builder(
               controller: scrollCtrl,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 2.2,
+              ),
               itemCount: values.length,
-              itemExtent: 48,
               itemBuilder: (_, i) {
                 final isSelected = values[i] == initialValue;
                 return InkWell(
                   onTap: () => Navigator.pop(dialogCtx, values[i]),
+                  borderRadius: BorderRadius.circular(10),
                   child: Container(
-                    color: isSelected
-                        ? const Color(0xFF0F172A).withValues(alpha: 0.06)
-                        : null,
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    alignment: Alignment.centerLeft,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF0F172A)
+                          : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     child: Text(
                       labels[i],
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: isSelected
                             ? FontWeight.w800
-                            : FontWeight.w500,
-                        color: const Color(0xFF0F172A),
+                            : FontWeight.w600,
+                        color: isSelected
+                            ? Colors.white
+                            : const Color(0xFF0F172A),
                       ),
                     ),
                   ),
                 );
               },
             ),
+          ),
+        ),
+        actionsPadding: const EdgeInsets.only(right: 16, bottom: 8),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, null),
+            child: const Text(
+              'Annuler',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Mini-calendrier pour un mois donné (7 colonnes L M M J V S D).
+  /// Retourne le jour choisi (1..31) ou null si annulé.
+  Future<int?> _pickDayCalendar(
+    BuildContext context, {
+    required int year,
+    required int month,
+    required int initialDay,
+  }) {
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final firstDay = DateTime(year, month, 1);
+    // Flutter : weekday va de 1 (lundi) à 7 (dimanche). On veut les cases
+    // vides AVANT le 1er = weekday - 1.
+    final leadingBlanks = firstDay.weekday - 1;
+    final totalCells = leadingBlanks + daysInMonth;
+    final effectiveInitial =
+        initialDay <= daysInMonth ? initialDay : 1;
+
+    const weekdayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    const monthFullNames = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+    ];
+
+    return showDialog<int>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: Text(
+          '${monthFullNames[month - 1]} $year',
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        content: SizedBox(
+          width: 320,
+          height: 320,
+          child: Column(
+            children: [
+              // En-tête jours de la semaine
+              Row(
+                children: weekdayLabels
+                    .map(
+                      (l) => Expanded(
+                        child: Container(
+                          height: 28,
+                          alignment: Alignment.center,
+                          child: Text(
+                            l,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: GridView.builder(
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 7,
+                    mainAxisSpacing: 4,
+                    crossAxisSpacing: 4,
+                  ),
+                  itemCount: totalCells,
+                  itemBuilder: (_, idx) {
+                    if (idx < leadingBlanks) return const SizedBox.shrink();
+                    final dayNumber = idx - leadingBlanks + 1;
+                    final isSelected = dayNumber == effectiveInitial;
+                    return InkWell(
+                      onTap: () => Navigator.pop(dialogCtx, dayNumber),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF0F172A)
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$dayNumber',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isSelected
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
         actionsPadding: const EdgeInsets.only(right: 16, bottom: 8),
