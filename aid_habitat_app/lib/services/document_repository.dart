@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'local_database.dart';
+import 'media_cache_service.dart';
 import 'sync_engine.dart';
 
 class DocumentRepository {
@@ -288,6 +290,26 @@ class DocumentRepository {
         );
       }
     });
+
+    // Warm the media cache so document previews (PDFs, images) work offline
+    // after the first sync of this dossier.
+    unawaited(_prefetchDocumentAssets(remoteDocuments));
+  }
+
+  Future<void> _prefetchDocumentAssets(
+    List<Map<String, dynamic>> remoteDocuments,
+  ) async {
+    final urls = <String>{};
+    for (final doc in remoteDocuments) {
+      final url = doc['publicUrl']?.toString().trim() ?? '';
+      if (url.isNotEmpty) urls.add(url);
+    }
+    if (urls.isEmpty) return;
+    try {
+      await MediaCacheService.instance.prefetchAll(urls);
+    } catch (_) {
+      // Best effort — one failed doc shouldn't block others.
+    }
   }
 
   DocItem _mapRow(Map<String, Object?> row) {

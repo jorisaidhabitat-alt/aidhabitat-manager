@@ -88,10 +88,11 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   void _scheduleSave() {
     _saveDebounce?.cancel();
-    // 500 ms : compromis entre éviter de spammer SQLite à chaque touche
-    // et minimiser la fenêtre où une modif peut être perdue si l'app
-    // est fermée brutalement avant que le debounce ne tire.
-    _saveDebounce = Timer(const Duration(milliseconds: 500), _save);
+    // 100 ms : sauvegarde quasi-instantanée en SQLite local (imperceptible
+    // pour l'utilisateur) + push NocoDB le plus tôt possible via
+    // SyncEngine.notify(). Le conflictAlgorithm.replace sur la sync_op
+    // évite l'accumulation : seule la dernière version est en file.
+    _saveDebounce = Timer(const Duration(milliseconds: 100), _save);
   }
 
   Future<void> _save() async {

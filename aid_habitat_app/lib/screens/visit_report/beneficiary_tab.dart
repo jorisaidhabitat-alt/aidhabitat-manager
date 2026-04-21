@@ -833,73 +833,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildAdminSection() {
-    final occ = _activeOccupant;
     final trustedPhoneInvalid = !isValidFrenchPhone(_trustedPhone);
     final trustedEmailInvalid = !isValidEmail(_trustedEmail);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --- Bloc "Personnel" (titre retiré) ----------------------------
-        if (_occupantLabels().length > 1) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OccupantSwitcher(
-                title: '',
-                occupantLabels: _occupantLabels(),
-                activeIndex: _safeOccupantIndex,
-                onChanged: (i) => setState(() => _activeOccupantIndex = i),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+        // --- Bloc "Personnel" : un bloc par occupant, labels personnalisés
+        // avec le prénom quand le foyer a 2+ personnes.
+        for (int i = 0; i < _occupants.length; i++) ...[
+          if (i > 0) const SizedBox(height: 18),
+          _buildAdminPersonalBlock(i),
         ],
-        Row(
-          children: [
-            Expanded(
-              child: FormTextField(
-                label: 'N° Sécu',
-                value: occ.numeroSecuriteSociale,
-                onChanged: (v) => _updateOccupant(
-                    _safeOccupantIndex, occ.copyWith(numeroSecuriteSociale: v)),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FormSelectDropdown<String>(
-                label: 'Caisse princ.',
-                value: occ.caisseRetraitePrincipale.trim().isEmpty
-                    ? null
-                    : occ.caisseRetraitePrincipale.trim(),
-                options: _principalFundNames
-                    .map((name) =>
-                        FormSelectOption<String>(value: name, label: name))
-                    .toList(),
-                placeholder: 'Sélectionner...',
-                onChanged: (v) => _updateOccupant(
-                  _safeOccupantIndex,
-                  occ.copyWith(caisseRetraitePrincipale: v ?? ''),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        FormSelectDropdown<String>(
-          label: 'Caisse complém.',
-          value: occ.caissesRetraiteComplementaires.trim().isEmpty
-              ? null
-              : occ.caissesRetraiteComplementaires.trim(),
-          options: _retirementFundNames
-              .map((name) =>
-                  FormSelectOption<String>(value: name, label: name))
-              .toList(),
-          placeholder: 'Sélectionner une caisse',
-          onChanged: (v) => _updateOccupant(
-            _safeOccupantIndex,
-            occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
-          ),
-        ),
         const SizedBox(height: 24),
 
         // --- Bloc "Personne de Confiance" (titre retiré) ----------------
