@@ -1017,6 +1017,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (!widget.embedded) const Divider(height: 1),
         if (widget.showText) _buildTextEditor(),
         if (widget.showText) _buildSplitter(),
+        if (widget.allowPagination) _buildPageNavRow(),
         // Parité React : réserver au moins ~88px au canvas quand le texte est
         // visible (espace nécessaire pour que la toolbar reste en place).
         Expanded(
@@ -1039,53 +1040,14 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   Widget _buildHeader() {
-    // Barre compacte : contrôles de pages à gauche, undo/redo à droite.
-    // Pas de titre "Notes" redondant avec le parent — parité React.
+    // Barre compacte : undo/redo à droite. Les contrôles de pagination
+    // (prev/next/add/delete + indicateur) sont désormais affichés entre
+    // la zone texte et le canvas, car ils ne concernent que la partie
+    // dessin — la note écrite est unique quand `sharedText` est activé.
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       child: Row(
         children: [
-          if (widget.allowPagination) ...[
-            _HeaderIconButton(
-              icon: LucideIcons.chevronLeft,
-              onTap: _currentPage > 0
-                  ? () => _switchPage(_currentPage - 1)
-                  : null,
-              tooltip: 'Page précédente',
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                '${_currentPage + 1}/${math.max(_totalPages, 1)}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.4,
-                ),
-              ),
-            ),
-            _HeaderIconButton(
-              icon: LucideIcons.chevronRight,
-              onTap: _currentPage < _totalPages - 1
-                  ? () => _switchPage(_currentPage + 1)
-                  : null,
-              tooltip: 'Page suivante',
-            ),
-            const SizedBox(width: 6),
-            _HeaderIconButton(
-              icon: LucideIcons.plus,
-              onTap: _totalPages < widget.maxPages ? () => _addPage() : null,
-              tooltip: 'Nouvelle page',
-            ),
-            _HeaderIconButton(
-              icon: LucideIcons.trash2,
-              onTap: (_totalPages > 1 &&
-                      (widget.onDeletePage == null || widget.canDeletePage))
-                  ? () => _deletePage()
-                  : null,
-              tooltip: 'Supprimer la page',
-            ),
-          ],
           const Spacer(),
           _HeaderIconButton(
             icon: LucideIcons.undo2,
@@ -1097,6 +1059,56 @@ class _NotesWidgetState extends State<NotesWidget> {
             onTap: _redoStack.isEmpty ? null : _redo,
             tooltip: 'Rétablir',
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageNavRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      child: Row(
+        children: [
+          _HeaderIconButton(
+            icon: LucideIcons.chevronLeft,
+            onTap: _currentPage > 0
+                ? () => _switchPage(_currentPage - 1)
+                : null,
+            tooltip: 'Page précédente',
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              '${_currentPage + 1}/${math.max(_totalPages, 1)}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+          _HeaderIconButton(
+            icon: LucideIcons.chevronRight,
+            onTap: _currentPage < _totalPages - 1
+                ? () => _switchPage(_currentPage + 1)
+                : null,
+            tooltip: 'Page suivante',
+          ),
+          const SizedBox(width: 6),
+          _HeaderIconButton(
+            icon: LucideIcons.plus,
+            onTap: _totalPages < widget.maxPages ? () => _addPage() : null,
+            tooltip: 'Nouvelle page (dessin)',
+          ),
+          _HeaderIconButton(
+            icon: LucideIcons.trash2,
+            onTap: (_totalPages > 1 &&
+                    (widget.onDeletePage == null || widget.canDeletePage))
+                ? () => _deletePage()
+                : null,
+            tooltip: 'Supprimer la page',
+          ),
+          const Spacer(),
         ],
       ),
     );

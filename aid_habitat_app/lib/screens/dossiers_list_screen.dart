@@ -112,24 +112,13 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     }
   }
 
-  /// Returns all distinct EPCIs that appear in the current dossiers' communes.
-  /// Falls back on the full EPCI reference list if the dossiers don't match
-  /// any commune yet (e.g. references still loading). Sorted alphabetically.
+  /// Returns the FULL list of EPCIs ("communautés de commune") from the
+  /// NocoDB `epci` reference table — even the ones that no dossier
+  /// matches yet. The picker is a pure catalog browser; the empty-state
+  /// of the dossiers list itself explains that a chosen EPCI has no
+  /// matching dossier.
   List<EpciRef> get _availableEpcis {
-    final seen = <String, EpciRef>{};
-    for (final d in widget.dossiers) {
-      final commune = _communeFor(d);
-      if (commune == null) continue;
-      if (commune.epciId.isEmpty) continue;
-      seen.putIfAbsent(
-        commune.epciId,
-        () => EpciRef(id: commune.epciId, label: commune.epciLabel),
-      );
-    }
-    // If nothing matched yet, expose the full EPCI ref list so the user
-    // can at least browse them.
-    final list = seen.values.toList();
-    if (list.isEmpty) list.addAll(_references.epcis);
+    final list = [..._references.epcis];
     list.sort(
       (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
     );
@@ -371,7 +360,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
-                                  "Aucun dossier ne correspond à votre recherche.",
+                                  "Aucun résultat",
                                   style: TextStyle(color: Colors.grey.shade400),
                                 ),
                               ],
@@ -674,7 +663,7 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                       child: Padding(
                         padding: EdgeInsets.all(20),
                         child: Text(
-                          'Aucune communauté trouvée.',
+                          'Aucun résultat',
                           style: TextStyle(color: Color(0xFF94A3B8)),
                         ),
                       ),

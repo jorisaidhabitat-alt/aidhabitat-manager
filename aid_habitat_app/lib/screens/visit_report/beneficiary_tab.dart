@@ -499,30 +499,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             activeIndex: _safeOccupantIndex,
             onChanged: (i) => setState(() => _activeOccupantIndex = i),
           ),
+          // Nom / Prénom / Adresse sont désormais affichés dans l'entête
+          // de la page VAD (header visit_report_screen) — plus besoin de les
+          // dupliquer ici. On garde date de naissance (donnée par-occupant)
+          // et les coordonnées (téléphone / email, spécifiques au dossier).
           child: Column(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: FormTextField(
-                      label: 'Nom',
-                      value: occ.lastName,
-                      onChanged: (v) => _updateOccupant(
-                          _safeOccupantIndex, occ.copyWith(lastName: v)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FormTextField(
-                      label: 'Prénom',
-                      value: occ.firstName,
-                      onChanged: (v) => _updateOccupant(
-                          _safeOccupantIndex, occ.copyWith(firstName: v)),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -558,31 +540,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           'Coordonnées',
           child: Column(
             children: [
-              FormTextField(
-                label: 'Adresse du logement',
-                value: _address,
-                onChanged: (v) {
-                  _address = v;
-                  _markChanged();
-                },
-              ),
-              const SizedBox(height: 14),
-              CommuneFieldGroup(
-                city: _city,
-                zipCode: _zipCode,
-                cityId: _cityId,
-                options: _communeOptions,
-                zipLabel: 'Code postal',
-                onChanged: (update) {
-                  setState(() {
-                    if (update.city != null) _city = update.city!;
-                    if (update.zipCode != null) _zipCode = update.zipCode!;
-                    if (update.cityId != null) _cityId = update.cityId!;
-                  });
-                  _scheduleSave();
-                },
-              ),
-              const SizedBox(height: 14),
               FormTextFieldWithWarning(
                 label: 'Téléphone',
                 value: _phone,

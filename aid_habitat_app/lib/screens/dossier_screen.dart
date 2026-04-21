@@ -782,6 +782,7 @@ class _DossierScreenState extends State<DossierScreen> {
     return NotesWidget(
       patientId: widget.dossier.patient.id,
       tabKey: 'notes_rapides',
+      sharedText: true,
     );
   }
 }
