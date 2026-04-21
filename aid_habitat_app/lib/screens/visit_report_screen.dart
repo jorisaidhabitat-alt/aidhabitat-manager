@@ -68,6 +68,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   // Per-tab debounced DB save timers (one sync_operation per burst of
   // typing rather than one per keystroke).
   final Map<String, Timer> _saveDebounce = {};
+  // Sous-section active par onglet — mémorisée lors de la navigation.
+  final Map<String, int> _activeSubsectionByTab = {};
 
   static const List<String> _tabs = [
     'Bénéficiaire',
@@ -444,34 +446,90 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     setState(() => _housingVersion++);
   }
 
-  /// Construit le panneau notes à droite : une note indépendante par
-  /// sous-section, scrollable verticalement.
+  /// Panneau notes à droite : sélecteur de sous-section en haut, puis
+  /// une seule note affichée à la fois (IndexedStack pour conserver l'état
+  /// de dessin de chaque section lors des changements d'onglet).
   Widget _buildNotesPanel(String activeTab, List<String> subsections) {
-    return ListView.separated(
-      padding: EdgeInsets.zero,
-      itemCount: subsections.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 16),
-      itemBuilder: (_, i) {
-        final section = subsections[i];
-        final tabKey = '$activeTab-$section';
-        final liveKey = '${_dossier.patient.id}::$tabKey';
-        return SizedBox(
-          height: 268,
-          child: NotesWidget(
-            key: ValueKey(liveKey),
-            patientId: _dossier.patient.id,
-            tabKey: tabKey,
-            title: section,
-            liveText: _liveText[liveKey],
-            onDraftChange: (draft) => _pushDraftToOpenWindow(tabKey, draft.text),
-            onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
-            showSaveButton: false,
-            embedded: false,
-            fillParentHeight: false,
-            allowPagination: true,
+    final activeIdx = _activeSubsectionByTab[activeTab] ?? 0;
+    final safeIdx = activeIdx.clamp(0, subsections.length - 1);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Sélecteur de sous-section ──────────────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(50),
           ),
-        );
-      },
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(subsections.length, (i) {
+                final selected = i == safeIdx;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: GestureDetector(
+                    onTap: () => setState(
+                        () => _activeSubsectionByTab[activeTab] = i),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFFD8D0DC)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(50),
+                      ),
+                      child: Text(
+                        subsections[i],
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: selected
+                              ? const Color(0xFF554A63)
+                              : Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // ── Note de la sous-section active ─────────────────────────────
+        Expanded(
+          child: IndexedStack(
+            index: safeIdx,
+            children: List.generate(subsections.length, (i) {
+              final section = subsections[i];
+              final tabKey = '$activeTab-$section';
+              final liveKey = '${_dossier.patient.id}::$tabKey';
+              return NotesWidget(
+                key: ValueKey(liveKey),
+                patientId: _dossier.patient.id,
+                tabKey: tabKey,
+                title: section,
+                liveText: _liveText[liveKey],
+                onDraftChange: (draft) =>
+                    _pushDraftToOpenWindow(tabKey, draft.text),
+                onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
+                showSaveButton: false,
+                embedded: false,
+                fillParentHeight: true,
+                allowPagination: true,
+              );
+            }),
+          ),
+        ),
+      ],
     );
   }
 
