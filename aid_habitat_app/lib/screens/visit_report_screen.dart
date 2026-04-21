@@ -35,6 +35,12 @@ class _VisitReportStateCache {
   /// itself every second. Re-used as the initial size when the user opens
   /// another popup, so resizing one popup "sticks" for subsequent ones.
   static Size lastNoteWindowSize = const Size(520, 480);
+
+  /// Dernière position (origine) d'une fenêtre note OS détachée. `null`
+  /// tant qu'on n'a pas reçu de frame (premier usage → position par
+  /// défaut 200,200). Conservée en même temps que la taille pour que la
+  /// fenêtre rouvre exactement là où l'utilisateur l'avait laissée.
+  static Offset? lastNoteWindowOrigin;
 }
 
 class VisitReportScreen extends StatefulWidget {
@@ -151,6 +157,18 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           final h = (args['height'] as num?)?.toDouble();
           if (w != null && h != null && w > 100 && h > 100) {
             _VisitReportStateCache.lastNoteWindowSize = Size(w, h);
+          }
+          break;
+        case 'reportNoteFrame':
+          final x = (args['x'] as num?)?.toDouble();
+          final y = (args['y'] as num?)?.toDouble();
+          final w = (args['width'] as num?)?.toDouble();
+          final h = (args['height'] as num?)?.toDouble();
+          if (w != null && h != null && w > 100 && h > 100) {
+            _VisitReportStateCache.lastNoteWindowSize = Size(w, h);
+          }
+          if (x != null && y != null) {
+            _VisitReportStateCache.lastNoteWindowOrigin = Offset(x, y);
           }
           break;
       }
@@ -429,12 +447,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // Seed live text with what's in the DB so the in-app NotesWidget
     // already shows it as "live" (mirrors the popup's initial content).
     _liveText['${_dossier.patient.id}::$sourceTab'] = initialText;
-    // Open at whatever size the user last resized a note popup to. The
-    // popup itself reports its size every second via IPC so "format" is
-    // retained across sessions of the visit report screen.
+    // Ouvre à la dernière position ET taille connues. La popup reporte
+    // sa frame toutes les secondes via IPC (`reportNoteFrame`) donc
+    // "position + format" sont conservés entre ouvertures, même si
+    // l'utilisateur drague la fenêtre manuellement.
+    final origin = _VisitReportStateCache.lastNoteWindowOrigin
+        ?? const Offset(200, 200);
     window
-      ..setFrame(
-          const Offset(200, 200) & _VisitReportStateCache.lastNoteWindowSize)
+      ..setFrame(origin & _VisitReportStateCache.lastNoteWindowSize)
       ..setTitle('Note — $sourceTab')
       ..show();
   }

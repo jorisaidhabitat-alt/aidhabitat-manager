@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 // Desktop-only. Sur web/mobile, un stub no-op fait passer la compilation
 // — cet écran n'est de toute façon jamais instancié hors desktop.
 import '../services/multi_window_stub.dart'
@@ -85,6 +86,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
   final FocusNode _focusNode = FocusNode();
   Timer? _sizeReportTimer;
   Size? _lastReportedSize;
+  Offset? _lastReportedOrigin;
 
   @override
   void initState() {
@@ -128,15 +130,43 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
     super.dispose();
   }
 
-  void _reportSize() {
+  static const _windowFrameChannel = MethodChannel('aidhabitat/window_frame');
+
+  Future<void> _reportSize() async {
     if (!mounted) return;
-    final size = MediaQuery.of(context).size;
-    if (_lastReportedSize == size) return;
-    _lastReportedSize = size;
-    DesktopMultiWindow.invokeMethod(0, 'reportNoteSize', {
-      'width': size.width,
-      'height': size.height,
-    }).catchError((_) {});
+    // Lit la frame native (origine + taille) via le plugin Swift local
+    // `WindowFramePlugin` — le plugin Dart `desktop_multi_window` 0.2.1
+    // n'expose pas getFrame().
+    try {
+      final raw = await _windowFrameChannel.invokeMethod<List<dynamic>>('getFrame');
+      if (raw == null || raw.length != 4) return;
+      final x = (raw[0] as num).toDouble();
+      final y = (raw[1] as num).toDouble();
+      final w = (raw[2] as num).toDouble();
+      final h = (raw[3] as num).toDouble();
+      final size = Size(w, h);
+      if (_lastReportedSize == size && _lastReportedOrigin == Offset(x, y)) {
+        return;
+      }
+      _lastReportedSize = size;
+      _lastReportedOrigin = Offset(x, y);
+      DesktopMultiWindow.invokeMethod(0, 'reportNoteFrame', {
+        'x': x,
+        'y': y,
+        'width': w,
+        'height': h,
+      }).catchError((_) {});
+    } catch (_) {
+      // Fallback : si le plugin natif n'est pas dispo, on envoie au moins
+      // la taille comme avant (pas de position, conservée entre ouvertures).
+      final size = MediaQuery.of(context).size;
+      if (_lastReportedSize == size) return;
+      _lastReportedSize = size;
+      DesktopMultiWindow.invokeMethod(0, 'reportNoteSize', {
+        'width': size.width,
+        'height': size.height,
+      }).catchError((_) {});
+    }
   }
 
   /// Fire-and-forget push of the current text to the main window. Called
