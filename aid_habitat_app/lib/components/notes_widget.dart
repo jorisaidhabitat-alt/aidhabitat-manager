@@ -746,8 +746,21 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
+  /// Retourne true si la position locale est dans le cadre de dessin.
+  /// Utilisé pour bloquer les tracés (y compris l'effacement) quand le
+  /// curseur sort du cadre — évite les points sur la bordure et les
+  /// payloads hors limites envoyés au serveur.
+  bool _isInsideCanvas(Offset local) {
+    if (_canvasSize.isEmpty) return false;
+    return local.dx >= 0 &&
+        local.dy >= 0 &&
+        local.dx <= _canvasSize.width &&
+        local.dy <= _canvasSize.height;
+  }
+
   void _onDrawStart(DragStartDetails details) {
     if (_canvasSize.isEmpty) return;
+    if (!_isInsideCanvas(details.localPosition)) return;
     _pushUndo();
     setState(() {
       _activeStroke = _Stroke(
@@ -763,6 +776,10 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (_canvasSize.isEmpty) return;
     final stroke = _activeStroke;
     if (stroke == null) return;
+    // Ignorer les positions hors cadre : sinon le clamp de `_normalize`
+    // ajoute un point fixé sur la bordure (ligne parasite) et peut
+    // déclencher un payload rejeté par le serveur (erreur 500).
+    if (!_isInsideCanvas(details.localPosition)) return;
     setState(() {
       if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
         if (stroke.points.length == 1) {
