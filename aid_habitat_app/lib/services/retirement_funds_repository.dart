@@ -34,7 +34,7 @@ class RetirementFundsRepository {
           'website': fund.website,
           'logo_url': fund.logoUrl,
           'last_edited_at': fund.lastEditedAt,
-          'updated_at': now,
+          'last_synced_at': now,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
@@ -55,7 +55,7 @@ class RetirementFundsRepository {
       'website': fund.website,
       'logo_url': fund.logoUrl,
       'last_edited_at': fund.lastEditedAt,
-      'updated_at': now,
+      'last_synced_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -73,10 +73,10 @@ class RetirementFundsRepository {
       logoUrl: row['logo_url'] as String,
       lastEditedAt: row['last_edited_at'] as String?,
       // The local schema has no dedicated `created_at` column, so fall back
-      // to the row's `updated_at` — the closest proxy for "known since" in
+      // to the row's `last_synced_at` — the closest proxy for "known since" in
       // offline mode. When available, the remote `createdAt` will replace
       // this through the next sync.
-      createdAt: row['updated_at'] as String?,
+      createdAt: row['last_synced_at'] as String?,
     );
   }
 }

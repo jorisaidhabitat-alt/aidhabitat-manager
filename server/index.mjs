@@ -58,7 +58,6 @@ const MEMBER_PROFILES = {
   'joris.aidhabitat@gmail.com': { displayName: 'Coralie', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
   'joris.balluais@gmail.com': { displayName: 'Christelle', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
 };
-const BENEFICIARY_TRUSTED_EMAIL_FIELD_ID = 'c8s1kh1eqqx6xl6';
 const DEFAULT_LEGACY_ERGO_EMAIL = 'joris.aidhabitat@gmail.com';
 let memberRegistryCache = null;
 

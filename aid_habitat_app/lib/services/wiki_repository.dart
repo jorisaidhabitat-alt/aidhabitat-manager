@@ -33,6 +33,7 @@ class WikiRepository {
           'category': item.category,
           'created_at': item.createdAt,
           'updated_at': now,
+          'last_synced_at': now,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
