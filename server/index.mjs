@@ -1926,9 +1926,10 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
 };
 
 const loadMemberRegistryForAuth = async () => {
-  // Délègue à loadMemberRegistry qui charge les membres depuis NocoDB
-  // (avec mot_de_passe) et tient le cache à jour.
-  return loadMemberRegistry();
+  // Force un rechargement NocoDB à chaque tentative de connexion pour que
+  // le champ mot_de_passe soit toujours la valeur actuelle — pas de risque
+  // de valider un ancien mot de passe depuis le cache.
+  return loadMemberRegistry({ forceRefresh: true });
 };
 
 const signSessionToken = async (email) => {
