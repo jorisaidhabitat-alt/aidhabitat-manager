@@ -1134,12 +1134,8 @@ class _NotesWidgetState extends State<NotesWidget> {
                   : null,
               tooltip: 'Page suivante',
             ),
-            const SizedBox(width: 6),
-            _HeaderIconButton(
-              icon: LucideIcons.plus,
-              onTap: _totalPages < widget.maxPages ? () => _addPage() : null,
-              tooltip: 'Nouvelle page (dessin)',
-            ),
+            // Bouton "+" déplacé en FAB sur le canvas (bas droite, fond
+            // violet) — évite le doublon dans le header.
             _HeaderIconButton(
               icon: LucideIcons.trash2,
               onTap: (_totalPages > 1 &&
@@ -1317,13 +1313,18 @@ class _NotesWidgetState extends State<NotesWidget> {
             },
           ),
         ),
-        // Les contrôles de pagination (nav + ajouter/supprimer) sont désormais
-        // dans le header (toujours visibles). Ils ne sont plus affichés en
-        // overlay sur le canvas afin d'éviter la duplication.
         // Toolbar principale.
         if (!widget.toolbarInFooter) _positionedToolbar(),
         // Popover palette couleur (positionnée au-dessus/en-dessous de la toolbar).
         if (!widget.toolbarInFooter && _showColorPalette) _positionedPalette(),
+        // FAB "+" en bas à droite du canvas — ajoute une nouvelle page de
+        // dessin. Fond violet (couleur d'accent), icône blanche.
+        if (widget.allowPagination && _totalPages < widget.maxPages)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: _AddPageFab(onTap: _addPage),
+          ),
       ],
     );
   }
@@ -2196,4 +2197,37 @@ class _PulseIconState extends State<_PulseIcon>
 // ignore: unused_element
 Future<void> _copyToClipboard(String value) async {
   await Clipboard.setData(ClipboardData(text: value));
+}
+
+/// Floating Action Button "Nouvelle page" — violet, bas-droite du canvas.
+class _AddPageFab extends StatelessWidget {
+  const _AddPageFab({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _kAccentColor,
+      shape: const CircleBorder(),
+      elevation: 4,
+      shadowColor: Colors.black.withValues(alpha: 0.25),
+      child: Tooltip(
+        message: 'Nouvelle page (dessin)',
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: const SizedBox(
+            width: 52,
+            height: 52,
+            child: Icon(
+              LucideIcons.plus,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

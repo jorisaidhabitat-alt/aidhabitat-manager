@@ -1325,6 +1325,15 @@ export const fetchRetirementFunds = async (): Promise<RetirementFund[]> => {
   return funds;
 };
 
+export type PrincipalRetirementFund = { id: string; name: string; phone: string };
+
+export const fetchPrincipalRetirementFunds = async (): Promise<PrincipalRetirementFund[]> => {
+  const result = await apiFetch<{ success: boolean; error: string | null; data?: { funds?: PrincipalRetirementFund[] } }>(
+    '/api/retirement-funds-principal',
+  );
+  return result.data?.funds || [];
+};
+
 export const getCachedRetirementFunds = (): RetirementFund[] =>
   readLocalJsonCache<RetirementFund[]>(RETIREMENT_FUNDS_CACHE_KEY, []);
 

@@ -93,6 +93,24 @@ router.get('/api/retirement-funds', requireAuth, async (_req, res, next) => {
   }
 });
 
+router.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) => {
+  try {
+    const records = await queryAll(TABLES.caissesRetraite, { fields: ['nom', 'numero_telephone_contact'] });
+    const funds = records
+      .map((record) => ({
+        id: String(record.id),
+        name: String(field(record, 'nom') || '').trim(),
+        phone: String(field(record, 'numero_telephone_contact') || '').trim(),
+      }))
+      .filter((fund) => fund.name)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({ success: true, error: null, data: { funds } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/api/anah-status', requireAuth, async (_req, res, next) => {
   try {
     const status = await readAnahStatus();

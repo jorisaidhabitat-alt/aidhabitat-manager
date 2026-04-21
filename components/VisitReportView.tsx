@@ -16,6 +16,7 @@ import {
     fetchNotePages,
     fetchReferenceData,
     fetchRetirementFunds,
+    fetchPrincipalRetirementFunds,
     fetchDiagnosticSanitaires,
     upsertDiagnosticSanitaires,
     fetchMesuresAnthropometriques,
