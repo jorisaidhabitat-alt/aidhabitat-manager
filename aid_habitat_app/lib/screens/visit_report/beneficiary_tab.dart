@@ -493,22 +493,30 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // --- Bloc "Identité" (titre retiré à la demande du user) --------
-        // On garde le sélecteur d'occupant aligné à droite pour que le
-        // switch Monsieur/Madame reste accessible. Plus de divider.
-        if (_occupantLabels().length > 1) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
+        // Ligne "label Date de naissance" à gauche + sélecteur d'occupant
+        // à droite (quand il y a plusieurs occupants).
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Text(
+              'Date de naissance',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const Spacer(),
+            if (_occupantLabels().length > 1)
               OccupantSwitcher(
                 title: '',
                 occupantLabels: _occupantLabels(),
                 activeIndex: _safeOccupantIndex,
                 onChanged: (i) => setState(() => _activeOccupantIndex = i),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-        ],
+          ],
+        ),
+        const SizedBox(height: 6),
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -516,6 +524,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               flex: 1,
               child: _DateOfBirthField(
                 birthDate: occ.birthDate,
+                showLabel: false,
                 onChanged: (iso) => _updateOccupant(
                   _safeOccupantIndex,
                   occ.copyWith(birthDate: iso),
@@ -525,17 +534,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             const SizedBox(width: 12),
             Expanded(
               flex: 1,
-              // Padding top pour aligner verticalement l'âge avec le milieu
-              // du cadre date (label + input ≈ 60 px, donc centré ~ 22 px).
-              child: Padding(
-                padding: const EdgeInsets.only(top: 22),
-                child: Text(
-                  _computeAgeLabel(occ.birthDate),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF554A63),
-                  ),
+              child: Text(
+                _computeAgeLabel(occ.birthDate),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF554A63),
                 ),
               ),
             ),
@@ -670,7 +674,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // --- Bloc "Santé" (titre de section retiré) --------------------
-        // Label "Aides et reconnaissance" même style que "Dépendance" /
+        // Label "Aides" même style que "Dépendance" /
         // "Personnes présentes à la visite" (FormToggleGroup label :
         // 13px, w600, slate-500). Sur la même ligne que le sélecteur
         // d'occupant quand le foyer a 2+ personnes.
@@ -679,7 +683,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           children: [
             const Expanded(
               child: Text(
-                'Aides et reconnaissance',
+                'Aides',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
@@ -1017,9 +1021,15 @@ class _DateOfBirthField extends StatelessWidget {
   final String birthDate;
   final ValueChanged<String> onChanged;
 
+  /// Si false, le label "Date de naissance" n'est pas rendu au-dessus du
+  /// cadre — utile quand le label est déjà affiché ailleurs (ex : sur la
+  /// même ligne que l'OccupantSwitcher).
+  final bool showLabel;
+
   const _DateOfBirthField({
     required this.birthDate,
     required this.onChanged,
+    this.showLabel = true,
   });
 
   DateTime? _parse(String raw) {
@@ -1352,15 +1362,17 @@ class _DateOfBirthField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Date de naissance',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF64748B),
+        if (showLabel) ...[
+          const Text(
+            'Date de naissance',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: Color(0xFF64748B),
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
+          const SizedBox(height: 6),
+        ],
         InkWell(
           onTap: () => _pickDate(context),
           borderRadius: BorderRadius.circular(10),
