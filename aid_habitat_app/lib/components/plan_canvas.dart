@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -17,18 +16,8 @@ import '../services/data_service.dart';
 // Grid constants — 1 cell = 20cm in real world, major line every 5 cells
 // ---------------------------------------------------------------------------
 
-const double _kRulerSize = 36;
-const double _kCellCm = 20;
-const int _kCellsPerMajor = 5;
-
-// Brand colors
+// Brand color.
 const Color _kTeal = Color(0xFF597E8D);
-const Color _kGridMinor = Color(0xFFE2E6EB);
-const Color _kGridMajor = Color(0xFFC8CFD8);
-const Color _kRulerBg = Color(0xFFF4F6F8);
-const Color _kRulerCorner = Color(0xFFE8ECF0);
-const Color _kRulerBorder = Color(0xFFBCC5D0);
-const Color _kRulerText = Color(0xFF6B7A8D);
 
 // ---------------------------------------------------------------------------
 // Stroke model
@@ -95,11 +84,25 @@ class PlanCanvas extends StatefulWidget {
   /// Page number (0-based). Each page stores its own set of strokes.
   final int pageNumber;
 
+  /// Optional pagination info rendered inline dans la toolbar.
+  final int? currentPage;
+  final int? totalPages;
+  final VoidCallback? onPrevPage;
+  final VoidCallback? onNextPage;
+  final VoidCallback? onAddPage;
+  final VoidCallback? onDeletePage;
+
   const PlanCanvas({
     super.key,
     required this.patientId,
     this.tabKey = 'Plans',
     this.pageNumber = 0,
+    this.currentPage,
+    this.totalPages,
+    this.onPrevPage,
+    this.onNextPage,
+    this.onAddPage,
+    this.onDeletePage,
   });
 
   @override
@@ -322,22 +325,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
       Paint()..color = Colors.white,
     );
 
-    // Grid (with ruler, at 0,0 offset)
-    _GridPainter.paintGrid(
-      canvas,
-      Size(size.width + _kRulerSize, size.height + _kRulerSize),
-    );
-
-    // Shift so draw area starts at (0,0) after grid painted ruler zone
-    // Actually for export we want the drawing area only
-    // Redraw strokes at origin
-    canvas.translate(_kRulerSize, _kRulerSize);
+    // Quadrillage simple + strokes.
+    _GridPainter().paint(canvas, size);
     _DrawPainter.paintStrokes(canvas, _strokes, null);
 
     final picture = recorder.endRecording();
     final img = await picture.toImage(
-      (size.width + _kRulerSize).toInt(),
-      (size.height + _kRulerSize).toInt(),
+      size.width.toInt(),
+      size.height.toInt(),
     );
     final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
     if (byteData == null) return;
@@ -404,27 +399,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          const Text(
-            'OUTILS',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: Colors.grey,
-              letterSpacing: 1,
-            ),
-          ),
           _toolBtn(PlanTool.pen, LucideIcons.penTool, 'Crayon'),
           _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
           _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
           _divider(),
-          const Text('Couleur',
-              style: TextStyle(fontSize: 11, color: Colors.grey)),
+          // Palette de couleurs fixe — pas de bouton "autre couleur".
           ..._presetColors.map((c) => _colorDot(c)),
-          _customColorDot(),
           _divider(),
-          const Text('Épaisseur',
-              style: TextStyle(fontSize: 11, color: Colors.grey)),
           SizedBox(
             width: 100,
             child: Slider(
@@ -451,12 +433,51 @@ class _PlanCanvasState extends State<PlanCanvas> {
             tooltip: 'Effacer tout',
             onPressed: _clearAll,
           ),
+          // Pagination inline (si fournie par le parent).
+          if (widget.currentPage != null && widget.totalPages != null) ...[
+            _divider(),
+            IconButton(
+              icon: const Icon(LucideIcons.chevronLeft, size: 18),
+              color: Colors.grey.shade600,
+              tooltip: 'Page précédente',
+              onPressed: (widget.currentPage! > 0) ? widget.onPrevPage : null,
+            ),
+            Text(
+              '${widget.currentPage! + 1}/${widget.totalPages}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF334155),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(LucideIcons.chevronRight, size: 18),
+              color: Colors.grey.shade600,
+              tooltip: 'Page suivante',
+              onPressed: (widget.currentPage! < widget.totalPages! - 1)
+                  ? widget.onNextPage
+                  : null,
+            ),
+            IconButton(
+              icon: const Icon(LucideIcons.plus, size: 18),
+              color: Colors.grey.shade600,
+              tooltip: 'Ajouter une page',
+              onPressed: widget.onAddPage,
+            ),
+            IconButton(
+              icon: const Icon(LucideIcons.trash2, size: 18),
+              color: const Color(0xFFB91C1C),
+              tooltip: 'Supprimer la page',
+              onPressed: widget.totalPages! > 1 ? widget.onDeletePage : null,
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _toolBtn(PlanTool tool, IconData icon, String label) {
+    // Bouton icône seul (tooltip au survol pour le libellé).
     final active = _tool == tool;
     return Tooltip(
       message: label,
@@ -464,26 +485,17 @@ class _PlanCanvasState extends State<PlanCanvas> {
         onTap: () => setState(() => _tool = tool),
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: active ? _kTeal : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon,
-                  size: 16, color: active ? Colors.white : Colors.grey.shade600),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: active ? Colors.white : Colors.grey.shade600,
-                ),
-              ),
-            ],
+          child: Icon(
+            icon,
+            size: 18,
+            color: active ? Colors.white : Colors.grey.shade600,
           ),
         ),
       ),
@@ -501,6 +513,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
         decoration: BoxDecoration(
           color: Color(color),
           shape: BoxShape.circle,
+          border: active
+              ? Border.all(color: Colors.grey.shade900, width: 2)
+              : null,
         ),
       ),
     );
@@ -580,12 +595,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   child: const SizedBox.expand(),
                 ),
               ),
-              // Draw area is offset by ruler size
-              Positioned(
-                left: _kRulerSize,
-                top: _kRulerSize,
-                right: 0,
-                bottom: 0,
+              // Draw area — remplit tout le canvas (plus de bandes de règles).
+              Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onPanStart: _onPanStart,
@@ -606,23 +617,6 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   ),
                 ),
               ),
-              // Legend badge
-              Positioned(
-                right: 12,
-                bottom: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    '1 carreau = 20 cm',
-                    style: TextStyle(fontSize: 11, color: Colors.grey),
-                  ),
-                ),
-              ),
             ],
           );
         },
@@ -635,124 +629,23 @@ class _PlanCanvasState extends State<PlanCanvas> {
 // Grid + ruler painter
 // ---------------------------------------------------------------------------
 
+/// Quadrillage simple (parité React) — pas de règles, pas d'échelle.
 class _GridPainter extends CustomPainter {
+  static const double _cellPx = 24;
+
   @override
   void paint(Canvas canvas, Size size) {
-    paintGrid(canvas, size);
-  }
-
-  static void paintGrid(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    if (w <= _kRulerSize || h <= _kRulerSize) return;
-
-    final drawW = w - _kRulerSize;
-    final drawH = h - _kRulerSize;
-    final cellPx = math.max(10.0, (drawW / 100 * 4).round().toDouble());
-
-    // Ruler backgrounds
-    final rulerBg = Paint()..color = _kRulerBg;
-    canvas.drawRect(Rect.fromLTWH(0, 0, w, _kRulerSize), rulerBg);
-    canvas.drawRect(Rect.fromLTWH(0, 0, _kRulerSize, h), rulerBg);
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, _kRulerSize, _kRulerSize),
-      Paint()..color = _kRulerCorner,
-    );
-
-    // Grid lines
-    final cols = (drawW / cellPx).ceil();
-    final rows = (drawH / cellPx).ceil();
-    for (var c = 0; c <= cols; c++) {
-      final x = _kRulerSize + c * cellPx;
-      final major = c % _kCellsPerMajor == 0;
-      final paint = Paint()
-        ..color = major ? _kGridMajor : _kGridMinor
-        ..strokeWidth = major ? 1 : 0.5;
-      canvas.drawLine(Offset(x, _kRulerSize), Offset(x, h), paint);
-    }
-    for (var r = 0; r <= rows; r++) {
-      final y = _kRulerSize + r * cellPx;
-      final major = r % _kCellsPerMajor == 0;
-      final paint = Paint()
-        ..color = major ? _kGridMajor : _kGridMinor
-        ..strokeWidth = major ? 1 : 0.5;
-      canvas.drawLine(Offset(_kRulerSize, y), Offset(w, y), paint);
-    }
-
-    // Ruler ticks + labels
-    final tickPaint = Paint()
-      ..color = const Color(0xFF9AA5B4)
+    final paint = Paint()
+      ..color = const Color(0xFF94A3B8).withValues(alpha: 0.22)
       ..strokeWidth = 1;
-
-    final textStyle = ui.TextStyle(
-      color: _kRulerText,
-      fontSize: 9,
-      fontWeight: FontWeight.w700,
-    );
-    final paraStyle = ui.ParagraphStyle(textAlign: TextAlign.center);
-
-    // Top ruler
-    for (var c = 0; c <= cols; c++) {
-      final x = _kRulerSize + c * cellPx;
-      final major = c % _kCellsPerMajor == 0;
-      canvas.drawLine(
-        Offset(x, major ? _kRulerSize - 10 : _kRulerSize - 5),
-        Offset(x, _kRulerSize),
-        tickPaint,
-      );
-      if (major) {
-        final cm = c * _kCellCm.toInt();
-        final pb = ui.ParagraphBuilder(paraStyle)
-          ..pushStyle(textStyle)
-          ..addText('$cm');
-        final paragraph = pb.build()..layout(const ui.ParagraphConstraints(width: 40));
-        canvas.drawParagraph(
-          paragraph,
-          Offset(x - 20, _kRulerSize / 2 - paragraph.height / 2),
-        );
-      }
+    // Lignes verticales
+    for (double x = _cellPx; x < size.width; x += _cellPx) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
-
-    // Left ruler
-    for (var r = 0; r <= rows; r++) {
-      final y = _kRulerSize + r * cellPx;
-      final major = r % _kCellsPerMajor == 0;
-      canvas.drawLine(
-        Offset(major ? _kRulerSize - 10 : _kRulerSize - 5, y),
-        Offset(_kRulerSize, y),
-        tickPaint,
-      );
-      if (major) {
-        final cm = r * _kCellCm.toInt();
-        final pb = ui.ParagraphBuilder(paraStyle)
-          ..pushStyle(textStyle)
-          ..addText('$cm');
-        final paragraph = pb.build()..layout(const ui.ParagraphConstraints(width: 30));
-        // Draw rotated label
-        canvas.save();
-        canvas.translate(_kRulerSize / 2, y);
-        canvas.rotate(-math.pi / 2);
-        canvas.drawParagraph(
-          paragraph,
-          Offset(-15, -paragraph.height / 2),
-        );
-        canvas.restore();
-      }
+    // Lignes horizontales
+    for (double y = _cellPx; y < size.height; y += _cellPx) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
-
-    // Ruler borders
-    final border = Paint()
-      ..color = _kRulerBorder
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    canvas.drawRect(
-      Rect.fromLTWH(0.5, 0.5, _kRulerSize, h - 1),
-      border,
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(0.5, 0.5, w - 1, _kRulerSize),
-      border,
-    );
   }
 
   @override
