@@ -33,6 +33,7 @@ class ReferencesService {
 
   List<CommuneRef> get communes => _payload.communes;
   List<BaremeAnahRef> get baremesAnah => _payload.baremesAnah;
+  List<EpciRef> get epcis => _payload.epcis;
 
   bool get isLoaded => _loaded;
 

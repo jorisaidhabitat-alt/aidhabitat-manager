@@ -474,6 +474,7 @@ class NocodbApiClient {
 
     final communesRaw = (body['communes'] as List?) ?? const [];
     final baremesRaw = (body['baremesAnah'] as List?) ?? const [];
+    final epcisRaw = (body['epcis'] as List?) ?? const [];
 
     return ReferencesPayload(
       communes: communesRaw
@@ -483,6 +484,10 @@ class NocodbApiClient {
       baremesAnah: baremesRaw
           .whereType<Map>()
           .map((e) => BaremeAnahRef.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+      epcis: epcisRaw
+          .whereType<Map>()
+          .map((e) => EpciRef.fromJson(e.cast<String, dynamic>()))
           .toList(),
     );
   }

@@ -1209,12 +1209,26 @@ class BaremeAnahRef {
   );
 }
 
+class EpciRef {
+  final String id;
+  final String label;
+
+  const EpciRef({required this.id, required this.label});
+
+  factory EpciRef.fromJson(Map<String, dynamic> json) => EpciRef(
+    id: json['id']?.toString() ?? '',
+    label: json['label']?.toString() ?? '',
+  );
+}
+
 class ReferencesPayload {
   final List<CommuneRef> communes;
   final List<BaremeAnahRef> baremesAnah;
+  final List<EpciRef> epcis;
 
   const ReferencesPayload({
     this.communes = const [],
     this.baremesAnah = const [],
+    this.epcis = const [],
   });
 }
