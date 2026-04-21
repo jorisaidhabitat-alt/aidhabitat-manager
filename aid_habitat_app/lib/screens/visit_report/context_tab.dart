@@ -519,6 +519,8 @@ class _ContextTabState extends State<ContextTab>
             ),
           ),
           const SizedBox(height: 16),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+          const SizedBox(height: 16),
           const Text(
             'Mesures',
             style: TextStyle(
