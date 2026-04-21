@@ -184,7 +184,7 @@ const FIELD_SETS = {
   observations: ['uuid_source', 'dossier_id', 'observation_equipements', 'projet_souhait_usage', 'resume_preconisations', 'updated_at', 'UpdatedAt'],
   referencesLibelle: ['libelle'],
   referencesNom: ['nom'],
-  ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement'],
+  ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'mot_de_passe'],
   communes: ['nom', 'code_postal', 'epci_id1', 'epci'],
   baremesAnah: ['libelle', 'nombre_personnes', 'annee_plafond'],
   caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire'],
@@ -1747,6 +1747,7 @@ const buildMemberFromErgoRecord = (record) => {
   if (!email) return null;
   const special = specialMemberProfile(email);
   const derivedName = special?.displayName || refLabel(record) || email;
+  const nocoPassword = stringValue(field(record, 'mot_de_passe')).trim() || null;
   return {
     email,
     displayName: derivedName,
@@ -1757,6 +1758,8 @@ const buildMemberFromErgoRecord = (record) => {
     establishmentLabel: refLabel(field(record, 'etablissement')) || special?.establishmentLabel || '',
     ergoRecordId: String(record.id),
     ergoLabel: special?.role === 'ADMIN' ? '' : derivedName,
+    // Mot de passe défini directement dans NocoDB — prioritaire sur l'auth-store.
+    nocoPassword,
   };
 };
 
@@ -1987,7 +1990,9 @@ const requireAuth = async (req, res, next) => {
       res.status(401).json({ success: false, error: 'Session invalide ou expirée' });
       return;
     }
-    req.appUser = user;
+    // Ne jamais exposer nocoPassword vers le client via req.appUser.
+    const { nocoPassword: _omit, ...safeUser } = user;
+    req.appUser = safeUser;
     next();
   } catch (error) {
     next(error);
@@ -2005,7 +2010,8 @@ const requireAdmin = async (req, res, next) => {
       res.status(403).json({ success: false, error: 'Accès administrateur requis' });
       return;
     }
-    req.appUser = user;
+    const { nocoPassword: _omit, ...safeUser } = user;
+    req.appUser = safeUser;
     next();
   } catch (error) {
     next(error);
@@ -2632,25 +2638,37 @@ app.post('/api/auth/login', async (req, res, next) => {
       return;
     }
 
-    const credentials = store.users[email];
-    if (!credentials) {
-      res.status(401).json({ success: false, error: 'Aucun mot de passe généré pour ce membre' });
-      return;
+    let isValid = false;
+
+    if (member.nocoPassword) {
+      // Priorité 1 : mot de passe défini directement dans NocoDB (texte brut).
+      // L'administrateur peut le modifier ou le remettre à zéro depuis l'interface
+      // NocoDB sans passer par l'auth-store.
+      isValid = password === member.nocoPassword;
+    } else {
+      // Priorité 2 : fallback sur l'auth-store hashé (comportement historique).
+      const credentials = store.users[email];
+      if (!credentials) {
+        res.status(401).json({ success: false, error: 'Aucun mot de passe généré pour ce membre' });
+        return;
+      }
+      isValid = credentials.passwordHash === hashPassword(password, credentials.salt);
     }
 
-    const isValid = credentials.passwordHash === hashPassword(password, credentials.salt);
     if (!isValid) {
       res.status(401).json({ success: false, error: 'Mot de passe incorrect' });
       return;
     }
 
     const token = await signSessionToken(email);
+    // Ne pas exposer nocoPassword au client.
+    const { nocoPassword: _omit, ...memberPayload } = member;
     res.json({
       success: true,
       error: null,
       data: {
         token,
-        user: member,
+        user: memberPayload,
       },
     });
   } catch (error) {
