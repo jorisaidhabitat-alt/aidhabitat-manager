@@ -68,6 +68,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // liste disparaît dès qu'une valeur est (re)sélectionnée.
   final Set<int> _apaEditingIndices = {};
   final Set<int> _invalidityEditingIndices = {};
+  final Set<int> _dependenceEditingIndices = {};
 
   // Shared (patient-level) fields
   late String _address;
@@ -839,6 +840,53 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     );
   }
 
+  /// Dépendance : liste de pills par défaut (avec "Aucune" comme état
+  /// neutre vide). Une fois une option non-vide sélectionnée, la liste
+  /// se replie et la valeur choisie apparaît entre parenthèses à côté
+  /// du label ("Dépendance de Sophie (Canne)"). Toucher la zone label
+  /// en état replié rouvre la liste pour modifier. Sélectionner
+  /// "Aucune" remet à l'état buttons vide.
+  Widget _buildDependenceSelector(int index, String suffix) {
+    final occ = _occupants[index];
+    final value = occ.dependenceTxt.trim();
+    final editing = _dependenceEditingIndices.contains(index);
+    final hasValue = value.isNotEmpty;
+    final showList = !hasValue || editing;
+    final displayLabel = (hasValue && !editing)
+        ? 'Dépendance$suffix ($value)'
+        : 'Dépendance$suffix';
+    if (showList) {
+      return FormToggleGroup(
+        label: displayLabel,
+        options: _dependenceOptions,
+        columns: 2,
+        selected: hasValue ? value : 'Aucune',
+        onChanged: (v) {
+          setState(() => _dependenceEditingIndices.remove(index));
+          _updateOccupant(
+            index,
+            occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v),
+          );
+        },
+      );
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _dependenceEditingIndices.add(index)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          displayLabel,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAidesDependenceBlock(int index) {
     final occ = _occupants[index];
     final firstName = occ.firstName.trim().split(' ').first;
@@ -927,15 +975,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               )),
         ),
         const SizedBox(height: 10),
-        FormToggleGroup(
-          label: 'Dépendance$suffix',
-          options: _dependenceOptions,
-          columns: 2,
-          selected: occ.dependenceTxt.isEmpty ? 'Aucune' : occ.dependenceTxt,
-          onChanged: (v) => _updateOccupant(
-              index,
-              occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v)),
-        ),
+        _buildDependenceSelector(index, suffix),
       ],
     );
   }
