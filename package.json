@@ -8,6 +8,8 @@
     "dev:api": "node server/index.mjs",
     "dev:frontend": "vite",
     "build": "vite build",
+    "build:pwa": "bash aid_habitat_app/tool/build_web.sh",
+    "build:all": "npm run build && npm run build:pwa",
     "start": "node server/index.mjs",
     "nocodb:bootstrap-mobile-schema": "node scripts/bootstrapNocodbMobileSchema.mjs",
     "preview": "vite preview"
