@@ -222,22 +222,13 @@ class _WikiScreenState extends State<WikiScreen> {
                 )
               else
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (ctx, constraints) {
-                      final crossAxis = constraints.maxWidth > 1200
-                          ? 5
-                          : constraints.maxWidth > 900
-                              ? 4
-                              : constraints.maxWidth > 600
-                                  ? 3
-                                  : 2;
-                      return GridView.builder(
+                  child: GridView.builder(
                         gridDelegate:
-                            SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxis,
-                          mainAxisSpacing: 24,
-                          crossAxisSpacing: 24,
-                          childAspectRatio: 0.68,
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 280,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          mainAxisExtent: 310,
                         ),
                         itemCount: _filteredItems.length,
                         itemBuilder: (context, index) {
@@ -377,9 +368,7 @@ class _WikiScreenState extends State<WikiScreen> {
                             ),
                           );
                         },
-                      );
-                    },
-                  ),
+                      ),
                 ),
             ],
           ),
