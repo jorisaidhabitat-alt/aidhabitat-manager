@@ -478,16 +478,58 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       child: tabView,
     );
 
+    // Header bénéficiaire — même pattern que DocumentsScreen : NOM Prénom
+    // en gras. On ajoute l'adresse complète en dessous (demande utilisateur :
+    // retirer ces champs de la section Identité de l'onglet Bénéficiaire).
+    final patient = _dossier.patient;
+    final addressLine = [
+      patient.address.trim(),
+      [patient.zipCode.trim(), patient.city.trim()]
+          .where((s) => s.isNotEmpty)
+          .join(' '),
+    ].where((s) => s.isNotEmpty).join(' · ');
+
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            // Top nav: back button + tab bar, always full width.
+            // Top nav: back button + entête bénéficiaire + tab bar.
             Row(
               children: [
                 _buildBackButton(),
                 const SizedBox(width: 16),
+                // Entête NOM Prénom / adresse — ne change pas selon l'onglet.
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${patient.lastName.toUpperCase()} ${patient.firstName}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (addressLine.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          addressLine,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF64748B),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 24),
                 Expanded(child: _buildTabBar()),
               ],
             ),

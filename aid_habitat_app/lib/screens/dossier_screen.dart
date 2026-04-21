@@ -591,7 +591,6 @@ class _DossierScreenState extends State<DossierScreen> {
                           value: _incomeCategory.trim().isEmpty
                               ? 'Non renseignée'
                               : _incomeCategory,
-                          emphasized: true,
                         ),
                       ),
                     ],

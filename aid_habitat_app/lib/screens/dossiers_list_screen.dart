@@ -643,7 +643,10 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                           height: 1.0,
                           color: Color(0xFF0F172A),
                         ),
-                        textAlignVertical: TextAlignVertical.center,
+                        // Slight negative y nudges the text/hint upward so
+                        // the optical center of "Rechercher…" matches the
+                        // loupe icon instead of sitting just below it.
+                        textAlignVertical: const TextAlignVertical(y: -0.25),
                         decoration: const InputDecoration(
                           hintText: 'Rechercher…',
                           hintStyle: TextStyle(
@@ -651,7 +654,7 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                             height: 1.0,
                           ),
                           isCollapsed: true,
-                          contentPadding: EdgeInsets.zero,
+                          contentPadding: EdgeInsets.only(bottom: 2),
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,

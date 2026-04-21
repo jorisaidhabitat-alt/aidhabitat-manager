@@ -214,6 +214,7 @@ class NotesWidget extends StatefulWidget {
     this.showText = true,
     this.toolset = NoteToolset.advanced,
     this.allowPagination = true,
+    this.sharedText = false,
     this.showSaveButton = true,
     this.onDraftChange,
     this.embedded = false,
@@ -271,6 +272,12 @@ class NotesWidget extends StatefulWidget {
   final FutureOr<void> Function()? onDeletePage;
   final bool canDeletePage;
   final bool allowPagination;
+
+  /// When true, the written note is shared across all drawing pages —
+  /// switching pages only swaps the strokes, not the text. Typing mirrors
+  /// the same text into every page's stored record so persistence stays
+  /// coherent even as pages are added or removed.
+  final bool sharedText;
 
   // Sauvegarde
   final FutureOr<void> Function(NoteSavePayload payload)? onSave;
@@ -527,6 +534,25 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
     if (probe > _totalPages) _totalPages = probe;
 
+    if (widget.sharedText) {
+      // Normalize: take the first non-empty text found across pages
+      // (pre-existing records may have diverged per page) and propagate
+      // it to every page so the shared-text invariant holds.
+      String? firstText;
+      for (var i = 0; i < _totalPages; i++) {
+        final t = _pageTexts[i] ?? '';
+        if (t.isNotEmpty) {
+          firstText = t;
+          break;
+        }
+      }
+      final txt = firstText ?? '';
+      for (var i = 0; i < _totalPages; i++) {
+        _pageTexts[i] = txt;
+      }
+      _textController.text = txt;
+    }
+
     if (mounted) {
       setState(() => _isLoaded = true);
     }
@@ -646,7 +672,14 @@ class _NotesWidgetState extends State<NotesWidget> {
   // ---------------------------------------------------------------------------
 
   void _onTextChanged() {
-    _pageTexts[_currentPage] = _textController.text;
+    if (widget.sharedText) {
+      final txt = _textController.text;
+      for (var i = 0; i < _totalPages; i++) {
+        _pageTexts[i] = txt;
+      }
+    } else {
+      _pageTexts[_currentPage] = _textController.text;
+    }
     _markDirty();
   }
 
@@ -749,15 +782,57 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _eraseAt(Offset normalizedPoint) {
     final threshold =
         (_eraserSize / 2) / math.max(1.0, _canvasSize.shortestSide);
-    final before = _strokes.length;
-    final kept = <_Stroke>[];
+    final hitDistance = threshold * 2;
+    final next = <_Stroke>[];
+    var changed = false;
     for (final stroke in _strokes) {
-      final hits = stroke.points
-          .any((point) => (point - normalizedPoint).distance < threshold * 2);
-      if (!hits) kept.add(stroke);
+      // Geometric primitives (line/rect) can't be split meaningfully —
+      // erase the whole primitive when any control point is hit.
+      if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
+        final hit = stroke.points
+            .any((p) => (p - normalizedPoint).distance < hitDistance);
+        if (hit) {
+          changed = true;
+        } else {
+          next.add(stroke);
+        }
+        continue;
+      }
+      // Freehand (pen/highlighter): split around erased points so the
+      // eraser only removes the touched portion, not the whole trait.
+      final segments = <List<Offset>>[];
+      var current = <Offset>[];
+      var anyHit = false;
+      for (final p in stroke.points) {
+        final isHit = (p - normalizedPoint).distance < hitDistance;
+        if (isHit) {
+          anyHit = true;
+          if (current.isNotEmpty) {
+            segments.add(current);
+            current = <Offset>[];
+          }
+        } else {
+          current.add(p);
+        }
+      }
+      if (current.isNotEmpty) segments.add(current);
+      if (!anyHit) {
+        next.add(stroke);
+        continue;
+      }
+      changed = true;
+      for (final seg in segments) {
+        if (seg.length < 2) continue;
+        next.add(_Stroke(
+          tool: stroke.tool,
+          color: stroke.color,
+          size: stroke.size,
+          points: seg,
+        ));
+      }
     }
-    if (kept.length == before) return;
-    setState(() => _pageStrokes[_currentPage] = kept);
+    if (!changed) return;
+    setState(() => _pageStrokes[_currentPage] = next);
     _markDirty();
   }
 
@@ -769,7 +844,9 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (page < 0 || page >= _totalPages || page == _currentPage) return;
     setState(() {
       _currentPage = page;
-      _textController.text = _pageTexts[page] ?? '';
+      if (!widget.sharedText) {
+        _textController.text = _pageTexts[page] ?? '';
+      }
       _activeStroke = null;
       _isDirty = false;
       _undoStack.clear();
@@ -788,7 +865,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     setState(() {
       _totalPages += 1;
       _pageStrokes[newPageIndex] = <_Stroke>[];
-      _pageTexts[newPageIndex] = '';
+      _pageTexts[newPageIndex] =
+          widget.sharedText ? _textController.text : '';
     });
     // Persiste la nouvelle page côté serveur (JSON vide) — SyncEngine déclenche
     // la sync remote si le réseau est disponible.
@@ -1544,7 +1622,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   IconData _iconForTool(NoteTool tool) {
     switch (tool) {
       case NoteTool.pen:
-        return LucideIcons.penTool;
+        return LucideIcons.pencil;
       case NoteTool.highlighter:
         return LucideIcons.highlighter;
       case NoteTool.eraser:
