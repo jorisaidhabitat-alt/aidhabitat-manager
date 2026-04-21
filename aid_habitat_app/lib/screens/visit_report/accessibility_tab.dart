@@ -543,7 +543,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         const SizedBox(height: 14),
         // 6. Volets
         _buildVoletRow(
-          'Roulants manuels',
+          'Volets roulants manuels',
           _voletsManStatus,
           _voletsManLoc,
           (s) => setState(() {
@@ -554,7 +554,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         ),
         const SizedBox(height: 10),
         _buildVoletRow(
-          'Roulants électriques',
+          'Volets roulants électriques',
           _voletsElecStatus,
           _voletsElecLoc,
           (s) => setState(() {
@@ -565,7 +565,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         ),
         const SizedBox(height: 10),
         _buildVoletRow(
-          'Persiennes',
+          'Volets persiennes',
           _voletsPersStatus,
           _voletsPersLoc,
           (s) => setState(() {
