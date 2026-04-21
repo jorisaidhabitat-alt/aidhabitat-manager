@@ -17,10 +17,17 @@ class ContextTab extends StatefulWidget {
   final Dossier dossier;
   final DossierRepository repository;
 
+  /// Called with the 1-based flag index (1 = Pathologie, 2 = Suivi médical,
+  /// 3 = Sensoriel) the first time the user checks a medical flag. The
+  /// parent appends a `N - ` marker to the Contexte de vie note so the
+  /// visitor can annotate what the flag refers to.
+  final Future<void> Function(int flagNumber)? onMedicalFlagChecked;
+
   const ContextTab({
     super.key,
     required this.dossier,
     required this.repository,
+    this.onMedicalFlagChecked,
   });
 
   @override
@@ -227,7 +234,8 @@ class _ContextTabState extends State<ContextTab>
       'sensory' => m.sensory,
       _ => '',
     };
-    final next = current.trim().isNotEmpty ? '' : 'Oui';
+    final wasChecked = current.trim().isNotEmpty;
+    final next = wasChecked ? '' : 'Oui';
     switch (field) {
       case 'pathology':
         _updateMedical(pathology: next);
@@ -238,6 +246,19 @@ class _ContextTabState extends State<ContextTab>
       case 'sensory':
         _updateMedical(sensory: next);
         break;
+    }
+    if (!wasChecked &&
+        _activeOccupantIndex == 0 &&
+        widget.onMedicalFlagChecked != null) {
+      final flagNumber = switch (field) {
+        'pathology' => 1,
+        'followUp' => 2,
+        'sensory' => 3,
+        _ => 0,
+      };
+      if (flagNumber > 0) {
+        widget.onMedicalFlagChecked!(flagNumber);
+      }
     }
   }
 
