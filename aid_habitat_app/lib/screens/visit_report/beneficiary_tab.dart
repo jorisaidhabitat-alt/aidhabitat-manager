@@ -63,6 +63,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   bool _saving = false;
   Timer? _saveTimer;
 
+  // Indices d'occupants pour lesquels la liste d'options APA / Invalidité
+  // est affichée alors même qu'une valeur est déjà choisie (édition). La
+  // liste disparaît dès qu'une valeur est (re)sélectionnée.
+  final Set<int> _apaEditingIndices = {};
+  final Set<int> _invalidityEditingIndices = {};
+
   // Shared (patient-level) fields
   late String _address;
   late String _city;
@@ -736,6 +742,103 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     );
   }
 
+  /// Case à cocher qui, une fois cochée, affiche directement la liste
+  /// des options en pills sous la ligne. Dès qu'une option est choisie,
+  /// la liste disparaît et la valeur est affichée entre parenthèses à
+  /// côté du label (ex. "Bénéficiaire APA (GIR 6)"). Toucher la zone
+  /// texte du label en état replié rouvre la liste pour modifier le
+  /// choix.
+  Widget _buildCollapsibleOptionCheckbox({
+    required String label,
+    required bool checked,
+    required String value,
+    required String Function(String) valueDisplay,
+    required List<String> options,
+    required String Function(String) optionLabel,
+    required int optionColumns,
+    required bool editing,
+    required ValueChanged<bool> onCheckedChanged,
+    required ValueChanged<String> onValueChanged,
+    required VoidCallback onEditRequested,
+  }) {
+    final hasValue = value.isNotEmpty;
+    final showList = checked && (!hasValue || editing);
+    final displayLabel = (checked && hasValue && !editing)
+        ? '$label (${valueDisplay(value)})'
+        : label;
+    final pillLabels = options.map(optionLabel).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onCheckedChanged(!checked),
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color:
+                        checked ? const Color(0xFF907CA1) : Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: checked
+                          ? const Color(0xFF907CA1)
+                          : Colors.grey.shade400,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: checked
+                      ? const Icon(Icons.check,
+                          size: 14, color: Colors.white)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (!checked) {
+                      onCheckedChanged(true);
+                    } else if (hasValue && !editing) {
+                      onEditRequested();
+                    }
+                  },
+                  child: Text(
+                    displayLabel,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF334155),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (showList) ...[
+          const SizedBox(height: 6),
+          FormToggleGroup(
+            label: '',
+            options: pillLabels,
+            selected: hasValue ? optionLabel(value) : '',
+            columns: optionColumns,
+            onChanged: (picked) {
+              final idx = pillLabels.indexOf(picked);
+              if (idx >= 0) onValueChanged(options[idx]);
+            },
+          ),
+          const SizedBox(height: 6),
+        ],
+      ],
+    );
+  }
+
   Widget _buildAidesDependenceBlock(int index) {
     final occ = _occupants[index];
     final firstName = occ.firstName.trim().split(' ').first;
@@ -755,65 +858,64 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           ),
         ),
         const SizedBox(height: 8),
-        FormCheckbox(
+        _buildCollapsibleOptionCheckbox(
           label: 'Bénéficiaire APA',
-          value: occ.apa,
-          onChanged: (v) => _updateOccupant(
+          checked: occ.apa,
+          value: occ.apaGir.trim(),
+          valueDisplay: (v) => 'GIR $v',
+          options: _apaGirOptions,
+          optionLabel: (v) => 'GIR $v',
+          optionColumns: 3,
+          editing: _apaEditingIndices.contains(index),
+          onCheckedChanged: (v) {
+            setState(() {
+              if (!v) _apaEditingIndices.remove(index);
+            });
+            _updateOccupant(
               index,
               occ.copyWith(
                 apa: v,
                 apaGir: v ? occ.apaGir : '',
-              )),
-        ),
-        if (occ.apa)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: FormSelectDropdown<String>(
-              label: '',
-              value: _apaGirOptions.contains(occ.apaGir.trim())
-                  ? occ.apaGir.trim()
-                  : null,
-              options: _apaGirOptions
-                  .map((g) => FormSelectOption<String>(
-                        value: g,
-                        label: 'GIR $g',
-                      ))
-                  .toList(),
-              placeholder: 'Sélectionner un GIR',
-              onChanged: (v) => _updateOccupant(
-                index,
-                occ.copyWith(apaGir: v ?? ''),
               ),
-            ),
+            );
+          },
+          onValueChanged: (v) {
+            setState(() => _apaEditingIndices.remove(index));
+            _updateOccupant(index, occ.copyWith(apaGir: v));
+          },
+          onEditRequested: () => setState(
+            () => _apaEditingIndices.add(index),
           ),
-        FormCheckbox(
+        ),
+        _buildCollapsibleOptionCheckbox(
           label: 'Reconnaissance Invalidité',
-          value: occ.invalidity,
-          onChanged: (v) => _updateOccupant(
+          checked: occ.invalidity,
+          value: occ.invalidityTxt.trim(),
+          valueDisplay: (v) => v,
+          options: _mdphPercentageOptions,
+          optionLabel: (v) => v,
+          optionColumns: 1,
+          editing: _invalidityEditingIndices.contains(index),
+          onCheckedChanged: (v) {
+            setState(() {
+              if (!v) _invalidityEditingIndices.remove(index);
+            });
+            _updateOccupant(
               index,
               occ.copyWith(
                 invalidity: v,
                 invalidityTxt: v ? occ.invalidityTxt : '',
-              )),
-        ),
-        if (occ.invalidity)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: FormSelectDropdown<String>(
-              label: '',
-              value: _mdphPercentageOptions.contains(occ.invalidityTxt.trim())
-                  ? occ.invalidityTxt.trim()
-                  : null,
-              options: _mdphPercentageOptions
-                  .map((p) => FormSelectOption<String>(value: p, label: p))
-                  .toList(),
-              placeholder: 'Sélectionner un taux',
-              onChanged: (v) => _updateOccupant(
-                index,
-                occ.copyWith(invalidityTxt: v ?? ''),
               ),
-            ),
+            );
+          },
+          onValueChanged: (v) {
+            setState(() => _invalidityEditingIndices.remove(index));
+            _updateOccupant(index, occ.copyWith(invalidityTxt: v));
+          },
+          onEditRequested: () => setState(
+            () => _invalidityEditingIndices.add(index),
           ),
+        ),
         FormCheckbox(
           label: 'Aide à domicile',
           value: occ.homeHelp,
