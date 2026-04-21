@@ -1074,48 +1074,39 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: FormTextField(
-                label: 'N° Sécu$suffix',
-                value: occ.numeroSecuriteSociale,
-                onChanged: (v) => _updateOccupant(
-                    index, occ.copyWith(numeroSecuriteSociale: v)),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: caissePrincCollapsed
-                  ? _collapsedValueRow(
-                      label: 'Caisse princ.$suffix',
-                      displayValue: caissePrinc,
-                      onEdit: () => setState(
-                        () => _caissePrincEditingIndices.add(index),
-                      ),
-                    )
-                  : FormSelectDropdown<String>(
-                      label: 'Caisse princ.$suffix',
-                      value: _principalFundNames.contains(caissePrinc)
-                          ? caissePrinc
-                          : null,
-                      options: _principalFundNames
-                          .map((name) =>
-                              FormSelectOption<String>(value: name, label: name))
-                          .toList(),
-                      placeholder: 'Sélectionner...',
-                      onChanged: (v) {
-                        setState(() => _caissePrincEditingIndices.remove(index));
-                        _updateOccupant(
-                          index,
-                          occ.copyWith(caisseRetraitePrincipale: v ?? ''),
-                        );
-                      },
-                    ),
-            ),
-          ],
+        FormTextField(
+          label: 'N° Sécu$suffix',
+          value: occ.numeroSecuriteSociale,
+          onChanged: (v) => _updateOccupant(
+              index, occ.copyWith(numeroSecuriteSociale: v)),
         ),
+        const SizedBox(height: 14),
+        if (caissePrincCollapsed)
+          _collapsedValueRow(
+            label: 'Caisse princ.$suffix',
+            displayValue: caissePrinc,
+            onEdit: () =>
+                setState(() => _caissePrincEditingIndices.add(index)),
+          )
+        else
+          FormSelectDropdown<String>(
+            label: 'Caisse princ.$suffix',
+            value: _principalFundNames.contains(caissePrinc)
+                ? caissePrinc
+                : null,
+            options: _principalFundNames
+                .map((name) =>
+                    FormSelectOption<String>(value: name, label: name))
+                .toList(),
+            placeholder: 'Sélectionner...',
+            onChanged: (v) {
+              setState(() => _caissePrincEditingIndices.remove(index));
+              _updateOccupant(
+                index,
+                occ.copyWith(caisseRetraitePrincipale: v ?? ''),
+              );
+            },
+          ),
         const SizedBox(height: 14),
         if (caisseComplCollapsed)
           _collapsedValueRow(
