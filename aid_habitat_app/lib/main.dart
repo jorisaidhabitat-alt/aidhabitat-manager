@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:sqflite/sqflite.dart' show databaseFactory;
@@ -81,6 +82,18 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: "Aid'Habitat Manager",
       debugShowCheckedModeBanner: false,
+      // Localisation française — nécessaire pour que showDatePicker soit
+      // en français dans l'onglet Bénéficiaire (champ date de naissance).
+      locale: const Locale('fr', 'FR'),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('fr', 'FR'),
+        Locale('en', 'US'),
+      ],
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFFF8FAFC), // Slate-50
         colorScheme: ColorScheme.fromSeed(

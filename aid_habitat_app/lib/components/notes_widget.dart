@@ -215,6 +215,7 @@ class NotesWidget extends StatefulWidget {
     this.toolset = NoteToolset.advanced,
     this.allowPagination = true,
     this.sharedText = false,
+    this.allowTextModal = true,
     this.showSaveButton = true,
     this.onDraftChange,
     this.embedded = false,
@@ -278,6 +279,12 @@ class NotesWidget extends StatefulWidget {
   /// the same text into every page's stored record so persistence stays
   /// coherent even as pages are added or removed.
   final bool sharedText;
+
+  /// When false, the "expand" handle that opens a floating text modal
+  /// (or forwards to `onExpandToTab`) is hidden and the in-widget modal
+  /// is never rendered. Used by the dossier quick-notes card where the
+  /// note is meant to stay inline only.
+  final bool allowTextModal;
 
   // Sauvegarde
   final FutureOr<void> Function(NoteSavePayload payload)? onSave;
@@ -985,7 +992,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Stack(
       children: [
         Positioned.fill(child: container),
-        if (_showTextModal)
+        if (_showTextModal && widget.allowTextModal)
           _FloatingTextModal(
             initialText: _textController.text,
             placeholder: widget.placeholder,
@@ -1115,7 +1122,12 @@ class _NotesWidgetState extends State<NotesWidget> {
             // Zone texte — remplit toute la zone, avec une petite marge à
             // gauche pour la poignée d'agrandissement.
             Padding(
-              padding: const EdgeInsets.fromLTRB(38, 10, 14, 10),
+              padding: EdgeInsets.fromLTRB(
+                widget.allowTextModal ? 38 : 14,
+                10,
+                14,
+                10,
+              ),
               child: TextField(
                 controller: _textController,
                 focusNode: _textFocusNode,
@@ -1133,22 +1145,23 @@ class _NotesWidgetState extends State<NotesWidget> {
             ),
             // Poignée d'agrandissement — petite zone de tap confinée en haut-gauche
             // pour ne pas intercepter les taps destinés au TextField.
-            Positioned(
-              left: 6,
-              top: 6,
-              child: InkWell(
-                onTap: _openTextModal,
-                customBorder: const CircleBorder(),
-                child: Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Icon(
-                    LucideIcons.maximize2,
-                    size: 14,
-                    color: Colors.grey.shade500,
+            if (widget.allowTextModal)
+              Positioned(
+                left: 6,
+                top: 6,
+                child: InkWell(
+                  onTap: _openTextModal,
+                  customBorder: const CircleBorder(),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      LucideIcons.maximize2,
+                      size: 14,
+                      color: Colors.grey.shade500,
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

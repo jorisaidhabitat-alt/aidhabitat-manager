@@ -574,29 +574,7 @@ class _DossierScreenState extends State<DossierScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Revenu fiscal de référence + Catégorie de revenu
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _ReadonlyField(
-                          label: 'Revenu fiscal de référence',
-                          value: _formatFiscalRevenue(_fiscalRevenue),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _ReadonlyField(
-                          label: 'Catégorie de revenu',
-                          value: _incomeCategory.trim().isEmpty
-                              ? 'Non renseignée'
-                              : _incomeCategory,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // 2. Prénom + Nom (editable when unlocked)
+                  // 1. Prénom + Nom (editable when unlocked)
                   if (_isBeneficiaryLocked)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -647,6 +625,28 @@ class _DossierScreenState extends State<DossierScreen> {
                         ),
                       ],
                     ),
+                  const SizedBox(height: 12),
+                  // 2. Revenu fiscal de référence + Catégorie de revenu
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _ReadonlyField(
+                          label: 'Revenu fiscal de référence',
+                          value: _formatFiscalRevenue(_fiscalRevenue),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _ReadonlyField(
+                          label: 'Catégorie de revenu',
+                          value: _incomeCategory.trim().isEmpty
+                              ? 'Non renseignée'
+                              : _incomeCategory,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   // 3. Occupants + Ville (zip hidden)
                   if (_isBeneficiaryLocked)
@@ -783,6 +783,7 @@ class _DossierScreenState extends State<DossierScreen> {
       patientId: widget.dossier.patient.id,
       tabKey: 'notes_rapides',
       sharedText: true,
+      allowTextModal: false,
     );
   }
 }

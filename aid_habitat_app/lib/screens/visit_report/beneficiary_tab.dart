@@ -506,28 +506,29 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           child: Column(
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // Champ date de naissance — 50% de la largeur. Au clic,
+                  // ouvre un DatePicker (pas de saisie manuelle).
                   Expanded(
-                    child: FormTextField(
-                      label: 'Date de naissance (JJ/MM/AAAA)',
-                      value: _formatBirthDateForInput(occ.birthDate),
-                      keyboardType: TextInputType.datetime,
-                      onChanged: (v) => _updateOccupant(
+                    flex: 1,
+                    child: _DateOfBirthField(
+                      birthDate: occ.birthDate,
+                      onChanged: (iso) => _updateOccupant(
                         _safeOccupantIndex,
-                        occ.copyWith(birthDate: _parseBirthDateFromInput(v)),
+                        occ.copyWith(birthDate: iso),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Âge calculé à droite du champ date de naissance — texte
-                  // brut, SANS fond ni bordure (demande utilisateur).
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
+                  // Âge à droite, centré verticalement, 14 px, sans fond
+                  // ni bordure.
+                  Expanded(
+                    flex: 1,
                     child: Text(
                       _computeAgeLabel(occ.birthDate),
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF554A63),
                       ),
@@ -1007,4 +1008,117 @@ class _QuickNavItem {
   final IconData icon;
   final String label;
   const _QuickNavItem({required this.icon, required this.label});
+}
+
+// ---------------------------------------------------------------------------
+// _DateOfBirthField — champ date de naissance read-only visuellement
+// identique à FormTextField, mais qui ouvre un showDatePicker au clic.
+// Stocke la valeur en ISO (YYYY-MM-DD) et affiche en DD/MM/YYYY.
+// ---------------------------------------------------------------------------
+
+class _DateOfBirthField extends StatelessWidget {
+  final String birthDate;
+  final ValueChanged<String> onChanged;
+
+  const _DateOfBirthField({
+    required this.birthDate,
+    required this.onChanged,
+  });
+
+  DateTime? _parse(String raw) {
+    final v = raw.trim();
+    if (v.isEmpty) return null;
+    final iso = DateTime.tryParse(v);
+    if (iso != null) return iso;
+    final parts = v.split(RegExp(r'[/\-.]'));
+    if (parts.length != 3) return null;
+    final d = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final y = int.tryParse(parts[2]);
+    if (d == null || m == null || y == null) return null;
+    try {
+      return DateTime(y, m, d);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatDisplay(String raw) {
+    final parsed = _parse(raw);
+    if (parsed == null) return '';
+    final d = parsed.day.toString().padLeft(2, '0');
+    final m = parsed.month.toString().padLeft(2, '0');
+    return '$d/$m/${parsed.year}';
+  }
+
+  Future<void> _pickDate(BuildContext context) async {
+    final initial = _parse(birthDate) ?? DateTime(1960, 1, 1);
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(now.year + 1),
+      locale: const Locale('fr', 'FR'),
+      helpText: 'Sélectionner une date de naissance',
+      cancelText: 'Annuler',
+      confirmText: 'OK',
+    );
+    if (picked == null) return;
+    final y = picked.year.toString().padLeft(4, '0');
+    final m = picked.month.toString().padLeft(2, '0');
+    final d = picked.day.toString().padLeft(2, '0');
+    onChanged('$y-$m-$d');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final display = _formatDisplay(birthDate);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Date de naissance',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        InkWell(
+          onTap: () => _pickDate(context),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    display.isEmpty ? 'JJ / MM / AAAA' : display,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: display.isEmpty
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.calendar_today_outlined,
+                  size: 16,
+                  color: Color(0xFF64748B),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
