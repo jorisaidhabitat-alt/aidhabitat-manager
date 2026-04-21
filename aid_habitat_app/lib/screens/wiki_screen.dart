@@ -274,7 +274,8 @@ class _WikiScreenState extends State<WikiScreen> {
                                                 BorderRadius.circular(20),
                                             child: item.imageUrl.isNotEmpty
                                                 ? Image.network(
-                                                    item.imageUrl,
+                                                    resolveMediaUrl(
+                                                        item.imageUrl),
                                                     fit: BoxFit.cover,
                                                     width: double.infinity,
                                                     errorBuilder:
