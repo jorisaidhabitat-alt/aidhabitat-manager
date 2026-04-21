@@ -774,22 +774,24 @@ class _WetZoneButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? const Color(0xFF907CA1) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: const Color(0xFF907CA1),
-            width: 1.5,
+            color: active
+                ? const Color(0xFF907CA1)
+                : Colors.grey.shade300,
           ),
         ),
         child: Text(
           label,
+          textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: active ? Colors.white : const Color(0xFF334155),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : Colors.black87,
           ),
         ),
       ),

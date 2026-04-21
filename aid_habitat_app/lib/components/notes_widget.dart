@@ -748,13 +748,6 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   void _onDrawStart(DragStartDetails details) {
     if (_canvasSize.isEmpty) return;
-    if (_activeTool == NoteTool.eraser) {
-      _pushUndo();
-      final pt = _normalize(details.localPosition);
-      _lastEraserPos = pt;
-      _eraseAt(pt);
-      return;
-    }
     _pushUndo();
     setState(() {
       _activeStroke = _Stroke(
@@ -768,12 +761,6 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   void _onDrawUpdate(DragUpdateDetails details) {
     if (_canvasSize.isEmpty) return;
-    if (_activeTool == NoteTool.eraser) {
-      final pt = _normalize(details.localPosition);
-      _eraseAlongPath(_lastEraserPos, pt);
-      _lastEraserPos = pt;
-      return;
-    }
     final stroke = _activeStroke;
     if (stroke == null) return;
     setState(() {
@@ -790,7 +777,6 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   void _onDrawEnd(DragEndDetails details) {
-    _lastEraserPos = null;
     final stroke = _activeStroke;
     if (stroke == null) return;
     setState(() {
@@ -1851,17 +1837,22 @@ class _StrokePainter extends CustomPainter {
       case NoteTool.pen:
       case NoteTool.eraser:
       case NoteTool.highlighter:
+        // Gomme = trait blanc peint par-dessus (srcOver + #FFFFFF). Effet
+        // visuel d'effacement fluide pixel-par-pixel, identique à ce que
+        // ferait un "marqueur blanc" sur papier — pas de calcul de hit
+        // test stroke-par-stroke, pas de saccade.
+        final isEraser = stroke.tool == NoteTool.eraser;
         final paint = Paint()
-          ..color = Color(stroke.color).withValues(
-            alpha: stroke.tool == NoteTool.highlighter ? 0.4 : 1.0,
-          )
+          ..color = isEraser
+              ? Colors.white
+              : Color(stroke.color).withValues(
+                  alpha: stroke.tool == NoteTool.highlighter ? 0.4 : 1.0,
+                )
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
           ..strokeWidth = stroke.size
           ..style = PaintingStyle.stroke
-          ..blendMode = stroke.tool == NoteTool.eraser
-              ? BlendMode.clear
-              : BlendMode.srcOver;
+          ..blendMode = BlendMode.srcOver;
         if (realPoints.length == 1) {
           canvas.drawCircle(
             realPoints.first,
