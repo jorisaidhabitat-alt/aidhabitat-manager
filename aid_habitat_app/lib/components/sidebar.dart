@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
 import 'account_dialog.dart';
+import 'cached_remote_image.dart';
 
 class Sidebar extends StatefulWidget {
   final String currentView;

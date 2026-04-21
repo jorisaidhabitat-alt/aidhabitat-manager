@@ -640,29 +640,33 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 _buildBackButton(),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
                     children: [
-                      Text(
-                        '${patient.lastName.toUpperCase()} ${patient.firstName}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (addressLine.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          addressLine,
+                      Flexible(
+                        child: Text(
+                          '${patient.lastName.toUpperCase()} ${patient.firstName}',
                           style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF64748B),
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
                           ),
                           overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (addressLine.isNotEmpty) ...[
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            addressLine,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF64748B),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ],
