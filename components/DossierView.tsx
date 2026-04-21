@@ -1029,7 +1029,7 @@ const DossierDetail: React.FC<{ dossier: Dossier; onUpdateDossier?: (dossier: Do
               <div className="w-12 h-12 rounded-full bg-[#f3f0f5] flex items-center justify-center text-[#907CA1] mb-4 group-hover:scale-110 transition-transform">
                 <Home size={24} />
               </div>
-              <h3 className="font-bold text-lg text-slate-800">Visite Domicile</h3>
+              <h3 className="font-bold text-lg text-slate-800">VAD</h3>
             </button>
           </div>
 
