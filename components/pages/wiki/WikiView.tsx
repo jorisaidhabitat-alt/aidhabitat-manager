@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Search, X } from 'lucide-react';
-import wikiLibraryStatic from '../data/wikiLibraryStatic.json';
-import { createWikiLibraryItem, fetchWikiLibrary, preloadImageAssets, updateWikiLibraryItem } from '../services/dataService';
-import { WikiLibraryItem } from '../types';
-import { ViewportOverlay } from './ViewportOverlay';
-import { uiChipActiveClass, uiChipBaseClass, uiChipInactiveClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from './uiTheme';
+import wikiLibraryStatic from '../../../data/wikiLibraryStatic.json';
+import { createWikiLibraryItem, fetchWikiLibrary, preloadImageAssets, updateWikiLibraryItem } from '../../../services/dataService';
+import { WikiLibraryItem } from '../../../types';
+import { ViewportOverlay } from '../../layout/ViewportOverlay';
+import { uiChipActiveClass, uiChipBaseClass, uiChipInactiveClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from '../../shared/uiTheme';
 
 const FILTER_TAGS = [
   'Salle de bain',

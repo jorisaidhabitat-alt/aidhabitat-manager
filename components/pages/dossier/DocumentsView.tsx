@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Camera, Check, CheckSquare, Download, File, FileText, Image as ImageIcon, Loader2, Plus, Save, ScanLine, Square, Upload, X } from 'lucide-react';
 
-import { deleteDocument, fetchDocumentBlob, fetchDocuments, getCachedDocumentBlob, updateDocument, uploadDocument } from '../services/dataService';
-import { AppDocument, Dossier } from '../types';
-import { LoadingProgress, SimpleLoader, useSmoothLoadingState } from './LoadingProgress';
-import { ViewportOverlay } from './ViewportOverlay';
-import { uiActionCardClass, uiDangerButtonClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from './uiTheme';
+import { deleteDocument, fetchDocumentBlob, fetchDocuments, getCachedDocumentBlob, updateDocument, uploadDocument } from '../../../services/dataService';
+import { AppDocument, Dossier } from '../../../types';
+import { LoadingProgress, SimpleLoader, useSmoothLoadingState } from '../../shared/LoadingProgress';
+import { ViewportOverlay } from '../../layout/ViewportOverlay';
+import { uiActionCardClass, uiDangerButtonClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPrimaryButtonClass, uiSecondaryButtonClass } from '../../shared/uiTheme';
 
 interface DocumentsViewProps {
   dossier: Dossier;

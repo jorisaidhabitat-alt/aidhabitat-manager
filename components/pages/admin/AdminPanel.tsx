@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Copy, KeyRound, RefreshCw, ShieldCheck, UserCog, Users } from 'lucide-react';
-import { fetchAdminAccessMembers, regenerateAccessPassword } from '../services/dataService';
-import { AdminAccessMember } from '../types';
-import { SimpleLoader } from './LoadingProgress';
-import { uiPanelClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass, uiSoftPanelClass } from './uiTheme';
+import { fetchAdminAccessMembers, regenerateAccessPassword } from '../../../services/dataService';
+import { AdminAccessMember } from '../../../types';
+import { SimpleLoader } from '../../shared/LoadingProgress';
+import { uiPanelClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass, uiSoftPanelClass } from '../../shared/uiTheme';
 
 export const AdminPanel: React.FC = () => {
   const [members, setMembers] = useState<AdminAccessMember[]>([]);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { BookOpen, Coins, FolderOpen, Heart, Home, ShieldCheck } from 'lucide-react';
-import { AppUser } from '../types';
+import { AppUser } from '../../types';
 
 interface SidebarProps {
   currentView: string;

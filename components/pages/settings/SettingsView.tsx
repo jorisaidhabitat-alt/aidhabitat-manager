@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { Camera, LogOut, Shield } from 'lucide-react';
-import { uploadProfilePhoto } from '../services/dataService';
-import { AppUser } from '../types';
-import { SimpleLoader } from './LoadingProgress';
-import { uiPanelClass, uiSecondaryButtonClass, uiSoftPanelClass } from './uiTheme';
+import { uploadProfilePhoto } from '../../../services/dataService';
+import { AppUser } from '../../../types';
+import { SimpleLoader } from '../../shared/LoadingProgress';
+import { uiPanelClass, uiSecondaryButtonClass, uiSoftPanelClass } from '../../shared/uiTheme';
 
 interface SettingsViewProps {
     user: AppUser | null;

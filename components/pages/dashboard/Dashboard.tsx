@@ -1,9 +1,9 @@
 import React from 'react';
-import { AppUser, Visit, Dossier } from '../types';
+import { AppUser, Visit, Dossier } from '../../../types';
 import { Calendar, CheckCircle, Clock, MapPin, TrendingUp, Users, ArrowRight, Folder } from 'lucide-react';
-import { formatCityLabel, mapVirtualDossierFromBeneficiary } from '../services/dataService'; // Import mapper
-import { CreateDossierFab } from './DossierView';
-import { uiPanelInteractiveClass } from './uiTheme';
+import { formatCityLabel, mapVirtualDossierFromBeneficiary } from '../../../services/dataService'; // Import mapper
+import { CreateDossierFab } from '../dossier/DossierView';
+import { uiPanelInteractiveClass } from '../../shared/uiTheme';
 
 interface DashboardProps {
   visits: Visit[];

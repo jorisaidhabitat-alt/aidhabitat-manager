@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCheck, Clock3, ExternalLink, Loader2, Phone, Plus, Save, Search, StickyNote, Users, X } from 'lucide-react';
-import { createRetirementFund, fetchRetirementFunds, getCachedRetirementFunds, preloadImageAssets, updateRetirementFund } from '../services/dataService';
-import { RetirementFund } from '../types';
-import { SimpleLoader } from './LoadingProgress';
-import { ViewportOverlay } from './ViewportOverlay';
-import { uiDangerButtonClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPanelClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass, uiSoftPanelClass, uiLabelClass } from './uiTheme';
+import { createRetirementFund, fetchRetirementFunds, getCachedRetirementFunds, preloadImageAssets, updateRetirementFund } from '../../../services/dataService';
+import { RetirementFund } from '../../../types';
+import { SimpleLoader } from '../../shared/LoadingProgress';
+import { ViewportOverlay } from '../../layout/ViewportOverlay';
+import { uiDangerButtonClass, uiFieldClass, uiIconButtonClass, uiModalClass, uiPanelClass, uiPanelInteractiveClass, uiPrimaryButtonClass, uiSecondaryButtonClass, uiSoftPanelClass, uiLabelClass } from '../../shared/uiTheme';
 
 const phoneHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`;
 

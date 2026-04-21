@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { loginApp } from '../services/dataService';
-import { AppUser } from '../types';
+import { loginApp } from '../../services/dataService';
+import { AppUser } from '../../types';
 import { Lock } from 'lucide-react';
-import { SimpleLoader } from './LoadingProgress';
-import { uiFieldClass, uiModalClass, uiPrimaryButtonClass } from './uiTheme';
+import { SimpleLoader } from '../shared/LoadingProgress';
+import { uiFieldClass, uiModalClass, uiPrimaryButtonClass } from '../shared/uiTheme';
 
 export const LoginView: React.FC<{ onAuthenticated: (user: AppUser) => void }> = ({ onAuthenticated }) => {
     const [loading, setLoading] = useState(false);

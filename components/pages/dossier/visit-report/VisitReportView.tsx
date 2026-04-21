@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { AlertTriangle, ArrowLeft, Ban, Bath, Blinds, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Coins, DoorOpen, FolderOpen, Hand, Heart, House, ImagePlus, LayoutGrid, MapPin, Plus, Search, ShowerHead, Toilet, Trash2, User, Zap } from 'lucide-react';
-import { BathroomLevelInstance, Dossier, HeatingMode, DiagnosticSanitaires, MesuresAnthropometriques, NotePage, ObservationsSynthese, VisitRecommendationItem, VisitReportLocation, WikiLibraryItem, WcLevelInstance } from '../types';
-import { NotesCanvas, buildNotePreviewDataUrlFromContent, type DrawingTool } from './NotesCanvas';
-import { CommuneFieldGroup, type CommuneOption } from './CommuneFieldGroup';
-import { ViewportOverlay } from './ViewportOverlay';
-import { cx, uiFieldClass, uiFieldWarningClass, uiLabelClass } from './uiTheme';
-import wikiLibraryStatic from '../data/wikiLibraryStatic.json';
+import { BathroomLevelInstance, Dossier, HeatingMode, DiagnosticSanitaires, MesuresAnthropometriques, NotePage, ObservationsSynthese, VisitRecommendationItem, VisitReportLocation, WikiLibraryItem, WcLevelInstance } from '../../../../types';
+import { NotesCanvas, buildNotePreviewDataUrlFromContent, type DrawingTool } from '../../../shared/NotesCanvas';
+import { CommuneFieldGroup, type CommuneOption } from '../../../shared/CommuneFieldGroup';
+import { ViewportOverlay } from '../../../layout/ViewportOverlay';
+import { cx, uiFieldClass, uiFieldWarningClass, uiLabelClass } from '../../../shared/uiTheme';
+import wikiLibraryStatic from '../../../../data/wikiLibraryStatic.json';
 import {
     fetchVisitRecommendations,
     updateDossier,
@@ -27,7 +27,7 @@ import {
     saveNotePage,
     saveVisitRecommendations,
     upsertObservationsSynthese,
-} from '../services/dataService';
+} from '../../../../services/dataService';
 
 interface RefOption { id: string; label: string; establishmentId?: string; establishmentLabel?: string; }
 

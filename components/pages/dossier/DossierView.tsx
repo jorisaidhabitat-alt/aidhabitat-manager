@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppUser, Dossier, NotePage, OccupantIdentity } from '../types';
+import { AppUser, Dossier, NotePage, OccupantIdentity } from '../../../types';
 import {
   ArrowRight, Search, ChevronRight, Plus, ChevronDown,
   Paperclip, Home, User, Phone, MapPin, Calendar, Activity, ArrowLeft, X, Pencil, Check
 } from 'lucide-react';
-import { NotesCanvas, buildNotePreviewDataUrlFromContent } from './NotesCanvas';
-import { CommuneFieldGroup, type CommuneOption } from './CommuneFieldGroup';
-import { fetchNotePages, saveNotePage, mapVirtualDossierFromBeneficiary, createBeneficiaryWithDossier, fetchReferenceData, getReferenceDataSnapshot, updateBeneficiary, fetchObservationsSynthese, formatCityLabel, normalizeCityInput } from '../services/dataService';
-import { SimpleLoader } from './LoadingProgress';
-import { ViewportOverlay } from './ViewportOverlay';
-import { uiActionCardClass, uiBadgeAccentClass, uiFieldClass, uiFieldReadonlyAccentClass, uiFieldReadonlyClass, uiIconButtonClass, uiLabelClass, uiPanelClass } from './uiTheme';
+import { NotesCanvas, buildNotePreviewDataUrlFromContent } from '../../shared/NotesCanvas';
+import { CommuneFieldGroup, type CommuneOption } from '../../shared/CommuneFieldGroup';
+import { fetchNotePages, saveNotePage, mapVirtualDossierFromBeneficiary, createBeneficiaryWithDossier, fetchReferenceData, getReferenceDataSnapshot, updateBeneficiary, fetchObservationsSynthese, formatCityLabel, normalizeCityInput } from '../../../services/dataService';
+import { SimpleLoader } from '../../shared/LoadingProgress';
+import { ViewportOverlay } from '../../layout/ViewportOverlay';
+import { uiActionCardClass, uiBadgeAccentClass, uiFieldClass, uiFieldReadonlyAccentClass, uiFieldReadonlyClass, uiIconButtonClass, uiLabelClass, uiPanelClass } from '../../shared/uiTheme';
 
 interface DossierViewProps {
   dossiers: Dossier[];
