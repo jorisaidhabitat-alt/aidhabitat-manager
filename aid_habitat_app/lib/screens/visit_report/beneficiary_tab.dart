@@ -684,6 +684,21 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           ),
           const SizedBox(height: 12),
         ],
+        // Small label above the 3 status checkboxes (APA / Invalidité /
+        // Aide à domicile) — same visual weight as the other in-form
+        // field labels ("Dépendance", etc.).
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Aides et reconnaissance',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF334155),
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
         FormCheckbox(
           label: 'Bénéficiaire APA',
           value: occ.apa,
