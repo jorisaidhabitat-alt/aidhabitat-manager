@@ -525,12 +525,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             const SizedBox(width: 12),
             Expanded(
               flex: 1,
-              child: Text(
-                _computeAgeLabel(occ.birthDate),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF554A63),
+              // Léger padding top pour descendre l'âge d'un chouïa et
+              // l'aligner visuellement avec le milieu du cadre date.
+              child: Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  _computeAgeLabel(occ.birthDate),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF554A63),
+                  ),
                 ),
               ),
             ),
@@ -1057,6 +1062,29 @@ class _DateOfBirthField extends StatelessWidget {
       helpText: 'Sélectionner une date de naissance',
       cancelText: 'Annuler',
       confirmText: 'OK',
+      // Override du thème du DatePicker — l'app utilise un seedColor rose/
+      // lilas (0xFF907CA1) qui donnait un fond rosé sur toute la bannière
+      // du picker. On force un thème neutre (fond blanc, accents sombres).
+      builder: (ctx, child) {
+        final base = Theme.of(ctx);
+        return Theme(
+          data: base.copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF0F172A), // noir / slate-900 pour sélection
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Color(0xFF0F172A),
+            ),
+            datePickerTheme: const DatePickerThemeData(
+              backgroundColor: Colors.white,
+              headerBackgroundColor: Colors.white,
+              headerForegroundColor: Color(0xFF0F172A),
+              surfaceTintColor: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked == null) return;
     final y = picked.year.toString().padLeft(4, '0');
