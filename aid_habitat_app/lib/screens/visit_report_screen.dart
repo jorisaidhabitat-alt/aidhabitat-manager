@@ -97,7 +97,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     'Contexte de vie': ['Médical', 'Autonomie'],
     'Accessibilité': ['Général', 'Extérieur'],
     'Salle de bain': ['Équipements'],
-    'WC': ['Config. & équipements', 'Porte'],
+    'WC': ['Config. & équipements'],
   };
 
   @override

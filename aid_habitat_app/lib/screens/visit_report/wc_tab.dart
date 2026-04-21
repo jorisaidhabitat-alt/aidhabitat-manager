@@ -43,7 +43,6 @@ class _WcTabState extends State<WcTab>
   bool _loaded = false;
   Timer? _saveTimer;
   int _activeLevelIndex = 0;
-  int _subSection = 0; // 0 = main, 1 = door
 
   @override
   void initState() {
@@ -189,10 +188,10 @@ class _WcTabState extends State<WcTab>
           if (_instances.isEmpty)
             _buildEmptyState()
           else ...[
-            const SizedBox(height: 12),
-            _buildQuickNav(),
             const SizedBox(height: 16),
-            if (_subSection == 0) _buildMain() else _buildDoor(),
+            _buildMain(),
+            const SizedBox(height: 16),
+            _buildDoor(),
           ],
         ],
       ),
@@ -258,64 +257,6 @@ class _WcTabState extends State<WcTab>
     );
   }
 
-  Widget _buildQuickNav() {
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildNavBtn(
-                LucideIcons.squareAsterisk, 'Config. & équipements', 0),
-          ),
-          const SizedBox(width: 4),
-          Expanded(child: _buildNavBtn(LucideIcons.doorOpen, 'Porte', 1)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavBtn(IconData icon, String label, int index) {
-    final active = _subSection == index;
-    return GestureDetector(
-      onTap: () => setState(() => _subSection = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFFD8D0DC) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            Icon(icon,
-                size: 16,
-                color: active
-                    ? const Color(0xFF554A63)
-                    : const Color(0xFF64748B)),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: active
-                      ? const Color(0xFF554A63)
-                      : const Color(0xFF64748B),
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Sections
   // ---------------------------------------------------------------------------
@@ -351,15 +292,7 @@ class _WcTabState extends State<WcTab>
           onChanged: (v) => _updateActive(
               _copy(a, wcBarreRelevement: v == 'Présente')),
         ),
-        const SizedBox(height: 14),
-        FormTextField(
-          label: "Observations sur l'utilisation",
-          value: a.observationEquipementsUtilisation,
-          maxLines: 3,
-          onChanged: (v) => _updateActive(
-              _copy(a, observationEquipementsUtilisation: v)),
-        ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 8),
       ],
     );
   }
