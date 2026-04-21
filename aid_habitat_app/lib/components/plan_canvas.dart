@@ -1063,20 +1063,28 @@ class _PlanCanvasState extends State<PlanCanvas> {
         setState(() => sel.rotation = newAngle);
         break;
       default:
-        // Redimensionnement par un coin — on convertit le pt en local
-        // non tourné, puis on update le corner.
+        // Redimensionnement PROPORTIONNEL depuis un coin — on calcule
+        // un facteur d'échelle basé sur la distance du curseur au
+        // centre (en coordonnées locales non-tournées), et on applique
+        // ce même facteur à largeur ET hauteur pour préserver le ratio.
         final local = _toSymbolLocal(sel, pt);
-        final halfW = (local.dx - initCenter.dx).abs().clamp(8, 2000);
-        final halfH = (local.dy - initCenter.dy).abs().clamp(8, 2000);
+        final initHalfW =
+            (initCorner.dx - initCenter.dx).abs().clamp(8.0, 2000.0);
+        final initHalfH =
+            (initCorner.dy - initCenter.dy).abs().clamp(8.0, 2000.0);
+        final initDiag = math.sqrt(initHalfW * initHalfW + initHalfH * initHalfH);
+        final curDiag = (local - initCenter).distance;
+        final scale = (curDiag / initDiag).clamp(0.15, 10.0);
+        final newHalfW = (initHalfW * scale).clamp(8.0, 2000.0);
+        final newHalfH = (initHalfH * scale).clamp(8.0, 2000.0);
         setState(() {
-          // On conserve le signe original du corner (quadrant).
           final sx = (initCorner.dx - initCenter.dx) >= 0 ? 1 : -1;
           final sy = (initCorner.dy - initCenter.dy) >= 0 ? 1 : -1;
           sel.points[1] = Offset(
-            initCenter.dx + halfW * sx,
-            initCenter.dy + halfH * sy,
+            initCenter.dx + newHalfW * sx,
+            initCenter.dy + newHalfH * sy,
           );
-          // Restaurer l'angle initial (pas de rotation pendant resize).
+          // Rotation préservée pendant le resize proportionnel.
           sel.rotation = initRotation;
         });
     }
@@ -1294,125 +1302,133 @@ class _DrawPainter extends CustomPainter {
         canvas.drawLine(s.points[0], s.points[1], paint);
         break;
       case PlanTool.window:
-        if (s.points.length < 2) return;
-        _paintWindow(canvas, s.points[0], s.points[1], paint);
-        break;
       case PlanTool.door:
-        if (s.points.length < 2) return;
-        _paintDoor(canvas, s.points[0], s.points[1], paint);
-        break;
       case PlanTool.toilet:
-        if (s.points.length < 2) return;
-        _paintToilet(canvas, s.points[0], s.points[1], paint);
-        break;
       case PlanTool.shower:
-        if (s.points.length < 2) return;
-        _paintShower(canvas, s.points[0], s.points[1], paint);
-        break;
       case PlanTool.bath:
         if (s.points.length < 2) return;
-        _paintBath(canvas, s.points[0], s.points[1], paint);
+        _paintSymbol(canvas, s);
         break;
     }
   }
 
   // --- Symboles architecturaux ------------------------------------------
 
-  /// Fenêtre : double ligne parallèle (paroi de mur percée).
-  static void _paintWindow(Canvas canvas, Offset a, Offset b, Paint paint) {
-    final dir = b - a;
-    final length = dir.distance;
-    if (length < 1) return;
-    final perp = Offset(-dir.dy, dir.dx) / length * 4;
-    final thin = Paint()
-      ..color = paint.color
-      ..strokeWidth = paint.strokeWidth.clamp(1.5, 3.0)
-      ..style = PaintingStyle.stroke;
-    canvas.drawLine(a + perp, b + perp, thin);
-    canvas.drawLine(a - perp, b - perp, thin);
-  }
-
-  /// Porte : segment fixe + arc 90° indiquant le sens d'ouverture.
-  /// Le sens est dérivé de la direction du drag (a → b).
-  static void _paintDoor(Canvas canvas, Offset a, Offset b, Paint paint) {
-    final dir = b - a;
-    final radius = dir.distance;
-    if (radius < 2) return;
-    final thin = Paint()
-      ..color = paint.color
-      ..strokeWidth = paint.strokeWidth.clamp(1.5, 3.0)
-      ..style = PaintingStyle.stroke;
-    // Battant fermé (ligne pleine) vers b.
-    canvas.drawLine(a, b, thin);
-    // Arc 90° en pointillés simulant l'ouverture.
-    final startAngle = (b - a).direction;
-    final arcRect = Rect.fromCircle(center: a, radius: radius);
-    final dashed = Paint()
-      ..color = paint.color.withValues(alpha: 0.6)
-      ..strokeWidth = 1.4
-      ..style = PaintingStyle.stroke;
-    canvas.drawArc(arcRect, startAngle, 1.5708 /* 90° */, false, dashed);
-  }
-
-  /// Toilettes : réservoir (petit rectangle) + cuvette (ovale).
-  /// L'axe long va de `a` (base réservoir) vers `b` (avant cuvette).
-  static void _paintToilet(Canvas canvas, Offset a, Offset b, Paint paint) {
-    final center = Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
-    final length = (b - a).distance.clamp(40.0, 400.0);
-    final angle = (b - a).direction;
-    final width = length * 0.55;
+  /// Rend un symbole architectural en appliquant la rotation autour du
+  /// centre. Chaque dessin est fait dans le repère local où la bounding
+  /// box est centrée sur l'origine — lisible et rotation-aware.
+  static void _paintSymbol(Canvas canvas, _PlanStroke s) {
+    final bounds = s.symbolLocalBounds;
+    if (bounds == null) return;
+    final center = s.points.first;
     canvas.save();
     canvas.translate(center.dx, center.dy);
-    canvas.rotate(angle);
+    canvas.rotate(s.rotation);
+    // À ce stade, le repère est centré sur le centre du symbole et
+    // tourné selon rotation. On dessine relativement à (0,0).
+    final w = bounds.width;
+    final h = bounds.height;
+    final rect = Rect.fromCenter(
+        center: Offset.zero, width: w, height: h);
+    final color = Color(s.color);
     final stroke = Paint()
-      ..color = paint.color
+      ..color = color
       ..strokeWidth = 1.8
       ..style = PaintingStyle.stroke;
-    // Cuvette (ovale, côté "b")
-    final bowl = Rect.fromCenter(
-      center: Offset(length * 0.15, 0),
-      width: length * 0.7,
-      height: width,
-    );
-    canvas.drawOval(bowl, stroke);
-    // Réservoir (rectangle, côté "a")
-    final tank = Rect.fromCenter(
-      center: Offset(-length * 0.35, 0),
-      width: length * 0.3,
-      height: width * 0.8,
-    );
-    canvas.drawRect(tank, stroke);
+    switch (s.tool) {
+      case PlanTool.window:
+        _paintWindowLocal(canvas, rect, stroke);
+        break;
+      case PlanTool.door:
+        _paintDoorLocal(canvas, rect, stroke);
+        break;
+      case PlanTool.toilet:
+        _paintToiletLocal(canvas, rect, stroke);
+        break;
+      case PlanTool.shower:
+        _paintShowerLocal(canvas, rect, stroke);
+        break;
+      case PlanTool.bath:
+        _paintBathLocal(canvas, rect, stroke);
+        break;
+      default:
+        break;
+    }
     canvas.restore();
   }
 
-  /// Douche : carré avec croix en pointillés (évacuation centrale).
-  static void _paintShower(Canvas canvas, Offset a, Offset b, Paint paint) {
-    final r = Rect.fromPoints(a, b);
-    final stroke = Paint()
-      ..color = paint.color
-      ..strokeWidth = 1.8
-      ..style = PaintingStyle.stroke;
-    canvas.drawRect(r, stroke);
-    final c = r.center;
+  /// Fenêtre : double ligne horizontale sur toute la largeur du bounds.
+  static void _paintWindowLocal(Canvas canvas, Rect r, Paint stroke) {
+    final gap = (r.height / 2).clamp(3, 8);
+    canvas.drawLine(
+      Offset(r.left, -gap.toDouble()),
+      Offset(r.right, -gap.toDouble()),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(r.left, gap.toDouble()),
+      Offset(r.right, gap.toDouble()),
+      stroke,
+    );
+  }
+
+  /// Porte : segment fixe du côté gauche + arc 90° indiquant l'ouverture.
+  static void _paintDoorLocal(Canvas canvas, Rect r, Paint stroke) {
+    // Charnière en bas-gauche, battant fermé va vers le haut-gauche.
+    final hinge = r.bottomLeft;
+    final closedEnd = Offset(r.left, r.top);
+    canvas.drawLine(hinge, closedEnd, stroke);
+    final radius = r.height;
+    final arcRect = Rect.fromCircle(center: hinge, radius: radius);
     final dashed = Paint()
-      ..color = paint.color.withValues(alpha: 0.6)
+      ..color = stroke.color.withValues(alpha: 0.6)
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke;
+    // Arc de -90° (vers le haut) à 0° (vers la droite).
+    canvas.drawArc(arcRect, -math.pi / 2, math.pi / 2, false, dashed);
+  }
+
+  /// Toilettes : réservoir (rectangle) + cuvette (ovale), alignées sur
+  /// l'axe horizontal du bounds (réservoir à gauche, cuvette à droite).
+  static void _paintToiletLocal(Canvas canvas, Rect r, Paint stroke) {
+    // Cuvette (ovale) — occupe les 2/3 droits du bounds
+    final bowl = Rect.fromLTWH(
+      r.left + r.width * 0.28,
+      r.top + r.height * 0.08,
+      r.width * 0.70,
+      r.height * 0.84,
+    );
+    canvas.drawOval(bowl, stroke);
+    // Réservoir — 30% gauche
+    final tank = Rect.fromLTWH(
+      r.left,
+      r.top + r.height * 0.20,
+      r.width * 0.27,
+      r.height * 0.60,
+    );
+    canvas.drawRect(tank, stroke);
+  }
+
+  /// Douche : rectangle + croix en pointillés + bonde centrale.
+  static void _paintShowerLocal(Canvas canvas, Rect r, Paint stroke) {
+    canvas.drawRect(r, stroke);
+    final dashed = Paint()
+      ..color = stroke.color.withValues(alpha: 0.6)
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
     canvas.drawLine(r.topLeft, r.bottomRight, dashed);
     canvas.drawLine(r.topRight, r.bottomLeft, dashed);
-    canvas.drawCircle(c, 3, stroke..style = PaintingStyle.fill);
+    canvas.drawCircle(
+      r.center,
+      3,
+      Paint()..color = stroke.color,
+    );
   }
 
-  /// Baignoire : rectangle arrondi + bonde (petit cercle).
-  static void _paintBath(Canvas canvas, Offset a, Offset b, Paint paint) {
-    final r = Rect.fromPoints(a, b);
+  /// Baignoire : rectangle arrondi + bonde à gauche.
+  static void _paintBathLocal(Canvas canvas, Rect r, Paint stroke) {
     final rr = RRect.fromRectAndRadius(r, const Radius.circular(14));
-    final stroke = Paint()
-      ..color = paint.color
-      ..strokeWidth = 1.8
-      ..style = PaintingStyle.stroke;
     canvas.drawRRect(rr, stroke);
-    // Bonde au 1/5 d'un côté.
     final side = r.width < r.height ? r.width : r.height;
     final drainCenter = Offset(
       r.left + r.width * 0.20,
