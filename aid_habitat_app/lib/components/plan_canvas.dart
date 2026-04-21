@@ -676,15 +676,18 @@ class _PlanCanvasState extends State<PlanCanvas> {
                     setState(() => _penSize = (_penSize - 1).clamp(1, 20))
                 : null,
           ),
+          // Indicateur visuel d'épaisseur : un trait dont la hauteur
+          // correspond exactement à la valeur courante de _penSize (plus
+          // épais → plus haut). Remplace la valeur numérique.
           Container(
-            constraints: const BoxConstraints(minWidth: 24),
+            constraints: const BoxConstraints(minWidth: 28),
             alignment: Alignment.center,
-            child: Text(
-              '${_penSize.toInt()}',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF334155),
+            child: Container(
+              width: 24,
+              height: _penSize.clamp(1.0, 20.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFF334155),
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
           ),
