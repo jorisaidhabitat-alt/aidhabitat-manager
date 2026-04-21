@@ -430,115 +430,6 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildGeneral() {
-    return Column(
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Type de logement (en premier)
-            FormToggleGroup(
-                label: 'Type de logement',
-                options: const ['Maison', 'Appartement'],
-                selected: _typology,
-                expand: true,
-                onChanged: (v) {
-                  _typology = v;
-                  _markChanged();
-                },
-              ),
-              const SizedBox(height: 14),
-              // 2. Années avec flèche de copie
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: FormTextField(
-                      label: 'Année construction',
-                      value: _yearConstruction,
-                      keyboardType: TextInputType.number,
-                      onChanged: (v) {
-                        _yearConstruction = v;
-                        _markChanged();
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Tooltip(
-                    message: "Copier dans Année d'habitation",
-                    child: InkWell(
-                      onTap: () {
-                        if (_yearConstruction.isNotEmpty) {
-                          setState(() => _yearHabitation = _yearConstruction);
-                          _markChanged();
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFF4EFF7),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.arrow_forward,
-                            size: 16, color: Color(0xFF554A63)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: FormTextField(
-                      label: "Année d'habitation",
-                      value: _yearHabitation,
-                      keyboardType: TextInputType.number,
-                      onChanged: (v) {
-                        _yearHabitation = v;
-                        _markChanged();
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              // 3. Surface
-              FormNumberField(
-                label: 'Surface habitable',
-                value: _surface,
-                unit: 'm²',
-                onChanged: (v) {
-                  _surface = v;
-                  _markChanged();
-                },
-              ),
-              const SizedBox(height: 14),
-              // 4. Chauffage (menu déroulant multi-sélection)
-              FormMultiSelectDropdown(
-                label: 'Chauffage',
-                options: _heatingOptions.toList(),
-                selected: _heatingTypes,
-                placeholder: 'Sélectionner le type de chauffage',
-                onChanged: (next) {
-                  setState(() => _heatingTypes = next);
-                  _scheduleSave();
-                },
-              ),
-            ],
-          ),
-        ),
-        // 5. Niveaux (ajout dynamique)
-        _buildLevelsSection(),
-        // 6. Volets (dropdowns compacts)
-        _buildVoletsSection(),
-      ],
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Niveaux
-  // ---------------------------------------------------------------------------
-
-  Widget _buildLevelsSection() {
     final available = _kLevelConfigs
         .where((c) => !_orderedLevels.contains(c.field))
         .toList();
@@ -546,6 +437,96 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 1. Type de logement (en premier)
+        FormToggleGroup(
+          label: 'Type de logement',
+          options: const ['Maison', 'Appartement'],
+          selected: _typology,
+          expand: true,
+          onChanged: (v) {
+            _typology = v;
+            _markChanged();
+          },
+        ),
+        const SizedBox(height: 14),
+        // 2. Années avec flèche de copie
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: FormTextField(
+                label: 'Année construction',
+                value: _yearConstruction,
+                keyboardType: TextInputType.number,
+                onChanged: (v) {
+                  _yearConstruction = v;
+                  _markChanged();
+                },
+              ),
+            ),
+            const SizedBox(width: 6),
+            Tooltip(
+              message: "Copier dans Année d'habitation",
+              child: InkWell(
+                onTap: () {
+                  if (_yearConstruction.isNotEmpty) {
+                    setState(() => _yearHabitation = _yearConstruction);
+                    _markChanged();
+                  }
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF4EFF7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.arrow_forward,
+                      size: 16, color: Color(0xFF554A63)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: FormTextField(
+                label: "Année d'habitation",
+                value: _yearHabitation,
+                keyboardType: TextInputType.number,
+                onChanged: (v) {
+                  _yearHabitation = v;
+                  _markChanged();
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        // 3. Surface
+        FormNumberField(
+          label: 'Surface habitable',
+          value: _surface,
+          unit: 'm²',
+          onChanged: (v) {
+            _surface = v;
+            _markChanged();
+          },
+        ),
+        const SizedBox(height: 14),
+        // 4. Chauffage
+        FormMultiSelectDropdown(
+          label: 'Chauffage',
+          options: _heatingOptions.toList(),
+          selected: _heatingTypes,
+          placeholder: 'Sélectionner le type de chauffage',
+          onChanged: (next) {
+            setState(() => _heatingTypes = next);
+            _scheduleSave();
+          },
+        ),
+        const SizedBox(height: 14),
+        // 5. Niveaux (ajout dynamique)
         ..._orderedLevels.map((field) {
           final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
           return Padding(
@@ -554,6 +535,40 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           );
         }),
         if (available.isNotEmpty) _buildAddLevelButton(available),
+        const SizedBox(height: 14),
+        // 6. Volets
+        _buildVoletRow(
+          'Roulants manuels',
+          _voletsManStatus,
+          _voletsManLoc,
+          (s) => setState(() {
+            _voletsManStatus = s;
+            if (s != 'Localisé') _voletsManLoc = '';
+          }),
+          (l) => setState(() => _voletsManLoc = l),
+        ),
+        const SizedBox(height: 10),
+        _buildVoletRow(
+          'Roulants électriques',
+          _voletsElecStatus,
+          _voletsElecLoc,
+          (s) => setState(() {
+            _voletsElecStatus = s;
+            if (s != 'Localisé') _voletsElecLoc = '';
+          }),
+          (l) => setState(() => _voletsElecLoc = l),
+        ),
+        const SizedBox(height: 10),
+        _buildVoletRow(
+          'Persiennes',
+          _voletsPersStatus,
+          _voletsPersLoc,
+          (s) => setState(() {
+            _voletsPersStatus = s;
+            if (s != 'Localisé') _voletsPersLoc = '';
+          }),
+          (l) => setState(() => _voletsPersLoc = l),
+        ),
       ],
     );
   }
