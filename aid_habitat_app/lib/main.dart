@@ -124,6 +124,11 @@ class _AuthRootState extends State<AuthRoot> {
   }
 
   Future<void> _restoreSession() async {
+    // Restaure le token API serveur depuis SQLite AVANT de récupérer l'user,
+    // sinon AppConfig.hasRemoteConfig reste false après un redémarrage de
+    // l'app et toutes les syncs NocoDB échouent avec "Configuration NocoDB
+    // absente" (y compris le relevé à domicile).
+    await _authService.restoreRemoteSession();
     final user = await _authService.getCurrentUser();
     if (!mounted) return;
     setState(() {
