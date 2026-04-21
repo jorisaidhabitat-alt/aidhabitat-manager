@@ -166,15 +166,8 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(50),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    color: const Color(0xFFF1F5F9), // slate-100
+                    borderRadius: BorderRadius.circular(32),
                   ),
                   child: TextField(
                     onChanged: (value) => setState(() => _searchTerm = value),
@@ -195,15 +188,8 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     vertical: 16,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(50),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    color: const Color(0xFFF1F5F9), // slate-100
+                    borderRadius: BorderRadius.circular(32),
                   ),
                   child: Row(
                     children: [
@@ -392,20 +378,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                           ],
                                         ),
                                       ),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          _StatusPill(
-                                            status: dossier.status.label,
-                                          ),
-                                          const SizedBox(height: 6),
-                                          _SyncPill(
-                                            syncState: dossier.syncState,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 24),
+                                      const SizedBox(width: 16),
                                       Container(
                                         width: 40,
                                         height: 40,
@@ -436,89 +409,3 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  final String status;
-
-  const _StatusPill({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg;
-    Color text;
-
-    switch (status) {
-      case 'Validé':
-        bg = Colors.green.shade100;
-        text = Colors.green.shade700;
-        break;
-      case 'À visiter':
-        bg = Colors.amber.shade100;
-        text = Colors.amber.shade700;
-        break;
-      default:
-        bg = Colors.grey.shade100;
-        text = Colors.grey.shade600;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        status.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-          color: text,
-        ),
-      ),
-    );
-  }
-}
-
-class _SyncPill extends StatelessWidget {
-  const _SyncPill({required this.syncState});
-
-  final SyncState syncState;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color color;
-    switch (syncState) {
-      case SyncState.synced:
-        color = Colors.green.shade600;
-        break;
-      case SyncState.pendingSync:
-      case SyncState.localOnly:
-      case SyncState.syncing:
-        color = Colors.orange.shade600;
-        break;
-      case SyncState.syncError:
-      case SyncState.conflict:
-        color = Colors.red.shade600;
-        break;
-    }
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          syncState.label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: color,
-          ),
-        ),
-      ],
-    );
-  }
-}
