@@ -98,9 +98,25 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     'Fauteuil roulant',
   ];
 
-  // GIR (Groupe Iso-Ressources) options 1..6, shown when "Reconnaissance
-  // Invalidité" is checked instead of a free-text field.
-  static const List<String> _girOptions = ['1', '2', '3', '4', '5', '6'];
+  // GIR (Groupe Iso-Ressources) options 6 → 1 — shown quand "Bénéficiaire
+  // APA" est coché. Ordre dégressif demandé par l'utilisateur (6 = moins
+  // dépendant, 1 = plus dépendant).
+  static const List<String> _apaGirOptions = ['6', '5', '4', '3', '2', '1'];
+
+  // Pourcentages MDPH — shown quand "Reconnaissance Invalidité" est cochée
+  // à la place du GIR (qui est réservé au GIR APA).
+  static const List<String> _mdphPercentageOptions = [
+    'Inférieur à 50%',
+    'Entre 50 et 79%',
+    'Plus de 80%',
+  ];
+
+  // Occupation presets — présentés en menu déroulant (React parity).
+  static const List<String> _occupationOptions = [
+    'Propriétaire',
+    'Locataire',
+    'Usufruitier',
+  ];
 
   @override
   void initState() {
@@ -396,9 +412,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   Widget _buildQuickNav() {
     final items = const <_QuickNavItem>[
       _QuickNavItem(icon: Icons.person_outline, label: 'Profil'),
-      _QuickNavItem(icon: Icons.euro, label: 'Revenus'),
+      _QuickNavItem(icon: Icons.home_outlined, label: 'Foyer'),
       _QuickNavItem(icon: Icons.favorite_outline, label: 'Santé'),
-      _QuickNavItem(icon: Icons.folder_open_outlined, label: 'Dossier'),
+      _QuickNavItem(icon: Icons.folder_open_outlined, label: 'Admin'),
     ];
     return Container(
       padding: const EdgeInsets.all(6),
@@ -598,7 +614,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   // ---------------------------------------------------------------------------
-  // Finance (Revenus)
+  // Foyer (ex-Revenus) — composition du foyer, sans les champs revenus.
   // ---------------------------------------------------------------------------
 
   Widget _buildFinanceSection() {
@@ -606,7 +622,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FormSection.text(
-          'Situation',
+          'Foyer',
           child: Column(
             children: [
               FormToggleGroup(
@@ -620,61 +636,24 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 },
               ),
               const SizedBox(height: 14),
-              FormToggleGroup(
+              FormSelectDropdown<String>(
                 label: 'Occupation',
-                options: const ['Propriétaire', 'Locataire', 'Usufruitier'],
-                selected: _occupationStatus,
-                columns: 3,
+                value: _occupationStatus.isEmpty ? null : _occupationStatus,
+                options: _occupationOptions
+                    .map((o) => FormSelectOption<String>(value: o, label: o))
+                    .toList(),
+                placeholder: 'Sélectionner',
                 onChanged: (v) {
-                  _occupationStatus = v;
+                  _occupationStatus = v ?? '';
                   _markChanged();
                 },
               ),
-            ],
-          ),
-        ),
-        FormSection(
-          title: OccupantSwitcher(
-            title: 'Revenus',
-            occupantLabels: _occupantLabels(),
-            activeIndex: _safeOccupantIndex,
-            onChanged: (i) => setState(() => _activeOccupantIndex = i),
-          ),
-          child: Column(
-            children: [
-              // "Nombre de personnes au foyer" is read-only here — it is
-              // controlled from the "Informations bénéficiaire" card of the
-              // dossier screen (single source of truth for the household
-              // size). Each occupant below has their own RFR field.
+              const SizedBox(height: 14),
+              // Source de vérité : champ "Informations bénéficiaire" de la
+              // fiche dossier. Read-only ici.
               _buildReadOnlyField(
                 label: 'Nombre de personnes au foyer',
                 value: _numberPeople > 0 ? '$_numberPeople' : '1',
-              ),
-              const SizedBox(height: 14),
-              _buildReadOnlyField(
-                label: 'Catégorie',
-                value: _incomeCategory.isEmpty
-                    ? 'Calcul automatique'
-                    : _incomeCategory,
-                hint:
-                    'Calculée automatiquement à partir de la somme des RFR et du foyer.',
-              ),
-              const SizedBox(height: 14),
-              FormNumberField(
-                label:
-                    'Revenu Fiscal Ref. (${_occupantLabels()[_safeOccupantIndex]})',
-                value: _activeOccupant.fiscalRevenue,
-                unit: '€',
-                onChanged: (v) {
-                  _updateOccupant(
-                    _safeOccupantIndex,
-                    _activeOccupant.copyWith(
-                      fiscalRevenue: v,
-                      clearFiscalRevenue: v == null,
-                    ),
-                  );
-                  _recomputeIncomeCategory();
-                },
               ),
             ],
           ),
@@ -733,8 +712,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   Widget _buildSanteSection() {
     final occ = _activeOccupant;
-    final trustedPhoneInvalid = !isValidFrenchPhone(_trustedPhone);
-    final trustedEmailInvalid = !isValidEmail(_trustedEmail);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -752,8 +729,35 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 label: 'Bénéficiaire APA',
                 value: occ.apa,
                 onChanged: (v) => _updateOccupant(
-                    _safeOccupantIndex, occ.copyWith(apa: v)),
+                    _safeOccupantIndex,
+                    occ.copyWith(
+                      apa: v,
+                      apaGir: v ? occ.apaGir : '',
+                    )),
               ),
+              // Si APA est coché : menu déroulant GIR dans l'ordre
+              // dégressif 6 → 1 (6 = moins dépendant, 1 = plus dépendant).
+              if (occ.apa)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: FormSelectDropdown<String>(
+                    label: '',
+                    value: _apaGirOptions.contains(occ.apaGir.trim())
+                        ? occ.apaGir.trim()
+                        : null,
+                    options: _apaGirOptions
+                        .map((g) => FormSelectOption<String>(
+                              value: g,
+                              label: 'GIR $g',
+                            ))
+                        .toList(),
+                    placeholder: 'Sélectionner un GIR',
+                    onChanged: (v) => _updateOccupant(
+                      _safeOccupantIndex,
+                      occ.copyWith(apaGir: v ?? ''),
+                    ),
+                  ),
+                ),
               FormCheckbox(
                 label: 'Reconnaissance Invalidité',
                 value: occ.invalidity,
@@ -764,19 +768,22 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                       invalidityTxt: v ? occ.invalidityTxt : '',
                     )),
               ),
+              // Si Invalidité est cochée : pourcentages MDPH (remplace
+              // l'ancien GIR qui n'avait rien à faire côté MDPH).
               if (occ.invalidity)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: FormSelectDropdown<String>(
                     label: '',
-                    value: _girOptions.contains(occ.invalidityTxt.trim())
+                    value: _mdphPercentageOptions
+                            .contains(occ.invalidityTxt.trim())
                         ? occ.invalidityTxt.trim()
                         : null,
-                    options: _girOptions
-                        .map((g) =>
-                            FormSelectOption<String>(value: g, label: g))
+                    options: _mdphPercentageOptions
+                        .map((p) =>
+                            FormSelectOption<String>(value: p, label: p))
                         .toList(),
-                    placeholder: 'Sélectionner un GIR',
+                    placeholder: 'Sélectionner un taux',
                     onChanged: (v) => _updateOccupant(
                       _safeOccupantIndex,
                       occ.copyWith(invalidityTxt: v ?? ''),
@@ -790,9 +797,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     _safeOccupantIndex,
                     occ.copyWith(
                       homeHelp: v,
-                      // homeHelpTxt est géré dans Contexte de vie > Autonomie
-                      // (liste d'items humanHelp) — on efface juste la valeur
-                      // quand l'aide à domicile est décochée.
                       homeHelpTxt: v ? occ.homeHelpTxt : '',
                     )),
               ),
@@ -810,52 +814,16 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             ],
           ),
         ),
+        // Personnes présentes à la visite — déplacé depuis Admin vers Santé.
         FormSection.text(
-          'Personne de Confiance',
-          child: Column(
-            children: [
-              FormTextField(
-                label: 'Nom',
-                value: _trustedName,
-                onChanged: (v) {
-                  _trustedName = v;
-                  _markChanged();
-                },
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: FormTextFieldWithWarning(
-                      label: 'Téléphone',
-                      value: _trustedPhone,
-                      keyboardType: TextInputType.phone,
-                      showWarning: trustedPhoneInvalid,
-                      warningText: 'Numéro français invalide',
-                      onChanged: (v) {
-                        _trustedPhone = v;
-                        _markChanged();
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FormTextFieldWithWarning(
-                      label: 'Email',
-                      value: _trustedEmail,
-                      keyboardType: TextInputType.emailAddress,
-                      showWarning: trustedEmailInvalid,
-                      warningText: 'Adresse mail invalide',
-                      onChanged: (v) {
-                        _trustedEmail = v;
-                        _markChanged();
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          'Visite',
+          child: FormTextField(
+            label: 'Personnes présentes à la visite',
+            value: _personnesPresentesVisite,
+            onChanged: (v) {
+              _personnesPresentesVisite = v;
+              _markChanged();
+            },
           ),
         ),
       ],
@@ -863,26 +831,16 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   // ---------------------------------------------------------------------------
-  // Admin (Dossier)
+  // Admin (ex-Dossier)
   // ---------------------------------------------------------------------------
 
   Widget _buildAdminSection() {
     final occ = _activeOccupant;
+    final trustedPhoneInvalid = !isValidFrenchPhone(_trustedPhone);
+    final trustedEmailInvalid = !isValidEmail(_trustedEmail);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormSection.text(
-          'Informations Administratives',
-          child: FormSelectDropdown<String>(
-            label: 'Création compte Anah',
-            value: _compteAnah.isEmpty ? null : _compteAnah,
-            options: _anahOptions,
-            onChanged: (v) {
-              _compteAnah = v ?? '';
-              _markChanged();
-            },
-          ),
-        ),
         FormSection(
           title: OccupantSwitcher(
             title: 'Personnel',
@@ -934,30 +892,80 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             ],
           ),
         ),
+        // Personne de Confiance — déplacée depuis Santé vers Admin.
         FormSection.text(
-          'Renseignements sur la visite',
+          'Personne de Confiance',
           child: Column(
             children: [
-              FormToggleGroup(
-                label: 'Envoi du rapport',
-                options: const ['Mail', 'Courrier'],
-                selected: _envoiRapport,
-                columns: 2,
+              FormTextField(
+                label: 'Nom',
+                value: _trustedName,
                 onChanged: (v) {
-                  _envoiRapport = v;
+                  _trustedName = v;
                   _markChanged();
                 },
               ),
               const SizedBox(height: 14),
-              FormTextField(
-                label: 'Personnes présentes à la visite',
-                value: _personnesPresentesVisite,
-                onChanged: (v) {
-                  _personnesPresentesVisite = v;
-                  _markChanged();
-                },
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: FormTextFieldWithWarning(
+                      label: 'Téléphone',
+                      value: _trustedPhone,
+                      keyboardType: TextInputType.phone,
+                      showWarning: trustedPhoneInvalid,
+                      warningText: 'Numéro français invalide',
+                      onChanged: (v) {
+                        _trustedPhone = v;
+                        _markChanged();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FormTextFieldWithWarning(
+                      label: 'Email',
+                      value: _trustedEmail,
+                      keyboardType: TextInputType.emailAddress,
+                      showWarning: trustedEmailInvalid,
+                      warningText: 'Adresse mail invalide',
+                      onChanged: (v) {
+                        _trustedEmail = v;
+                        _markChanged();
+                      },
+                    ),
+                  ),
+                ],
               ),
             ],
+          ),
+        ),
+        FormSection.text(
+          'Renseignements sur la visite',
+          child: FormToggleGroup(
+            label: 'Envoi du rapport',
+            options: const ['Mail', 'Courrier'],
+            selected: _envoiRapport,
+            columns: 2,
+            onChanged: (v) {
+              _envoiRapport = v;
+              _markChanged();
+            },
+          ),
+        ),
+        // Création compte Anah — toujours tout en bas de la section Admin
+        // (dernière étape admin après avoir rempli le reste).
+        FormSection.text(
+          'Informations Administratives',
+          child: FormSelectDropdown<String>(
+            label: 'Création compte Anah',
+            value: _compteAnah.isEmpty ? null : _compteAnah,
+            options: _anahOptions,
+            onChanged: (v) {
+              _compteAnah = v ?? '';
+              _markChanged();
+            },
           ),
         ),
       ],

@@ -136,13 +136,42 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     return list;
   }
 
+  // Key attached to the EPCI trigger button so we can compute the
+  // position where the in-page dropdown should anchor.
+  final GlobalKey _epciTriggerKey = GlobalKey();
+
   Future<void> _openEpciPicker() async {
-    final selected = await showDialog<_EpciPickerResult>(
-      context: context,
-      builder: (ctx) => _EpciPickerDialog(
-        epcis: _availableEpcis,
-        currentEpciId: _selectedEpciId,
+    final ctx = _epciTriggerKey.currentContext;
+    if (ctx == null) return;
+    final RenderBox button = ctx.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(
+          Offset(0, button.size.height + 6),
+          ancestor: overlay,
+        ),
+        button.localToGlobal(
+          button.size.bottomRight(Offset.zero) + const Offset(0, 6),
+          ancestor: overlay,
+        ),
       ),
+      Offset.zero & overlay.size,
+    );
+
+    final selected = await showMenu<_EpciPickerResult>(
+      context: context,
+      position: position,
+      color: Colors.white,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      items: [
+        _EpciMenuEntry(
+          epcis: _availableEpcis,
+          currentEpciId: _selectedEpciId,
+        ),
+      ],
     );
     if (selected == null) return;
     setState(() {
@@ -192,106 +221,110 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
           const SizedBox(height: 24),
 
           // Controls
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9), // slate-100
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                  child: TextField(
-                    onChanged: (value) => setState(() => _searchTerm = value),
-                    decoration: const InputDecoration(
-                      hintText: "Rechercher...",
-                      border: InputBorder.none,
-                      suffixIcon: Icon(LucideIcons.search, color: Colors.grey),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Theme(
-                // Kill the default Material hover / splash highlight around
-                // the dropdown trigger — the user wants the button to stay
-                // flat-looking, no floating gray pill on hover.
-                data: Theme.of(context).copyWith(
-                  hoverColor: Colors.transparent,
-                  splashColor: Colors.transparent,
-                  highlightColor: Colors.transparent,
-                ),
-                child: PopupMenuButton<String>(
-                  tooltip: '',
-                  onSelected: (value) => setState(() => _sortOrder = value),
+          // Kill Material's default hover/splash tint everywhere in this row
+          // so the filter buttons stay flat-looking (no floating rose/purple
+          // pill on hover).
+          Theme(
+            data: Theme.of(context).copyWith(
+              hoverColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              focusColor: Colors.transparent,
+            ),
+            child: Row(
+              children: [
+                Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: TextField(
+                      onChanged: (value) => setState(() => _searchTerm = value),
+                      decoration: const InputDecoration(
+                        hintText: "Rechercher...",
+                        border: InputBorder.none,
+                        suffixIcon:
+                            Icon(LucideIcons.search, color: Colors.grey),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                PopupMenuButton<String>(
+                  tooltip: '',
+                  onSelected: (value) => setState(() => _sortOrder = value),
+                  color: Colors.white,
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
                       vertical: 16,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9), // slate-100
-                      borderRadius: BorderRadius.circular(32),
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(999),
                     ),
                     child: Row(
                       children: [
-                      Text(
-                        _sortLabel,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(LucideIcons.chevronDown, size: 20),
-                    ],
+                        Text(
+                          _sortLabel,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(LucideIcons.chevronDown, size: 20),
+                      ],
+                    ),
                   ),
-                ),
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'asc', child: Text("de A à Z")),
-                    const PopupMenuItem(value: 'desc', child: Text("de Z à A")),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'asc', child: Text("de A à Z")),
+                    PopupMenuItem(value: 'desc', child: Text("de Z à A")),
                   ],
                 ),
-              ),
-              const SizedBox(width: 16),
-              // EPCI filter trigger: opens a searchable picker dialog.
-              InkWell(
-                onTap: _openEpciPicker,
-                borderRadius: BorderRadius.circular(32),
-                hoverColor: Colors.transparent,
-                splashColor: Colors.transparent,
-                highlightColor: Colors.transparent,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(LucideIcons.mapPin,
-                          size: 16, color: Color(0xFF64748B)),
-                      const SizedBox(width: 8),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 220),
-                        child: Text(
-                          _selectedEpciLabel,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
+                const SizedBox(width: 12),
+                // EPCI filter trigger: opens a searchable in-page dropdown
+                // anchored below this button.
+                InkWell(
+                  key: _epciTriggerKey,
+                  onTap: _openEpciPicker,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(LucideIcons.mapPin,
+                            size: 16, color: Color(0xFF64748B)),
+                        const SizedBox(width: 8),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 220),
+                          child: Text(
+                            _selectedEpciLabel,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(LucideIcons.chevronDown, size: 20),
-                    ],
+                        const SizedBox(width: 8),
+                        const Icon(LucideIcons.chevronDown, size: 20),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 24),
 
@@ -489,18 +522,19 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   }
 }
 
-/// Pair carried back from the EPCI picker dialog. `id` null = "Toutes".
+/// Payload returned by the EPCI picker. `id` null = "Toutes".
 class _EpciPickerResult {
   const _EpciPickerResult({this.id, required this.label});
   final String? id;
   final String label;
 }
 
-/// Searchable picker for EPCIs ("communautés de commune"). Shows a
-/// text field at the top + a scrollable list. Selecting an entry pops
-/// the dialog with an [_EpciPickerResult].
-class _EpciPickerDialog extends StatefulWidget {
-  const _EpciPickerDialog({
+/// Custom PopupMenuEntry that renders the full EPCI picker UI — search
+/// field on top + scrollable list. Plugged directly into `showMenu()`
+/// so the dropdown opens inline below the trigger button (no modal
+/// dialog, no blocking overlay).
+class _EpciMenuEntry extends PopupMenuEntry<_EpciPickerResult> {
+  const _EpciMenuEntry({
     required this.epcis,
     required this.currentEpciId,
   });
@@ -509,10 +543,16 @@ class _EpciPickerDialog extends StatefulWidget {
   final String? currentEpciId;
 
   @override
-  State<_EpciPickerDialog> createState() => _EpciPickerDialogState();
+  double get height => 420;
+
+  @override
+  bool represents(_EpciPickerResult? value) => false;
+
+  @override
+  State<_EpciMenuEntry> createState() => _EpciMenuEntryState();
 }
 
-class _EpciPickerDialogState extends State<_EpciPickerDialog> {
+class _EpciMenuEntryState extends State<_EpciMenuEntry> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
 
@@ -530,91 +570,84 @@ class _EpciPickerDialogState extends State<_EpciPickerDialog> {
     super.dispose();
   }
 
-  List<EpciRef> get _visibleEpcis {
+  List<EpciRef> get _visible {
     if (_query.isEmpty) return widget.epcis;
     return widget.epcis
         .where((e) => e.label.toLowerCase().contains(_query))
         .toList();
   }
 
+  void _pickAll() {
+    Navigator.of(context).pop(
+      const _EpciPickerResult(id: null, label: 'Toutes les communautés'),
+    );
+  }
+
+  void _pick(EpciRef e) {
+    Navigator.of(context)
+        .pop(_EpciPickerResult(id: e.id, label: e.label));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final visible = _visibleEpcis;
-    return Dialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 560),
+    final visible = _visible;
+    return SizedBox(
+      width: 340,
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          hoverColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+        ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
+            // Search bar
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-              child: Row(
-                children: [
-                  const Text(
-                    'Communauté de commune',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(LucideIcons.x, size: 20),
-                    tooltip: 'Fermer',
-                  ),
-                ],
-              ),
-            ),
-
-            // Search
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(999),
                 ),
                 child: TextField(
                   controller: _searchController,
                   autofocus: true,
                   decoration: const InputDecoration(
-                    hintText: 'Rechercher une communauté…',
+                    hintText: 'Rechercher…',
                     border: InputBorder.none,
-                    prefixIcon: Icon(LucideIcons.search, size: 16),
+                    isDense: true,
+                    prefixIcon: Icon(LucideIcons.search, size: 14),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
 
-            // "Toutes" entry — always first, never filtered.
+            // "Toutes" option
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: _EpciPickerTile(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: _EpciMenuTile(
                 label: 'Toutes les communautés',
                 selected: widget.currentEpciId == null,
-                onTap: () => Navigator.of(context).pop(
-                  const _EpciPickerResult(
-                    id: null,
-                    label: 'Toutes les communautés',
-                  ),
-                ),
+                onTap: _pickAll,
               ),
             ),
-            const Divider(height: 12),
+            const Divider(
+              height: 8,
+              color: Color(0xFFE2E8F0),
+              indent: 12,
+              endIndent: 12,
+            ),
 
-            Expanded(
+            // Results
+            SizedBox(
+              height: 280,
               child: visible.isEmpty
                   ? const Center(
                       child: Padding(
-                        padding: EdgeInsets.all(24),
+                        padding: EdgeInsets.all(20),
                         child: Text(
                           'Aucune communauté trouvée.',
                           style: TextStyle(color: Color(0xFF94A3B8)),
@@ -623,16 +656,14 @@ class _EpciPickerDialogState extends State<_EpciPickerDialog> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                          horizontal: 8, vertical: 4),
                       itemCount: visible.length,
                       itemBuilder: (context, index) {
                         final epci = visible[index];
-                        return _EpciPickerTile(
+                        return _EpciMenuTile(
                           label: epci.label,
                           selected: widget.currentEpciId == epci.id,
-                          onTap: () => Navigator.of(context).pop(
-                            _EpciPickerResult(id: epci.id, label: epci.label),
-                          ),
+                          onTap: () => _pick(epci),
                         );
                       },
                     ),
@@ -644,8 +675,8 @@ class _EpciPickerDialogState extends State<_EpciPickerDialog> {
   }
 }
 
-class _EpciPickerTile extends StatelessWidget {
-  const _EpciPickerTile({
+class _EpciMenuTile extends StatelessWidget {
+  const _EpciMenuTile({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -661,9 +692,9 @@ class _EpciPickerTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFEDE9FE) : Colors.transparent,
+          color: selected ? const Color(0xFFF1F5F9) : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -674,15 +705,13 @@ class _EpciPickerTile extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected
-                      ? const Color(0xFF6D28D9)
-                      : const Color(0xFF334155),
+                  color: const Color(0xFF1E293B),
                 ),
               ),
             ),
             if (selected)
               const Icon(LucideIcons.check,
-                  size: 18, color: Color(0xFF6D28D9)),
+                  size: 18, color: Color(0xFF334155)),
           ],
         ),
       ),

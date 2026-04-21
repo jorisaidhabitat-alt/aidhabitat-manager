@@ -247,6 +247,11 @@ class Occupant {
   /// derived from the sum divided by the number of occupants.
   final double? fiscalRevenue;
 
+  /// GIR APA (6 → 1). Rempli uniquement quand `apa == true`. Séparé de
+  /// `invalidityTxt` pour ne pas écraser la donnée MDPH si les deux cases
+  /// sont cochées.
+  final String apaGir;
+
   const Occupant({
     this.firstName = '',
     this.lastName = '',
@@ -261,6 +266,7 @@ class Occupant {
     this.caisseRetraitePrincipale = '',
     this.caissesRetraiteComplementaires = '',
     this.fiscalRevenue,
+    this.apaGir = '',
   });
 
   factory Occupant.fromJson(Map<String, dynamic> json) => Occupant(
@@ -277,6 +283,7 @@ class Occupant {
     caisseRetraitePrincipale: json['caisseRetraitePrincipale'] as String? ?? '',
     caissesRetraiteComplementaires: json['caissesRetraiteComplementaires'] as String? ?? '',
     fiscalRevenue: (json['fiscalRevenue'] as num?)?.toDouble(),
+    apaGir: json['apaGir'] as String? ?? '',
   );
 
   Map<String, dynamic> toJson() => {
@@ -293,6 +300,7 @@ class Occupant {
     'caisseRetraitePrincipale': caisseRetraitePrincipale,
     'caissesRetraiteComplementaires': caissesRetraiteComplementaires,
     'fiscalRevenue': fiscalRevenue,
+    'apaGir': apaGir,
   };
 
   Occupant copyWith({
@@ -310,6 +318,7 @@ class Occupant {
     String? caissesRetraiteComplementaires,
     double? fiscalRevenue,
     bool clearFiscalRevenue = false,
+    String? apaGir,
   }) {
     return Occupant(
       firstName: firstName ?? this.firstName,
@@ -330,6 +339,7 @@ class Occupant {
       fiscalRevenue: clearFiscalRevenue
           ? null
           : (fiscalRevenue ?? this.fiscalRevenue),
+      apaGir: apaGir ?? this.apaGir,
     );
   }
 }
