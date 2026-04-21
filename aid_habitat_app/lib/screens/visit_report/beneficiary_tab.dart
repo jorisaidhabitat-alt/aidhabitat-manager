@@ -580,43 +580,38 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormSection.text(
-          'Foyer',
-          child: Column(
-            children: [
-              FormToggleGroup(
-                label: 'Situation familiale',
-                options: _familySituationOptions,
-                selected: _familySituation,
-                columns: 2,
-                onChanged: (v) {
-                  _familySituation = v;
-                  _markChanged();
-                },
-              ),
-              const SizedBox(height: 14),
-              FormSelectDropdown<String>(
-                label: 'Occupation',
-                value: _occupationStatus.isEmpty ? null : _occupationStatus,
-                options: _occupationOptions
-                    .map((o) => FormSelectOption<String>(value: o, label: o))
-                    .toList(),
-                placeholder: 'Sélectionner',
-                onChanged: (v) {
-                  _occupationStatus = v ?? '';
-                  _markChanged();
-                },
-              ),
-              const SizedBox(height: 14),
-              // Source de vérité : champ "Informations bénéficiaire" de la
-              // fiche dossier. Read-only ici.
-              _buildReadOnlyField(
-                label: 'Nombre de personnes au foyer',
-                value: _numberPeople > 0 ? '$_numberPeople' : '1',
-              ),
-            ],
-          ),
+        // --- Bloc "Foyer" (titre retiré) --------------------------------
+        FormToggleGroup(
+          label: 'Situation familiale',
+          options: _familySituationOptions,
+          selected: _familySituation,
+          columns: 2,
+          onChanged: (v) {
+            _familySituation = v;
+            _markChanged();
+          },
         ),
+        const SizedBox(height: 14),
+        FormSelectDropdown<String>(
+          label: 'Occupation',
+          value: _occupationStatus.isEmpty ? null : _occupationStatus,
+          options: _occupationOptions
+              .map((o) => FormSelectOption<String>(value: o, label: o))
+              .toList(),
+          placeholder: 'Sélectionner',
+          onChanged: (v) {
+            _occupationStatus = v ?? '';
+            _markChanged();
+          },
+        ),
+        const SizedBox(height: 14),
+        // Source de vérité : champ "Informations bénéficiaire" de la
+        // fiche dossier. Read-only ici.
+        _buildReadOnlyField(
+          label: 'Nombre de personnes au foyer',
+          value: _numberPeople > 0 ? '$_numberPeople' : '1',
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
@@ -674,117 +669,112 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormSection(
-          title: OccupantSwitcher(
-            title: 'Santé',
-            occupantLabels: _occupantLabels(),
-            activeIndex: _safeOccupantIndex,
-            onChanged: (i) => setState(() => _activeOccupantIndex = i),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        // --- Bloc "Santé" (titre retiré) --------------------------------
+        if (_occupantLabels().length > 1) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              FormCheckbox(
-                label: 'Bénéficiaire APA',
-                value: occ.apa,
-                onChanged: (v) => _updateOccupant(
-                    _safeOccupantIndex,
-                    occ.copyWith(
-                      apa: v,
-                      apaGir: v ? occ.apaGir : '',
-                    )),
-              ),
-              // Si APA est coché : menu déroulant GIR dans l'ordre
-              // dégressif 6 → 1 (6 = moins dépendant, 1 = plus dépendant).
-              if (occ.apa)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: FormSelectDropdown<String>(
-                    label: '',
-                    value: _apaGirOptions.contains(occ.apaGir.trim())
-                        ? occ.apaGir.trim()
-                        : null,
-                    options: _apaGirOptions
-                        .map((g) => FormSelectOption<String>(
-                              value: g,
-                              label: 'GIR $g',
-                            ))
-                        .toList(),
-                    placeholder: 'Sélectionner un GIR',
-                    onChanged: (v) => _updateOccupant(
-                      _safeOccupantIndex,
-                      occ.copyWith(apaGir: v ?? ''),
-                    ),
-                  ),
-                ),
-              FormCheckbox(
-                label: 'Reconnaissance Invalidité',
-                value: occ.invalidity,
-                onChanged: (v) => _updateOccupant(
-                    _safeOccupantIndex,
-                    occ.copyWith(
-                      invalidity: v,
-                      invalidityTxt: v ? occ.invalidityTxt : '',
-                    )),
-              ),
-              // Si Invalidité est cochée : pourcentages MDPH (remplace
-              // l'ancien GIR qui n'avait rien à faire côté MDPH).
-              if (occ.invalidity)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: FormSelectDropdown<String>(
-                    label: '',
-                    value: _mdphPercentageOptions
-                            .contains(occ.invalidityTxt.trim())
-                        ? occ.invalidityTxt.trim()
-                        : null,
-                    options: _mdphPercentageOptions
-                        .map((p) =>
-                            FormSelectOption<String>(value: p, label: p))
-                        .toList(),
-                    placeholder: 'Sélectionner un taux',
-                    onChanged: (v) => _updateOccupant(
-                      _safeOccupantIndex,
-                      occ.copyWith(invalidityTxt: v ?? ''),
-                    ),
-                  ),
-                ),
-              FormCheckbox(
-                label: 'Aide à domicile',
-                value: occ.homeHelp,
-                onChanged: (v) => _updateOccupant(
-                    _safeOccupantIndex,
-                    occ.copyWith(
-                      homeHelp: v,
-                      homeHelpTxt: v ? occ.homeHelpTxt : '',
-                    )),
-              ),
-              const SizedBox(height: 10),
-              FormToggleGroup(
-                label: 'Dépendance',
-                options: _dependenceOptions,
-                columns: 2,
-                selected:
-                    occ.dependenceTxt.isEmpty ? 'Aucune' : occ.dependenceTxt,
-                onChanged: (v) => _updateOccupant(
-                    _safeOccupantIndex,
-                    occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v)),
+              OccupantSwitcher(
+                title: '',
+                occupantLabels: _occupantLabels(),
+                activeIndex: _safeOccupantIndex,
+                onChanged: (i) => setState(() => _activeOccupantIndex = i),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+        ],
+        FormCheckbox(
+          label: 'Bénéficiaire APA',
+          value: occ.apa,
+          onChanged: (v) => _updateOccupant(
+              _safeOccupantIndex,
+              occ.copyWith(
+                apa: v,
+                apaGir: v ? occ.apaGir : '',
+              )),
         ),
-        // Personnes présentes à la visite — déplacé depuis Admin vers Santé.
-        FormSection.text(
-          'Visite',
-          child: FormTextField(
-            label: 'Personnes présentes à la visite',
-            value: _personnesPresentesVisite,
-            onChanged: (v) {
-              _personnesPresentesVisite = v;
-              _markChanged();
-            },
+        if (occ.apa)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: FormSelectDropdown<String>(
+              label: '',
+              value: _apaGirOptions.contains(occ.apaGir.trim())
+                  ? occ.apaGir.trim()
+                  : null,
+              options: _apaGirOptions
+                  .map((g) => FormSelectOption<String>(
+                        value: g,
+                        label: 'GIR $g',
+                      ))
+                  .toList(),
+              placeholder: 'Sélectionner un GIR',
+              onChanged: (v) => _updateOccupant(
+                _safeOccupantIndex,
+                occ.copyWith(apaGir: v ?? ''),
+              ),
+            ),
           ),
+        FormCheckbox(
+          label: 'Reconnaissance Invalidité',
+          value: occ.invalidity,
+          onChanged: (v) => _updateOccupant(
+              _safeOccupantIndex,
+              occ.copyWith(
+                invalidity: v,
+                invalidityTxt: v ? occ.invalidityTxt : '',
+              )),
         ),
+        if (occ.invalidity)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: FormSelectDropdown<String>(
+              label: '',
+              value: _mdphPercentageOptions.contains(occ.invalidityTxt.trim())
+                  ? occ.invalidityTxt.trim()
+                  : null,
+              options: _mdphPercentageOptions
+                  .map((p) => FormSelectOption<String>(value: p, label: p))
+                  .toList(),
+              placeholder: 'Sélectionner un taux',
+              onChanged: (v) => _updateOccupant(
+                _safeOccupantIndex,
+                occ.copyWith(invalidityTxt: v ?? ''),
+              ),
+            ),
+          ),
+        FormCheckbox(
+          label: 'Aide à domicile',
+          value: occ.homeHelp,
+          onChanged: (v) => _updateOccupant(
+              _safeOccupantIndex,
+              occ.copyWith(
+                homeHelp: v,
+                homeHelpTxt: v ? occ.homeHelpTxt : '',
+              )),
+        ),
+        const SizedBox(height: 10),
+        FormToggleGroup(
+          label: 'Dépendance',
+          options: _dependenceOptions,
+          columns: 2,
+          selected: occ.dependenceTxt.isEmpty ? 'Aucune' : occ.dependenceTxt,
+          onChanged: (v) => _updateOccupant(
+              _safeOccupantIndex,
+              occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v)),
+        ),
+        const SizedBox(height: 24),
+
+        // --- Bloc "Visite" (titre retiré) -------------------------------
+        FormTextField(
+          label: 'Personnes présentes à la visite',
+          value: _personnesPresentesVisite,
+          onChanged: (v) {
+            _personnesPresentesVisite = v;
+            _markChanged();
+          },
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
@@ -800,132 +790,127 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormSection(
-          title: OccupantSwitcher(
-            title: 'Personnel',
-            occupantLabels: _occupantLabels(),
-            activeIndex: _safeOccupantIndex,
-            onChanged: (i) => setState(() => _activeOccupantIndex = i),
-          ),
-          child: Column(
+        // --- Bloc "Personnel" (titre retiré) ----------------------------
+        if (_occupantLabels().length > 1) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: FormTextField(
-                      label: 'N° Sécu',
-                      value: occ.numeroSecuriteSociale,
-                      onChanged: (v) => _updateOccupant(
-                          _safeOccupantIndex,
-                          occ.copyWith(numeroSecuriteSociale: v)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FormTextField(
-                      label: 'Caisse princ.',
-                      value: occ.caisseRetraitePrincipale,
-                      onChanged: (v) => _updateOccupant(
-                          _safeOccupantIndex,
-                          occ.copyWith(caisseRetraitePrincipale: v)),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              FormSelectDropdown<String>(
-                label: 'Caisse complém.',
-                value: occ.caissesRetraiteComplementaires.trim().isEmpty
-                    ? null
-                    : occ.caissesRetraiteComplementaires.trim(),
-                options: _retirementFundNames
-                    .map((name) =>
-                        FormSelectOption<String>(value: name, label: name))
-                    .toList(),
-                placeholder: 'Sélectionner une caisse',
-                onChanged: (v) => _updateOccupant(
-                  _safeOccupantIndex,
-                  occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
-                ),
+              OccupantSwitcher(
+                title: '',
+                occupantLabels: _occupantLabels(),
+                activeIndex: _safeOccupantIndex,
+                onChanged: (i) => setState(() => _activeOccupantIndex = i),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: FormTextField(
+                label: 'N° Sécu',
+                value: occ.numeroSecuriteSociale,
+                onChanged: (v) => _updateOccupant(
+                    _safeOccupantIndex, occ.copyWith(numeroSecuriteSociale: v)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FormTextField(
+                label: 'Caisse princ.',
+                value: occ.caisseRetraitePrincipale,
+                onChanged: (v) => _updateOccupant(
+                    _safeOccupantIndex,
+                    occ.copyWith(caisseRetraitePrincipale: v)),
+              ),
+            ),
+          ],
         ),
-        // Personne de Confiance — déplacée depuis Santé vers Admin.
-        FormSection.text(
-          'Personne de Confiance',
-          child: Column(
-            children: [
-              FormTextField(
-                label: 'Nom',
-                value: _trustedName,
+        const SizedBox(height: 14),
+        FormSelectDropdown<String>(
+          label: 'Caisse complém.',
+          value: occ.caissesRetraiteComplementaires.trim().isEmpty
+              ? null
+              : occ.caissesRetraiteComplementaires.trim(),
+          options: _retirementFundNames
+              .map((name) =>
+                  FormSelectOption<String>(value: name, label: name))
+              .toList(),
+          placeholder: 'Sélectionner une caisse',
+          onChanged: (v) => _updateOccupant(
+            _safeOccupantIndex,
+            occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // --- Bloc "Personne de Confiance" (titre retiré) ----------------
+        FormTextField(
+          label: 'Nom',
+          value: _trustedName,
+          onChanged: (v) {
+            _trustedName = v;
+            _markChanged();
+          },
+        ),
+        const SizedBox(height: 14),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: FormTextFieldWithWarning(
+                label: 'Téléphone',
+                value: _trustedPhone,
+                keyboardType: TextInputType.phone,
+                showWarning: trustedPhoneInvalid,
+                warningText: 'Numéro français invalide',
                 onChanged: (v) {
-                  _trustedName = v;
+                  _trustedPhone = v;
                   _markChanged();
                 },
               ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: FormTextFieldWithWarning(
-                      label: 'Téléphone',
-                      value: _trustedPhone,
-                      keyboardType: TextInputType.phone,
-                      showWarning: trustedPhoneInvalid,
-                      warningText: 'Numéro français invalide',
-                      onChanged: (v) {
-                        _trustedPhone = v;
-                        _markChanged();
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FormTextFieldWithWarning(
-                      label: 'Email',
-                      value: _trustedEmail,
-                      keyboardType: TextInputType.emailAddress,
-                      showWarning: trustedEmailInvalid,
-                      warningText: 'Adresse mail invalide',
-                      onChanged: (v) {
-                        _trustedEmail = v;
-                        _markChanged();
-                      },
-                    ),
-                  ),
-                ],
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FormTextFieldWithWarning(
+                label: 'Email',
+                value: _trustedEmail,
+                keyboardType: TextInputType.emailAddress,
+                showWarning: trustedEmailInvalid,
+                warningText: 'Adresse mail invalide',
+                onChanged: (v) {
+                  _trustedEmail = v;
+                  _markChanged();
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        FormSection.text(
-          'Renseignements sur la visite',
-          child: FormToggleGroup(
-            label: 'Envoi du rapport',
-            options: const ['Mail', 'Courrier'],
-            selected: _envoiRapport,
-            columns: 2,
-            onChanged: (v) {
-              _envoiRapport = v;
-              _markChanged();
-            },
-          ),
+        const SizedBox(height: 24),
+
+        // --- Bloc "Renseignements sur la visite" (titre retiré) ---------
+        FormToggleGroup(
+          label: 'Envoi du rapport',
+          options: const ['Mail', 'Courrier'],
+          selected: _envoiRapport,
+          columns: 2,
+          onChanged: (v) {
+            _envoiRapport = v;
+            _markChanged();
+          },
         ),
-        // Création compte Anah — toujours tout en bas de la section Admin
-        // (dernière étape admin après avoir rempli le reste).
-        FormSection.text(
-          'Informations Administratives',
-          child: FormSelectDropdown<String>(
-            label: 'Création compte Anah',
-            value: _compteAnah.isEmpty ? null : _compteAnah,
-            options: _anahOptions,
-            onChanged: (v) {
-              _compteAnah = v ?? '';
-              _markChanged();
-            },
-          ),
+        const SizedBox(height: 24),
+
+        // --- Bloc "Informations Administratives" (titre retiré) ---------
+        FormSelectDropdown<String>(
+          label: 'Création compte Anah',
+          value: _compteAnah.isEmpty ? null : _compteAnah,
+          options: _anahOptions,
+          onChanged: (v) {
+            _compteAnah = v ?? '';
+            _markChanged();
+          },
         ),
       ],
     );
@@ -1050,56 +1035,143 @@ class _DateOfBirthField extends StatelessWidget {
     return '$d/$m/${parsed.year}';
   }
 
+  /// Flow séquentiel année → mois → jour (3 dialogs successifs) demandé
+  /// par l'utilisateur — plus rapide que le DatePicker Material pour
+  /// atteindre une année ancienne (1940, 1955...).
   Future<void> _pickDate(BuildContext context) async {
     final initial = _parse(birthDate) ?? DateTime(1960, 1, 1);
     final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(1900),
-      lastDate: DateTime(now.year + 1),
-      locale: const Locale('fr', 'FR'),
-      helpText: 'Sélectionner une date de naissance',
-      cancelText: 'Annuler',
-      confirmText: 'OK',
-      // Override du thème du DatePicker — l'app utilise un seedColor rose/
-      // lilas (0xFF907CA1) qui donnait un fond rosé sur toute la bannière
-      // du picker. On force un thème neutre (fond blanc, accents sombres).
-      // Le MediaQuery force une taille "portrait" étroite (340 × 600) pour
-      // que le header s'affiche AU-DESSUS du calendrier et non à gauche
-      // (preview latérale supprimée).
-      builder: (ctx, child) {
-        final base = Theme.of(ctx);
-        final mediaQuery = MediaQuery.of(ctx);
-        return Theme(
-          data: base.copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF0F172A), // noir / slate-900 pour sélection
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Color(0xFF0F172A),
-            ),
-            datePickerTheme: const DatePickerThemeData(
-              backgroundColor: Colors.white,
-              headerBackgroundColor: Colors.white,
-              headerForegroundColor: Color(0xFF0F172A),
-              surfaceTintColor: Colors.white,
-            ),
-          ),
-          child: MediaQuery(
-            data: mediaQuery.copyWith(
-              size: const Size(340, 600),
-            ),
-            child: child!,
-          ),
-        );
-      },
+
+    // 1) Année (plus récent en haut : now.year → 1900)
+    final years = List<int>.generate(
+      now.year - 1900 + 1,
+      (i) => now.year - i,
     );
-    if (picked == null) return;
-    final y = picked.year.toString().padLeft(4, '0');
-    final m = picked.month.toString().padLeft(2, '0');
-    final d = picked.day.toString().padLeft(2, '0');
+    final year = await _pickFromList(
+      context,
+      title: 'Année de naissance',
+      labels: years.map((y) => y.toString()).toList(),
+      values: years,
+      initialValue: initial.year,
+    );
+    if (year == null) return;
+
+    // 2) Mois
+    const monthNames = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+    ];
+    if (!context.mounted) return;
+    final months = List<int>.generate(12, (i) => i + 1);
+    final month = await _pickFromList(
+      context,
+      title: 'Mois',
+      labels: monthNames,
+      values: months,
+      initialValue: initial.month,
+    );
+    if (month == null) return;
+
+    // 3) Jour — plafonné au nombre de jours du mois choisi (gère années
+    // bissextiles via DateTime(year, month+1, 0).day).
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    if (!context.mounted) return;
+    final days = List<int>.generate(daysInMonth, (i) => i + 1);
+    final day = await _pickFromList(
+      context,
+      title: 'Jour',
+      labels: days.map((d) => d.toString()).toList(),
+      values: days,
+      initialValue:
+          initial.day <= daysInMonth ? initial.day : 1,
+    );
+    if (day == null) return;
+
+    final y = year.toString().padLeft(4, '0');
+    final m = month.toString().padLeft(2, '0');
+    final d = day.toString().padLeft(2, '0');
     onChanged('$y-$m-$d');
+  }
+
+  /// Dialog de sélection simple (liste scrollable, un item par ligne).
+  /// Retourne la valeur associée à l'item choisi, ou null si annulé.
+  Future<int?> _pickFromList(
+    BuildContext context, {
+    required String title,
+    required List<String> labels,
+    required List<int> values,
+    required int initialValue,
+  }) {
+    assert(labels.length == values.length);
+    final initialIdx = values.indexOf(initialValue);
+    final scrollCtrl = ScrollController(
+      initialScrollOffset:
+          initialIdx > 3 ? (initialIdx - 2) * 48.0 : 0,
+    );
+    return showDialog<int>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        contentPadding: EdgeInsets.zero,
+        content: SizedBox(
+          width: 280,
+          height: 360,
+          child: Scrollbar(
+            controller: scrollCtrl,
+            child: ListView.builder(
+              controller: scrollCtrl,
+              itemCount: values.length,
+              itemExtent: 48,
+              itemBuilder: (_, i) {
+                final isSelected = values[i] == initialValue;
+                return InkWell(
+                  onTap: () => Navigator.pop(dialogCtx, values[i]),
+                  child: Container(
+                    color: isSelected
+                        ? const Color(0xFF0F172A).withValues(alpha: 0.06)
+                        : null,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      labels[i],
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: isSelected
+                            ? FontWeight.w800
+                            : FontWeight.w500,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        actionsPadding: const EdgeInsets.only(right: 16, bottom: 8),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, null),
+            child: const Text(
+              'Annuler',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

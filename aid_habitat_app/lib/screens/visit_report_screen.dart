@@ -178,11 +178,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
-  /// Called by ContextTab when the user checks a numbered medical flag
-  /// (Pathologie=1, Suivi médical=2, Sensoriel=3). Appends a `N - ` line
-  /// to the Contexte de vie note so the visitor can jot down what the
-  /// flag refers to. Skips when the marker is already present.
-  Future<void> _appendMedicalFlagMarker(int flagNumber) async {
+  /// Called by ContextTab when the user toggles a numbered medical flag
+  /// (Pathologie=1, Suivi médical=2, Sensoriel=3). On check, append a
+  /// `N - ` marker line to the Contexte de vie note. On uncheck, remove
+  /// the line that starts with that marker — along with anything the
+  /// visitor may have typed on that same line.
+  Future<void> _handleMedicalFlagToggle(int flagNumber, bool checked) async {
     const tabKey = 'Contexte de vie';
     final patientId = _dossier.patient.id;
     final existingJson = await _dataService.fetchNoteDrawingJson(
@@ -191,19 +192,41 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       pageNumber: 0,
     );
     final currentText = _extractTextFromDrawingJson(existingJson);
-    final marker = '$flagNumber - ';
-    final alreadyPresent = currentText.startsWith(marker) ||
-        currentText.contains('\n$marker');
-    if (alreadyPresent) return;
-    final separator = currentText.isEmpty
-        ? ''
-        : (currentText.endsWith('\n') ? '' : '\n');
-    final nextText = '$currentText$separator$marker';
+    final nextText = checked
+        ? _addMedicalFlagMarker(currentText, flagNumber)
+        : _removeMedicalFlagMarker(currentText, flagNumber);
+    if (nextText == currentText) return;
     await _persistNoteText(patientId, tabKey, nextText);
     if (!mounted) return;
     setState(() {
       _liveText['${patientId}::$tabKey'] = nextText;
     });
+  }
+
+  String _addMedicalFlagMarker(String text, int flagNumber) {
+    final marker = '$flagNumber - ';
+    final alreadyPresent =
+        text.startsWith(marker) || text.contains('\n$marker');
+    if (alreadyPresent) return text;
+    final separator = text.isEmpty
+        ? ''
+        : (text.endsWith('\n') ? '' : '\n');
+    return '$text$separator$marker';
+  }
+
+  String _removeMedicalFlagMarker(String text, int flagNumber) {
+    final marker = '$flagNumber - ';
+    if (text.startsWith(marker)) {
+      final newlineIdx = text.indexOf('\n');
+      if (newlineIdx == -1) return '';
+      return text.substring(newlineIdx + 1);
+    }
+    final searchFor = '\n$marker';
+    final idx = text.indexOf(searchFor);
+    if (idx == -1) return text;
+    final endOfLine = text.indexOf('\n', idx + searchFor.length);
+    if (endOfLine == -1) return text.substring(0, idx);
+    return text.substring(0, idx) + text.substring(endOfLine);
   }
 
   /// Extracts the `text` field from a drawing_json payload. Returns empty
@@ -478,7 +501,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         ContextTab(
           dossier: _dossier,
           repository: _repository,
-          onMedicalFlagChecked: _appendMedicalFlagMarker,
+          onMedicalFlagToggled: _handleMedicalFlagToggle,
         ),
         MesuresTab(dossier: _dossier, repository: _repository),
         AccessibilityTab(
