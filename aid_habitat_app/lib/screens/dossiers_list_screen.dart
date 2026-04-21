@@ -614,11 +614,14 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(999),
                 ),
+                // Row defaults to CrossAxisAlignment.center → the loupe
+                // and the TextField share the same vertical middle.
                 child: Row(
                   children: [
                     const Icon(
@@ -631,15 +634,27 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                       child: TextField(
                         controller: _searchController,
                         autofocus: true,
-                        // textAlignVertical + collapsed decoration keeps the
-                        // hint "Rechercher…" vertically centered next to
-                        // the loupe icon on all platforms.
+                        // height: 1.0 on the style + isCollapsed + zero
+                        // contentPadding force the TextField to stop
+                        // inserting its own vertical padding, so the hint
+                        // baseline aligns with the icon center.
+                        style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.0,
+                          color: Color(0xFF0F172A),
+                        ),
                         textAlignVertical: TextAlignVertical.center,
-                        decoration: const InputDecoration.collapsed(
+                        decoration: const InputDecoration(
                           hintText: 'Rechercher…',
                           hintStyle: TextStyle(
                             color: Color(0xFF94A3B8),
+                            height: 1.0,
                           ),
+                          isCollapsed: true,
+                          contentPadding: EdgeInsets.zero,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
                         ),
                       ),
                     ),
