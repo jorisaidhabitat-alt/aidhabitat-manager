@@ -492,83 +492,77 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormSection(
-          title: OccupantSwitcher(
-            title: 'Identité',
-            occupantLabels: _occupantLabels(),
-            activeIndex: _safeOccupantIndex,
-            onChanged: (i) => setState(() => _activeOccupantIndex = i),
-          ),
-          // Nom / Prénom / Adresse sont désormais affichés dans l'entête
-          // de la page VAD (header visit_report_screen) — plus besoin de les
-          // dupliquer ici. On garde date de naissance (donnée par-occupant)
-          // et les coordonnées (téléphone / email, spécifiques au dossier).
-          child: Column(
+        // --- Bloc "Identité" (titre retiré à la demande du user) --------
+        // On garde le sélecteur d'occupant aligné à droite pour que le
+        // switch Monsieur/Madame reste accessible. Plus de divider.
+        if (_occupantLabels().length > 1) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Champ date de naissance — 50% de la largeur. Au clic,
-                  // ouvre un DatePicker (pas de saisie manuelle).
-                  Expanded(
-                    flex: 1,
-                    child: _DateOfBirthField(
-                      birthDate: occ.birthDate,
-                      onChanged: (iso) => _updateOccupant(
-                        _safeOccupantIndex,
-                        occ.copyWith(birthDate: iso),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Âge à droite, centré verticalement, 14 px, sans fond
-                  // ni bordure.
-                  Expanded(
-                    flex: 1,
-                    child: Text(
-                      _computeAgeLabel(occ.birthDate),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF554A63),
-                      ),
-                    ),
-                  ),
-                ],
+              OccupantSwitcher(
+                title: '',
+                occupantLabels: _occupantLabels(),
+                activeIndex: _safeOccupantIndex,
+                onChanged: (i) => setState(() => _activeOccupantIndex = i),
               ),
             ],
           ),
-        ),
-        FormSection.text(
-          'Coordonnées',
-          child: Column(
-            children: [
-              FormTextFieldWithWarning(
-                label: 'Téléphone',
-                value: _phone,
-                keyboardType: TextInputType.phone,
-                showWarning: phoneInvalid,
-                warningText: 'Numéro français invalide',
-                onChanged: (v) {
-                  _phone = v;
-                  _markChanged();
-                },
+          const SizedBox(height: 12),
+        ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              flex: 1,
+              child: _DateOfBirthField(
+                birthDate: occ.birthDate,
+                onChanged: (iso) => _updateOccupant(
+                  _safeOccupantIndex,
+                  occ.copyWith(birthDate: iso),
+                ),
               ),
-              const SizedBox(height: 14),
-              FormTextFieldWithWarning(
-                label: 'Email',
-                value: _email,
-                keyboardType: TextInputType.emailAddress,
-                showWarning: emailInvalid,
-                warningText: 'Adresse mail invalide',
-                onChanged: (v) {
-                  _email = v;
-                  _markChanged();
-                },
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 1,
+              child: Text(
+                _computeAgeLabel(occ.birthDate),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF554A63),
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+        const SizedBox(height: 24),
+
+        // --- Bloc "Coordonnées" (titre retiré à la demande du user) -----
+        FormTextFieldWithWarning(
+          label: 'Téléphone',
+          value: _phone,
+          keyboardType: TextInputType.phone,
+          showWarning: phoneInvalid,
+          warningText: 'Numéro français invalide',
+          onChanged: (v) {
+            _phone = v;
+            _markChanged();
+          },
+        ),
+        const SizedBox(height: 14),
+        FormTextFieldWithWarning(
+          label: 'Email',
+          value: _email,
+          keyboardType: TextInputType.emailAddress,
+          showWarning: emailInvalid,
+          warningText: 'Adresse mail invalide',
+          onChanged: (v) {
+            _email = v;
+            _markChanged();
+          },
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
