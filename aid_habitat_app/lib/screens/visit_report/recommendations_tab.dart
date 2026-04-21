@@ -327,83 +327,70 @@ class _RecommendationCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Barre supérieure : drag handle centré + bouton supprimer à
-          // droite. Stack pour pouvoir centrer le drag handle même quand
-          // l'icône X prend de la place à droite.
-          SizedBox(
-            height: 28,
-            child: Stack(
+          // Bloc gauche : titre + inputs.
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (reorderable)
-                  Align(
-                    alignment: Alignment.topCenter,
-                    child: ReorderableDragStartListener(
-                      index: index,
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.grab,
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          // drag_handle (3 traits horizontaux) — orientation
-                          // horizontale demandée par l'utilisateur, au lieu
-                          // de drag_indicator qui est vertical (6 points).
-                          child: Icon(
-                            Icons.drag_handle,
-                            size: 22,
-                            color: const Color(0xFF94A3B8),
-                          ),
-                        ),
-                      ),
-                    ),
+                // Titre modifiable inline (aligné tout en haut comme
+                // l'image et la croix, à la même hauteur que le drag
+                // handle).
+                _InlineTitleField(
+                  value: item.customTitle,
+                  hint: title.isNotEmpty ? title : 'Titre…',
+                  onChanged: (v) =>
+                      onChange(item.copyWith(customTitle: v)),
+                ),
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  onPressed: onPickWiki,
+                  icon: const Icon(Icons.swap_horiz, size: 14),
+                  label: Text(hasWiki
+                      ? 'Changer la fiche wiki'
+                      : 'Choisir une fiche wiki'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF907CA1),
+                    padding: EdgeInsets.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    minimumSize: Size.zero,
                   ),
+                ),
+                const SizedBox(height: 12),
+                FormTextField(
+                  label: '',
+                  value: item.note,
+                  maxLines: 3,
+                  onChanged: (v) => onChange(item.copyWith(note: v)),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Bloc gauche : titre + inputs.
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Titre modifiable inline — pas de cadre, typographie
-                    // "titre de carte" (16 w700). Hint affiché si vide
-                    // pour suggérer à l'utilisateur de saisir.
-                    _InlineTitleField(
-                      value: item.customTitle,
-                      hint: title.isNotEmpty ? title : 'Titre…',
-                      onChanged: (v) =>
-                          onChange(item.copyWith(customTitle: v)),
+          // Drag handle : au TOP entre le bloc titre (gauche) et l'image
+          // (droite), à la même hauteur horizontale que le titre et la
+          // croix. 3 traits horizontaux (Icons.drag_handle).
+          if (reorderable)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: ReorderableDragStartListener(
+                index: index,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.grab,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.drag_handle,
+                      size: 22,
+                      color: const Color(0xFF94A3B8),
                     ),
-                    const SizedBox(height: 6),
-                    TextButton.icon(
-                      onPressed: onPickWiki,
-                      icon: const Icon(Icons.swap_horiz, size: 14),
-                      label: Text(hasWiki
-                          ? 'Changer la fiche wiki'
-                          : 'Choisir une fiche wiki'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF907CA1),
-                        padding: EdgeInsets.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        minimumSize: Size.zero,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    FormTextField(
-                      label: 'Note',
-                      value: item.note,
-                      maxLines: 3,
-                      onChanged: (v) => onChange(item.copyWith(note: v)),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
+            )
+          else
+            const SizedBox(width: 10),
               // Bloc droit : grande image (remontée, légèrement à gauche
               // car la croix X vient à sa droite).
               GestureDetector(

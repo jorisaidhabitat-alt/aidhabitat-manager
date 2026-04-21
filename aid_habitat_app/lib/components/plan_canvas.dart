@@ -466,6 +466,85 @@ class _PlanCanvasState extends State<PlanCanvas> {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Insertion d'un symbole architectural depuis le menu déroulant.
+  // ---------------------------------------------------------------------
+
+  static const Map<PlanTool, Size> _defaultSymbolSize = {
+    PlanTool.window: Size(120, 8),
+    PlanTool.door: Size(80, 80),
+    PlanTool.toilet: Size(60, 100),
+    PlanTool.shower: Size(90, 90),
+    PlanTool.bath: Size(170, 75),
+  };
+
+  void _insertSymbolAtCenter(PlanTool tool) {
+    final box =
+        _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    final canvasSize = box?.size ?? const Size(800, 600);
+    final center = Offset(canvasSize.width / 2, canvasSize.height / 2);
+    final defaultSize = _defaultSymbolSize[tool] ?? const Size(100, 100);
+    final corner = Offset(defaultSize.width / 2, defaultSize.height / 2);
+    final stroke = _PlanStroke(
+      tool: tool,
+      color: 0xFF0F172A,
+      size: 2,
+      points: [center, center + corner],
+      rotation: 0,
+    );
+    setState(() {
+      _strokes.add(stroke);
+      _selectedIndex = _strokes.length - 1;
+      // On repasse sur le crayon pour que le prochain drag sur le canvas
+      // ne réouvre pas le menu / ne dessine pas un outil figé inattendu.
+      _tool = PlanTool.pen;
+    });
+    _scheduleSave();
+  }
+
+  // ---------------------------------------------------------------------
+  // Hit testing & handles autour du symbole sélectionné.
+  // ---------------------------------------------------------------------
+
+  /// Convertit un point local canvas en coordonnée LOCALE du symbole
+  /// (pré-rotation) — utile pour tester l'intersection avec le bounds
+  /// non tourné ou les poignées.
+  Offset _toSymbolLocal(_PlanStroke s, Offset p) {
+    final c = s.points.first;
+    final v = p - c;
+    final cos = math.cos(-s.rotation);
+    final sin = math.sin(-s.rotation);
+    return Offset(v.dx * cos - v.dy * sin, v.dx * sin + v.dy * cos) + c;
+  }
+
+  _SymbolHandle? _handleAt(_PlanStroke s, Offset globalCanvasPoint) {
+    final local = _toSymbolLocal(s, globalCanvasPoint);
+    final bounds = s.symbolLocalBounds;
+    if (bounds == null) return null;
+    const hitRadius = 14.0;
+    if ((local - bounds.topLeft).distance < hitRadius) {
+      return _SymbolHandle.topLeft;
+    }
+    if ((local - bounds.topRight).distance < hitRadius) {
+      return _SymbolHandle.topRight;
+    }
+    if ((local - bounds.bottomLeft).distance < hitRadius) {
+      return _SymbolHandle.bottomLeft;
+    }
+    if ((local - bounds.bottomRight).distance < hitRadius) {
+      return _SymbolHandle.bottomRight;
+    }
+    // Flèche de rotation au-dessus du bord haut, à `rotateOffset` px.
+    const rotateOffset = 34.0;
+    final rotateLocal =
+        Offset(bounds.center.dx, bounds.top - rotateOffset);
+    if ((local - rotateLocal).distance < hitRadius) {
+      return _SymbolHandle.rotate;
+    }
+    if (bounds.contains(local)) return _SymbolHandle.body;
+    return null;
+  }
+
   void _showSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
