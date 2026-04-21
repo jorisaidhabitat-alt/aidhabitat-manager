@@ -180,19 +180,29 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              PopupMenuButton<String>(
-                onSelected: (value) => setState(() => _sortOrder = value),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9), // slate-100
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                  child: Row(
-                    children: [
+              Theme(
+                // Kill the default Material hover / splash highlight around
+                // the dropdown trigger — the user wants the button to stay
+                // flat-looking, no floating gray pill on hover.
+                data: Theme.of(context).copyWith(
+                  hoverColor: Colors.transparent,
+                  splashColor: Colors.transparent,
+                  highlightColor: Colors.transparent,
+                ),
+                child: PopupMenuButton<String>(
+                  tooltip: '',
+                  onSelected: (value) => setState(() => _sortOrder = value),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9), // slate-100
+                      borderRadius: BorderRadius.circular(32),
+                    ),
+                    child: Row(
+                      children: [
                       Text(
                         _sortLabel,
                         style: const TextStyle(fontWeight: FontWeight.bold),
@@ -202,14 +212,15 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     ],
                   ),
                 ),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'asc', child: Text("de A à Z")),
-                  const PopupMenuItem(value: 'desc', child: Text("de Z à A")),
-                  const PopupMenuItem(
-                    value: 'epci',
-                    child: Text("Par communauté de commune"),
-                  ),
-                ],
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'asc', child: Text("de A à Z")),
+                    const PopupMenuItem(value: 'desc', child: Text("de Z à A")),
+                    const PopupMenuItem(
+                      value: 'epci',
+                      child: Text("Par communauté de commune"),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
