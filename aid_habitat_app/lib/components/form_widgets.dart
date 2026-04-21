@@ -334,7 +334,7 @@ class FormToggleGroup extends StatelessWidget {
         ],
         if (columns != null && columns! > 0)
           _buildGridRows(options, columns!, buildPill)
-        else if (expand)
+        else if (expand || options.length == 2)
           Row(
             children: [
               for (var i = 0; i < options.length; i++) ...[
