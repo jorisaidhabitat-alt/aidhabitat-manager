@@ -178,6 +178,48 @@ class AuthService {
     );
   }
 
+  /// Writes a base64 data URL to `pending_photo_data_url` for the currently
+  /// signed-in user and enqueues a `profile_photo` sync operation. The UI
+  /// can render [dataUrl] immediately through [CachedRemoteImage]'s
+  /// `pendingDataUrl` parameter; the sync processor will replace it with
+  /// the server-resolved URL on success.
+  Future<void> persistPendingProfilePhoto(String dataUrl) async {
+    final db = await _database.database;
+    final sessionRows = await db.query('app_session', limit: 1);
+    if (sessionRows.isEmpty) return;
+    final userLocalId = sessionRows.first['user_local_id'] as String;
+    final now = DateTime.now().toIso8601String();
+
+    await db.transaction((txn) async {
+      await txn.update(
+        'app_users',
+        {
+          'pending_photo_data_url': dataUrl,
+          'sync_state': SyncState.pendingSync.name,
+          'updated_at': now,
+        },
+        where: 'local_id = ?',
+        whereArgs: [userLocalId],
+      );
+      await txn.insert('sync_operations', {
+        'id': 'profile_photo_${userLocalId}_'
+            '${DateTime.now().microsecondsSinceEpoch}',
+        'entity_type': 'profile_photo',
+        'entity_local_id': userLocalId,
+        'operation_type': 'upload',
+        'payload_json': jsonEncode({
+          'userLocalId': userLocalId,
+          'imageDataUrl': dataUrl,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
   Future<LocalAppUser?> getCurrentUser() async {
     final db = await _database.database;
     final sessionRows = await db.query('app_session', limit: 1);
@@ -601,6 +643,8 @@ class AuthService {
       establishmentId: row['establishment_id'] as String?,
       ergoLabel: row['ergo_label'] as String?,
       profilePhotoUrl: (row['profile_photo_url'] as String?) ?? '',
+      pendingProfilePhotoDataUrl:
+          (row['pending_photo_data_url'] as String?) ?? '',
       scopes: scopes,
     );
   }

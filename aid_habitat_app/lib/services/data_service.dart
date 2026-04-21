@@ -10,6 +10,7 @@ import 'note_repository.dart';
 import 'nocodb_api_client.dart';
 import 'nocodb_sync_service.dart';
 import 'retirement_funds_repository.dart';
+import 'sync_engine.dart';
 import 'sync_repository.dart';
 import 'wiki_repository.dart';
 
@@ -132,9 +133,12 @@ class DataService {
     );
   }
 
-  /// Uploads a [File] as the current user's profile photo.
-  /// Reads the file, base64-encodes it as a `data:<mime>;base64,...` URL,
-  /// and POSTs to the backend. Returns the resolved public photo URL.
+  /// Offline-first profile photo upload: encodes the file as a base64 data
+  /// URL, stashes it in SQLite (`app_users.pending_photo_data_url`) so the
+  /// UI can render it immediately, and enqueues a `profile_photo` sync op.
+  /// Returns the data URL so the caller can display it optimistically —
+  /// when the sync completes, the server-resolved URL replaces it in the
+  /// `profile_photo_url` column.
   Future<String> uploadProfilePhoto(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
     final extension = imageFile.path.split('.').last.toLowerCase();
@@ -147,7 +151,9 @@ class DataService {
     };
     final base64Data = base64Encode(bytes);
     final dataUrl = 'data:$mimeType;base64,$base64Data';
-    return _nocodbApiClient.uploadProfilePhoto(dataUrl);
+    await _authService.persistPendingProfilePhoto(dataUrl);
+    SyncEngine().notify();
+    return dataUrl;
   }
 
   Future<Map<String, dynamic>> fetchAnahStatus() async {

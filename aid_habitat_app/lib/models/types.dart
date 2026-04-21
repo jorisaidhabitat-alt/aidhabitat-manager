@@ -52,6 +52,10 @@ class LocalAppUser {
   final String? ergoLabel;
   final List<LocalAccessScope> scopes;
   final String profilePhotoUrl;
+  /// Base64 data URL of a profile photo captured offline that has not yet
+  /// been uploaded. The UI should prefer this over [profilePhotoUrl] while
+  /// the sync is pending.
+  final String pendingProfilePhotoDataUrl;
 
   const LocalAppUser({
     required this.id,
@@ -62,6 +66,7 @@ class LocalAppUser {
     this.ergoLabel,
     this.scopes = const [],
     this.profilePhotoUrl = '',
+    this.pendingProfilePhotoDataUrl = '',
   });
 
   LocalAppUser copyWith({
@@ -73,6 +78,7 @@ class LocalAppUser {
     String? ergoLabel,
     List<LocalAccessScope>? scopes,
     String? profilePhotoUrl,
+    String? pendingProfilePhotoDataUrl,
   }) {
     return LocalAppUser(
       id: id ?? this.id,
@@ -83,6 +89,8 @@ class LocalAppUser {
       ergoLabel: ergoLabel ?? this.ergoLabel,
       scopes: scopes ?? this.scopes,
       profilePhotoUrl: profilePhotoUrl ?? this.profilePhotoUrl,
+      pendingProfilePhotoDataUrl:
+          pendingProfilePhotoDataUrl ?? this.pendingProfilePhotoDataUrl,
     );
   }
 }
