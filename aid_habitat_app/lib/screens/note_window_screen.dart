@@ -195,48 +195,70 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
     // donc sous cette bande — un padding-top aligne le titre verticalement
     // avec les pastilles, et le padding-left leur laisse la place.
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(82, 6, 14, 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.title,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
-                    ),
-                    overflow: TextOverflow.ellipsis,
+          Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(82, 6, 14, 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.shade200),
                   ),
                 ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                maxLines: null,
-                expands: true,
-                autofocus: true,
-                textAlignVertical: TextAlignVertical.top,
-                style: const TextStyle(fontSize: 14, height: 1.5),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  hintText: 'Écrivez votre note…',
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.title,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF334155),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-                onChanged: _sendLive,
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    expands: true,
+                    autofocus: true,
+                    textAlignVertical: TextAlignVertical.top,
+                    style: const TextStyle(fontSize: 14, height: 1.5),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: 'Écrivez votre note…',
+                    ),
+                    onChanged: _sendLive,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Indicateur visuel de redimensionnement dans le coin bas-droite
+          // (3 petits traits diagonaux). Purement décoratif : le vrai resize
+          // est géré par la NSWindow native (styleMask .resizable) — le
+          // curseur devient automatiquement la poignée de redimensionnement
+          // quand il passe au-dessus du coin.
+          const Positioned(
+            bottom: 3,
+            right: 3,
+            child: IgnorePointer(
+              child: SizedBox(
+                width: 14,
+                height: 14,
+                child: CustomPaint(
+                  painter: _ResizeHintPainter(),
+                ),
               ),
             ),
           ),
@@ -244,4 +266,33 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
       ),
     );
   }
+}
+
+/// 3 petits traits diagonaux (haut-droite → bas-gauche) dessinés en gris
+/// clair, pour suggérer visuellement que la fenêtre est redimensionnable
+/// par ce coin. Pattern classique (textarea HTML, windows macOS).
+class _ResizeHintPainter extends CustomPainter {
+  const _ResizeHintPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF94A3B8) // slate-400
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+
+    // 3 traits diagonaux de longueurs croissantes (les plus proches du
+    // coin sont les plus longs).
+    for (var i = 0; i < 3; i++) {
+      final offset = (i + 1) * 4.0;
+      canvas.drawLine(
+        Offset(size.width, size.height - offset),
+        Offset(size.width - offset, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ResizeHintPainter oldDelegate) => false;
 }

@@ -298,6 +298,25 @@ class _BathroomTabState extends State<BathroomTab>
     _updateActive(_setEquipmentOnInstance(a, def.enabledField, height: v));
   }
 
+  /// Applies a multi-select delta for the complementary-equipment dropdown:
+  /// enables every field whose label is in [nextLabels] and disables the
+  /// rest (clearing any stored height, since height isn't asked for the
+  /// complementary items).
+  void _applyCommonSelection(
+      List<_EquipDef> items, Set<String> nextLabels) {
+    final start = _active;
+    if (start == null) return;
+    var a = start;
+    for (final def in items) {
+      final shouldBeOn = nextLabels.contains(def.label);
+      final isOn = _getEquipmentEnabled(a, def.enabledField);
+      if (shouldBeOn == isOn) continue;
+      a = _setEquipmentOnInstance(a, def.enabledField,
+          enabled: shouldBeOn, clearHeight: !shouldBeOn);
+    }
+    _updateActive(a);
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -511,60 +530,6 @@ class _BathroomTabState extends State<BathroomTab>
     );
   }
 
-  Widget _buildEquipmentCard({
-    required IconData icon,
-    required String title,
-    required List<_EquipDef> items,
-    required BathroomInstance instance,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 18, color: const Color(0xFF907CA1)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final it in items) ...[
-            _MeasuredOptionCard(
-              label: it.label,
-              checked: _getEquipmentEnabled(instance, it.enabledField),
-              value: _getEquipmentHeight(instance, it.enabledField),
-              onToggle: (v) => _setEquipmentEnabled(it, v),
-              onValueChange: (v) => _setEquipmentHeight(it, v),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ],
-      ),
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Door sub-section
   // ---------------------------------------------------------------------------
@@ -579,6 +544,7 @@ class _BathroomTabState extends State<BathroomTab>
             label: 'Largeur de porte',
             options: const ['Suffisante', 'À revoir'],
             selected: a.porteSdbLargeurSuffisante ? 'Suffisante' : 'À revoir',
+            expand: true,
             onChanged: (v) => _updateActive(
                 _copy(a, porteSdbLargeurSuffisante: v == 'Suffisante')),
           ),
@@ -595,6 +561,7 @@ class _BathroomTabState extends State<BathroomTab>
             label: "Sens d'ouverture",
             options: const ['Intérieur', 'Extérieur'],
             selected: a.porteSdbSensAdapte ? 'Intérieur' : 'Extérieur',
+            expand: true,
             onChanged: (v) => _updateActive(
                 _copy(a, porteSdbSensAdapte: v == 'Intérieur')),
           ),

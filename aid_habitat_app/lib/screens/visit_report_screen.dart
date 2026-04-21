@@ -95,8 +95,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   static const Map<String, List<String>> _tabSubsections = {
     'Bénéficiaire': ['Profil', 'Foyer', 'Santé', 'Admin'],
     'Contexte de vie': ['Médical', 'Autonomie'],
-    'Accessibilité': ['Général', 'Intérieur', 'Extérieur', 'Volets'],
-    'Salle de bain': ['Équipements', 'Porte'],
+    'Accessibilité': ['Général', 'Extérieur'],
+    'Salle de bain': ['Équipements'],
     'WC': ['Config. & équipements', 'Porte'],
   };
 
@@ -466,9 +466,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     setState(() => _housingVersion++);
   }
 
-  /// Panneau notes à droite : sélecteur de sous-section en haut, puis
-  /// une seule note affichée à la fois (IndexedStack pour conserver l'état
-  /// de dessin de chaque section lors des changements d'onglet).
+  /// Panneau notes à droite : une seule note affichée à la fois, synchronisée
+  /// avec la sous-section sélectionnée côté formulaire (gauche) — le
+  /// sélecteur de sous-section au-dessus du canvas a été retiré pour
+  /// éviter le doublon avec les pills Profil/Foyer/Santé/Admin dans le
+  /// formulaire lui-même.
   Widget _buildNotesPanel(String activeTab, List<String> subsections) {
     final activeIdx = _activeSubsectionByTab[activeTab] ?? 0;
     final safeIdx = activeIdx.clamp(0, subsections.length - 1);
@@ -476,55 +478,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Sélecteur de sous-section ──────────────────────────────────
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(50),
-          ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: List.generate(subsections.length, (i) {
-                final selected = i == safeIdx;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: GestureDetector(
-                    onTap: () => setState(
-                        () => _activeSubsectionByTab[activeTab] = i),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOut,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? const Color(0xFFD8D0DC)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(50),
-                      ),
-                      child: Text(
-                        subsections[i],
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: selected
-                              ? const Color(0xFF554A63)
-                              : Colors.black87,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
         // ── Note de la sous-section active ─────────────────────────────
+        // IndexedStack conserve l'état de dessin de chaque section lors
+        // des changements — pas de re-création de NotesWidget quand
+        // l'utilisateur alterne entre Profil / Foyer / Santé / Admin.
         Expanded(
           child: IndexedStack(
             index: safeIdx,
@@ -618,6 +575,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           dossier: _dossier,
           repository: _repository,
           onPatientChanged: _refreshDossier,
+          initialSubSection:
+              _activeSubsectionByTab['Bénéficiaire'] ?? 0,
+          onSubSectionChanged: (i) => setState(
+              () => _activeSubsectionByTab['Bénéficiaire'] = i),
         ),
         ContextTab(
           dossier: _dossier,

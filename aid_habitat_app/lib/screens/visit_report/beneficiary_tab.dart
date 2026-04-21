@@ -25,11 +25,23 @@ class BeneficiaryTab extends StatefulWidget {
   /// other tabs of the visit report and any other views listening.
   final VoidCallback? onPatientChanged;
 
+  /// Called when the user taps Profil / Foyer / Santé / Admin. The
+  /// visit report screen uses it to sync the right-side notes panel
+  /// (which no longer has its own pill selector) to the active
+  /// sub-section.
+  final ValueChanged<int>? onSubSectionChanged;
+
+  /// Initial sub-section index (kept in sync with the parent's
+  /// `_activeSubsectionByTab['Bénéficiaire']`).
+  final int initialSubSection;
+
   const BeneficiaryTab({
     super.key,
     required this.dossier,
     required this.repository,
     this.onPatientChanged,
+    this.onSubSectionChanged,
+    this.initialSubSection = 0,
   });
 
   @override
@@ -42,6 +54,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   bool get wantKeepAlive => true;
 
   int _subSectionIndex = 0;
+
+  void _setSubSection(int i) {
+    if (i == _subSectionIndex) return;
+    setState(() => _subSectionIndex = i);
+    widget.onSubSectionChanged?.call(i);
+  }
   int _activeOccupantIndex = 0;
   bool _saving = false;
   Timer? _saveTimer;
@@ -123,6 +141,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   @override
   void initState() {
     super.initState();
+    _subSectionIndex = widget.initialSubSection.clamp(0, 3);
     _loadFromDossier();
     _references.ensureLoaded();
     _refSub = _references.onLoaded.listen((_) {
@@ -442,7 +461,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           final active = i == _subSectionIndex;
           return Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => _subSectionIndex = i),
+              onTap: () => _setSubSection(i),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
