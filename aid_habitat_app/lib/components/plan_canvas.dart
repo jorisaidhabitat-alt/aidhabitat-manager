@@ -37,6 +37,7 @@ enum PlanTool {
   toilet,
   shower,
   bath,
+  sink,
   eraser,
 }
 
@@ -49,6 +50,7 @@ const Set<PlanTool> _symbolTools = {
   PlanTool.toilet,
   PlanTool.shower,
   PlanTool.bath,
+  PlanTool.sink,
 };
 
 class _PlanStroke {
@@ -479,6 +481,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
     PlanTool.toilet: Size(68, 40),
     PlanTool.shower: Size(90, 90),
     PlanTool.bath: Size(170, 75),
+    // Lavabo : plus large que profond (typ. 60 × 45 cm en vue du dessus).
+    PlanTool.sink: Size(70, 50),
   };
 
   void _insertSymbolAtCenter(PlanTool tool) {

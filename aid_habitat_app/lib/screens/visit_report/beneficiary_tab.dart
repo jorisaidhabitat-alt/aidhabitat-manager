@@ -633,18 +633,30 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             },
           ),
         const SizedBox(height: 14),
-        FormSelectDropdown<String>(
-          label: 'Occupation',
-          value: _occupationStatus.isEmpty ? null : _occupationStatus,
-          options: _occupationOptions
-              .map((o) => FormSelectOption<String>(value: o, label: o))
-              .toList(),
-          placeholder: 'Sélectionner',
-          onChanged: (v) {
-            _occupationStatus = v ?? '';
-            _markChanged();
-          },
-        ),
+        if (_occupationStatus.isEmpty)
+          FormToggleGroup(
+            label: 'Occupation',
+            options: _occupationOptions,
+            selected: _occupationStatus,
+            columns: 3,
+            onChanged: (v) {
+              _occupationStatus = v;
+              _markChanged();
+            },
+          )
+        else
+          FormSelectDropdown<String>(
+            label: 'Occupation',
+            value: _occupationStatus,
+            options: _occupationOptions
+                .map((o) => FormSelectOption<String>(value: o, label: o))
+                .toList(),
+            placeholder: 'Sélectionner',
+            onChanged: (v) {
+              _occupationStatus = v ?? '';
+              _markChanged();
+            },
+          ),
         const SizedBox(height: 24),
       ],
     );
