@@ -604,16 +604,34 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // --- Bloc "Foyer" (titre retiré) --------------------------------
-        FormToggleGroup(
-          label: 'Situation familiale',
-          options: _familySituationOptions,
-          selected: _familySituation,
-          columns: 2,
-          onChanged: (v) {
-            _familySituation = v;
-            _markChanged();
-          },
-        ),
+        // Tant qu'aucune option n'est sélectionnée, on montre les boutons
+        // pour faciliter le choix initial. Dès qu'une situation est
+        // choisie, on bascule en menu déroulant compact avec la valeur
+        // sélectionnée — gain de place visuel.
+        if (_familySituation.isEmpty)
+          FormToggleGroup(
+            label: 'Situation familiale',
+            options: _familySituationOptions,
+            selected: _familySituation,
+            columns: 2,
+            onChanged: (v) {
+              _familySituation = v;
+              _markChanged();
+            },
+          )
+        else
+          FormSelectDropdown<String>(
+            label: 'Situation familiale',
+            value: _familySituation,
+            options: _familySituationOptions
+                .map((o) => FormSelectOption<String>(value: o, label: o))
+                .toList(),
+            placeholder: 'Sélectionner',
+            onChanged: (v) {
+              _familySituation = v ?? '';
+              _markChanged();
+            },
+          ),
         const SizedBox(height: 14),
         FormSelectDropdown<String>(
           label: 'Occupation',
