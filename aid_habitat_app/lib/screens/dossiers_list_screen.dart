@@ -28,8 +28,8 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
 
   String _searchTerm = '';
   String _sortOrder = 'asc'; // asc, desc
-  String? _selectedEpciId; // null = "Toutes"
-  String _selectedEpciLabel = 'Toutes les communautés';
+  String? _selectedEpciId; // null = no filter
+  String _selectedEpciLabel = 'Communauté de commune';
 
   @override
   void initState() {
@@ -187,6 +187,19 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     if (f.isEmpty) return l.substring(0, 1).toUpperCase();
     if (l.isEmpty) return f.substring(0, 1).toUpperCase();
     return '${f[0]}${l[0]}'.toUpperCase();
+  }
+
+  /// Full address: `<street> <zip> <CITY>`. Collapses multiple spaces and
+  /// skips empty parts so incomplete dossiers don't render "  35137 ".
+  String _fullAddress(Patient p) {
+    final street = p.address.trim();
+    final zip = p.zipCode.trim();
+    final city = p.city.trim();
+    return [street, zip, city.toUpperCase()]
+        .where((s) => s.isNotEmpty)
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   String _formatVisitDate(String? raw) {
@@ -372,6 +385,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                               final visitDate =
                                   _formatVisitDate(dossier.visitDate);
                               final epci = _epciFor(dossier);
+                              final address = _fullAddress(dossier.patient);
                               return InkWell(
                                 onTap: () => widget.onSelectDossier(dossier),
                                 borderRadius: BorderRadius.circular(16),
@@ -426,7 +440,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                                 const SizedBox(width: 4),
                                                 Flexible(
                                                   child: Text(
-                                                    dossier.patient.city,
+                                                    address,
                                                     overflow:
                                                         TextOverflow.ellipsis,
                                                     style: TextStyle(
@@ -436,62 +450,30 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                                     ),
                                                   ),
                                                 ),
-                                                if (epci.isNotEmpty) ...[
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    width: 3,
-                                                    height: 3,
-                                                    decoration: BoxDecoration(
-                                                      color: Colors
-                                                          .grey.shade400,
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Flexible(
-                                                    child: Text(
-                                                      epci,
-                                                      overflow: TextOverflow
-                                                          .ellipsis,
-                                                      style: TextStyle(
-                                                        fontSize: 13,
-                                                        color: Colors
-                                                            .grey.shade600,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
                                               ],
                                             ),
-                                            if (visitDate.isNotEmpty) ...[
-                                              const SizedBox(height: 4),
-                                              Row(
-                                                children: [
-                                                  Icon(
-                                                    LucideIcons.calendar,
-                                                    size: 13,
-                                                    color: const Color(
-                                                        0xFF907CA1),
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    "Visite : $visitDate",
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: Color(0xFF907CA1),
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ],
+                                            if (epci.isNotEmpty) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                epci,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade600,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
                                               ),
                                             ],
                                           ],
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
+                                      const SizedBox(width: 12),
+                                      // Visit date displayed larger, to the
+                                      // left of the right arrow. Always
+                                      // shown — "À planifier" as soft
+                                      // placeholder when empty.
+                                      _VisitDateBadge(dateLabel: visitDate),
+                                      const SizedBox(width: 12),
                                       Container(
                                         width: 40,
                                         height: 40,
@@ -522,7 +504,52 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   }
 }
 
-/// Payload returned by the EPCI picker. `id` null = "Toutes".
+/// Visit date badge shown on the right of each dossier row, right before
+/// the chevron. Larger font than the address line. Falls back to the
+/// soft placeholder "À planifier" when no date is set.
+class _VisitDateBadge extends StatelessWidget {
+  const _VisitDateBadge({required this.dateLabel});
+
+  final String dateLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDate = dateLabel.isNotEmpty;
+    final displayDate = hasDate ? dateLabel : 'À planifier';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            LucideIcons.calendar,
+            size: 16,
+            color: hasDate
+                ? const Color(0xFF0F172A)
+                : const Color(0xFF94A3B8),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            displayDate,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: hasDate
+                  ? const Color(0xFF0F172A)
+                  : const Color(0xFF94A3B8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Payload returned by the EPCI picker. `id` null = reset filter.
 class _EpciPickerResult {
   const _EpciPickerResult({this.id, required this.label});
   final String? id;
@@ -577,13 +604,14 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
         .toList();
   }
 
-  void _pickAll() {
-    Navigator.of(context).pop(
-      const _EpciPickerResult(id: null, label: 'Toutes les communautés'),
-    );
-  }
-
   void _pick(EpciRef e) {
+    // Reclicking the active EPCI clears the filter (toggle).
+    if (widget.currentEpciId == e.id) {
+      Navigator.of(context).pop(
+        const _EpciPickerResult(id: null, label: 'Communauté de commune'),
+      );
+      return;
+    }
     Navigator.of(context)
         .pop(_EpciPickerResult(id: e.id, label: e.label));
   }
@@ -625,25 +653,9 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
               ),
             ),
 
-            // "Toutes" option
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: _EpciMenuTile(
-                label: 'Toutes les communautés',
-                selected: widget.currentEpciId == null,
-                onTap: _pickAll,
-              ),
-            ),
-            const Divider(
-              height: 8,
-              color: Color(0xFFE2E8F0),
-              indent: 12,
-              endIndent: 12,
-            ),
-
             // Results
             SizedBox(
-              height: 280,
+              height: 320,
               child: visible.isEmpty
                   ? const Center(
                       child: Padding(
