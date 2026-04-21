@@ -1799,10 +1799,16 @@ class _StrokePainter extends CustomPainter {
           );
           return;
         }
+        // Courbe quadratique midpoint (comme plan_canvas) pour un tracé
+        // fluide sans saccades.
         final path = Path()..moveTo(realPoints.first.dx, realPoints.first.dy);
         for (var i = 1; i < realPoints.length; i++) {
-          path.lineTo(realPoints[i].dx, realPoints[i].dy);
+          final p0 = realPoints[i - 1];
+          final p1 = realPoints[i];
+          final mid = Offset((p0.dx + p1.dx) / 2, (p0.dy + p1.dy) / 2);
+          path.quadraticBezierTo(p0.dx, p0.dy, mid.dx, mid.dy);
         }
+        path.lineTo(realPoints.last.dx, realPoints.last.dy);
         canvas.drawPath(path, paint);
         break;
       case NoteTool.line:
