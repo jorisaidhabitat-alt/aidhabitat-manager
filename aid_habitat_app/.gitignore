@@ -37,11 +37,9 @@ migrate_working_dir/
 /flutter/
 .vercel/
 
-# sqflite_common_ffi_web setup copies these here at build time — re-run
-# `dart run sqflite_common_ffi_web:setup` to regenerate (also done by
-# vercel-build.sh on every Vercel deploy).
-/web/sqflite_sw.js
-/web/sqlite3.wasm
+# sqflite_common_ffi_web: shared worker + WASM used to be generated at
+# build time, but recent Dart SDKs break the setup tool. The files are
+# now committed (see the dup block below for the rationale).
 
 # Symbolication related
 app.*.symbols
@@ -58,7 +56,9 @@ app.*.map.json
 /flutter/
 .vercel/
 
-# sqflite_common_ffi_web setup copies these at build time — re-run
-# `dart run sqflite_common_ffi_web:setup` (also done in vercel-build.sh).
-/web/sqflite_sw.js
-/web/sqlite3.wasm
+# sqflite_common_ffi_web: the shared worker + WASM bundle is committed
+# (see tool/build_web.sh for details). Re-run `dart run
+# sqflite_common_ffi_web:setup` and re-commit when you bump the
+# sqflite_common_ffi_web dependency.
+#/web/sqflite_sw.js
+#/web/sqlite3.wasm

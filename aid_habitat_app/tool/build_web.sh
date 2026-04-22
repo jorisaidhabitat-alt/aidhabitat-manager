@@ -33,7 +33,22 @@ fi
 
 # Copy the SQLite WASM bundle (+ shared worker) into web/ so the PWA can
 # run sqflite via IndexedDB in the browser.
-dart run sqflite_common_ffi_web:setup
+#
+# The setup step occasionally crashes with a webdev/build_daemon mismatch
+# on recent Dart SDKs ("dart compile does not support build hooks"). When
+# that happens we fall back to the copies already present in web/ from a
+# previous run — they're shared-worker JS + a pinned SQLite WASM, neither
+# depends on the app code, so a cached bundle is fine.
+if [ -f "web/sqflite_sw.js" ] && [ -f "web/sqlite3.wasm" ]; then
+  echo "[build_web] sqflite WASM bundle already in web/ — skipping setup."
+else
+  dart run sqflite_common_ffi_web:setup || {
+    echo "[build_web] sqflite_common_ffi_web:setup failed and no cached" \
+         "bundle is present. Run this script once on a workstation where" \
+         "setup succeeds, then commit web/sqflite_sw.js + web/sqlite3.wasm." >&2
+    exit 1
+  }
+fi
 
 API_BASE_URL="${AIDHABITAT_API_BASE_URL:-}"
 
