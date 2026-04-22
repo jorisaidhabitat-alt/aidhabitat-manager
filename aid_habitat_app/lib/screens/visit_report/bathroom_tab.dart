@@ -506,35 +506,6 @@ class _BathroomTabState extends State<BathroomTab>
             commonItems: commonItems,
             selectedCommon: selectedCommon,
           ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _updateActive(_copy(a, sdbSolGlissant: !a.sdbSolGlissant)),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: a.sdbSolGlissant
-                    ? const Color(0xFF907CA1)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: a.sdbSolGlissant
-                      ? const Color(0xFF907CA1)
-                      : Colors.grey.shade300,
-                ),
-              ),
-              child: Text(
-                'Sol glissant',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: a.sdbSolGlissant ? Colors.white : Colors.black87,
-                ),
-              ),
-            ),
-          ),
           const SizedBox(height: 24),
         ],
       );
@@ -575,6 +546,41 @@ class _BathroomTabState extends State<BathroomTab>
           selected: a.porteSdbSensAdapte ? 'Intérieur' : 'Extérieur',
           onChanged: (v) =>
               _updateActive(_copy(a, porteSdbSensAdapte: v == 'Intérieur')),
+        ),
+        const SizedBox(height: 18),
+        // Sol glissant — déplacé tout en bas de l'onglet Salle de bain à
+        // la demande de l'utilisateur (après la section Porte).
+        GestureDetector(
+          onTap: () =>
+              _updateActive(_copy(a, sdbSolGlissant: !a.sdbSolGlissant)),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: a.sdbSolGlissant
+                  ? const Color(0xFFE2E8F0)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: a.sdbSolGlissant
+                    ? const Color(0xFFCBD5E1)
+                    : Colors.grey.shade300,
+                width: 1.2,
+              ),
+            ),
+            child: Text(
+              'Sol glissant',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: a.sdbSolGlissant
+                    ? const Color(0xFF0F172A)
+                    : Colors.black87,
+              ),
+            ),
+          ),
         ),
         const SizedBox(height: 24),
       ],
