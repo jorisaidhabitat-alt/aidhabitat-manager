@@ -54,22 +54,50 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  await DataService().initialize();
+  // Run each bootstrap step with a timeout + try/catch. On web, any
+  // step could hang silently (sqflite shared worker, a slow HTTP call,
+  // a connectivity plugin quirk). Without these guards, a single hung
+  // await keeps runApp() from ever being called → the user sees a
+  // permanent blank page with no error. With them, the app always
+  // reaches runApp and the offline-first DataService can paper over
+  // whatever failed.
+  Future<void> bootStep(String name, Future<void> future,
+      {Duration timeout = const Duration(seconds: 8)}) async {
+    try {
+      await future.timeout(timeout);
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('[bootstrap] step "$name" failed or timed out: $e');
+      // ignore: avoid_print
+      print(st);
+    }
+  }
+
+  await bootStep('DataService.initialize', DataService().initialize());
   // Drop stale sync operations that pre-date the current app version —
   // otherwise their frozen payloads would be pushed to NocoDB at startup
   // and overwrite fresh remote data with obsolete values.
-  await DataService().purgeStaleSyncOperations();
-  await AuthService().initialize();
+  await bootStep(
+      'purgeStaleSyncOperations', DataService().purgeStaleSyncOperations());
+  await bootStep('AuthService.initialize', AuthService().initialize());
   // Restore any Express API session token persisted from a previous login
   // before making remote calls.
-  await AuthService().restoreRemoteSession();
-  await DataService().refreshLocalAuthStateFromRemote();
-  await ConnectivityService().initialize();
+  await bootStep(
+      'AuthService.restoreRemoteSession', AuthService().restoreRemoteSession());
+  // 401 / network failures here are normal (fresh device, offline, etc.);
+  // the refresh is best-effort.
+  await bootStep(
+      'refreshLocalAuthStateFromRemote',
+      DataService().refreshLocalAuthStateFromRemote(),
+      timeout: const Duration(seconds: 5));
+  await bootStep(
+      'ConnectivityService.initialize', ConnectivityService().initialize());
   // Connecte le ConnectivityService au SyncEngine : quand la connexion
   // revient, le SyncEngine lance automatiquement un push des opérations
   // en attente (notes, documents, dossiers…) vers NocoDB.
   ConnectivityService().bindSyncEngine(SyncEngine());
-  await initializeDateFormatting('fr_FR', null);
+  await bootStep(
+      'initializeDateFormatting', initializeDateFormatting('fr_FR', null));
 
   runApp(const MyApp());
 }
