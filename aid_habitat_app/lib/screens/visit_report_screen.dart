@@ -565,6 +565,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
     final tabView = TabBarView(
       controller: _tabController,
+      // Désactive le swipe horizontal entre onglets. Raison : l'onglet
+      // Plans a une zone de dessin plein écran — dès qu'un ergo pose le
+      // doigt dessus et bouge horizontalement, le TabBarView prenait la
+      // gesture et faisait défiler vers l'onglet voisin, arrachant le
+      // trait en cours. Les onglets restent accessibles via la barre du
+      // haut (TabBar est isScrollable=true).
+      physics: const NeverScrollableScrollPhysics(),
       children: [
         BeneficiaryTab(
           dossier: _dossier,

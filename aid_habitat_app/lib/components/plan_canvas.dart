@@ -528,7 +528,11 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final local = _toSymbolLocal(s, globalCanvasPoint);
     final bounds = s.symbolLocalBounds;
     if (bounds == null) return null;
-    const hitRadius = 14.0;
+    // iPad / tactile : Apple recommande 44pt de cible minimum. On garde
+    // une zone tactile généreuse (32px de rayon = 64px de diamètre) pour
+    // les poignées de resize/rotation, sinon les ergos n'arrivent pas à
+    // les attraper du doigt.
+    const hitRadius = 32.0;
     if ((local - bounds.topLeft).distance < hitRadius) {
       return _SymbolHandle.topLeft;
     }
@@ -542,7 +546,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       return _SymbolHandle.bottomRight;
     }
     // Flèche de rotation au-dessus du bord haut, à `rotateOffset` px.
-    const rotateOffset = 34.0;
+    const rotateOffset = 52.0;
     final rotateLocal =
         Offset(bounds.center.dx, bounds.top - rotateOffset);
     if ((local - rotateLocal).distance < hitRadius) {
@@ -1240,8 +1244,11 @@ class _HandlesPainter extends CustomPainter {
   _HandlesPainter({required this.stroke});
   final _PlanStroke stroke;
 
-  static const double _handleRadius = 6.0;
-  static const double _rotateOffset = 34.0;
+  // Taille visuelle des poignées. 12px = compromis entre discrétion et
+  // visibilité tactile sur iPad — la zone tactile elle-même est plus grande
+  // (voir `hitRadius` dans `_handleAt`).
+  static const double _handleRadius = 12.0;
+  static const double _rotateOffset = 52.0;
   static const Color _accent = Color(0xFF597E8D);
 
   @override
@@ -1289,13 +1296,14 @@ class _HandlesPainter extends CustomPainter {
     // Poignée rotation : cercle + icône flèche simplifiée.
     canvas.drawCircle(rotateTop, _handleRadius + 2, handleFill);
     canvas.drawCircle(rotateTop, _handleRadius + 2, handleBorder);
-    // Mini "↻" en dessinant un arc.
+    // Mini "↻" en dessinant un arc. Taille alignée sur la poignée élargie.
     final arcPaint = Paint()
       ..color = Colors.white
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
     canvas.drawArc(
-      Rect.fromCircle(center: rotateTop, radius: 3.5),
+      Rect.fromCircle(center: rotateTop, radius: 6),
       -math.pi / 2,
       math.pi * 1.5,
       false,
