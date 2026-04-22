@@ -419,13 +419,12 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                               ),
                                             ),
                                             const SizedBox(height: 2),
-                                            // Full address, bullet, then
-                                            // communauté de commune — single
-                                            // line, ellipsis on overflow.
+                                            // Adresse seule — l'EPCI passe
+                                            // en badge à droite à côté de la
+                                            // date de visite pour être plus
+                                            // lisible d'un coup d'œil.
                                             Text(
-                                              epci.isNotEmpty
-                                                  ? '$address  •  $epci'
-                                                  : address,
+                                              address,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
@@ -437,10 +436,16 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                         ),
                                       ),
                                       const SizedBox(width: 12),
-                                      // Visit date displayed larger, to the
-                                      // left of the right arrow. Always
-                                      // shown — "À planifier" as soft
-                                      // placeholder when empty.
+                                      // Badge EPCI (couleur par communauté
+                                      // de communes) puis date de visite.
+                                      if (epci.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 10),
+                                          child: _EpciBadge(
+                                            label: epci,
+                                            palette: _epciPaletteFor(epci),
+                                          ),
+                                        ),
                                       _VisitDateBadge(dateLabel: visitDate),
                                       const SizedBox(width: 12),
                                       Container(
@@ -468,6 +473,88 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Palette of soft pill backgrounds + matching foreground, stable per EPCI
+/// label. Two dossiers of the same communauté de communes always get the
+/// same color; different communities get distinct colors. Good contrast is
+/// preserved (WCAG AA on small bold text).
+class _EpciPalette {
+  final Color bg;
+  final Color fg;
+  const _EpciPalette({required this.bg, required this.fg});
+}
+
+const List<_EpciPalette> _kEpciPalettes = [
+  _EpciPalette(bg: Color(0xFFDBEAFE), fg: Color(0xFF1D4ED8)), // blue
+  _EpciPalette(bg: Color(0xFFFCE7F3), fg: Color(0xFFBE185D)), // pink
+  _EpciPalette(bg: Color(0xFFDCFCE7), fg: Color(0xFF15803D)), // green
+  _EpciPalette(bg: Color(0xFFFEF3C7), fg: Color(0xFFB45309)), // amber
+  _EpciPalette(bg: Color(0xFFEDE9FE), fg: Color(0xFF6D28D9)), // violet
+  _EpciPalette(bg: Color(0xFFCFFAFE), fg: Color(0xFF0E7490)), // cyan
+  _EpciPalette(bg: Color(0xFFFFE4E6), fg: Color(0xFFBE123C)), // rose
+  _EpciPalette(bg: Color(0xFFECFCCB), fg: Color(0xFF4D7C0F)), // lime
+  _EpciPalette(bg: Color(0xFFFFEDD5), fg: Color(0xFFC2410C)), // orange
+  _EpciPalette(bg: Color(0xFFE0E7FF), fg: Color(0xFF4338CA)), // indigo
+];
+
+/// Deterministic label → palette assignment (same EPCI = same color every
+/// time the list is rendered). Uses a rolling hash of the label to pick a
+/// slot in [_kEpciPalettes].
+_EpciPalette _epciPaletteFor(String label) {
+  if (label.isEmpty) {
+    return const _EpciPalette(
+      bg: Color(0xFFF1F5F9),
+      fg: Color(0xFF475569),
+    );
+  }
+  int hash = 0;
+  for (final rune in label.runes) {
+    hash = (hash * 31 + rune) & 0x7FFFFFFF;
+  }
+  return _kEpciPalettes[hash % _kEpciPalettes.length];
+}
+
+/// Chip showing the communauté de communes with a color-coded background
+/// (one stable color per EPCI). Displayed to the left of the visit date.
+class _EpciBadge extends StatelessWidget {
+  const _EpciBadge({required this.label, required this.palette});
+
+  final String label;
+  final _EpciPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: palette.bg,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.building, size: 13, color: palette.fg),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: palette.fg,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

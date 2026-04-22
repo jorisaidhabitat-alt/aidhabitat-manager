@@ -46,6 +46,41 @@ class DashboardScreen extends StatelessWidget {
     'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
   ];
 
+  /// Returns the earliest upcoming visit (today or later) across all
+  /// dossiers, or null if none is scheduled.
+  _NextVisit? _findNextVisit(List<Dossier> dossiers, DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    _NextVisit? best;
+    for (final d in dossiers) {
+      final raw = d.visitDate;
+      if (raw == null || raw.isEmpty) continue;
+      DateTime? when;
+      try {
+        when = DateTime.parse(raw);
+      } catch (_) {
+        continue;
+      }
+      final day = DateTime(when.year, when.month, when.day);
+      if (day.isBefore(today)) continue;
+      if (best == null || day.isBefore(best.date)) {
+        best = _NextVisit(dossier: d, date: day);
+      }
+    }
+    return best;
+  }
+
+  /// Builds the full postal address `<street> <zip> <CITY>`.
+  /// Empty segments are skipped + whitespace collapsed.
+  static String buildFullAddress(Patient p) {
+    final street = p.address.trim();
+    final zip = p.zipCode.trim();
+    final city = p.city.trim();
+    return [street, zip, city.toUpperCase()]
+        .where((s) => s.isNotEmpty)
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
   /// Builds the last-6-months activity series from the real dossiers list.
   /// Each bar = number of dossiers whose `createdAt` falls in that month.
   List<_ActivityBar> _buildActivitySeries(
@@ -82,27 +117,15 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recent = dossiers.take(4).toList();
+    final recent = dossiers.take(3).toList();
     final now = DateTime.now();
     final rawDate = DateFormat('EEEE d MMMM', 'fr_FR').format(now);
     final dateLabel = rawDate.isEmpty
         ? rawDate
         : rawDate.replaceFirst(rawDate[0], rawDate[0].toUpperCase());
 
-    // Match the React computation: Dossiers en cours = not "Clos".
-    final inProgress = dossiers
-        .where((d) => d.status != DossierStatus.CLOSED)
-        .length;
-
-    // Dossiers validés = grant validé / travaux terminés / clos.
-    final validated = dossiers
-        .where(
-          (d) =>
-              d.status == DossierStatus.GRANT_VALIDATED ||
-              d.status == DossierStatus.WORKS_COMPLETED ||
-              d.status == DossierStatus.CLOSED,
-        )
-        .length;
+    // Next upcoming visit = nearest future `visitDate` across all dossiers.
+    final nextVisit = _findNextVisit(dossiers, now);
 
     // Real activity chart data (last 6 months).
     final activityData = _buildActivitySeries(dossiers, now);
@@ -152,44 +175,12 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // ---------- KPI cards ----------
-          Row(
-            children: [
-              Expanded(
-                child: _KPICard(
-                  icon: LucideIcons.users,
-                  label: "Dossiers en cours",
-                  value: inProgress.toString(),
-                  tintBg: const Color(0xFFDBEAFE), // blue-100
-                  tintFg: const Color(0xFF2563EB), // blue-600
-                  trend: "+12%",
-                  onTap: onNavigateToDossiers,
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: _KPICard(
-                  icon: LucideIcons.calendar,
-                  label: "Visites semaine",
-                  value: visits.length.toString(),
-                  tintBg: const Color(0xFFEDE9FE), // violet-100
-                  tintFg: const Color(0xFF7C3AED), // violet-600
-                  trend: "+5%",
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: _KPICard(
-                  icon: LucideIcons.checkCircle,
-                  label: "Dossiers validés",
-                  value: validated.toString(),
-                  tintBg: const Color(0xFFD1FAE5), // emerald-100
-                  tintFg: const Color(0xFF059669), // emerald-600
-                  trend: "+8%",
-                  onTap: onNavigateToDossiers,
-                ),
-              ),
-            ],
+          // ---------- Prochaine visite banner (full width) ----------
+          _NextVisitBanner(
+            nextVisit: nextVisit,
+            onTap: nextVisit == null
+                ? null
+                : () => onSelectDossier(nextVisit.dossier),
           ),
           const SizedBox(height: 24),
 
@@ -247,98 +238,6 @@ class DashboardScreen extends StatelessWidget {
 // KPI card
 // ---------------------------------------------------------------------------
 
-class _KPICard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color tintBg;
-  final Color tintFg;
-  final String trend;
-  final VoidCallback? onTap;
-
-  const _KPICard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.tintBg,
-    required this.tintFg,
-    required this.trend,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _PanelCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: tintBg,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(icon, color: tintFg, size: 24),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5), // emerald-50
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      LucideIcons.trendingUp,
-                      size: 14,
-                      color: Color(0xFF059669),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      trend,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF059669),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B), // slate-800
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF64748B), // slate-500
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Recent dossiers panel
@@ -431,7 +330,8 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
   Widget build(BuildContext context) {
     final patient = widget.dossier.patient;
     final initials = _initials(patient.firstName, patient.lastName);
-    final statusColors = _statusColors(widget.dossier.status);
+    final fullAddress = DashboardScreen.buildFullAddress(patient);
+    final visitLabel = _formatVisitDate(widget.dossier.visitDate);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
@@ -500,7 +400,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
-                            patient.city.isEmpty ? '—' : patient.city,
+                            fullAddress.isEmpty ? '—' : fullAddress,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 12,
@@ -513,22 +413,42 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                   ],
                 ),
               ),
+              // Remplace l'ancien badge de statut par la date de visite
+              // (demande utilisateur — le statut n'apporte pas d'info
+              // actionnable sur le tableau de bord).
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: statusColors.bg,
+                  color: visitLabel.isEmpty
+                      ? const Color(0xFFF1F5F9)
+                      : const Color(0xFFEDE9FE), // violet-100
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
-                  widget.dossier.status.label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: statusColors.fg,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      LucideIcons.calendar,
+                      size: 13,
+                      color: visitLabel.isEmpty
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF7C3AED),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      visitLabel.isEmpty ? 'À planifier' : visitLabel,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: visitLabel.isEmpty
+                            ? const Color(0xFF64748B)
+                            : const Color(0xFF7C3AED),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 16),
@@ -552,35 +472,202 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
     return (a + b).toUpperCase();
   }
 
-  _StatusColors _statusColors(DossierStatus status) {
-    switch (status) {
-      case DossierStatus.GRANT_VALIDATED:
-      case DossierStatus.WORKS_COMPLETED:
-      case DossierStatus.CLOSED:
-        return const _StatusColors(
-          bg: Color(0xFFD1FAE5), // emerald-100
-          fg: Color(0xFF047857), // emerald-700
-        );
-      case DossierStatus.TO_VISIT:
-      case DossierStatus.WAITING_QUOTES:
-      case DossierStatus.WAITING_GRANT:
-        return const _StatusColors(
-          bg: Color(0xFFFEF3C7), // amber-100
-          fg: Color(0xFFB45309), // amber-700
-        );
-      default:
-        return const _StatusColors(
-          bg: Color(0xFFE2E8F0), // slate-200
-          fg: Color(0xFF475569), // slate-600
-        );
+  String _formatVisitDate(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    try {
+      final d = DateTime.parse(raw);
+      return DateFormat('d MMM', 'fr_FR').format(d);
+    } catch (_) {
+      return '';
     }
   }
 }
 
-class _StatusColors {
-  final Color bg;
-  final Color fg;
-  const _StatusColors({required this.bg, required this.fg});
+// ---------------------------------------------------------------------------
+// Prochaine visite — banner
+// ---------------------------------------------------------------------------
+
+class _NextVisit {
+  final Dossier dossier;
+  final DateTime date;
+  const _NextVisit({required this.dossier, required this.date});
+}
+
+class _NextVisitBanner extends StatelessWidget {
+  final _NextVisit? nextVisit;
+  final VoidCallback? onTap;
+
+  const _NextVisitBanner({required this.nextVisit, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    // Placeholder quand aucune visite n'est planifiée.
+    if (nextVisit == null) {
+      return _PanelCard(
+        padding: const EdgeInsets.all(24),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                LucideIcons.calendar,
+                color: Color(0xFF94A3B8),
+                size: 26,
+              ),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Prochaine visite',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF94A3B8),
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Aucune visite planifiée pour le moment.',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final nv = nextVisit!;
+    final patient = nv.dossier.patient;
+    final fullAddress = DashboardScreen.buildFullAddress(patient);
+    final rawDay = DateFormat('EEEE d MMMM', 'fr_FR').format(nv.date);
+    final dayLabel = rawDay.isNotEmpty
+        ? rawDay.replaceFirst(rawDay[0], rawDay[0].toUpperCase())
+        : rawDay;
+    final daysUntil = nv.date
+        .difference(DateTime(
+          DateTime.now().year,
+          DateTime.now().month,
+          DateTime.now().day,
+        ))
+        .inDays;
+    final distanceLabel = daysUntil == 0
+        ? "aujourd'hui"
+        : daysUntil == 1
+            ? 'demain'
+            : 'dans $daysUntil jours';
+
+    return _PanelCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEDE9FE),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Center(
+              child: Icon(
+                LucideIcons.calendar,
+                color: Color(0xFF7C3AED),
+                size: 28,
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'PROCHAINE VISITE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF7C3AED),
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${patient.lastName} ${patient.firstName}',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (fullAddress.isNotEmpty)
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.mapPin,
+                        size: 14,
+                        color: Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          fullAddress,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 20),
+          // Bloc date à droite
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                dayLabel,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                distanceLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF7C3AED),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
