@@ -196,22 +196,17 @@ class DataService {
     return _retirementFundsRepository.updateLocalFund(fund);
   }
 
-  /// Returns the locally-cached admin access members. Always succeeds, even
-  /// offline — the cache is populated on first online login and kept fresh
-  /// via [refreshAdminAccessMembersFromRemote].
-  Future<List<AdminAccessMember>> fetchAdminAccessMembers() async {
-    return _accessMembersRepository.fetchAll();
-  }
-
   /// Pulls the latest admin access list from the server and merges into
-  /// SQLite. Errors are swallowed so the caller can safely invoke this in
-  /// the background after a local-cache read.
+  /// SQLite + propagates to `app_users`. Used only for offline login
+  /// support — the app no longer exposes any admin UI; all member
+  /// management happens on NocoDB. Errors swallowed.
   Future<bool> refreshAdminAccessMembersFromRemote() async {
     try {
       final remote = await _nocodbApiClient.fetchAdminAccessMembers();
       if (remote.isEmpty) return false;
       await _accessMembersRepository.mergeRemoteMembers(remote);
-      // Propagate to app_users so new ergos can log in offline after sync.
+      // Propagate to app_users so ergos provisioned on NocoDB can log in
+      // offline after the first successful sync.
       await _authService.mergeRemoteUsers(
         remote.map(_accessMemberToAuthUserMap).toList(),
       );
@@ -219,60 +214,6 @@ class DataService {
     } catch (_) {
       return false;
     }
-  }
-
-  /// Returns the effective password to display for [email] — prefers the
-  /// locally-pending one so just-set passwords show up before sync.
-  Future<String?> fetchAdminAccessEffectivePassword(String email) async {
-    return _accessMembersRepository.fetchEffectivePassword(email);
-  }
-
-  Future<void> regenerateAccessPassword(String email) async {
-    // Null password → server regenerates one; result lands in SQLite via the
-    // sync processor.
-    await _accessMembersRepository.setLocalPassword(email: email);
-  }
-
-  Future<void> setAccessPassword({
-    required String email,
-    String? password,
-  }) async {
-    await _accessMembersRepository.setLocalPassword(
-      email: email,
-      password: password,
-    );
-  }
-
-  Future<AdminAccessMember> createAccessMember({
-    required String email,
-    required String displayName,
-    required LocalUserRole role,
-    String? establishmentId,
-    String? password,
-  }) async {
-    return _accessMembersRepository.createLocalMember(
-      email: email,
-      displayName: displayName,
-      role: role,
-      establishmentId: establishmentId,
-      password: password,
-    );
-  }
-
-  Future<AdminAccessMember> updateAccessMember({
-    required String email,
-    String? displayName,
-    String? establishmentId,
-  }) async {
-    return _accessMembersRepository.updateLocalMember(
-      email: email,
-      displayName: displayName,
-      establishmentId: establishmentId,
-    );
-  }
-
-  Future<void> deleteAccessMember(String email) async {
-    return _accessMembersRepository.deleteLocalMember(email);
   }
 
   /// Converts an [AdminAccessMember] into the shape [AuthService.mergeRemoteUsers]

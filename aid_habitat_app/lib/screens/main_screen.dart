@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../components/sidebar.dart';
-import 'admin_access_screen.dart';
 import 'anah_screen.dart';
 import 'create_beneficiary_screen.dart';
 import 'dashboard_screen.dart';
@@ -520,10 +519,10 @@ class _MainScreenState extends State<MainScreen> {
         // Le widget est géré par le Stack dans le build() — on renvoie un
         // placeholder transparent pour que l'Offstage visible prenne le focus.
         return const SizedBox.shrink();
-      case 'admin':
-        return widget.currentUser.role == LocalUserRole.admin
-            ? const AdminAccessScreen()
-            : const Center(child: Text('Accès administrateur requis'));
+      // 'admin' : page retirée — la gestion des accès se fait directement
+      // sur NocoDB pour éviter les conflits de sync (les ergos/admins
+      // créés côté NocoDB sont propagés au `access_members` local via
+      // `refreshAdminAccessMembersFromRemote`).
       case 'settings':
         return SettingsScreen(
           user: widget.currentUser,

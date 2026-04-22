@@ -14,7 +14,6 @@ class AccountDialog extends StatefulWidget {
     super.key,
     required this.currentUser,
     this.onLogout,
-    this.onOpenAdmin,
   });
 
   final LocalAppUser currentUser;
@@ -22,10 +21,6 @@ class AccountDialog extends StatefulWidget {
   /// Called when the user taps "Se déconnecter". The dialog pops itself
   /// first, then invokes the callback so navigation can happen safely.
   final Future<void> Function()? onLogout;
-
-  /// Called when the user taps "Gérer les accès". Admin-only shortcut that
-  /// navigates to the admin members screen. If null, the button is hidden.
-  final VoidCallback? onOpenAdmin;
 
   @override
   State<AccountDialog> createState() => _AccountDialogState();
@@ -279,26 +274,12 @@ class _AccountDialogState extends State<AccountDialog> {
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 18),
-                  // Quick actions: Admin access (if admin) + Logout
+                  // Quick actions: Logout (la gestion des accès se fait
+                  // désormais directement sur NocoDB, pas dans l'app).
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      if (widget.onOpenAdmin != null)
-                        OutlinedButton.icon(
-                          onPressed: _isUploadingPhoto
-                              ? null
-                              : () {
-                                  Navigator.of(context).pop();
-                                  widget.onOpenAdmin!();
-                                },
-                          icon: const Icon(LucideIcons.shieldCheck, size: 16),
-                          label: const Text('Gérer les accès'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF334155),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
-                          ),
-                        ),
                       if (widget.onLogout != null)
                         OutlinedButton.icon(
                           onPressed: _isUploadingPhoto

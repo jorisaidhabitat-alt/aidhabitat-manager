@@ -40,8 +40,8 @@ class _SidebarState extends State<Sidebar> {
     {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.bookOpen},
     {'id': 'precos', 'label': 'Caisses', 'icon': LucideIcons.heart},
     {'id': 'anah', 'label': 'Anah', 'icon': LucideIcons.coins},
-    if (widget.currentUser.role == LocalUserRole.admin)
-      {'id': 'admin', 'label': 'Admin', 'icon': LucideIcons.shieldCheck},
+    // Page "Admin" retirée : la gestion des accès se fait sur NocoDB
+    // directement (source de vérité unique → pas de conflit de sync).
   ];
 
   @override
@@ -235,9 +235,8 @@ class _SidebarState extends State<Sidebar> {
       builder: (_) => AccountDialog(
         currentUser: widget.currentUser,
         onLogout: widget.onLogout,
-        onOpenAdmin: widget.currentUser.role == LocalUserRole.admin
-            ? () => widget.onNavigate('admin')
-            : null,
+        // `onOpenAdmin` retiré avec la page Admin — la gestion des accès
+        // est désormais pilotée uniquement depuis NocoDB.
       ),
     );
   }
