@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/http.dart' as http;
 
 import '../services/media_cache_service.dart';
 import '../services/url_resolver.dart';
@@ -50,6 +52,9 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
   File? _file;
   Uint8List? _svgBytes;
   Uint8List? _pendingBytes;
+  /// Raster (png/jpg/webp/gif) bytes downloaded via http — used on web where
+  /// [File] isn't available. On native we rely on [MediaCacheService] + [_file].
+  Uint8List? _webBytes;
   bool _loading = true;
   bool _failed = false;
 
@@ -67,6 +72,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         _file = null;
         _svgBytes = null;
         _pendingBytes = null;
+        _webBytes = null;
         _loading = true;
         _failed = false;
       });
@@ -100,6 +106,34 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
 
     final svg = isSvgUrl(widget.url);
     try {
+      if (kIsWeb) {
+        // Web has no filesystem — path_provider throws, so we can't use the
+        // MediaCacheService file cache. Download the bytes via http and keep
+        // them in memory; the browser's HTTP cache already handles offline
+        // through the Flutter service worker + /wiki-offline + /retirement-
+        // logos copies that ship with the PWA bundle.
+        final resolved = resolveMediaUrl(widget.url);
+        final response = await http.get(Uri.parse(resolved));
+        if (!mounted) return;
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          setState(() {
+            _failed = true;
+            _loading = false;
+          });
+          widget.onError?.call();
+          return;
+        }
+        final bytes = response.bodyBytes;
+        setState(() {
+          if (svg) {
+            _svgBytes = bytes;
+          } else {
+            _webBytes = bytes;
+          }
+          _loading = false;
+        });
+        return;
+      }
       if (svg) {
         final bytes = await MediaCacheService.instance.readBytes(widget.url);
         if (!mounted) return;
@@ -147,6 +181,16 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
     if (_pendingBytes != null) {
       return Image.memory(
         _pendingBytes!,
+        fit: widget.fit,
+        width: widget.width,
+        height: widget.height,
+        errorBuilder: (_, __, ___) =>
+            widget.errorWidget ?? const _DefaultError(),
+      );
+    }
+    if (_webBytes != null) {
+      return Image.memory(
+        _webBytes!,
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
