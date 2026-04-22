@@ -96,6 +96,19 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   bool _surfaceEditing = false;
   bool _heatingEditing = false;
 
+  // Volets : flags d'édition (remplace le dropdown par des pills qui se
+  // replient en "label (valeur) + crayon" une fois un statut choisi).
+  bool _voletsManEditing = false;
+  bool _voletsElecEditing = false;
+  bool _voletsPersEditing = false;
+
+  // Niveaux : field actuellement "ouvert" (carte pleine). Les autres
+  // niveaux sont repliés en "Nom (pièces cochées)" + crayon. Null quand
+  // aucun niveau n'est en cours d'édition.
+  String? _expandedLevel;
+  // Affichage de la liste pills pour ajouter un nouveau niveau.
+  bool _addLevelMode = false;
+
   // Général
   String _yearConstruction = '';
   String _yearHabitation = '';
@@ -553,21 +566,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             onEdit: () => setState(() => _surfaceEditing = true),
           ),
         const SizedBox(height: 14),
-        // 4. Chauffage
+        // 4. Ajouter un niveau (remonté au-dessus du chauffage) + liste
+        // de pills des niveaux encore disponibles quand _addLevelMode.
+        if (available.isNotEmpty) _buildAddLevelInline(available),
+        const SizedBox(height: 14),
+        // 5. Chauffage (multi-select pills avec bouton Valider pour se
+        // replier une fois toutes les options cochées).
         if (_heatingTypes.isEmpty || _heatingEditing)
-          FormMultiSelectDropdown(
-            label: 'Chauffage',
-            options: _heatingOptions.toList(),
-            selected: _heatingTypes,
-            placeholder: 'Sélectionner le type de chauffage',
-            onChanged: (next) {
-              setState(() {
-                _heatingTypes = next;
-                if (next.isNotEmpty) _heatingEditing = false;
-              });
-              _scheduleSave();
-            },
-          )
+          _buildHeatingEditor()
         else
           CollapsedValueRow(
             label: 'Chauffage',
@@ -575,7 +581,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             onEdit: () => setState(() => _heatingEditing = true),
           ),
         const SizedBox(height: 14),
-        // 5. Niveaux (ajout dynamique)
+        // 6. Niveaux (cartes), un seul développé à la fois — les autres
+        // s'affichent sous forme "Label (pièces cochées) + crayon".
         ..._orderedLevels.map((field) {
           final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
           return Padding(
@@ -583,87 +590,216 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             child: _buildLevelCard(cfg),
           );
         }),
-        if (available.isNotEmpty) _buildAddLevelButton(available),
         const SizedBox(height: 14),
-        // 6. Volets
+        // 7. Volets (pills + repli "label (valeur)" sans dropdown).
         _buildVoletRow(
           'Volets roulants manuels',
           _voletsManStatus,
           _voletsManLoc,
+          _voletsManEditing,
           (s) => setState(() {
             _voletsManStatus = s;
             if (s != 'Localisé') _voletsManLoc = '';
+            if (s == 'Entier') _voletsManEditing = false;
+            if (s == 'Localisé') _voletsManEditing = true;
           }),
           (l) => setState(() => _voletsManLoc = l),
+          () => setState(() => _voletsManEditing = true),
+          onLocCommit: () {
+            if (_voletsManLoc.trim().isNotEmpty) {
+              setState(() => _voletsManEditing = false);
+            }
+          },
         ),
         const SizedBox(height: 10),
         _buildVoletRow(
           'Volets roulants électriques',
           _voletsElecStatus,
           _voletsElecLoc,
+          _voletsElecEditing,
           (s) => setState(() {
             _voletsElecStatus = s;
             if (s != 'Localisé') _voletsElecLoc = '';
+            if (s == 'Entier') _voletsElecEditing = false;
+            if (s == 'Localisé') _voletsElecEditing = true;
           }),
           (l) => setState(() => _voletsElecLoc = l),
+          () => setState(() => _voletsElecEditing = true),
+          onLocCommit: () {
+            if (_voletsElecLoc.trim().isNotEmpty) {
+              setState(() => _voletsElecEditing = false);
+            }
+          },
         ),
         const SizedBox(height: 10),
         _buildVoletRow(
           'Volets persiennes',
           _voletsPersStatus,
           _voletsPersLoc,
+          _voletsPersEditing,
           (s) => setState(() {
             _voletsPersStatus = s;
             if (s != 'Localisé') _voletsPersLoc = '';
+            if (s == 'Entier') _voletsPersEditing = false;
+            if (s == 'Localisé') _voletsPersEditing = true;
           }),
           (l) => setState(() => _voletsPersLoc = l),
+          () => setState(() => _voletsPersEditing = true),
+          onLocCommit: () {
+            if (_voletsPersLoc.trim().isNotEmpty) {
+              setState(() => _voletsPersEditing = false);
+            }
+          },
         ),
       ],
     );
   }
 
-  Widget _buildAddLevelButton(List<_LevelConfig> available) {
-    return PopupMenuButton<String>(
-      tooltip: '',
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      offset: const Offset(0, 44),
-      itemBuilder: (_) => available
-          .map((cfg) =>
-              PopupMenuItem(value: cfg.field, child: Text(cfg.label)))
-          .toList(),
-      onSelected: (field) {
-        setState(() {
-          _orderedLevels.add(field);
-          _levelRooms[field] ??= [];
-          _customRoomCtrls.putIfAbsent(
-              field, () => TextEditingController());
-        });
-        _scheduleSave();
-      },
-      child: Container(
-        width: double.infinity,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF4EFF7),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+  /// Bouton "Ajouter un niveau" + liste de pills des niveaux
+  /// disponibles quand _addLevelMode est actif. L'utilisateur clique sur
+  /// un niveau pour l'ajouter : il devient développé, les autres
+  /// niveaux se replient automatiquement, et les pills disparaissent.
+  Widget _buildAddLevelInline(List<_LevelConfig> available) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _addLevelMode = !_addLevelMode),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4EFF7),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(_addLevelMode ? Icons.close : Icons.add,
+                    size: 16, color: const Color(0xFF554A63)),
+                const SizedBox(width: 8),
+                Text(_addLevelMode ? 'Annuler' : 'Ajouter un niveau',
+                    style: const TextStyle(
+                      color: Color(0xFF554A63),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    )),
+              ],
+            ),
+          ),
         ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.max,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add, size: 16, color: Color(0xFF554A63)),
-            SizedBox(width: 8),
-            Text('Ajouter un niveau',
-                style: TextStyle(
-                  color: Color(0xFF554A63),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                )),
-          ],
+        if (_addLevelMode) ...[
+          const SizedBox(height: 10),
+          FormToggleGroup(
+            label: '',
+            options: available.map((c) => c.label).toList(),
+            selected: '',
+            columns: 2,
+            onChanged: (picked) {
+              final cfg = available.firstWhere((c) => c.label == picked);
+              setState(() {
+                _orderedLevels.add(cfg.field);
+                _levelRooms[cfg.field] ??= [];
+                _customRoomCtrls.putIfAbsent(
+                    cfg.field, () => TextEditingController());
+                _expandedLevel = cfg.field;
+                _addLevelMode = false;
+              });
+              _scheduleSave();
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Éditeur chauffage : pills multi-toggle + bouton "Valider" pour
+  /// replier. Pas d'auto-collapse à la première coche → l'utilisateur
+  /// peut cocher plusieurs options avant validation.
+  Widget _buildHeatingEditor() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Chauffage',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
         ),
-      ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _heatingOptions.map((opt) {
+            final sel = _heatingTypes.contains(opt);
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  final next = Set<String>.from(_heatingTypes);
+                  if (sel) {
+                    next.remove(opt);
+                  } else {
+                    next.add(opt);
+                  }
+                  _heatingTypes = next;
+                });
+                _scheduleSave();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color:
+                      sel ? const Color(0xFF907CA1) : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: sel
+                        ? const Color(0xFF907CA1)
+                        : Colors.grey.shade300,
+                  ),
+                ),
+                child: Text(
+                  opt,
+                  style: TextStyle(
+                    color: sel ? Colors.white : Colors.black87,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        if (_heatingTypes.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: GestureDetector(
+              onTap: () => setState(() => _heatingEditing = false),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF907CA1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Valider',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -817,35 +953,49 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     String label,
     String status,
     String loc,
+    bool editing,
     ValueChanged<String> onStatusChange,
     ValueChanged<String> onLocChange,
-  ) {
-    return Row(
+    VoidCallback onEditRequested, {
+    required VoidCallback onLocCommit,
+  }) {
+    final hasValue = status != 'Aucun';
+    final collapsed = hasValue && !editing;
+    if (collapsed) {
+      final display = status == 'Localisé' && loc.isNotEmpty
+          ? 'Localisé : $loc'
+          : status;
+      return CollapsedValueRow(
+        label: label,
+        displayValue: display,
+        onEdit: onEditRequested,
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: FormSelectDropdown<String>(
-            label: label,
-            value: status,
-            options: _voletStatuses
-                .map((s) => FormSelectOption(value: s, label: s))
-                .toList(),
-            onChanged: (v) {
-              onStatusChange(v ?? 'Aucun');
-              _markChanged();
-            },
-          ),
+        FormToggleGroup(
+          label: label,
+          options: _voletStatuses,
+          selected: status,
+          columns: 3,
+          onChanged: (v) {
+            onStatusChange(v);
+            _markChanged();
+          },
         ),
         if (status == 'Localisé') ...[
-          const SizedBox(width: 10),
-          Expanded(
-            child: FormTextField(
-              label: 'Localisation',
-              value: loc,
-              onChanged: (v) {
-                onLocChange(v);
-                _markChanged();
-              },
-            ),
+          const SizedBox(height: 10),
+          FormTextField(
+            label: 'Localisation',
+            value: loc,
+            autofocus: editing,
+            onChanged: (v) {
+              onLocChange(v);
+              _markChanged();
+            },
+            onSubmitted: (_) => onLocCommit(),
+            onTapOutside: onLocCommit,
           ),
         ],
       ],
