@@ -1,4 +1,19 @@
+# Root project = React + Express API (aid-habitat-manager on Vercel).
+# The Flutter app lives in aid_habitat_app/ and has its own Vercel project
+# (aid-habitat-app) — no need to upload it here.
+
 .git
+.vercel
 node_modules
 .npm-cache
 dist
+tmp
+
+# The entire Flutter subproject is deployed separately. Keeping it out of
+# the root upload cut the last deploy from 3+ GB down to just React + API.
+aid_habitat_app
+
+# Dev artefacts that sneaked in at some point
+*.log
+*.bak
+.DS_Store

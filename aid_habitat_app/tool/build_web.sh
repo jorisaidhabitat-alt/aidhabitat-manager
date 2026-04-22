@@ -60,12 +60,31 @@ API_BASE_URL="${AIDHABITAT_API_BASE_URL:-}"
 # The single-page rewrite `/(.*) -> /index.html` used by most static hosts
 # (Vercel, Netlify, Firebase, nginx try_files) would otherwise return the
 # app shell instead of the actual image bytes.
+#
+# Sources are looked up in order:
+#   1. `$REPO_ROOT/public/<dir>` — canonical source at the monorepo root.
+#      Used on workstations so edits made in public/ are always fresh.
+#   2. `$APP_DIR/web-assets/<dir>` — vendored copy committed with the PWA
+#      project. Used on Vercel when the project's rootDirectory is
+#      aid_habitat_app/ (the monorepo root isn't uploaded there, so the
+#      parent public/ folder isn't available to the build runner).
+#
+# TODO: keep web-assets/ in sync with public/ — run `cp -R public/…
+# aid_habitat_app/web-assets/` before a PWA deploy, or set up a pre-commit
+# hook to auto-sync.
 for dir in wiki-offline retirement-logos; do
-  src="$REPO_ROOT/public/$dir"
-  if [ -d "$src" ]; then
-    echo "[build_web] copying $dir into build/web/"
+  src=""
+  if [ -d "$REPO_ROOT/public/$dir" ]; then
+    src="$REPO_ROOT/public/$dir"
+  elif [ -d "$APP_DIR/web-assets/$dir" ]; then
+    src="$APP_DIR/web-assets/$dir"
+  fi
+  if [ -n "$src" ]; then
+    echo "[build_web] copying $dir from $src into build/web/"
     rm -rf "build/web/$dir"
     cp -R "$src" "build/web/$dir"
+  else
+    echo "[build_web] WARN: no source found for $dir — skipping" >&2
   fi
 done
 
