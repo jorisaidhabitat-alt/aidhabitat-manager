@@ -503,6 +503,7 @@ class NocodbSyncService {
     final patientId = payload['patientLocalId']?.toString();
     final documentLocalId = payload['documentLocalId']?.toString();
     final localPath = payload['localPath']?.toString();
+    final dataUrl = payload['dataUrl']?.toString();
     final title = payload['title']?.toString() ?? 'Document';
     final fileName = payload['fileName']?.toString() ?? 'document.bin';
     final mimeType =
@@ -512,16 +513,30 @@ class NocodbSyncService {
 
     if (patientId == null ||
         documentLocalId == null ||
-        localPath == null ||
         patientId.isEmpty ||
-        documentLocalId.isEmpty ||
-        localPath.isEmpty) {
+        documentLocalId.isEmpty) {
       throw Exception('Payload document incomplet');
     }
 
-    final file = File(localPath);
-    if (!await file.exists()) {
-      throw Exception('Fichier local introuvable: $localPath');
+    File? file;
+    List<int>? bytes;
+
+    if (localPath != null && localPath.isNotEmpty) {
+      file = File(localPath);
+      if (!await file.exists()) {
+        throw Exception('Fichier local introuvable: $localPath');
+      }
+    } else if (dataUrl != null && dataUrl.isNotEmpty) {
+      // Web path: bytes stored as a data URL in SQLite. Decode and upload.
+      final comma = dataUrl.indexOf(',');
+      if (comma < 0) {
+        throw Exception('dataUrl malformé (pas de séparateur)');
+      }
+      bytes = base64Decode(dataUrl.substring(comma + 1));
+    } else {
+      throw Exception(
+        'Payload document: ni localPath ni dataUrl fourni',
+      );
     }
 
     final uploaded = await _apiClient.uploadDocument(
@@ -532,6 +547,7 @@ class NocodbSyncService {
       mimeType: mimeType,
       tags: tags,
       file: file,
+      bytes: bytes,
     );
 
     await _syncRepository.storeDocumentRemoteData(

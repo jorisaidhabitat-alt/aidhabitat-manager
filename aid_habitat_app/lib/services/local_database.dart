@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 7;
+  static const _dbVersion = 8;
 
   Database? _database;
 
@@ -55,6 +55,18 @@ class LocalDatabase {
     if (oldVersion < 7) {
       await _migrateV6ToV7(db);
     }
+    if (oldVersion < 8) {
+      await _migrateV7ToV8(db);
+    }
+  }
+
+  /// v7 → v8: Web platforms (Flutter PWA) don't have a filesystem, so
+  /// `documents.local_file_path` can't hold anything. We add a parallel
+  /// `local_file_data_url` column that stores the freshly-captured file
+  /// as a `data:<mime>;base64,<bytes>` string. The sync processor reads
+  /// whichever column is populated and uploads the bytes to NocoDB.
+  Future<void> _migrateV7ToV8(Database db) async {
+    await _addColumnIfMissing(db, 'documents', 'local_file_data_url', 'TEXT');
   }
 
   /// v1 → v2: Original schema had no remote_updated_at or sync_state columns
@@ -476,6 +488,7 @@ class LocalDatabase {
         file_ext TEXT NOT NULL,
         mime_type TEXT NOT NULL,
         local_file_path TEXT,
+        local_file_data_url TEXT,
         remote_file_path TEXT,
         remote_public_url TEXT,
         tags_json TEXT NOT NULL,

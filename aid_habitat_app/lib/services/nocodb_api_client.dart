@@ -285,6 +285,9 @@ class NocodbApiClient {
     }
   }
 
+  /// Uploads a document to NocoDB. Callers pass **either** a [file] (native
+  /// platforms where `dart:io` works) **or** raw [bytes] (web PWA where
+  /// there's no filesystem and the picked file lives in memory only).
   Future<Map<String, dynamic>> uploadDocument({
     required String patientId,
     required String documentLocalId,
@@ -292,10 +295,14 @@ class NocodbApiClient {
     required String fileName,
     required String mimeType,
     required List<String> tags,
-    required File file,
+    File? file,
+    List<int>? bytes,
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
+    }
+    if (file == null && bytes == null) {
+      throw Exception('uploadDocument: provide either `file` or `bytes`');
     }
 
     final request = http.MultipartRequest(
@@ -309,9 +316,19 @@ class NocodbApiClient {
     request.fields['fileName'] = fileName;
     request.fields['mimeType'] = mimeType;
     request.fields['tags'] = jsonEncode(tags);
-    request.files.add(
-      await http.MultipartFile.fromPath('file', file.path, filename: fileName),
-    );
+    if (file != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          file.path,
+          filename: fileName,
+        ),
+      );
+    } else {
+      request.files.add(
+        http.MultipartFile.fromBytes('file', bytes!, filename: fileName),
+      );
+    }
 
     final streamed = await _client.send(request).timeout(_uploadTimeout);
     final responseBody =

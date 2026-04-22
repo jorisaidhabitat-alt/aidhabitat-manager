@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -122,19 +123,24 @@ class _DocumentsScreenState extends State<DocumentsScreen>
 
   // ----- Import flows -----
 
-  /// Caméra native — iOS/Android seulement. Sur desktop (macOS/Windows/Linux),
-  /// pas de caméra pour image_picker : on fallback sur le file picker filtré
-  /// images (l'utilisateur pointe vers une photo déjà prise).
+  /// Caméra — iOS/Android/web. Sur web (PWA iPad), `image_picker` route
+  /// vers `<input type="file" accept="image/*" capture="environment">` qui
+  /// ouvre directement l'appareil photo iOS. Sur desktop, fallback sur le
+  /// file picker système.
   Future<void> _pickFromCamera() async {
     try {
-      if (Platform.isIOS || Platform.isAndroid) {
+      if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
         final xfile =
             await _imagePicker.pickImage(source: ImageSource.camera);
         if (xfile == null) return;
-        await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
+        if (kIsWeb) {
+          await _openUploadModalWeb(xfile, defaultTag: 'Photo');
+        } else {
+          await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
+        }
         return;
       }
-      // Desktop → fallback galerie système.
+      // Desktop (macOS/Windows/Linux) → fallback galerie système.
       _showError('Caméra non dispo sur ordinateur — choisissez une image.');
       await _pickFromGallery();
     } catch (err) {
@@ -142,28 +148,71 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
-  /// Import d'image. iOS/Android → galerie photos native via image_picker.
-  /// Desktop → dialog système natif via FilePicker (image_picker ne supporte
-  /// pas macOS de façon fiable).
+  /// Import d'image. iOS/Android/web → picker natif via image_picker.
+  /// Desktop → dialog système natif via FilePicker.
   Future<void> _pickFromGallery() async {
     try {
-      File? file;
-      if (Platform.isIOS || Platform.isAndroid) {
+      if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
         final xfile =
             await _imagePicker.pickImage(source: ImageSource.gallery);
-        if (xfile != null) file = File(xfile.path);
-      } else {
-        final result = await FilePicker.platform.pickFiles(
-          type: FileType.image,
-          dialogTitle: 'Sélectionner une image',
-        );
-        final path = result?.files.single.path;
-        if (path != null && path.isNotEmpty) file = File(path);
+        if (xfile == null) return;
+        if (kIsWeb) {
+          await _openUploadModalWeb(xfile, defaultTag: 'Photo');
+        } else {
+          await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
+        }
+        return;
       }
-      if (file == null) return;
-      await _openUploadModal(file, defaultTag: 'Photo');
+      // Desktop
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        dialogTitle: 'Sélectionner une image',
+      );
+      final path = result?.files.single.path;
+      if (path == null || path.isEmpty) return;
+      await _openUploadModal(File(path), defaultTag: 'Photo');
     } catch (err) {
       _showError('Sélection d\'image impossible: $err');
+    }
+  }
+
+  /// Web variant of [_openUploadModal]: reads the XFile bytes directly
+  /// (XFile.path is a blob URL on web, unusable as a filesystem path) and
+  /// imports them via [DocumentRepository.importDocumentBytes].
+  Future<void> _openUploadModalWeb(XFile xfile,
+      {required String defaultTag}) async {
+    if (!mounted) return;
+    final defaultTitle =
+        xfile.name.isNotEmpty ? xfile.name.split('.').first : 'Photo';
+    final result = await showDialog<_UploadResult>(
+      context: context,
+      builder: (ctx) => _UploadModal(
+        defaultTitle: defaultTitle,
+        defaultTag: defaultTag,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    setState(() => _isImporting = true);
+    try {
+      final bytes = await xfile.readAsBytes();
+      final fileName = xfile.name.isNotEmpty
+          ? xfile.name
+          : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await _documentRepository.importDocumentBytes(
+        patientId: _patientId,
+        bytes: bytes,
+        fileName: fileName,
+        tags: [result.tag],
+        title: result.title,
+      );
+      await _loadDocuments(silent: true);
+      if (!mounted) return;
+      _showSnack('Document enregistré localement.');
+    } catch (err) {
+      _showError('Import impossible: $err');
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
     }
   }
 
@@ -174,10 +223,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         dialogTitle: 'Scanner — choisir un PDF ou une image',
+        withData: kIsWeb, // Web: récupère les bytes (pas de `path`)
       );
-      final path = result?.files.single.path;
-      if (path == null || path.isEmpty) return;
-      await _openUploadModal(File(path), defaultTag: 'Photo');
+      if (result == null || result.files.isEmpty) return;
+      await _importPickedFile(result.files.single, defaultTag: 'Photo');
     } catch (err) {
       _showError('Scanner indisponible: $err');
     }
@@ -188,13 +237,62 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         dialogTitle: 'Importer un fichier',
+        withData: kIsWeb,
       );
-      final path = result?.files.single.path;
-      if (path == null || path.isEmpty) return;
-      await _openUploadModal(File(path), defaultTag: 'Autre');
+      if (result == null || result.files.isEmpty) return;
+      await _importPickedFile(result.files.single, defaultTag: 'Autre');
     } catch (err) {
       _showError('Import impossible: $err');
     }
+  }
+
+  /// Branches a [PlatformFile] picked via FilePicker into either the native
+  /// File upload flow or the web bytes flow.
+  Future<void> _importPickedFile(PlatformFile picked,
+      {required String defaultTag}) async {
+    if (kIsWeb) {
+      final bytes = picked.bytes;
+      if (bytes == null) {
+        _showError('Lecture du fichier impossible (aucune donnée).');
+        return;
+      }
+      final defaultTitle = (picked.name.isNotEmpty)
+          ? picked.name.split('.').first
+          : 'Document';
+      final result = await showDialog<_UploadResult>(
+        context: context,
+        builder: (ctx) => _UploadModal(
+          defaultTitle: defaultTitle,
+          defaultTag: defaultTag,
+        ),
+      );
+      if (result == null || !mounted) return;
+      setState(() => _isImporting = true);
+      try {
+        await _documentRepository.importDocumentBytes(
+          patientId: _patientId,
+          bytes: bytes,
+          fileName: picked.name,
+          tags: [result.tag],
+          title: result.title,
+        );
+        await _loadDocuments(silent: true);
+        if (!mounted) return;
+        _showSnack('Document enregistré localement.');
+      } catch (err) {
+        _showError('Import impossible: $err');
+      } finally {
+        if (mounted) setState(() => _isImporting = false);
+      }
+      return;
+    }
+    // Native
+    final path = picked.path;
+    if (path == null || path.isEmpty) {
+      _showError('Chemin du fichier indisponible.');
+      return;
+    }
+    await _openUploadModal(File(path), defaultTag: defaultTag);
   }
 
   Future<void> _openUploadModal(File file, {required String defaultTag}) async {

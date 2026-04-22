@@ -29,6 +29,74 @@ class DocumentRepository {
     return rows.map(_mapRow).toList();
   }
 
+  /// Web-friendly import that takes bytes + metadata directly (no
+  /// [File]) since PWAs don't have a filesystem. The bytes are stored as
+  /// a `data:<mime>;base64,…` URL in `documents.local_file_data_url` and
+  /// the sync processor decodes them when pushing to NocoDB.
+  Future<DocItem> importDocumentBytes({
+    required String patientId,
+    required List<int> bytes,
+    required String fileName,
+    List<String> tags = const ['Autre'],
+    String? title,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now();
+    final extension = p
+        .extension(fileName)
+        .replaceFirst('.', '')
+        .toLowerCase();
+    final resolvedTitle = (title != null && title.trim().isNotEmpty)
+        ? title.trim()
+        : p.basenameWithoutExtension(fileName);
+    final localId = 'doc_${now.microsecondsSinceEpoch}';
+    final mimeType = _mimeTypeFor(extension);
+    final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
+
+    final row = {
+      'local_id': localId,
+      'patient_local_id': patientId,
+      'title': resolvedTitle,
+      'file_name': fileName,
+      'file_ext': extension,
+      'mime_type': mimeType,
+      'local_file_path': null,
+      'local_file_data_url': dataUrl,
+      'remote_file_path': null,
+      'remote_public_url': null,
+      'tags_json': jsonEncode(tags),
+      'created_at': now.toIso8601String(),
+      'updated_at': now.toIso8601String(),
+      'sync_state': SyncState.pendingSync.name,
+      'pending_delete': 0,
+    };
+
+    await db.insert('documents', row);
+    await db.insert('sync_operations', {
+      'id': 'sync_$localId',
+      'entity_type': 'document',
+      'entity_local_id': localId,
+      'operation_type': 'upload_file',
+      'payload_json': jsonEncode({
+        'patientLocalId': patientId,
+        'documentLocalId': localId,
+        'dataUrl': dataUrl,
+        'title': resolvedTitle,
+        'fileName': fileName,
+        'mimeType': mimeType,
+        'tags': tags,
+      }),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now.toIso8601String(),
+      'updated_at': now.toIso8601String(),
+    });
+
+    SyncEngine().notify();
+    return _mapRow(row);
+  }
+
   Future<DocItem> importDocument({
     required String patientId,
     required File sourceFile,
