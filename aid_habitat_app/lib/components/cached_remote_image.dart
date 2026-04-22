@@ -107,15 +107,13 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
     final svg = isSvgUrl(widget.url);
     try {
       if (kIsWeb) {
-        // Web has no filesystem — path_provider throws, so we can't use the
-        // MediaCacheService file cache. Download the bytes via http and keep
-        // them in memory; the browser's HTTP cache already handles offline
-        // through the Flutter service worker + /wiki-offline + /retirement-
-        // logos copies that ship with the PWA bundle.
-        final resolved = resolveMediaUrl(widget.url);
-        final response = await http.get(Uri.parse(resolved));
+        // Web has no filesystem, but MediaCacheService.webCachedFetch
+        // persists bytes in SQLite → wiki & retirement logos keep working
+        // offline after a single online load.
+        final bytes =
+            await MediaCacheService.instance.webCachedFetch(widget.url);
         if (!mounted) return;
-        if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (bytes == null) {
           setState(() {
             _failed = true;
             _loading = false;
@@ -123,7 +121,6 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
           widget.onError?.call();
           return;
         }
-        final bytes = response.bodyBytes;
         setState(() {
           if (svg) {
             _svgBytes = bytes;

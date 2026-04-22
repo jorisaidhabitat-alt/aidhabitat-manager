@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 8;
+  static const _dbVersion = 9;
 
   Database? _database;
 
@@ -58,7 +58,28 @@ class LocalDatabase {
     if (oldVersion < 8) {
       await _migrateV7ToV8(db);
     }
+    if (oldVersion < 9) {
+      await _migrateV8ToV9(db);
+    }
   }
+
+  /// v8 → v9: Offline image cache for the Flutter web PWA. Native targets
+  /// have a filesystem cache via [MediaCacheService], but on web
+  /// `path_provider` throws — we store the fetched bytes directly in
+  /// SQLite so wiki illustrations + retirement logos keep displaying when
+  /// the iPad is offline.
+  Future<void> _migrateV8ToV9(Database db) async {
+    await _createTableIfMissing(db, 'web_media_cache', _createWebMediaCacheSQL);
+  }
+
+  static const _createWebMediaCacheSQL = '''
+    CREATE TABLE web_media_cache (
+      url_hash TEXT PRIMARY KEY,
+      url TEXT NOT NULL,
+      bytes BLOB NOT NULL,
+      fetched_at TEXT NOT NULL
+    )
+  ''';
 
   /// v7 → v8: Web platforms (Flutter PWA) don't have a filesystem, so
   /// `documents.local_file_path` can't hold anything. We add a parallel
@@ -537,6 +558,7 @@ class LocalDatabase {
     await db.execute(_createRetirementFundsSQL);
     await db.execute(_createReferenceSyncMetaSQL);
     await db.execute(_createAccessMembersSQL);
+    await db.execute(_createWebMediaCacheSQL);
 
     // Per-dossier offline tables (visit report sections + recommendations)
     await db.execute(_createContexteDeVieSQL);

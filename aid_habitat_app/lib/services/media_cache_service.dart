@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 
+import 'local_database.dart';
 import 'url_resolver.dart';
 
 /// Downloads remote images once and persists them to the app's documents
@@ -129,12 +133,19 @@ class MediaCacheService {
 
   /// Prefetches a list of URLs in the background (fire-and-forget). Call after
   /// a remote refresh to warm the cache for offline use.
+  ///
+  /// On web, delegates to [webCachedFetch] (SQLite-backed cache). On native
+  /// targets, uses [fetch] (filesystem-backed cache).
   Future<void> prefetchAll(Iterable<String> urls) async {
     for (final url in urls) {
       if (url.trim().isEmpty) continue;
       // Fire-and-forget — don't await, but catch so one failure doesn't stop
       // the chain.
-      unawaited(fetch(url).then((_) {}, onError: (_) {}));
+      if (kIsWeb) {
+        unawaited(webCachedFetch(url).then((_) {}, onError: (_) {}));
+      } else {
+        unawaited(fetch(url).then((_) {}, onError: (_) {}));
+      }
     }
   }
 
@@ -145,5 +156,73 @@ class MediaCacheService {
       await dir.delete(recursive: true);
     } catch (_) {}
     _cacheDir = null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Web-only bytes cache (SQLite-backed, survives reloads + offline).
+  // ---------------------------------------------------------------------------
+
+  /// Fetches [url] on web with a SQLite-backed cache so wiki + retirement
+  /// logos keep displaying when the iPad is offline. Returns raw bytes
+  /// (raster or SVG) on success, null if neither cache nor network has the
+  /// resource.
+  ///
+  /// Strategy:
+  ///   1. Lookup `web_media_cache` by sha1(resolved url). Cache hit → return.
+  ///   2. Miss → http.get. On 200, persist bytes + return them.
+  ///   3. http.get fails / non-200 → return null so the caller can render
+  ///      its error widget.
+  Future<Uint8List?> webCachedFetch(String url) async {
+    final resolved = resolveMediaUrl(url);
+    if (resolved.isEmpty) return null;
+    final hash = sha1.convert(utf8.encode(resolved)).toString();
+
+    final db = await LocalDatabase.instance.database;
+    final rows = await db.query(
+      'web_media_cache',
+      columns: ['bytes'],
+      where: 'url_hash = ?',
+      whereArgs: [hash],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final raw = rows.first['bytes'];
+      if (raw is List<int>) {
+        return Uint8List.fromList(raw);
+      }
+      if (raw is Uint8List) {
+        return raw;
+      }
+    }
+
+    try {
+      final response = await http.get(Uri.parse(resolved))
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      final bytes = response.bodyBytes;
+      if (bytes.isEmpty) return null;
+      // SPA fallback guard (same as native _download).
+      final contentType =
+          response.headers['content-type']?.toLowerCase() ?? '';
+      if (contentType.contains('text/html') ||
+          contentType.contains('application/xhtml')) {
+        return null;
+      }
+      await db.insert(
+        'web_media_cache',
+        {
+          'url_hash': hash,
+          'url': resolved,
+          'bytes': bytes,
+          'fetched_at': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      return bytes;
+    } catch (_) {
+      return null;
+    }
   }
 }

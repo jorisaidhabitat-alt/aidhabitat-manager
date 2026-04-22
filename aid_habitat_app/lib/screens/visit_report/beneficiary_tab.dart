@@ -673,7 +673,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             label: 'Occupation',
             options: _occupationOptions,
             selected: _occupationStatus,
-            columns: 3,
+            columns: 1,
             onChanged: (v) {
               _occupationStatus = v;
               _markChanged();
