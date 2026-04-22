@@ -43,6 +43,9 @@ class _WcTabState extends State<WcTab>
   bool _loaded = false;
   Timer? _saveTimer;
   int _activeLevelIndex = 0;
+  // Fields WC en mode édition (pill toggle visible). Clé = "{instId}-{field}".
+  // Hors du set = CollapsedValueRow. Parité avec Type de logement.
+  final Set<String> _editingFieldKeys = {};
 
   @override
   void initState() {
@@ -263,10 +266,11 @@ class _WcTabState extends State<WcTab>
 
   Widget _buildMain() {
     final a = _active!;
-    // Titre "Équipements WC — …" retiré.
     return Column(
       children: [
-        FormToggleGroup(
+        _collapsibleToggle(
+          instanceId: a.id,
+          fieldName: 'wcCuvette',
           label: 'Hauteur de cuvette',
           options: const ['Bonne hauteur', 'Trop basse'],
           selected: a.wcCuvetteTropBasse ? 'Trop basse' : 'Bonne hauteur',
@@ -285,7 +289,9 @@ class _WcTabState extends State<WcTab>
               wcCuvetteHauteur: v, wcCuvetteHauteurNull: v == null)),
         ),
         const SizedBox(height: 14),
-        FormToggleGroup(
+        _collapsibleToggle(
+          instanceId: a.id,
+          fieldName: 'wcBarre',
           label: 'Barre de relèvement',
           options: const ['Présente', 'Absente'],
           selected: a.wcBarreRelevement ? 'Présente' : 'Absente',
@@ -299,10 +305,11 @@ class _WcTabState extends State<WcTab>
 
   Widget _buildDoor() {
     final a = _active!;
-    // Titre "Porte WC — …" retiré.
     return Column(
       children: [
-        FormToggleGroup(
+        _collapsibleToggle(
+          instanceId: a.id,
+          fieldName: 'porteWcLargeur',
           label: 'Largeur de porte',
           options: const ['Suffisante', 'À revoir'],
           selected: a.porteWcLargeurSuffisante ? 'Suffisante' : 'À revoir',
@@ -318,15 +325,49 @@ class _WcTabState extends State<WcTab>
               porteWcDimension: v, porteWcDimensionNull: v == null)),
         ),
         const SizedBox(height: 14),
-        FormToggleGroup(
+        _collapsibleToggle(
+          instanceId: a.id,
+          fieldName: 'porteWcSens',
           label: "Sens d'ouverture",
           options: const ['Intérieur', 'Extérieur'],
           selected: a.porteWcSensAdapte ? 'Intérieur' : 'Extérieur',
-          onChanged: (v) => _updateActive(
-              _copy(a, porteWcSensAdapte: v == 'Intérieur')),
+          onChanged: (v) =>
+              _updateActive(_copy(a, porteWcSensAdapte: v == 'Intérieur')),
         ),
         const SizedBox(height: 24),
       ],
+    );
+  }
+
+  /// Helper "type de logement" : toggle éditable tant que la clé est
+  /// dans `_editingFieldKeys`, puis se replie sur une `CollapsedValueRow`
+  /// dès que l'utilisateur a choisi.
+  Widget _collapsibleToggle({
+    required String instanceId,
+    required String fieldName,
+    required String label,
+    required List<String> options,
+    required String selected,
+    required ValueChanged<String> onChanged,
+  }) {
+    final key = '$instanceId-$fieldName';
+    final editing = _editingFieldKeys.contains(key);
+    if (editing) {
+      return FormToggleGroup(
+        label: label,
+        options: options,
+        selected: selected,
+        expand: true,
+        onChanged: (v) {
+          onChanged(v);
+          setState(() => _editingFieldKeys.remove(key));
+        },
+      );
+    }
+    return CollapsedValueRow(
+      label: label,
+      displayValue: selected,
+      onEdit: () => setState(() => _editingFieldKeys.add(key)),
     );
   }
 

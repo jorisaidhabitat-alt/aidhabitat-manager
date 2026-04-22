@@ -118,6 +118,12 @@ class _BathroomTabState extends State<BathroomTab>
   bool _loaded = false;
   Timer? _saveTimer;
   int _activeLevelIndex = 0;
+  // Fields en mode édition (pill toggle visible). Clé = "{instanceId}-{field}".
+  // Absence = collapsed (CollapsedValueRow). Parité avec Type de logement.
+  final Set<String> _editingFieldKeys = {};
+  // Instances dont la section "Équipements complémentaires" est en mode
+  // édition (checkboxes 2 col + Valider). Par id d'instance.
+  final Set<String> _editingEquipInstances = {};
 
   @override
   void initState() {
@@ -495,12 +501,10 @@ class _BathroomTabState extends State<BathroomTab>
             ),
           ],
           const SizedBox(height: 16),
-          FormMultiSelectDropdown(
-            label: 'Équipements complémentaires',
-            options: [for (final it in commonItems) it.label],
-            selected: selectedCommon,
-            onChanged: (next) => _applyCommonSelection(commonItems, next),
-            placeholder: 'Sélectionner les équipements...',
+          _buildEquipmentChecklistOrCollapsed(
+            instance: a,
+            commonItems: commonItems,
+            selectedCommon: selectedCommon,
           ),
           const SizedBox(height: 12),
           GestureDetector(
@@ -542,14 +546,14 @@ class _BathroomTabState extends State<BathroomTab>
 
   Widget _buildDoor() {
     final a = _active!;
-    // Titre "Porte Salle de Bain — …" retiré.
     return Column(
       children: [
-        FormToggleGroup(
+        _collapsibleToggle(
+          instanceId: a.id,
+          fieldName: 'porteSdbLargeur',
           label: 'Largeur de porte',
           options: const ['Suffisante', 'À revoir'],
           selected: a.porteSdbLargeurSuffisante ? 'Suffisante' : 'À revoir',
-          expand: true,
           onChanged: (v) => _updateActive(
               _copy(a, porteSdbLargeurSuffisante: v == 'Suffisante')),
         ),
@@ -558,20 +562,124 @@ class _BathroomTabState extends State<BathroomTab>
           label: 'Dimension de porte',
           value: a.porteSdbDimension,
           unit: 'cm',
-          onChanged: (v) =>
-              _updateActive(_copy(a, porteSdbDimension: v, porteSdbDimensionNull: v == null)),
+          onChanged: (v) => _updateActive(
+              _copy(a, porteSdbDimension: v, porteSdbDimensionNull: v == null)),
         ),
         const SizedBox(height: 14),
-        FormToggleGroup(
+        _collapsibleToggle(
+          instanceId: a.id,
+          fieldName: 'porteSdbSens',
           label: "Sens d'ouverture",
           options: const ['Intérieur', 'Extérieur'],
           selected: a.porteSdbSensAdapte ? 'Intérieur' : 'Extérieur',
-          expand: true,
-          onChanged: (v) => _updateActive(
-              _copy(a, porteSdbSensAdapte: v == 'Intérieur')),
+          onChanged: (v) =>
+              _updateActive(_copy(a, porteSdbSensAdapte: v == 'Intérieur')),
         ),
         const SizedBox(height: 24),
       ],
+    );
+  }
+
+  /// Liste 2 colonnes de cases à cocher pour les équipements
+  /// complémentaires + bouton "Valider" pleine largeur en bas. Bascule
+  /// sur `CollapsedValueRow` après Valider si au moins un élément est
+  /// sélectionné (idem Type de logement).
+  Widget _buildEquipmentChecklistOrCollapsed({
+    required BathroomInstance instance,
+    required List<_EquipDef> commonItems,
+    required Set<String> selectedCommon,
+  }) {
+    final editing = _editingEquipInstances.contains(instance.id);
+    // Collapsed uniquement si au moins un équipement est sélectionné.
+    if (!editing && selectedCommon.isNotEmpty) {
+      final summary = selectedCommon.join(', ');
+      return CollapsedValueRow(
+        label: 'Équipements complémentaires',
+        displayValue: summary,
+        onEdit: () =>
+            setState(() => _editingEquipInstances.add(instance.id)),
+      );
+    }
+    // Sinon : 2 colonnes de checkboxes + Valider pleine largeur.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Équipements complémentaires',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 8),
+        _EquipTwoColumnGrid(
+          items: commonItems,
+          selected: selectedCommon,
+          onToggle: (label, checked) {
+            final next = Set<String>.from(selectedCommon);
+            if (checked) {
+              next.add(label);
+            } else {
+              next.remove(label);
+            }
+            _applyCommonSelection(commonItems, next);
+          },
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF907CA1),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () =>
+                setState(() => _editingEquipInstances.remove(instance.id)),
+            child: const Text(
+              'Valider',
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Helper "type de logement" : toggle éditable tant que la clé est
+  /// dans `_editingFieldKeys`, puis se replie sur une `CollapsedValueRow`
+  /// dès que l'utilisateur a choisi.
+  Widget _collapsibleToggle({
+    required String instanceId,
+    required String fieldName,
+    required String label,
+    required List<String> options,
+    required String selected,
+    required ValueChanged<String> onChanged,
+  }) {
+    final key = '$instanceId-$fieldName';
+    final editing = _editingFieldKeys.contains(key);
+    if (editing) {
+      return FormToggleGroup(
+        label: label,
+        options: options,
+        selected: selected,
+        expand: true,
+        onChanged: (v) {
+          onChanged(v);
+          setState(() => _editingFieldKeys.remove(key));
+        },
+      );
+    }
+    return CollapsedValueRow(
+      label: label,
+      displayValue: selected,
+      onEdit: () => setState(() => _editingFieldKeys.add(key)),
     );
   }
 
@@ -871,6 +979,93 @@ class _MeasuredOptionCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Grille 2 colonnes de cases à cocher pour les équipements complémentaires
+/// de la salle de bain. Chaque cellule = checkbox carrée + label cliquables.
+class _EquipTwoColumnGrid extends StatelessWidget {
+  const _EquipTwoColumnGrid({
+    required this.items,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final List<_EquipDef> items;
+  final Set<String> selected;
+  final void Function(String label, bool checked) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    // On itère par paires pour remplir les 2 colonnes ligne par ligne.
+    final rows = <Widget>[];
+    for (var i = 0; i < items.length; i += 2) {
+      final left = items[i];
+      final right = i + 1 < items.length ? items[i + 1] : null;
+      rows.add(Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _buildCell(left)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: right == null
+                  ? const SizedBox.shrink()
+                  : _buildCell(right),
+            ),
+          ],
+        ),
+      ));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: rows,
+    );
+  }
+
+  Widget _buildCell(_EquipDef def) {
+    final checked = selected.contains(def.label);
+    return InkWell(
+      onTap: () => onToggle(def.label, !checked),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: checked ? const Color(0xFF907CA1) : Colors.white,
+                border: Border.all(
+                  color: checked
+                      ? const Color(0xFF907CA1)
+                      : Colors.grey.shade400,
+                  width: 1.5,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: checked
+                  ? const Icon(Icons.check,
+                      size: 14, color: Colors.white)
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                def.label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF334155),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
