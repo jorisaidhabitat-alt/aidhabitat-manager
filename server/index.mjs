@@ -753,12 +753,20 @@ const mapMedicalContext = (contextRecord) => {
 
 const AUTH_STORE_KEY = 'auth-store.json';
 
+// Prefer a stable `JWT_SECRET` env var over the per-instance random one. On
+// Vercel serverless (without Blob storage) the auth-store lives in /tmp,
+// which is ephemeral and per-cold-start — so every new function instance
+// would otherwise regenerate `secret` and invalidate every JWT the previous
+// instance signed (→ random 401s on the clients). Setting JWT_SECRET in
+// the project's env vars pins it across cold starts.
+const STATIC_JWT_SECRET = stringValue(process.env.JWT_SECRET).trim();
+
 const readAuthStore = async () => {
   const parsed = await getJson(AUTH_STORE_KEY, null);
   if (!parsed) {
     return {
       version: 1,
-      secret: randomSecret(),
+      secret: STATIC_JWT_SECRET || randomSecret(),
       users: {},
       pendingCredentials: {},
     };
@@ -774,7 +782,7 @@ const readAuthStore = async () => {
   );
   return {
     version: 1,
-    secret: parsed.secret || randomSecret(),
+    secret: STATIC_JWT_SECRET || parsed.secret || randomSecret(),
     users,
     pendingCredentials: parsed.pendingCredentials || {},
   };
