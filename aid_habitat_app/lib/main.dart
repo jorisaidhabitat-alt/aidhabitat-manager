@@ -191,6 +191,7 @@ class _AuthRootState extends State<AuthRoot> {
   final AuthService _authService = AuthService();
   LocalAppUser? _currentUser;
   bool _isLoading = true;
+  String? _bootError;
 
   @override
   void initState() {
@@ -203,13 +204,39 @@ class _AuthRootState extends State<AuthRoot> {
     // sinon AppConfig.hasRemoteConfig reste false après un redémarrage de
     // l'app et toutes les syncs NocoDB échouent avec "Configuration NocoDB
     // absente" (y compris le relevé à domicile).
-    await _authService.restoreRemoteSession();
-    final user = await _authService.getCurrentUser();
-    if (!mounted) return;
-    setState(() {
-      _currentUser = user;
-      _isLoading = false;
-    });
+    //
+    // On borne chaque appel par un timeout : si SQLite plante (sqflite web
+    // worker, wasm non chargé, etc.), le spinner disparaît quand même et on
+    // montre un écran d'erreur plutôt que de bloquer l'utilisateur sur un
+    // loader infini.
+    try {
+      // ignore: avoid_print
+      print('[auth-root] restoreRemoteSession…');
+      await _authService.restoreRemoteSession()
+          .timeout(const Duration(seconds: 8));
+      // ignore: avoid_print
+      print('[auth-root] getCurrentUser…');
+      final user = await _authService.getCurrentUser()
+          .timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      setState(() {
+        _currentUser = user;
+        _isLoading = false;
+      });
+      // ignore: avoid_print
+      print('[auth-root] done. user=${user?.email ?? "(none)"}');
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('[auth-root] FAILED: $e');
+      // ignore: avoid_print
+      print(st);
+      if (!mounted) return;
+      setState(() {
+        _currentUser = null;
+        _isLoading = false;
+        _bootError = e.toString();
+      });
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -224,6 +251,51 @@ class _AuthRootState extends State<AuthRoot> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    // When SQLite init failed (sqflite web worker hang, wasm not loaded,
+    // OPFS disabled, …) we still want the user to see something actionable
+    // instead of an infinite spinner. Login will be disabled but the error
+    // is explicit so the issue can be reported.
+    if (_bootError != null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.redAccent),
+                const SizedBox(height: 16),
+                const Text(
+                  "Impossible d'initialiser le stockage local",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _bootError!,
+                  style: const TextStyle(color: Colors.black54),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _isLoading = true;
+                      _bootError = null;
+                    });
+                    _restoreSession();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Réessayer'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     if (_currentUser == null) {
