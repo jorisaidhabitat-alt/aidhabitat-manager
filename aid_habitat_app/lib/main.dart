@@ -27,8 +27,15 @@ Future<void> main(List<String> args) async {
   // Sur web : bascule sqflite sur le backend WASM+IndexedDB pour que les
   // appels existants (`sqflite.openDatabase`, `Database.query`, …)
   // fonctionnent tels quels dans le navigateur.
+  //
+  // `databaseFactoryFfiWebNoWebWorker` garde tout le SQL sur le thread
+  // principal (pas de SharedWorker). Un peu plus lent mais évite les
+  // incompats de version entre `sqflite_sw.js` pré-généré et la build
+  // Flutter en cours, qui produisaient un init silencieux et bloquaient
+  // `LocalDatabase.instance.database` pour toujours (page blanche sur
+  // la PWA Vercel).
   if (kIsWeb) {
-    databaseFactory = databaseFactoryFfiWeb;
+    databaseFactory = databaseFactoryFfiWebNoWebWorker;
   }
 
   // Secondary OS windows (opened via DesktopMultiWindow.createWindow) start
