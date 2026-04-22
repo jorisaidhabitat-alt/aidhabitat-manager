@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -85,8 +86,137 @@ class _AnahScreenState extends State<AnahScreen> {
         children: [
           _buildHeader(),
           const SizedBox(height: 16),
-          Expanded(child: _buildWebViewCard()),
+          // Sur web/PWA iPad, `flutter_inappwebview` ne sait pas embedder
+          // le portail (et anah.gouv.fr bloque l'iframe via
+          // `X-Frame-Options: DENY`). On affiche une carte propre avec les
+          // deux liens officiels + un CTA qui ouvre MaPrimeAdapt' dans un
+          // nouvel onglet Safari — la seule solution réaliste côté web.
+          Expanded(
+            child: kIsWeb ? _buildWebExternalCard() : _buildWebViewCard(),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Carte affichée sur web (PWA iPad, navigateur Safari/Chrome) pour
+  /// rediriger vers MaPrimeAdapt' dans un nouvel onglet.
+  Widget _buildWebExternalCard() {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEE7F2),
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    LucideIcons.home,
+                    size: 44,
+                    color: Color(0xFF907CA1),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  "MaPrimeAdapt'",
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Le portail officiel de l'Agence nationale de l'habitat "
+                  "ne peut pas être affiché directement dans l'application "
+                  "(politique de sécurité du site gouv.fr).",
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _openExternal(_registrationUrl),
+                    icon: const Icon(LucideIcons.externalLink, size: 18),
+                    label: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        "Ouvrir MaPrimeAdapt'",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF907CA1),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openExternal(_publicUrl),
+                    icon: const Icon(LucideIcons.globe, size: 16),
+                    label: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Text(
+                        "Site institutionnel anah.gouv.fr",
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF334155),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                  ),
+                ),
+                if (_statusError != null) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    _statusError!,
+                    style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -110,40 +240,44 @@ class _AnahScreenState extends State<AnahScreen> {
         ),
         const Spacer(),
         _buildStatusBadge(),
-        const SizedBox(width: 12),
-        IconButton(
-          onPressed: _webController == null
-              ? null
-              : () => _webController!.goBack(),
-          icon: const Icon(LucideIcons.arrowLeft, size: 18),
-          tooltip: 'Précédent',
-        ),
-        IconButton(
-          onPressed: _webController == null
-              ? null
-              : () => _webController!.goForward(),
-          icon: const Icon(LucideIcons.arrowRight, size: 18),
-          tooltip: 'Suivant',
-        ),
-        IconButton(
-          onPressed: _webController == null
-              ? null
-              : () => _webController!.reload(),
-          icon: const Icon(LucideIcons.refreshCw, size: 18),
-          tooltip: 'Recharger',
-        ),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: () => _openExternal(_currentUrl.isEmpty
-              ? _registrationUrl
-              : _currentUrl),
-          icon: const Icon(LucideIcons.externalLink, size: 16),
-          label: const Text('Ouvrir dans Safari'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF334155),
-            side: const BorderSide(color: Color(0xFFCBD5E1)),
+        // Les boutons back/forward/reload n'ont de sens qu'avec la WebView
+        // native — sur web la carte affiche simplement le CTA externe.
+        if (!kIsWeb) ...[
+          const SizedBox(width: 12),
+          IconButton(
+            onPressed: _webController == null
+                ? null
+                : () => _webController!.goBack(),
+            icon: const Icon(LucideIcons.arrowLeft, size: 18),
+            tooltip: 'Précédent',
           ),
-        ),
+          IconButton(
+            onPressed: _webController == null
+                ? null
+                : () => _webController!.goForward(),
+            icon: const Icon(LucideIcons.arrowRight, size: 18),
+            tooltip: 'Suivant',
+          ),
+          IconButton(
+            onPressed: _webController == null
+                ? null
+                : () => _webController!.reload(),
+            icon: const Icon(LucideIcons.refreshCw, size: 18),
+            tooltip: 'Recharger',
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () => _openExternal(_currentUrl.isEmpty
+                ? _registrationUrl
+                : _currentUrl),
+            icon: const Icon(LucideIcons.externalLink, size: 16),
+            label: const Text('Ouvrir dans Safari'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF334155),
+              side: const BorderSide(color: Color(0xFFCBD5E1)),
+            ),
+          ),
+        ],
       ],
     );
   }
