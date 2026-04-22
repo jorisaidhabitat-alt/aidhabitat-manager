@@ -698,12 +698,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 }
 
 /// Marqueurs numérotés sur le canvas de la note "Contexte de vie >
-/// Médical". Format : `N -` en noir, gros, gras. Positionnés en
-/// colonne à gauche — chaque numéro a un emplacement FIXE :
-///   • 1 en haut
-///   • 2 au milieu
-///   • 3 en bas
-/// Ainsi, cocher le 3 sans cocher 1 ou 2 le met quand même en bas.
+/// Médical". Format : `N -` en noir gras, taille 28. Positionnés
+/// en colonne à gauche — les slots se remplissent de HAUT EN BAS selon
+/// l'ordre des flags actifs (pas leur numéro) :
+///   • 1 flag actif   → top
+///   • 2 flags actifs → top + middle
+///   • 3 flags actifs → top + middle + bottom
+/// Donc cocher uniquement le 3 l'affiche EN HAUT ; cocher 2 et 3 met
+/// le 2 en haut et le 3 au milieu ; cocher les 3 remplit les 3 slots.
 class _MedicalFlagBadges extends StatelessWidget {
   const _MedicalFlagBadges({required this.flags});
   final Set<int> flags;
@@ -711,33 +713,56 @@ class _MedicalFlagBadges extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (flags.isEmpty) return const SizedBox.shrink();
+    final sorted = flags.toList()..sort();
     return LayoutBuilder(
       builder: (ctx, constraints) {
         const leftPad = 16.0;
+        const topPad = 12.0;
+        const bottomPad = 12.0;
         return Stack(
           children: [
-            if (flags.contains(1))
-              const Positioned(
-                top: 12,
-                left: leftPad,
-                child: _FlagMarker(number: 1),
-              ),
-            if (flags.contains(2))
+            for (var i = 0; i < sorted.length; i++)
               Positioned(
-                top: (constraints.maxHeight / 2) - 18,
                 left: leftPad,
-                child: const _FlagMarker(number: 2),
-              ),
-            if (flags.contains(3))
-              const Positioned(
-                bottom: 12,
-                left: leftPad,
-                child: _FlagMarker(number: 3),
+                top: _slotTopFor(
+                  index: i,
+                  total: sorted.length,
+                  canvasHeight: constraints.maxHeight,
+                  topPad: topPad,
+                  bottomPad: bottomPad,
+                ),
+                child: _FlagMarker(number: sorted[i]),
               ),
           ],
         );
       },
     );
+  }
+
+  /// Pour un [total] de flags actifs, retourne le `top:` absolu du slot
+  /// d'index [index] (0 = haut, total-1 = bas).
+  /// - total == 1 : un seul slot en haut
+  /// - total == 2 : haut + milieu
+  /// - total == 3 : haut + milieu + bas
+  double _slotTopFor({
+    required int index,
+    required int total,
+    required double canvasHeight,
+    required double topPad,
+    required double bottomPad,
+  }) {
+    if (total <= 1) return topPad;
+    const markerApproxHeight = 30.0; // ~ fontSize 28 + descenders
+    final topSlot = topPad;
+    final middleSlot = (canvasHeight / 2) - (markerApproxHeight / 2);
+    final bottomSlot = canvasHeight - bottomPad - markerApproxHeight;
+    if (total == 2) {
+      return index == 0 ? topSlot : middleSlot;
+    }
+    // total == 3
+    if (index == 0) return topSlot;
+    if (index == 1) return middleSlot;
+    return bottomSlot;
   }
 }
 
