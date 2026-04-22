@@ -156,31 +156,31 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
-  /// Import d'image. iOS/Android/web → picker natif via image_picker.
-  /// Desktop → dialog système natif via FilePicker.
+  /// Import d'image.
+  ///  - iOS / Android natif → `image_picker` gallery (photothèque native)
+  ///  - Web (PWA iPad inclus) → `FilePicker` filtré images. Plus fiable
+  ///    que `image_picker` sur iOS PWA standalone où l'action-sheet web
+  ///    peut ne pas s'ouvrir.
+  ///  - Desktop → même `FilePicker` filtré images.
   Future<void> _pickFromGallery() async {
     if (_isPicking || _isImporting) return;
     _isPicking = true;
     try {
-      if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
+      if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
         final xfile =
             await _imagePicker.pickImage(source: ImageSource.gallery);
         if (xfile == null) return;
-        if (kIsWeb) {
-          await _openUploadModalWeb(xfile, defaultTag: 'Photo');
-        } else {
-          await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
-        }
+        await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
         return;
       }
-      // Desktop
+      // Web + desktop → FilePicker (input[type=file] accept=image/*)
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         dialogTitle: 'Sélectionner une image',
+        withData: kIsWeb,
       );
-      final path = result?.files.single.path;
-      if (path == null || path.isEmpty) return;
-      await _openUploadModal(File(path), defaultTag: 'Photo');
+      if (result == null || result.files.isEmpty) return;
+      await _importPickedFile(result.files.single, defaultTag: 'Photo');
     } catch (err) {
       _showError('Sélection d\'image impossible: $err');
     } finally {
@@ -228,19 +228,31 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
+  /// "Scanner un document" → ouvre directement l'appareil photo. iOS
+  /// inclut un scanner natif dans son picker caméra (encadre auto le
+  /// document), on laisse le user l'utiliser tel quel.
   Future<void> _pickFromScanner() async {
     if (_isPicking || _isImporting) return;
     _isPicking = true;
     try {
-      // `FileType.custom` + allowedExtensions peut échouer sur macOS. On
-      // utilise `FileType.any` et on laisse l'utilisateur choisir librement.
+      if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
+        final xfile =
+            await _imagePicker.pickImage(source: ImageSource.camera);
+        if (xfile == null) return;
+        if (kIsWeb) {
+          await _openUploadModalWeb(xfile, defaultTag: 'Scan');
+        } else {
+          await _openUploadModal(File(xfile.path), defaultTag: 'Scan');
+        }
+        return;
+      }
+      // Desktop → fallback FilePicker (pas de caméra).
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
-        dialogTitle: 'Scanner — choisir un PDF ou une image',
-        withData: kIsWeb, // Web: récupère les bytes (pas de `path`)
+        dialogTitle: 'Scanner — choisir un fichier',
       );
       if (result == null || result.files.isEmpty) return;
-      await _importPickedFile(result.files.single, defaultTag: 'Photo');
+      await _importPickedFile(result.files.single, defaultTag: 'Scan');
     } catch (err) {
       _showError('Scanner indisponible: $err');
     } finally {
