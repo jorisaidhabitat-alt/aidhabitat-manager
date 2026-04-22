@@ -170,7 +170,7 @@ class _WikiScreenState extends State<WikiScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Wiki & Inspiration',
+                'Bibliothèque',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,

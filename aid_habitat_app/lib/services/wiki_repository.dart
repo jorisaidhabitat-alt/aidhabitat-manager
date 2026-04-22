@@ -17,7 +17,13 @@ class WikiRepository {
 
   Future<List<WikiItem>> fetchAllItems() async {
     final db = await _database.database;
-    final rows = await db.query('wiki_items', orderBy: 'updated_at DESC');
+    // Alphabetical by title, case-insensitive (default collation folds
+    // accents too on SQLite). Matches the user's expectation that the
+    // Bibliothèque reads like a dictionary.
+    final rows = await db.query(
+      'wiki_items',
+      orderBy: 'LOWER(title) ASC',
+    );
     return rows.map(_mapRow).toList();
   }
 
