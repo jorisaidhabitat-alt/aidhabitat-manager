@@ -582,9 +582,9 @@ class _BathroomTabState extends State<BathroomTab>
   }
 
   /// Liste 2 colonnes de cases à cocher pour les équipements
-  /// complémentaires + bouton "Valider" pleine largeur en bas. Bascule
-  /// sur `CollapsedValueRow` après Valider si au moins un élément est
-  /// sélectionné (idem Type de logement).
+  /// complémentaires. Pas de bouton Valider : on replie uniquement
+  /// quand l'utilisateur tape à l'extérieur (autre section, prise de
+  /// notes, …). Les clics multiples internes laissent la grille ouverte.
   Widget _buildEquipmentChecklistOrCollapsed({
     required BathroomInstance instance,
     required List<_EquipDef> commonItems,
@@ -601,55 +601,40 @@ class _BathroomTabState extends State<BathroomTab>
             setState(() => _editingEquipInstances.add(instance.id)),
       );
     }
-    // Sinon : 2 colonnes de checkboxes + Valider pleine largeur.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Équipements complémentaires',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF64748B),
-          ),
-        ),
-        const SizedBox(height: 8),
-        _EquipPillGrid(
-          items: commonItems,
-          selected: selectedCommon,
-          columns: 2,
-          onToggle: (label) {
-            final next = Set<String>.from(selectedCommon);
-            if (next.contains(label)) {
-              next.remove(label);
-            } else {
-              next.add(label);
-            }
-            _applyCommonSelection(commonItems, next);
-          },
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF907CA1),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: () =>
-                setState(() => _editingEquipInstances.remove(instance.id)),
-            child: const Text(
-              'Valider',
-              style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w700),
+    return TapRegion(
+      onTapOutside: (_) {
+        if (selectedCommon.isEmpty) return;
+        if (!_editingEquipInstances.contains(instance.id)) return;
+        setState(() => _editingEquipInstances.remove(instance.id));
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Équipements complémentaires',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: Color(0xFF64748B),
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 8),
+          _EquipPillGrid(
+            items: commonItems,
+            selected: selectedCommon,
+            columns: 2,
+            onToggle: (label) {
+              final next = Set<String>.from(selectedCommon);
+              if (next.contains(label)) {
+                next.remove(label);
+              } else {
+                next.add(label);
+              }
+              _applyCommonSelection(commonItems, next);
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -1053,11 +1038,12 @@ class _Pill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF907CA1) : Colors.white,
+          color:
+              isSelected ? const Color(0xFFE2E8F0) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF907CA1)
+                ? const Color(0xFFCBD5E1)
                 : Colors.grey.shade300,
             width: 1.2,
           ),
@@ -1066,7 +1052,9 @@ class _Pill extends StatelessWidget {
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
+            color: isSelected
+                ? const Color(0xFF0F172A)
+                : Colors.black87,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),

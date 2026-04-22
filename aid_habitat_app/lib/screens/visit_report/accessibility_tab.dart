@@ -761,47 +761,51 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     );
   }
 
-  /// Éditeur chauffage : pills multi-toggle sur 3 colonnes + bouton
-  /// "Valider" pleine largeur pour replier la liste une fois les choix
-  /// faits.
+  /// Éditeur chauffage : pills multi-toggle sur 3 colonnes. Pas de
+  /// bouton Valider — on replie uniquement quand l'utilisateur tape à
+  /// l'extérieur (autre section, prise de notes, n'importe où ailleurs
+  /// hors de cette grille). Les clics multiples internes laissent la
+  /// grille ouverte.
   Widget _buildHeatingEditor() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text(
-          'Chauffage',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF64748B),
+    return TapRegion(
+      onTapOutside: (_) {
+        if (!_heatingEditing && _heatingCommitted) return;
+        setState(() {
+          _heatingCommitted = true;
+          _heatingEditing = false;
+        });
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Chauffage',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: Color(0xFF64748B),
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        _buildMultiSelectGrid(
-          options: _heatingOptions,
-          selected: _heatingTypes,
-          columns: 3,
-          onToggle: (opt) {
-            setState(() {
-              final next = Set<String>.from(_heatingTypes);
-              if (next.contains(opt)) {
-                next.remove(opt);
-              } else {
-                next.add(opt);
-              }
-              _heatingTypes = next;
-            });
-            _scheduleSave();
-          },
-        ),
-        const SizedBox(height: 10),
-        _buildFullWidthValidateButton(
-          onTap: () => setState(() {
-            _heatingCommitted = true;
-            _heatingEditing = false;
-          }),
-        ),
-      ],
+          const SizedBox(height: 8),
+          _buildMultiSelectGrid(
+            options: _heatingOptions,
+            selected: _heatingTypes,
+            columns: 3,
+            onToggle: (opt) {
+              setState(() {
+                final next = Set<String>.from(_heatingTypes);
+                if (next.contains(opt)) {
+                  next.remove(opt);
+                } else {
+                  next.add(opt);
+                }
+                _heatingTypes = next;
+              });
+              _scheduleSave();
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -852,11 +856,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF907CA1) : Colors.white,
+          color:
+              isSelected ? const Color(0xFFE2E8F0) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF907CA1)
+                ? const Color(0xFFCBD5E1)
                 : Colors.grey.shade300,
             width: 1.2,
           ),
@@ -865,32 +870,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
+            color: isSelected
+                ? const Color(0xFF0F172A)
+                : Colors.black87,
             fontSize: 12,
             fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFullWidthValidateButton({required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: const Color(0xFF907CA1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Text(
-          'Valider',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
           ),
         ),
       ),
@@ -1221,8 +1205,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             ],
           ),
         const SizedBox(height: 16),
-        // Annexes : pills 3 colonnes + bouton Valider pleine largeur,
-        // repli "Annexes (Garage, Terrasse) + crayon" une fois validé.
+        // Annexes : pills 3 colonnes. Le repli "Annexes (Garage, …) +
+        // crayon" s'active uniquement quand l'utilisateur tape à
+        // l'extérieur (autre section / ailleurs sur l'écran).
         if (annexesCollapsed)
           CollapsedValueRow(
             label: 'Annexes',
@@ -1232,46 +1217,48 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             onEdit: () => setState(() => _annexesEditing = true),
           )
         else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Annexes',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              _buildMultiSelectGrid(
-                options: annexItems,
-                selected: selectedAnnexes,
-                columns: 3,
-                onToggle: (opt) {
-                  setState(() {
-                    if (opt == 'Portail') {
-                      _portail = !_portail;
-                      if (!_portail) _motorisationPortail = 'Aucun';
-                    } else {
-                      if (_annexes.contains(opt)) {
-                        _annexes.remove(opt);
-                        if (opt == 'Garage') {
-                          _motorisationPorteGarage = 'Aucun';
-                        }
+          TapRegion(
+            onTapOutside: (_) {
+              if (!_annexesEditing && _annexesCommitted) return;
+              setState(() {
+                _annexesCommitted = true;
+                _annexesEditing = false;
+              });
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Annexes',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Color(0xFF64748B))),
+                const SizedBox(height: 8),
+                _buildMultiSelectGrid(
+                  options: annexItems,
+                  selected: selectedAnnexes,
+                  columns: 3,
+                  onToggle: (opt) {
+                    setState(() {
+                      if (opt == 'Portail') {
+                        _portail = !_portail;
+                        if (!_portail) _motorisationPortail = 'Aucun';
                       } else {
-                        _annexes.add(opt);
+                        if (_annexes.contains(opt)) {
+                          _annexes.remove(opt);
+                          if (opt == 'Garage') {
+                            _motorisationPorteGarage = 'Aucun';
+                          }
+                        } else {
+                          _annexes.add(opt);
+                        }
                       }
-                    }
-                  });
-                  _scheduleSave();
-                },
-              ),
-              const SizedBox(height: 10),
-              _buildFullWidthValidateButton(
-                onTap: () => setState(() {
-                  _annexesCommitted = true;
-                  _annexesEditing = false;
-                }),
-              ),
-            ],
+                    });
+                    _scheduleSave();
+                  },
+                ),
+              ],
+            ),
           ),
         // Motorisations conditionnelles (toujours visibles quand
         // l'annexe associée est active, collapsed ou pas).
