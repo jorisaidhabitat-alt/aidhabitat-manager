@@ -91,6 +91,15 @@ app.use((req, res, next) => {
   }
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Session, If-Unmodified-Since');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  // The Flutter PWA runs in a crossOriginIsolated context
+  // (COEP: credentialless + COOP: same-origin) so SharedArrayBuffer —
+  // required by sqflite_common_ffi_web's shared worker — is available.
+  // A side effect is that cross-origin responses without an explicit
+  // Cross-Origin-Resource-Policy get blocked at the browser level,
+  // producing a silent `TypeError: Failed to fetch`. Declaring the API
+  // as `cross-origin` tells the browser these responses are safe to
+  // consume from the PWA origin (CORS still gates the actual data).
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   if (req.method === 'OPTIONS') {
     res.sendStatus(204);
     return;
