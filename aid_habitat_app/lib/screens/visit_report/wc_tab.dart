@@ -357,7 +357,9 @@ class _WcTabState extends State<WcTab>
         label: label,
         options: options,
         selected: selected,
-        expand: true,
+        // expand: false → pills dimensionnés au contenu, alignés à
+        // GAUCHE via le Wrap interne (plus de full-width centré).
+        expand: false,
         onChanged: (v) {
           onChanged(v);
           setState(() => _editingFieldKeys.remove(key));

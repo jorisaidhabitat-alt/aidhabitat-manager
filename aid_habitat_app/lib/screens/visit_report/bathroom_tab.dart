@@ -613,15 +613,16 @@ class _BathroomTabState extends State<BathroomTab>
           ),
         ),
         const SizedBox(height: 8),
-        _EquipTwoColumnGrid(
+        _EquipPillGrid(
           items: commonItems,
           selected: selectedCommon,
-          onToggle: (label, checked) {
+          columns: 2,
+          onToggle: (label) {
             final next = Set<String>.from(selectedCommon);
-            if (checked) {
-              next.add(label);
-            } else {
+            if (next.contains(label)) {
               next.remove(label);
+            } else {
+              next.add(label);
             }
             _applyCommonSelection(commonItems, next);
           },
@@ -669,7 +670,9 @@ class _BathroomTabState extends State<BathroomTab>
         label: label,
         options: options,
         selected: selected,
-        expand: true,
+        // expand: false → pills dimensionnés au contenu, alignés à
+        // GAUCHE via le Wrap interne (plus de full-width centré).
+        expand: false,
         onChanged: (v) {
           onChanged(v);
           setState(() => _editingFieldKeys.remove(key));
@@ -984,87 +987,88 @@ class _MeasuredOptionCard extends StatelessWidget {
   }
 }
 
-/// Grille 2 colonnes de cases à cocher pour les équipements complémentaires
-/// de la salle de bain. Chaque cellule = checkbox carrée + label cliquables.
-class _EquipTwoColumnGrid extends StatelessWidget {
-  const _EquipTwoColumnGrid({
+/// Grille de pills multi-toggle pour les équipements complémentaires de
+/// la salle de bain. Même visuel que les pills "Niveaux" de l'onglet
+/// Accessibilité : bordure grise quand non sélectionné, fond violet
+/// plein quand sélectionné, texte blanc.
+class _EquipPillGrid extends StatelessWidget {
+  const _EquipPillGrid({
     required this.items,
     required this.selected,
     required this.onToggle,
+    this.columns = 2,
   });
 
   final List<_EquipDef> items;
   final Set<String> selected;
-  final void Function(String label, bool checked) onToggle;
+  final ValueChanged<String> onToggle;
+  final int columns;
 
   @override
   Widget build(BuildContext context) {
-    // On itère par paires pour remplir les 2 colonnes ligne par ligne.
     final rows = <Widget>[];
-    for (var i = 0; i < items.length; i += 2) {
-      final left = items[i];
-      final right = i + 1 < items.length ? items[i + 1] : null;
-      rows.add(Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _buildCell(left)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: right == null
-                  ? const SizedBox.shrink()
-                  : _buildCell(right),
-            ),
-          ],
-        ),
-      ));
+    for (var r = 0; r < items.length; r += columns) {
+      final rowChildren = <Widget>[];
+      for (var c = 0; c < columns; c++) {
+        if (c > 0) rowChildren.add(const SizedBox(width: 8));
+        final idx = r + c;
+        rowChildren.add(
+          Expanded(
+            child: idx < items.length
+                ? _Pill(
+                    label: items[idx].label,
+                    isSelected: selected.contains(items[idx].label),
+                    onTap: () => onToggle(items[idx].label),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        );
+      }
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: 8));
+      rows.add(Row(children: rowChildren));
     }
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: rows,
     );
   }
+}
 
-  Widget _buildCell(_EquipDef def) {
-    final checked = selected.contains(def.label);
-    return InkWell(
-      onTap: () => onToggle(def.label, !checked),
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-        child: Row(
-          children: [
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: checked ? const Color(0xFF907CA1) : Colors.white,
-                border: Border.all(
-                  color: checked
-                      ? const Color(0xFF907CA1)
-                      : Colors.grey.shade400,
-                  width: 1.5,
-                ),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: checked
-                  ? const Icon(Icons.check,
-                      size: 14, color: Colors.white)
-                  : null,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                def.label,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF334155),
-                ),
-              ),
-            ),
-          ],
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF907CA1) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF907CA1)
+                : Colors.grey.shade300,
+            width: 1.2,
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
