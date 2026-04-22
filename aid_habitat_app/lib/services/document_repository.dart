@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
+import 'app_config.dart';
 import 'local_database.dart';
 import 'media_cache_service.dart';
 import 'sync_engine.dart';
@@ -374,7 +376,23 @@ class DocumentRepository {
     }
     if (urls.isEmpty) return;
     try {
-      await MediaCacheService.instance.prefetchAll(urls);
+      if (kIsWeb) {
+        // Web : les URLs patient sont privées (require `X-App-Session`).
+        // On passe directement par `webCachedFetch` avec le token courant —
+        // `prefetchAll` ne connaît pas les headers d'auth.
+        for (final url in urls) {
+          unawaited(
+            MediaCacheService.instance
+                .webCachedFetch(
+                  url,
+                  headers: {'X-App-Session': AppConfig.appSessionToken},
+                )
+                .then((_) {}, onError: (_) {}),
+          );
+        }
+      } else {
+        await MediaCacheService.instance.prefetchAll(urls);
+      }
     } catch (_) {
       // Best effort — one failed doc shouldn't block others.
     }

@@ -163,16 +163,25 @@ class MediaCacheService {
   // ---------------------------------------------------------------------------
 
   /// Fetches [url] on web with a SQLite-backed cache so wiki + retirement
-  /// logos keep displaying when the iPad is offline. Returns raw bytes
-  /// (raster or SVG) on success, null if neither cache nor network has the
-  /// resource.
+  /// logos + patient documents keep displaying when the iPad is offline.
+  /// Returns raw bytes (raster or SVG) on success, null if neither cache
+  /// nor network has the resource.
+  ///
+  /// [headers] is optional and only used for the network fetch on a cache
+  /// miss — it lets callers pass `X-App-Session` for private API URLs.
+  /// Auth headers don't participate in the cache key: we want the cached
+  /// bytes to be readable offline regardless of token freshness.
   ///
   /// Strategy:
   ///   1. Lookup `web_media_cache` by sha1(resolved url). Cache hit → return.
-  ///   2. Miss → http.get. On 200, persist bytes + return them.
+  ///   2. Miss → http.get (with optional auth headers). On 200, persist
+  ///      bytes + return them.
   ///   3. http.get fails / non-200 → return null so the caller can render
   ///      its error widget.
-  Future<Uint8List?> webCachedFetch(String url) async {
+  Future<Uint8List?> webCachedFetch(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
     final resolved = resolveMediaUrl(url);
     if (resolved.isEmpty) return null;
     final hash = sha1.convert(utf8.encode(resolved)).toString();
@@ -196,7 +205,8 @@ class MediaCacheService {
     }
 
     try {
-      final response = await http.get(Uri.parse(resolved))
+      final response = await http
+          .get(Uri.parse(resolved), headers: headers)
           .timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;

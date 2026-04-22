@@ -1715,7 +1715,24 @@ class _RemoteImageState extends State<_RemoteImage> {
       return;
     }
 
-    // 2. Essaie MediaCacheService (requête non-authentifiée → cache disque).
+    // 2. Web : cache SQLite (persistant + offline). Passe le header
+    //    `X-App-Session` en cas de miss réseau pour les URLs privées.
+    if (kIsWeb) {
+      final bytes = await MediaCacheService().webCachedFetch(
+        widget.url,
+        headers: {'X-App-Session': AppConfig.appSessionToken},
+      );
+      if (!mounted) return;
+      if (bytes != null) {
+        _memCache[widget.url] = bytes;
+        setState(() => _bytes = bytes);
+        return;
+      }
+      setState(() => _failed = true);
+      return;
+    }
+
+    // 3. Native : MediaCacheService (cache filesystem).
     final file = await MediaCacheService().fetch(widget.url);
     if (!mounted) return;
     if (file != null) {
@@ -1723,7 +1740,7 @@ class _RemoteImageState extends State<_RemoteImage> {
       return;
     }
 
-    // 3. Fallback : l'URL est probablement privée et a besoin du header
+    // 4. Fallback : l'URL est probablement privée et a besoin du header
     //    `X-App-Session`. On fetch directement via http avec auth.
     try {
       final uri = _buildAuthedUri(widget.url);
