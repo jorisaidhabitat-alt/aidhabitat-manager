@@ -88,6 +88,12 @@ app.use((req, res, next) => {
   if (isOriginAllowed(origin)) {
     res.header('Access-Control-Allow-Origin', origin || '*');
     res.header('Vary', 'Origin');
+    // Only allow credentials when the origin is explicitly allowed — the
+    // spec forbids `Allow-Origin: *` together with `Allow-Credentials: true`.
+    // The Flutter PWA keeps its Express session via cookies in some
+    // flows, so the browser needs this to accept responses served over
+    // cross-origin requests made with `credentials: 'include'`.
+    res.header('Access-Control-Allow-Credentials', 'true');
   }
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Session, If-Unmodified-Since');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
