@@ -62,3 +62,4 @@ app.*.map.json
 # sqflite_common_ffi_web dependency.
 #/web/sqflite_sw.js
 #/web/sqlite3.wasm
+.vercel
