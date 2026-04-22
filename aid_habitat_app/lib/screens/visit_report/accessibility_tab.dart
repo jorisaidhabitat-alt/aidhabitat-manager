@@ -95,6 +95,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   bool _typologyEditing = false;
   bool _surfaceEditing = false;
   bool _heatingEditing = false;
+  // Chauffage : pas de repli automatique à la première coche ; on
+  // attend un clic explicite sur le bouton Valider pour committer.
+  bool _heatingCommitted = false;
 
   // Volets : flags d'édition (remplace le dropdown par des pills qui se
   // replient en "label (valeur) + crayon" une fois un statut choisi).
@@ -152,7 +155,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     'Électrique',
     'Gaz',
     'Fioul',
-    'Pompe à chaleur',
+    'PAC',
     'Bois',
     'Granulés',
     'Collectif',
@@ -216,9 +219,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         .map((c) => c.field)
         .toList();
 
-    // Chauffage
+    // Chauffage (rétrocompat : données antérieures stockées comme
+    // "Pompe à chaleur" → remplacées par la version compacte "PAC").
     _heatingTypes =
         _parseHeatingJson(row?['heating_details_json'] as String? ?? '{}');
+    if (_heatingTypes.contains('Pompe à chaleur')) {
+      _heatingTypes.remove('Pompe à chaleur');
+      _heatingTypes.add('PAC');
+    }
 
     // Volets
     final manEntier =
@@ -283,6 +291,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     _voletsPersCommitted = _voletsPersStatus != 'Aucun';
     _easyAccessCommitted = row != null;
     _annexesCommitted = row != null;
+    _heatingCommitted = _heatingTypes.isNotEmpty;
 
     if (mounted) setState(() => _loaded = true);
   }
@@ -602,8 +611,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         }),
         const SizedBox(height: 14),
         // 6. Chauffage (multi-select pills avec bouton Valider pour se
-        // replier une fois toutes les options cochées).
-        if (_heatingTypes.isEmpty || _heatingEditing)
+        // replier — l'utilisateur peut cocher/décocher librement, rien
+        // ne se replie tant qu'il n'a pas cliqué Valider).
+        if (!_heatingCommitted || _heatingEditing)
           _buildHeatingEditor()
         else
           CollapsedValueRow(
@@ -786,7 +796,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         ),
         const SizedBox(height: 10),
         _buildFullWidthValidateButton(
-          onTap: () => setState(() => _heatingEditing = false),
+          onTap: () => setState(() {
+            _heatingCommitted = true;
+            _heatingEditing = false;
+          }),
         ),
       ],
     );
