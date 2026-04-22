@@ -536,24 +536,15 @@ class _EpciBadge extends StatelessWidget {
           color: palette.bg,
           borderRadius: BorderRadius.circular(999),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(LucideIcons.building, size: 13, color: palette.fg),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: palette.fg,
-                ),
-              ),
-            ),
-          ],
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: palette.fg,
+          ),
         ),
       ),
     );

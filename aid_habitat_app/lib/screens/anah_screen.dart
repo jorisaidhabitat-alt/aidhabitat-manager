@@ -2,9 +2,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../services/data_service.dart';
+import '../services/external_launcher.dart';
 
 /// ANAH module screen — embeds the MaPrimeAdapt' portal directly inside the
 /// app via an in-app WebView. Fallback to Safari with a toolbar button if the
@@ -67,9 +67,11 @@ class _AnahScreenState extends State<AnahScreen> {
   }
 
   Future<void> _openExternal(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Sur web PWA iPad, `url_launcher` passe par `window.open` que iOS
+    // Safari standalone signale parfois comme "connexion non sécurisée /
+    // se fait passer pour …" (faux positif). `openExternalUrl` crée et
+    // clique un `<a target="_blank">` — pattern accepté sans prompt.
+    final ok = await openExternalUrl(url);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Impossible d\'ouvrir $url')),
