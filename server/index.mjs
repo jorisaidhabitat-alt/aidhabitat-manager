@@ -49,7 +49,12 @@ const ANAH_REGISTRATION_URL = 'https://monprojet.anah.gouv.fr/';
 const APP_PUBLIC_BASE_URL = String(process.env.APP_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '')
   || (process.env.VERCEL_URL ? `https://${String(process.env.VERCEL_URL).trim()}` : '');
 const LOCALHOST_URL_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i;
-const PROJECT_VERCEL_HOST_PATTERN = /^aid-habitat-manager(?:-[a-z0-9-]+)?\.vercel\.app$/i;
+// Accepts every Vercel preview + prod host belonging to this project family:
+//   - aid-habitat-manager.vercel.app      (legacy React + API root)
+//   - aid-habitat-manager-xxx.vercel.app  (Vercel preview deploys)
+//   - aid-habitat-app.vercel.app          (Flutter PWA iPad)
+//   - aid-habitat-app-xxx.vercel.app      (Flutter PWA previews)
+const PROJECT_VERCEL_HOST_PATTERN = /^aid-habitat-(manager|app)(?:-[a-z0-9-]+)?\.vercel\.app$/i;
 let anahStatusCache = null;
 let bundledWikiItemsCache = null;
 
