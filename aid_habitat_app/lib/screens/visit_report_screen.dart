@@ -697,73 +697,63 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   }
 }
 
-/// Badges numérotés affichés en haut-gauche du canvas de dessin, sur la
-/// note "Contexte de vie > Médical". Chaque numéro correspond à un flag
-/// coché dans le formulaire (1=Pathologie, 2=Suivi médical, 3=Sensoriel).
+/// Marqueurs numérotés sur le canvas de la note "Contexte de vie >
+/// Médical". Format : `N -` en noir, gros, gras. Positionnés en
+/// colonne à gauche — chaque numéro a un emplacement FIXE :
+///   • 1 en haut
+///   • 2 au milieu
+///   • 3 en bas
+/// Ainsi, cocher le 3 sans cocher 1 ou 2 le met quand même en bas.
 class _MedicalFlagBadges extends StatelessWidget {
   const _MedicalFlagBadges({required this.flags});
   final Set<int> flags;
 
-  static const Map<int, String> _labels = {
-    1: 'Pathologie',
-    2: 'Suivi médical',
-    3: 'Sensoriel',
-  };
-
   @override
   Widget build(BuildContext context) {
     if (flags.isEmpty) return const SizedBox.shrink();
-    final sorted = flags.toList()..sort();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Wrap(
-          spacing: 6,
-          runSpacing: 6,
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        const leftPad = 16.0;
+        return Stack(
           children: [
-            for (final n in sorted)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD8D0DC),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 20,
-                      height: 20,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF907CA1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '$n',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _labels[n] ?? '',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF554A63),
-                      ),
-                    ),
-                  ],
-                ),
+            if (flags.contains(1))
+              const Positioned(
+                top: 12,
+                left: leftPad,
+                child: _FlagMarker(number: 1),
+              ),
+            if (flags.contains(2))
+              Positioned(
+                top: (constraints.maxHeight / 2) - 18,
+                left: leftPad,
+                child: const _FlagMarker(number: 2),
+              ),
+            if (flags.contains(3))
+              const Positioned(
+                bottom: 12,
+                left: leftPad,
+                child: _FlagMarker(number: 3),
               ),
           ],
-        ),
+        );
+      },
+    );
+  }
+}
+
+class _FlagMarker extends StatelessWidget {
+  const _FlagMarker({required this.number});
+  final int number;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$number -',
+      style: const TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.w800,
+        color: Colors.black,
+        height: 1.0,
       ),
     );
   }
