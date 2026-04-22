@@ -71,6 +71,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   bool _isLoading = true;
   bool _isImporting = false;
   bool _isBulkDownloading = false;
+  /// True pendant qu'un picker (caméra / galerie / fichier) est ouvert.
+  /// Sert de verrou contre les double-taps — sans ça, le même fichier
+  /// peut être inséré 2 fois d'affilée sur iPad.
+  bool _isPicking = false;
   List<DocItem> _documents = const [];
 
   // Sélection multiple
@@ -128,6 +132,8 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   /// ouvre directement l'appareil photo iOS. Sur desktop, fallback sur le
   /// file picker système.
   Future<void> _pickFromCamera() async {
+    if (_isPicking || _isImporting) return;
+    _isPicking = true;
     try {
       if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
         final xfile =
@@ -145,12 +151,16 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       await _pickFromGallery();
     } catch (err) {
       _showError('Caméra indisponible: $err');
+    } finally {
+      _isPicking = false;
     }
   }
 
   /// Import d'image. iOS/Android/web → picker natif via image_picker.
   /// Desktop → dialog système natif via FilePicker.
   Future<void> _pickFromGallery() async {
+    if (_isPicking || _isImporting) return;
+    _isPicking = true;
     try {
       if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
         final xfile =
@@ -173,6 +183,8 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       await _openUploadModal(File(path), defaultTag: 'Photo');
     } catch (err) {
       _showError('Sélection d\'image impossible: $err');
+    } finally {
+      _isPicking = false;
     }
   }
 
@@ -217,6 +229,8 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   Future<void> _pickFromScanner() async {
+    if (_isPicking || _isImporting) return;
+    _isPicking = true;
     try {
       // `FileType.custom` + allowedExtensions peut échouer sur macOS. On
       // utilise `FileType.any` et on laisse l'utilisateur choisir librement.
@@ -229,10 +243,14 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       await _importPickedFile(result.files.single, defaultTag: 'Photo');
     } catch (err) {
       _showError('Scanner indisponible: $err');
+    } finally {
+      _isPicking = false;
     }
   }
 
   Future<void> _pickFromFile() async {
+    if (_isPicking || _isImporting) return;
+    _isPicking = true;
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
@@ -243,6 +261,8 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       await _importPickedFile(result.files.single, defaultTag: 'Autre');
     } catch (err) {
       _showError('Import impossible: $err');
+    } finally {
+      _isPicking = false;
     }
   }
 
@@ -355,6 +375,19 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   Future<void> _previewDocument(DocItem doc) async {
+    // Sur web, quand le document n'a qu'un `dataUrl` (bytes locaux pas
+    // encore uploadés), on n'a pas de File et le _PreviewScreen complet
+    // (PDF controller, annotator) ne peut pas le lire → on affiche une
+    // lightbox simple avec l'image décodée depuis le base64.
+    if (kIsWeb &&
+        doc.type == 'image' &&
+        (doc.localPath == null || doc.localPath!.isEmpty) &&
+        (doc.url == null || doc.url!.isEmpty) &&
+        doc.dataUrl != null &&
+        doc.dataUrl!.isNotEmpty) {
+      await _showWebImagePreview(doc);
+      return;
+    }
     // Quick-Look style pop-up : dialog centré, fond semi-transparent, escape
     // pour fermer. On utilise une barrier colorée + une Dialog translucide
     // qui laisse voir le bureau autour.
@@ -395,6 +428,78 @@ class _DocumentsScreenState extends State<DocumentsScreen>
           },
         );
       },
+    );
+  }
+
+  /// Simple preview dialog for web documents whose bytes live in a data
+  /// URL. No annotator, no PDF support — just a zoomable image + a close
+  /// button. Once the sync uploads the bytes and populates [DocItem.url],
+  /// the full [_PreviewScreen] takes over.
+  Future<void> _showWebImagePreview(DocItem doc) async {
+    final comma = doc.dataUrl!.indexOf(',');
+    if (comma < 0) return;
+    final bytes = base64Decode(doc.dataUrl!.substring(comma + 1));
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Aperçu de l\'image',
+      barrierColor: Colors.black.withValues(alpha: 0.8),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (ctx, _, _) => SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(ctx).pop(),
+                child: InteractiveViewer(
+                  maxScale: 5,
+                  child: Center(
+                    child: Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.5),
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    doc.title.isNotEmpty ? doc.title : doc.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1366,7 +1471,16 @@ class _DocThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (doc.type == 'image') {
-      if (doc.localPath != null && doc.localPath!.isNotEmpty) {
+      // Web offline : bytes capturés en base64, décodés directement.
+      if (doc.dataUrl != null && doc.dataUrl!.isNotEmpty) {
+        final bytes = _decodeDataUrl(doc.dataUrl!);
+        if (bytes != null) {
+          return Image.memory(bytes, fit: BoxFit.cover, errorBuilder: _fallback);
+        }
+      }
+      if (!kIsWeb &&
+          doc.localPath != null &&
+          doc.localPath!.isNotEmpty) {
         final file = File(doc.localPath!);
         if (file.existsSync()) {
           return Image.file(file, fit: BoxFit.cover, errorBuilder: _fallback);
@@ -1382,12 +1496,25 @@ class _DocThumbnail extends StatelessWidget {
       }
     }
     if (doc.type == 'pdf' &&
+        !kIsWeb &&
         doc.localPath != null &&
         doc.localPath!.isNotEmpty &&
         File(doc.localPath!).existsSync()) {
       return _PdfThumbnail(path: doc.localPath!);
     }
     return _iconPlaceholder(doc.type);
+  }
+
+  /// Decodes a `data:<mime>;base64,<...>` URL into raw bytes. Returns null
+  /// if malformed (missing `,` separator or invalid base64).
+  Uint8List? _decodeDataUrl(String dataUrl) {
+    final comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    try {
+      return base64Decode(dataUrl.substring(comma + 1));
+    } catch (_) {
+      return null;
+    }
   }
 
   Widget _fallback(BuildContext ctx, Object err, StackTrace? st) =>

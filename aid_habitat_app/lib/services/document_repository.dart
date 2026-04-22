@@ -394,6 +394,10 @@ class DocumentRepository {
       url: row['remote_public_url'] as String?,
       date: row['created_at'] as String,
       localPath: row['local_file_path'] as String?,
+      // Web-only: the freshly captured bytes as a data URL. Populated by
+      // `importDocumentBytes` on web and cleared once the sync processor
+      // uploads them.
+      dataUrl: row['local_file_data_url'] as String?,
       tags: decodedTags,
       syncState: SyncState.values.byName(row['sync_state'] as String),
     );

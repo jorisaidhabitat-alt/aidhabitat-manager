@@ -393,41 +393,11 @@ class _MainScreenState extends State<MainScreen> {
   ///  - online but sync has errors → red "sync en échec" bar with message
   ///  - online, synced → nothing
   Widget _buildConnectivityBanner() {
+    // L'indicateur "Mode hors-ligne" n'apparaît plus globalement — il est
+    // rendu uniquement dans [AccountDialog] (page "Compte local"). Ce
+    // bandeau reste pour les échecs de synchronisation (rouge).
     if (_isOffline) {
-      // Discret pill centré — remplace l'ancien bandeau gris pleine largeur.
-      return Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 4),
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED), // orange-50
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: const Color(0xFFFDBA74)), // orange-300
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.wifi_off_rounded,
-                  size: 14,
-                  color: Color(0xFFC2410C), // orange-700
-                ),
-                SizedBox(width: 6),
-                Text(
-                  'Mode hors-ligne',
-                  style: TextStyle(
-                    color: Color(0xFFC2410C),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return const SizedBox.shrink();
     }
     if (!_isSyncing &&
         _pendingSyncCount > 0 &&

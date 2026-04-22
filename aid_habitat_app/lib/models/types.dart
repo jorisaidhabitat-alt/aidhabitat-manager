@@ -1057,6 +1057,10 @@ class DocItem {
   final String? url;
   final String date;
   final String? localPath;
+  /// Web-only: base64 data URL (`data:<mime>;base64,…`) of the freshly
+  /// captured bytes, stored until the sync engine uploads them and
+  /// populates [url]. Always null on native targets (which use [localPath]).
+  final String? dataUrl;
   final List<String> tags;
   final SyncState syncState;
 
@@ -1068,6 +1072,7 @@ class DocItem {
     this.url,
     required this.date,
     this.localPath,
+    this.dataUrl,
     this.tags = const [],
     this.syncState = SyncState.localOnly,
   });

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
+import '../services/connectivity_service.dart';
 import '../services/data_service.dart';
 import 'cached_remote_image.dart';
 
@@ -96,9 +97,54 @@ class _AccountDialogState extends State<AccountDialog> {
     return AlertDialog(
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      title: const Text(
-        'Compte local',
-        style: TextStyle(fontWeight: FontWeight.w800),
+      // Titre "Compte local" + pill offline aligné à droite sur la même
+      // ligne. Le pill n'apparaît que quand ConnectivityService détecte
+      // une perte de réseau — nulle part ailleurs dans l'app.
+      title: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Compte local',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          StreamBuilder<bool>(
+            stream: ConnectivityService().offlineStream,
+            initialData: ConnectivityService().isOffline,
+            builder: (ctx, snapshot) {
+              if (snapshot.data != true) return const SizedBox.shrink();
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0xFFFDBA74)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.wifi_off_rounded,
+                      size: 13,
+                      color: Color(0xFFC2410C),
+                    ),
+                    SizedBox(width: 5),
+                    Text(
+                      'Mode hors-ligne',
+                      style: TextStyle(
+                        color: Color(0xFFC2410C),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
       content: SizedBox(
         width: 440,
