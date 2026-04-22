@@ -9,16 +9,16 @@
   ],
   "headers": [
     {
-      "source": "/sqflite_sw.js",
+      "source": "/(.*)",
       "headers": [
-        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" },
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" }
       ]
     },
     {
-      "source": "/(.*)",
+      "source": "/sqflite_sw.js",
       "headers": [
-        { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" },
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" }
       ]
     }
