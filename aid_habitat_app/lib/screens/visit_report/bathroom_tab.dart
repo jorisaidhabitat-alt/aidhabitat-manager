@@ -547,6 +547,7 @@ class _BathroomTabState extends State<BathroomTab>
   Widget _buildDoor() {
     final a = _active!;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _collapsibleToggle(
           instanceId: a.id,

@@ -267,6 +267,7 @@ class _WcTabState extends State<WcTab>
   Widget _buildMain() {
     final a = _active!;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _collapsibleToggle(
           instanceId: a.id,
@@ -306,6 +307,7 @@ class _WcTabState extends State<WcTab>
   Widget _buildDoor() {
     final a = _active!;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _collapsibleToggle(
           instanceId: a.id,
