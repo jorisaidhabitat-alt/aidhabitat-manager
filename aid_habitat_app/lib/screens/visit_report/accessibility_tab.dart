@@ -570,7 +570,17 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         // de pills des niveaux encore disponibles quand _addLevelMode.
         if (available.isNotEmpty) _buildAddLevelInline(available),
         const SizedBox(height: 14),
-        // 5. Chauffage (multi-select pills avec bouton Valider pour se
+        // 5. Niveaux (cartes), un seul développé à la fois — les autres
+        // s'affichent sous forme "Label (pièces cochées) + crayon".
+        ..._orderedLevels.map((field) {
+          final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _buildLevelCard(cfg),
+          );
+        }),
+        const SizedBox(height: 14),
+        // 6. Chauffage (multi-select pills avec bouton Valider pour se
         // replier une fois toutes les options cochées).
         if (_heatingTypes.isEmpty || _heatingEditing)
           _buildHeatingEditor()
@@ -580,16 +590,6 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             displayValue: _heatingTypes.join(', '),
             onEdit: () => setState(() => _heatingEditing = true),
           ),
-        const SizedBox(height: 14),
-        // 6. Niveaux (cartes), un seul développé à la fois — les autres
-        // s'affichent sous forme "Label (pièces cochées) + crayon".
-        ..._orderedLevels.map((field) {
-          final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _buildLevelCard(cfg),
-          );
-        }),
         const SizedBox(height: 14),
         // 7. Volets (pills + repli "label (valeur)" sans dropdown).
         _buildVoletRow(
@@ -886,8 +886,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFFF4EFF7),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
