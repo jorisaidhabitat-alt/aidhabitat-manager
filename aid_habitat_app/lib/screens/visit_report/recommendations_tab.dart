@@ -62,10 +62,18 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   }
 
   Future<void> _load() async {
-    // OFFLINE-FIRST : on affiche immédiatement ce qui est en SQLite, sans
-    // attendre le refresh remote. Le refresh se fait en arrière-plan et
-    // ne déclenche un setState que si les items ont réellement changé —
-    // les titres en cours de saisie ne sont pas écrasés.
+    // PURE LOCAL : on affiche ce qui est en SQLite, point. Les éditions
+    // locales sont la source de vérité. Le push vers NocoDB continue via
+    // le SyncEngine (save = write SQLite + enqueue sync_op + notify),
+    // mais aucun pull remote ne peut plus écraser l'état local.
+    //
+    // Pourquoi pas de refresh remote ici : le mapping remote→local est
+    // fragile (id serveur ≠ id local, customTitle en cours d'édition
+    // non encore pushé, etc.) et la moindre race condition faisait
+    // disparaître des items ou réinitialiser les titres à chaque tab
+    // switch. Le compromis : si un second device modifie la liste
+    // pendant la session, on ne le verra qu'après un redémarrage de
+    // l'app (SyncEngine pull pull côté init).
     final localItems =
         await widget.repository.fetchVisitRecommendations(widget.dossier.id);
     final localWiki = await _wikiRepo.fetchAllItems().catchError((_) {
@@ -77,30 +85,6 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       _wikiItems = localWiki;
       _loaded = true;
     });
-
-    // Refresh remote en arrière-plan — sans bloquer l'UI. Si le refresh
-    // modifie SQLite (nouveaux items remote, suppression, etc.), on
-    // re-fetch. Sinon on ne touche pas au state (titres en cours de
-    // saisie préservés).
-    unawaited(_refreshFromRemoteInBackground());
-  }
-
-  Future<void> _refreshFromRemoteInBackground() async {
-    try {
-      final changed = await widget.repository
-          .refreshVisitRecommendationsFromRemote(widget.dossier.id);
-      if (!changed || !mounted) return;
-      // Skip le re-fetch si l'utilisateur est en train d'éditer
-      // (debounce save actif) — on ne veut pas écraser sa saisie.
-      if (_saveDebounce?.isActive ?? false) return;
-      final fresh = await widget.repository
-          .fetchVisitRecommendations(widget.dossier.id);
-      if (!mounted) return;
-      setState(() => _items = fresh);
-    } catch (_) {
-      // Offline ou erreur réseau → pas grave, les données locales
-      // restent affichées.
-    }
   }
 
   void _scheduleSave() {

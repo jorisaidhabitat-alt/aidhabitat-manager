@@ -547,33 +547,39 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           ),
         ),
         const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              flex: 1,
-              child: _DateOfBirthField(
-                birthDate: occ.birthDate,
-                showLabel: false,
-                onChanged: (iso) => _updateOccupant(
-                  index,
-                  occ.copyWith(birthDate: iso),
-                ),
+        Builder(
+          builder: (context) {
+            final ageLabel = _computeAgeLabel(occ.birthDate);
+            final dateField = _DateOfBirthField(
+              birthDate: occ.birthDate,
+              showLabel: false,
+              onChanged: (iso) => _updateOccupant(
+                index,
+                occ.copyWith(birthDate: iso),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 1,
-              child: Text(
-                _computeAgeLabel(occ.birthDate),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF554A63),
+            );
+            // Si aucune date saisie (ageLabel vide) → le champ prend
+            // toute la largeur, pas de colonne vide à droite.
+            if (ageLabel.isEmpty) return dateField;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(flex: 1, child: dateField),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    ageLabel,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF554A63),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ],
     );
