@@ -252,22 +252,25 @@ class SyncRepository {
   ///    [maxPendingAge] (they should have completed long ago).
   ///
   /// Returns the number of rows removed. Safe to call on app boot.
+  /// Purge les `sync_operations` obsolètes. On ne touche JAMAIS aux
+  /// `pending` — quelle que soit leur ancienneté, elles doivent être
+  /// poussées au prochain retour de connexion. Seuls les `failed`
+  /// (erreur définitive, typiquement rejet serveur 400/403/409 avec
+  /// attempt_count ≥ max retries) et les `running` bloqués > 72h (orphelins
+  /// si l'app a crashé en plein milieu d'un push) sont purgés.
   Future<int> purgeStalePendingOperations({
-    Duration maxPendingAge = const Duration(hours: 72),
+    Duration maxRunningAge = const Duration(hours: 72),
   }) async {
     final db = await _database.database;
-    final cutoff = DateTime.now().subtract(maxPendingAge).toIso8601String();
+    final cutoff = DateTime.now().subtract(maxRunningAge).toIso8601String();
     return db.delete(
       'sync_operations',
       where: '''
         status = ?
-        OR (status = ? AND created_at < ?)
         OR (status = ? AND updated_at < ?)
       ''',
       whereArgs: [
         SyncOperationStatus.failed.name,
-        SyncOperationStatus.pending.name,
-        cutoff,
         SyncOperationStatus.running.name,
         cutoff,
       ],
