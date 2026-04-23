@@ -42,6 +42,13 @@ class _MainScreenState extends State<MainScreen> {
   String _activeView = 'dashboard';
   Dossier? _selectedDossier;
   List<Dossier> _dossiers = [];
+  // Pile d'historique de navigation : chaque entrée capture (view,
+  // dossier) de l'écran quitté. La flèche "retour" des écrans profonds
+  // (DossierScreen / VisitReportScreen) dépile pour ramener l'utilisateur
+  // exactement où il était avant — ex. Dashboard → dossier → retour
+  // revient sur le Dashboard, Dossiers → dossier → retour revient à la
+  // liste. Limité à 50 entrées pour éviter la dérive mémoire.
+  final List<_NavEntry> _navHistory = [];
   // Dernier état "profond" visité dans l'arbre Dossiers (dossier_detail
   // ou visit_report). Utilisé pour restaurer le contexte quand l'user
   // clique à nouveau sur "Dossiers" dans la sidebar après être allé
@@ -533,4 +540,44 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Navigation history
+  // ---------------------------------------------------------------------------
+
+  /// Capture l'écran courant dans la pile d'historique. Appelé AVANT de
+  /// changer de vue (ex: Dashboard → ouvre un dossier). La flèche de
+  /// retour dépile pour restaurer exactement cet état.
+  void _pushHistory() {
+    _navHistory.add(_NavEntry(
+      view: _activeView,
+      dossier: _selectedDossier,
+    ));
+    if (_navHistory.length > 50) _navHistory.removeAt(0);
+  }
+
+  /// Dépile l'entrée précédente et y navigue. Si la pile est vide, on
+  /// retombe sur le Dashboard (défaut raisonnable pour éviter un écran
+  /// bloqué).
+  void _goBack() {
+    if (_navHistory.isEmpty) {
+      setState(() {
+        _activeView = 'dashboard';
+        _selectedDossier = null;
+      });
+      return;
+    }
+    final prev = _navHistory.removeLast();
+    setState(() {
+      _activeView = prev.view;
+      _selectedDossier = prev.dossier;
+    });
+  }
+}
+
+/// Entrée d'historique de navigation — capture l'écran actif + le
+/// dossier sélectionné (null si on n'est pas dans l'arbre dossiers).
+class _NavEntry {
+  final String view;
+  final Dossier? dossier;
+  const _NavEntry({required this.view, required this.dossier});
 }

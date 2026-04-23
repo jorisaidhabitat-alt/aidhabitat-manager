@@ -527,7 +527,7 @@ class _DossierScreenState extends State<DossierScreen> {
                     const SizedBox(width: 12),
                     const Flexible(
                       child: Text(
-                        'Informations Bénéficiaire',
+                        'Bénéficiaire',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
