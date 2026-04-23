@@ -1162,7 +1162,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
         // --- Bloc "Personne de Confiance" (titre retiré) ----------------
         FormTextField(
-          label: 'Nom',
+          label: 'Personne de confiance',
           value: _trustedName,
           onChanged: (v) {
             _trustedName = v;
