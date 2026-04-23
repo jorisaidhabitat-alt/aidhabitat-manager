@@ -305,82 +305,58 @@ class _DossierScreenState extends State<DossierScreen> {
   // Header
   // ---------------------------------------------------------------------------
   Widget _buildHeader(BuildContext context) {
+    // Nouveau header (parité maquette) : bouton retour + NOM Prénom +
+    // deux badges à droite du titre (type d'accompagnement en violet,
+    // catégorie de revenu en couleur pastel liée à la catégorie).
+    // La date "Créé le" reste à l'extrême droite.
+    final accompanimentLabel =
+        _formatAccompanimentType(_natureAccompagnement).trim();
+    final incomeLabel = _incomeCategory.trim();
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          children: [
-            InkWell(
-              onTap: widget.onBack,
-              borderRadius: BorderRadius.circular(50),
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  LucideIcons.arrowLeft,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_lastName.toUpperCase()} $_firstName',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+        Expanded(
+          child: Row(
+            children: [
+              InkWell(
+                onTap: widget.onBack,
+                borderRadius: BorderRadius.circular(50),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    LucideIcons.arrowLeft,
                     color: Colors.black87,
                   ),
                 ),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Dossier actif',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _syncBackground(widget.dossier.syncState),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        widget.dossier.syncState.label,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                          color: _syncForeground(widget.dossier.syncState),
-                        ),
-                      ),
-                    ),
-                  ],
+              ),
+              const SizedBox(width: 16),
+              Flexible(
+                child: Text(
+                  '${_lastName.toUpperCase()} $_firstName',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              if (accompanimentLabel.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                _AccompanimentBadge(value: accompanimentLabel),
               ],
-            ),
-          ],
+              if (incomeLabel.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                _IncomeCategoryBadge(value: incomeLabel),
+              ],
+            ],
+          ),
         ),
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -506,113 +482,160 @@ class _DossierScreenState extends State<DossierScreen> {
   // Info Card — strict React parity
   // ---------------------------------------------------------------------------
   Widget _buildInfoCard() {
+    // Nouveau layout (parité maquette utilisateur) :
+    //   - Bandeau violet clair en haut : icône + "Bénéficiaire" + crayon.
+    //   - Corps en texte brut : labels violets + valeurs sans fond ni
+    //     contour (les champs non modifiables sont du pur texte).
+    //   - Ordre : Nom, Prénom, Occupants, RFR du foyer, Adresse,
+    //     badge communauté de communes, Commentaire du projet.
+    final streetAddress = widget.dossier.patient.address.trim();
+    final communeOption = _cityId.isEmpty
+        ? null
+        : _communeOptions.where((c) => c.id == _cityId).cast<CommuneOption?>().firstOrNull;
+    final epciLabel = (communeOption?.epciLabel ?? '').trim();
+    final fullAddress = _formatFullAddress(streetAddress, _zipCode, _city);
+
     return Container(
-      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row: title + income category badge + save indicator
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.user,
-                        color: Colors.grey, size: 20),
-                    const SizedBox(width: 12),
-                    const Flexible(
-                      child: Text(
-                        'Bénéficiaire',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+          // --- Bandeau violet clair (icône + titre + save + crayon) ---
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            color: const Color(0xFFF3F0F5),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.user,
+                    color: Color(0xFF907CA1), size: 20),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Bénéficiaire',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF554A63),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                SaveStatusIndicator(saving: _saving),
+                const SizedBox(width: 6),
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () {
+                    if (!_isBeneficiaryLocked) {
+                      _saveTimer?.cancel();
+                      _save();
+                    }
+                    setState(() {
+                      _isBeneficiaryLocked = !_isBeneficiaryLocked;
+                    });
+                  },
+                  child: Tooltip(
+                    message: _isBeneficiaryLocked ? 'Modifier' : 'Valider',
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        _isBeneficiaryLocked
+                            ? LucideIcons.pencil
+                            : LucideIcons.check,
+                        size: 18,
+                        color: const Color(0xFF907CA1),
                       ),
                     ),
-                    if (_formatAccompanimentType(_natureAccompagnement)
-                        .trim()
-                        .isNotEmpty) ...[
-                      const SizedBox(width: 10),
-                      _IncomeBadge(
-                        value: _formatAccompanimentType(_natureAccompagnement),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
-              SaveStatusIndicator(saving: _saving),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: _isBeneficiaryLocked ? 'Modifier' : 'Valider',
-                icon: Icon(
-                  _isBeneficiaryLocked ? LucideIcons.pencil : LucideIcons.check,
-                  size: 18,
-                  color: const Color(0xFF64748B),
-                ),
-                splashRadius: 20,
-                onPressed: () {
-                  if (!_isBeneficiaryLocked) {
-                    _saveTimer?.cancel();
-                    _save();
-                  }
-                  setState(() {
-                    _isBeneficiaryLocked = !_isBeneficiaryLocked;
-                  });
-                },
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 20),
+          // --- Corps : champs en texte brut (mode lecture) ou FormTextField
+          //     (mode édition quand l'utilisateur a cliqué sur le crayon).
           Expanded(
             child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Prénom + Nom (editable when unlocked)
-                  if (_isBeneficiaryLocked)
+                  if (_isBeneficiaryLocked) ...[
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: _ReadonlyField(
-                            label: 'Prénom',
-                            value: _firstName.trim().isEmpty
-                                ? 'Non renseigné'
-                                : _firstName,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _ReadonlyField(
+                          child: _PlainField(
                             label: 'Nom',
                             value: _lastName.trim().isEmpty
-                                ? 'Non renseigné'
+                                ? '—'
                                 : _lastName,
                           ),
                         ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _PlainField(
+                            label: 'Prénom',
+                            value: _firstName.trim().isEmpty
+                                ? '—'
+                                : _firstName,
+                          ),
+                        ),
                       ],
-                    )
-                  else
+                    ),
+                    const SizedBox(height: 16),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: FormTextField(
-                            label: 'Prénom',
-                            value: _firstName,
-                            onChanged: (v) {
-                              _firstName = v;
-                              _onChanged();
-                            },
+                          child: _PlainField(
+                            label: 'Occupants',
+                            value: _numberPeople == '1'
+                                ? '1'
+                                : _numberPeople,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _PlainField(
+                            label: 'RFR du foyer',
+                            value: _formatFiscalRevenue(_fiscalRevenue),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _PlainField(
+                      label: 'Adresse',
+                      value:
+                          fullAddress.isEmpty ? 'Non renseignée' : fullAddress,
+                      multiline: true,
+                    ),
+                    if (epciLabel.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _EpciPillSmall(label: epciLabel),
+                    ],
+                    const SizedBox(height: 18),
+                    _PlainField(
+                      label: 'Commentaire du projet',
+                      value: _projectCommentLoaded
+                          ? (_projectComment.trim().isEmpty
+                              ? 'Aucun commentaire renseigné'
+                              : _projectComment)
+                          : 'Chargement du commentaire…',
+                      multiline: true,
+                      muted: !_projectCommentLoaded ||
+                          _projectComment.trim().isEmpty,
+                    ),
+                  ] else ...[
+                    // --- Mode édition : champs remplaçables par FormTextField
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Expanded(
                           child: FormTextField(
                             label: 'Nom',
@@ -623,99 +646,66 @@ class _DossierScreenState extends State<DossierScreen> {
                             },
                           ),
                         ),
-                      ],
-                    ),
-                  const SizedBox(height: 12),
-                  // 2. Revenu fiscal de référence + Catégorie de revenu
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _ReadonlyField(
-                          label: 'Revenu fiscal de référence',
-                          value: _formatFiscalRevenue(_fiscalRevenue),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _ReadonlyField(
-                          label: 'Catégorie de revenu',
-                          value: _incomeCategory.trim().isEmpty
-                              ? 'Non renseignée'
-                              : _incomeCategory,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // 3. Occupants + Ville (zip hidden)
-                  if (_isBeneficiaryLocked)
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _ReadonlyField(
-                            label: 'Occupants',
-                            value: _numberPeople == '1'
-                                ? '1 occupant'
-                                : '$_numberPeople occupants',
-                          ),
-                        ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _ReadonlyField(
-                            label: 'Ville',
-                            value: _city.trim().isEmpty
-                                ? 'Non renseignée'
-                                : _city,
+                          child: FormTextField(
+                            label: 'Prénom',
+                            value: _firstName,
+                            onChanged: (v) {
+                              _firstName = v;
+                              _onChanged();
+                            },
                           ),
                         ),
                       ],
-                    )
-                  else
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(child: _buildOccupantsDropdown()),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: CommuneFieldGroup(
-                            city: _city,
-                            zipCode: _zipCode,
-                            cityId: _cityId,
-                            options: _communeOptions,
-                            showZipField: false,
-                            onChanged: (update) {
-                              setState(() {
-                                if (update.city != null) _city = update.city!;
-                                if (update.zipCode != null) {
-                                  _zipCode = update.zipCode!;
-                                }
-                                if (update.cityId != null) {
-                                  _cityId = update.cityId!;
-                                }
-                              });
-                              _scheduleSave();
-                            },
+                          child: _PlainField(
+                            label: 'RFR du foyer',
+                            value: _formatFiscalRevenue(_fiscalRevenue),
                           ),
                         ),
                       ],
                     ),
-                  const SizedBox(height: 12),
-                  // 4. Commentaire projet (read-only, multiline)
-                  _ReadonlyField(
-                    label: 'Commentaire projet',
-                    value: _projectCommentLoaded
-                        ? (_projectComment.trim().isEmpty
-                            ? 'Aucun commentaire renseigné'
-                            : _projectComment)
-                        : 'Chargement du commentaire…',
-                    multiline: true,
-                    compact: true,
-                    muted: !_projectCommentLoaded ||
-                        _projectComment.trim().isEmpty,
-                  ),
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 12),
+                    CommuneFieldGroup(
+                      city: _city,
+                      zipCode: _zipCode,
+                      cityId: _cityId,
+                      options: _communeOptions,
+                      showZipField: false,
+                      onChanged: (update) {
+                        setState(() {
+                          if (update.city != null) _city = update.city!;
+                          if (update.zipCode != null) {
+                            _zipCode = update.zipCode!;
+                          }
+                          if (update.cityId != null) {
+                            _cityId = update.cityId!;
+                          }
+                        });
+                        _scheduleSave();
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _PlainField(
+                      label: 'Commentaire du projet',
+                      value: _projectCommentLoaded
+                          ? (_projectComment.trim().isEmpty
+                              ? 'Aucun commentaire renseigné'
+                              : _projectComment)
+                          : 'Chargement du commentaire…',
+                      multiline: true,
+                      muted: !_projectCommentLoaded ||
+                          _projectComment.trim().isEmpty,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -723,6 +713,18 @@ class _DossierScreenState extends State<DossierScreen> {
         ],
       ),
     );
+  }
+
+  /// Combine adresse rue + code postal + ville en une seule chaîne
+  /// lisible (parité maquette : "16 rue Léo Lagrange, 35131 Chartres-de-Bretagne").
+  String _formatFullAddress(String street, String zip, String city) {
+    final parts = <String>[];
+    if (street.trim().isNotEmpty) parts.add(street.trim());
+    final cityLine = [zip.trim(), city.trim()]
+        .where((s) => s.isNotEmpty)
+        .join(' ');
+    if (cityLine.isNotEmpty) parts.add(cityLine);
+    return parts.join(', ');
   }
 
   Widget _buildOccupantsDropdown() {
@@ -801,87 +803,59 @@ class _DossierScreenState extends State<DossierScreen> {
 // Helper widgets
 // -----------------------------------------------------------------------------
 
-class _ReadonlyField extends StatelessWidget {
+/// Champ en texte brut (label violet + valeur slate) — pas de fond, pas
+/// de bordure, pas de coins arrondis. Utilisé dans le bloc "Bénéficiaire"
+/// pour afficher les champs non modifiables (demande utilisateur).
+class _PlainField extends StatelessWidget {
   final String label;
   final String value;
-  final bool emphasized;
   final bool multiline;
-  final bool compact;
   final bool muted;
 
-  const _ReadonlyField({
+  const _PlainField({
     required this.label,
     required this.value,
-    this.emphasized = false,
     this.multiline = false,
-    this.compact = false,
     this.muted = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bg = emphasized ? const Color(0xFFF4EFF7) : const Color(0xFFF8FAFC);
-    final borderColor =
-        emphasized ? const Color(0xFFD8CFE0) : const Color(0xFFE2E8F0);
-    final valueColor =
-        muted ? const Color(0xFF94A3B8) : const Color(0xFF334155);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF64748B),
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF907CA1),
+            letterSpacing: 0.2,
           ),
         ),
-        const SizedBox(height: 6),
-        Container(
-          width: double.infinity,
-          constraints: multiline
-              ? const BoxConstraints(maxHeight: 120)
-              : const BoxConstraints(),
-          padding: EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: compact ? 10 : 12,
+        const SizedBox(height: 4),
+        Text(
+          value,
+          maxLines: multiline ? null : 1,
+          overflow: multiline ? TextOverflow.visible : TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: muted ? const Color(0xFF94A3B8) : const Color(0xFF0F172A),
+            height: multiline ? 1.4 : 1.2,
           ),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: borderColor),
-          ),
-          child: multiline
-              ? SingleChildScrollView(
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: valueColor,
-                      height: 1.4,
-                    ),
-                  ),
-                )
-              : Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: valueColor,
-                    fontWeight:
-                        emphasized ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
         ),
       ],
     );
   }
 }
 
-class _IncomeBadge extends StatelessWidget {
+/// Badge "type d'accompagnement" (ex. "Complet") — fond violet clair,
+/// bordure violette, typographie violet foncé. Utilisé dans l'en-tête
+/// du dossier à côté du nom du bénéficiaire.
+class _AccompanimentBadge extends StatelessWidget {
   final String value;
-
-  const _IncomeBadge({required this.value});
+  const _AccompanimentBadge({required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -904,33 +878,135 @@ class _IncomeBadge extends StatelessWidget {
   }
 }
 
-Color _syncBackground(SyncState syncState) {
-  switch (syncState) {
-    case SyncState.synced:
-      return Colors.green.shade50;
-    case SyncState.pendingSync:
-    case SyncState.localOnly:
-    case SyncState.syncing:
-      return Colors.orange.shade50;
-    case SyncState.syncError:
-    case SyncState.conflict:
-      return Colors.red.shade50;
+/// Badge "catégorie de revenu" (Très modeste, Modeste, Intermédiaire…)
+/// avec une palette couleur dédiée : bleu pastel pour "Très modeste",
+/// jaune pastel pour "Modeste", etc. Demande utilisateur.
+class _IncomeCategoryBadge extends StatelessWidget {
+  final String value;
+  const _IncomeCategoryBadge({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _paletteFor(value);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: palette.bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        value,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: palette.fg,
+        ),
+      ),
+    );
+  }
+
+  /// Palette : bleu pastel pour "Très modeste", jaune pastel pour
+  /// "Modeste", vert pour "Intermédiaire", gris pour autre/défaut.
+  _BadgePalette _paletteFor(String raw) {
+    final normalized = raw.toLowerCase().trim();
+    if (normalized.contains('très modeste') ||
+        normalized.contains('tres modeste')) {
+      // Bleu pastel
+      return const _BadgePalette(
+        bg: Color(0xFFDBEAFE),
+        fg: Color(0xFF1D4ED8),
+      );
+    }
+    if (normalized == 'modeste' || normalized.startsWith('modeste')) {
+      // Jaune pastel
+      return const _BadgePalette(
+        bg: Color(0xFFFEF3C7),
+        fg: Color(0xFFB45309),
+      );
+    }
+    if (normalized.contains('intermédiaire') ||
+        normalized.contains('intermediaire')) {
+      // Vert pastel
+      return const _BadgePalette(
+        bg: Color(0xFFDCFCE7),
+        fg: Color(0xFF15803D),
+      );
+    }
+    // Par défaut : gris neutre
+    return const _BadgePalette(
+      bg: Color(0xFFF1F5F9),
+      fg: Color(0xFF475569),
+    );
   }
 }
 
-Color _syncForeground(SyncState syncState) {
-  switch (syncState) {
-    case SyncState.synced:
-      return Colors.green.shade700;
-    case SyncState.pendingSync:
-    case SyncState.localOnly:
-    case SyncState.syncing:
-      return Colors.orange.shade700;
-    case SyncState.syncError:
-    case SyncState.conflict:
-      return Colors.red.shade700;
+class _BadgePalette {
+  final Color bg;
+  final Color fg;
+  const _BadgePalette({required this.bg, required this.fg});
+}
+
+/// Petite pastille "communauté de communes" pour le bloc Bénéficiaire.
+/// Utilise la même palette pastel que `_EpciBadge` de la liste des
+/// dossiers (cohérence visuelle entre la liste et le détail d'un
+/// dossier — demande utilisateur : fonds pastel uniquement, texte
+/// slate foncé pour la lisibilité).
+class _EpciPillSmall extends StatelessWidget {
+  final String label;
+  const _EpciPillSmall({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = _pastelEpciBgFor(label);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF334155),
+        ),
+      ),
+    );
   }
 }
+
+/// Palette pastel partagée entre la liste des dossiers et le détail
+/// Bénéficiaire — même hash → même couleur pour un EPCI donné.
+/// Uniquement les fonds sont colorés ; le texte reste slate foncé.
+const List<Color> _kPastelEpciBgs = [
+  Color(0xFFDBEAFE), // bleu
+  Color(0xFFFCE7F3), // rose
+  Color(0xFFDCFCE7), // vert
+  Color(0xFFFEF3C7), // jaune/ambre
+  Color(0xFFEDE9FE), // violet
+  Color(0xFFCFFAFE), // cyan
+  Color(0xFFFFE4E6), // rose/rouge
+  Color(0xFFECFCCB), // lime
+  Color(0xFFFFEDD5), // orange
+  Color(0xFFE0E7FF), // indigo
+];
+
+/// Hachage déterministe label → couleur de fond pastel.
+Color _pastelEpciBgFor(String label) {
+  if (label.isEmpty) return const Color(0xFFF1F5F9);
+  int hash = 0;
+  for (final rune in label.runes) {
+    hash = (hash * 31 + rune) & 0x7FFFFFFF;
+  }
+  return _kPastelEpciBgs[hash % _kPastelEpciBgs.length];
+}
+
+// Anciens widgets _ReadonlyField / _IncomeBadge et helpers _sync*
+// retirés : le header du dossier et le bloc Bénéficiaire utilisent
+// désormais _PlainField + _AccompanimentBadge + _IncomeCategoryBadge
+// (mise en cohérence avec la maquette utilisateur, pas de badge de sync
+// dans l'en-tête).
 
 class _QuickActionButton extends StatelessWidget {
   final IconData icon;

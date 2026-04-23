@@ -488,17 +488,22 @@ class _EpciPalette {
   const _EpciPalette({required this.bg, required this.fg});
 }
 
+/// Palette pastel-uniquement (demande utilisateur) : les fonds varient
+/// par EPCI mais le texte reste en slate foncé pour la lisibilité —
+/// plus de couleurs foncées saturées associées au fond.
+const Color _kPastelEpciFg = Color(0xFF334155);
+
 const List<_EpciPalette> _kEpciPalettes = [
-  _EpciPalette(bg: Color(0xFFDBEAFE), fg: Color(0xFF1D4ED8)), // blue
-  _EpciPalette(bg: Color(0xFFFCE7F3), fg: Color(0xFFBE185D)), // pink
-  _EpciPalette(bg: Color(0xFFDCFCE7), fg: Color(0xFF15803D)), // green
-  _EpciPalette(bg: Color(0xFFFEF3C7), fg: Color(0xFFB45309)), // amber
-  _EpciPalette(bg: Color(0xFFEDE9FE), fg: Color(0xFF6D28D9)), // violet
-  _EpciPalette(bg: Color(0xFFCFFAFE), fg: Color(0xFF0E7490)), // cyan
-  _EpciPalette(bg: Color(0xFFFFE4E6), fg: Color(0xFFBE123C)), // rose
-  _EpciPalette(bg: Color(0xFFECFCCB), fg: Color(0xFF4D7C0F)), // lime
-  _EpciPalette(bg: Color(0xFFFFEDD5), fg: Color(0xFFC2410C)), // orange
-  _EpciPalette(bg: Color(0xFFE0E7FF), fg: Color(0xFF4338CA)), // indigo
+  _EpciPalette(bg: Color(0xFFDBEAFE), fg: _kPastelEpciFg), // bleu
+  _EpciPalette(bg: Color(0xFFFCE7F3), fg: _kPastelEpciFg), // rose
+  _EpciPalette(bg: Color(0xFFDCFCE7), fg: _kPastelEpciFg), // vert
+  _EpciPalette(bg: Color(0xFFFEF3C7), fg: _kPastelEpciFg), // jaune/ambre
+  _EpciPalette(bg: Color(0xFFEDE9FE), fg: _kPastelEpciFg), // violet
+  _EpciPalette(bg: Color(0xFFCFFAFE), fg: _kPastelEpciFg), // cyan
+  _EpciPalette(bg: Color(0xFFFFE4E6), fg: _kPastelEpciFg), // rose/rouge
+  _EpciPalette(bg: Color(0xFFECFCCB), fg: _kPastelEpciFg), // lime
+  _EpciPalette(bg: Color(0xFFFFEDD5), fg: _kPastelEpciFg), // orange
+  _EpciPalette(bg: Color(0xFFE0E7FF), fg: _kPastelEpciFg), // indigo
 ];
 
 /// Deterministic label → palette assignment (same EPCI = same color every
@@ -508,7 +513,7 @@ _EpciPalette _epciPaletteFor(String label) {
   if (label.isEmpty) {
     return const _EpciPalette(
       bg: Color(0xFFF1F5F9),
-      fg: Color(0xFF475569),
+      fg: _kPastelEpciFg,
     );
   }
   int hash = 0;
