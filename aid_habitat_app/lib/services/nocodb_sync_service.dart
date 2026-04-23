@@ -38,6 +38,24 @@ class NocodbSyncService {
   static const int _maxConcurrency = 4;
 
   Future<SyncRunResult> pushPendingChanges() async {
+    // Auto-guérison : réhabilite toute opération précédemment marquée
+    // `failed` dont l'erreur ressemble à un 5xx / timeout / déconnexion,
+    // pour qu'elle soit retentée silencieusement à ce cycle. Évite que
+    // de vieux 500 serveur restent bloqués en "failed" côté iPad après
+    // un correctif serveur (et empêche le bandeau rouge de persister
+    // sur des ops que la prochaine tentative ferait réussir).
+    try {
+      final rehabCount =
+          await _syncRepository.rehabilitateTransientFailures();
+      if (rehabCount > 0) {
+        // ignore: avoid_print
+        print('[sync] $rehabCount opération(s) réhabilitée(s) depuis failed');
+      }
+    } catch (_) {
+      // La réhabilitation est best-effort : une erreur ne doit pas
+      // empêcher la suite du cycle.
+    }
+
     final operations = await _syncRepository.fetchRunnableOperations();
     if (operations.isEmpty) {
       return const SyncRunResult(

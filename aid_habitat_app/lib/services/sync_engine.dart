@@ -223,7 +223,7 @@ class SyncEngine {
         _emitState(
           isSyncing: false,
           pendingCount: pendingAfter,
-          lastError: null,
+          clearError: true,
           lastSyncAt: DateTime.now(),
           nextRetryAt: null,
         );

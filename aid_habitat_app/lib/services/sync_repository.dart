@@ -127,6 +127,45 @@ class SyncRepository {
     );
   }
 
+  /// Réhabilite les opérations `failed` dont le message d'erreur ressemble
+  /// à un problème transitoire (5xx serveur, timeout, déconnexion…) en
+  /// les repassant à `pending` pour qu'elles soient retentées. Laisse les
+  /// vraies erreurs fonctionnelles (4xx, payload invalide…) en `failed`.
+  ///
+  /// Appelé au début de chaque cycle de sync pour auto-guérir les
+  /// opérations qui se sont accumulées en `failed` à cause d'un hoquet
+  /// serveur (notamment les ops de note_page qui ont fait planter la
+  /// prod avec des 500 dans le passé).
+  Future<int> rehabilitateTransientFailures() async {
+    final db = await _database.database;
+    final rehabilitated = await db.rawUpdate(
+      '''
+      UPDATE sync_operations
+      SET status = ?, updated_at = ?
+      WHERE status = ?
+        AND (
+          last_error LIKE '%500%'
+          OR last_error LIKE '%502%'
+          OR last_error LIKE '%503%'
+          OR last_error LIKE '%504%'
+          OR last_error LIKE '%timeout%' COLLATE NOCASE
+          OR last_error LIKE '%SocketException%'
+          OR last_error LIKE '%ClientException%'
+          OR last_error LIKE '%HttpException%'
+          OR last_error LIKE '%TransientRemoteException%'
+          OR last_error LIKE '%Remote note sync failed%'
+          OR last_error LIKE '%network error%' COLLATE NOCASE
+        )
+      ''',
+      [
+        SyncOperationStatus.pending.name,
+        DateTime.now().toIso8601String(),
+        SyncOperationStatus.failed.name,
+      ],
+    );
+    return rehabilitated;
+  }
+
   /// Erreur transitoire (timeout, déconnexion, 5xx serveur). L'opération
   /// reste en statut `pending` pour être repêchée au prochain cycle de
   /// sync — PAS de bandeau rouge côté UI, PAS de statut `failed`. On
