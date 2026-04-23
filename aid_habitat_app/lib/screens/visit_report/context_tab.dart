@@ -404,7 +404,7 @@ class _ContextTabState extends State<ContextTab>
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF6EDFB),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
@@ -425,19 +425,15 @@ class _ContextTabState extends State<ContextTab>
       onTap: () => setState(() => _subSection = index),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFFF6EDFB) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
+        // Pas de pill individuel : le fond unifié du parent _buildQuickNav
+        // suffit. La sélection se voit par la couleur texte/icône.
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
               size: 16,
-              color: active
-                  ? const Color(0xFF554A63)
-                  : const Color(0xFF64748B),
+              color: active ? Colors.black : const Color(0xFFAE9DB3),
             ),
             const SizedBox(width: 6),
             Flexible(
@@ -447,9 +443,7 @@ class _ContextTabState extends State<ContextTab>
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: active
-                      ? const Color(0xFF554A63)
-                      : const Color(0xFF64748B),
+                  color: active ? Colors.black : const Color(0xFFAE9DB3),
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
