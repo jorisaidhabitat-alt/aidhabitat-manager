@@ -66,6 +66,12 @@ class _PlanStroke {
   /// Rotation (radians, horaire). N'a de sens que pour les symboles
   /// architecturaux. Par défaut 0 (pas de rotation).
   double rotation;
+  /// Flip visuel sur l'axe X (mirror gauche↔droite). Ne change pas la
+  /// bounding box — juste le rendu. Utilisé pour inverser le sens d'une
+  /// porte, d'un lavabo, etc.
+  bool flipX;
+  /// Flip visuel sur l'axe Y (mirror haut↔bas).
+  bool flipY;
 
   _PlanStroke({
     required this.tool,
@@ -73,6 +79,8 @@ class _PlanStroke {
     required this.size,
     required this.points,
     this.rotation = 0,
+    this.flipX = false,
+    this.flipY = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -81,6 +89,8 @@ class _PlanStroke {
         'size': size,
         'points': points.map((p) => [p.dx, p.dy]).toList(),
         if (rotation != 0) 'rotation': rotation,
+        if (flipX) 'flipX': true,
+        if (flipY) 'flipY': true,
       };
 
   static _PlanStroke? fromJson(Map<String, dynamic> json) {
@@ -100,12 +110,16 @@ class _PlanStroke {
         );
       }).toList();
       final rotation = (json['rotation'] as num?)?.toDouble() ?? 0.0;
+      final flipX = json['flipX'] == true;
+      final flipY = json['flipY'] == true;
       return _PlanStroke(
         tool: tool,
         color: color,
         size: size,
         points: points,
         rotation: rotation,
+        flipX: flipX,
+        flipY: flipY,
       );
     } catch (_) {
       return null;
