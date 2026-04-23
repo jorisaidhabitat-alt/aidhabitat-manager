@@ -592,10 +592,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final bounds = s.symbolLocalBounds;
     if (bounds == null) return null;
     // iPad / tactile : Apple recommande 44pt de cible minimum. On garde
-    // une zone tactile généreuse (32px de rayon = 64px de diamètre) pour
-    // les poignées de resize/rotation, sinon les ergos n'arrivent pas à
-    // les attraper du doigt.
+    // une zone tactile généreuse pour les poignées.
     const hitRadius = 32.0;
+    // Les coins ont priorité sur les milieux d'arête (le coin couvre
+    // géométriquement la fin de l'arête → on teste les coins d'abord).
     if ((local - bounds.topLeft).distance < hitRadius) {
       return _SymbolHandle.topLeft;
     }
@@ -607,6 +607,19 @@ class _PlanCanvasState extends State<PlanCanvas> {
     }
     if ((local - bounds.bottomRight).distance < hitRadius) {
       return _SymbolHandle.bottomRight;
+    }
+    // Milieux d'arête (resize 1D).
+    final topMid = Offset(bounds.center.dx, bounds.top);
+    final bottomMid = Offset(bounds.center.dx, bounds.bottom);
+    final leftMid = Offset(bounds.left, bounds.center.dy);
+    final rightMid = Offset(bounds.right, bounds.center.dy);
+    if ((local - topMid).distance < hitRadius) return _SymbolHandle.topMid;
+    if ((local - bottomMid).distance < hitRadius) {
+      return _SymbolHandle.bottomMid;
+    }
+    if ((local - leftMid).distance < hitRadius) return _SymbolHandle.leftMid;
+    if ((local - rightMid).distance < hitRadius) {
+      return _SymbolHandle.rightMid;
     }
     // Flèche de rotation au-dessus du bord haut, à `rotateOffset` px.
     const rotateOffset = 52.0;
@@ -1313,6 +1326,38 @@ class _PlanCanvasState extends State<PlanCanvas> {
         }
         setState(() => sel.rotation = newAngle);
         break;
+      case _SymbolHandle.topMid:
+      case _SymbolHandle.bottomMid:
+      case _SymbolHandle.leftMid:
+      case _SymbolHandle.rightMid:
+        // Redimensionnement 1D : on ne touche qu'une seule dimension
+        // (largeur OU hauteur), la rotation est préservée. Utilisé
+        // pour étirer le symbole sans altérer ses proportions sur
+        // l'autre axe (ex : allonger une baignoire sans grossir sa
+        // profondeur).
+        final local = _toSymbolLocal(sel, pt);
+        final initHalfW =
+            (initCorner.dx - initCenter.dx).abs().clamp(8.0, 2000.0);
+        final initHalfH =
+            (initCorner.dy - initCenter.dy).abs().clamp(8.0, 2000.0);
+        final sx = (initCorner.dx - initCenter.dx) >= 0 ? 1 : -1;
+        final sy = (initCorner.dy - initCenter.dy) >= 0 ? 1 : -1;
+        double newHalfW = initHalfW;
+        double newHalfH = initHalfH;
+        if (handle == _SymbolHandle.leftMid ||
+            handle == _SymbolHandle.rightMid) {
+          newHalfW = (local.dx - initCenter.dx).abs().clamp(8.0, 2000.0);
+        } else {
+          newHalfH = (local.dy - initCenter.dy).abs().clamp(8.0, 2000.0);
+        }
+        setState(() {
+          sel.points[1] = Offset(
+            initCenter.dx + newHalfW * sx,
+            initCenter.dy + newHalfH * sy,
+          );
+          sel.rotation = initRotation;
+        });
+        break;
       default:
         // Redimensionnement PROPORTIONNEL depuis un coin — on calcule
         // un facteur d'échelle basé sur la distance du curseur au
@@ -1343,7 +1388,22 @@ class _PlanCanvasState extends State<PlanCanvas> {
 }
 
 /// Identifie quelle poignée est active durant un drag (ou le corps).
-enum _SymbolHandle { topLeft, topRight, bottomLeft, bottomRight, rotate, body }
+/// - corners : redimensionnement PROPORTIONNEL
+/// - midpoints (topMid / …) : redimensionnement 1D sur un seul axe
+/// - rotate : rotation libre (snap 90°)
+/// - body : drag déplacement
+enum _SymbolHandle {
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight,
+  topMid,
+  bottomMid,
+  leftMid,
+  rightMid,
+  rotate,
+  body,
+}
 
 /// Grille 3 colonnes affichée dans un PopupMenuItem unique pour le menu
 /// "Insérer un élément".
@@ -1446,7 +1506,7 @@ class _HandlesPainter extends CustomPainter {
       frame,
     );
 
-    // 4 coins.
+    // 4 coins (redimensionnement proportionnel).
     final handleFill = Paint()..color = _accent;
     final handleBorder = Paint()
       ..color = Colors.white
@@ -1460,6 +1520,29 @@ class _HandlesPainter extends CustomPainter {
     ]) {
       canvas.drawCircle(pt, _handleRadius, handleFill);
       canvas.drawCircle(pt, _handleRadius, handleBorder);
+    }
+    // 4 milieux d'arête (redimensionnement 1D uniquement) : forme
+    // rectangulaire pour les distinguer visuellement des coins.
+    final midHandles = <Offset>[
+      Offset(bounds.center.dx, bounds.top), // topMid
+      Offset(bounds.center.dx, bounds.bottom), // bottomMid
+      Offset(bounds.left, bounds.center.dy), // leftMid
+      Offset(bounds.right, bounds.center.dy), // rightMid
+    ];
+    for (final pt in midHandles) {
+      final rect = Rect.fromCenter(
+        center: pt,
+        width: _handleRadius * 1.8,
+        height: _handleRadius * 1.8,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+        handleFill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+        handleBorder,
+      );
     }
 
     // Poignée rotation : cercle + icône flèche simplifiée.
