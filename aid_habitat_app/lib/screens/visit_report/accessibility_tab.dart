@@ -852,32 +852,36 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             ],
           ),
           const SizedBox(height: 8),
-          // Pièces
+          // Pièces — boutons-pilules multi-sélection (plus de
+          // cases à cocher). Un tap bascule l'état de la pièce dans
+          // le niveau courant.
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             childAspectRatio: 5.5,
-            mainAxisSpacing: 4,
+            mainAxisSpacing: 6,
             crossAxisSpacing: 8,
             children: allItems.map((room) {
               final checked = rooms.contains(room);
-              return FormCheckbox(
+              return TogglePillButton(
                 label: room,
-                value: checked,
-                onChanged: (v) {
+                active: checked,
+                expand: true,
+                onTap: () {
                   setState(() {
                     final next =
                         List<String>.from(_levelRooms[cfg.field] ?? []);
-                    if (v) {
-                      if (!next.contains(room)) next.add(room);
-                    } else {
+                    if (checked) {
                       next.remove(room);
+                    } else {
+                      if (!next.contains(room)) next.add(room);
                     }
                     _levelRooms[cfg.field] = next;
-                    // Sync Garage annexe : coché dans un niveau → coché dans Annexes
+                    // Sync Garage annexe : coché dans un niveau →
+                    // coché dans Annexes.
                     if (room == 'Garage') {
-                      if (v) {
+                      if (!checked) {
                         _annexes.add('Garage');
                       } else {
                         final stillPresent = _levelRooms.values

@@ -738,52 +738,14 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onCheckedChanged(!checked),
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color:
-                        checked ? const Color(0xFF907CA1) : Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: checked
-                          ? const Color(0xFF907CA1)
-                          : Colors.grey.shade400,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: checked
-                      ? const Icon(Icons.check,
-                          size: 14, color: Colors.white)
-                      : null,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Flexible(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    if (!checked) onCheckedChanged(true);
-                  },
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF334155),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+          child: TogglePillButton(
+            label: label,
+            active: checked,
+            expand: true,
+            onTap: () => onCheckedChanged(!checked),
           ),
         ),
-        // Boutons de choix toujours visibles quand la checkbox est cochée
+        // Boutons de choix toujours visibles quand le bouton est actif
         // — pas de bascule en "label (valeur) + crayon" : l'ergo doit
         // pouvoir voir tous les choix pour changer rapidement.
         if (checked) ...[
@@ -886,15 +848,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             _updateOccupant(index, occ.copyWith(invalidityTxt: v));
           },
         ),
-        FormCheckbox(
+        TogglePillButton(
           label: 'Aide à domicile',
-          value: occ.homeHelp,
-          onChanged: (v) => _updateOccupant(
-              index,
-              occ.copyWith(
-                homeHelp: v,
-                homeHelpTxt: v ? occ.homeHelpTxt : '',
-              )),
+          active: occ.homeHelp,
+          expand: true,
+          onTap: () => _updateOccupant(
+            index,
+            occ.copyWith(
+              homeHelp: !occ.homeHelp,
+              homeHelpTxt: !occ.homeHelp ? occ.homeHelpTxt : '',
+            ),
+          ),
         ),
         const SizedBox(height: 10),
         _buildDependenceSelector(index, suffix),

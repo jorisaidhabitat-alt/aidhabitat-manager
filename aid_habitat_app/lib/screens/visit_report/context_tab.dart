@@ -848,103 +848,125 @@ class _NumberedCheckRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Coche "concerné/fait" — visuel conservé, toute la zone de la
+    // ligne (coche + numéro + libellé) est cliquable pour faciliter
+    // le toucher sur tablette.
+    final concernCheckbox = Builder(builder: (_) {
+      final disabled = onConcernToggle == null;
+      Color fillColor;
+      Color borderColor;
+      if (disabled && !concernChecked) {
+        fillColor = const Color(0xFFF1F5F9);
+        borderColor = const Color(0xFFE2E8F0);
+      } else if (concernChecked) {
+        fillColor = const Color(0xFF94A3B8);
+        borderColor = const Color(0xFF94A3B8);
+      } else {
+        fillColor = Colors.white;
+        borderColor = const Color(0xFF907CA1);
+      }
+      return Container(
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(
+          color: fillColor,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: borderColor, width: 1.5),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.check,
+          size: 12,
+          color: concernChecked ? Colors.white : Colors.transparent,
+        ),
+      );
+    });
+
+    final rowContent = Row(
+      children: [
+        concernCheckbox,
+        const SizedBox(width: 10),
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: concernChecked
+                ? Colors.white
+                : const Color(0xFFE9DFF0),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            index.toString().padLeft(2, '0'),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF554A63),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: concernChecked
+                  ? const Color(0xFF94A3B8)
+                  : const Color(0xFF334155),
+              decoration:
+                  concernChecked ? TextDecoration.lineThrough : null,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: onConcernToggle,
-            child: Builder(builder: (_) {
-              final disabled = onConcernToggle == null;
-              Color fillColor;
-              Color borderColor;
-              if (disabled && !concernChecked) {
-                // Very light gray when the row is locked out by "aide humaine"
-                fillColor = const Color(0xFFF1F5F9);
-                borderColor = const Color(0xFFE2E8F0);
-              } else if (concernChecked) {
-                fillColor = const Color(0xFF94A3B8);
-                borderColor = const Color(0xFF94A3B8);
-              } else {
-                fillColor = Colors.white;
-                borderColor = const Color(0xFF907CA1);
-              }
-              return Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: fillColor,
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(color: borderColor, width: 1.5),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.check,
-                  size: 12,
-                  color: concernChecked ? Colors.white : Colors.transparent,
-                ),
-              );
-            }),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: concernChecked
-                  ? Colors.white
-                  : const Color(0xFFE9DFF0),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              index.toString().padLeft(2, '0'),
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF554A63),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: concernChecked
-                    ? const Color(0xFF94A3B8)
-                    : const Color(0xFF334155),
-                decoration: concernChecked ? TextDecoration.lineThrough : null,
-                fontWeight: FontWeight.w500,
-              ),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onConcernToggle,
+              child: rowContent,
             ),
           ),
           if (helpEnabled)
             GestureDetector(
               onTap: onHelpToggle,
-              child: Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: helpChecked
-                      ? const Color(0xFFFEF3C7)
-                      : const Color(0xFFFFFBEB),
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(
+              behavior: HitTestBehavior.opaque,
+              // Zone de toucher agrandie (20px réels autour de la
+              // coche) pour faciliter le clic sur tablette, sans
+              // grossir la coche elle-même.
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
                     color: helpChecked
-                        ? const Color(0xFFF59E0B)
-                        : const Color(0xFFFCD34D),
-                    width: 1.5,
+                        ? const Color(0xFFFEF3C7)
+                        : const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: helpChecked
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFFFCD34D),
+                      width: 1.5,
+                    ),
                   ),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.check,
-                  size: 12,
-                  color: helpChecked
-                      ? const Color(0xFFB45309)
-                      : Colors.transparent,
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.check,
+                    size: 12,
+                    color: helpChecked
+                        ? const Color(0xFFB45309)
+                        : Colors.transparent,
+                  ),
                 ),
               ),
             ),

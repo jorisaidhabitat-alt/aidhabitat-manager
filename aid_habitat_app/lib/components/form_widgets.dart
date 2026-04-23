@@ -307,6 +307,58 @@ class _FormNumberFieldState extends State<FormNumberField> {
   }
 }
 
+/// Bouton-pilule à deux états (on/off) pour remplacer les cases à
+/// cocher simples dans le relevé de visite. Style : gris clair quand
+/// activé, blanc bordé quand désactivé. Même palette que les pills de
+/// chauffage / annexes / équipements pour une cohérence visuelle.
+class TogglePillButton extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final bool expand;
+
+  const TogglePillButton({
+    super.key,
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.expand = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pill = GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFFE2E8F0) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active
+                ? const Color(0xFFCBD5E1)
+                : Colors.grey.shade300,
+            width: 1.2,
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: active
+                ? const Color(0xFF0F172A)
+                : Colors.black87,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+    return expand ? SizedBox(width: double.infinity, child: pill) : pill;
+  }
+}
+
 /// Ligne compacte "Label (valeur)" + crayon d'édition, utilisée
 /// partout où un champ doit se replier visuellement une fois rempli
 /// (situation familiale, caisse princ., num sécu, type de logement…).
