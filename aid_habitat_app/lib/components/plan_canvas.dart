@@ -658,8 +658,18 @@ class _PlanCanvasState extends State<PlanCanvas> {
           _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
           _toolBtn(PlanTool.wall, LucideIcons.rectangleHorizontal, 'Mur'),
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
-          // "Insérer un élément" juste après la gomme, même ligne.
-          _buildInsertSymbolMenu(),
+          _divider(),
+          // Symboles architecturaux directement dans la toolbar — un
+          // tap insère l'élément au centre du canvas. Plus de popup
+          // "Insérer un élément", plus de clic supplémentaire.
+          _symbolInsertBtn(
+              PlanTool.window, LucideIcons.appWindow, 'Fenêtre'),
+          _symbolInsertBtn(PlanTool.door, LucideIcons.doorOpen, 'Porte'),
+          _symbolInsertBtn(PlanTool.toilet, LucideIcons.armchair, 'WC'),
+          _symbolInsertBtn(
+              PlanTool.shower, LucideIcons.droplets, 'Douche'),
+          _symbolInsertBtn(PlanTool.bath, LucideIcons.bath, 'Baignoire'),
+          _symbolInsertBtn(PlanTool.sink, LucideIcons.hand, 'Lavabo'),
           _divider(),
           // Palette de couleurs.
           ..._presetColors.map((c) => _colorDot(c)),
@@ -730,14 +740,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
               tooltip: 'Ajouter une page',
               onPressed: widget.onAddPage,
             ),
-            // "Supprimer la page" : icône fichier barré pour différencier
-            // de l'action "Effacer tout" (corbeille) juste au-dessus.
-            IconButton(
-              icon: const Icon(LucideIcons.fileX, size: 18),
-              color: const Color(0xFFB91C1C),
-              tooltip: 'Supprimer la page',
-              onPressed: widget.totalPages! > 1 ? widget.onDeletePage : null,
-            ),
+            // "Supprimer la page" a été déplacée en bas à droite du
+            // canvas (voir _buildCanvas) : moins d'encombrement dans la
+            // toolbar, plus safe (éloigné des outils de dessin).
           ],
         ],
       ),
@@ -1451,21 +1456,45 @@ class _DrawPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Use a layer so erasers using dstOut work over committed strokes
-    canvas.saveLayer(Rect.fromLTWH(0, 0, size.width, size.height), Paint());
     paintStrokes(canvas, strokes, currentStroke);
-    canvas.restore();
   }
 
+  /// Peint les traits en 2 couches :
+  ///  1. Traits libres + formes de base (pen / highlighter / line / rect
+  ///     / wall) dans une couche isolée où la gomme opère (dstOut).
+  ///  2. Symboles architecturaux (fenêtre / porte / WC / …) PAR-DESSUS,
+  ///     hors de la couche gomme → la gomme ne peut pas les effacer.
+  ///     Pour supprimer un symbole, l'utilisateur doit le sélectionner
+  ///     et utiliser la corbeille.
   static void paintStrokes(
     Canvas canvas,
     List<_PlanStroke> strokes,
     _PlanStroke? current,
   ) {
+    final drawBounds = Rect.fromLTWH(
+      -100000,
+      -100000,
+      200000,
+      200000,
+    );
+    // Couche 1 : traits effaçables.
+    canvas.saveLayer(drawBounds, Paint());
     for (final s in strokes) {
+      if (_symbolTools.contains(s.tool)) continue;
       _paintOne(canvas, s);
     }
-    if (current != null) _paintOne(canvas, current);
+    if (current != null && !_symbolTools.contains(current.tool)) {
+      _paintOne(canvas, current);
+    }
+    canvas.restore();
+    // Couche 2 : symboles inviolables, dessinés après la gomme.
+    for (final s in strokes) {
+      if (!_symbolTools.contains(s.tool)) continue;
+      _paintOne(canvas, s);
+    }
+    if (current != null && _symbolTools.contains(current.tool)) {
+      _paintOne(canvas, current);
+    }
   }
 
   static void _paintOne(Canvas canvas, _PlanStroke s) {
