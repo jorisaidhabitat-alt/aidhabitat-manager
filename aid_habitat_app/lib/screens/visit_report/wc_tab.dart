@@ -43,9 +43,8 @@ class _WcTabState extends State<WcTab>
   bool _loaded = false;
   Timer? _saveTimer;
   int _activeLevelIndex = 0;
-  // Fields WC en mode édition (pill toggle visible). Clé = "{instId}-{field}".
-  // Hors du set = CollapsedValueRow. Parité avec Type de logement.
-  final Set<String> _editingFieldKeys = {};
+  // (Ancien Set de clés d'édition pour le repli "CollapsedValueRow"
+  // retiré : les toggles restent maintenant toujours visibles.)
 
   @override
   void initState() {
@@ -349,9 +348,9 @@ class _WcTabState extends State<WcTab>
     );
   }
 
-  /// Helper "type de logement" : toggle éditable tant que la clé est
-  /// dans `_editingFieldKeys`, puis se replie sur une `CollapsedValueRow`
-  /// dès que l'utilisateur a choisi.
+  /// Toggle toujours visible (ancien « repli en CollapsedValueRow »
+  /// retiré à la demande utilisateur — aucun format ne change dans le
+  /// relevé de visite, sauf les niveaux Accessibilité).
   Widget _collapsibleToggle({
     required String instanceId,
     required String fieldName,
@@ -360,26 +359,14 @@ class _WcTabState extends State<WcTab>
     required String selected,
     required ValueChanged<String> onChanged,
   }) {
-    final key = '$instanceId-$fieldName';
-    final editing = _editingFieldKeys.contains(key);
-    if (editing) {
-      return FormToggleGroup(
-        label: label,
-        options: options,
-        selected: selected,
-        // expand: false → pills dimensionnés au contenu, alignés à
-        // GAUCHE via le Wrap interne (plus de full-width centré).
-        expand: false,
-        onChanged: (v) {
-          onChanged(v);
-          setState(() => _editingFieldKeys.remove(key));
-        },
-      );
-    }
-    return CollapsedValueRow(
+    return FormToggleGroup(
       label: label,
-      displayValue: selected,
-      onEdit: () => setState(() => _editingFieldKeys.add(key)),
+      options: options,
+      selected: selected,
+      // expand: false → pills dimensionnés au contenu, alignés à
+      // GAUCHE via le Wrap interne.
+      expand: false,
+      onChanged: onChanged,
     );
   }
 

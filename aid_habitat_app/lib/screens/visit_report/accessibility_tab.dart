@@ -89,40 +89,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   bool _loaded = false;
   Timer? _saveTimer;
 
-  // Flags de repli : quand true, on affiche la version repliée
-  // "label (valeur) + crayon" ; le tap sur le crayon bascule en mode
-  // saisie/édition.
-  bool _typologyEditing = false;
-  bool _surfaceEditing = false;
-  bool _heatingEditing = false;
-  // Chauffage : pas de repli automatique à la première coche ; on
-  // attend un clic explicite sur le bouton Valider pour committer.
-  bool _heatingCommitted = false;
-
-  // Volets : flags d'édition (remplace le dropdown par des pills qui se
-  // replient en "label (valeur) + crayon" une fois un statut choisi).
-  bool _voletsManEditing = false;
-  bool _voletsElecEditing = false;
-  bool _voletsPersEditing = false;
-  // Drapeaux "l'utilisateur a confirmé un choix" — Aucun replie aussi la
-  // liste s'il a été cliqué explicitement (initialisés à partir des
-  // données persistées dans _load).
-  bool _voletsManCommitted = false;
-  bool _voletsElecCommitted = false;
-  bool _voletsPersCommitted = false;
-
   // Niveaux : field actuellement "ouvert" (carte pleine). Les autres
   // niveaux sont repliés en "Nom (pièces cochées)" + crayon. Null quand
-  // aucun niveau n'est en cours d'édition.
+  // aucun niveau n'est en cours d'édition. C'est le SEUL repli préservé
+  // dans l'onglet Accessibilité (sur demande utilisateur) : les autres
+  // champs (type de logement, surface, chauffage, volets, annexes…)
+  // restent toujours visibles sous forme de pills/dropdown.
   String? _expandedLevel;
   // Affichage de la liste pills pour ajouter un nouveau niveau.
   bool _addLevelMode = false;
-
-  // Extérieur : repli des choix "Accès depuis la rue" et "Annexes".
-  bool _easyAccessCommitted = false;
-  bool _easyAccessEditing = false;
-  bool _annexesCommitted = false;
-  bool _annexesEditing = false;
 
   // Général
   String _yearConstruction = '';
@@ -282,16 +257,6 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         (row?['motorisation_portail'] as String?) ?? h.motorisationPortail;
     _portail = rawPortail.isNotEmpty;
     _motorisationPortail = rawPortail.isEmpty ? 'Aucun' : rawPortail;
-
-    // Flags "committed" : un statut non-Aucun ou une localisation
-    // indiquent forcément que l'utilisateur a déjà fait un choix → on
-    // démarre en mode replié. Sinon, les pills restent ouverts.
-    _voletsManCommitted = _voletsManStatus != 'Aucun';
-    _voletsElecCommitted = _voletsElecStatus != 'Aucun';
-    _voletsPersCommitted = _voletsPersStatus != 'Aucun';
-    _easyAccessCommitted = row != null;
-    _annexesCommitted = row != null;
-    _heatingCommitted = _heatingTypes.isNotEmpty;
 
     if (mounted) setState(() => _loaded = true);
   }
@@ -767,12 +732,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color:
-              isSelected ? const Color(0xFFE2E8F0) : Colors.white,
+          // Même violet que FormToggleGroup (#907CA1) pour unifier tous
+          // les pills multi-select avec les autres boutons du relevé.
+          color: isSelected ? const Color(0xFF907CA1) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFFCBD5E1)
+                ? const Color(0xFF907CA1)
                 : Colors.grey.shade300,
             width: 1.2,
           ),
@@ -781,9 +747,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isSelected
-                ? const Color(0xFF0F172A)
-                : Colors.black87,
+            color: isSelected ? Colors.white : Colors.black87,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
@@ -1037,102 +1001,70 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       ..._annexes,
       if (_portail) 'Portail',
     };
-    final annexesCollapsed = _annexesCommitted && !_annexesEditing;
-    final accessCollapsed = _easyAccessCommitted && !_easyAccessEditing;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Accès depuis la rue : pills jusqu'au choix, puis "label
-        // (valeur) + crayon".
-        if (accessCollapsed)
-          CollapsedValueRow(
-            label: 'Accès depuis la rue',
-            displayValue: accessValue,
-            onEdit: () => setState(() => _easyAccessEditing = true),
-          )
-        else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Accès depuis la rue',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              FormToggleGroup(
-                label: '',
-                options: const ['Facile', 'À revoir'],
-                selected: accessValue,
-                expand: true,
-                onChanged: (v) {
-                  setState(() {
-                    _easyAccess = v == 'Facile';
-                    _easyAccessCommitted = true;
-                    _easyAccessEditing = false;
-                  });
-                  _scheduleSave();
-                },
-              ),
-            ],
-          ),
-        const SizedBox(height: 16),
-        // Annexes : pills 3 colonnes. Le repli "Annexes (Garage, …) +
-        // crayon" s'active uniquement quand l'utilisateur tape à
-        // l'extérieur (autre section / ailleurs sur l'écran).
-        if (annexesCollapsed)
-          CollapsedValueRow(
-            label: 'Annexes',
-            displayValue: selectedAnnexes.isEmpty
-                ? 'Aucune'
-                : selectedAnnexes.join(', '),
-            onEdit: () => setState(() => _annexesEditing = true),
-          )
-        else
-          TapRegion(
-            onTapOutside: (_) {
-              if (!_annexesEditing && _annexesCommitted) return;
-              setState(() {
-                _annexesCommitted = true;
-                _annexesEditing = false;
-              });
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('Annexes',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: Color(0xFF64748B))),
-                const SizedBox(height: 8),
-                _buildMultiSelectGrid(
-                  options: annexItems,
-                  selected: selectedAnnexes,
-                  columns: 3,
-                  onToggle: (opt) {
-                    setState(() {
-                      if (opt == 'Portail') {
-                        _portail = !_portail;
-                        if (!_portail) _motorisationPortail = 'Aucun';
-                      } else {
-                        if (_annexes.contains(opt)) {
-                          _annexes.remove(opt);
-                          if (opt == 'Garage') {
-                            _motorisationPorteGarage = 'Aucun';
-                          }
-                        } else {
-                          _annexes.add(opt);
-                        }
-                      }
-                    });
-                    _scheduleSave();
-                  },
-                ),
-              ],
+        // Accès depuis la rue : pills toujours visibles.
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Accès depuis la rue',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: Color(0xFF64748B))),
+            const SizedBox(height: 8),
+            FormToggleGroup(
+              label: '',
+              options: const ['Facile', 'À revoir'],
+              selected: accessValue,
+              expand: true,
+              onChanged: (v) {
+                setState(() {
+                  _easyAccess = v == 'Facile';
+                });
+                _scheduleSave();
+              },
             ),
-          ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // Annexes : pills 3 colonnes, toujours visibles.
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Annexes',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: Color(0xFF64748B))),
+            const SizedBox(height: 8),
+            _buildMultiSelectGrid(
+              options: annexItems,
+              selected: selectedAnnexes,
+              columns: 3,
+              onToggle: (opt) {
+                setState(() {
+                  if (opt == 'Portail') {
+                    _portail = !_portail;
+                    if (!_portail) _motorisationPortail = 'Aucun';
+                  } else {
+                    if (_annexes.contains(opt)) {
+                      _annexes.remove(opt);
+                      if (opt == 'Garage') {
+                        _motorisationPorteGarage = 'Aucun';
+                      }
+                    } else {
+                      _annexes.add(opt);
+                    }
+                  }
+                });
+                _scheduleSave();
+              },
+            ),
+          ],
+        ),
         // Motorisations conditionnelles (toujours visibles quand
         // l'annexe associée est active, collapsed ou pas).
         if (showGarageMoto || showPortailMoto) ...[

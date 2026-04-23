@@ -118,12 +118,8 @@ class _BathroomTabState extends State<BathroomTab>
   bool _loaded = false;
   Timer? _saveTimer;
   int _activeLevelIndex = 0;
-  // Fields en mode édition (pill toggle visible). Clé = "{instanceId}-{field}".
-  // Absence = collapsed (CollapsedValueRow). Parité avec Type de logement.
-  final Set<String> _editingFieldKeys = {};
-  // Instances dont la section "Équipements complémentaires" est en mode
-  // édition (checkboxes 2 col + Valider). Par id d'instance.
-  final Set<String> _editingEquipInstances = {};
+  // (Anciens Sets d'édition/repli retirés : les toggles et listes
+  // d'équipements restent maintenant toujours visibles.)
 
   @override
   void initState() {
@@ -567,13 +563,15 @@ class _BathroomTabState extends State<BathroomTab>
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             alignment: Alignment.center,
             decoration: BoxDecoration(
+              // Violet #907CA1 pour aligner ce pill toggle « Sol
+              // glissant » avec tous les autres boutons du relevé.
               color: a.sdbSolGlissant
-                  ? const Color(0xFFE2E8F0)
+                  ? const Color(0xFF907CA1)
                   : Colors.white,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: a.sdbSolGlissant
-                    ? const Color(0xFFCBD5E1)
+                    ? const Color(0xFF907CA1)
                     : Colors.grey.shade300,
                 width: 1.2,
               ),
@@ -585,7 +583,7 @@ class _BathroomTabState extends State<BathroomTab>
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: a.sdbSolGlissant
-                    ? const Color(0xFF0F172A)
+                    ? Colors.white
                     : Colors.black87,
               ),
             ),
@@ -596,66 +594,46 @@ class _BathroomTabState extends State<BathroomTab>
     );
   }
 
-  /// Liste 2 colonnes de cases à cocher pour les équipements
-  /// complémentaires. Pas de bouton Valider : on replie uniquement
-  /// quand l'utilisateur tape à l'extérieur (autre section, prise de
-  /// notes, …). Les clics multiples internes laissent la grille ouverte.
+  /// Liste 2 colonnes de pills pour les équipements complémentaires,
+  /// toujours visibles (plus de repli "Équipements (…) + crayon").
   Widget _buildEquipmentChecklistOrCollapsed({
     required BathroomInstance instance,
     required List<_EquipDef> commonItems,
     required Set<String> selectedCommon,
   }) {
-    final editing = _editingEquipInstances.contains(instance.id);
-    // Collapsed uniquement si au moins un équipement est sélectionné.
-    if (!editing && selectedCommon.isNotEmpty) {
-      final summary = selectedCommon.join(', ');
-      return CollapsedValueRow(
-        label: 'Équipements complémentaires',
-        displayValue: summary,
-        onEdit: () =>
-            setState(() => _editingEquipInstances.add(instance.id)),
-      );
-    }
-    return TapRegion(
-      onTapOutside: (_) {
-        if (selectedCommon.isEmpty) return;
-        if (!_editingEquipInstances.contains(instance.id)) return;
-        setState(() => _editingEquipInstances.remove(instance.id));
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Équipements complémentaires',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: Color(0xFF64748B),
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Équipements complémentaires',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
           ),
-          const SizedBox(height: 8),
-          _EquipPillGrid(
-            items: commonItems,
-            selected: selectedCommon,
-            columns: 2,
-            onToggle: (label) {
-              final next = Set<String>.from(selectedCommon);
-              if (next.contains(label)) {
-                next.remove(label);
-              } else {
-                next.add(label);
-              }
-              _applyCommonSelection(commonItems, next);
-            },
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 8),
+        _EquipPillGrid(
+          items: commonItems,
+          selected: selectedCommon,
+          columns: 2,
+          onToggle: (label) {
+            final next = Set<String>.from(selectedCommon);
+            if (next.contains(label)) {
+              next.remove(label);
+            } else {
+              next.add(label);
+            }
+            _applyCommonSelection(commonItems, next);
+          },
+        ),
+      ],
     );
   }
 
-  /// Helper "type de logement" : toggle éditable tant que la clé est
-  /// dans `_editingFieldKeys`, puis se replie sur une `CollapsedValueRow`
-  /// dès que l'utilisateur a choisi.
+  /// Toggle toujours visible (ancien « repli en CollapsedValueRow »
+  /// retiré à la demande utilisateur — aucun format ne change dans le
+  /// relevé de visite, sauf les niveaux Accessibilité).
   Widget _collapsibleToggle({
     required String instanceId,
     required String fieldName,
@@ -664,26 +642,14 @@ class _BathroomTabState extends State<BathroomTab>
     required String selected,
     required ValueChanged<String> onChanged,
   }) {
-    final key = '$instanceId-$fieldName';
-    final editing = _editingFieldKeys.contains(key);
-    if (editing) {
-      return FormToggleGroup(
-        label: label,
-        options: options,
-        selected: selected,
-        // expand: false → pills dimensionnés au contenu, alignés à
-        // GAUCHE via le Wrap interne (plus de full-width centré).
-        expand: false,
-        onChanged: (v) {
-          onChanged(v);
-          setState(() => _editingFieldKeys.remove(key));
-        },
-      );
-    }
-    return CollapsedValueRow(
+    return FormToggleGroup(
       label: label,
-      displayValue: selected,
-      onEdit: () => setState(() => _editingFieldKeys.add(key)),
+      options: options,
+      selected: selected,
+      // expand: false → pills dimensionnés au contenu, alignés à
+      // GAUCHE via le Wrap interne.
+      expand: false,
+      onChanged: onChanged,
     );
   }
 
@@ -1053,12 +1019,13 @@ class _Pill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color:
-              isSelected ? const Color(0xFFE2E8F0) : Colors.white,
+          // Même violet que FormToggleGroup (#907CA1) pour unifier tous
+          // les pills multi-select avec les autres boutons du relevé.
+          color: isSelected ? const Color(0xFF907CA1) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFFCBD5E1)
+                ? const Color(0xFF907CA1)
                 : Colors.grey.shade300,
             width: 1.2,
           ),
@@ -1067,9 +1034,7 @@ class _Pill extends StatelessWidget {
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isSelected
-                ? const Color(0xFF0F172A)
-                : Colors.black87,
+            color: isSelected ? Colors.white : Colors.black87,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
