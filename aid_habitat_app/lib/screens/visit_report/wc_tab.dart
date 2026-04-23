@@ -60,13 +60,21 @@ class _WcTabState extends State<WcTab>
   }
 
   Future<void> _load() async {
-    // Pull from server first — dossier GET doesn't include diag row.
+    // Phase 1 — rendu immédiat depuis le cache local SQLite.
+    await _hydrateFromLocal();
+    // Phase 2 — refresh serveur en arrière-plan ; rehydrate si nouvelles
+    // données. En offline on reste sur le cache local.
     try {
       await widget.repository
           .refreshDiagnosticSanitaireFromRemote(widget.dossier.id);
     } catch (_) {
-      // offline
+      return;
     }
+    if (!mounted) return;
+    await _hydrateFromLocal();
+  }
+
+  Future<void> _hydrateFromLocal() async {
     final result =
         await widget.repository.fetchDiagnosticSanitaire(widget.dossier.id);
     final housingRow =
