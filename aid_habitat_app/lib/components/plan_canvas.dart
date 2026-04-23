@@ -939,6 +939,32 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
+  /// Bouton d'insertion instantanée d'un symbole architectural au
+  /// centre du canvas (remplace l'ancien menu "Insérer un élément").
+  Widget _symbolInsertBtn(PlanTool tool, IconData icon, String label) {
+    return Tooltip(
+      message: 'Insérer : $label',
+      child: InkWell(
+        onTap: () => _insertSymbolAtCenter(tool),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: const Color(0xFFE2E8F0),
+              width: 1,
+            ),
+          ),
+          child: Icon(icon, size: 18, color: Colors.grey.shade700),
+        ),
+      ),
+    );
+  }
+
   Widget _colorDot(int color) {
     final active = _penColor == color;
     return GestureDetector(
@@ -1072,9 +1098,53 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   _selectedIndex < _strokes.length &&
                   _symbolTools.contains(_strokes[_selectedIndex].tool))
                 _buildDeleteButtonForSelected(),
+              // Bouton "Supprimer la page" flottant en bas-droite du
+              // canvas. N'apparaît que s'il y a plus d'une page (pas de
+              // suppression de la dernière page).
+              if (widget.totalPages != null &&
+                  widget.totalPages! > 1 &&
+                  widget.onDeletePage != null)
+                Positioned(
+                  right: 12,
+                  bottom: 12,
+                  child: _buildDeletePageFab(),
+                ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildDeletePageFab() {
+    return Tooltip(
+      message: 'Supprimer la page',
+      child: Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        elevation: 3,
+        shadowColor: Colors.black26,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: widget.onDeletePage,
+          child: Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFFFCA5A5),
+                width: 1,
+              ),
+            ),
+            child: const Icon(
+              LucideIcons.fileX,
+              size: 20,
+              color: Color(0xFFB91C1C),
+            ),
+          ),
+        ),
       ),
     );
   }
