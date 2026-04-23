@@ -327,17 +327,22 @@ class TogglePillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Violet #907CA1 quand actif (cohérence avec les autres pills du
+    // relevé de visite — FormToggleGroup, _Pill, _buildPill). Auparavant
+    // le fond actif était gris clair #E2E8F0, ce qui rendait les pièces
+    // sélectionnées à l'intérieur des niveaux Accessibilité peu visibles
+    // (rapportées comme "cadres gris et blancs vides" par l'utilisateur).
     final pill = GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? const Color(0xFFE2E8F0) : Colors.white,
+          color: active ? const Color(0xFF907CA1) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: active
-                ? const Color(0xFFCBD5E1)
+                ? const Color(0xFF907CA1)
                 : Colors.grey.shade300,
             width: 1.2,
           ),
@@ -346,9 +351,7 @@ class TogglePillButton extends StatelessWidget {
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: active
-                ? const Color(0xFF0F172A)
-                : Colors.black87,
+            color: active ? Colors.white : Colors.black87,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
