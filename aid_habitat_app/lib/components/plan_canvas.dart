@@ -608,21 +608,36 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final local = _toSymbolLocal(s, globalCanvasPoint);
     final bounds = s.symbolLocalBounds;
     if (bounds == null) return null;
-    // iPad / tactile : Apple recommande 44pt de cible minimum. On garde
-    // une zone tactile généreuse pour les poignées.
-    const hitRadius = 32.0;
+    // Déplacer est l'action PRIMAIRE : si le doigt est clairement dans
+    // l'intérieur du symbole, on court-circuite tout test de poignée et
+    // on prend direct le body drag. Évite que les poignées ne mangent
+    // la zone centrale et rendent le déplacement impossible.
+    final innerMargin = math.min(
+      16.0,
+      math.min(bounds.width, bounds.height) / 3.0,
+    );
+    final inner = bounds.deflate(innerMargin);
+    if (!inner.isEmpty && inner.contains(local)) {
+      return _SymbolHandle.body;
+    }
+    // Hitbox resserrée : les poignées sont plus petites (visuellement
+    // et tactilement) pour ne pas concurrencer le body drag près des
+    // bords.
+    const cornerHit = 18.0;
+    const midHit = 14.0;
+    const rotateHit = 20.0;
     // Les coins ont priorité sur les milieux d'arête (le coin couvre
     // géométriquement la fin de l'arête → on teste les coins d'abord).
-    if ((local - bounds.topLeft).distance < hitRadius) {
+    if ((local - bounds.topLeft).distance < cornerHit) {
       return _SymbolHandle.topLeft;
     }
-    if ((local - bounds.topRight).distance < hitRadius) {
+    if ((local - bounds.topRight).distance < cornerHit) {
       return _SymbolHandle.topRight;
     }
-    if ((local - bounds.bottomLeft).distance < hitRadius) {
+    if ((local - bounds.bottomLeft).distance < cornerHit) {
       return _SymbolHandle.bottomLeft;
     }
-    if ((local - bounds.bottomRight).distance < hitRadius) {
+    if ((local - bounds.bottomRight).distance < cornerHit) {
       return _SymbolHandle.bottomRight;
     }
     // Milieux d'arête (resize 1D).
@@ -630,19 +645,19 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final bottomMid = Offset(bounds.center.dx, bounds.bottom);
     final leftMid = Offset(bounds.left, bounds.center.dy);
     final rightMid = Offset(bounds.right, bounds.center.dy);
-    if ((local - topMid).distance < hitRadius) return _SymbolHandle.topMid;
-    if ((local - bottomMid).distance < hitRadius) {
+    if ((local - topMid).distance < midHit) return _SymbolHandle.topMid;
+    if ((local - bottomMid).distance < midHit) {
       return _SymbolHandle.bottomMid;
     }
-    if ((local - leftMid).distance < hitRadius) return _SymbolHandle.leftMid;
-    if ((local - rightMid).distance < hitRadius) {
+    if ((local - leftMid).distance < midHit) return _SymbolHandle.leftMid;
+    if ((local - rightMid).distance < midHit) {
       return _SymbolHandle.rightMid;
     }
     // Flèche de rotation au-dessus du bord haut, à `rotateOffset` px.
     const rotateOffset = 52.0;
     final rotateLocal =
         Offset(bounds.center.dx, bounds.top - rotateOffset);
-    if ((local - rotateLocal).distance < hitRadius) {
+    if ((local - rotateLocal).distance < rotateHit) {
       return _SymbolHandle.rotate;
     }
     if (bounds.contains(local)) return _SymbolHandle.body;
@@ -1540,10 +1555,10 @@ class _HandlesPainter extends CustomPainter {
   _HandlesPainter({required this.stroke});
   final _PlanStroke stroke;
 
-  // Taille visuelle des poignées. 12px = compromis entre discrétion et
-  // visibilité tactile sur iPad — la zone tactile elle-même est plus grande
-  // (voir `hitRadius` dans `_handleAt`).
-  static const double _handleRadius = 12.0;
+  // Taille visuelle des poignées. Réduite à 8px pour ne pas empiéter
+  // sur la zone de drag du symbole — le déplacement est l'action
+  // primaire, les poignées restent discrètes mais visibles.
+  static const double _handleRadius = 8.0;
   static const double _rotateOffset = 52.0;
   static const Color _accent = Color(0xFF597E8D);
 
@@ -1588,8 +1603,9 @@ class _HandlesPainter extends CustomPainter {
       canvas.drawCircle(pt, _handleRadius, handleFill);
       canvas.drawCircle(pt, _handleRadius, handleBorder);
     }
-    // 4 milieux d'arête (redimensionnement 1D uniquement) : forme
-    // rectangulaire pour les distinguer visuellement des coins.
+    // 4 milieux d'arête (redimensionnement 1D uniquement) : petits
+    // rectangles discrets, plus petits que les coins pour marquer la
+    // différence d'usage sans empiéter sur le body drag.
     final midHandles = <Offset>[
       Offset(bounds.center.dx, bounds.top), // topMid
       Offset(bounds.center.dx, bounds.bottom), // bottomMid
@@ -1599,15 +1615,15 @@ class _HandlesPainter extends CustomPainter {
     for (final pt in midHandles) {
       final rect = Rect.fromCenter(
         center: pt,
-        width: _handleRadius * 1.8,
-        height: _handleRadius * 1.8,
+        width: 11,
+        height: 11,
       );
       canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
         handleFill,
       );
       canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
         handleBorder,
       );
     }
