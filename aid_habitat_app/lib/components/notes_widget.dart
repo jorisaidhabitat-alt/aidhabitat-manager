@@ -1843,11 +1843,19 @@ class _StrokePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // saveLayer isole les traits dans une couche transparente — la
+    // gomme peut alors utiliser BlendMode.clear pour trouer seulement
+    // les pixels de strokes, sans toucher le fond (silhouettes Mesures,
+    // plans…). Sans cette couche, la gomme peindrait en blanc par-dessus
+    // et masquerait les images de fond.
+    final bounds = Offset.zero & size;
+    canvas.saveLayer(bounds, Paint());
     for (final stroke in strokes) {
       _drawStroke(canvas, size, stroke);
     }
     final pending = activeStroke;
     if (pending != null) _drawStroke(canvas, size, pending);
+    canvas.restore();
   }
 
   void _drawStroke(Canvas canvas, Size size, _Stroke stroke) {
@@ -1860,14 +1868,13 @@ class _StrokePainter extends CustomPainter {
       case NoteTool.pen:
       case NoteTool.eraser:
       case NoteTool.highlighter:
-        // Gomme = trait blanc peint par-dessus (srcOver + #FFFFFF). Effet
-        // visuel d'effacement fluide pixel-par-pixel, identique à ce que
-        // ferait un "marqueur blanc" sur papier — pas de calcul de hit
-        // test stroke-par-stroke, pas de saccade.
+        // Gomme = BlendMode.clear sur la couche de strokes → efface
+        // uniquement les pixels de traits, laisse le fond intact.
+        // Plume/surligneur = srcOver normal.
         final isEraser = stroke.tool == NoteTool.eraser;
         final paint = Paint()
           ..color = isEraser
-              ? Colors.white
+              ? Colors.black // couleur ignorée avec BlendMode.clear
               : Color(stroke.color).withValues(
                   alpha: stroke.tool == NoteTool.highlighter ? 0.4 : 1.0,
                 )
@@ -1875,7 +1882,7 @@ class _StrokePainter extends CustomPainter {
           ..strokeJoin = StrokeJoin.round
           ..strokeWidth = stroke.size
           ..style = PaintingStyle.stroke
-          ..blendMode = BlendMode.srcOver;
+          ..blendMode = isEraser ? BlendMode.clear : BlendMode.srcOver;
         if (realPoints.length == 1) {
           canvas.drawCircle(
             realPoints.first,
