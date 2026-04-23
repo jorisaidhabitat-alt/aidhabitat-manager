@@ -892,71 +892,50 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     final isExpanded = _expandedLevel == cfg.field;
 
     if (!isExpanded) {
-      // Vue repliée : "Sous-sol (Salle de bain, WC)" + crayon + croix.
-      final displayRooms =
-          rooms.isEmpty ? '—' : rooms.join(', ');
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () =>
-                    setState(() => _expandedLevel = cfg.field),
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text.rich(
-                        TextSpan(
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
-                          ),
-                          children: [
-                            TextSpan(text: cfg.label),
-                            TextSpan(
-                              text: ' ($displayRooms)',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF334155),
-                              ),
-                            ),
-                          ],
+      // Vue repliée (style menu déroulant) : "Sous-sol (Salle de bain,
+      // WC)" + chevron vers le bas. Pas de crayon ni de croix — la
+      // croix n'apparaît qu'une fois la card rouverte (mode édition).
+      final displayRooms = rooms.isEmpty ? '—' : rooms.join(', ');
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _expandedLevel = cfg.field),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                    children: [
+                      TextSpan(text: cfg.label),
+                      TextSpan(
+                        text: ' ($displayRooms)',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF334155),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(
-                      Icons.edit_outlined,
-                      size: 14,
-                      color: Color(0xFF907CA1),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            InkWell(
-              onTap: () {
-                setState(() {
-                  _orderedLevels.remove(cfg.field);
-                  if (_expandedLevel == cfg.field) _expandedLevel = null;
-                });
-                _scheduleSave();
-              },
-              borderRadius: BorderRadius.circular(20),
-              child: const Padding(
-                padding: EdgeInsets.all(4),
-                child: Icon(Icons.close,
-                    size: 16, color: Color(0xFF94A3B8)),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.expand_more,
+                size: 20,
+                color: Color(0xFF64748B),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }

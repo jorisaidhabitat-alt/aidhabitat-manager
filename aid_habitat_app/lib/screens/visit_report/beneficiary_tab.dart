@@ -63,23 +63,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   bool _saving = false;
   Timer? _saveTimer;
 
-  // Indices d'occupants pour lesquels la liste d'options APA / Invalidité
-  // est affichée alors même qu'une valeur est déjà choisie (édition). La
-  // liste disparaît dès qu'une valeur est (re)sélectionnée.
-  final Set<int> _apaEditingIndices = {};
-  final Set<int> _invalidityEditingIndices = {};
-  final Set<int> _dependenceEditingIndices = {};
-  // Indices d'occupants ayant confirmé un choix de dépendance (y compris
-  // "Aucune" → stocké ''). Sert à distinguer "jamais renseigné" (pills
-  // affichés) de "Aucune choisi explicitement" (repli avec "(Aucune)").
-  final Set<int> _dependenceCommittedIndices = {};
-  // Flags "en cours d'édition" pour les champs globaux qui basculent en
-  // repli "label (valeur) + crayon".
-  bool _envoiRapportEditing = false;
-  bool _compteAnahEditing = false;
-  final Set<int> _caissePrincEditingIndices = {};
-  final Set<int> _caisseComplEditingIndices = {};
-  final Set<int> _numeroSecuEditingIndices = {};
+  // (Les anciens Sets d'édition repliée ont été retirés : les boutons et
+  // menus déroulants du relevé de visite restent maintenant toujours
+  // visibles pour permettre un changement rapide.)
 
   // Shared (patient-level) fields
   late String _address;
@@ -758,22 +744,18 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       );
 
   /// Case à cocher qui, une fois cochée, affiche directement la liste
-  /// des options en pills sous la ligne. Dès qu'une option est choisie,
-  /// la liste disparaît et la valeur est affichée entre parenthèses à
-  /// côté du label (ex. "Bénéficiaire APA (GIR 6)") avec un petit crayon
-  /// pour rouvrir la liste.
+  /// des options en pills sous la ligne. Les boutons restent visibles en
+  /// permanence (pas de repli en "label (valeur) + crayon") pour que
+  /// l'ergo puisse changer rapidement.
   Widget _buildCollapsibleOptionCheckbox({
     required String label,
     required bool checked,
     required String value,
-    required String Function(String) valueDisplay,
     required List<String> options,
     required String Function(String) optionLabel,
     required int optionColumns,
-    required bool editing,
     required ValueChanged<bool> onCheckedChanged,
     required ValueChanged<String> onValueChanged,
-    required VoidCallback onEditRequested,
   }) {
     final pillLabels = options.map(optionLabel).toList();
     final hasValue = value.isNotEmpty;
@@ -857,26 +839,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   Widget _buildDependenceSelector(int index, String suffix) {
     final occ = _occupants[index];
     final value = occ.dependenceTxt.trim();
-    final editing = _dependenceEditingIndices.contains(index);
-    final committed = _dependenceCommittedIndices.contains(index);
-    final collapsed = committed && !editing;
-    if (collapsed) {
-      return _collapsedValueRow(
-        label: 'Dépendance$suffix',
-        displayValue: value.isEmpty ? 'Aucune' : value,
-        onEdit: () => setState(() => _dependenceEditingIndices.add(index)),
-      );
-    }
     return FormToggleGroup(
       label: 'Dépendance$suffix',
       options: _dependenceOptions,
       columns: 2,
       selected: value.isEmpty ? 'Aucune' : value,
       onChanged: (v) {
-        setState(() {
-          _dependenceEditingIndices.remove(index);
-          _dependenceCommittedIndices.add(index);
-        });
         _updateOccupant(
           index,
           occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v),
@@ -908,15 +876,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           label: 'Bénéficiaire APA',
           checked: occ.apa,
           value: occ.apaGir.trim(),
-          valueDisplay: (v) => 'GIR $v',
           options: _apaGirOptions,
           optionLabel: (v) => 'GIR $v',
           optionColumns: 3,
-          editing: _apaEditingIndices.contains(index),
           onCheckedChanged: (v) {
-            setState(() {
-              if (!v) _apaEditingIndices.remove(index);
-            });
             _updateOccupant(
               index,
               occ.copyWith(
@@ -926,26 +889,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             );
           },
           onValueChanged: (v) {
-            setState(() => _apaEditingIndices.remove(index));
             _updateOccupant(index, occ.copyWith(apaGir: v));
           },
-          onEditRequested: () => setState(
-            () => _apaEditingIndices.add(index),
-          ),
         ),
         _buildCollapsibleOptionCheckbox(
           label: 'Reconnaissance Invalidité',
           checked: occ.invalidity,
           value: occ.invalidityTxt.trim(),
-          valueDisplay: (v) => v,
           options: _mdphPercentageOptions,
           optionLabel: (v) => v,
           optionColumns: 1,
-          editing: _invalidityEditingIndices.contains(index),
           onCheckedChanged: (v) {
-            setState(() {
-              if (!v) _invalidityEditingIndices.remove(index);
-            });
             _updateOccupant(
               index,
               occ.copyWith(
@@ -955,12 +909,8 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             );
           },
           onValueChanged: (v) {
-            setState(() => _invalidityEditingIndices.remove(index));
             _updateOccupant(index, occ.copyWith(invalidityTxt: v));
           },
-          onEditRequested: () => setState(
-            () => _invalidityEditingIndices.add(index),
-          ),
         ),
         FormCheckbox(
           label: 'Aide à domicile',
@@ -989,97 +939,53 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final suffix = hasMultiple
         ? (firstName.isNotEmpty ? ' de $firstName' : " de l'occupant ${index + 1}")
         : '';
-    final numeroSecu = occ.numeroSecuriteSociale.trim();
     final caissePrinc = occ.caisseRetraitePrincipale.trim();
     final caisseCompl = occ.caissesRetraiteComplementaires.trim();
-    final numeroSecuCollapsed = numeroSecu.isNotEmpty &&
-        !_numeroSecuEditingIndices.contains(index);
-    final caissePrincCollapsed = caissePrinc.isNotEmpty &&
-        !_caissePrincEditingIndices.contains(index);
-    final caisseComplCollapsed = caisseCompl.isNotEmpty &&
-        !_caisseComplEditingIndices.contains(index);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (numeroSecuCollapsed)
-          _collapsedValueRow(
-            label: 'N° Sécu$suffix',
-            displayValue: numeroSecu,
-            onEdit: () =>
-                setState(() => _numeroSecuEditingIndices.add(index)),
-          )
-        else
-          FormTextField(
-            label: 'N° Sécu$suffix',
-            value: occ.numeroSecuriteSociale,
-            autofocus: _numeroSecuEditingIndices.contains(index),
-            onChanged: (v) => _updateOccupant(
-                index, occ.copyWith(numeroSecuriteSociale: v)),
-            onSubmitted: (_) {
-              if (occ.numeroSecuriteSociale.trim().isNotEmpty) {
-                setState(() => _numeroSecuEditingIndices.remove(index));
-              }
-            },
-            onTapOutside: () {
-              if (occ.numeroSecuriteSociale.trim().isNotEmpty) {
-                setState(() => _numeroSecuEditingIndices.remove(index));
-              }
-            },
-          ),
+        FormTextField(
+          label: 'N° Sécu$suffix',
+          value: occ.numeroSecuriteSociale,
+          onChanged: (v) => _updateOccupant(
+              index, occ.copyWith(numeroSecuriteSociale: v)),
+        ),
         const SizedBox(height: 14),
-        if (caissePrincCollapsed)
-          _collapsedValueRow(
-            label: 'Caisse princ.$suffix',
-            displayValue: caissePrinc,
-            onEdit: () =>
-                setState(() => _caissePrincEditingIndices.add(index)),
-          )
-        else
-          FormSelectDropdown<String>(
-            label: 'Caisse princ.$suffix',
-            value: _principalFundNames.contains(caissePrinc)
-                ? caissePrinc
-                : null,
-            options: _principalFundNames
-                .map((name) =>
-                    FormSelectOption<String>(value: name, label: name))
-                .toList(),
-            placeholder: 'Sélectionner...',
-            onChanged: (v) {
-              setState(() => _caissePrincEditingIndices.remove(index));
-              _updateOccupant(
-                index,
-                occ.copyWith(caisseRetraitePrincipale: v ?? ''),
-              );
-            },
-          ),
+        FormSelectDropdown<String>(
+          label: 'Caisse princ.$suffix',
+          value: _principalFundNames.contains(caissePrinc)
+              ? caissePrinc
+              : null,
+          options: _principalFundNames
+              .map((name) =>
+                  FormSelectOption<String>(value: name, label: name))
+              .toList(),
+          placeholder: 'Sélectionner...',
+          onChanged: (v) {
+            _updateOccupant(
+              index,
+              occ.copyWith(caisseRetraitePrincipale: v ?? ''),
+            );
+          },
+        ),
         const SizedBox(height: 14),
-        if (caisseComplCollapsed)
-          _collapsedValueRow(
-            label: 'Caisse complém.$suffix',
-            displayValue: caisseCompl,
-            onEdit: () =>
-                setState(() => _caisseComplEditingIndices.add(index)),
-          )
-        else
-          FormSelectDropdown<String>(
-            label: 'Caisse complém.$suffix',
-            value: _retirementFundNames.contains(caisseCompl)
-                ? caisseCompl
-                : null,
-            options: _retirementFundNames
-                .map((name) =>
-                    FormSelectOption<String>(value: name, label: name))
-                .toList(),
-            placeholder: 'Sélectionner une caisse',
-            onChanged: (v) {
-              setState(() => _caisseComplEditingIndices.remove(index));
-              _updateOccupant(
-                index,
-                occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
-              );
-            },
-          ),
+        FormSelectDropdown<String>(
+          label: 'Caisse complém.$suffix',
+          value: _retirementFundNames.contains(caisseCompl)
+              ? caisseCompl
+              : null,
+          options: _retirementFundNames
+              .map((name) =>
+                  FormSelectOption<String>(value: name, label: name))
+              .toList(),
+          placeholder: 'Sélectionner une caisse',
+          onChanged: (v) {
+            _updateOccupant(
+              index,
+              occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
+            );
+          },
+        ),
       ],
     );
   }
@@ -1143,44 +1049,28 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         const SizedBox(height: 24),
 
         // --- Bloc "Renseignements sur la visite" (titre retiré) ---------
-        if (_envoiRapport.isEmpty || _envoiRapportEditing)
-          FormToggleGroup(
-            label: 'Envoi du rapport',
-            options: const ['Mail', 'Courrier'],
-            selected: _envoiRapport,
-            columns: 2,
-            onChanged: (v) {
-              setState(() => _envoiRapportEditing = false);
-              _envoiRapport = v;
-              _markChanged();
-            },
-          )
-        else
-          _collapsedValueRow(
-            label: 'Envoi du rapport',
-            displayValue: _envoiRapport,
-            onEdit: () => setState(() => _envoiRapportEditing = true),
-          ),
+        FormToggleGroup(
+          label: 'Envoi du rapport',
+          options: const ['Mail', 'Courrier'],
+          selected: _envoiRapport,
+          columns: 2,
+          onChanged: (v) {
+            _envoiRapport = v;
+            _markChanged();
+          },
+        ),
         const SizedBox(height: 24),
 
         // --- Bloc "Informations Administratives" (titre retiré) ---------
-        if (_compteAnah.isEmpty || _compteAnahEditing)
-          FormSelectDropdown<String>(
-            label: 'Création compte Anah',
-            value: _compteAnah.isEmpty ? null : _compteAnah,
-            options: _anahOptions,
-            onChanged: (v) {
-              setState(() => _compteAnahEditing = false);
-              _compteAnah = v ?? '';
-              _markChanged();
-            },
-          )
-        else
-          _collapsedValueRow(
-            label: 'Création compte Anah',
-            displayValue: _compteAnah,
-            onEdit: () => setState(() => _compteAnahEditing = true),
-          ),
+        FormSelectDropdown<String>(
+          label: 'Création compte Anah',
+          value: _compteAnah.isEmpty ? null : _compteAnah,
+          options: _anahOptions,
+          onChanged: (v) {
+            _compteAnah = v ?? '';
+            _markChanged();
+          },
+        ),
       ],
     );
   }
