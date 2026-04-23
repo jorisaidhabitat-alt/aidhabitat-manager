@@ -306,11 +306,22 @@ class DocumentRepository {
       for (final remote in remoteDocuments) {
         final remotePath = remote['remotePath']?.toString();
         final publicUrl = remote['publicUrl']?.toString();
+        // Server echoes the Flutter-assigned local id as `clientDocumentId`
+        // → used here as the primary match key. Prevents duplicates when
+        // the sync push lands before `storeDocumentRemoteData` populates
+        // the remote_file_path/remote_public_url columns.
+        final clientDocumentId = remote['clientDocumentId']?.toString() ?? '';
+
         final existingRows = await txn.query(
           'documents',
-          where:
-              'patient_local_id = ? AND (remote_file_path = ? OR remote_public_url = ?)',
-          whereArgs: [patientId, remotePath, publicUrl],
+          where: clientDocumentId.isNotEmpty
+              ? 'patient_local_id = ? AND '
+                  '(local_id = ? OR remote_file_path = ? OR remote_public_url = ?)'
+              : 'patient_local_id = ? AND '
+                  '(remote_file_path = ? OR remote_public_url = ?)',
+          whereArgs: clientDocumentId.isNotEmpty
+              ? [patientId, clientDocumentId, remotePath, publicUrl]
+              : [patientId, remotePath, publicUrl],
           limit: 1,
         );
 

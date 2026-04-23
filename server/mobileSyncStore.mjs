@@ -423,6 +423,12 @@ const buildDocumentPayload = (document, absoluteUrl, mode) => {
     id: document.id,
     patientId: document.patientId,
     dossierId: document.dossierId || null,
+    // `clientDocumentId` = the local ID Flutter assigned when creating
+    // the doc offline (e.g. `doc_<timestamp>`). Flutter uses it to match
+    // a remote row back to its local SQLite row on merge — without this,
+    // every sync round-trip creates a duplicate row until the local copy
+    // is deleted.
+    clientDocumentId: stringValue(document.clientDocumentId),
     patientFirstName: stringValue(document.patientFirstName),
     patientLastName: stringValue(document.patientLastName),
     patientDisplayName: stringValue(document.patientDisplayName),
@@ -902,7 +908,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     }
 
     const records = await queryAll(documentsTableId, {
-      fields: ['uuid_source', 'beneficiaire_id', 'dossier_id', 'beneficiaire_prenom', 'beneficiaire_nom', 'beneficiaire_nom_complet', 'dossier_libelle', 'titre', 'nom_fichier', 'mime_type', 'tags_json', 'created_at', 'updated_at'],
+      fields: ['uuid_source', 'beneficiaire_id', 'dossier_id', 'beneficiaire_prenom', 'beneficiaire_nom', 'beneficiaire_nom_complet', 'dossier_libelle', 'titre', 'nom_fichier', 'mime_type', 'tags_json', 'created_at', 'updated_at', 'client_document_id'],
       where: clauses.join('~and'),
     });
 
@@ -911,6 +917,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         id: stringValue(field(record, 'uuid_source') || record.id),
         patientId: stringValue(field(record, 'beneficiaire_id')),
         dossierId: stringValue(field(record, 'dossier_id')) || null,
+        clientDocumentId: stringValue(field(record, 'client_document_id')),
         patientFirstName: stringValue(field(record, 'beneficiaire_prenom')),
         patientLastName: stringValue(field(record, 'beneficiaire_nom')),
         patientDisplayName: stringValue(field(record, 'beneficiaire_nom_complet')),
@@ -1013,6 +1020,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         id: stringValue(field(existing, 'uuid_source') || existing.id),
         patientId,
         dossierId: dossierId || null,
+        clientDocumentId: stringValue(documentLocalId || ''),
         patientFirstName: beneficiary.patientFirstName,
         patientLastName: beneficiary.patientLastName,
         patientDisplayName: beneficiary.patientDisplayName,
@@ -1060,6 +1068,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       id: stringValue(field(created, 'uuid_source') || documentId),
       patientId,
       dossierId: dossierId || null,
+      clientDocumentId: stringValue(documentLocalId || ''),
       patientFirstName: beneficiary.patientFirstName,
       patientLastName: beneficiary.patientLastName,
       patientDisplayName: beneficiary.patientDisplayName,

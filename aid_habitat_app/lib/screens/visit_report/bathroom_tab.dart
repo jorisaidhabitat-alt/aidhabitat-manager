@@ -138,16 +138,25 @@ class _BathroomTabState extends State<BathroomTab>
   }
 
   Future<void> _load() async {
-    // Pull fresh server copy before reading local — the dossier GET
-    // doesn't include diagnostic_sanitaires, so without this the tab
-    // would show stale data on first open after app restart. Skips
-    // automatically if the local row is pendingSync.
+    // Phase 1 — rendu immédiat à partir des données locales (SQLite).
+    // La partie réseau (NocoDB) tournera en arrière-plan dans la
+    // phase 2 ci-dessous. Permet d'afficher les pills de niveaux et
+    // d'éditer les équipements sans attendre l'aller-retour serveur,
+    // surtout sur la PWA iPad via Vercel où la latence est visible.
+    await _hydrateFromLocal();
+    // Phase 2 — refresh depuis le serveur en arrière-plan. Si des
+    // données plus récentes arrivent, on rehydrate silencieusement.
     try {
       await widget.repository
           .refreshDiagnosticSanitaireFromRemote(widget.dossier.id);
     } catch (_) {
-      // offline — fall back to local copy
+      return; // offline : le cache local suffit
     }
+    if (!mounted) return;
+    await _hydrateFromLocal();
+  }
+
+  Future<void> _hydrateFromLocal() async {
     final result =
         await widget.repository.fetchDiagnosticSanitaire(widget.dossier.id);
     final housingRow =
