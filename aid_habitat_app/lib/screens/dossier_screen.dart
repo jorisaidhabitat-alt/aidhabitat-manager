@@ -784,6 +784,15 @@ class _DossierScreenState extends State<DossierScreen> {
       tabKey: 'notes_rapides',
       sharedText: true,
       allowTextModal: false,
+      // Nouvelle mise en page "deux cartes empilées" — texte en haut,
+      // canvas en bas avec pagination flottante en haut-droite et
+      // toolbar en bas-centre. Mise en cohérence visuelle avec les
+      // notes du relevé de visite.
+      stackedCards: true,
+      allowPagination: true,
+      fillParentHeight: true,
+      // Autosave debounced → pas de bouton Save explicite (design épuré).
+      showSaveButton: false,
     );
   }
 }

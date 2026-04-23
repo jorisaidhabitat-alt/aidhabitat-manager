@@ -236,6 +236,7 @@ class NotesWidget extends StatefulWidget {
     this.leadingNavWidget,
     this.medicalFlags,
     this.onMedicalFlagsChanged,
+    this.stackedCards = false,
   });
 
   // Identifiants / titre
@@ -340,6 +341,20 @@ class NotesWidget extends StatefulWidget {
   /// Le parent l'utilise pour rafraîchir l'état des cases à cocher
   /// (ContextTab > Médical) et des badges numérotés (overlay canvas).
   final ValueChanged<Set<int>>? onMedicalFlagsChanged;
+
+  /// Nouvelle mise en page "deux cartes empilées" (demande utilisateur) :
+  /// - Zone texte en CARTE arrondie indépendante en haut.
+  /// - Petite poignée-pastille avec chevron au centre.
+  /// - Canvas en CARTE arrondie indépendante en bas.
+  /// - Navigation de pages (1/N, +, 🗑) flottante en haut-droite du canvas.
+  /// - Toolbar outils flottante en bas-centre du canvas (incluant
+  ///   annuler/rétablir — auparavant dans la barre d'en-tête).
+  ///
+  /// Par défaut `false` → conserve la mise en page historique
+  /// (une seule carte + barre d'en-tête page-nav + toolbar séparée).
+  /// Utilisé par les notes du relevé de visite et la note rapide du
+  /// dossier pour converger vers le nouveau design.
+  final bool stackedCards;
 
   @override
   State<NotesWidget> createState() => _NotesWidgetState();
@@ -1254,6 +1269,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   Widget _buildMainBody() {
+    if (widget.stackedCards) return _buildStackedCardsBody();
+
     final decoration = widget.embedded
         ? const BoxDecoration(color: Colors.white)
         : BoxDecoration(
@@ -1286,6 +1303,221 @@ class _NotesWidgetState extends State<NotesWidget> {
         : Container(constraints: const BoxConstraints(minHeight: 460), child: content);
 
     return Container(key: _outerKey, decoration: decoration, child: wrapped);
+  }
+
+  /// Nouvelle mise en page "deux cartes empilées" (demande utilisateur) :
+  /// texte en carte haut + canvas en carte bas, séparés par une poignée
+  /// chevron. Pagination + outils en flottant au-dessus du canvas.
+  Widget _buildStackedCardsBody() {
+    final showText = widget.showText;
+    final content = Column(
+      children: [
+        if (showText) _buildStackedTextCard(),
+        if (showText) _buildStackedSplitter(),
+        Expanded(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: showText ? 120.0 : 340.0,
+            ),
+            child: _buildStackedCanvasCard(),
+          ),
+        ),
+      ],
+    );
+
+    final wrapped = widget.fillParentHeight
+        ? SizedBox.expand(child: content)
+        : Container(constraints: const BoxConstraints(minHeight: 460), child: content);
+
+    // Pas de décoration externe : chaque sous-carte porte son propre
+    // fond blanc arrondi (séparation visuelle nette entre texte et canvas).
+    return Container(key: _outerKey, color: Colors.transparent, child: wrapped);
+  }
+
+  /// Carte arrondie contenant uniquement le champ texte — pas de titre
+  /// ni de poignée d'agrandissement (demande utilisateur : UI épurée).
+  Widget _buildStackedTextCard() {
+    return Container(
+      height: _textAreaHeight,
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: TextField(
+        controller: _textController,
+        focusNode: _textFocusNode,
+        maxLines: null,
+        expands: true,
+        textAlignVertical: TextAlignVertical.top,
+        style: const TextStyle(fontSize: 14),
+        // Scribble (Apple Pencil) — écriture directe sur iPad.
+        stylusHandwritingEnabled: true,
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          hintText: widget.placeholder,
+          hintStyle: TextStyle(color: Colors.grey.shade500),
+          isCollapsed: true,
+        ),
+      ),
+    );
+  }
+
+  /// Petite poignée-pastille avec chevron — séparateur visuel entre le
+  /// texte et le canvas. Draggable verticalement pour redimensionner la
+  /// zone texte (même logique que `_buildSplitter` historique).
+  Widget _buildStackedSplitter() {
+    const double kToolbarReserved = 88.0;
+    const double kSplitterMargin = 40.0;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: (details) {
+        setState(() {
+          final outerSize =
+              (_outerKey.currentContext?.findRenderObject() as RenderBox?)
+                  ?.size;
+          final totalHeight = outerSize?.height ?? 600;
+          final maxH = math.max(
+              40.0, totalHeight - kToolbarReserved - kSplitterMargin);
+          final next = _textAreaHeight + details.delta.dy;
+          _textAreaHeight = next.clamp(40.0, maxH);
+        });
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeRow,
+        child: Container(
+          height: 20,
+          alignment: Alignment.center,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(
+              LucideIcons.chevronsDown,
+              size: 14,
+              color: Colors.grey.shade500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Carte arrondie contenant le canvas + overlay pagination + toolbar
+  /// flottante. Le canvas interne se clip déjà aux limites rectangulaires
+  /// de sa zone (via ClipRect sur le stroke painter) — on évite un
+  /// ClipRRect externe pour ne pas tronquer l'ombre de la toolbar
+  /// flottante qui s'étend légèrement sous le bord inférieur de la carte.
+  Widget _buildStackedCanvasCard() {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(child: _buildCanvasArea()),
+          // Pagination flottante en haut-droite — remplace la barre
+          // d'en-tête `_buildPageNavRow` (cachée dans cette mise en page).
+          if (widget.allowPagination)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: _buildFloatingPageNav(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Pastille flottante "{courant}/{total} > ⊕ 🗑" affichée en haut-droite
+  /// du canvas. Les boutons désactivés apparaissent grisés.
+  Widget _buildFloatingPageNav() {
+    final canGoPrev = _currentPage > 0;
+    final canGoNext = _currentPage < _totalPages - 1;
+    final canAdd = _totalPages < widget.maxPages;
+    final canDelete = widget.onDeletePage != null
+        ? widget.canDeletePage
+        : _totalPages > 1;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (canGoPrev)
+            _PillIconButton(
+              icon: LucideIcons.chevronLeft,
+              onTap: () => _switchPage(_currentPage - 1),
+              tooltip: 'Page précédente',
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              '${_currentPage + 1}/${math.max(_totalPages, 1)}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          _PillIconButton(
+            icon: LucideIcons.chevronRight,
+            onTap: canGoNext ? () => _switchPage(_currentPage + 1) : null,
+            tooltip: 'Page suivante',
+          ),
+          const SizedBox(width: 4),
+          _VioletHeaderIconButton(
+            icon: LucideIcons.plus,
+            onTap: canAdd ? _addPage : null,
+            tooltip: 'Nouvelle page',
+          ),
+          _PillIconButton(
+            icon: LucideIcons.trash2,
+            onTap: canDelete ? () => _deletePage() : null,
+            tooltip: 'Supprimer la page',
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPageNavRow() {
@@ -1659,6 +1891,23 @@ class _NotesWidgetState extends State<NotesWidget> {
       onTap: _clearStrokes,
       disabled: _strokes.isEmpty,
     ));
+    // Undo / Redo — inclus uniquement dans la nouvelle mise en page
+    // "deux cartes" (la mise en page historique les affiche dans la
+    // barre d'en-tête `_buildPageNavRow`).
+    if (widget.stackedCards) {
+      buttons.add(_circularToolButton(
+        icon: LucideIcons.undo2,
+        tooltip: 'Annuler',
+        onTap: _undo,
+        disabled: _undoStack.isEmpty,
+      ));
+      buttons.add(_circularToolButton(
+        icon: LucideIcons.redo2,
+        tooltip: 'Rétablir',
+        onTap: _redo,
+        disabled: _redoStack.isEmpty,
+      ));
+    }
     // Save
     if (widget.showSaveButton) buttons.add(_saveButton());
 

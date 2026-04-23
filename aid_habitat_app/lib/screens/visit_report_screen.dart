@@ -490,6 +490,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 embedded: false,
                 fillParentHeight: true,
                 allowPagination: true,
+                // Nouvelle mise en page "deux cartes empilées" — texte
+                // en haut, canvas en bas avec pagination flottante en
+                // haut-droite et toolbar en bas-centre.
+                stackedCards: true,
                 backgroundContent: isMedical
                     ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
                     : null,
