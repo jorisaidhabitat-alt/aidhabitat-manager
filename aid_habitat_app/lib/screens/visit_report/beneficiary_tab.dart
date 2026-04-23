@@ -451,7 +451,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
                 decoration: BoxDecoration(
                   color:
-                      active ? const Color(0xFFD8D0DC) : Colors.transparent,
+                      active ? const Color(0xFFF6EDFB) : Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(

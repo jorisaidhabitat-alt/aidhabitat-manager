@@ -426,7 +426,7 @@ class _ContextTabState extends State<ContextTab>
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFFD8D0DC) : Colors.transparent,
+          color: active ? const Color(0xFFF6EDFB) : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -628,7 +628,7 @@ class _ContextTabState extends State<ContextTab>
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: active
-                                  ? const Color(0xFFF4EFF7)
+                                  ? const Color(0xFFF6EDFB)
                                   : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.circular(999),
                             ),
@@ -788,7 +788,7 @@ class _MedicalFlagRow extends StatelessWidget {
               decoration: BoxDecoration(
                 color: completed
                     ? const Color(0xFFE9DFF0)
-                    : const Color(0xFFF4EFF7),
+                    : const Color(0xFFF6EDFB),
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,

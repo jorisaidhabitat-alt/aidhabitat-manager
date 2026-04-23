@@ -416,7 +416,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
                 decoration: BoxDecoration(
                   color:
-                      active ? const Color(0xFFD8D0DC) : Colors.transparent,
+                      active ? const Color(0xFFF6EDFB) : Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
@@ -500,7 +500,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   height: 32,
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFF4EFF7),
+                    color: Color(0xFFF6EDFB),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.arrow_forward,
@@ -602,7 +602,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFF4EFF7),
+              color: const Color(0xFFF6EDFB),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
             ),
@@ -818,7 +818,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4EFF7),
+        color: const Color(0xFFF6EDFB),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -931,7 +931,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   width: 34,
                   height: 34,
                   decoration: const BoxDecoration(
-                      color: Color(0xFFF4EFF7), shape: BoxShape.circle),
+                      color: Color(0xFFF6EDFB), shape: BoxShape.circle),
                   child: const Icon(Icons.add,
                       color: Color(0xFF554A63), size: 18),
                 ),

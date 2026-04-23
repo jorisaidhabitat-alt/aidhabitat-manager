@@ -185,9 +185,9 @@ const double _kGridCell = 24.0;
 const Color _kStackedBorder = Color(0xFFEDE9EF);
 // Fond splitter = même violet clair que les icônes Documents / VAD sur
 // l'écran dossier (cohérence visuelle — demande utilisateur).
-const Color _kStackedSplitterBg = Color(0xFFF3F0F5);
+const Color _kStackedSplitterBg = Color(0xFFF6EDFB);
 const Color _kStackedViolet = Color(0xFF907CA1);
-const Color _kStackedVioletSoft = Color(0xFFF4EFF7);
+const Color _kStackedVioletSoft = Color(0xFFF6EDFB);
 const Color _kStackedPinkSoft = Color(0xFFE8A4B0);
 
 List<NoteTool> _availableToolsFor(NoteToolset toolset) {

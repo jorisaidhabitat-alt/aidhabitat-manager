@@ -40,6 +40,10 @@ class CommuneFieldGroup extends StatefulWidget {
   final String cityLabel;
   final bool showZipField;
 
+  /// Couleur des libellés "CP" / "Ville" — par défaut slate #64748B.
+  /// Permet de surcharger par ex. en violet pour le bloc Bénéficiaire.
+  final Color? labelColor;
+
   const CommuneFieldGroup({
     super.key,
     required this.city,
@@ -51,6 +55,7 @@ class CommuneFieldGroup extends StatefulWidget {
     this.zipLabel = 'CP',
     this.cityLabel = 'Ville',
     this.showZipField = true,
+    this.labelColor,
   });
 
   @override
@@ -160,7 +165,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 10),
                         color: selected
-                            ? const Color(0xFFF4EFF7)
+                            ? const Color(0xFFF6EDFB)
                             : Colors.transparent,
                         child: Row(
                           children: [
@@ -258,9 +263,9 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
           maxLines: 1,
           softWrap: false,
           overflow: TextOverflow.fade,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: widget.labelColor ?? const Color(0xFF64748B),
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -295,9 +300,9 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
       children: [
         Text(
           widget.cityLabel,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: widget.labelColor ?? const Color(0xFF64748B),
             fontWeight: FontWeight.w600,
           ),
         ),

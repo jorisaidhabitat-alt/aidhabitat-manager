@@ -34,7 +34,7 @@ class AccompanimentBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F0F5),
+        color: const Color(0xFFF6EDFB),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: const Color(0xFFD8CFE0)),
       ),
@@ -50,67 +50,30 @@ class AccompanimentBadge extends StatelessWidget {
   }
 }
 
-/// Badge "catégorie de revenu" (Très modeste, Modeste, Intermédiaire…)
-/// avec une palette couleur dédiée :
-///   • Très modeste → bleu pastel
-///   • Modeste → jaune pastel
-///   • Intermédiaire → vert pastel
-///   • défaut → gris pastel
+/// Badge "catégorie de revenu" (Très modeste, Modeste, Intermédiaire…).
+/// Style unique bleu pastel (demande utilisateur) — fond `#D9EAF3`,
+/// bordure + texte `#4492B6` quelle que soit la catégorie.
 class IncomeCategoryBadge extends StatelessWidget {
   final String value;
   const IncomeCategoryBadge({super.key, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    final palette = _paletteFor(value);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: palette.bg,
+        color: const Color(0xFFD9EAF3),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFF4492B6)),
       ),
       child: Text(
         value,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
-          color: palette.fg,
+          color: Color(0xFF4492B6),
         ),
       ),
     );
   }
-
-  _BeneficiaryBadgePalette _paletteFor(String raw) {
-    final normalized = raw.toLowerCase().trim();
-    if (normalized.contains('très modeste') ||
-        normalized.contains('tres modeste')) {
-      return const _BeneficiaryBadgePalette(
-        bg: Color(0xFFDBEAFE),
-        fg: Color(0xFF1D4ED8),
-      );
-    }
-    if (normalized == 'modeste' || normalized.startsWith('modeste')) {
-      return const _BeneficiaryBadgePalette(
-        bg: Color(0xFFFEF3C7),
-        fg: Color(0xFFB45309),
-      );
-    }
-    if (normalized.contains('intermédiaire') ||
-        normalized.contains('intermediaire')) {
-      return const _BeneficiaryBadgePalette(
-        bg: Color(0xFFDCFCE7),
-        fg: Color(0xFF15803D),
-      );
-    }
-    return const _BeneficiaryBadgePalette(
-      bg: Color(0xFFF1F5F9),
-      fg: Color(0xFF475569),
-    );
-  }
-}
-
-class _BeneficiaryBadgePalette {
-  final Color bg;
-  final Color fg;
-  const _BeneficiaryBadgePalette({required this.bg, required this.fg});
 }

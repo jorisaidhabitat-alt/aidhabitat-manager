@@ -159,7 +159,7 @@ class _AccountDialogState extends State<AccountDialog> {
                               height: 88,
                               decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Color(0xFFF3F0F5),
+                                color: Color(0xFFF6EDFB),
                               ),
                               clipBehavior: Clip.antiAlias,
                               child: _photoUrl.isNotEmpty

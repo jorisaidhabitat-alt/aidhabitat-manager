@@ -183,6 +183,10 @@ class _DossierScreenState extends State<DossierScreen> {
         'city': _city,
         'zip_code': _zipCode,
         'city_id': _cityId,
+        // RFR du foyer modifiable depuis le bloc Bénéficiaire
+        // (demande utilisateur). Stocké au niveau patient — écrase
+        // la valeur éventuellement calculée à partir des occupants.
+        'fiscal_revenue': _fiscalRevenue,
       });
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -505,7 +509,7 @@ class _DossierScreenState extends State<DossierScreen> {
           // --- Bandeau violet clair (icône + titre + save + crayon) ---
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            color: const Color(0xFFF3F0F5),
+            color: const Color(0xFFF6EDFB),
             child: Row(
               children: [
                 const Icon(LucideIcons.user,
@@ -630,7 +634,10 @@ class _DossierScreenState extends State<DossierScreen> {
                           _projectComment.trim().isEmpty,
                     ),
                   ] else ...[
-                    // --- Mode édition : champs remplaçables par FormTextField
+                    // --- Mode édition : libellés violets conservés même
+                    // quand les champs deviennent modifiables (demande
+                    // utilisateur : pas de changement de couleur entre
+                    // lecture et édition).
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -638,6 +645,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           child: FormTextField(
                             label: 'Nom',
                             value: _lastName,
+                            labelColor: const Color(0xFF907CA1),
                             onChanged: (v) {
                               _lastName = v;
                               _onChanged();
@@ -649,6 +657,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           child: FormTextField(
                             label: 'Prénom',
                             value: _firstName,
+                            labelColor: const Color(0xFF907CA1),
                             onChanged: (v) {
                               _firstName = v;
                               _onChanged();
@@ -664,9 +673,19 @@ class _DossierScreenState extends State<DossierScreen> {
                         Expanded(child: _buildOccupantsDropdown()),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _PlainField(
+                          // RFR du foyer : modifiable en édition (demande
+                          // utilisateur). Écrit vers patient.fiscal_revenue
+                          // via `_save` — écrase l'éventuelle somme
+                          // calculée depuis les occupants.
+                          child: FormNumberField(
                             label: 'RFR du foyer',
-                            value: _formatFiscalRevenue(_fiscalRevenue),
+                            value: _fiscalRevenue,
+                            unit: '€',
+                            labelColor: const Color(0xFF907CA1),
+                            onChanged: (v) {
+                              _fiscalRevenue = v;
+                              _onChanged();
+                            },
                           ),
                         ),
                       ],
@@ -678,6 +697,7 @@ class _DossierScreenState extends State<DossierScreen> {
                       cityId: _cityId,
                       options: _communeOptions,
                       showZipField: false,
+                      labelColor: const Color(0xFF907CA1),
                       onChanged: (update) {
                         setState(() {
                           if (update.city != null) _city = update.city!;
@@ -772,10 +792,13 @@ class _DossierScreenState extends State<DossierScreen> {
       children: [
         const Text(
           'Occupants',
+          // Libellé violet pour cohérence avec le reste du bloc
+          // Bénéficiaire (demande utilisateur : labels violets en
+          // lecture comme en édition).
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: Color(0xFF907CA1),
           ),
         ),
         const SizedBox(height: 6),
@@ -982,7 +1005,7 @@ class _QuickActionButton extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFFF3F0F5),
+                color: const Color(0xFFF6EDFB),
                 borderRadius: BorderRadius.circular(50),
               ),
               child: Icon(icon, color: const Color(0xFF907CA1)),

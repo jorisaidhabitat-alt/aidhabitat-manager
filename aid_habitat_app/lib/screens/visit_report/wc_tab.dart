@@ -246,7 +246,7 @@ class _WcTabState extends State<WcTab>
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: _activeLevelIndex == i
-                    ? const Color(0xFFF4EFF7)
+                    ? const Color(0xFFF6EDFB)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(999),
               ),

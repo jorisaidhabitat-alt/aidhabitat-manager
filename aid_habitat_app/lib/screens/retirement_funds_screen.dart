@@ -922,7 +922,7 @@ class _SectionTitle extends StatelessWidget {
           width: 30,
           height: 30,
           decoration: BoxDecoration(
-            color: const Color(0xFFF4EFF7),
+            color: const Color(0xFFF6EDFB),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, size: 15, color: const Color(0xFF907CA1)),

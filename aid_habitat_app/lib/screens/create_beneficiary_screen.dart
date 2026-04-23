@@ -137,7 +137,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3F0F5),
+                          color: const Color(0xFFF6EDFB),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Icon(

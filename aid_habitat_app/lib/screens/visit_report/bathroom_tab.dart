@@ -400,7 +400,7 @@ class _BathroomTabState extends State<BathroomTab>
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: _activeLevelIndex == i
-                    ? const Color(0xFFF4EFF7)
+                    ? const Color(0xFFF6EDFB)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -897,7 +897,7 @@ class _MeasuredOptionCard extends StatelessWidget {
       padding:
           const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: checked ? const Color(0xFFF4EFF7) : Colors.white,
+        color: checked ? const Color(0xFFF6EDFB) : Colors.white,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(

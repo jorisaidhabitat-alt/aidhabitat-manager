@@ -91,6 +91,11 @@ class FormTextField extends StatefulWidget {
   final String? suffix;
   final int maxLines;
 
+  /// Couleur du libellé au-dessus du champ (défaut : slate #64748B).
+  /// Permet de surcharger ponctuellement — ex. les champs du bloc
+  /// Bénéficiaire ont besoin d'un libellé violet même en mode édition.
+  final Color? labelColor;
+
   const FormTextField({
     super.key,
     required this.label,
@@ -103,6 +108,7 @@ class FormTextField extends StatefulWidget {
     this.keyboardType,
     this.suffix,
     this.maxLines = 1,
+    this.labelColor,
   });
 
   @override
@@ -145,7 +151,14 @@ class _FormTextFieldState extends State<FormTextField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(widget.label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF64748B))),
+        Text(
+          widget.label,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: widget.labelColor ?? const Color(0xFF64748B),
+          ),
+        ),
         const SizedBox(height: 6),
         TextFormField(
           controller: _controller,
@@ -207,6 +220,11 @@ class FormNumberField extends StatefulWidget {
   final bool autofocus;
   final String? unit;
 
+  /// Couleur du libellé (défaut : slate #64748B). Voir `FormTextField`
+  /// pour la motivation — le bloc Bénéficiaire garde un libellé violet
+  /// même en mode édition.
+  final Color? labelColor;
+
   const FormNumberField({
     super.key,
     required this.label,
@@ -216,6 +234,7 @@ class FormNumberField extends StatefulWidget {
     this.onTapOutside,
     this.autofocus = false,
     this.unit,
+    this.labelColor,
   });
 
   @override
@@ -256,7 +275,14 @@ class _FormNumberFieldState extends State<FormNumberField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(widget.label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF64748B))),
+        Text(
+          widget.label,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: widget.labelColor ?? const Color(0xFF64748B),
+          ),
+        ),
         const SizedBox(height: 6),
         TextFormField(
           controller: _controller,
