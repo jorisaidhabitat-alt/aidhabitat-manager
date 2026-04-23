@@ -1472,20 +1472,23 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   /// Pagination centrée en haut du canvas : `<  N/total  >` (typo violette).
-  /// Les chevrons désactivés apparaissent grisés. Toujours visible même
-  /// quand il n'y a qu'une page (sinon la typo saute à l'ajout d'une page).
+  /// Le chevron gauche est MASQUÉ quand on est sur la première page (pas
+  /// juste grisé — demande utilisateur) ; le chevron droit reste grisé
+  /// quand la page courante est la dernière pour préserver un indice
+  /// visuel d'ajout possible via le bouton "+".
   Widget _buildCenteredPageNav() {
     final canGoPrev = _currentPage > 0;
     final canGoNext = _currentPage < _totalPages - 1;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _StackedChevronButton(
-          icon: LucideIcons.chevronLeft,
-          enabled: canGoPrev,
-          tooltip: 'Page précédente',
-          onTap: () => _switchPage(_currentPage - 1),
-        ),
+        if (canGoPrev)
+          _StackedChevronButton(
+            icon: LucideIcons.chevronLeft,
+            enabled: true,
+            tooltip: 'Page précédente',
+            onTap: () => _switchPage(_currentPage - 1),
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Text(
