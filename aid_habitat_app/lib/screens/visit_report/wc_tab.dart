@@ -280,7 +280,7 @@ class _WcTabState extends State<WcTab>
         _collapsibleToggle(
           instanceId: a.id,
           fieldName: 'wcCuvette',
-          label: 'Hauteur de cuvette',
+          label: 'Cuvette',
           options: const ['Bonne hauteur', 'Trop basse'],
           selected: a.wcCuvetteTropBasse ? 'Trop basse' : 'Bonne hauteur',
           onChanged: (v) {
