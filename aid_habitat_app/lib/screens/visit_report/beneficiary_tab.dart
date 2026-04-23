@@ -775,10 +775,8 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     required ValueChanged<String> onValueChanged,
     required VoidCallback onEditRequested,
   }) {
-    final hasValue = value.isNotEmpty;
-    final collapsed = checked && hasValue && !editing;
-    final showList = checked && !collapsed;
     final pillLabels = options.map(optionLabel).toList();
+    final hasValue = value.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -815,51 +813,24 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () {
-                    if (!checked) {
-                      onCheckedChanged(true);
-                    } else if (collapsed) {
-                      onEditRequested();
-                    }
+                    if (!checked) onCheckedChanged(true);
                   },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text.rich(
-                          TextSpan(
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF334155),
-                            ),
-                            children: [
-                              TextSpan(text: label),
-                              if (collapsed)
-                                TextSpan(
-                                  text: ' (${valueDisplay(value)})',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (collapsed) ...[
-                        const SizedBox(width: 6),
-                        const Icon(
-                          Icons.edit_outlined,
-                          size: 14,
-                          color: Color(0xFF907CA1),
-                        ),
-                      ],
-                    ],
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF334155),
+                    ),
                   ),
                 ),
               ),
             ],
           ),
         ),
-        if (showList) ...[
+        // Boutons de choix toujours visibles quand la checkbox est cochée
+        // — pas de bascule en "label (valeur) + crayon" : l'ergo doit
+        // pouvoir voir tous les choix pour changer rapidement.
+        if (checked) ...[
           const SizedBox(height: 6),
           FormToggleGroup(
             label: '',

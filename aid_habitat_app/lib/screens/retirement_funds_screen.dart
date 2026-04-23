@@ -363,19 +363,6 @@ class _FundCardState extends State<_FundCard> {
                           ),
                         ],
                       ),
-                      if (fund.audience.trim().isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        Text(
-                          fund.audience,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
                       if (fund.phone.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         _HeroChip(
@@ -383,34 +370,6 @@ class _FundCardState extends State<_FundCard> {
                           label: fund.phone,
                         ),
                       ],
-                      const Spacer(),
-                      Row(
-                        children: [
-                          Text(
-                            'Ouvrir la fiche',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: _hover
-                                  ? const Color(0xFF907CA1)
-                                  : Colors.grey.shade500,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          AnimatedSlide(
-                            duration: const Duration(milliseconds: 180),
-                            offset: _hover ? const Offset(0.15, 0) : Offset.zero,
-                            child: Icon(
-                              LucideIcons.arrowRight,
-                              size: 14,
-                              color: _hover
-                                  ? const Color(0xFF907CA1)
-                                  : Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
