@@ -1044,6 +1044,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               Expanded(
                 child: TextField(
                   controller: ctrl,
+                  stylusHandwritingEnabled: true,
                   decoration: InputDecoration(
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(

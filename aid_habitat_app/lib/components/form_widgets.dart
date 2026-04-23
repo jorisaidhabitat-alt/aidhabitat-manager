@@ -155,6 +155,11 @@ class _FormTextFieldState extends State<FormTextField> {
           keyboardType: widget.keyboardType,
           maxLines: widget.maxLines,
           style: const TextStyle(fontSize: 14),
+          // iPadOS Scribble — permet d'écrire directement avec l'Apple
+          // Pencil sans taper le champ d'abord. Défaut Flutter = true
+          // sur iOS, on le force explicitement pour documenter l'intention.
+          // Ne prend effet que sur app native (PWA web : pas supporté).
+          stylusHandwritingEnabled: true,
           onFieldSubmitted: widget.onSubmitted,
           onTapOutside: widget.onTapOutside == null
               ? null
@@ -257,6 +262,8 @@ class _FormNumberFieldState extends State<FormNumberField> {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
           style: const TextStyle(fontSize: 14),
+          // Scribble (Apple Pencil) — voir FormTextField au-dessus.
+          stylusHandwritingEnabled: true,
           onFieldSubmitted: widget.onSubmitted == null
               ? null
               : (text) => widget.onSubmitted!(_parse(text)),
@@ -732,6 +739,8 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
           focusNode: _focusNode,
           keyboardType: widget.keyboardType,
           style: const TextStyle(fontSize: 14),
+          // Scribble (Apple Pencil) — voir FormTextField au-dessus.
+          stylusHandwritingEnabled: true,
           decoration: InputDecoration(
             isDense: true,
             filled: true,

@@ -530,6 +530,7 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
                     child: TextField(
+                      stylusHandwritingEnabled: true,
                       decoration: InputDecoration(
                         hintText: 'Rechercher (titre, description)',
                         prefixIcon: const Icon(Icons.search),
@@ -697,6 +698,7 @@ class _InlineTitleFieldState extends State<_InlineTitleField> {
       focusNode: _focusNode,
       maxLines: 2,
       minLines: 1,
+      stylusHandwritingEnabled: true,
       style: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w700,
