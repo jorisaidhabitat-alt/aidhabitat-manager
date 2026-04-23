@@ -181,6 +181,13 @@ const Color _kAccentSoft = Color(0xFFD8D0DC);
 const Color _kActiveText = Color(0xFF554A63);
 const double _kGridCell = 24.0;
 
+// Constantes de la mise en page "deux cartes empilées" (parité maquette).
+const Color _kStackedBorder = Color(0xFFEDE9EF);
+const Color _kStackedSplitterBg = Color(0xFFF9EEF1);
+const Color _kStackedViolet = Color(0xFF907CA1);
+const Color _kStackedVioletSoft = Color(0xFFF4EFF7);
+const Color _kStackedPinkSoft = Color(0xFFE8A4B0);
+
 List<NoteTool> _availableToolsFor(NoteToolset toolset) {
   switch (toolset) {
     case NoteToolset.quick:
@@ -1305,15 +1312,20 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Container(key: _outerKey, decoration: decoration, child: wrapped);
   }
 
+
   /// Nouvelle mise en page "deux cartes empilées" (demande utilisateur) :
-  /// texte en carte haut + canvas en carte bas, séparés par une poignée
-  /// chevron. Pagination + outils en flottant au-dessus du canvas.
+  /// - carte texte en haut AVEC poignée rose intégrée en bas (full-width,
+  ///   icône double-chevron violet) pour redimensionner la zone texte ;
+  /// - carte canvas en bas avec pagination centrée en violet (chevrons +
+  ///   "N/total") et boutons "+" (fond violet clair) + corbeille (rose
+  ///   clair) sans conteneur en haut-droite ;
+  /// - contours fins arrondis sur les deux cartes (parité maquette).
   Widget _buildStackedCardsBody() {
     final showText = widget.showText;
     final content = Column(
       children: [
+        // La carte texte inclut désormais le splitter en bas (même carte)
         if (showText) _buildStackedTextCard(),
-        if (showText) _buildStackedSplitter(),
         Expanded(
           child: ConstrainedBox(
             constraints: BoxConstraints(
@@ -1334,47 +1346,60 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Container(key: _outerKey, color: Colors.transparent, child: wrapped);
   }
 
-  /// Carte arrondie contenant uniquement le champ texte — pas de titre
-  /// ni de poignée d'agrandissement (demande utilisateur : UI épurée).
+  /// Carte arrondie contenant le champ texte ET la poignée rose intégrée
+  /// en bas (full-width, double-chevron violet). Contour fin + coins
+  /// arrondis pour matcher la maquette utilisateur.
   Widget _buildStackedTextCard() {
+    const double kSplitterHeight = 22.0;
     return Container(
-      height: _textAreaHeight,
-      margin: const EdgeInsets.only(bottom: 4),
+      height: _textAreaHeight + kSplitterHeight,
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: _kStackedBorder, width: 1),
       ),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: TextField(
-        controller: _textController,
-        focusNode: _textFocusNode,
-        maxLines: null,
-        expands: true,
-        textAlignVertical: TextAlignVertical.top,
-        style: const TextStyle(fontSize: 14),
-        // Scribble (Apple Pencil) — écriture directe sur iPad.
-        stylusHandwritingEnabled: true,
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          hintText: widget.placeholder,
-          hintStyle: TextStyle(color: Colors.grey.shade500),
-          isCollapsed: true,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          children: [
+            // Zone de saisie texte (occupe toute la hauteur au-dessus du
+            // splitter rose).
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                child: TextField(
+                  controller: _textController,
+                  focusNode: _textFocusNode,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  style: const TextStyle(fontSize: 14),
+                  // Scribble (Apple Pencil) — écriture directe sur iPad.
+                  stylusHandwritingEnabled: true,
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: widget.placeholder,
+                    hintStyle: TextStyle(color: Colors.grey.shade500),
+                    isCollapsed: true,
+                  ),
+                ),
+              ),
+            ),
+            // Poignée rose intégrée en bas de la carte — full-width, icône
+            // double-chevron violet centrée. Draggable verticalement pour
+            // redimensionner la zone texte.
+            _buildStackedIntegratedSplitter(kSplitterHeight),
+          ],
         ),
       ),
     );
   }
 
-  /// Petite poignée-pastille avec chevron — séparateur visuel entre le
-  /// texte et le canvas. Draggable verticalement pour redimensionner la
-  /// zone texte (même logique que `_buildSplitter` historique).
-  Widget _buildStackedSplitter() {
+  /// Poignée de redimensionnement intégrée au bas de la carte texte —
+  /// bande rose full-width avec double-chevron violet centré. Drag
+  /// vertical pour ajuster la hauteur de la zone texte.
+  Widget _buildStackedIntegratedSplitter(double height) {
     const double kToolbarReserved = 88.0;
     const double kSplitterMargin = 40.0;
     return GestureDetector(
@@ -1394,129 +1419,156 @@ class _NotesWidgetState extends State<NotesWidget> {
       child: MouseRegion(
         cursor: SystemMouseCursors.resizeRow,
         child: Container(
-          height: 20,
+          height: height,
+          width: double.infinity,
+          color: _kStackedSplitterBg,
           alignment: Alignment.center,
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(
-              LucideIcons.chevronsDown,
-              size: 14,
-              color: Colors.grey.shade500,
-            ),
+          child: const Icon(
+            LucideIcons.chevronsDown,
+            size: 16,
+            color: _kStackedViolet,
           ),
         ),
       ),
     );
   }
 
-  /// Carte arrondie contenant le canvas + overlay pagination + toolbar
-  /// flottante. Le canvas interne se clip déjà aux limites rectangulaires
-  /// de sa zone (via ClipRect sur le stroke painter) — on évite un
-  /// ClipRRect externe pour ne pas tronquer l'ombre de la toolbar
-  /// flottante qui s'étend légèrement sous le bord inférieur de la carte.
+  /// Carte arrondie contenant le canvas + pagination centrée + boutons
+  /// + / 🗑 en haut-droite + toolbar flottante. Contour fin pour matcher
+  /// la maquette. Le canvas interne se clip déjà aux limites
+  /// rectangulaires (ClipRect sur le stroke painter) — on évite un
+  /// ClipRRect externe pour ne pas tronquer l'ombre de la toolbar.
   Widget _buildStackedCanvasCard() {
     return Container(
-      margin: const EdgeInsets.only(top: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: _kStackedBorder, width: 1),
       ),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(child: _buildCanvasArea()),
-          // Pagination flottante en haut-droite — remplace la barre
-          // d'en-tête `_buildPageNavRow` (cachée dans cette mise en page).
+          // Pagination centrée (en haut) : `< N/total >` en violet.
+          if (widget.allowPagination)
+            Positioned(
+              top: 12,
+              left: 0,
+              right: 0,
+              child: Center(child: _buildCenteredPageNav()),
+            ),
+          // Boutons + et 🗑 en haut-droite, SANS conteneur visible.
           if (widget.allowPagination)
             Positioned(
               top: 10,
-              right: 10,
-              child: _buildFloatingPageNav(),
+              right: 12,
+              child: _buildTopRightPageActions(),
             ),
         ],
       ),
     );
   }
 
-  /// Pastille flottante "{courant}/{total} > ⊕ 🗑" affichée en haut-droite
-  /// du canvas. Les boutons désactivés apparaissent grisés.
-  Widget _buildFloatingPageNav() {
+  /// Pagination centrée en haut du canvas : `<  N/total  >` (typo violette).
+  /// Les chevrons désactivés apparaissent grisés. Toujours visible même
+  /// quand il n'y a qu'une page (sinon la typo saute à l'ajout d'une page).
+  Widget _buildCenteredPageNav() {
     final canGoPrev = _currentPage > 0;
     final canGoNext = _currentPage < _totalPages - 1;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _StackedChevronButton(
+          icon: LucideIcons.chevronLeft,
+          enabled: canGoPrev,
+          tooltip: 'Page précédente',
+          onTap: () => _switchPage(_currentPage - 1),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            '${_currentPage + 1}/${math.max(_totalPages, 1)}',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: _kStackedViolet,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+        _StackedChevronButton(
+          icon: LucideIcons.chevronRight,
+          enabled: canGoNext,
+          tooltip: 'Page suivante',
+          onTap: () => _switchPage(_currentPage + 1),
+        ),
+      ],
+    );
+  }
+
+  /// Actions flottantes en haut-droite du canvas : bouton `+` (cercle
+  /// violet clair avec `+` violet foncé) + corbeille (icône rose, aucun
+  /// fond). Sans conteneur englobant, sans ombre — parité maquette.
+  Widget _buildTopRightPageActions() {
     final canAdd = _totalPages < widget.maxPages;
     final canDelete = widget.onDeletePage != null
         ? widget.canDeletePage
         : _totalPages > 1;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (canGoPrev)
-            _PillIconButton(
-              icon: LucideIcons.chevronLeft,
-              onTap: () => _switchPage(_currentPage - 1),
-              tooltip: 'Page précédente',
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(
-              '${_currentPage + 1}/${math.max(_totalPages, 1)}',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF64748B),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // "+" : cercle violet clair, icône violet foncé au centre.
+        Tooltip(
+          message: 'Nouvelle page',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: canAdd ? _addPage : null,
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  color: _kStackedVioletSoft,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Opacity(
+                  opacity: canAdd ? 1 : 0.4,
+                  child: const Icon(
+                    LucideIcons.plus,
+                    size: 14,
+                    color: _kStackedViolet,
+                  ),
+                ),
               ),
             ),
           ),
-          _PillIconButton(
-            icon: LucideIcons.chevronRight,
-            onTap: canGoNext ? () => _switchPage(_currentPage + 1) : null,
-            tooltip: 'Page suivante',
+        ),
+        const SizedBox(width: 8),
+        // Corbeille : icône rose clair, pas de fond, pas de contour.
+        Tooltip(
+          message: 'Supprimer la page',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: canDelete ? () => _deletePage() : null,
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Opacity(
+                  opacity: canDelete ? 1 : 0.4,
+                  child: const Icon(
+                    LucideIcons.trash2,
+                    size: 16,
+                    color: _kStackedPinkSoft,
+                  ),
+                ),
+              ),
+            ),
           ),
-          const SizedBox(width: 4),
-          _VioletHeaderIconButton(
-            icon: LucideIcons.plus,
-            onTap: canAdd ? _addPage : null,
-            tooltip: 'Nouvelle page',
-          ),
-          _PillIconButton(
-            icon: LucideIcons.trash2,
-            onTap: canDelete ? () => _deletePage() : null,
-            tooltip: 'Supprimer la page',
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -2582,6 +2634,50 @@ class _PillIconButton extends StatelessWidget {
     );
     if (tooltip == null) return btn;
     return Tooltip(message: tooltip!, child: btn);
+  }
+}
+
+/// Petit bouton chevron en violet pour la pagination centrée de la
+/// mise en page "deux cartes empilées". Grisé quand `enabled == false`,
+/// sans fond ni contour — parité maquette utilisateur.
+class _StackedChevronButton extends StatelessWidget {
+  const _StackedChevronButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: enabled ? onTap : null,
+          child: Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            child: Opacity(
+              opacity: enabled ? 1 : 0.3,
+              child: Icon(
+                icon,
+                size: 16,
+                color: _kStackedViolet,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
