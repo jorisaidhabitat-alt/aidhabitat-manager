@@ -603,14 +603,14 @@ class _NextVisitBanner extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                // Nom + prénom du bénéficiaire en violet (#907CA1) pour
-                // faire ressortir la prochaine visite.
+                // Nom + prénom du bénéficiaire en noir — vedette de la
+                // bannière prochaine visite.
                 Text(
                   '${patient.lastName} ${patient.firstName}',
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF907CA1),
+                    color: Color(0xFF0F172A),
                   ),
                 ),
                 const SizedBox(height: 4),
