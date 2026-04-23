@@ -189,6 +189,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
   // In-progress stroke (pen/eraser) or shape preview (line/rect)
   _PlanStroke? _current;
 
+  // Undo / redo — snapshots deep-copiés des traits à chaque mutation
+  // (trait terminé, symbole placé/déplacé/supprimé, effacer tout…).
+  // Limité à 50 entrées pour éviter la dérive mémoire.
+  final List<List<_PlanStroke>> _undoStack = [];
+  final List<List<_PlanStroke>> _redoStack = [];
+
   Timer? _saveTimer;
   bool _loaded = false;
 
@@ -226,6 +232,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
         _loaded = false;
         _strokes.clear();
         _current = null;
+        _undoStack.clear();
+        _redoStack.clear();
       });
       _loadStrokes();
     }
@@ -235,6 +243,58 @@ class _PlanCanvasState extends State<PlanCanvas> {
   void dispose() {
     _saveTimer?.cancel();
     super.dispose();
+  }
+
+  // ----- Undo / redo -----
+
+  /// Clone profond de la liste courante des strokes via un round-trip
+  /// JSON (les `_PlanStroke` ont des champs mutables : `points`,
+  /// `rotation`, donc une copie de référence ne suffit pas).
+  List<_PlanStroke> _cloneStrokes() {
+    final encoded = jsonEncode(_strokes.map((s) => s.toJson()).toList());
+    final decoded = jsonDecode(encoded) as List;
+    return decoded
+        .map((m) => _PlanStroke.fromJson(
+            (m as Map).cast<String, dynamic>()))
+        .whereType<_PlanStroke>()
+        .toList();
+  }
+
+  /// Snapshot l'état courant AVANT une mutation, vide la pile redo.
+  void _pushUndo() {
+    _undoStack.add(_cloneStrokes());
+    if (_undoStack.length > 50) _undoStack.removeAt(0);
+    _redoStack.clear();
+  }
+
+  void _undo() {
+    if (_undoStack.isEmpty) return;
+    setState(() {
+      _redoStack.add(_cloneStrokes());
+      final prev = _undoStack.removeLast();
+      _strokes
+        ..clear()
+        ..addAll(prev);
+      _selectedIndex = -1;
+      _activeHandle = null;
+      _current = null;
+    });
+    _scheduleSave();
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    setState(() {
+      _undoStack.add(_cloneStrokes());
+      final next = _redoStack.removeLast();
+      _strokes
+        ..clear()
+        ..addAll(next);
+      _selectedIndex = -1;
+      _activeHandle = null;
+      _current = null;
+    });
+    _scheduleSave();
   }
 
   // ----- Persistence -----
@@ -375,6 +435,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     if (!_freehandTools.contains(cur.tool) && cur.points.length < 2) {
       cur.points.add(cur.points.first.translate(60, 40));
     }
+    _pushUndo();
     setState(() {
       _strokes.add(cur);
       _current = null;
@@ -405,6 +466,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       ),
     );
     if (confirmed != true) return;
+    _pushUndo();
     setState(() {
       _strokes.clear();
       _current = null;
@@ -499,6 +561,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       points: [center, center + corner],
       rotation: 0,
     );
+    _pushUndo();
     setState(() {
       _strokes.add(stroke);
       _selectedIndex = _strokes.length - 1;
@@ -605,6 +668,24 @@ class _PlanCanvasState extends State<PlanCanvas> {
           // empêche le Wrap de séparer ces 3 éléments sur deux lignes.
           _buildThicknessPill(),
           const SizedBox(width: 4),
+          // Undo / Redo — snapshots gérés à chaque mutation (trait
+          // ajouté, symbole placé/déplacé/supprimé, effacer tout).
+          IconButton(
+            icon: const Icon(LucideIcons.undo2, size: 18),
+            color: _undoStack.isEmpty
+                ? Colors.grey.shade300
+                : Colors.grey.shade700,
+            tooltip: 'Annuler',
+            onPressed: _undoStack.isEmpty ? null : _undo,
+          ),
+          IconButton(
+            icon: const Icon(LucideIcons.redo2, size: 18),
+            color: _redoStack.isEmpty
+                ? Colors.grey.shade300
+                : Colors.grey.shade700,
+            tooltip: 'Rétablir',
+            onPressed: _redoStack.isEmpty ? null : _redo,
+          ),
           IconButton(
             icon: const Icon(LucideIcons.download, size: 18),
             color: Colors.grey.shade600,
@@ -1036,6 +1117,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   void _deleteSelectedSymbol() {
     if (_selectedIndex < 0 || _selectedIndex >= _strokes.length) return;
+    _pushUndo();
     setState(() {
       _strokes.removeAt(_selectedIndex);
       _selectedIndex = -1;
@@ -1082,6 +1164,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
       final sel = _strokes[_selectedIndex];
       final h = _handleAt(sel, pt);
       if (h != null) {
+        // Snapshot AVANT le drag : undo ramène le symbole à sa
+        // position / taille / rotation d'avant le geste.
+        _pushUndo();
         _activeHandle = h;
         _dragAnchor = pt;
         _dragInitialCenter = sel.points[0];
