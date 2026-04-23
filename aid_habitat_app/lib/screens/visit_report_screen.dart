@@ -687,12 +687,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       ],
                       if (addressLine.isNotEmpty) ...[
                         const SizedBox(width: 12),
+                        // Icône localisation discrète (même gris que le
+                        // texte) juste avant l'adresse.
+                        const Icon(
+                          LucideIcons.mapPin,
+                          size: 18,
+                          color: Color(0xFF64748B),
+                        ),
+                        const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             addressLine,
                             style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                               color: Color(0xFF64748B),
                             ),
                             overflow: TextOverflow.ellipsis,

@@ -813,19 +813,55 @@ class _PlanCanvasState extends State<PlanCanvas> {
       color: Colors.white,
       child: Row(
         children: [
+          // Fenêtre : icône "columns" = panneaux verticaux, évoque bien
+          // une fenêtre à montants.
           _symbolInsertBtn(
-              PlanTool.window, LucideIcons.appWindow, 'Fenêtre'),
+            PlanTool.window,
+            Icon(LucideIcons.columns,
+                size: 20, color: Colors.grey.shade700),
+            'Fenêtre',
+          ),
           const SizedBox(width: 8),
-          _symbolInsertBtn(PlanTool.door, LucideIcons.doorOpen, 'Porte'),
+          // Porte : doorClosed = plus iconique qu'une porte ouverte.
+          _symbolInsertBtn(
+            PlanTool.door,
+            Icon(LucideIcons.doorClosed,
+                size: 20, color: Colors.grey.shade700),
+            'Porte',
+          ),
           const SizedBox(width: 8),
-          _symbolInsertBtn(PlanTool.toilet, LucideIcons.armchair, 'WC'),
+          // WC : Lucide 0.257 n'expose pas d'icône toilette. On utilise
+          // le glyphe Unicode 🚽 en guise de pictogramme — visuel
+          // immédiatement reconnaissable sur iPad / macOS.
+          _symbolInsertBtn(
+            PlanTool.toilet,
+            const Text('🚽', style: TextStyle(fontSize: 20)),
+            'WC',
+          ),
+          const SizedBox(width: 8),
+          // Douche : pomme de douche (Lucide showerHead).
+          _symbolInsertBtn(
+            PlanTool.shower,
+            Icon(LucideIcons.showerHead,
+                size: 20, color: Colors.grey.shade700),
+            'Douche',
+          ),
           const SizedBox(width: 8),
           _symbolInsertBtn(
-              PlanTool.shower, LucideIcons.droplets, 'Douche'),
+            PlanTool.bath,
+            Icon(LucideIcons.bath,
+                size: 20, color: Colors.grey.shade700),
+            'Baignoire',
+          ),
           const SizedBox(width: 8),
-          _symbolInsertBtn(PlanTool.bath, LucideIcons.bath, 'Baignoire'),
-          const SizedBox(width: 8),
-          _symbolInsertBtn(PlanTool.sink, LucideIcons.hand, 'Lavabo'),
+          // Lavabo : icône "table" (meuble) — plus cohérent que la
+          // "main" précédente.
+          _symbolInsertBtn(
+            PlanTool.sink,
+            Icon(LucideIcons.table,
+                size: 20, color: Colors.grey.shade700),
+            'Lavabo',
+          ),
         ],
       ),
     );
@@ -840,9 +876,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
     const minThickness = 1.0;
     const maxThickness = 24.0;
     const sliderWidth = 220.0;
-    final pos =
-        ((_penSize - minThickness) / (maxThickness - minThickness))
-            .clamp(0.0, 1.0);
+    // On lit la taille de l'outil ciblé par le popover (et pas _tool /
+    // _penSize), pour que le slider reste cohérent même si l'outil
+    // actif venait à changer juste avant l'ouverture.
+    final target = _thicknessPopoverTool ?? _tool;
+    final size = _thicknessByTool[target] ?? 2.0;
+    final pos = ((size - minThickness) / (maxThickness - minThickness))
+        .clamp(0.0, 1.0);
     return Material(
       elevation: 6,
       shadowColor: Colors.black26,
@@ -1083,54 +1123,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
-  // Pill − | N | + garantie toujours sur une même ligne (Container seul,
-  // Wrap ne peut pas le découper).
-  Widget _buildThicknessPill() {
-    return Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _sizeStepButton(
-            icon: LucideIcons.minus,
-            tooltip: "Diminuer l'épaisseur",
-            onTap: _penSize > 1
-                ? () =>
-                    setState(() => _penSize = (_penSize - 1).clamp(1, 20))
-                : null,
-          ),
-          // Indicateur visuel d'épaisseur : un trait dont la hauteur
-          // correspond exactement à la valeur courante de _penSize (plus
-          // épais → plus haut). Remplace la valeur numérique.
-          Container(
-            constraints: const BoxConstraints(minWidth: 28),
-            alignment: Alignment.center,
-            child: Container(
-              width: 24,
-              height: _penSize.clamp(1.0, 20.0),
-              decoration: BoxDecoration(
-                color: const Color(0xFF334155),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ),
-          _sizeStepButton(
-            icon: LucideIcons.plus,
-            tooltip: "Augmenter l'épaisseur",
-            onTap: _penSize < 20
-                ? () =>
-                    setState(() => _penSize = (_penSize + 1).clamp(1, 20))
-                : null,
-          ),
-        ],
-      ),
-    );
-  }
+  // (Ancien pill d'épaisseur [− | N | +] retiré — remplacé par le
+  // popover flottant activé au 2e tap sur un outil de tracé.)
 
   // Menu "Insérer un élément" — ouvre un overlay custom en grille 3
   // colonnes au lieu du PopupMenu linéaire natif.
@@ -1252,8 +1246,15 @@ class _PlanCanvasState extends State<PlanCanvas> {
     // survol. Un 2e tap sur un outil crayon / surligneur déjà actif
     // ouvre un slider d'épaisseur sous la toolbar (voir _thicknessPopover).
     final active = _tool == tool;
+    // Tous les outils de tracé ont maintenant leur propre épaisseur
+    // réglable via 2e tap (popover slider) — chaque valeur est
+    // mémorisée indépendamment dans `_thicknessByTool`.
     final supportsThickness =
-        tool == PlanTool.pen || tool == PlanTool.highlighter;
+        tool == PlanTool.pen ||
+            tool == PlanTool.highlighter ||
+            tool == PlanTool.line ||
+            tool == PlanTool.rect ||
+            tool == PlanTool.eraser;
     return Tooltip(
       message: label,
       child: InkWell(
@@ -1290,8 +1291,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
   }
 
   /// Bouton d'insertion instantanée d'un symbole architectural au
-  /// centre du canvas. Rond, bordé. Tap = insertion.
-  Widget _symbolInsertBtn(PlanTool tool, IconData icon, String label) {
+  /// centre du canvas. Rond, bordé. Tap = insertion. [iconChild] peut
+  /// être un Icon Lucide ou un Text (emoji) quand aucune icône Lucide
+  /// ne correspond exactement (ex : 🚽 pour les WC).
+  Widget _symbolInsertBtn(PlanTool tool, Widget iconChild, String label) {
     return Tooltip(
       message: 'Insérer : $label',
       child: InkWell(
@@ -1309,7 +1312,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
               width: 1,
             ),
           ),
-          child: Icon(icon, size: 20, color: Colors.grey.shade700),
+          child: iconChild,
         ),
       ),
     );
