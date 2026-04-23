@@ -508,7 +508,6 @@ class _MainScreenState extends State<MainScreen> {
       case 'dashboard':
         return DashboardScreen(
           visits: [],
-          dossiersCount: _dossiers.length,
           dossiers: _dossiers,
           pendingSyncCount: _pendingSyncCount,
           isSyncing: _isSyncing,

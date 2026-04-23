@@ -13,7 +13,6 @@ import '../models/types.dart';
 /// and [onSyncNow] wiring are kept intact.
 class DashboardScreen extends StatelessWidget {
   final List<Visit> visits;
-  final int dossiersCount;
   final List<Dossier> dossiers;
   final int pendingSyncCount;
   final bool isSyncing;
@@ -30,7 +29,6 @@ class DashboardScreen extends StatelessWidget {
   const DashboardScreen({
     super.key,
     required this.visits,
-    required this.dossiersCount,
     required this.dossiers,
     required this.pendingSyncCount,
     required this.isSyncing,
@@ -194,9 +192,6 @@ class DashboardScreen extends StatelessWidget {
                   flex: 16,
                   child: _RecentDossiersPanel(
                     recent: recent,
-                    totalCount: dossiersCount == 0
-                        ? dossiers.length
-                        : dossiersCount,
                     onSelect: onSelectDossier,
                     onSeeAll: onNavigateToDossiers,
                   ),
@@ -245,13 +240,11 @@ class DashboardScreen extends StatelessWidget {
 
 class _RecentDossiersPanel extends StatelessWidget {
   final List<Dossier> recent;
-  final int totalCount;
   final void Function(Dossier) onSelect;
   final VoidCallback? onSeeAll;
 
   const _RecentDossiersPanel({
     required this.recent,
-    required this.totalCount,
     required this.onSelect,
     this.onSeeAll,
   });
@@ -265,9 +258,9 @@ class _RecentDossiersPanel extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Dossiers Récents ($totalCount)",
-                style: const TextStyle(
+              const Text(
+                "Mes rapports en cours",
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1E293B),
@@ -524,13 +517,14 @@ class _NextVisitBanner extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Même style que "Mes rapports en cours" pour
+                  // uniformiser les titres du dashboard.
                   Text(
                     'Prochaine visite',
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF94A3B8),
-                      letterSpacing: 0.4,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E293B),
                     ),
                   ),
                   SizedBox(height: 6),
@@ -595,22 +589,25 @@ class _NextVisitBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Même style que le titre "Mes rapports en cours"
+                // (ex-"Dossiers Récents") — fontSize 18, bold, slate 900.
                 const Text(
-                  'PROCHAINE VISITE',
+                  'Prochaine visite',
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF907CA1),
-                    letterSpacing: 1.2,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
                   ),
                 ),
                 const SizedBox(height: 6),
+                // Nom + prénom du bénéficiaire en violet (#907CA1) pour
+                // faire ressortir la prochaine visite.
                 Text(
                   '${patient.lastName} ${patient.firstName}',
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: Color(0xFF907CA1),
                   ),
                 ),
                 const SizedBox(height: 4),
