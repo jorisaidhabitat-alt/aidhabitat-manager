@@ -1472,10 +1472,11 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   /// Pagination centrée en haut du canvas : `<  N/total  >` (typo violette).
-  /// Le chevron gauche est MASQUÉ quand on est sur la première page (pas
-  /// juste grisé — demande utilisateur) ; le chevron droit reste grisé
-  /// quand la page courante est la dernière pour préserver un indice
-  /// visuel d'ajout possible via le bouton "+".
+  /// Le chevron gauche est MASQUÉ visuellement quand on est sur la
+  /// première page (demande utilisateur), mais sa zone de 44×44 est
+  /// réservée par un SizedBox équivalent pour que le numéro "N/total"
+  /// reste à la MÊME position horizontale quelle que soit la page
+  /// courante (demande utilisateur : pagination toujours centrée).
   Widget _buildCenteredPageNav() {
     final canGoPrev = _currentPage > 0;
     final canGoNext = _currentPage < _totalPages - 1;
@@ -1488,7 +1489,9 @@ class _NotesWidgetState extends State<NotesWidget> {
             enabled: true,
             tooltip: 'Page précédente',
             onTap: () => _switchPage(_currentPage - 1),
-          ),
+          )
+        else
+          const SizedBox(width: 44, height: 44),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Text(

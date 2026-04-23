@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/beneficiary_badges.dart';
 import '../components/commune_field_group.dart';
 import '../components/form_widgets.dart';
 import '../components/notes_widget.dart';
@@ -227,19 +228,9 @@ class _DossierScreenState extends State<DossierScreen> {
     return fmt.format(value);
   }
 
-  String _formatAccompanimentType(String raw) {
-    final v = raw.trim().toLowerCase();
-    switch (v) {
-      case 'diagnostic':
-        return 'Diagnostic ergo';
-      case 'ergo':
-        return 'Ergo';
-      case 'complet':
-        return 'Complet';
-      default:
-        return raw.trim();
-    }
-  }
+  // Note : `_formatAccompanimentType` a été déplacé vers la fonction
+  // top-level `formatAccompanimentType` dans components/beneficiary_badges.dart
+  // pour être réutilisée côté visit_report_screen.
 
   @override
   Widget build(BuildContext context) {
@@ -310,7 +301,7 @@ class _DossierScreenState extends State<DossierScreen> {
     // catégorie de revenu en couleur pastel liée à la catégorie).
     // La date "Créé le" reste à l'extrême droite.
     final accompanimentLabel =
-        _formatAccompanimentType(_natureAccompagnement).trim();
+        formatAccompanimentType(_natureAccompagnement).trim();
     final incomeLabel = _incomeCategory.trim();
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -349,11 +340,11 @@ class _DossierScreenState extends State<DossierScreen> {
               ),
               if (accompanimentLabel.isNotEmpty) ...[
                 const SizedBox(width: 12),
-                _AccompanimentBadge(value: accompanimentLabel),
+                AccompanimentBadge(value: accompanimentLabel),
               ],
               if (incomeLabel.isNotEmpty) ...[
                 const SizedBox(width: 8),
-                _IncomeCategoryBadge(value: incomeLabel),
+                IncomeCategoryBadge(value: incomeLabel),
               ],
             ],
           ),
@@ -489,10 +480,17 @@ class _DossierScreenState extends State<DossierScreen> {
     //   - Ordre : Nom, Prénom, Occupants, RFR du foyer, Adresse,
     //     badge communauté de communes, Commentaire du projet.
     final streetAddress = widget.dossier.patient.address.trim();
-    final communeOption = _cityId.isEmpty
-        ? null
-        : _communeOptions.where((c) => c.id == _cityId).cast<CommuneOption?>().firstOrNull;
-    final epciLabel = (communeOption?.epciLabel ?? '').trim();
+    // Fallback en 3 étapes (parité avec DossiersListScreen._communeFor) :
+    //   1. match strict par cityId
+    //   2. match par label (nom de ville insensible à la casse)
+    //   3. match par code postal
+    // Nécessaire car certaines données NocoDB historiques ont un cityId
+    // manquant ou désynchronisé (ex : Roche aux Fées, St Méen…).
+    final epciLabel = _resolveEpciLabel(
+      cityId: _cityId,
+      city: _city,
+      zipCode: _zipCode,
+    );
     final fullAddress = _formatFullAddress(streetAddress, _zipCode, _city);
 
     return Container(
@@ -727,6 +725,47 @@ class _DossierScreenState extends State<DossierScreen> {
     return parts.join(', ');
   }
 
+  /// Résout le libellé EPCI pour l'adresse du bénéficiaire en tentant
+  /// trois stratégies successives (cityId exact → nom insensible à la
+  /// casse → code postal). Retourne une chaîne vide si aucun match.
+  ///
+  /// Motif : certaines communes (Roche aux Fées, St Méen Montauban,
+  /// Brocéliande…) ont un `cityId` vide ou obsolète sur des dossiers
+  /// créés avant la synchronisation NocoDB — sans fallback on perdait
+  /// l'affichage du badge EPCI pour ces dossiers-là.
+  String _resolveEpciLabel({
+    required String cityId,
+    required String city,
+    required String zipCode,
+  }) {
+    if (_communeOptions.isEmpty) return '';
+    final trimmedId = cityId.trim();
+    final lowerCity = city.trim().toLowerCase();
+    final trimmedZip = zipCode.trim();
+
+    // 1. cityId exact
+    if (trimmedId.isNotEmpty) {
+      for (final c in _communeOptions) {
+        if (c.id == trimmedId) return (c.epciLabel ?? '').trim();
+      }
+    }
+    // 2. nom de ville (insensible à la casse)
+    if (lowerCity.isNotEmpty) {
+      for (final c in _communeOptions) {
+        if (c.label.toLowerCase() == lowerCity) {
+          return (c.epciLabel ?? '').trim();
+        }
+      }
+    }
+    // 3. code postal
+    if (trimmedZip.isNotEmpty) {
+      for (final c in _communeOptions) {
+        if (c.zipCode == trimmedZip) return (c.epciLabel ?? '').trim();
+      }
+    }
+    return '';
+  }
+
   Widget _buildOccupantsDropdown() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -848,102 +887,6 @@ class _PlainField extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Badge "type d'accompagnement" (ex. "Complet") — fond violet clair,
-/// bordure violette, typographie violet foncé. Utilisé dans l'en-tête
-/// du dossier à côté du nom du bénéficiaire.
-class _AccompanimentBadge extends StatelessWidget {
-  final String value;
-  const _AccompanimentBadge({required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3F0F5),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFD8CFE0)),
-      ),
-      child: Text(
-        value,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF554A63),
-        ),
-      ),
-    );
-  }
-}
-
-/// Badge "catégorie de revenu" (Très modeste, Modeste, Intermédiaire…)
-/// avec une palette couleur dédiée : bleu pastel pour "Très modeste",
-/// jaune pastel pour "Modeste", etc. Demande utilisateur.
-class _IncomeCategoryBadge extends StatelessWidget {
-  final String value;
-  const _IncomeCategoryBadge({required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = _paletteFor(value);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: palette.bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        value,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: palette.fg,
-        ),
-      ),
-    );
-  }
-
-  /// Palette : bleu pastel pour "Très modeste", jaune pastel pour
-  /// "Modeste", vert pour "Intermédiaire", gris pour autre/défaut.
-  _BadgePalette _paletteFor(String raw) {
-    final normalized = raw.toLowerCase().trim();
-    if (normalized.contains('très modeste') ||
-        normalized.contains('tres modeste')) {
-      // Bleu pastel
-      return const _BadgePalette(
-        bg: Color(0xFFDBEAFE),
-        fg: Color(0xFF1D4ED8),
-      );
-    }
-    if (normalized == 'modeste' || normalized.startsWith('modeste')) {
-      // Jaune pastel
-      return const _BadgePalette(
-        bg: Color(0xFFFEF3C7),
-        fg: Color(0xFFB45309),
-      );
-    }
-    if (normalized.contains('intermédiaire') ||
-        normalized.contains('intermediaire')) {
-      // Vert pastel
-      return const _BadgePalette(
-        bg: Color(0xFFDCFCE7),
-        fg: Color(0xFF15803D),
-      );
-    }
-    // Par défaut : gris neutre
-    return const _BadgePalette(
-      bg: Color(0xFFF1F5F9),
-      fg: Color(0xFF475569),
-    );
-  }
-}
-
-class _BadgePalette {
-  final Color bg;
-  final Color fg;
-  const _BadgePalette({required this.bg, required this.fg});
 }
 
 /// Petite pastille "communauté de communes" pour le bloc Bénéficiaire.

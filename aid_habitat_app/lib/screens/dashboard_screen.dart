@@ -507,7 +507,7 @@ class _NextVisitBanner extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Icon(
-                LucideIcons.calendar,
+                LucideIcons.car,
                 color: Color(0xFF94A3B8),
                 size: 26,
               ),
@@ -517,14 +517,15 @@ class _NextVisitBanner extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Même style que "Mes rapports en cours" pour
-                  // uniformiser les titres du dashboard.
+                  // Titre compact en violet, tout en majuscules — même
+                  // hiérarchie que la version "avec visite" ci-dessous.
                   Text(
-                    'Prochaine visite',
+                    'PROCHAINE VISITE',
                     style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: Color(0xFF907CA1),
                     ),
                   ),
                   SizedBox(height: 6),
@@ -578,7 +579,7 @@ class _NextVisitBanner extends StatelessWidget {
             ),
             child: const Center(
               child: Icon(
-                LucideIcons.calendar,
+                LucideIcons.car,
                 color: Color(0xFF907CA1),
                 size: 28,
               ),
@@ -589,14 +590,16 @@ class _NextVisitBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Même style que le titre "Mes rapports en cours"
-                // (ex-"Dossiers Récents") — fontSize 18, bold, slate 900.
+                // Surtitre compact en violet, tout en majuscules — laisse
+                // la vedette au nom + prénom du bénéficiaire juste en
+                // dessous.
                 const Text(
-                  'Prochaine visite',
+                  'PROCHAINE VISITE',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E293B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: Color(0xFF907CA1),
                   ),
                 ),
                 const SizedBox(height: 6),

@@ -11,6 +11,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
 import '../services/dossier_repository.dart';
 import '../services/data_service.dart';
+import '../components/beneficiary_badges.dart';
 import '../components/notes_widget.dart';
 import 'visit_report/beneficiary_tab.dart';
 import 'visit_report/context_tab.dart';
@@ -640,6 +641,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           .where((s) => s.isNotEmpty)
           .join(' '),
     ].where((s) => s.isNotEmpty).join(' · ');
+    // Deux badges à afficher entre le nom et l'adresse (parité avec
+    // l'écran dossier) : type d'accompagnement + catégorie de revenu.
+    final accompanimentLabel =
+        formatAccompanimentType(_dossier.natureAccompagnement).trim();
+    final incomeLabel = patient.incomeCategory.trim();
 
     return Scaffold(
       body: Padding(
@@ -656,8 +662,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 const SizedBox(width: 16),
                 Expanded(
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Flexible(
                         child: Text(
@@ -670,6 +675,16 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      // Badges insérés ENTRE le nom et l'adresse — parité
+                      // avec l'écran dossier (demande utilisateur).
+                      if (accompanimentLabel.isNotEmpty) ...[
+                        const SizedBox(width: 10),
+                        AccompanimentBadge(value: accompanimentLabel),
+                      ],
+                      if (incomeLabel.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        IncomeCategoryBadge(value: incomeLabel),
+                      ],
                       if (addressLine.isNotEmpty) ...[
                         const SizedBox(width: 12),
                         Flexible(
