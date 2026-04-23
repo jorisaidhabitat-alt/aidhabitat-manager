@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'app_config.dart';
+import 'connectivity_service.dart';
 import 'local_database.dart';
 import 'nocodb_api_client.dart';
 import 'sync_repository.dart';
@@ -43,6 +44,23 @@ class NocodbSyncService {
         pushedOperations: 0,
         failedOperations: 0,
         message: 'Aucune opération à synchroniser',
+      );
+    }
+
+    // Si on est offline, on ne lance AUCUN appel réseau — les opérations
+    // restent en `pending` et repartiront quand la connectivité revient
+    // (ConnectivityService appelle `onConnectivityBack` qui re-trigger
+    // le sync). Sans ce guard, chaque op essaye un fetch → échoue en
+    // TimeoutException ou SocketException → `markFailed` → bandeau
+    // rouge "Synchronisation en échec" alors que c'est juste "en
+    // attente de réseau".
+    if (ConnectivityService().isOffline) {
+      return SyncRunResult(
+        pushedOperations: 0,
+        failedOperations: 0,
+        message:
+            'Hors ligne — ${operations.length} '
+            'opération${operations.length > 1 ? 's' : ''} en attente',
       );
     }
 

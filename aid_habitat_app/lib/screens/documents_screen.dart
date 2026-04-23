@@ -477,14 +477,38 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     );
   }
 
-  /// Simple preview dialog for web documents whose bytes live in a data
-  /// URL. No annotator, no PDF support — just a zoomable image + a close
-  /// button. Once the sync uploads the bytes and populates [DocItem.url],
-  /// the full [_PreviewScreen] takes over.
+  /// Simple preview dialog for web image documents. Bytes come from (in
+  /// priority order): the local data URL (doc just captured offline), the
+  /// web media cache (remote doc prefetched), or a fresh authenticated
+  /// HTTP fetch. No annotator, no PDF — just zoomable image + close.
   Future<void> _showWebImagePreview(DocItem doc) async {
-    final comma = doc.dataUrl!.indexOf(',');
-    if (comma < 0) return;
-    final bytes = base64Decode(doc.dataUrl!.substring(comma + 1));
+    Uint8List? bytes;
+
+    // 1) Local data URL (priority — instant, offline-safe).
+    final dataUrl = doc.dataUrl;
+    if (dataUrl != null && dataUrl.isNotEmpty) {
+      final comma = dataUrl.indexOf(',');
+      if (comma > 0) {
+        try {
+          bytes = base64Decode(dataUrl.substring(comma + 1));
+        } catch (_) {}
+      }
+    }
+
+    // 2) Remote URL — cached in SQLite, fetched with auth if miss.
+    if (bytes == null && doc.url != null && doc.url!.isNotEmpty) {
+      bytes = await MediaCacheService.instance.webCachedFetch(
+        doc.url!,
+        headers: {'X-App-Session': AppConfig.appSessionToken},
+      );
+    }
+
+    if (bytes == null || !mounted) {
+      _showError('Aperçu indisponible');
+      return;
+    }
+
+    final imageBytes = bytes;
     await showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -501,8 +525,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                   maxScale: 5,
                   child: Center(
                     child: Image.memory(
-                      bytes,
+                      imageBytes,
                       fit: BoxFit.contain,
+                      gaplessPlayback: true,
                     ),
                   ),
                 ),
