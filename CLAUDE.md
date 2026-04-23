@@ -32,6 +32,14 @@
    the system message at end of turn, reconcile it in the next response
    (merge, or explain why it should stay on its branch).
 
+6. **NEVER build or launch the Flutter app.** Explicit user preference :
+   do not run `flutter build macos`, `flutter build web`, `flutter run`,
+   `open …/aid_habitat_app.app`, or `pkill -f aid_habitat_app`. The user
+   deploys via `vercel --prod` from `aid_habitat_app/` on their own.
+   Your job stops at editing Dart/server code + letting the Stop hook
+   commit to main. No validation via rebuild needed — trust
+   `flutter analyze` output if you want a static check.
+
 ## Parallel-agent discipline
 
 The user often runs 3–5 agents in parallel on this repo. That means:

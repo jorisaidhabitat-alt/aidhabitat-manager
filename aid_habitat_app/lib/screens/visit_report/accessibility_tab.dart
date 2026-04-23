@@ -402,7 +402,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF6EDFB),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
@@ -414,26 +414,21 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
-                decoration: BoxDecoration(
-                  color:
-                      active ? const Color(0xFFF6EDFB) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                ),
                 child: Column(
                   children: [
                     Icon(items[i].icon,
                         size: 20,
                         color: active
-                            ? const Color(0xFF554A63)
-                            : const Color(0xFF64748B)),
+                            ? Colors.black
+                            : const Color(0xFFAE9DB3)),
                     const SizedBox(height: 2),
                     Text(items[i].label,
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
                           color: active
-                              ? const Color(0xFF554A63)
-                              : const Color(0xFF64748B),
+                              ? Colors.black
+                              : const Color(0xFFAE9DB3),
                         )),
                   ],
                 ),
