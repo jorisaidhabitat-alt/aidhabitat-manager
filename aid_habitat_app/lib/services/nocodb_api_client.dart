@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -16,6 +17,56 @@ class ConflictException implements Exception {
 
   @override
   String toString() => 'ConflictException: $message';
+}
+
+/// Erreur transitoire : timeout réseau, déconnexion, 5xx serveur, etc.
+/// L'opération locale doit être retentée en silence (la sync engine la
+/// repasse en "pending" sans afficher de bandeau rouge à l'utilisateur).
+/// Les vraies erreurs fonctionnelles (400/401/403/404) restent des
+/// Exception génériques → marquées `failed` et remontées à l'utilisateur.
+class TransientRemoteException implements Exception {
+  final String message;
+  final int? statusCode;
+
+  TransientRemoteException(this.message, {this.statusCode});
+
+  @override
+  String toString() => 'TransientRemoteException: $message';
+}
+
+/// True si l'erreur réseau sous-jacente doit être considérée comme
+/// transitoire (retry silencieux plutôt qu'échec remonté à l'UI).
+bool _isTransientNetworkError(Object error) =>
+    error is TimeoutException ||
+    error is SocketException ||
+    error is HttpException ||
+    error is http.ClientException;
+
+/// Exécute [request] en convertissant les erreurs réseau bas niveau
+/// (timeout, socket, http) en [TransientRemoteException]. Les 5xx sont
+/// transformés avant le check de statut, les 4xx restent des Exception
+/// standards.
+Future<http.Response> _runWithTransientGuard(
+  String context,
+  Future<http.Response> Function() request,
+) async {
+  try {
+    final response = await request();
+    if (response.statusCode >= 500) {
+      throw TransientRemoteException(
+        '$context failed (${response.statusCode})',
+        statusCode: response.statusCode,
+      );
+    }
+    return response;
+  } on TransientRemoteException {
+    rethrow;
+  } catch (error) {
+    if (_isTransientNetworkError(error)) {
+      throw TransientRemoteException('$context network error: $error');
+    }
+    rethrow;
+  }
 }
 
 class NocodbApiClient {
@@ -363,22 +414,27 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
 
-    final response = await _client.put(
-      Uri.parse('$_baseUrl/api/note-pages'),
-      headers: _headers,
-      body: jsonEncode({
-        'patientId': patientId,
-        'scopeType': scopeType,
-        // Fallback: patientId is a valid scopeId for dossier/visit scopes when
-        // the caller doesn't know the exact dossierId.
-        'scopeId': scopeId ?? patientId,
-        'tabKey': tabKey,
-        if (subTabKey != null) 'subTabKey': subTabKey,
-        'pageNumber': pageNumber,
-        'drawingJson': drawingJson,
-        'layoutKind': layoutKind,
-      }),
-    ).timeout(_defaultTimeout);
+    final response = await _runWithTransientGuard(
+      'Remote note sync',
+      () => _client
+          .put(
+            Uri.parse('$_baseUrl/api/note-pages'),
+            headers: _headers,
+            body: jsonEncode({
+              'patientId': patientId,
+              'scopeType': scopeType,
+              // Fallback: patientId is a valid scopeId for dossier/visit
+              // scopes when the caller doesn't know the exact dossierId.
+              'scopeId': scopeId ?? patientId,
+              'tabKey': tabKey,
+              if (subTabKey != null) 'subTabKey': subTabKey,
+              'pageNumber': pageNumber,
+              'drawingJson': drawingJson,
+              'layoutKind': layoutKind,
+            }),
+          )
+          .timeout(_defaultTimeout),
+    );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote note sync failed (${response.statusCode})');

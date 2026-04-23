@@ -114,6 +114,21 @@ class NocodbSyncService {
         );
         conflicts += 1;
         failures.add('${operation.entityType}:conflit');
+      } on TransientRemoteException catch (e) {
+        // 5xx / timeout / déconnexion : l'op reste en pending pour être
+        // rejouée silencieusement au prochain cycle. On ne remonte rien
+        // à l'UI (pas de bandeau rouge) — c'est un hoquet réseau, pas
+        // une vraie erreur métier.
+        // ignore: avoid_print
+        print('[sync] transient ${operation.entityType}:'
+            '${operation.operationType} id=${operation.entityLocalId} '
+            'err=$e — retry au prochain cycle');
+        await _syncRepository.markTransientFailure(
+          operationId: operation.id,
+          entityType: operation.entityType,
+          entityLocalId: operation.entityLocalId,
+          error: e.toString(),
+        );
       } catch (error) {
         final message = error.toString();
         await _syncRepository.markFailed(
@@ -156,6 +171,19 @@ class NocodbSyncService {
           entityLocalId: operation.entityLocalId,
         );
         pushed += 1;
+      } on TransientRemoteException catch (e) {
+        // ignore: avoid_print
+        print('[sync] transient ${operation.entityType}:'
+            '${operation.operationType} id=${operation.entityLocalId} '
+            'err=$e — retry au prochain cycle');
+        await _syncRepository.markTransientFailure(
+          operationId: operation.id,
+          entityType: operation.entityType,
+          entityLocalId: operation.entityLocalId,
+          error: e.toString(),
+        );
+        // Pas de break : les ops transitoires n'invalident pas la suite
+        // (le serveur peut avoir juste un hoquet éphémère).
       } catch (error, stack) {
         // ignore: avoid_print
         print(

@@ -23,20 +23,35 @@ class SyncRepository {
       orderBy: 'created_at ASC',
     );
 
-    return rows.map((row) {
-      return SyncOperation(
+    final now = DateTime.now();
+    final out = <SyncOperation>[];
+    for (final row in rows) {
+      final attempts = row['attempt_count'] as int? ?? 0;
+      final updatedAt = DateTime.tryParse(row['updated_at'] as String? ?? '');
+      // Backoff par op : au-delà de 3 tentatives, on attend de plus en
+      // plus longtemps avant de retenter (30s × attempts, capé à 5 min).
+      // Évite de marteler le serveur sur une op qui échoue en boucle,
+      // tout en laissant les premières tentatives rapides.
+      if (attempts >= 3 && updatedAt != null) {
+        final backoffSeconds = (attempts * 30).clamp(30, 300);
+        if (now.difference(updatedAt).inSeconds < backoffSeconds) {
+          continue;
+        }
+      }
+      out.add(SyncOperation(
         id: row['id'] as String,
         entityType: row['entity_type'] as String,
         entityLocalId: row['entity_local_id'] as String,
         operationType: row['operation_type'] as String,
         payloadJson: row['payload_json'] as String,
         status: SyncOperationStatus.values.byName(row['status'] as String),
-        attemptCount: row['attempt_count'] as int? ?? 0,
+        attemptCount: attempts,
         lastError: row['last_error'] as String?,
         createdAt: DateTime.parse(row['created_at'] as String),
         updatedAt: DateTime.parse(row['updated_at'] as String),
-      );
-    }).toList();
+      ));
+    }
+    return out;
   }
 
   Future<void> markRunning(String operationId) async {
@@ -109,6 +124,50 @@ class SyncRepository {
       entityType: entityType,
       entityLocalId: entityLocalId,
       syncState: SyncState.syncError,
+    );
+  }
+
+  /// Erreur transitoire (timeout, déconnexion, 5xx serveur). L'opération
+  /// reste en statut `pending` pour être repêchée au prochain cycle de
+  /// sync — PAS de bandeau rouge côté UI, PAS de statut `failed`. On
+  /// bump juste `attempt_count` et on trace `last_error` pour le debug.
+  Future<void> markTransientFailure({
+    required String operationId,
+    required String entityType,
+    required String entityLocalId,
+    required String error,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'sync_operations',
+      columns: ['attempt_count'],
+      where: 'id = ?',
+      whereArgs: [operationId],
+      limit: 1,
+    );
+    final attempts = rows.isEmpty
+        ? 0
+        : (rows.first['attempt_count'] as int? ?? 0);
+
+    await db.update(
+      'sync_operations',
+      {
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': attempts + 1,
+        'last_error': error,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [operationId],
+    );
+
+    // On laisse sync_state sur `pendingSync` (c'est le statut "en cours
+    // de sync" normal) plutôt que `syncError` pour ne pas alarmer l'UI.
+    await _updateEntitySyncState(
+      db: db,
+      entityType: entityType,
+      entityLocalId: entityLocalId,
+      syncState: SyncState.pendingSync,
     );
   }
 
