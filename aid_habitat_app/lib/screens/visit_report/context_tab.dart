@@ -18,17 +18,25 @@ class ContextTab extends StatefulWidget {
   final DossierRepository repository;
 
   /// Called when the user toggles a numbered medical flag (1 = Pathologie,
-  /// 2 = Suivi médical, 3 = Sensoriel). `checked` is the new state. The
-  /// parent uses it to append a `N - ` marker to the Contexte de vie note
-  /// on check, and to remove that line on uncheck.
+  /// 2 = Suivi médical, 3 = Sensoriel). `checked` is the new state. Le
+  /// parent met à jour les flags de la PAGE COURANTE de la note Médical
+  /// (les numéros sont désormais par-page, plus globaux — un onglet
+  /// Médical peut afficher {1} sur page 1 et {2, 3} sur page 2).
   final Future<void> Function(int flagNumber, bool checked)?
       onMedicalFlagToggled;
+
+  /// Flags médicaux actuellement visibles sur la PAGE COURANTE de la
+  /// note "Contexte de vie > Médical". Source unique de vérité pour
+  /// l'état coché des cases Pathologie / Suivi / Sensoriel. Poussé par
+  /// le parent à chaque changement de page dans NotesWidget.
+  final Set<int>? currentMedicalFlags;
 
   const ContextTab({
     super.key,
     required this.dossier,
     required this.repository,
     this.onMedicalFlagToggled,
+    this.currentMedicalFlags,
   });
 
   @override
@@ -227,39 +235,21 @@ class _ContextTabState extends State<ContextTab>
     ));
   }
 
+  /// Toggle d'un flag médical. Les flags sont désormais PAR PAGE de note
+  /// (sauvegardés dans `drawing_json` via NotesWidget) — on ne touche
+  /// plus au dossier `MedicalContext`. L'état coché vient de
+  /// [widget.currentMedicalFlags].
   void _toggleMedicalFlag(String field) {
-    final m = _active.medical;
-    final current = switch (field) {
-      'pathology' => m.pathology,
-      'followUp' => m.followUp,
-      'sensory' => m.sensory,
-      _ => '',
+    final flagNumber = switch (field) {
+      'pathology' => 1,
+      'followUp' => 2,
+      'sensory' => 3,
+      _ => 0,
     };
-    final wasChecked = current.trim().isNotEmpty;
-    final next = wasChecked ? '' : 'Oui';
-    switch (field) {
-      case 'pathology':
-        _updateMedical(pathology: next);
-        break;
-      case 'followUp':
-        _updateMedical(followUp: next);
-        break;
-      case 'sensory':
-        _updateMedical(sensory: next);
-        break;
-    }
-    if (_activeOccupantIndex == 0 &&
-        widget.onMedicalFlagToggled != null) {
-      final flagNumber = switch (field) {
-        'pathology' => 1,
-        'followUp' => 2,
-        'sensory' => 3,
-        _ => 0,
-      };
-      if (flagNumber > 0) {
-        widget.onMedicalFlagToggled!(flagNumber, !wasChecked);
-      }
-    }
+    if (flagNumber == 0) return;
+    final currentFlags = widget.currentMedicalFlags ?? const <int>{};
+    final wasChecked = currentFlags.contains(flagNumber);
+    widget.onMedicalFlagToggled?.call(flagNumber, !wasChecked);
   }
 
   void _toggleAutonomyDone() {
@@ -476,19 +466,25 @@ class _ContextTabState extends State<ContextTab>
 
   Widget _buildMedical() {
     final occ = _active;
+    // Les cases à cocher Pathologie / Suivi / Sensoriel représentent
+    // désormais les flags de la PAGE COURANTE de la note Médical —
+    // poussés par le parent via [widget.currentMedicalFlags]. Quand
+    // l'utilisateur change de page dans NotesWidget, ces cases se
+    // rafraîchissent automatiquement.
+    final pageFlags = widget.currentMedicalFlags ?? const <int>{};
     final flags = <_MedicalFlag>[
       _MedicalFlag(
           key: 'pathology',
           label: 'Pathologie',
-          completed: occ.medical.pathology.trim().isNotEmpty),
+          completed: pageFlags.contains(1)),
       _MedicalFlag(
           key: 'followUp',
           label: 'Suivi médical',
-          completed: occ.medical.followUp.trim().isNotEmpty),
+          completed: pageFlags.contains(2)),
       _MedicalFlag(
           key: 'sensory',
           label: 'Sensoriel',
-          completed: occ.medical.sensory.trim().isNotEmpty),
+          completed: pageFlags.contains(3)),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

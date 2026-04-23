@@ -234,6 +234,8 @@ class NotesWidget extends StatefulWidget {
     this.externalRefreshToken = 0,
     this.liveText,
     this.leadingNavWidget,
+    this.medicalFlags,
+    this.onMedicalFlagsChanged,
   });
 
   // Identifiants / titre
@@ -318,6 +320,27 @@ class NotesWidget extends StatefulWidget {
   // Contenu décoratif derrière le canvas
   final Widget? backgroundContent;
 
+  /// Flags médicaux actifs POUR LA PAGE COURANTE (ex. {1, 2}). Sérialisés
+  /// dans `drawing_json` sous la clé `medicalFlags`. Utilisé uniquement
+  /// par l'onglet "Contexte de vie > Médical" pour afficher des badges
+  /// numérotés en overlay sur la zone de dessin. `null` = feature désactivée.
+  ///
+  /// Flux bidirectionnel :
+  /// - En ENTRÉE : quand le parent pousse une nouvelle valeur (ex. après
+  ///   toggle d'une case dans ContextTab), NotesWidget met à jour la
+  ///   map interne `_pageMedicalFlags[currentPage]` et persiste la page.
+  /// - En SORTIE : [onMedicalFlagsChanged] est émis lors d'un changement
+  ///   de page (`_switchPage`, `_addPage`) et après chargement initial
+  ///   (`_loadPages`), pour que le parent synchronise ses checkboxes /
+  ///   badges sur les flags de la nouvelle page.
+  final Set<int>? medicalFlags;
+
+  /// Callback émis lorsque la page active change ou après chargement
+  /// initial — transmet les flags médicaux stockés pour cette page.
+  /// Le parent l'utilise pour rafraîchir l'état des cases à cocher
+  /// (ContextTab > Médical) et des badges numérotés (overlay canvas).
+  final ValueChanged<Set<int>>? onMedicalFlagsChanged;
+
   @override
   State<NotesWidget> createState() => _NotesWidgetState();
 }
@@ -334,6 +357,11 @@ class _NotesWidgetState extends State<NotesWidget> {
   late int _totalPages;
   final Map<int, List<_Stroke>> _pageStrokes = <int, List<_Stroke>>{};
   final Map<int, String> _pageTexts = <int, String>{};
+  // Flags médicaux par page (1 = Pathologie, 2 = Suivi, 3 = Sensoriel).
+  // Sérialisés dans `drawing_json['medicalFlags']`. Utilisé uniquement
+  // quand [widget.medicalFlags] / [widget.onMedicalFlagsChanged] sont
+  // fournis par le parent (onglet "Contexte de vie > Médical").
+  final Map<int, Set<int>> _pageMedicalFlags = <int, Set<int>>{};
 
   // Outil actif
   late NoteTool _activeTool;
@@ -395,6 +423,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (changedDoc) {
       _pageStrokes.clear();
       _pageTexts.clear();
+      _pageMedicalFlags.clear();
       _undoStack.clear();
       _redoStack.clear();
       _currentPage = widget.currentPage;
@@ -405,6 +434,21 @@ class _NotesWidgetState extends State<NotesWidget> {
 
     if (oldWidget.currentPage != widget.currentPage && !_isDirty) {
       _switchPage(widget.currentPage);
+    }
+    // Le parent a poussé une nouvelle sélection de flags médicaux (ex.
+    // case à cocher togglée dans ContextTab) → on applique aux flags de
+    // la page courante et on persiste. On ne ré-émet PAS onMedicalFlagsChanged
+    // ici, pour éviter une boucle aller-retour avec le parent.
+    if (widget.medicalFlags != null &&
+        !_setIntEquals(
+          widget.medicalFlags!,
+          _pageMedicalFlags[_currentPage] ?? const <int>{},
+        )) {
+      setState(() {
+        _pageMedicalFlags[_currentPage] = {...widget.medicalFlags!};
+      });
+      // Persiste immédiatement la nouvelle sélection sur la page courante.
+      unawaited(_persistPage(_currentPage));
     }
     if (oldWidget.totalPages != widget.totalPages) {
       setState(() => _totalPages = math.max(1, widget.totalPages));
@@ -496,11 +540,18 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
   }
 
-  String _currentDrawingJson() => jsonEncode({
-    'version': 1,
-    'text': _textController.text,
-    'strokes': _strokes.map((s) => s.toJson()).toList(),
-  });
+  String _currentDrawingJson() {
+    final flags = _pageMedicalFlags[_currentPage];
+    return jsonEncode({
+      'version': 1,
+      'text': _textController.text,
+      'strokes': _strokes.map((s) => s.toJson()).toList(),
+      // Champ facultatif — omis quand il n'y a pas de flags pour éviter de
+      // polluer les notes non-médicales. Trié pour un JSON stable.
+      if (flags != null && flags.isNotEmpty)
+        'medicalFlags': (flags.toList()..sort()),
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Hydration (chargement initial des pages depuis DataService)
@@ -572,12 +623,16 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (mounted) {
       setState(() => _isLoaded = true);
     }
+    // Une fois les pages chargées, pousse les flags médicaux de la page
+    // courante vers le parent (pour synchroniser les checkboxes/badges).
+    _emitMedicalFlagsForCurrentPage();
   }
 
   void _applyJson(int page, String? json, {required bool hydrateController}) {
     if (json == null || json.isEmpty) {
       _pageStrokes[page] = <_Stroke>[];
       _pageTexts[page] = '';
+      _pageMedicalFlags[page] = <int>{};
       if (hydrateController) _textController.text = '';
       return;
     }
@@ -586,6 +641,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       if (decoded is! Map<String, dynamic>) {
         _pageStrokes[page] = <_Stroke>[];
         _pageTexts[page] = '';
+        _pageMedicalFlags[page] = <int>{};
         if (hydrateController) _textController.text = '';
         return;
       }
@@ -598,12 +654,27 @@ class _NotesWidgetState extends State<NotesWidget> {
               .map((raw) => _Stroke.fromJson(raw.cast<String, dynamic>()))
               .whereType<_Stroke>()
               .toList();
+      // `medicalFlags` est optionnel (ajouté pour l'onglet Médical).
+      // Les notes préexistantes sans ce champ → ensemble vide. Rétrocompatible.
+      final rawFlags = decoded['medicalFlags'];
+      final flags = <int>{};
+      if (rawFlags is List) {
+        for (final v in rawFlags) {
+          if (v is int) {
+            flags.add(v);
+          } else if (v is num) {
+            flags.add(v.toInt());
+          }
+        }
+      }
       _pageStrokes[page] = strokes;
       _pageTexts[page] = text;
+      _pageMedicalFlags[page] = flags;
       if (hydrateController) _textController.text = text;
     } catch (_) {
       _pageStrokes[page] = <_Stroke>[];
       _pageTexts[page] = '';
+      _pageMedicalFlags[page] = <int>{};
       if (hydrateController) _textController.text = '';
     }
   }
@@ -990,6 +1061,29 @@ class _NotesWidgetState extends State<NotesWidget> {
       _redoStack.clear();
     });
     widget.onPageChange?.call(page);
+    // Informe le parent des flags médicaux stockés pour cette page — le
+    // parent met alors à jour les cases à cocher (ContextTab) et les
+    // badges numérotés (overlay canvas) en fonction de la nouvelle page.
+    _emitMedicalFlagsForCurrentPage();
+  }
+
+  /// Pousse `_pageMedicalFlags[_currentPage]` (ou {}) vers le parent via
+  /// [NotesWidget.onMedicalFlagsChanged]. No-op si le callback est null.
+  void _emitMedicalFlagsForCurrentPage() {
+    final cb = widget.onMedicalFlagsChanged;
+    if (cb == null) return;
+    final flags = _pageMedicalFlags[_currentPage] ?? <int>{};
+    cb({...flags});
+  }
+
+  /// Égalité ensembliste entre deux `Set<int>` — évite d'importer
+  /// `collection.dart` juste pour ce cas.
+  static bool _setIntEquals(Set<int> a, Set<int> b) {
+    if (a.length != b.length) return false;
+    for (final v in a) {
+      if (!b.contains(v)) return false;
+    }
+    return true;
   }
 
   Future<void> _addPage() async {
@@ -1004,6 +1098,11 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageStrokes[newPageIndex] = <_Stroke>[];
       _pageTexts[newPageIndex] =
           widget.sharedText ? _textController.text : '';
+      // Nouvelle page : flags médicaux vides — l'utilisateur re-sélectionne
+      // les numéros souhaités via les cases Pathologie / Suivi / Sensoriel
+      // (demande utilisateur : les numéros ne doivent pas rester les mêmes
+      // d'une page à l'autre).
+      _pageMedicalFlags[newPageIndex] = <int>{};
     });
     // Persiste la nouvelle page côté serveur (JSON vide) — SyncEngine déclenche
     // la sync remote si le réseau est disponible.
@@ -1024,13 +1123,18 @@ class _NotesWidgetState extends State<NotesWidget> {
     setState(() {
       _pageStrokes.remove(deletedIndex);
       _pageTexts.remove(deletedIndex);
+      _pageMedicalFlags.remove(deletedIndex);
       final nextStrokes = <int, List<_Stroke>>{};
       final nextTexts = <int, String>{};
+      final nextFlags = <int, Set<int>>{};
       _pageStrokes.forEach((index, strokes) {
         nextStrokes[index > deletedIndex ? index - 1 : index] = strokes;
       });
       _pageTexts.forEach((index, text) {
         nextTexts[index > deletedIndex ? index - 1 : index] = text;
+      });
+      _pageMedicalFlags.forEach((index, flags) {
+        nextFlags[index > deletedIndex ? index - 1 : index] = flags;
       });
       _pageStrokes
         ..clear()
@@ -1038,6 +1142,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageTexts
         ..clear()
         ..addAll(nextTexts);
+      _pageMedicalFlags
+        ..clear()
+        ..addAll(nextFlags);
       _totalPages -= 1;
       if (_currentPage >= _totalPages) _currentPage = _totalPages - 1;
       _textController.text = _pageTexts[_currentPage] ?? '';
@@ -1045,6 +1152,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       _redoStack.clear();
       _isDirty = false;
     });
+    // Les flags médicaux de la page courante ont peut-être changé (on a
+    // sauté sur la page précédente) → informe le parent.
+    _emitMedicalFlagsForCurrentPage();
 
     // Persiste l'état des pages déplacées (decalées d'un cran vers le bas)
     // pour que le serveur voie les bonnes valeurs sous leur nouvel index.
@@ -1060,10 +1170,13 @@ class _NotesWidgetState extends State<NotesWidget> {
     final strokes =
         _pageStrokes.putIfAbsent(pageIndex, () => <_Stroke>[]);
     final text = _pageTexts[pageIndex] ?? '';
+    final flags = _pageMedicalFlags[pageIndex];
     final json = jsonEncode({
       'version': 1,
       'text': text,
       'strokes': strokes.map((s) => s.toJson()).toList(),
+      if (flags != null && flags.isNotEmpty)
+        'medicalFlags': (flags.toList()..sort()),
     });
     try {
       await _dataService.saveNoteDrawingJson(

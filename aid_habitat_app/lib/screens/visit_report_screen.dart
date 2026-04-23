@@ -77,9 +77,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   // Sous-section active par onglet — mémorisée lors de la navigation.
   final Map<String, int> _activeSubsectionByTab = {};
   // Numéros médicaux actifs (Pathologie=1, Suivi=2, Sensoriel=3) —
-  // affichés en badge au-dessus du canvas de la note "Contexte de vie >
-  // Médical" (plus dans le texte de la note).
-  final Set<int> _medicalFlagNumbers = {};
+  // affichés en badges au-dessus du canvas de la note "Contexte de vie >
+  // Médical". Désormais PAR PAGE : ce `Set` représente seulement les
+  // flags de la page de note actuellement visible (NotesWidget pousse
+  // les flags à chaque changement de page via `onMedicalFlagsChanged`).
+  Set<int> _medicalFlagNumbers = <int>{};
 
   static const List<String> _tabs = [
     'Bénéficiaire',
@@ -215,37 +217,28 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   }
 
   /// Called by ContextTab when the user toggles a numbered medical flag
-  /// (Pathologie=1, Suivi médical=2, Sensoriel=3). Les numéros actifs
-  /// apparaissent désormais comme badges sur la ZONE DE DESSIN de la
-  /// note "Contexte de vie > Médical" (plus dans le texte — parité
-  /// avec la demande de l'utilisateur).
+  /// (Pathologie=1, Suivi médical=2, Sensoriel=3). Met à jour
+  /// [_medicalFlagNumbers] — la nouvelle valeur est propagée à NotesWidget
+  /// via la prop `medicalFlags` et sauvegardée dans la page courante.
   Future<void> _handleMedicalFlagToggle(int flagNumber, bool checked) async {
     if (!mounted) return;
-    setState(() {
-      if (checked) {
-        _medicalFlagNumbers.add(flagNumber);
-      } else {
-        _medicalFlagNumbers.remove(flagNumber);
-      }
-    });
+    final next = Set<int>.from(_medicalFlagNumbers);
+    if (checked) {
+      next.add(flagNumber);
+    } else {
+      next.remove(flagNumber);
+    }
+    setState(() => _medicalFlagNumbers = next);
   }
 
-  /// Derive l'état initial des flags médicaux depuis les données du
-  /// dossier courant (premier occupant). Appelé après chaque rafraîchissement.
-  void _syncMedicalFlagsFromDossier() {
-    final m = _dossier.medicalContext;
-    if (m == null) return;
-    final active = <int>{};
-    if (m.pathology.trim().isNotEmpty) active.add(1);
-    if (m.followUp.trim().isNotEmpty) active.add(2);
-    if (m.sensory.trim().isNotEmpty) active.add(3);
-    if (!setEquals(active, _medicalFlagNumbers)) {
-      setState(() {
-        _medicalFlagNumbers
-          ..clear()
-          ..addAll(active);
-      });
-    }
+  /// Appelé par NotesWidget (via `onMedicalFlagsChanged`) lorsqu'il
+  /// change de page ou finit de charger. Remplace [_medicalFlagNumbers]
+  /// par les flags stockés pour la page désormais visible → les cases à
+  /// cocher (ContextTab) et les badges canvas s'ajustent automatiquement.
+  void _handleMedicalFlagsFromNotes(Set<int> flagsForPage) {
+    if (!mounted) return;
+    if (setEquals(flagsForPage, _medicalFlagNumbers)) return;
+    setState(() => _medicalFlagNumbers = {...flagsForPage});
   }
 
   /// Extracts the `text` field from a drawing_json payload. Returns empty
@@ -399,7 +392,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // humaine" checkboxes appear/disappear the moment the user toggles
     // "Aide à domicile" in the Santé tab.
     setState(() => _dossier = fresh);
-    _syncMedicalFlagsFromDossier();
+    // Note : les flags médicaux sont désormais stockés PAR PAGE dans
+    // `drawing_json` (via NotesWidget), et non plus dérivés du dossier.
+    // Aucun sync à faire ici — NotesWidget émet les flags de sa page
+    // courante via onMedicalFlagsChanged après chargement.
   }
 
   /// Opens the current tab's note in a SEPARATE OS window that the user
@@ -497,6 +493,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 backgroundContent: isMedical
                     ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
                     : null,
+                // Sur l'onglet Médical : les flags sont stockés PAR PAGE
+                // dans `drawing_json`. La prop `medicalFlags` propage la
+                // sélection des cases ContextTab → NotesWidget sauvegarde
+                // dans la page courante. Le callback inverse rafraîchit
+                // les cases quand l'utilisateur change de page.
+                medicalFlags: isMedical ? _medicalFlagNumbers : null,
+                onMedicalFlagsChanged:
+                    isMedical ? _handleMedicalFlagsFromNotes : null,
               );
             }),
           ),
@@ -586,6 +590,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           dossier: _dossier,
           repository: _repository,
           onMedicalFlagToggled: _handleMedicalFlagToggle,
+          // Les cases Pathologie / Suivi / Sensoriel reflètent la PAGE
+          // COURANTE de la note Médical — pas le dossier. NotesWidget
+          // pousse ces flags via `onMedicalFlagsChanged` à chaque
+          // changement/chargement de page.
+          currentMedicalFlags: _medicalFlagNumbers,
         ),
         MesuresTab(dossier: _dossier, repository: _repository),
         AccessibilityTab(
