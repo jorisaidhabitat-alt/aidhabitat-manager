@@ -154,7 +154,10 @@ class _FormTextFieldState extends State<FormTextField> {
           autofocus: widget.autofocus,
           keyboardType: widget.keyboardType,
           maxLines: widget.maxLines,
-          style: const TextStyle(fontSize: 14),
+          // fontSize 12 + vertical padding 10 → même hauteur (~34 px)
+          // que le pill toggle "Vasque suspendue" (référence visuelle de
+          // tous les champs du relevé de visite).
+          style: const TextStyle(fontSize: 12),
           // iPadOS Scribble — permet d'écrire directement avec l'Apple
           // Pencil sans taper le champ d'abord. Défaut Flutter = true
           // sur iOS, on le force explicitement pour documenter l'intention.
@@ -261,7 +264,8 @@ class _FormNumberFieldState extends State<FormNumberField> {
           autofocus: widget.autofocus,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
-          style: const TextStyle(fontSize: 14),
+          // fontSize 12 → aligné sur la hauteur du pill "Vasque suspendue".
+          style: const TextStyle(fontSize: 12),
           // Scribble (Apple Pencil) — voir FormTextField au-dessus.
           stylusHandwritingEnabled: true,
           onFieldSubmitted: widget.onSubmitted == null
@@ -738,7 +742,8 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
           controller: _controller,
           focusNode: _focusNode,
           keyboardType: widget.keyboardType,
-          style: const TextStyle(fontSize: 14),
+          // fontSize 12 → aligné sur la hauteur du pill "Vasque suspendue".
+          style: const TextStyle(fontSize: 12),
           // Scribble (Apple Pencil) — voir FormTextField au-dessus.
           stylusHandwritingEnabled: true,
           decoration: InputDecoration(
@@ -834,13 +839,15 @@ class FormSelectDropdown<T> extends StatelessWidget {
           ),
           const SizedBox(height: 6),
         ],
+        // fontSize 12 + padding vertical 7 → ~34 px de haut, même hauteur
+        // que le pill "Vasque suspendue" (référence visuelle du relevé).
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: Colors.grey.shade300),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<T>(
               value: value,
@@ -848,7 +855,7 @@ class FormSelectDropdown<T> extends StatelessWidget {
               isDense: true,
               hint: Text(
                 placeholder,
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
               ),
               items: options
                   .map(
@@ -856,7 +863,7 @@ class FormSelectDropdown<T> extends StatelessWidget {
                       value: o.value,
                       child: Text(
                         o.label,
-                        style: const TextStyle(fontSize: 14),
+                        style: const TextStyle(fontSize: 12),
                       ),
                     ),
                   )
@@ -925,12 +932,14 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
           ),
         ),
         const SizedBox(height: 6),
+        // Padding vertical 10 + fontSize 12 → ~34 px, aligné sur le pill
+        // "Vasque suspendue" (référence visuelle du relevé de visite).
         InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () => setState(() => _open = !_open),
           child: Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
@@ -942,7 +951,7 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
                   child: Text(
                     _summarize(picked),
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 12,
                       color: picked.isNotEmpty
                           ? const Color(0xFF334155)
                           : const Color(0xFF94A3B8),

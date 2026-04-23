@@ -1489,6 +1489,8 @@ class _DateOfBirthField extends StatelessWidget {
           ),
           const SizedBox(height: 6),
         ],
+        // fontSize 12 + padding vertical 10 → aligné sur le pill
+        // "Vasque suspendue" (référence de tous les champs du relevé).
         InkWell(
           onTap: () => _pickDate(context),
           borderRadius: BorderRadius.circular(10),
@@ -1505,7 +1507,7 @@ class _DateOfBirthField extends StatelessWidget {
                   child: Text(
                     display.isEmpty ? 'JJ / MM / AAAA' : display,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 12,
                       color: display.isEmpty
                           ? const Color(0xFF94A3B8)
                           : const Color(0xFF0F172A),

@@ -28,12 +28,12 @@ class SyncRepository {
     for (final row in rows) {
       final attempts = row['attempt_count'] as int? ?? 0;
       final updatedAt = DateTime.tryParse(row['updated_at'] as String? ?? '');
-      // Backoff par op : au-delà de 3 tentatives, on attend de plus en
-      // plus longtemps avant de retenter (30s × attempts, capé à 5 min).
-      // Évite de marteler le serveur sur une op qui échoue en boucle,
-      // tout en laissant les premières tentatives rapides.
-      if (attempts >= 3 && updatedAt != null) {
-        final backoffSeconds = (attempts * 30).clamp(30, 300);
+      // Backoff par op dès la 1ère tentative échouée. Evite la boucle
+      // tight "échec transitoire → retry immédiat → échec → …" sur les
+      // ops qui cassent le sync cycle. Progression : attempts=1→10s,
+      // attempts=2→30s, attempts=3→60s, attempts=4→120s, capé à 5 min.
+      if (attempts >= 1 && updatedAt != null) {
+        final backoffSeconds = _computeOpBackoffSeconds(attempts);
         if (now.difference(updatedAt).inSeconds < backoffSeconds) {
           continue;
         }
@@ -125,6 +125,38 @@ class SyncRepository {
       entityLocalId: entityLocalId,
       syncState: SyncState.syncError,
     );
+  }
+
+  /// Backoff par opération après échec transitoire. Progression :
+  /// attempts=1→10s, 2→30s, 3→60s, 4→120s, 5+→300s (capé à 5 min).
+  /// Appelé uniquement par [fetchRunnableOperations] pour filtrer les
+  /// ops qu'il faut laisser reposer.
+  static int _computeOpBackoffSeconds(int attempts) {
+    if (attempts <= 0) return 0;
+    const schedule = [10, 30, 60, 120, 300];
+    return schedule[(attempts - 1).clamp(0, schedule.length - 1)];
+  }
+
+  /// Total des opérations "en attente" pour affichage UI (bandeau,
+  /// compteur) : inclut aussi bien les ops retentables immédiatement
+  /// que celles en cours de backoff — l'utilisateur doit voir qu'il y
+  /// a encore du travail en file même si rien n'est exécuté tout de
+  /// suite. Ne compte pas les ops `completed` ni `conflict`.
+  Future<int> countPendingOperations() async {
+    final db = await _database.database;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS cnt FROM sync_operations '
+      'WHERE status IN (?, ?)',
+      [
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.failed.name,
+      ],
+    );
+    if (rows.isEmpty) return 0;
+    final v = rows.first['cnt'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('$v') ?? 0;
   }
 
   /// Réhabilite les opérations `failed` dont le message d'erreur ressemble

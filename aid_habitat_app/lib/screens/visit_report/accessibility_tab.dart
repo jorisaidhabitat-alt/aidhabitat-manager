@@ -899,13 +899,16 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 child: TextField(
                   controller: ctrl,
                   stylusHandwritingEnabled: true,
+                  // fontSize 12 + padding vertical 10 → même hauteur que
+                  // le pill "Vasque suspendue" (référence du relevé).
+                  style: const TextStyle(fontSize: 12),
                   decoration: InputDecoration(
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 10),
                     hintText: 'Ajouter une pièce',
                     hintStyle: const TextStyle(
-                        color: Color(0xFF94A3B8), fontSize: 13),
+                        color: Color(0xFF94A3B8), fontSize: 12),
                     border: InputBorder.none,
                     filled: true,
                     fillColor: Colors.white,

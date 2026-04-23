@@ -227,9 +227,17 @@ class SyncEngine {
           lastSyncAt: DateTime.now(),
           nextRetryAt: null,
         );
-        // If new mutations landed during this run, or operations remain
-        // pending, fire another cycle immediately (no artificial delay).
-        if (_rerunRequested || pendingAfter > 0) {
+        // Ne relance immédiatement QUE si :
+        //  - une nouvelle mutation est arrivée pendant le cycle, OU
+        //  - on a effectivement poussé quelque chose ET il reste des
+        //    ops en file (il y a peut-être un follow-up à envoyer).
+        // Si le cycle n'a rien poussé (p. ex. toutes les ops restantes
+        // sont en backoff transitoire), on laisse le timer périodique
+        // les reprendre plus tard — évite un tight-loop qui spammerait
+        // CPU + serveur pour rien.
+        final shouldRerun = _rerunRequested ||
+            (result.pushedOperations > 0 && pendingAfter > 0);
+        if (shouldRerun) {
           _rerunRequested = false;
           scheduleMicrotask(() {
             if (!_disposed) _scheduleImmediate();
@@ -252,8 +260,10 @@ class SyncEngine {
 
   Future<int> _refreshPendingCount() async {
     try {
-      final ops = await _syncRepository.fetchRunnableOperations();
-      return ops.length;
+      // Total des ops `pending`/`failed`, indépendamment du backoff.
+      // L'UI doit refléter qu'il y a toujours du travail en file même
+      // si rien n'est exécuté pour l'instant (ops en cours de backoff).
+      return await _syncRepository.countPendingOperations();
     } catch (_) {
       return _state.pendingCount;
     }
