@@ -185,10 +185,21 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   PlanTool _tool = PlanTool.pen;
   int _penColor = 0xFF1A1A1A;
-  double _penSize = 2;
-  // Si non-null, on affiche sous la toolbar une barre de réglage
-  // d'épaisseur pour cet outil. Déclenché par un 2e tap sur un outil
-  // crayon / surligneur déjà actif.
+  // Épaisseur PAR OUTIL — chaque outil (crayon, surligneur, gomme,
+  // ligne, rectangle) mémorise sa propre taille. Modifier l'épaisseur
+  // d'un outil n'affecte pas les autres. Les symboles (équipements)
+  // utilisent leur propre taille fixée à l'insertion et ne sont pas
+  // impactés par ces valeurs.
+  final Map<PlanTool, double> _thicknessByTool = {
+    PlanTool.pen: 2.0,
+    PlanTool.highlighter: 6.0,
+    PlanTool.line: 2.0,
+    PlanTool.rect: 2.0,
+    PlanTool.eraser: 14.0,
+  };
+  double get _penSize => _thicknessByTool[_tool] ?? 2.0;
+  // Si non-null, on affiche en overlay un slider d'épaisseur pour cet
+  // outil. Déclenché par un 2e tap sur un outil de tracé déjà actif.
   PlanTool? _thicknessPopoverTool;
 
   // Sélection d'un symbole architectural placé — -1 = rien de sélectionné.
@@ -397,15 +408,20 @@ class _PlanCanvasState extends State<PlanCanvas> {
     switch (_tool) {
       case PlanTool.eraser:
         colorForStroke = 0x00000000;
-        sizeForStroke = 24;
+        // Épaisseur propre à la gomme (modifiable via son popover).
+        sizeForStroke = _penSize;
         break;
       case PlanTool.highlighter:
         // 35% d'opacité → effet fluo par-dessus le contenu existant.
+        // Épaisseur propre au surligneur, pas de multiplicateur : la
+        // valeur par défaut est plus élevée que le crayon.
         colorForStroke = (_penColor & 0x00FFFFFF) | 0x59000000;
-        sizeForStroke = _penSize * 4;
+        sizeForStroke = _penSize;
         break;
       case PlanTool.wall:
-        // Mur : épaisseur multipliée, noir plein.
+        // Mur (legacy) : épaisseur multipliée, noir plein. L'outil
+        // mur a été retiré de la toolbar mais le case reste pour
+        // compat avec les plans anciens.
         colorForStroke = 0xFF0F172A;
         sizeForStroke = (_penSize * 3).clamp(6, 24);
         break;
@@ -891,8 +907,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
     double maxT,
   ) {
     final t = (dx / width).clamp(0.0, 1.0);
+    final target = _thicknessPopoverTool ?? _tool;
     setState(() {
-      _penSize = minT + (maxT - minT) * t;
+      _thicknessByTool[target] = minT + (maxT - minT) * t;
     });
   }
 
