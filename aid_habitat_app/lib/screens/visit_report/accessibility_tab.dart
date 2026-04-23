@@ -493,24 +493,16 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 1. Type de logement (en premier)
-        if (_typology.isEmpty || _typologyEditing)
-          FormToggleGroup(
-            label: 'Type de logement',
-            options: const ['Maison', 'Appartement'],
-            selected: _typology,
-            expand: true,
-            onChanged: (v) {
-              setState(() => _typologyEditing = false);
-              _typology = v;
-              _markChanged();
-            },
-          )
-        else
-          CollapsedValueRow(
-            label: 'Type de logement',
-            displayValue: _typology,
-            onEdit: () => setState(() => _typologyEditing = true),
-          ),
+        FormToggleGroup(
+          label: 'Type de logement',
+          options: const ['Maison', 'Appartement'],
+          selected: _typology,
+          expand: true,
+          onChanged: (v) {
+            _typology = v;
+            _markChanged();
+          },
+        ),
         const SizedBox(height: 14),
         // 2. Années avec flèche de copie
         Row(
@@ -567,34 +559,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         ),
         const SizedBox(height: 14),
         // 3. Surface
-        if (_surface == null || _surface == 0 || _surfaceEditing)
-          FormNumberField(
-            label: 'Surface habitable',
-            value: _surface,
-            unit: 'm²',
-            autofocus: _surfaceEditing,
-            onChanged: (v) {
-              _surface = v;
-              _markChanged();
-            },
-            onSubmitted: (_) {
-              if (_surface != null && _surface! > 0) {
-                setState(() => _surfaceEditing = false);
-              }
-            },
-            onTapOutside: () {
-              if (_surface != null && _surface! > 0) {
-                setState(() => _surfaceEditing = false);
-              }
-            },
-          )
-        else
-          CollapsedValueRow(
-            label: 'Surface habitable',
-            displayValue:
-                '${_surface! == _surface!.roundToDouble() ? _surface!.toStringAsFixed(0) : _surface!.toStringAsFixed(1)} m²',
-            onEdit: () => setState(() => _surfaceEditing = true),
-          ),
+        FormNumberField(
+          label: 'Surface habitable',
+          value: _surface,
+          unit: 'm²',
+          onChanged: (v) {
+            _surface = v;
+            _markChanged();
+          },
+        ),
         const SizedBox(height: 14),
         // 4. Ajouter un niveau (remonté au-dessus du chauffage) + liste
         // de pills des niveaux encore disponibles quand _addLevelMode.
@@ -610,92 +583,41 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           );
         }),
         const SizedBox(height: 14),
-        // 6. Chauffage (multi-select pills avec bouton Valider pour se
-        // replier — l'utilisateur peut cocher/décocher librement, rien
-        // ne se replie tant qu'il n'a pas cliqué Valider).
-        if (!_heatingCommitted || _heatingEditing)
-          _buildHeatingEditor()
-        else
-          CollapsedValueRow(
-            label: 'Chauffage',
-            displayValue: _heatingTypes.join(', '),
-            onEdit: () => setState(() => _heatingEditing = true),
-          ),
+        // 6. Chauffage (multi-select pills toujours visibles).
+        _buildHeatingEditor(),
         const SizedBox(height: 14),
-        // 7. Volets (pills + repli "label (valeur)" sans dropdown).
+        // 7. Volets (pills toujours visibles, pas de repli).
         _buildVoletRow(
           'Volets roulants manuels',
           _voletsManStatus,
           _voletsManLoc,
-          _voletsManEditing,
-          _voletsManCommitted,
           (s) => setState(() {
             _voletsManStatus = s;
-            _voletsManCommitted = true;
             if (s != 'Localisé') _voletsManLoc = '';
-            if (s == 'Localisé') {
-              _voletsManEditing = true;
-            } else {
-              _voletsManEditing = false;
-            }
           }),
           (l) => setState(() => _voletsManLoc = l),
-          () => setState(() => _voletsManEditing = true),
-          onLocCommit: () {
-            if (_voletsManLoc.trim().isNotEmpty) {
-              setState(() => _voletsManEditing = false);
-            }
-          },
         ),
         const SizedBox(height: 10),
         _buildVoletRow(
           'Volets roulants électriques',
           _voletsElecStatus,
           _voletsElecLoc,
-          _voletsElecEditing,
-          _voletsElecCommitted,
           (s) => setState(() {
             _voletsElecStatus = s;
-            _voletsElecCommitted = true;
             if (s != 'Localisé') _voletsElecLoc = '';
-            if (s == 'Localisé') {
-              _voletsElecEditing = true;
-            } else {
-              _voletsElecEditing = false;
-            }
           }),
           (l) => setState(() => _voletsElecLoc = l),
-          () => setState(() => _voletsElecEditing = true),
-          onLocCommit: () {
-            if (_voletsElecLoc.trim().isNotEmpty) {
-              setState(() => _voletsElecEditing = false);
-            }
-          },
         ),
         const SizedBox(height: 10),
         _buildVoletRow(
           'Volets persiennes',
           _voletsPersStatus,
           _voletsPersLoc,
-          _voletsPersEditing,
-          _voletsPersCommitted,
           (s) => setState(() {
             _voletsPersStatus = s;
-            _voletsPersCommitted = true;
             if (s != 'Localisé') _voletsPersLoc = '';
-            if (s == 'Localisé') {
-              _voletsPersEditing = true;
-            } else {
-              _voletsPersEditing = false;
-            }
           }),
           (l) => setState(() => _voletsPersLoc = l),
-          () => setState(() => _voletsPersEditing = true),
-          onLocCommit: () {
-            if (_voletsPersLoc.trim().isNotEmpty) {
-              setState(() => _voletsPersEditing = false);
-            }
-          },
         ),
       ],
     );
@@ -761,51 +683,40 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     );
   }
 
-  /// Éditeur chauffage : pills multi-toggle sur 3 colonnes. Pas de
-  /// bouton Valider — on replie uniquement quand l'utilisateur tape à
-  /// l'extérieur (autre section, prise de notes, n'importe où ailleurs
-  /// hors de cette grille). Les clics multiples internes laissent la
-  /// grille ouverte.
+  /// Éditeur chauffage : pills multi-toggle sur 3 colonnes, toujours
+  /// visibles. L'ergo peut cocher/décocher librement sans que la liste
+  /// ne se replie.
   Widget _buildHeatingEditor() {
-    return TapRegion(
-      onTapOutside: (_) {
-        if (!_heatingEditing && _heatingCommitted) return;
-        setState(() {
-          _heatingCommitted = true;
-          _heatingEditing = false;
-        });
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Chauffage',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: Color(0xFF64748B),
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Chauffage',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF64748B),
           ),
-          const SizedBox(height: 8),
-          _buildMultiSelectGrid(
-            options: _heatingOptions,
-            selected: _heatingTypes,
-            columns: 3,
-            onToggle: (opt) {
-              setState(() {
-                final next = Set<String>.from(_heatingTypes);
-                if (next.contains(opt)) {
-                  next.remove(opt);
-                } else {
-                  next.add(opt);
-                }
-                _heatingTypes = next;
-              });
-              _scheduleSave();
-            },
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 8),
+        _buildMultiSelectGrid(
+          options: _heatingOptions,
+          selected: _heatingTypes,
+          columns: 3,
+          onToggle: (opt) {
+            setState(() {
+              final next = Set<String>.from(_heatingTypes);
+              if (next.contains(opt)) {
+                next.remove(opt);
+              } else {
+                next.add(opt);
+              }
+              _heatingTypes = next;
+            });
+            _scheduleSave();
+          },
+        ),
+      ],
     );
   }
 
@@ -1082,24 +993,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     String label,
     String status,
     String loc,
-    bool editing,
-    bool committed,
     ValueChanged<String> onStatusChange,
     ValueChanged<String> onLocChange,
-    VoidCallback onEditRequested, {
-    required VoidCallback onLocCommit,
-  }) {
-    final collapsed = committed && !editing;
-    if (collapsed) {
-      final display = status == 'Localisé' && loc.isNotEmpty
-          ? 'Localisé : $loc'
-          : status;
-      return CollapsedValueRow(
-        label: label,
-        displayValue: display,
-        onEdit: onEditRequested,
-      );
-    }
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1118,13 +1014,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           FormTextField(
             label: 'Localisation',
             value: loc,
-            autofocus: editing,
             onChanged: (v) {
               onLocChange(v);
               _markChanged();
             },
-            onSubmitted: (_) => onLocCommit(),
-            onTapOutside: onLocCommit,
           ),
         ],
       ],

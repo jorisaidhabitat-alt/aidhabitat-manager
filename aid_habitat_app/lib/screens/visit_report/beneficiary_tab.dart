@@ -217,15 +217,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     _envoiRapport = widget.dossier.envoiRapport;
     _personnesPresentesVisite = widget.dossier.personnesPresentesVisite;
     _occupants = _buildOccupantsFromPatient(p, _numberPeople);
-    // Initialise les "committed" à partir des valeurs déjà enregistrées :
-    // un occupant avec une dépendance non vide a forcément choisi une
-    // option → on affiche l'état replié plutôt que les pills.
-    _dependenceCommittedIndices
-      ..clear()
-      ..addAll([
-        for (int i = 0; i < _occupants.length; i++)
-          if (_occupants[i].dependenceTxt.trim().isNotEmpty) i,
-      ]);
   }
 
   List<Occupant> _buildOccupantsFromPatient(Patient p, int count) {
@@ -725,23 +716,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       ],
     );
   }
-
-  /// Ligne compacte affichée en mode "replié" pour un champ ayant déjà
-  /// une valeur : "Label (valeur)" suivi d'un petit crayon d'édition.
-  /// Tap sur la ligne ou le crayon → [onEdit]. Wrapper autour de
-  /// [CollapsedValueRow] pour garder l'appel fluide côté subclasses.
-  Widget _collapsedValueRow({
-    required String label,
-    required String displayValue,
-    required VoidCallback onEdit,
-    TextStyle? labelStyle,
-  }) =>
-      CollapsedValueRow(
-        label: label,
-        displayValue: displayValue,
-        onEdit: onEdit,
-        labelStyle: labelStyle,
-      );
 
   /// Case à cocher qui, une fois cochée, affiche directement la liste
   /// des options en pills sous la ligne. Les boutons restent visibles en
