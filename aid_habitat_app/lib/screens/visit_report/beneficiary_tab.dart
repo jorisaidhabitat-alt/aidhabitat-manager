@@ -958,7 +958,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Aides$suffix',
+          'Situation$suffix',
           style: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,

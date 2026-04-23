@@ -178,6 +178,12 @@ class _MainScreenState extends State<MainScreen> {
       view == 'dossier_detail' || view == 'visit_report';
 
   void _handleViewChange(String view) {
+    // Pousser l'écran courant dans l'historique seulement si on change
+    // vraiment de vue (évite d'empiler les doublons lors d'un re-clic
+    // sur l'onglet actif).
+    if (view != _activeView) {
+      _pushHistory();
+    }
     setState(() {
       // Cas spécial : clic sur "Dossiers" dans la sidebar.
       if (view == 'dossiers') {
@@ -218,6 +224,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _handleSelectDossier(Dossier dossier) {
+    _pushHistory();
     setState(() {
       _selectedDossier = dossier;
       _activeView = 'dossier_detail';
@@ -308,6 +315,7 @@ class _MainScreenState extends State<MainScreen> {
       );
 
   void _handleCreateNew() {
+    _pushHistory();
     setState(() => _activeView = 'create_beneficiary');
   }
 
@@ -471,24 +479,26 @@ class _MainScreenState extends State<MainScreen> {
     if (_activeView == 'dossier_detail' && _selectedDossier != null) {
       return DossierScreen(
         dossier: _selectedDossier!,
-        onBack: () => _handleViewChange('dossiers'),
-        onOpenVisitReport: () =>
-            setState(() => _activeView = 'visit_report'),
+        onBack: _goBack,
+        onOpenVisitReport: () {
+          _pushHistory();
+          setState(() => _activeView = 'visit_report');
+        },
       );
     }
     if (_activeView == 'visit_report' && _selectedDossier != null) {
       return VisitReportScreen(
         dossier: _selectedDossier!,
         onBack: () async {
-          // Re-fetch the dossier so the back-to-dossier view sees the
-          // fresh name / city edits made inside the visit report.
+          // Re-fetch the dossier pour que l'écran précédent voit les
+          // éventuelles modifs (nom, ville…) faites dans le rapport.
           final fresh =
               await _dataService.fetchDossierById(_selectedDossier!.id);
           if (!mounted) return;
-          setState(() {
-            if (fresh != null) _selectedDossier = fresh;
-            _activeView = 'dossier_detail';
-          });
+          if (fresh != null) {
+            setState(() => _selectedDossier = fresh);
+          }
+          _goBack();
           _refreshDossiers();
         },
       );
