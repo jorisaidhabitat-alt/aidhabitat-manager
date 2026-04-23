@@ -426,16 +426,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   Future<void> _previewDocument(DocItem doc) async {
-    // Sur web, quand le document n'a qu'un `dataUrl` (bytes locaux pas
-    // encore uploadés), on n'a pas de File et le _PreviewScreen complet
-    // (PDF controller, annotator) ne peut pas le lire → on affiche une
-    // lightbox simple avec l'image décodée depuis le base64.
-    if (kIsWeb &&
-        doc.type == 'image' &&
-        (doc.localPath == null || doc.localPath!.isEmpty) &&
-        (doc.url == null || doc.url!.isEmpty) &&
-        doc.dataUrl != null &&
-        doc.dataUrl!.isNotEmpty) {
+    // Sur web, toutes les preview d'images passent par la lightbox simple
+    // (InteractiveViewer + bouton fermeture). Le `_PreviewScreen` complet
+    // (PDF controller, annotator) repose sur `dart:io File` qui n'existe
+    // pas dans le navigateur et resterait bloqué sur "loading".
+    if (kIsWeb && doc.type == 'image') {
       await _showWebImagePreview(doc);
       return;
     }
@@ -1514,27 +1509,82 @@ class _DocCardState extends State<_DocCard> {
 // Thumbnail resolver: local image > remote image URL > icon placeholder
 // ---------------------------------------------------------------------------
 
-class _DocThumbnail extends StatelessWidget {
+class _DocThumbnail extends StatefulWidget {
   final DocItem doc;
 
   const _DocThumbnail({required this.doc});
 
   @override
+  State<_DocThumbnail> createState() => _DocThumbnailState();
+}
+
+class _DocThumbnailState extends State<_DocThumbnail> {
+  /// Cache des bytes décodés par `doc.id` — partagé entre toutes les
+  /// instances pour que la grille ne refasse pas de `base64Decode` à
+  /// chaque rebuild (c'est cette ré-décoding qui faisait clignoter les
+  /// vignettes : Flutter voyait un nouvel `Uint8List` à chaque frame et
+  /// rechargeait le décodeur d'image).
+  static final Map<String, Uint8List> _bytesCache = {};
+
+  Uint8List? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _primeBytes();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DocThumbnail old) {
+    super.didUpdateWidget(old);
+    if (old.doc.id != widget.doc.id ||
+        old.doc.dataUrl != widget.doc.dataUrl) {
+      _primeBytes();
+    }
+  }
+
+  void _primeBytes() {
+    final dataUrl = widget.doc.dataUrl;
+    if (dataUrl == null || dataUrl.isEmpty) {
+      setState(() => _bytes = null);
+      return;
+    }
+    final cached = _bytesCache[widget.doc.id];
+    if (cached != null) {
+      setState(() => _bytes = cached);
+      return;
+    }
+    final decoded = _decodeDataUrl(dataUrl);
+    if (decoded != null) {
+      _bytesCache[widget.doc.id] = decoded;
+    }
+    setState(() => _bytes = decoded);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final doc = widget.doc;
     if (doc.type == 'image') {
-      // Web offline : bytes capturés en base64, décodés directement.
-      if (doc.dataUrl != null && doc.dataUrl!.isNotEmpty) {
-        final bytes = _decodeDataUrl(doc.dataUrl!);
-        if (bytes != null) {
-          return Image.memory(bytes, fit: BoxFit.cover, errorBuilder: _fallback);
-        }
+      // Web offline : bytes mémorisés (1 seul `base64Decode` par doc).
+      if (_bytes != null) {
+        return Image.memory(
+          _bytes!,
+          fit: BoxFit.cover,
+          gaplessPlayback: true, // évite le flash blanc au rebuild
+          errorBuilder: _fallback,
+        );
       }
       if (!kIsWeb &&
           doc.localPath != null &&
           doc.localPath!.isNotEmpty) {
         final file = File(doc.localPath!);
         if (file.existsSync()) {
-          return Image.file(file, fit: BoxFit.cover, errorBuilder: _fallback);
+          return Image.file(
+            file,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: _fallback,
+          );
         }
       }
       if (doc.url != null && doc.url!.isNotEmpty) {
@@ -1569,7 +1619,7 @@ class _DocThumbnail extends StatelessWidget {
   }
 
   Widget _fallback(BuildContext ctx, Object err, StackTrace? st) =>
-      _iconPlaceholder(doc.type);
+      _iconPlaceholder(widget.doc.type);
 
   Widget _iconPlaceholder(String type) {
     final IconData icon;
