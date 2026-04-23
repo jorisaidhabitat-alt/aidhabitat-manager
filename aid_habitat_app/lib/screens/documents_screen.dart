@@ -19,6 +19,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/types.dart';
+import '../services/web_file_picker.dart';
 import '../services/app_config.dart';
 import '../services/data_service.dart';
 import '../services/document_repository.dart';
@@ -156,31 +157,43 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
-  /// Import d'image.
-  ///  - iOS / Android natif → `image_picker` gallery (photothèque native)
-  ///  - Web (PWA iPad inclus) → `FilePicker` filtré images. Plus fiable
-  ///    que `image_picker` sur iOS PWA standalone où l'action-sheet web
-  ///    peut ne pas s'ouvrir.
-  ///  - Desktop → même `FilePicker` filtré images.
+  /// Import d'image ("Photothèque").
+  ///  - iOS / Android natif → `image_picker` gallery
+  ///  - Web PWA iPad → `<input type="file" accept="image/*">` créé
+  ///    synchroniquement dans le gesture → iOS ouvre l'action-sheet
+  ///    "Photothèque / Prendre une photo / Choisir un fichier". Sans ce
+  ///    raccourci DOM, `FilePicker` peut perdre le user-activation en
+  ///    mode standalone et ne rien ouvrir.
+  ///  - Desktop → FilePicker filtré images.
   Future<void> _pickFromGallery() async {
     if (_isPicking || _isImporting) return;
     _isPicking = true;
     try {
-      if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
+      if (kIsWeb) {
+        final picked = await pickWebFile(accept: 'image/*');
+        if (picked == null) return;
+        await _openUploadModalFromBytes(
+          bytes: picked.bytes,
+          fileName: picked.name,
+          defaultTag: 'Photo',
+        );
+        return;
+      }
+      if (Platform.isIOS || Platform.isAndroid) {
         final xfile =
             await _imagePicker.pickImage(source: ImageSource.gallery);
         if (xfile == null) return;
         await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
         return;
       }
-      // Web + desktop → FilePicker (input[type=file] accept=image/*)
+      // Desktop
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         dialogTitle: 'Sélectionner une image',
-        withData: kIsWeb,
       );
-      if (result == null || result.files.isEmpty) return;
-      await _importPickedFile(result.files.single, defaultTag: 'Photo');
+      final path = result?.files.single.path;
+      if (path == null || path.isEmpty) return;
+      await _openUploadModal(File(path), defaultTag: 'Photo');
     } catch (err) {
       _showError('Sélection d\'image impossible: $err');
     } finally {
@@ -188,14 +201,35 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
-  /// Web variant of [_openUploadModal]: reads the XFile bytes directly
-  /// (XFile.path is a blob URL on web, unusable as a filesystem path) and
-  /// imports them via [DocumentRepository.importDocumentBytes].
+  /// Web variant of [_openUploadModal] that reads from an [XFile]
+  /// (delivered by image_picker camera on web). Delegates to the shared
+  /// bytes-based flow.
   Future<void> _openUploadModalWeb(XFile xfile,
       {required String defaultTag}) async {
+    final bytes = await xfile.readAsBytes();
+    final fileName = xfile.name.isNotEmpty
+        ? xfile.name
+        : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await _openUploadModalFromBytes(
+      bytes: bytes,
+      fileName: fileName,
+      defaultTag: defaultTag,
+    );
+  }
+
+  /// Shared web import flow: prompts the user for a title + tag, then
+  /// persists the bytes locally via [DocumentRepository.importDocumentBytes].
+  /// Used by camera picker (image_picker XFile) and gallery / file pickers
+  /// (raw DOM `<input>` bytes).
+  Future<void> _openUploadModalFromBytes({
+    required List<int> bytes,
+    required String fileName,
+    required String defaultTag,
+  }) async {
     if (!mounted) return;
-    final defaultTitle =
-        xfile.name.isNotEmpty ? xfile.name.split('.').first : 'Photo';
+    final defaultTitle = fileName.isNotEmpty
+        ? fileName.split('.').first
+        : 'Document';
     final result = await showDialog<_UploadResult>(
       context: context,
       builder: (ctx) => _UploadModal(
@@ -207,10 +241,6 @@ class _DocumentsScreenState extends State<DocumentsScreen>
 
     setState(() => _isImporting = true);
     try {
-      final bytes = await xfile.readAsBytes();
-      final fileName = xfile.name.isNotEmpty
-          ? xfile.name
-          : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
       await _documentRepository.importDocumentBytes(
         patientId: _patientId,
         bytes: bytes,
@@ -264,10 +294,19 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     if (_isPicking || _isImporting) return;
     _isPicking = true;
     try {
+      if (kIsWeb) {
+        final picked = await pickWebFile(accept: '*/*');
+        if (picked == null) return;
+        await _openUploadModalFromBytes(
+          bytes: picked.bytes,
+          fileName: picked.name,
+          defaultTag: 'Autre',
+        );
+        return;
+      }
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         dialogTitle: 'Importer un fichier',
-        withData: kIsWeb,
       );
       if (result == null || result.files.isEmpty) return;
       await _importPickedFile(result.files.single, defaultTag: 'Autre');
