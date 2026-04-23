@@ -183,7 +183,9 @@ const double _kGridCell = 24.0;
 
 // Constantes de la mise en page "deux cartes empilées" (parité maquette).
 const Color _kStackedBorder = Color(0xFFEDE9EF);
-const Color _kStackedSplitterBg = Color(0xFFF9EEF1);
+// Fond splitter = même violet clair que les icônes Documents / VAD sur
+// l'écran dossier (cohérence visuelle — demande utilisateur).
+const Color _kStackedSplitterBg = Color(0xFFF3F0F5);
 const Color _kStackedViolet = Color(0xFF907CA1);
 const Color _kStackedVioletSoft = Color(0xFFF4EFF7);
 const Color _kStackedPinkSoft = Color(0xFFE8A4B0);
@@ -1509,6 +1511,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// Actions flottantes en haut-droite du canvas : bouton `+` (cercle
   /// violet clair avec `+` violet foncé) + corbeille (icône rose, aucun
   /// fond). Sans conteneur englobant, sans ombre — parité maquette.
+  /// Taille 44×44 pour respecter les guidelines tactiles tablette.
   Widget _buildTopRightPageActions() {
     final canAdd = _totalPages < widget.maxPages;
     final canDelete = widget.onDeletePage != null
@@ -1517,7 +1520,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // "+" : cercle violet clair, icône violet foncé au centre.
+        // "+" : cercle violet clair 44×44, icône violet foncé 22px.
         Tooltip(
           message: 'Nouvelle page',
           child: Material(
@@ -1526,8 +1529,8 @@ class _NotesWidgetState extends State<NotesWidget> {
               borderRadius: BorderRadius.circular(999),
               onTap: canAdd ? _addPage : null,
               child: Container(
-                width: 28,
-                height: 28,
+                width: 44,
+                height: 44,
                 decoration: const BoxDecoration(
                   color: _kStackedVioletSoft,
                   shape: BoxShape.circle,
@@ -1537,7 +1540,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   opacity: canAdd ? 1 : 0.4,
                   child: const Icon(
                     LucideIcons.plus,
-                    size: 14,
+                    size: 22,
                     color: _kStackedViolet,
                   ),
                 ),
@@ -1545,8 +1548,8 @@ class _NotesWidgetState extends State<NotesWidget> {
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        // Corbeille : icône rose clair, pas de fond, pas de contour.
+        const SizedBox(width: 10),
+        // Corbeille : icône rose clair 22px, zone de tap 44×44, sans fond.
         Tooltip(
           message: 'Supprimer la page',
           child: Material(
@@ -1554,13 +1557,15 @@ class _NotesWidgetState extends State<NotesWidget> {
             child: InkWell(
               borderRadius: BorderRadius.circular(999),
               onTap: canDelete ? () => _deletePage() : null,
-              child: Padding(
-                padding: const EdgeInsets.all(6),
+              child: Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
                 child: Opacity(
                   opacity: canDelete ? 1 : 0.4,
                   child: const Icon(
                     LucideIcons.trash2,
-                    size: 16,
+                    size: 22,
                     color: _kStackedPinkSoft,
                   ),
                 ),
@@ -2637,9 +2642,10 @@ class _PillIconButton extends StatelessWidget {
   }
 }
 
-/// Petit bouton chevron en violet pour la pagination centrée de la
-/// mise en page "deux cartes empilées". Grisé quand `enabled == false`,
-/// sans fond ni contour — parité maquette utilisateur.
+/// Bouton chevron en violet pour la pagination centrée de la mise en
+/// page "deux cartes empilées". Grisé quand `enabled == false`, sans
+/// fond ni contour. Zone de tap 44×44 pour respecter les guidelines
+/// tablette (Apple HIG minimum 44pt).
 class _StackedChevronButton extends StatelessWidget {
   const _StackedChevronButton({
     required this.icon,
@@ -2663,14 +2669,14 @@ class _StackedChevronButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
           onTap: enabled ? onTap : null,
           child: Container(
-            width: 24,
-            height: 24,
+            width: 44,
+            height: 44,
             alignment: Alignment.center,
             child: Opacity(
               opacity: enabled ? 1 : 0.3,
               child: Icon(
                 icon,
-                size: 16,
+                size: 22,
                 color: _kStackedViolet,
               ),
             ),
