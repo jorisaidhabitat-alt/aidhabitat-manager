@@ -186,9 +186,19 @@ class _PlanCanvasState extends State<PlanCanvas> {
   PlanTool _tool = PlanTool.pen;
   int _penColor = 0xFF1A1A1A;
   double _penSize = 2;
+  // Si non-null, on affiche sous la toolbar une barre de réglage
+  // d'épaisseur pour cet outil. Déclenché par un 2e tap sur un outil
+  // crayon / surligneur déjà actif.
+  PlanTool? _thicknessPopoverTool;
 
   // Sélection d'un symbole architectural placé — -1 = rien de sélectionné.
   int _selectedIndex = -1;
+  // Mode édition : quand true, poignées + boutons flottants (flip,
+  // supprimer) sont visibles et actifs. Déclenché par un TAP sur le
+  // symbole (finger down + up sans drag). Un drag direct sur un
+  // symbole déplace sans activer le mode édition — l'action primaire
+  // reste le déplacement.
+  bool _editingMode = false;
   // Action en cours sur le symbole sélectionné (drag d'une poignée, du
   // corps, rotation). `null` entre les gestures.
   _SymbolHandle? _activeHandle;
@@ -248,6 +258,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
         _current = null;
         _undoStack.clear();
         _redoStack.clear();
+        _selectedIndex = -1;
+        _editingMode = false;
       });
       _loadStrokes();
     }
@@ -677,119 +689,322 @@ class _PlanCanvasState extends State<PlanCanvas> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _buildToolbar(),
-        const SizedBox(height: 0),
+        _buildTopToolbar(),
+        if (_thicknessPopoverTool != null) _buildThicknessPopover(),
         Expanded(child: _buildCanvas()),
+        _buildBottomToolbar(),
       ],
     );
   }
 
-  Widget _buildToolbar() {
+  /// Toolbar du haut : outils de tracé + couleur + undo/redo + menu
+  /// "trois points" (télécharger / ajouter page / supprimer page) +
+  /// pagination (chevrons + numéro de page) à l'extrême droite.
+  Widget _buildTopToolbar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Row(
         children: [
-          // Outils de tracé.
+          // Outils de tracé (Mur retiré à la demande utilisateur).
           _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
-          _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
+          const SizedBox(width: 6),
+          _toolBtn(PlanTool.highlighter, LucideIcons.highlighter,
+              'Surligneur'),
+          const SizedBox(width: 6),
           _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
+          const SizedBox(width: 6),
           _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
-          _toolBtn(PlanTool.wall, LucideIcons.rectangleHorizontal, 'Mur'),
+          const SizedBox(width: 6),
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
-          _divider(),
-          // Symboles architecturaux directement dans la toolbar — un
-          // tap insère l'élément au centre du canvas. Plus de popup
-          // "Insérer un élément", plus de clic supplémentaire.
-          _symbolInsertBtn(
-              PlanTool.window, LucideIcons.appWindow, 'Fenêtre'),
-          _symbolInsertBtn(PlanTool.door, LucideIcons.doorOpen, 'Porte'),
-          _symbolInsertBtn(PlanTool.toilet, LucideIcons.armchair, 'WC'),
-          _symbolInsertBtn(
-              PlanTool.shower, LucideIcons.droplets, 'Douche'),
-          _symbolInsertBtn(PlanTool.bath, LucideIcons.bath, 'Baignoire'),
-          _symbolInsertBtn(PlanTool.sink, LucideIcons.hand, 'Lavabo'),
-          _divider(),
-          // Palette de couleurs.
-          ..._presetColors.map((c) => _colorDot(c)),
-          _divider(),
-          // Épaisseur : pill indissociable [− | N | +]. Le Container
-          // empêche le Wrap de séparer ces 3 éléments sur deux lignes.
-          _buildThicknessPill(),
-          const SizedBox(width: 4),
-          // Undo / Redo — snapshots gérés à chaque mutation (trait
-          // ajouté, symbole placé/déplacé/supprimé, effacer tout).
-          IconButton(
-            icon: const Icon(LucideIcons.undo2, size: 18),
-            color: _undoStack.isEmpty
-                ? Colors.grey.shade300
-                : Colors.grey.shade700,
+          const SizedBox(width: 10),
+          // Couleur : un seul point qui affiche la couleur courante.
+          // Tap pour ouvrir le sélecteur de couleur (palette + picker).
+          _buildActiveColorDot(),
+          const SizedBox(width: 10),
+          // Undo / Redo.
+          _iconBtn(
+            icon: LucideIcons.undo2,
             tooltip: 'Annuler',
-            onPressed: _undoStack.isEmpty ? null : _undo,
+            onTap: _undoStack.isEmpty ? null : _undo,
+            disabledColor: Colors.grey.shade300,
           ),
-          IconButton(
-            icon: const Icon(LucideIcons.redo2, size: 18),
-            color: _redoStack.isEmpty
-                ? Colors.grey.shade300
-                : Colors.grey.shade700,
+          _iconBtn(
+            icon: LucideIcons.redo2,
             tooltip: 'Rétablir',
-            onPressed: _redoStack.isEmpty ? null : _redo,
+            onTap: _redoStack.isEmpty ? null : _redo,
+            disabledColor: Colors.grey.shade300,
           ),
-          IconButton(
-            icon: const Icon(LucideIcons.download, size: 18),
-            color: Colors.grey.shade600,
-            tooltip: 'Télécharger le plan',
-            onPressed: _downloadPng,
-          ),
-          // "Effacer tout" (corbeille pleine = tout jeter).
-          IconButton(
-            icon: const Icon(LucideIcons.trash2, size: 18),
-            color: Colors.red.shade400,
-            tooltip: 'Effacer tout',
-            onPressed: _clearAll,
-          ),
-          // Pagination inline (si fournie par le parent).
+          const Spacer(),
+          // Menu "trois points" (télécharger + pages + effacer tout).
+          _buildMoreMenu(),
+          // Pagination à l'extrême droite (chevrons + "1/3").
           if (widget.currentPage != null && widget.totalPages != null) ...[
-            _divider(),
-            IconButton(
-              icon: const Icon(LucideIcons.chevronLeft, size: 18),
-              color: Colors.grey.shade600,
+            const SizedBox(width: 4),
+            _iconBtn(
+              icon: LucideIcons.chevronLeft,
               tooltip: 'Page précédente',
-              onPressed: (widget.currentPage! > 0) ? widget.onPrevPage : null,
+              onTap: (widget.currentPage! > 0) ? widget.onPrevPage : null,
+              disabledColor: Colors.grey.shade300,
             ),
-            Text(
-              '${widget.currentPage! + 1}/${widget.totalPages}',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF334155),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '${widget.currentPage! + 1}/${widget.totalPages}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF334155),
+                ),
               ),
             ),
-            IconButton(
-              icon: const Icon(LucideIcons.chevronRight, size: 18),
-              color: Colors.grey.shade600,
+            _iconBtn(
+              icon: LucideIcons.chevronRight,
               tooltip: 'Page suivante',
-              onPressed: (widget.currentPage! < widget.totalPages! - 1)
+              onTap: (widget.currentPage! < widget.totalPages! - 1)
                   ? widget.onNextPage
                   : null,
+              disabledColor: Colors.grey.shade300,
             ),
-            IconButton(
-              icon: const Icon(LucideIcons.plus, size: 18),
-              color: Colors.grey.shade600,
-              tooltip: 'Ajouter une page',
-              onPressed: widget.onAddPage,
-            ),
-            // "Supprimer la page" a été déplacée en bas à droite du
-            // canvas (voir _buildCanvas) : moins d'encombrement dans la
-            // toolbar, plus safe (éloigné des outils de dessin).
           ],
         ],
+      ),
+    );
+  }
+
+  /// Toolbar du bas : symboles architecturaux (fenêtre / porte / WC /
+  /// douche / baignoire / lavabo). Un tap insère l'élément au centre
+  /// du canvas.
+  Widget _buildBottomToolbar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(16),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _symbolInsertBtn(
+              PlanTool.window, LucideIcons.appWindow, 'Fenêtre'),
+          const SizedBox(width: 8),
+          _symbolInsertBtn(PlanTool.door, LucideIcons.doorOpen, 'Porte'),
+          const SizedBox(width: 8),
+          _symbolInsertBtn(PlanTool.toilet, LucideIcons.armchair, 'WC'),
+          const SizedBox(width: 8),
+          _symbolInsertBtn(
+              PlanTool.shower, LucideIcons.droplets, 'Douche'),
+          const SizedBox(width: 8),
+          _symbolInsertBtn(PlanTool.bath, LucideIcons.bath, 'Baignoire'),
+          const SizedBox(width: 8),
+          _symbolInsertBtn(PlanTool.sink, LucideIcons.hand, 'Lavabo'),
+        ],
+      ),
+    );
+  }
+
+  /// Barre de réglage d'épaisseur affichée sous la toolbar quand
+  /// l'utilisateur tape une 2e fois sur le crayon / surligneur actif.
+  /// Visuel : un trait qui grossit progressivement de gauche à droite
+  /// dans la couleur courante. Glisser sur la barre ajuste le trait.
+  /// Epaisseur mini 1, maxi 24.
+  Widget _buildThicknessPopover() {
+    const minThickness = 1.0;
+    const maxThickness = 24.0;
+    final pos =
+        ((_penSize - minThickness) / (maxThickness - minThickness))
+            .clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      color: Colors.white,
+      child: LayoutBuilder(
+        builder: (ctx, constraints) {
+          final width = constraints.maxWidth.clamp(120.0, 600.0);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => _updateThicknessFromOffset(
+                d.localPosition.dx, width, minThickness, maxThickness),
+            onPanUpdate: (d) => _updateThicknessFromOffset(
+                d.localPosition.dx, width, minThickness, maxThickness),
+            child: SizedBox(
+              height: 40,
+              width: width,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Trait qui s'épaissit progressivement (aperçu).
+                  CustomPaint(
+                    size: Size(width, 40),
+                    painter: _ThicknessTrackPainter(
+                      color: Color(_penColor),
+                      min: minThickness,
+                      max: maxThickness,
+                    ),
+                  ),
+                  // Curseur (cercle) sur la position courante.
+                  Positioned(
+                    left: (width * pos) - 10,
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Color(_penColor),
+                          width: 2.5,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 2,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _updateThicknessFromOffset(
+    double dx,
+    double width,
+    double minT,
+    double maxT,
+  ) {
+    final t = (dx / width).clamp(0.0, 1.0);
+    setState(() {
+      _penSize = minT + (maxT - minT) * t;
+    });
+  }
+
+  /// Menu "trois points verticaux" avec téléchargement, ajout/
+  /// suppression de page et effacement complet du plan.
+  Widget _buildMoreMenu() {
+    return PopupMenuButton<String>(
+      tooltip: 'Plus d\'actions',
+      icon: const Icon(LucideIcons.moreVertical, size: 18),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      onSelected: (v) {
+        switch (v) {
+          case 'download':
+            _downloadPng();
+            break;
+          case 'addPage':
+            widget.onAddPage?.call();
+            break;
+          case 'deletePage':
+            widget.onDeletePage?.call();
+            break;
+          case 'clearAll':
+            _clearAll();
+            break;
+        }
+      },
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: 'download',
+          child: Row(children: [
+            Icon(LucideIcons.download, size: 16, color: Color(0xFF334155)),
+            SizedBox(width: 10),
+            Text('Télécharger le plan'),
+          ]),
+        ),
+        if (widget.onAddPage != null)
+          const PopupMenuItem(
+            value: 'addPage',
+            child: Row(children: [
+              Icon(LucideIcons.plus, size: 16, color: Color(0xFF334155)),
+              SizedBox(width: 10),
+              Text('Ajouter une page'),
+            ]),
+          ),
+        if (widget.onDeletePage != null &&
+            (widget.totalPages ?? 1) > 1)
+          const PopupMenuItem(
+            value: 'deletePage',
+            child: Row(children: [
+              Icon(LucideIcons.fileX, size: 16, color: Color(0xFFB91C1C)),
+              SizedBox(width: 10),
+              Text('Supprimer la page',
+                  style: TextStyle(color: Color(0xFFB91C1C))),
+            ]),
+          ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'clearAll',
+          child: Row(children: [
+            Icon(LucideIcons.trash2, size: 16, color: Color(0xFFB91C1C)),
+            SizedBox(width: 10),
+            Text('Effacer tout le plan',
+                style: TextStyle(color: Color(0xFFB91C1C))),
+          ]),
+        ),
+      ],
+    );
+  }
+
+  /// Cercle coloré unique — affiche la couleur courante. Tap ouvre un
+  /// sélecteur de couleur libre (remplace l'ancienne palette fixe).
+  Widget _buildActiveColorDot() {
+    return Tooltip(
+      message: 'Changer la couleur',
+      child: GestureDetector(
+        onTap: _pickCustomColor,
+        child: Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Color(_penColor),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.grey.shade300,
+              width: 2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bouton icône compact (tooltip inline).
+  Widget _iconBtn({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onTap,
+    Color disabledColor = const Color(0xFFCBD5E1),
+  }) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Icon(
+            icon,
+            size: 18,
+            color: enabled ? Colors.grey.shade700 : disabledColor,
+          ),
+        ),
       ),
     );
   }
@@ -959,20 +1174,36 @@ class _PlanCanvasState extends State<PlanCanvas> {
   }
 
   Widget _toolBtn(PlanTool tool, IconData icon, String label) {
-    // Bouton icône seul (tooltip au survol pour le libellé).
+    // Bouton rond (cercle plein quand l'outil est actif), tooltip au
+    // survol. Un 2e tap sur un outil crayon / surligneur déjà actif
+    // ouvre un slider d'épaisseur sous la toolbar (voir _thicknessPopover).
     final active = _tool == tool;
+    final supportsThickness =
+        tool == PlanTool.pen || tool == PlanTool.highlighter;
     return Tooltip(
       message: label,
       child: InkWell(
-        onTap: () => setState(() => _tool = tool),
-        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          if (active && supportsThickness) {
+            setState(() {
+              _thicknessPopoverTool =
+                  _thicknessPopoverTool == tool ? null : tool;
+            });
+            return;
+          }
+          setState(() {
+            _tool = tool;
+            _thicknessPopoverTool = null;
+          });
+        },
+        customBorder: const CircleBorder(),
         child: Container(
           width: 36,
           height: 36,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: active ? _kTeal : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            shape: BoxShape.circle,
           ),
           child: Icon(
             icon,
@@ -985,26 +1216,26 @@ class _PlanCanvasState extends State<PlanCanvas> {
   }
 
   /// Bouton d'insertion instantanée d'un symbole architectural au
-  /// centre du canvas (remplace l'ancien menu "Insérer un élément").
+  /// centre du canvas. Rond, bordé. Tap = insertion.
   Widget _symbolInsertBtn(PlanTool tool, IconData icon, String label) {
     return Tooltip(
       message: 'Insérer : $label',
       child: InkWell(
         onTap: () => _insertSymbolAtCenter(tool),
-        borderRadius: BorderRadius.circular(8),
+        customBorder: const CircleBorder(),
         child: Container(
-          width: 36,
-          height: 36,
+          width: 40,
+          height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+            shape: BoxShape.circle,
             border: Border.all(
               color: const Color(0xFFE2E8F0),
               width: 1,
             ),
           ),
-          child: Icon(icon, size: 18, color: Colors.grey.shade700),
+          child: Icon(icon, size: 20, color: Colors.grey.shade700),
         ),
       ),
     );
@@ -1086,10 +1317,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       return const Center(child: CircularProgressIndicator());
     }
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-      ),
+      decoration: const BoxDecoration(color: Colors.white),
       clipBehavior: Clip.antiAlias,
       child: LayoutBuilder(
         builder: (ctx, constraints) {
@@ -1107,7 +1335,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTapDown: _onCanvasTapDown,
+                  onTapUp: _onCanvasTapUp,
                   onPanStart: _onPanStartRouted,
                   onPanUpdate: _onPanUpdateRouted,
                   onPanEnd: _onPanEndRouted,
@@ -1126,8 +1354,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   ),
                 ),
               ),
-              // Overlay des poignées quand un symbole est sélectionné.
-              if (_selectedIndex >= 0 && _selectedIndex < _strokes.length)
+              // Overlay des poignées + boutons flottants : UNIQUEMENT
+              // en mode édition (après un tap explicite sur l'élément).
+              // Un simple drag sur un symbole le déplace sans afficher
+              // de poignées, pour que le mouvement reste l'action
+              // primaire sans gêne visuelle.
+              if (_editingMode &&
+                  _selectedIndex >= 0 &&
+                  _selectedIndex < _strokes.length)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: CustomPaint(
@@ -1137,23 +1371,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
                     ),
                   ),
                 ),
-              // Boutons flottants (flip H / flip V / supprimer) affichés
-              // en haut-droite du bounding box du symbole sélectionné.
-              if (_selectedIndex >= 0 &&
+              if (_editingMode &&
+                  _selectedIndex >= 0 &&
                   _selectedIndex < _strokes.length &&
                   _symbolTools.contains(_strokes[_selectedIndex].tool))
                 _buildSelectedSymbolActions(),
-              // Bouton "Supprimer la page" flottant en bas-droite du
-              // canvas. N'apparaît que s'il y a plus d'une page (pas de
-              // suppression de la dernière page).
-              if (widget.totalPages != null &&
-                  widget.totalPages! > 1 &&
-                  widget.onDeletePage != null)
-                Positioned(
-                  right: 12,
-                  bottom: 12,
-                  child: _buildDeletePageFab(),
-                ),
+              // (Bouton "Supprimer la page" FAB retiré : l'option vit
+              // maintenant dans le menu "trois points" de la toolbar.)
             ],
           );
         },
@@ -1300,42 +1524,46 @@ class _PlanCanvasState extends State<PlanCanvas> {
   // Gestures routing — distingue tracé libre vs manipulation de symbole.
   // ---------------------------------------------------------------------
 
-  void _onCanvasTapDown(TapDownDetails d) {
-    // Un tap rapide = soit sélectionner un symbole existant, soit
-    // désélectionner. Le tracé libre se déclenche seulement sur pan.
+  /// Tap sur un symbole = entrée en MODE ÉDITION (poignées + boutons
+  /// flottants visibles). Tap sur du vide = désélection. Un drag sur
+  /// un symbole est géré par _onPanStartRouted et fait un simple
+  /// déplacement sans entrer en mode édition.
+  void _onCanvasTapUp(TapUpDetails d) {
     final pt = _localPoint(d.globalPosition);
-    // On regarde d'abord le symbole sélectionné (poignées prioritaires).
-    if (_selectedIndex >= 0) {
-      final sel = _strokes[_selectedIndex];
-      final h = _handleAt(sel, pt);
-      if (h != null && h != _SymbolHandle.body) return; // drag prendra la main
-    }
-    // Sinon, on cherche un symbole sous le tap (du plus récent au plus
-    // ancien pour privilégier le top visuel).
+    // Si déjà en mode édition : tester si le tap est sur une poignée
+    // (ne rien faire, le pan va gérer) ou dans le body → on garde
+    // le mode édition. Tap ailleurs sur le même symbole → idem.
     for (var i = _strokes.length - 1; i >= 0; i--) {
       final s = _strokes[i];
       if (!_symbolTools.contains(s.tool)) continue;
-      final h = _handleAt(s, pt);
-      if (h != null) {
-        setState(() => _selectedIndex = i);
+      final bounds = s.symbolLocalBounds;
+      if (bounds == null) continue;
+      final local = _toSymbolLocal(s, pt);
+      if (bounds.contains(local)) {
+        setState(() {
+          _selectedIndex = i;
+          _editingMode = true; // tap → mode édition
+        });
         return;
       }
     }
-    // Rien trouvé → désélection.
-    if (_selectedIndex != -1) {
-      setState(() => _selectedIndex = -1);
+    // Tap ailleurs → désélectionner.
+    if (_selectedIndex != -1 || _editingMode) {
+      setState(() {
+        _selectedIndex = -1;
+        _editingMode = false;
+      });
     }
   }
 
   void _onPanStartRouted(DragStartDetails d) {
     final pt = _localPoint(d.globalPosition);
-    // Si on a un symbole sélectionné, tester les poignées / corps.
-    if (_selectedIndex >= 0) {
+    // Mode édition : les poignées ont priorité (resize / rotation /
+    // déplacement depuis le body).
+    if (_selectedIndex >= 0 && _editingMode) {
       final sel = _strokes[_selectedIndex];
       final h = _handleAt(sel, pt);
       if (h != null) {
-        // Snapshot AVANT le drag : undo ramène le symbole à sa
-        // position / taille / rotation d'avant le geste.
         _pushUndo();
         _activeHandle = h;
         _dragAnchor = pt;
@@ -1345,7 +1573,30 @@ class _PlanCanvasState extends State<PlanCanvas> {
         return;
       }
     }
-    // Sinon, comportement tracé libre existant.
+    // Pas en mode édition : un drag qui commence sur un symbole le
+    // déplace directement. Prioriser le symbole du dessus (le dernier
+    // placé) si plusieurs se superposent.
+    for (var i = _strokes.length - 1; i >= 0; i--) {
+      final s = _strokes[i];
+      if (!_symbolTools.contains(s.tool)) continue;
+      final bounds = s.symbolLocalBounds;
+      if (bounds == null) continue;
+      final local = _toSymbolLocal(s, pt);
+      if (bounds.contains(local)) {
+        _pushUndo();
+        setState(() {
+          _selectedIndex = i;
+          _editingMode = false; // drag = simple déplacement, pas d'édition
+          _activeHandle = _SymbolHandle.body;
+          _dragAnchor = pt;
+          _dragInitialCenter = s.points[0];
+          _dragInitialCorner = s.points[1];
+          _dragInitialRotation = s.rotation;
+        });
+        return;
+      }
+    }
+    // Aucun symbole sous le doigt → tracé libre (pen / line / rect…).
     _onPanStart(d);
   }
 
@@ -1658,6 +1909,40 @@ class _HandlesPainter extends CustomPainter {
 // ---------------------------------------------------------------------------
 
 /// Quadrillage simple (parité React) — pas de règles, pas d'échelle.
+/// Peint un trait qui grossit progressivement de gauche à droite,
+/// utilisé comme aperçu visuel dans le slider d'épaisseur.
+class _ThicknessTrackPainter extends CustomPainter {
+  _ThicknessTrackPainter({
+    required this.color,
+    required this.min,
+    required this.max,
+  });
+  final Color color;
+  final double min;
+  final double max;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    final centerY = size.height / 2;
+    // On dessine une forme rectangulaire où la hauteur varie linéairement
+    // de `min` à `max` de gauche à droite.
+    path.moveTo(0, centerY - min / 2);
+    path.lineTo(size.width, centerY - max / 2);
+    path.lineTo(size.width, centerY + max / 2);
+    path.lineTo(0, centerY + min / 2);
+    path.close();
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ThicknessTrackPainter old) =>
+      old.color != color || old.min != min || old.max != max;
+}
+
 class _GridPainter extends CustomPainter {
   static const double _cellPx = 24;
 
