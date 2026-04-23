@@ -336,6 +336,11 @@ class DocumentRepository {
           'mime_type':
               remote['mimeType']?.toString() ?? _mimeTypeFor(extension),
           'local_file_path': existing?['local_file_path'],
+          // CRITICAL : preserve the local bytes (web PWA "offline upload").
+          // Without this, `conflictAlgorithm: replace` nulls the column and
+          // the thumbnail loses its source → the picture would disappear
+          // right after the sync pushes it to NocoDB.
+          'local_file_data_url': existing?['local_file_data_url'],
           'remote_file_path': remotePath,
           'remote_public_url': publicUrl,
           'tags_json': jsonEncode(
