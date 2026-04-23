@@ -180,7 +180,12 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
                   maxCrossAxisExtent: 280,
                   mainAxisSpacing: 16,
                   crossAxisSpacing: 16,
-                  mainAxisExtent: 310,
+                  // Hauteur réduite (310 → 230) pour éviter l'espace blanc
+                  // entre les infos (nom · date · téléphone) et le bas de
+                  // la carte — demande utilisateur. 230 = 120 (hero logo) +
+                  // 12 padding + ~20 nom + 8 + ~14 date + 14 + ~30 chip
+                  // téléphone + 12 padding = cartes bien remplies.
+                  mainAxisExtent: 230,
                 ),
                 itemCount: _filteredFunds.length,
                 itemBuilder: (context, index) {
