@@ -1226,7 +1226,16 @@ class _PlanCanvasState extends State<PlanCanvas> {
         // Nouvel angle = angle entre le centre et le curseur.
         final vec = pt - initCenter;
         // Décaler de 90° car la poignée rotation est au-dessus.
-        final newAngle = math.atan2(vec.dy, vec.dx) + math.pi / 2;
+        var newAngle = math.atan2(vec.dy, vec.dx) + math.pi / 2;
+        // Snap magnétique sur les multiples de 90° (0°, 90°, 180°, 270°).
+        // Seuil 10° : à moins de 10° d'un angle droit, on "colle" dessus
+        // pour que les murs/portes/fenêtres s'alignent parfaitement.
+        const quarter = math.pi / 2;
+        const snapTolerance = math.pi / 18; // 10°
+        final nearestQuarter = (newAngle / quarter).round() * quarter;
+        if ((newAngle - nearestQuarter).abs() < snapTolerance) {
+          newAngle = nearestQuarter;
+        }
         setState(() => sel.rotation = newAngle);
         break;
       default:
