@@ -550,7 +550,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
   // ---------------------------------------------------------------------
 
   static const Map<PlanTool, Size> _defaultSymbolSize = {
-    PlanTool.window: Size(120, 8),
+    // Fenêtre : deux vantaux côte à côte, chaque vantail plus petit
+    // qu'une porte (largeur totale > porte, mais vantail = ~50 px
+    // contre 80 px pour une porte).
+    PlanTool.window: Size(100, 45),
     PlanTool.door: Size(80, 80),
     // WC : plus petit + plus large (proportions cuvette réelle ~2:1,
     // l'axe long étant horizontal). Orientable ensuite via la rotation.
@@ -1119,12 +1122,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
                     ),
                   ),
                 ),
-              // Bouton "Supprimer l'élément" flottant — cliquable, affiché
+              // Boutons flottants (flip H / flip V / supprimer) affichés
               // en haut-droite du bounding box du symbole sélectionné.
               if (_selectedIndex >= 0 &&
                   _selectedIndex < _strokes.length &&
                   _symbolTools.contains(_strokes[_selectedIndex].tool))
-                _buildDeleteButtonForSelected(),
+                _buildSelectedSymbolActions(),
               // Bouton "Supprimer la page" flottant en bas-droite du
               // canvas. N'apparaît que s'il y a plus d'une page (pas de
               // suppression de la dernière page).
@@ -1176,16 +1179,15 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
-  /// Calcule la position en coord. canvas du coin haut-droit tourné du
-  /// symbole sélectionné, et place un petit bouton "corbeille" à côté.
-  Widget _buildDeleteButtonForSelected() {
+  /// Place une petite barre d'actions (flip H / flip V / supprimer)
+  /// au-dessus du coin haut-droit du symbole sélectionné. Suit la
+  /// rotation du symbole pour rester "collé" à son coin visuel.
+  Widget _buildSelectedSymbolActions() {
     final sel = _strokes[_selectedIndex];
     final bounds = sel.symbolLocalBounds;
     if (bounds == null) return const SizedBox.shrink();
     final center = sel.points.first;
-    // Coin haut-droit local.
     final localTR = Offset(bounds.right, bounds.top);
-    // Transforme en coord. canvas en appliquant la rotation.
     final relative = localTR - center;
     final cos = math.cos(sel.rotation);
     final sin = math.sin(sel.rotation);
@@ -1194,23 +1196,74 @@ class _PlanCanvasState extends State<PlanCanvas> {
       relative.dx * sin + relative.dy * cos,
     );
     final canvasPoint = center + rotated;
-    // On place le bouton légèrement décalé au-dessus-à-droite du coin.
-    final btnLeft = canvasPoint.dx + 10;
-    final btnTop = canvasPoint.dy - 38;
+    // Barre horizontale : ~3 boutons de 30px + 2 gaps de 6px = ~106px,
+    // on la place centrée au-dessus du coin.
+    const barWidth = 108.0;
+    final btnLeft = canvasPoint.dx - barWidth + 10;
+    final btnTop = canvasPoint.dy - 42;
     return Positioned(
       left: btnLeft,
       top: btnTop,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _floatingAction(
+            icon: LucideIcons.moveHorizontal,
+            tooltip: 'Inverser gauche / droite',
+            color: const Color(0xFF334155),
+            bg: Colors.white,
+            onTap: () {
+              _pushUndo();
+              setState(() => sel.flipX = !sel.flipX);
+              _scheduleSave();
+            },
+          ),
+          const SizedBox(width: 6),
+          _floatingAction(
+            icon: LucideIcons.moveVertical,
+            tooltip: 'Inverser haut / bas',
+            color: const Color(0xFF334155),
+            bg: Colors.white,
+            onTap: () {
+              _pushUndo();
+              setState(() => sel.flipY = !sel.flipY);
+              _scheduleSave();
+            },
+          ),
+          const SizedBox(width: 6),
+          _floatingAction(
+            icon: LucideIcons.trash2,
+            tooltip: 'Supprimer',
+            color: Colors.white,
+            bg: Colors.red.shade600,
+            onTap: _deleteSelectedSymbol,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _floatingAction({
+    required IconData icon,
+    required String tooltip,
+    required Color color,
+    required Color bg,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
       child: Material(
-        color: Colors.red.shade600,
+        color: bg,
         shape: const CircleBorder(),
         elevation: 4,
+        shadowColor: Colors.black26,
         child: InkWell(
           customBorder: const CircleBorder(),
-          onTap: _deleteSelectedSymbol,
-          child: const SizedBox(
+          onTap: onTap,
+          child: SizedBox(
             width: 30,
             height: 30,
-            child: Icon(LucideIcons.trash2, color: Colors.white, size: 16),
+            child: Icon(icon, color: color, size: 16),
           ),
         ),
       ),
@@ -1737,6 +1790,11 @@ class _DrawPainter extends CustomPainter {
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.rotate(s.rotation);
+    // Flip : mirror le repère selon X et/ou Y pour inverser le visuel
+    // du symbole (ex : porte qui s'ouvre à droite au lieu de gauche).
+    if (s.flipX || s.flipY) {
+      canvas.scale(s.flipX ? -1.0 : 1.0, s.flipY ? -1.0 : 1.0);
+    }
     // À ce stade, le repère est centré sur le centre du symbole et
     // tourné selon rotation. On dessine relativement à (0,0).
     final w = bounds.width;
@@ -1773,18 +1831,68 @@ class _DrawPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// Fenêtre : double ligne horizontale sur toute la largeur du bounds.
+  /// Fenêtre : deux vantaux côte à côte (comme deux petites portes)
+  /// avec leurs arcs d'ouverture vers l'intérieur. Le mur est
+  /// représenté par la ligne bas. Flip H/V inversent les charnières
+  /// et le sens d'ouverture (porte gauche/droite, ouverture
+  /// intérieure/extérieure) — utile pour signifier une fenêtre
+  /// entrebâillée ou fermée.
   static void _paintWindowLocal(Canvas canvas, Rect r, Paint stroke) {
-    final gap = (r.height / 2).clamp(3, 8);
+    // Mur en bas (épaisseur visuelle).
+    canvas.drawLine(r.bottomLeft, r.bottomRight, stroke);
+    final dashed = Paint()
+      ..color = stroke.color.withValues(alpha: 0.6)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+
+    final midX = r.center.dx;
+    // Rayon des arcs = hauteur du vantail = hauteur de la fenêtre.
+    final radius = r.height;
+
+    // --- Vantail gauche : charnière bas-gauche, battant fermé
+    //     vertical vers le haut, ouverture CW vers le centre. ---
+    final leftHinge = r.bottomLeft;
+    canvas.drawLine(leftHinge, Offset(r.left, r.top), stroke);
+    canvas.drawArc(
+      Rect.fromCircle(center: leftHinge, radius: radius),
+      -math.pi / 2, // pointe vers le haut
+      math.pi / 2,  // 90° CW → vers la droite
+      false,
+      dashed,
+    );
+    // Petit battant ouvert symbolique (ligne du haut vers centre-haut).
     canvas.drawLine(
-      Offset(r.left, -gap.toDouble()),
-      Offset(r.right, -gap.toDouble()),
-      stroke,
+      Offset(r.left, r.top),
+      Offset(midX, r.top),
+      dashed,
+    );
+
+    // --- Vantail droit : charnière bas-droit, battant fermé
+    //     vertical vers le haut, ouverture CCW vers le centre. ---
+    final rightHinge = r.bottomRight;
+    canvas.drawLine(rightHinge, Offset(r.right, r.top), stroke);
+    canvas.drawArc(
+      Rect.fromCircle(center: rightHinge, radius: radius),
+      -math.pi / 2,  // pointe vers le haut
+      -math.pi / 2,  // 90° CCW → vers la gauche
+      false,
+      dashed,
     );
     canvas.drawLine(
-      Offset(r.left, gap.toDouble()),
-      Offset(r.right, gap.toDouble()),
-      stroke,
+      Offset(r.right, r.top),
+      Offset(midX, r.top),
+      dashed,
+    );
+
+    // Montant central (séparation des deux vantaux) — fin trait gris.
+    final center = Paint()
+      ..color = stroke.color.withValues(alpha: 0.4)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(
+      Offset(midX, r.top),
+      Offset(midX, r.bottom),
+      center,
     );
   }
 
