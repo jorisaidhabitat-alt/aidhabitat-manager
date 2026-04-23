@@ -518,7 +518,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           children: [
             Expanded(
               child: FormTextField(
-                label: 'Année construction',
+                label: 'Construction',
                 value: _yearConstruction,
                 keyboardType: TextInputType.number,
                 onChanged: (v) {
@@ -529,7 +529,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             ),
             const SizedBox(width: 6),
             Tooltip(
-              message: "Copier dans Année d'habitation",
+              message: "Copier dans Habitation",
               child: InkWell(
                 onTap: () {
                   if (_yearConstruction.isNotEmpty) {
@@ -554,7 +554,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             const SizedBox(width: 6),
             Expanded(
               child: FormTextField(
-                label: "Année d'habitation",
+                label: "Habitation",
                 value: _yearHabitation,
                 keyboardType: TextInputType.number,
                 onChanged: (v) {
