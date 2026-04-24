@@ -1284,7 +1284,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         ? const BoxDecoration(color: Colors.white)
         : BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
           );
 
     final content = Column(
@@ -1358,11 +1358,12 @@ class _NotesWidgetState extends State<NotesWidget> {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        // Charte "Équilibrée" — 16 px (juste milieu densité / respiration).
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _kStackedBorder, width: 1),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: Column(
           children: [
             // Zone de saisie texte (occupe toute la hauteur au-dessus du
@@ -1444,7 +1445,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        // Charte "Équilibrée" — 16 px (idem carte texte).
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _kStackedBorder, width: 1),
       ),
       child: Stack(

@@ -572,7 +572,7 @@ class _DossierScreenState extends State<DossierScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -1013,20 +1013,15 @@ class _EpciPillSmall extends StatelessWidget {
   }
 }
 
-/// Palette pastel partagée entre la liste des dossiers et le détail
-/// Bénéficiaire — même hash → même couleur pour un EPCI donné.
-/// Uniquement les fonds sont colorés ; le texte reste slate foncé.
+/// Palette "Équilibrée" partagée entre la liste des dossiers et le
+/// détail Bénéficiaire — même hash → même couleur pour un EPCI donné.
+/// 5 tons pastel doux pour éviter le code couleur clinique.
 const List<Color> _kPastelEpciBgs = [
-  Color(0xFFDBEAFE), // bleu
-  Color(0xFFFCE7F3), // rose
-  Color(0xFFDCFCE7), // vert
-  Color(0xFFFEF3C7), // jaune/ambre
-  Color(0xFFEDE9FE), // violet
-  Color(0xFFCFFAFE), // cyan
-  Color(0xFFFFE4E6), // rose/rouge
-  Color(0xFFECFCCB), // lime
-  Color(0xFFFFEDD5), // orange
-  Color(0xFFE0E7FF), // indigo
+  Color(0xFFC8E6D0), // mint
+  Color(0xFFF5D6B8), // pêche
+  Color(0xFFD9EAF3), // ciel
+  Color(0xFFE8E2F0), // lavande
+  Color(0xFFF0E4CC), // sable
 ];
 
 /// Hachage déterministe label → couleur de fond pastel.
@@ -1062,12 +1057,12 @@ class _QuickActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

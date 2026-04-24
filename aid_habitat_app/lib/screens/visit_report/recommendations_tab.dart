@@ -233,7 +233,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                 return Material(
                   color: Colors.transparent,
                   elevation: 4,
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(16),
                   clipBehavior: Clip.antiAlias,
                   child: child,
                 );
@@ -330,7 +330,7 @@ class _RecommendationCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: const Color(0xFFE2E8F0),
           width: 1,

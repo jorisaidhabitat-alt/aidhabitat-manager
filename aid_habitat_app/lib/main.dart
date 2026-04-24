@@ -142,8 +142,10 @@ class MyApp extends StatelessWidget {
         cardTheme: CardThemeData(
           color: Colors.white,
           elevation: 0,
+          // Charte "Équilibrée" — coins 16 px (au lieu de 24) pour un
+          // équilibre densité/respiration sur les cartes principales.
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
         // Force white backgrounds on dialogs and dropdown menus —

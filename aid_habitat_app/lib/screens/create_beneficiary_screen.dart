@@ -119,7 +119,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                   padding: const EdgeInsets.all(40),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(32),
+                    borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.04),

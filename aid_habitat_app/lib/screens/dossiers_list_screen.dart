@@ -154,7 +154,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       position: position,
       color: Colors.white,
       elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       items: [
         _EpciMenuEntry(
           epcis: _availableEpcis,
@@ -304,7 +304,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.02),
@@ -739,22 +739,18 @@ class _EpciPalette {
   const _EpciPalette({required this.bg, required this.fg});
 }
 
-/// Palette pastel-uniquement (demande utilisateur) : les fonds varient
-/// par EPCI mais le texte reste en slate foncé pour la lisibilité —
-/// plus de couleurs foncées saturées associées au fond.
+/// Palette "Équilibrée" (charte graphique utilisateur) : 5 fonds pastel
+/// doux (mint, pêche, ciel, lavande, sable). Objectif : éviter la
+/// sensation de code couleur clinique — le texte reste slate foncé
+/// pour la lisibilité. Chaque EPCI garde une couleur stable via hash.
 const Color _kPastelEpciFg = Color(0xFF334155);
 
 const List<_EpciPalette> _kEpciPalettes = [
-  _EpciPalette(bg: Color(0xFFDBEAFE), fg: _kPastelEpciFg), // bleu
-  _EpciPalette(bg: Color(0xFFFCE7F3), fg: _kPastelEpciFg), // rose
-  _EpciPalette(bg: Color(0xFFDCFCE7), fg: _kPastelEpciFg), // vert
-  _EpciPalette(bg: Color(0xFFFEF3C7), fg: _kPastelEpciFg), // jaune/ambre
-  _EpciPalette(bg: Color(0xFFEDE9FE), fg: _kPastelEpciFg), // violet
-  _EpciPalette(bg: Color(0xFFCFFAFE), fg: _kPastelEpciFg), // cyan
-  _EpciPalette(bg: Color(0xFFFFE4E6), fg: _kPastelEpciFg), // rose/rouge
-  _EpciPalette(bg: Color(0xFFECFCCB), fg: _kPastelEpciFg), // lime
-  _EpciPalette(bg: Color(0xFFFFEDD5), fg: _kPastelEpciFg), // orange
-  _EpciPalette(bg: Color(0xFFE0E7FF), fg: _kPastelEpciFg), // indigo
+  _EpciPalette(bg: Color(0xFFC8E6D0), fg: _kPastelEpciFg), // mint
+  _EpciPalette(bg: Color(0xFFF5D6B8), fg: _kPastelEpciFg), // pêche
+  _EpciPalette(bg: Color(0xFFD9EAF3), fg: _kPastelEpciFg), // ciel
+  _EpciPalette(bg: Color(0xFFE8E2F0), fg: _kPastelEpciFg), // lavande
+  _EpciPalette(bg: Color(0xFFF0E4CC), fg: _kPastelEpciFg), // sable
 ];
 
 /// Deterministic label → palette assignment (same EPCI = same color every

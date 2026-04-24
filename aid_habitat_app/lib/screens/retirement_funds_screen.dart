@@ -120,7 +120,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
               children: [
@@ -282,7 +282,7 @@ class _FundCardState extends State<_FundCard> {
             : Matrix4.identity(),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: _hover
               ? [
                   BoxShadow(
@@ -593,7 +593,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
       insetPadding: const EdgeInsets.all(16),
       backgroundColor: Colors.white,
       shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 960, maxHeight: 820),
         child: Column(

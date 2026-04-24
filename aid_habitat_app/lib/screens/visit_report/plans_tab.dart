@@ -77,7 +77,7 @@ class _PlansTabState extends State<PlansTab> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Supprimer la page ?'),
         content: Text(
           'Page ${_currentPage + 1} sur $_totalPages. Le dessin de cette page sera supprimé.',

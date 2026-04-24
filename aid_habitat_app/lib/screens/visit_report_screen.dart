@@ -635,7 +635,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final formPanel = Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
       ),
       clipBehavior: Clip.antiAlias,
       child: tabView,
