@@ -461,7 +461,9 @@ class _DossierScreenState extends State<DossierScreen> {
         children: [
         Expanded(
           child: _QuickActionButton(
-            icon: LucideIcons.paperclip,
+            // Icône "document avec lignes de texte" — plus iconique
+            // qu'un trombone pour signaler l'espace Documents.
+            icon: LucideIcons.fileText,
             label: 'Documents',
             subLabel: 'Photos, scans, plans...',
             onTap: () {
