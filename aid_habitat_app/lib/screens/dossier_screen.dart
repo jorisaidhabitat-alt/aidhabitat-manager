@@ -101,6 +101,10 @@ class _DossierScreenState extends State<DossierScreen> {
     _communeOptions = _mapCommunes();
     _refSub = _references.onLoaded.listen((_) {
       if (!mounted) return;
+      // Quand les barèmes ANAH arrivent depuis NocoDB, on re-calcule
+      // tout de suite la catégorie pour que le badge s'affiche correct
+      // même si l'user n'a encore rien modifié.
+      _recomputeIncomeCategory();
       setState(() => _communeOptions = _mapCommunes());
     });
     // Hydrate la note rapide avec le commentaire projet (si la note
@@ -197,8 +201,32 @@ class _DossierScreenState extends State<DossierScreen> {
   }
 
   void _onChanged() {
+    _recomputeIncomeCategory();
     setState(() {});
     _scheduleSave();
+  }
+
+  /// Recalcule la catégorie de revenu (Très modeste / Modeste /
+  /// Intermédiaire / Supérieur) à partir de `_numberPeople` et
+  /// `_fiscalRevenue`, en utilisant les barèmes ANAH chargés via
+  /// `ReferencesService` (table NocoDB `baremes_anah`).
+  /// - Met à jour `_incomeCategory` localement (badge en haut du dossier
+  ///   rafraîchi instantanément).
+  /// - La valeur est persistée côté patient dans `_save` (propagée à
+  ///   NocoDB via le sync offline-first).
+  void _recomputeIncomeCategory() {
+    final numberPeopleInt =
+        int.tryParse(_numberPeople.replaceAll('+', '')) ?? 1;
+    final next = ReferencesService().computeIncomeCategory(
+      numberPeopleInt,
+      _fiscalRevenue,
+    );
+    // Si on n'a pas encore les barèmes chargés, computeIncomeCategory
+    // renvoie '' → on ne touche pas à la valeur existante pour éviter
+    // d'écraser une catégorie déjà calculée par le back.
+    if (next.isNotEmpty) {
+      _incomeCategory = next;
+    }
   }
 
   void _scheduleSave() {
@@ -215,6 +243,9 @@ class _DossierScreenState extends State<DossierScreen> {
     try {
       final numberPeopleInt =
           int.tryParse(_numberPeople.replaceAll('+', '')) ?? 1;
+      // Recompute une dernière fois juste avant le save (au cas où les
+      // barèmes viennent d'arriver entre le onChange et le save).
+      _recomputeIncomeCategory();
       await _repository.updatePatientFields(widget.dossier.patient.id, {
         'first_name': _firstName,
         'last_name': _lastName,
@@ -226,6 +257,8 @@ class _DossierScreenState extends State<DossierScreen> {
         // (demande utilisateur). Stocké au niveau patient — écrase
         // la valeur éventuellement calculée à partir des occupants.
         'fiscal_revenue': _fiscalRevenue,
+        // Catégorie de revenu auto-dérivée des barèmes ANAH NocoDB.
+        'income_category': _incomeCategory,
       });
     } finally {
       if (mounted) setState(() => _saving = false);
