@@ -449,6 +449,11 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
               // Remplace l'ancien badge de statut par la date de visite
               // (demande utilisateur — le statut n'apporte pas d'info
               // actionnable sur le tableau de bord).
+              // Badge EPCI + pill date de visite côte à côte.
+              if (epci.isNotEmpty) ...[
+                EpciBadge(label: epci, maxWidth: 180),
+                const SizedBox(width: 8),
+              ],
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
