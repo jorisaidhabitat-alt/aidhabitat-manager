@@ -413,7 +413,7 @@ class _ContextTabState extends State<ContextTab>
       child: Row(
         children: [
           Expanded(
-            child: _buildNavBtn(LucideIcons.heart, 'Médical', 0),
+            child: _buildNavBtn(LucideIcons.heart, 'Médicale', 0),
           ),
           Expanded(child: _buildNavBtn(LucideIcons.user, 'Autonomie', 1)),
           const SizedBox(width: 8),
@@ -430,7 +430,8 @@ class _ContextTabState extends State<ContextTab>
     final active = _subSection == index;
     // Sur fond violet clair (#EDE8F5), texte + trait actifs passent en
     // violet foncé (#7C6DAA) pour contraster sans être agressif. Inactif
-    // : pastel lilas #AE9DB3.
+    // : pastel lilas #AE9DB3. Layout vertical (icône au-dessus du texte)
+    // pour parité visuelle avec les sous-sections de Bénéficiaire.
     const activeColor = Color(0xFF7C6DAA);
     const inactiveColor = Color(0xFFAE9DB3);
     return GestureDetector(
@@ -439,40 +440,32 @@ class _ContextTabState extends State<ContextTab>
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _subSection = index),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  size: 16,
-                  color: active ? activeColor : inactiveColor,
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: active ? activeColor : inactiveColor,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+            Icon(
+              icon,
+              size: 20,
+              color: active ? activeColor : inactiveColor,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: active ? activeColor : inactiveColor,
+              ),
             ),
             // Trait fin centré sous le texte, visible uniquement pour la
-            // sous-section active. Plus petit que la largeur du texte.
+            // sous-section active.
             const SizedBox(height: 6),
             Container(
               height: 1.5,
-              width: (label.length * 3.2).clamp(18.0, 50.0),
+              width: 28,
               decoration: BoxDecoration(
                 color: active ? activeColor : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),

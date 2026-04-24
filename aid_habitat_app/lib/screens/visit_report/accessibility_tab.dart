@@ -412,6 +412,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         children: [
           ...List.generate(items.length, (i) {
             final active = i == _subSection;
+            // Violet foncé #7C6DAA pour la sous-section active, lilas
+            // pastel #AE9DB3 pour les inactives — parité avec Contexte
+            // de vie et Bénéficiaire.
+            const activeColor = Color(0xFF7C6DAA);
+            const inactiveColor = Color(0xFFAE9DB3);
             return Expanded(
               child: GestureDetector(
                 // HitTestBehavior.opaque → la zone complète de chaque
@@ -424,23 +429,22 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     children: [
                       Icon(items[i].icon,
                           size: 20,
-                          color: active
-                              ? Colors.black
-                              : const Color(0xFFAE9DB3)),
+                          color: active ? activeColor : inactiveColor),
                       const SizedBox(height: 2),
                       Text(items[i].label,
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
-                            color: active
-                                ? Colors.black
-                                : const Color(0xFFAE9DB3),
+                            color: active ? activeColor : inactiveColor,
                           )),
                       const SizedBox(height: 6),
                       Container(
-                        height: 1,
+                        height: 1.5,
                         width: 28,
-                        color: active ? Colors.black : Colors.transparent,
+                        decoration: BoxDecoration(
+                          color: active ? activeColor : Colors.transparent,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
                       ),
                     ],
                   ),
