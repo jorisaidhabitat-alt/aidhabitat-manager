@@ -202,7 +202,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       return const Center(child: CircularProgressIndicator());
     }
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

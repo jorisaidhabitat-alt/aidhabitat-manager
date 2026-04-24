@@ -622,12 +622,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       ],
     );
 
+    // Carte blanche du formulaire — sans padding global pour que les
+    // bandeaux internes des tabs (ex: sous-menu Profil/Foyer/Santé/Admin
+    // du Bénéficiaire) puissent aller de bord à bord jusqu'en haut,
+    // comme le bandeau "Bénéficiaire" de l'écran dossier. Chaque tab
+    // gère son propre padding interne pour le contenu.
     final formPanel = Container(
-      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
       ),
+      clipBehavior: Clip.antiAlias,
       child: tabView,
     );
 

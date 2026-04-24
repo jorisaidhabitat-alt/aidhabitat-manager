@@ -414,16 +414,25 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   @override
   Widget build(BuildContext context) {
     super.build(context); // AutomaticKeepAliveClientMixin
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildQuickNav(),
-          const SizedBox(height: 16),
-          _buildActiveSection(),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Bandeau sous-menu : fond violet clair en pleine largeur, collé
+        // au bord supérieur de la card — même traitement que le bandeau
+        // "Bénéficiaire" de l'écran dossier.
+        _buildQuickNav(),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildActiveSection(),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -434,13 +443,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       _QuickNavItem(icon: Icons.favorite_outline, label: 'Santé'),
       _QuickNavItem(icon: Icons.folder_open_outlined, label: 'Admin'),
     ];
+    // Bandeau full-width sans border-radius : la couleur court de bord
+    // à bord de la card (le clip antiAlias du formPanel parent donne
+    // l'arrondi supérieur). Padding horizontal pour l'espacement
+    // interne des pills.
     return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        // Fond unifié violet clair pour toute la barre de sous-menus.
-        color: const Color(0xFFF6EDFB),
-        borderRadius: BorderRadius.circular(22),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      color: const Color(0xFFF6EDFB),
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;
