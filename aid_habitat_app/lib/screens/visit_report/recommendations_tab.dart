@@ -276,7 +276,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       padding: const EdgeInsets.all(24),
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: const Color(0xFFF7F7FA),
         borderRadius: BorderRadius.circular(16),
       ),
       child: const Column(
@@ -394,7 +394,7 @@ class _RecommendationCard extends StatelessWidget {
               width: 180,
               height: 180,
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: const Color(0xFFF7F7FA),
                 borderRadius: BorderRadius.circular(16),
               ),
               alignment: Alignment.center,
@@ -535,7 +535,7 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                         hintText: 'Rechercher (titre, description)',
                         prefixIcon: const Icon(Icons.search),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: const Color(0xFFF7F7FA),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,

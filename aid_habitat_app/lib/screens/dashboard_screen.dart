@@ -338,7 +338,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
           decoration: BoxDecoration(
             color: _hover
                 ? const Color(0xFFF1F5F9) // slate-100
-                : const Color(0xFFF8FAFC), // slate-50
+                : const Color(0xFFF7F7FA), // slate-50
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
@@ -751,7 +751,7 @@ class _ActivityBarColumn extends StatelessWidget {
           width: double.infinity,
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC), // slate-50
+              color: const Color(0xFFF7F7FA), // slate-50
               borderRadius: BorderRadius.circular(16),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),

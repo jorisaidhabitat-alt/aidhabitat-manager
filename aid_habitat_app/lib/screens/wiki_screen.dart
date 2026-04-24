@@ -628,7 +628,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
   InputDecoration _inputDecoration() {
     return InputDecoration(
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
+      fillColor: const Color(0xFFF7F7FA),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: 14,
         vertical: 12,
@@ -883,7 +883,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
     return InputDecoration(
       labelText: label,
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
+      fillColor: const Color(0xFFF7F7FA),
       border: InputBorder.none,
       enabledBorder: InputBorder.none,
     );
@@ -958,7 +958,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: const Color(0xFFF7F7FA),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: const Color(0xFFCBD5E1),

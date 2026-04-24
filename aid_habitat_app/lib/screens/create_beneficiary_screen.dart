@@ -184,7 +184,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                         decoration: InputDecoration(
                           hintText: 'Nom de famille',
                           filled: true,
-                          fillColor: const Color(0xFFF8FAFC),
+                          fillColor: const Color(0xFFF7F7FA),
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
@@ -214,7 +214,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                         decoration: InputDecoration(
                           hintText: 'Prenom',
                           filled: true,
-                          fillColor: const Color(0xFFF8FAFC),
+                          fillColor: const Color(0xFFF7F7FA),
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,

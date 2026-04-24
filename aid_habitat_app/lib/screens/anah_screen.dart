@@ -372,7 +372,7 @@ class _AnahScreenState extends State<AnahScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: const Color(0xFFF7F7FA),
               border: Border(
                 bottom: BorderSide(color: Colors.grey.shade200),
               ),

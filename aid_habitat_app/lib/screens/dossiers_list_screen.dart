@@ -486,7 +486,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   Widget _buildTableHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      color: const Color(0xFFF8FAFC),
+      color: const Color(0xFFF7F7FA),
       child: Row(
         children: [
           // BÉNÉFICIAIRE inclut l'avatar rond — prévoir la même

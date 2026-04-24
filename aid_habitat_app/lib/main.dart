@@ -130,13 +130,13 @@ class MyApp extends StatelessWidget {
         Locale('en', 'US'),
       ],
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFFF8FAFC), // Slate-50
+        scaffoldBackgroundColor: const Color(0xFFF7F7FA), // Slate-50
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF907CA1),
           primary: const Color(0xFF907CA1),
           secondary: const Color(0xFFC5D2D8), // Accent color
           surface: Colors.white,
-          background: const Color(0xFFF8FAFC),
+          background: const Color(0xFFF7F7FA),
         ),
         textTheme: GoogleFonts.interTextTheme(),
         cardTheme: CardThemeData(

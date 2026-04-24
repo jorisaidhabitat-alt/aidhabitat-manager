@@ -154,7 +154,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
                       hintText: 'Klésia, AG2R, Pro BTP...',
                       prefixIcon: const Icon(LucideIcons.search),
                       filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
+                      fillColor: const Color(0xFFF7F7FA),
                       border: InputBorder.none,
                     ),
                   ),
@@ -1097,7 +1097,7 @@ class _Textarea extends StatelessWidget {
       ),
       decoration: InputDecoration(
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: const Color(0xFFF7F7FA),
         isDense: true,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1133,7 +1133,7 @@ class _Input extends StatelessWidget {
       ),
       decoration: InputDecoration(
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: const Color(0xFFF7F7FA),
         isDense: true,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

@@ -671,7 +671,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: const Color(0xFFF7F7FA),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Text(

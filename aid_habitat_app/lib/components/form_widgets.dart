@@ -199,7 +199,7 @@ class _FormTextFieldState extends State<FormTextField> {
               borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5),
             ),
             filled: true,
-            fillColor: widget.readOnly ? const Color(0xFFF8FAFC) : Colors.white,
+            fillColor: widget.readOnly ? const Color(0xFFF7F7FA) : Colors.white,
             suffixText: widget.suffix,
             suffixStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
           ),

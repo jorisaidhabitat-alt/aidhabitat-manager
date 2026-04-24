@@ -213,7 +213,7 @@ class _WcTabState extends State<WcTab>
       margin: const EdgeInsets.only(top: 24),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: const Color(0xFFF7F7FA),
         borderRadius: BorderRadius.circular(16),
       ),
       child: const Column(
