@@ -1536,7 +1536,9 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // "+" : cercle violet clair 44×44, icône violet foncé 22px.
+        // "+" : icône violette 22px sur fond transparent — même taille
+        // visuelle que la corbeille juste à côté (plus de cercle violet
+        // clair qui faisait paraître ce bouton plus gros).
         Tooltip(
           message: 'Nouvelle page',
           child: Material(
@@ -1547,10 +1549,6 @@ class _NotesWidgetState extends State<NotesWidget> {
               child: Container(
                 width: 44,
                 height: 44,
-                decoration: const BoxDecoration(
-                  color: _kStackedVioletSoft,
-                  shape: BoxShape.circle,
-                ),
                 alignment: Alignment.center,
                 child: Opacity(
                   opacity: canAdd ? 1 : 0.4,
