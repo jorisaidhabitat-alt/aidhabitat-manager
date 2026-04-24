@@ -555,10 +555,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(label),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 3),
                     // Trait fin 1 px, largeur proportionnelle à la
                     // largeur du texte — visible uniquement pour l'onglet
-                    // actif, espacé de 6 px du texte au-dessus.
+                    // actif, légèrement rapproché du texte (3 px au lieu
+                    // de 6 — demande utilisateur).
                     Container(
                       height: 1,
                       width: (label.length * 6.5).clamp(28, 120),
