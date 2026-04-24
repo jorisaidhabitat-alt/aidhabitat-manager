@@ -1536,36 +1536,30 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // "+" : petit cercle violet foncé de 22px (taille totale alignée
-        // sur l'icône corbeille à droite), avec un "+" blanc plus petit
-        // à l'intérieur pour tenir dans le cercle. Zone de tap 44×44
-        // pour rester confortable au doigt.
+        // "+" : UN SEUL cercle violet foncé de 22px avec un "+" blanc
+        // à l'intérieur. GestureDetector au lieu d'InkWell pour éviter
+        // le splash Material qui dessinait un 2e rond par-dessus.
         Tooltip(
           message: 'Nouvelle page',
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: canAdd ? _addPage : null,
-              child: Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                child: Opacity(
-                  opacity: canAdd ? 1 : 0.4,
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: const BoxDecoration(
-                      color: _kStackedViolet,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      LucideIcons.plus,
-                      size: 14,
-                      color: Colors.white,
-                    ),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: canAdd ? _addPage : null,
+            child: Padding(
+              padding: const EdgeInsets.all(11), // étend la zone de tap
+              child: Opacity(
+                opacity: canAdd ? 1 : 0.4,
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: const BoxDecoration(
+                    color: _kStackedViolet,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    LucideIcons.plus,
+                    size: 14,
+                    color: Colors.white,
                   ),
                 ),
               ),

@@ -722,11 +722,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       // avec l'écran dossier (demande utilisateur).
                       if (accompanimentLabel.isNotEmpty) ...[
                         const SizedBox(width: 10),
-                        AccompanimentBadge(value: accompanimentLabel),
+                        AccompanimentBadge(
+                          value: accompanimentLabel,
+                          large: true,
+                        ),
                       ],
                       if (incomeLabel.isNotEmpty) ...[
                         const SizedBox(width: 6),
-                        IncomeCategoryBadge(value: incomeLabel),
+                        IncomeCategoryBadge(
+                          value: incomeLabel,
+                          large: true,
+                        ),
                       ],
                       if (addressLine.isNotEmpty) ...[
                         const SizedBox(width: 12),

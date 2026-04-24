@@ -24,24 +24,35 @@ String formatAccompanimentType(String raw) {
 /// Badge "type d'accompagnement" (ex. "Complet", "Diagnostic ergo",
 /// "Ergo") — fond violet clair `#EDE8F5`, typographie violet foncé.
 /// Style flat (pas de bordure), aligné avec les autres badges.
+///
+/// Le paramètre [large] augmente la taille (padding + typo) pour les
+/// contextes où le badge apparaît à côté d'un titre imposant — en
+/// particulier le header de la page d'un dossier (nom à 22pt).
 class AccompanimentBadge extends StatelessWidget {
   final String value;
-  const AccompanimentBadge({super.key, required this.value});
+  final bool large;
+  const AccompanimentBadge({
+    super.key,
+    required this.value,
+    this.large = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: large
+          ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
+          : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: const Color(0xFFEDE8F5),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         value,
-        style: const TextStyle(
-          fontSize: 11,
+        style: TextStyle(
+          fontSize: large ? 14 : 11,
           fontWeight: FontWeight.w700,
-          color: Color(0xFF554A63),
+          color: const Color(0xFF554A63),
         ),
       ),
     );
@@ -84,15 +95,26 @@ IncomeCategoryPalette incomePaletteFor(String value) {
 /// Badge "catégorie de revenu" (Très modeste, Modeste, Intermédiaire…).
 /// Utilise la palette unifiée [incomePaletteFor] pour que le même
 /// libellé ait toujours la même couleur où qu'il apparaisse.
+///
+/// Le paramètre [large] augmente la taille (padding + typo) pour les
+/// contextes où le badge apparaît à côté d'un titre imposant — en
+/// particulier le header de la page d'un dossier (nom à 22pt).
 class IncomeCategoryBadge extends StatelessWidget {
   final String value;
-  const IncomeCategoryBadge({super.key, required this.value});
+  final bool large;
+  const IncomeCategoryBadge({
+    super.key,
+    required this.value,
+    this.large = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final palette = incomePaletteFor(value);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: large
+          ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
+          : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: palette.bg,
         borderRadius: BorderRadius.circular(999),
@@ -100,7 +122,7 @@ class IncomeCategoryBadge extends StatelessWidget {
       child: Text(
         value,
         style: TextStyle(
-          fontSize: 11,
+          fontSize: large ? 14 : 11,
           fontWeight: FontWeight.w700,
           color: palette.fg,
         ),

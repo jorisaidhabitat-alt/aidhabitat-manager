@@ -416,11 +416,11 @@ class _DossierScreenState extends State<DossierScreen> {
               ),
               if (accompanimentLabel.isNotEmpty) ...[
                 const SizedBox(width: 12),
-                AccompanimentBadge(value: accompanimentLabel),
+                AccompanimentBadge(value: accompanimentLabel, large: true),
               ],
               if (incomeLabel.isNotEmpty) ...[
                 const SizedBox(width: 8),
-                IncomeCategoryBadge(value: incomeLabel),
+                IncomeCategoryBadge(value: incomeLabel, large: true),
               ],
             ],
           ),
