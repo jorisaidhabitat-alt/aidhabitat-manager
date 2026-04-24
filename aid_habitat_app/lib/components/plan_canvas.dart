@@ -12,6 +12,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../services/data_service.dart';
+import 'soft_transitions.dart';
 
 // ---------------------------------------------------------------------------
 // Grid constants — 1 cell = 20cm in real world, major line every 5 cells
@@ -488,7 +489,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   // ----- Actions -----
 
   void _clearAll() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSoftDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Effacer le plan ?'),
@@ -1385,7 +1386,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   }
 
   Future<void> _pickCustomColor() async {
-    final picked = await showDialog<int>(
+    final picked = await showSoftDialog<int>(
       context: context,
       builder: (ctx) => _ColorPickerDialog(initial: _penColor),
     );

@@ -18,6 +18,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:http/http.dart' as http;
 
+import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/web_file_picker.dart';
 import '../services/app_config.dart';
@@ -230,7 +231,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     final defaultTitle = fileName.isNotEmpty
         ? fileName.split('.').first
         : 'Document';
-    final result = await showDialog<_UploadResult>(
+    final result = await showSoftDialog<_UploadResult>(
       context: context,
       builder: (ctx) => _UploadModal(
         defaultTitle: defaultTitle,
@@ -330,7 +331,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       final defaultTitle = (picked.name.isNotEmpty)
           ? picked.name.split('.').first
           : 'Document';
-      final result = await showDialog<_UploadResult>(
+      final result = await showSoftDialog<_UploadResult>(
         context: context,
         builder: (ctx) => _UploadModal(
           defaultTitle: defaultTitle,
@@ -369,7 +370,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   Future<void> _openUploadModal(File file, {required String defaultTag}) async {
     if (!mounted) return;
     final defaultTitle = file.path.split('/').last.split('.').first;
-    final result = await showDialog<_UploadResult>(
+    final result = await showSoftDialog<_UploadResult>(
       context: context,
       builder: (ctx) => _UploadModal(
         defaultTitle: defaultTitle,
@@ -399,7 +400,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   // ----- Delete flow -----
 
   Future<void> _deleteDocument(DocItem doc) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSoftDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer le document ?'),
@@ -870,7 +871,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   Future<void> _bulkDelete() async {
     if (_selectedIds.isEmpty) return;
     final count = _selectedIds.length;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSoftDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Supprimer $count document${count > 1 ? 's' : ''} ?'),
@@ -2437,7 +2438,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       Navigator.pop(context);
       return;
     }
-    final choice = await showDialog<_UnsavedChoice>(
+    final choice = await showSoftDialog<_UnsavedChoice>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Modifications non enregistrées'),

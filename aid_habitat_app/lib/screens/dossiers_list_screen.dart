@@ -510,18 +510,23 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             flex: _flexEpci,
             child: _headerCell('COMMUNAUTÉ DE COMMUNE'),
           ),
-          Expanded(flex: _flexDate, child: _headerCell('DATE DE VISITE')),
+          // Date alignée à droite (parité avec la cellule de la rangée).
+          Expanded(
+            flex: _flexDate,
+            child: _headerCell('DATE DE VISITE', alignRight: true),
+          ),
           const SizedBox(width: 32), // espace pour le chevron des rangées
         ],
       ),
     );
   }
 
-  Widget _headerCell(String text) {
+  Widget _headerCell(String text, {bool alignRight = false}) {
     return Text(
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
+      textAlign: alignRight ? TextAlign.right : TextAlign.left,
       style: const TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w700,
@@ -658,11 +663,14 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                       child: EpciBadge(label: epci),
                     ),
             ),
-            // DATE DE VISITE
+            // DATE DE VISITE — alignée à droite pour la pousser au
+            // maximum vers le chevron (demande utilisateur : "décaler
+            // la date plus à droite").
             Expanded(
               flex: _flexDate,
               child: Text(
                 visitDate.isEmpty ? '—' : visitDate,
+                textAlign: TextAlign.right,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
