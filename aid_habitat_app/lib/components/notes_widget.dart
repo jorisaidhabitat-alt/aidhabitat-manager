@@ -1364,35 +1364,72 @@ class _NotesWidgetState extends State<NotesWidget> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: Column(
+        child: Stack(
           children: [
-            // Zone de saisie texte (occupe toute la hauteur au-dessus du
-            // splitter rose).
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                child: TextField(
-                  controller: _textController,
-                  focusNode: _textFocusNode,
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  style: const TextStyle(fontSize: 14),
-                  // Scribble (Apple Pencil) — écriture directe sur iPad.
-                  stylusHandwritingEnabled: true,
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    hintText: widget.placeholder,
-                    hintStyle: TextStyle(color: Colors.grey.shade500),
-                    isCollapsed: true,
+            Column(
+              children: [
+                // Zone de saisie texte (occupe toute la hauteur au-dessus du
+                // splitter rose).
+                Expanded(
+                  child: Padding(
+                    // En mode stackedCards on réserve 38 px à gauche quand le
+                    // bouton « ouvrir dans un onglet » est disponible, comme
+                    // dans `_buildTextEditor`, pour que le texte ne passe pas
+                    // sous l'icône maximize2.
+                    padding: EdgeInsets.fromLTRB(
+                      widget.allowTextModal ? 38 : 16,
+                      12,
+                      16,
+                      6,
+                    ),
+                    child: TextField(
+                      controller: _textController,
+                      focusNode: _textFocusNode,
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      style: const TextStyle(fontSize: 14),
+                      // Scribble (Apple Pencil) — écriture directe sur iPad.
+                      stylusHandwritingEnabled: true,
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        hintText: widget.placeholder,
+                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        isCollapsed: true,
+                      ),
+                    ),
+                  ),
+                ),
+                // Poignée rose intégrée en bas de la carte — full-width, icône
+                // double-chevron violet centrée. Draggable verticalement pour
+                // redimensionner la zone texte.
+                _buildStackedIntegratedSplitter(kSplitterHeight),
+              ],
+            ),
+            // Poignée d'agrandissement — ouvre la note dans un nouvel onglet
+            // (via `onExpandToTab`) ou une modale plein écran en fallback.
+            // Confinée en haut-gauche pour ne pas intercepter les taps du
+            // TextField.
+            if (widget.allowTextModal)
+              Positioned(
+                left: 6,
+                top: 6,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _openTextModal,
+                    customBorder: const CircleBorder(),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(
+                        LucideIcons.maximize2,
+                        size: 14,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-            // Poignée rose intégrée en bas de la carte — full-width, icône
-            // double-chevron violet centrée. Draggable verticalement pour
-            // redimensionner la zone texte.
-            _buildStackedIntegratedSplitter(kSplitterHeight),
           ],
         ),
       ),

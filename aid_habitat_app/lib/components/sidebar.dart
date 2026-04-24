@@ -184,7 +184,18 @@ class _SidebarState extends State<Sidebar> {
               child: InkWell(
                 onTap: _openAccountDialog,
                 customBorder: const CircleBorder(),
-                child: Container(
+                child: Builder(builder: (_) {
+                  // ── Diagnostic profile photo (retirer plus tard) ──
+                  // Log l'URL reçue du serveur à chaque rebuild du sidebar
+                  // → visible dans la console navigateur (DevTools)
+                  // pour confirmer si l'app reçoit bien une URL non-vide.
+                  // ignore: avoid_print
+                  print(
+                    '[sidebar] profilePhotoUrl="${widget.currentUser.profilePhotoUrl}" '
+                    'pending="${widget.currentUser.pendingProfilePhotoDataUrl.isEmpty ? "" : "<pending-dataurl>"}" '
+                    'email=${widget.currentUser.email}',
+                  );
+                  return Container(
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
@@ -228,7 +239,8 @@ class _SidebarState extends State<Sidebar> {
                             ),
                           ),
                         ),
-                ),
+                );
+                }),
               ),
             ),
           ),

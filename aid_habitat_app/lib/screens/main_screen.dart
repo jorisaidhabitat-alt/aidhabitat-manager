@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../components/sidebar.dart';
+import '../components/soft_transitions.dart';
 import 'anah_screen.dart';
 import 'create_beneficiary_screen.dart';
 import 'dashboard_screen.dart';
@@ -376,7 +377,18 @@ class _MainScreenState extends State<MainScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : Stack(
                           children: [
-                            Positioned.fill(child: _buildContent()),
+                            // Transition douce (fade + slide 8 px) entre
+                            // chaque vue — on assigne une Key unique à
+                            // `_buildContent()` pour que l'AnimatedSwitcher
+                            // détecte un changement et joue l'animation.
+                            Positioned.fill(
+                              child: SoftSwitcher(
+                                child: KeyedSubtree(
+                                  key: ValueKey<String>(_contentKey()),
+                                  child: _buildContent(),
+                                ),
+                              ),
+                            ),
                             // Anah WebView : on la garde en arrière-plan dès
                             // qu'elle a été visitée au moins une fois, pour
                             // préserver la session et le scroll entre deux
@@ -473,6 +485,19 @@ class _MainScreenState extends State<MainScreen> {
       );
     }
     return const SizedBox.shrink();
+  }
+
+  /// Clef stable utilisée par le [SoftSwitcher] pour détecter un
+  /// changement de vue. Inclut l'id du dossier sélectionné pour que
+  /// passer d'un dossier à un autre dans la même « vue » relance aussi
+  /// l'animation (sinon AnimatedSwitcher réutiliserait le même widget).
+  String _contentKey() {
+    final base = _activeView;
+    if ((_activeView == 'dossier_detail' || _activeView == 'visit_report') &&
+        _selectedDossier != null) {
+      return '$base:${_selectedDossier!.id}';
+    }
+    return base;
   }
 
   Widget _buildContent() {

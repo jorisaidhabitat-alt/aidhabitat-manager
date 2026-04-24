@@ -77,7 +77,10 @@ class SoftTapScale extends StatefulWidget {
     required this.child,
     this.onTap,
     this.onLongPress,
-    this.scale = 0.97,
+    // 0.92 au lieu de 0.97 : le « rebond » est nettement perceptible tout
+    // en restant discret. Curve easeOutCubic → la remontée se fait en
+    // douceur, sans rebond brusque.
+    this.scale = 0.92,
     this.duration = kSoftFast,
     this.enabled = true,
   });
@@ -188,6 +191,19 @@ class SoftSwitcher extends StatelessWidget {
       duration: duration,
       switchInCurve: kSoftCurve,
       switchOutCurve: kSoftCurveIn,
+      // Par défaut AnimatedSwitcher centre les enfants dans un Stack ; on
+      // utilise `Positioned.fill` pour laisser chaque vue occuper toute la
+      // surface (sinon les écrans « pleine page » deviennent des petits
+      // widgets centrés pendant la transition).
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            ...previousChildren,
+            if (currentChild != null) currentChild,
+          ],
+        );
+      },
       transitionBuilder: (child, anim) {
         return FadeTransition(
           opacity: anim,
