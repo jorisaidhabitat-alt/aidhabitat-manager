@@ -194,38 +194,92 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   String _formatVisitDate(String? raw) {
     if (raw == null || raw.trim().isEmpty) return '';
     try {
-      return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw));
+      return DateFormat('dd/MM/yy').format(DateTime.parse(raw));
     } catch (_) {
       return raw;
     }
   }
 
+  int _ageFromBirth(String rawBirth) {
+    if (rawBirth.trim().isEmpty) return -1;
+    try {
+      final dob = DateTime.parse(rawBirth);
+      final now = DateTime.now();
+      var age = now.year - dob.year;
+      if (now.month < dob.month ||
+          (now.month == dob.month && now.day < dob.day)) {
+        age -= 1;
+      }
+      return age < 0 ? -1 : age;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  String _primaryGir(Dossier d) {
+    if (d.patient.occupants.isNotEmpty) {
+      final g = d.patient.occupants.first.apaGir.trim();
+      if (g.isNotEmpty) return g;
+    }
+    return '';
+  }
+
+  /// Count of dossiers created in the current calendar month.
+  int get _createdThisMonth {
+    final now = DateTime.now();
+    var count = 0;
+    for (final d in widget.dossiers) {
+      try {
+        final dt = DateTime.parse(d.createdAt);
+        if (dt.year == now.year && dt.month == now.month) count++;
+      } catch (_) {}
+    }
+    return count;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final total = widget.dossiers.length;
+    final thisMonth = _createdThisMonth;
     return Padding(
       padding: const EdgeInsets.all(32.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ─── En-tête : sous-titre + titre à gauche, bouton "Nouveau
+          // dossier" à droite. Parité maquette.
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                "Mes dossiers",
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "$total dossier${total > 1 ? 's' : ''} · $thisMonth ce mois-ci",
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Dossiers bénéficiaires',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
+              if (widget.onCreateNew != null) _buildNewDossierButton(),
             ],
           ),
           const SizedBox(height: 24),
 
-          // Controls
-          // Kill Material's default hover/splash tint everywhere in this row
-          // so the filter buttons stay flat-looking (no floating rose/purple
-          // pill on hover).
+          // ─── Contrôles : recherche (icône à gauche) + tri + EPCI.
           Theme(
             data: Theme.of(context).copyWith(
               hoverColor: Colors.transparent,
@@ -235,107 +289,22 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             ),
             child: Row(
               children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: TextField(
-                      onChanged: (value) => setState(() => _searchTerm = value),
-                      decoration: const InputDecoration(
-                        hintText: "Rechercher...",
-                        border: InputBorder.none,
-                        suffixIcon:
-                            Icon(LucideIcons.search, color: Colors.grey),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(child: _buildSearchField()),
                 const SizedBox(width: 12),
-                PopupMenuButton<String>(
-                  tooltip: '',
-                  onSelected: (value) => setState(() => _sortOrder = value),
-                  color: Colors.white,
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      children: [
-                        Text(
-                          _sortLabel,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(LucideIcons.chevronDown, size: 20),
-                      ],
-                    ),
-                  ),
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'asc', child: Text("de A à Z")),
-                    PopupMenuItem(value: 'desc', child: Text("de Z à A")),
-                  ],
-                ),
+                _buildSortPill(),
                 const SizedBox(width: 12),
-                // EPCI filter trigger: opens a searchable in-page dropdown
-                // anchored below this button.
-                InkWell(
-                  key: _epciTriggerKey,
-                  onTap: _openEpciPicker,
-                  borderRadius: BorderRadius.circular(999),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(LucideIcons.mapPin,
-                            size: 16, color: Color(0xFF64748B)),
-                        const SizedBox(width: 8),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 220),
-                          child: Text(
-                            _selectedEpciLabel,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(LucideIcons.chevronDown, size: 20),
-                      ],
-                    ),
-                  ),
-                ),
+                _buildEpciPill(),
               ],
             ),
           ),
           const SizedBox(height: 24),
 
-          // Main List Area
+          // ─── Tableau : en-tête de colonnes figé + corps scrollable.
           Expanded(
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(32),
+                borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.02),
@@ -344,127 +313,24 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                   ),
                 ],
               ),
+              clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [
-                  // List
+                  _buildTableHeader(),
                   Expanded(
                     child: _filteredDossiers.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  LucideIcons.search,
-                                  size: 48,
-                                  color: Colors.grey.shade300,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  "Aucun résultat",
-                                  style: TextStyle(color: Colors.grey.shade400),
-                                ),
-                              ],
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(16),
+                        ? _buildEmptyState()
+                        : ListView.separated(
+                            padding: EdgeInsets.zero,
                             itemCount: _filteredDossiers.length,
+                            separatorBuilder: (_, __) => Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: Colors.grey.shade100,
+                            ),
                             itemBuilder: (context, index) {
                               final dossier = _filteredDossiers[index];
-                              final visitDate =
-                                  _formatVisitDate(dossier.visitDate);
-                              final epci = _epciFor(dossier);
-                              final address = _fullAddress(dossier.patient);
-                              return InkWell(
-                                onTap: () => widget.onSelectDossier(dossier),
-                                borderRadius: BorderRadius.circular(16),
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 48,
-                                        height: 48,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFFD8D0DC),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            _initials(dossier.patient),
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF554a63),
-                                              fontSize: 18,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              "${dossier.patient.lastName} ${dossier.patient.firstName}",
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16,
-                                                color: Colors.black87,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            // Adresse seule — l'EPCI passe
-                                            // en badge à droite à côté de la
-                                            // date de visite pour être plus
-                                            // lisible d'un coup d'œil.
-                                            Text(
-                                              address,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: Colors.grey.shade500,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      // Badge EPCI (couleur par communauté
-                                      // de communes) puis date de visite.
-                                      if (epci.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(right: 10),
-                                          child: _EpciBadge(
-                                            label: epci,
-                                            palette: _epciPaletteFor(epci),
-                                          ),
-                                        ),
-                                      _VisitDateBadge(dateLabel: visitDate),
-                                      const SizedBox(width: 12),
-                                      Container(
-                                        width: 40,
-                                        height: 40,
-                                        decoration: const BoxDecoration(
-                                          color: Colors.white,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          LucideIcons.arrowRight,
-                                          size: 20,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
+                              return _buildTableRow(dossier);
                             },
                           ),
                   ),
@@ -475,6 +341,391 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         ],
       ),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Header bits
+  // ---------------------------------------------------------------------------
+
+  Widget _buildNewDossierButton() {
+    return Material(
+      color: const Color(0xFF907CA1),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: widget.onCreateNew,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(LucideIcons.plus, size: 18, color: Colors.white),
+              SizedBox(width: 8),
+              Text(
+                'Nouveau dossier',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.search, size: 18, color: Color(0xFF64748B)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              onChanged: (v) => setState(() => _searchTerm = v),
+              decoration: const InputDecoration(
+                hintText: 'Rechercher un nom, une ville…',
+                hintStyle: TextStyle(color: Color(0xFF94A3B8)),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                isCollapsed: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSortPill() {
+    return PopupMenuButton<String>(
+      tooltip: '',
+      onSelected: (value) => setState(() => _sortOrder = value),
+      color: Colors.white,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          children: [
+            Text(
+              _sortLabel,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 8),
+            const Icon(LucideIcons.chevronDown, size: 20),
+          ],
+        ),
+      ),
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 'asc', child: Text('de A à Z')),
+        PopupMenuItem(value: 'desc', child: Text('de Z à A')),
+      ],
+    );
+  }
+
+  Widget _buildEpciPill() {
+    return InkWell(
+      key: _epciTriggerKey,
+      onTap: _openEpciPicker,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.mapPin,
+                size: 16, color: Color(0xFF64748B)),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(
+                _selectedEpciLabel,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(LucideIcons.chevronDown, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Table
+  // ---------------------------------------------------------------------------
+
+  /// Largeurs proportionnelles des colonnes (flex-based) utilisées par
+  /// l'en-tête ET chaque rangée pour garder l'alignement vertical.
+  static const int _flexBeneficiary = 3;
+  static const int _flexCommune = 2;
+  static const int _flexRevenus = 2;
+  static const int _flexEpci = 3;
+  static const int _flexDate = 2;
+
+  Widget _buildTableHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      color: const Color(0xFFF8FAFC),
+      child: Row(
+        children: [
+          // BÉNÉFICIAIRE inclut l'avatar rond — prévoir la même
+          // réserve que dans la rangée (48 + 16 = 64 px).
+          SizedBox(width: 64, child: _headerCell('')),
+          Expanded(flex: _flexBeneficiary, child: _headerCell('BÉNÉFICIAIRE')),
+          Expanded(flex: _flexCommune, child: _headerCell('COMMUNE')),
+          Expanded(flex: _flexRevenus, child: _headerCell('REVENUS')),
+          Expanded(
+            flex: _flexEpci,
+            child: _headerCell('COMMUNAUTÉ DE COMMUNE'),
+          ),
+          Expanded(flex: _flexDate, child: _headerCell('DATE DE VISITE')),
+          const SizedBox(width: 32), // espace pour le chevron des rangées
+        ],
+      ),
+    );
+  }
+
+  Widget _headerCell(String text) {
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
+        color: Color(0xFF94A3B8),
+      ),
+    );
+  }
+
+  Widget _buildTableRow(Dossier dossier) {
+    final p = dossier.patient;
+    final age = _ageFromBirth(p.birthDate);
+    final gir = _primaryGir(dossier);
+    final meta = <String>[];
+    if (age >= 0) meta.add('$age ans');
+    if (gir.isNotEmpty) meta.add('GIR $gir');
+
+    final epci = _epciFor(dossier);
+    final visitDate = _formatVisitDate(dossier.visitDate);
+    final income = p.incomeCategory.trim();
+
+    return InkWell(
+      onTap: () => widget.onSelectDossier(dossier),
+      child: Padding(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Row(
+          children: [
+            // Avatar
+            SizedBox(
+              width: 64,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFD8D0DC),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  _initials(p),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF554a63),
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ),
+            // BÉNÉFICIAIRE (nom + âge/GIR)
+            Expanded(
+              flex: _flexBeneficiary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${p.lastName.toUpperCase()} ${p.firstName}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (meta.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      meta.join(' · '),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // COMMUNE (ville + code postal)
+            Expanded(
+              flex: _flexCommune,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    p.city,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (p.zipCode.trim().isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      p.zipCode,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // REVENUS
+            Expanded(
+              flex: _flexRevenus,
+              child: income.isEmpty
+                  ? const SizedBox.shrink()
+                  : Align(
+                      alignment: Alignment.centerLeft,
+                      child: _IncomeBadge(label: income),
+                    ),
+            ),
+            // COMMUNAUTÉ DE COMMUNE
+            Expanded(
+              flex: _flexEpci,
+              child: epci.isEmpty
+                  ? const SizedBox.shrink()
+                  : Align(
+                      alignment: Alignment.centerLeft,
+                      child: _EpciBadge(
+                        label: epci,
+                        palette: _epciPaletteFor(epci),
+                      ),
+                    ),
+            ),
+            // DATE DE VISITE
+            Expanded(
+              flex: _flexDate,
+              child: Text(
+                visitDate.isEmpty ? '—' : visitDate,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: visitDate.isEmpty
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF0F172A),
+                ),
+              ),
+            ),
+            // Chevron
+            const SizedBox(
+              width: 32,
+              child: Icon(
+                LucideIcons.chevronRight,
+                size: 18,
+                color: Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            LucideIcons.search,
+            size: 48,
+            color: Colors.grey.shade300,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Aucun résultat',
+            style: TextStyle(color: Colors.grey.shade400),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Badge "Revenus" : pastel vert doux selon la catégorie (très modeste /
+/// modeste / intermédiaire / supérieur…). Fond léger, texte gris foncé.
+class _IncomeBadge extends StatelessWidget {
+  const _IncomeBadge({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = _incomeBg(label);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF334155),
+        ),
+      ),
+    );
+  }
+
+  static Color _incomeBg(String v) {
+    final l = v.toLowerCase();
+    if (l.contains('très modeste')) return const Color(0xFFDCFCE7);
+    if (l.contains('modeste')) return const Color(0xFFDBEAFE);
+    if (l.contains('intermédiaire')) return const Color(0xFFFEF3C7);
+    if (l.contains('supérieur')) return const Color(0xFFFCE7F3);
+    return const Color(0xFFF1F5F9);
   }
 }
 
