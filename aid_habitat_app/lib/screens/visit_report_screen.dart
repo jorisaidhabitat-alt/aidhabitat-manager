@@ -534,10 +534,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         indicatorSize: TabBarIndicatorSize.label,
         indicatorPadding:
             const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
-        // Typo cohérente avec le sous-menu : onglet actif en noir,
-        // onglets inactifs en violet doux #AE9DB3.
+        // Texte toujours en noir (onglet actif + inactifs). Seul le
+        // fond violet pâle #F6EDFB distingue l'onglet actif.
         labelColor: Colors.black,
-        unselectedLabelColor: const Color(0xFFAE9DB3),
+        unselectedLabelColor: Colors.black,
         labelStyle: const TextStyle(fontWeight: FontWeight.bold),
         unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
         labelPadding: const EdgeInsets.symmetric(horizontal: 16),
