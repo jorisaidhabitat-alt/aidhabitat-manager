@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
 import 'account_dialog.dart';
 import 'cached_remote_image.dart';
+import 'soft_transitions.dart';
 
 class Sidebar extends StatefulWidget {
   final String currentView;
@@ -131,7 +132,9 @@ class _SidebarState extends State<Sidebar> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   textStyle: const TextStyle(color: Colors.white, fontSize: 12),
-                  child: InkWell(
+                  child: SoftTapScale(
+                    onTap: () => widget.onNavigate(item['id']),
+                    child: InkWell(
                     onTap: () => widget.onNavigate(item['id']),
                     borderRadius: BorderRadius.circular(50),
                     // Style aligné avec le reste de l'app :
@@ -140,7 +143,9 @@ class _SidebarState extends State<Sidebar> {
                     //     quick-actions Documents / VAD).
                     //   • Inactif : fond gris #DDE1E8 + icône gris
                     //     bleuté #8D94A3 pour rester discret.
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: kSoftMedium,
+                      curve: kSoftCurve,
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
@@ -157,6 +162,7 @@ class _SidebarState extends State<Sidebar> {
                             : const Color(0xFF8D94A3),
                       ),
                     ),
+                  ),
                   ),
                 ),
               );

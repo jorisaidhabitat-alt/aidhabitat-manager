@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../components/beneficiary_badges.dart';
 import '../components/beneficiary_palettes.dart';
+import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
 
@@ -540,7 +541,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     final visitDate = _formatVisitDate(dossier.visitDate);
     final income = p.incomeCategory.trim();
 
-    return InkWell(
+    return SoftTapScale(
+      onTap: () => widget.onSelectDossier(dossier),
+      child: InkWell(
       onTap: () => widget.onSelectDossier(dossier),
       child: Padding(
         padding:
@@ -678,6 +681,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
