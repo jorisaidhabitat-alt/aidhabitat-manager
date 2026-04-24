@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/beneficiary_palettes.dart';
+import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
 
@@ -373,7 +374,9 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: InkWell(
+      child: SoftTapScale(
+        onTap: widget.onTap,
+        child: InkWell(
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
@@ -500,6 +503,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -877,10 +881,15 @@ class _PanelCard extends StatelessWidget {
     );
 
     if (onTap == null) return card;
-    return InkWell(
+    // Ajoute un léger scale-down au tap pour l'effet "soft" partagé avec
+    // le reste de l'app (cf. `components/soft_transitions.dart`).
+    return SoftTapScale(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: card,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: card,
+      ),
     );
   }
 }

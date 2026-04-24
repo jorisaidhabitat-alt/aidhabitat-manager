@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:sqflite/sqflite.dart' show databaseFactory;
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+import 'components/soft_transitions.dart';
 import 'models/types.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
@@ -174,6 +175,19 @@ class MyApp extends StatelessWidget {
         bottomSheetTheme: const BottomSheetThemeData(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
+        ),
+        // Transitions "soft" identiques sur toutes les plateformes :
+        // fade 220 ms + glissement vertical subtil (8 px). Même ressenti
+        // sur macOS, iPadOS web PWA, Android, iOS.
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.iOS: SoftPageTransitionsBuilder(),
+            TargetPlatform.android: SoftPageTransitionsBuilder(),
+            TargetPlatform.macOS: SoftPageTransitionsBuilder(),
+            TargetPlatform.windows: SoftPageTransitionsBuilder(),
+            TargetPlatform.linux: SoftPageTransitionsBuilder(),
+            TargetPlatform.fuchsia: SoftPageTransitionsBuilder(),
+          },
         ),
         useMaterial3: true,
       ),
