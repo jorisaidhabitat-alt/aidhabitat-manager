@@ -405,17 +405,22 @@ class _ContextTabState extends State<ContextTab>
 
   Widget _buildQuickNav() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      // Padding horizontal retiré : chaque zone cliquable s'étend
+      // bord à bord (demande utilisateur — 50 % Médical / 50 % Autonomie
+      // sans marge intermédiaire).
+      padding: const EdgeInsets.symmetric(vertical: 8),
       color: const Color(0xFFEDE8F5),
       child: Row(
         children: [
           Expanded(
             child: _buildNavBtn(LucideIcons.heart, 'Médical', 0),
           ),
-          const SizedBox(width: 4),
           Expanded(child: _buildNavBtn(LucideIcons.user, 'Autonomie', 1)),
           const SizedBox(width: 8),
-          SaveStatusIndicator(saving: _saving),
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: SaveStatusIndicator(saving: _saving),
+          ),
         ],
       ),
     );
@@ -424,6 +429,9 @@ class _ContextTabState extends State<ContextTab>
   Widget _buildNavBtn(IconData icon, String label, int index) {
     final active = _subSection == index;
     return GestureDetector(
+      // HitTestBehavior.opaque → toute la zone de l'Expanded (fond
+      // violet compris) reçoit les taps, pas seulement l'icône/label.
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _subSection = index),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),

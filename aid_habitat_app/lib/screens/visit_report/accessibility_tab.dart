@@ -403,7 +403,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       _QuickNavItem(icon: Icons.place_outlined, label: 'Extérieur'),
     ];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      // Padding horizontal retiré : chaque zone cliquable s'étend
+      // bord à bord (demande utilisateur — 50 % Général / 50 % Extérieur
+      // sans marge intermédiaire).
+      padding: const EdgeInsets.symmetric(vertical: 8),
       color: const Color(0xFFEDE8F5),
       child: Row(
         children: [
@@ -411,10 +414,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             final active = i == _subSection;
             return Expanded(
               child: GestureDetector(
+                // HitTestBehavior.opaque → la zone complète de chaque
+                // section reçoit les taps, pas seulement l'icône/label.
+                behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() => _subSection = i),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
                   child: Column(
                     children: [
                       Icon(items[i].icon,
@@ -438,7 +443,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             );
           }),
           const SizedBox(width: 8),
-          SaveStatusIndicator(saving: _saving),
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: SaveStatusIndicator(saving: _saving),
+          ),
         ],
       ),
     );

@@ -448,17 +448,23 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // l'arrondi supérieur). Padding horizontal pour l'espacement
     // interne des pills.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      // Padding horizontal retiré : chaque zone cliquable doit s'étendre
+      // bord à bord (demande utilisateur — 50 % gauche clique section 1,
+      // 50 % droite clique section 2, sans marge intermédiaire).
+      padding: const EdgeInsets.symmetric(vertical: 8),
       color: const Color(0xFFEDE8F5),
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;
           return Expanded(
             child: GestureDetector(
+              // HitTestBehavior.opaque → toute la zone de l'Expanded
+              // (fond violet compris) reçoit les taps, pas seulement
+              // l'icône et le label visibles.
+              behavior: HitTestBehavior.opaque,
               onTap: () => _setSubSection(i),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
                 // Pas de pill individuel — le fond unifié du parent suffit.
                 // La sélection se distingue par la couleur texte/icône.
                 child: Column(
