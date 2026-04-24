@@ -893,6 +893,10 @@ class _DossierScreenState extends State<DossierScreen> {
       fillParentHeight: true,
       // Autosave debounced → pas de bouton Save explicite (design épuré).
       showSaveButton: false,
+      // Jeton bumped dès que la note rapide a été hydratée avec le
+      // commentaire projet → force NotesWidget à re-fetch la page 0
+      // et afficher le commentaire juste après l'ouverture du dossier.
+      externalRefreshToken: _quickNoteRefreshToken,
     );
   }
 }
