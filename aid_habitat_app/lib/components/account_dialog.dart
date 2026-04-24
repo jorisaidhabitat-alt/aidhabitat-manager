@@ -114,7 +114,6 @@ class _AccountDialogState extends State<AccountDialog> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF7ED),
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: const Color(0xFFFDBA74)),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,

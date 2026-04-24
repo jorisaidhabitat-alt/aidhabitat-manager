@@ -2586,7 +2586,6 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                     decoration: BoxDecoration(
                       color: Colors.amber.shade900.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(50),
-                      border: Border.all(color: Colors.amber.shade400),
                     ),
                     child: Text(
                       '• Modifié',
