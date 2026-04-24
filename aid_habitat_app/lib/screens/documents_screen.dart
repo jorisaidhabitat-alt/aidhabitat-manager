@@ -1162,18 +1162,36 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
               dashGap: 5,
             ),
             child: Center(
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: _kPurple.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  LucideIcons.plus,
-                  size: 26,
-                  color: widget.disabled ? Colors.grey.shade400 : _kPurple,
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: _kPurple.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      LucideIcons.plus,
+                      size: 26,
+                      color: widget.disabled ? Colors.grey.shade400 : _kPurple,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Déposer un fichier\nou prendre une photo',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                      color: widget.disabled
+                          ? Colors.grey.shade400
+                          : _kPurple,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
