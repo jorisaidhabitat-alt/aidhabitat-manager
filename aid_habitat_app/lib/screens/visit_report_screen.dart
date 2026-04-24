@@ -524,23 +524,27 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       child: TabBar(
         controller: _tabController,
         isScrollable: true,
+        // Fond de l'onglet actif : violet pâle F6EDFB — même teinte
+        // que le bandeau sous-menu du relevé (Profil / Foyer / …)
+        // pour une cohérence visuelle.
         indicator: BoxDecoration(
-          color: const Color(0xFFD8D0DC),
+          color: const Color(0xFFF6EDFB),
           borderRadius: BorderRadius.circular(50),
         ),
         indicatorSize: TabBarIndicatorSize.label,
         indicatorPadding:
             const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
-        labelColor: const Color(0xFF554a63),
-        unselectedLabelColor: Colors.black87,
+        // Typo cohérente avec le sous-menu : onglet actif en noir,
+        // onglets inactifs en violet doux #AE9DB3.
+        labelColor: Colors.black,
+        unselectedLabelColor: const Color(0xFFAE9DB3),
         labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
         labelPadding: const EdgeInsets.symmetric(horizontal: 16),
         tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
         dividerColor: Colors.transparent,
         padding: const EdgeInsets.all(4),
         tabAlignment: TabAlignment.start,
-        // Disable hover / splash / pressed overlay on tabs so hovering
-        // "Bénéficiaire" (and any other tab) does NOT show a gray fill.
         overlayColor: WidgetStateProperty.all(Colors.transparent),
         splashFactory: NoSplash.splashFactory,
       ),
