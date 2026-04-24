@@ -395,20 +395,9 @@ class _ContextTabState extends State<ContextTab>
     return _contextOccupants[_safeIndex];
   }
 
-  List<String> get _occupantLabels {
-    final p = widget.dossier.patient;
-    final names = <String>[];
-    for (var i = 0; i < _contextOccupants.length; i++) {
-      String first = i == 0 ? p.firstName : '';
-      if (i > 0 && i < p.occupants.length) {
-        first = p.occupants[i].firstName;
-      }
-      names.add(first.isNotEmpty
-          ? first.split(' ').first
-          : 'Profil ${String.fromCharCode(65 + (i % 26))}');
-    }
-    return names;
-  }
+  // _occupantLabels retiré : la navigation entre occupants utilise
+  // désormais le header (nom complet) + les points de pagination — les
+  // pills avec les prénoms courts ne sont plus nécessaires.
 
   // ---------------------------------------------------------------------------
   // Build

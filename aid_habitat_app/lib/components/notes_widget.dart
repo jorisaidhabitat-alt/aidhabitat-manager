@@ -1573,21 +1573,22 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // "+" : UN SEUL cercle violet foncé de 22px avec un "+" blanc
-        // à l'intérieur. GestureDetector au lieu d'InkWell pour éviter
-        // le splash Material qui dessinait un 2e rond par-dessus.
+        // "+" : cercle violet foncé de 26px (empreinte visuelle
+        // alignée sur la corbeille 26px juste à droite), avec un "+"
+        // blanc de 16px à l'intérieur. GestureDetector pour éviter
+        // le halo Material (même traitement que la corbeille).
         Tooltip(
           message: 'Nouvelle page',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: canAdd ? _addPage : null,
             child: Padding(
-              padding: const EdgeInsets.all(11), // étend la zone de tap
+              padding: const EdgeInsets.all(9), // tap area ≈ 44×44
               child: Opacity(
                 opacity: canAdd ? 1 : 0.4,
                 child: Container(
-                  width: 22,
-                  height: 22,
+                  width: 26,
+                  height: 26,
                   decoration: const BoxDecoration(
                     color: _kStackedViolet,
                     shape: BoxShape.circle,
@@ -1595,7 +1596,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   alignment: Alignment.center,
                   child: const Icon(
                     LucideIcons.plus,
-                    size: 14,
+                    size: 16,
                     color: Colors.white,
                   ),
                 ),
@@ -1604,25 +1605,21 @@ class _NotesWidgetState extends State<NotesWidget> {
           ),
         ),
         const SizedBox(width: 10),
-        // Corbeille : empreinte visuelle 22×22 alignée sur le cercle
-        // violet du "+" à gauche. Le glyphe trash2 de Lucide a un
-        // padding interne → on le rend légèrement plus gros (26px)
-        // pour que ses traits remplissent l'empreinte 22×22 et que
-        // l'icône paraisse de la même taille que le cercle voisin.
-        // GestureDetector (pas d'InkWell) pour éviter le halo Material,
-        // cohérent avec le bouton + juste à côté.
+        // Corbeille : même empreinte 26×26 que le cercle violet du
+        // bouton + à gauche, pour que les deux aient la même taille
+        // visuelle. GestureDetector (pas d'InkWell) → pas de halo.
         Tooltip(
           message: 'Supprimer la page',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: canDelete ? () => _deletePage() : null,
             child: Padding(
-              padding: const EdgeInsets.all(11), // tap area ≈ 44×44
+              padding: const EdgeInsets.all(9), // tap area ≈ 44×44
               child: Opacity(
                 opacity: canDelete ? 1 : 0.4,
                 child: const SizedBox(
-                  width: 22,
-                  height: 22,
+                  width: 26,
+                  height: 26,
                   child: Center(
                     child: Icon(
                       LucideIcons.trash2,
