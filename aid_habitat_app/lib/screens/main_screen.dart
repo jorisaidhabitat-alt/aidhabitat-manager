@@ -252,7 +252,7 @@ class _MainScreenState extends State<MainScreen> {
       );
       return;
     }
-    final discard = await showDialog<bool>(
+    final discard = await showSoftDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Opération en échec'),

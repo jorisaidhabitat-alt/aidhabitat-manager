@@ -42,7 +42,7 @@ class AccompanimentBadge extends StatelessWidget {
     return Container(
       padding: large
           ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
-          : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFFEDE8F5),
         borderRadius: BorderRadius.circular(999),
@@ -50,7 +50,7 @@ class AccompanimentBadge extends StatelessWidget {
       child: Text(
         value,
         style: TextStyle(
-          fontSize: large ? 14 : 11,
+          fontSize: large ? 14 : 12,
           fontWeight: FontWeight.w700,
           color: const Color(0xFF554A63),
         ),
@@ -114,7 +114,7 @@ class IncomeCategoryBadge extends StatelessWidget {
     return Container(
       padding: large
           ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
-          : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: palette.bg,
         borderRadius: BorderRadius.circular(999),
@@ -122,7 +122,7 @@ class IncomeCategoryBadge extends StatelessWidget {
       child: Text(
         value,
         style: TextStyle(
-          fontSize: large ? 14 : 11,
+          fontSize: large ? 14 : 12,
           fontWeight: FontWeight.w700,
           color: palette.fg,
         ),

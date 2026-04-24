@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/cached_remote_image.dart';
+import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
 import '../services/url_resolver.dart';
@@ -101,7 +102,7 @@ class _WikiScreenState extends State<WikiScreen> {
   }
 
   Future<void> _openItem(WikiItem item) async {
-    final updated = await showDialog<WikiItem>(
+    final updated = await showSoftDialog<WikiItem>(
       context: context,
       builder: (context) =>
           _WikiItemDialog(item: item, availableTags: _availableTags.toList()),
@@ -127,7 +128,7 @@ class _WikiScreenState extends State<WikiScreen> {
   }
 
   Future<void> _createItem() async {
-    final draft = await showDialog<_WikiItemDraft>(
+    final draft = await showSoftDialog<_WikiItemDraft>(
       context: context,
       builder: (context) =>
           _WikiCreateDialog(availableTags: _availableTags.toList()),

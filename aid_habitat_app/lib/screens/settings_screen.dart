@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../components/account_dialog.dart';
+import '../components/soft_transitions.dart';
 import '../models/types.dart';
 
 // Local profile photo manager — stores the picked image on disk at
@@ -105,7 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _openPasswordDialog() async {
-    final didChange = await showDialog<bool>(
+    final didChange = await showSoftDialog<bool>(
       context: context,
       builder: (ctx) => AccountDialog(currentUser: widget.user),
     );

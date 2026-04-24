@@ -253,7 +253,9 @@ class _SidebarState extends State<Sidebar> {
   }
 
   Future<void> _openAccountDialog() async {
-    await showDialog<bool>(
+    // `showSoftDialog` = fade + scale doux (mêmes sensations que la
+    // navigation entre vues, cf. `soft_transitions.dart`).
+    await showSoftDialog<bool>(
       context: context,
       builder: (_) => AccountDialog(
         currentUser: widget.currentUser,

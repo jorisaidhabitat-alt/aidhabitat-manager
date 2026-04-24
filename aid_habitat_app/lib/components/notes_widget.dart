@@ -1604,24 +1604,31 @@ class _NotesWidgetState extends State<NotesWidget> {
           ),
         ),
         const SizedBox(width: 10),
-        // Corbeille : icône rose clair 22px, zone de tap 44×44, sans fond.
+        // Corbeille : empreinte visuelle 22×22 alignée sur le cercle
+        // violet du "+" à gauche. Le glyphe trash2 de Lucide a un
+        // padding interne → on le rend légèrement plus gros (26px)
+        // pour que ses traits remplissent l'empreinte 22×22 et que
+        // l'icône paraisse de la même taille que le cercle voisin.
+        // GestureDetector (pas d'InkWell) pour éviter le halo Material,
+        // cohérent avec le bouton + juste à côté.
         Tooltip(
           message: 'Supprimer la page',
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: canDelete ? () => _deletePage() : null,
-              child: Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                child: Opacity(
-                  opacity: canDelete ? 1 : 0.4,
-                  child: const Icon(
-                    LucideIcons.trash2,
-                    size: 22,
-                    color: _kStackedPinkSoft,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: canDelete ? () => _deletePage() : null,
+            child: Padding(
+              padding: const EdgeInsets.all(11), // tap area ≈ 44×44
+              child: Opacity(
+                opacity: canDelete ? 1 : 0.4,
+                child: const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: Center(
+                    child: Icon(
+                      LucideIcons.trash2,
+                      size: 26,
+                      color: _kStackedPinkSoft,
+                    ),
                   ),
                 ),
               ),

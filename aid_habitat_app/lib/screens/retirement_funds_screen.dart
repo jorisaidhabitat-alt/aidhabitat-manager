@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../components/cached_remote_image.dart';
+import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
 import '../services/media_cache_service.dart';
@@ -79,7 +80,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
   }
 
   Future<void> _openFund(RetirementFund fund) async {
-    await showDialog<void>(
+    await showSoftDialog<void>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (context) => _RetirementFundDialog(

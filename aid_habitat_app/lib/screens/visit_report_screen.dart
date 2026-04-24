@@ -13,6 +13,7 @@ import '../services/dossier_repository.dart';
 import '../services/data_service.dart';
 import '../components/beneficiary_badges.dart';
 import '../components/notes_widget.dart';
+import '../components/soft_transitions.dart';
 import 'visit_report/beneficiary_tab.dart';
 import 'visit_report/context_tab.dart';
 import 'visit_report/mesures_tab.dart';
@@ -267,7 +268,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
     final initialText = _extractTextFromDrawingJson(existingJson);
     if (!mounted) return;
-    await showDialog<void>(
+    await showSoftDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (ctx) {

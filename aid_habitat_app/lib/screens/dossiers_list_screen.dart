@@ -483,10 +483,12 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
 
   /// Largeurs proportionnelles des colonnes (flex-based) utilisées par
   /// l'en-tête ET chaque rangée pour garder l'alignement vertical.
+  /// `_flexEpci` est élargi pour décaler la colonne DATE DE VISITE
+  /// plus à droite (demande utilisateur : laisser respirer la date).
   static const int _flexBeneficiary = 3;
   static const int _flexCommune = 2;
   static const int _flexRevenus = 2;
-  static const int _flexEpci = 3;
+  static const int _flexEpci = 4;
   static const int _flexDate = 2;
 
   Widget _buildTableHeader() {
