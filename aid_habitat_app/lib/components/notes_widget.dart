@@ -1797,11 +1797,13 @@ class _NotesWidgetState extends State<NotesWidget> {
                         onPanEnd: _onDrawEnd,
                         child: MouseRegion(
                           cursor: SystemMouseCursors.precise,
-                          // ClipRect : aucun trait (ni gomme) ne peut
-                          // déborder de la zone de dessin — même si le
-                          // strokeCap.round sort naturellement d'un
-                          // demi-rayon aux extrémités.
-                          child: ClipRect(
+                          // ClipRRect avec le même borderRadius que la
+                          // carte parente (16 px) → les coins arrondis
+                          // restent nets, identiques à ceux de la note
+                          // écrite. Avant : ClipRect strict cassait les
+                          // coins en angles droits dans la zone dessin.
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
                             child: CustomPaint(
                               size: size,
                               painter: _StrokePainter(

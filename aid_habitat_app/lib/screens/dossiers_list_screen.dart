@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../components/beneficiary_badges.dart';
+import '../components/beneficiary_palettes.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
 
@@ -556,7 +557,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: _beneficiaryAvatarBgFor(_initials(p)),
+                  color: beneficiaryAvatarBgFor(_initials(p)),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
@@ -649,10 +650,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                   ? const SizedBox.shrink()
                   : Align(
                       alignment: Alignment.centerLeft,
-                      child: _EpciBadge(
-                        label: epci,
-                        palette: _epciPaletteFor(epci),
-                      ),
+                      child: EpciBadge(label: epci),
                     ),
             ),
             // DATE DE VISITE
@@ -709,97 +707,10 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
 // du module components/beneficiary_badges.dart, pour garder la même
 // palette dans tout l'app.)
 
-/// Palette of soft pill backgrounds + matching foreground, stable per EPCI
-/// label. Two dossiers of the same communauté de communes always get the
-/// same color; different communities get distinct colors. Good contrast is
-/// preserved (WCAG AA on small bold text).
-class _EpciPalette {
-  final Color bg;
-  final Color fg;
-  const _EpciPalette({required this.bg, required this.fg});
-}
-
-/// Palette "Équilibrée" (charte graphique utilisateur) : 5 fonds pastel
-/// doux (mint, pêche, ciel, lavande, sable). Objectif : éviter la
-/// sensation de code couleur clinique — le texte reste slate foncé
-/// pour la lisibilité. Chaque EPCI garde une couleur stable via hash.
-const Color _kPastelEpciFg = Color(0xFF334155);
-
-const List<_EpciPalette> _kEpciPalettes = [
-  _EpciPalette(bg: Color(0xFFC8E6D0), fg: _kPastelEpciFg), // mint
-  _EpciPalette(bg: Color(0xFFF5D6B8), fg: _kPastelEpciFg), // pêche
-  _EpciPalette(bg: Color(0xFFD9EAF3), fg: _kPastelEpciFg), // ciel
-  _EpciPalette(bg: Color(0xFFE8E2F0), fg: _kPastelEpciFg), // lavande
-  _EpciPalette(bg: Color(0xFFF0E4CC), fg: _kPastelEpciFg), // sable
-];
-
-/// Deterministic label → palette assignment (same EPCI = same color every
-/// time the list is rendered). Uses a rolling hash of the label to pick a
-/// slot in [_kEpciPalettes].
-_EpciPalette _epciPaletteFor(String label) {
-  if (label.isEmpty) {
-    return const _EpciPalette(
-      bg: Color(0xFFF1F5F9),
-      fg: _kPastelEpciFg,
-    );
-  }
-  int hash = 0;
-  for (final rune in label.runes) {
-    hash = (hash * 31 + rune) & 0x7FFFFFFF;
-  }
-  return _kEpciPalettes[hash % _kEpciPalettes.length];
-}
-
-/// Palette pastel des cercles d'avatar bénéficiaire (demande utilisateur) :
-/// mint / pêche / ciel — varie d'un bénéficiaire à l'autre. Hash stable
-/// sur les initiales → même bénéficiaire = même couleur à chaque rendu.
-const List<Color> _kBeneficiaryAvatarBgs = [
-  Color(0xFFB8DDCC), // mint
-  Color(0xFFF4D5C4), // pêche
-  Color(0xFFCFE3F0), // ciel
-];
-
-Color _beneficiaryAvatarBgFor(String seed) {
-  if (seed.isEmpty) return _kBeneficiaryAvatarBgs.first;
-  int hash = 0;
-  for (final rune in seed.runes) {
-    hash = (hash * 31 + rune) & 0x7FFFFFFF;
-  }
-  return _kBeneficiaryAvatarBgs[hash % _kBeneficiaryAvatarBgs.length];
-}
-
-/// Chip showing the communauté de communes with a color-coded background
-/// (one stable color per EPCI). Displayed to the left of the visit date.
-class _EpciBadge extends StatelessWidget {
-  const _EpciBadge({required this.label, required this.palette});
-
-  final String label;
-  final _EpciPalette palette;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 220),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: palette.bg,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: palette.fg,
-          ),
-        ),
-      ),
-    );
-  }
-}
+// Palettes EPCI + avatar bénéficiaire désormais dans
+// `components/beneficiary_palettes.dart` — partagées entre
+// DossiersListScreen et DashboardScreen pour que même bénéficiaire /
+// même EPCI garde la même couleur partout dans l'app.
 
 /// Visit date badge shown on the right of each dossier row, right before
 /// the chevron. Larger font than the address line. Falls back to the

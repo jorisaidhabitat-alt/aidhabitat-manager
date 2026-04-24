@@ -535,19 +535,43 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         indicatorPadding:
             const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
         // Texte toujours en noir, poids normal. L'onglet actif est
-        // marqué par un SOULIGNEMENT NOIR sous le texte (en plus du
-        // fond violet pâle du pill).
+        // marqué par un fin trait noir sous le texte, avec un espace
+        // entre le trait et la baseline (plus clean que l'underline
+        // Flutter qui est collée à la baseline).
         labelColor: Colors.black,
         unselectedLabelColor: Colors.black,
-        labelStyle: const TextStyle(
-          fontWeight: FontWeight.normal,
-          decoration: TextDecoration.underline,
-          decorationColor: Colors.black,
-          decorationThickness: 2,
-        ),
+        labelStyle: const TextStyle(fontWeight: FontWeight.normal),
         unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
         labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-        tabs: _tabs.map((tab) => Tab(text: tab)).toList(),
+        tabs: List.generate(_tabs.length, (i) {
+          final label = _tabs[i];
+          return Tab(
+            child: AnimatedBuilder(
+              animation: _tabController,
+              builder: (context, _) {
+                final isActive = _tabController.index == i;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(label),
+                    const SizedBox(height: 6),
+                    // Trait fin 1 px, largeur proportionnelle à la
+                    // largeur du texte — visible uniquement pour l'onglet
+                    // actif, espacé de 6 px du texte au-dessus.
+                    Container(
+                      height: 1,
+                      width: (label.length * 6.5).clamp(28, 120),
+                      color: isActive
+                          ? Colors.black
+                          : Colors.transparent,
+                    ),
+                  ],
+                );
+              },
+            ),
+          );
+        }),
         dividerColor: Colors.transparent,
         padding: const EdgeInsets.all(4),
         tabAlignment: TabAlignment.start,

@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/beneficiary_palettes.dart';
 import '../models/types.dart';
+import '../services/references_service.dart';
 
 /// Dashboard screen aligned with the React web `Dashboard.tsx` layout:
 ///   - Welcome header with user name + today's date
@@ -318,6 +322,45 @@ class _RecentDossierRow extends StatefulWidget {
 
 class _RecentDossierRowState extends State<_RecentDossierRow> {
   bool _hover = false;
+  final ReferencesService _refs = ReferencesService();
+  StreamSubscription<ReferencesPayload>? _refsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _refs.ensureLoaded();
+    _refsSub = _refs.onLoaded.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _refsSub?.cancel();
+    super.dispose();
+  }
+
+  /// Resolves the EPCI label for the current dossier via the commune
+  /// reference (id → label → zip fallbacks). Empty string if no match.
+  String _epciLabel() {
+    if (!_refs.isLoaded) return '';
+    final p = widget.dossier.patient;
+    final cityId = p.cityId.trim();
+    final city = p.city.trim().toLowerCase();
+    final zip = p.zipCode.trim();
+    for (final ref in _refs.communes) {
+      if (cityId.isNotEmpty && ref.id == cityId) return ref.epciLabel;
+    }
+    for (final ref in _refs.communes) {
+      if (ref.label.toLowerCase() == city) return ref.epciLabel;
+    }
+    if (zip.isNotEmpty) {
+      for (final ref in _refs.communes) {
+        if (ref.zipCode == zip) return ref.epciLabel;
+      }
+    }
+    return '';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -325,6 +368,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
     final initials = _initials(patient.firstName, patient.lastName);
     final fullAddress = DashboardScreen.buildFullAddress(patient);
     final visitLabel = _formatVisitDate(widget.dossier.visitDate);
+    final epci = _epciLabel();
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
@@ -347,22 +391,18 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  // Pastel stable par bénéficiaire — même palette et
+                  // même couleur que sur l'écran "Mes dossiers" (hash
+                  // des initiales, cf. `beneficiaryAvatarBgFor`).
+                  color: beneficiaryAvatarBgFor(initials),
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
                 ),
                 child: Center(
                   child: Text(
                     initials,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF334155), // slate-700
+                      color: kBeneficiaryAvatarFg,
                     ),
                   ),
                 ),
