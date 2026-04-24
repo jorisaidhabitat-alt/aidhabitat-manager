@@ -83,16 +83,38 @@ class SoftTapScale extends StatefulWidget {
     this.scale = 0.92,
     this.duration = kSoftFast,
     this.enabled = true,
+    this.passThrough = false,
   });
+
+  /// Variante qui laisse passer les gestes en dessous (utile pour être
+  /// posée dans un TabBar Material sans casser le tap de l'onglet). Le
+  /// widget observe les `Listener` (pointer events) et anime le scale,
+  /// mais ne réclame jamais le tap pour lui-même. `onTap` est ignoré
+  /// dans ce mode.
+  const SoftTapScale.passThrough({
+    super.key,
+    required this.child,
+    this.scale = 0.92,
+    this.duration = kSoftFast,
+    this.enabled = true,
+  })  : onTap = null,
+        onLongPress = null,
+        passThrough = true;
 
   final Widget child;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
-  /// Scale appliqué lors de l'appui (1 = pas d'animation). Défaut 0.97.
+  /// Scale appliqué lors de l'appui (1 = pas d'animation). Défaut 0.92.
   final double scale;
   final Duration duration;
   final bool enabled;
+
+  /// Quand `true`, utilise `Listener` (ne bloque pas les gestures) au
+  /// lieu de `GestureDetector`. Combiné avec `HitTestBehavior.translucent`
+  /// cela permet de poser ce widget sur un enfant cliquable (TabBar,
+  /// InkWell…) sans lui voler ses taps.
+  final bool passThrough;
 
   @override
   State<SoftTapScale> createState() => _SoftTapScaleState();
@@ -110,6 +132,27 @@ class _SoftTapScaleState extends State<SoftTapScale> {
   @override
   Widget build(BuildContext context) {
     final targetScale = _pressed ? widget.scale : 1.0;
+    final animated = AnimatedScale(
+      scale: targetScale,
+      duration: widget.duration,
+      curve: kSoftCurve,
+      child: widget.child,
+    );
+
+    if (widget.passThrough) {
+      // Listener observe les pointer events sans les consommer : l'enfant
+      // reste cliquable (TabBar, InkWell…). Comportement translucent =
+      // le hit-test descend jusqu'à cet enfant même si une partie de la
+      // zone ne correspond à aucun widget visible.
+      return Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _set(true),
+        onPointerUp: (_) => _set(false),
+        onPointerCancel: (_) => _set(false),
+        child: animated,
+      );
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => _set(true),
@@ -117,12 +160,7 @@ class _SoftTapScaleState extends State<SoftTapScale> {
       onTapCancel: () => _set(false),
       onTap: widget.enabled ? widget.onTap : null,
       onLongPress: widget.enabled ? widget.onLongPress : null,
-      child: AnimatedScale(
-        scale: targetScale,
-        duration: widget.duration,
-        curve: kSoftCurve,
-        child: widget.child,
-      ),
+      child: animated,
     );
   }
 }

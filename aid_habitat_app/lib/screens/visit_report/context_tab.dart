@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../components/form_widgets.dart';
+import '../../components/soft_transitions.dart';
 
 /// Contexte de vie tab — parité 1:1 avec la version React (`ContextForm`).
 ///
@@ -144,6 +145,7 @@ class _ContextTabState extends State<ContextTab>
           autonomyDone: existing.autonomyDone,
           autonomy: _mergeAutonomyItems(existing.autonomy),
           humanHelp: _mergeHumanHelpItems(existing.humanHelp, homeHelpTxt),
+          attention: _mergeAutonomyItems(existing.attention),
         ));
       } else {
         out.add(OccupantAutonomy(
@@ -151,6 +153,7 @@ class _ContextTabState extends State<ContextTab>
           autonomyDone: i == 0 ? autonomy.done : false,
           autonomy: _mergeAutonomyItems(i == 0 ? autonomy.checklist : const []),
           humanHelp: _mergeHumanHelpItems(const [], homeHelpTxt),
+          attention: _mergeAutonomyItems(const []),
         ));
       }
     }
@@ -252,60 +255,96 @@ class _ContextTabState extends State<ContextTab>
     widget.onMedicalFlagToggled?.call(flagNumber, !wasChecked);
   }
 
-  void _toggleAutonomyDone() {
+  // _toggleAutonomyDone() retiré : la validation "autonome sur l'ensemble"
+  // est désormais dérivée automatiquement quand les 11 items sont tous
+  // en état ✓ (`allAutonomous` dans _buildAutonomy), et le champ
+  // OccupantAutonomy.autonomyDone est mis à jour par _setAutonomyItemState.
+
+  /// Détermine l'état courant d'un item d'autonomie (mutuellement
+  /// exclusif entre les 3 listes : autonomous / attention / humanHelp).
+  _AutonomyItemState _itemState(int index) {
     final occ = _active;
-    final nextDone = !occ.autonomyDone;
-    final autonomyItems = occ.autonomy
-        .map((i) => AutonomyItem(name: i.name, checked: nextDone ? true : i.checked))
-        .toList();
-    final humanHelpItems = nextDone
-        ? kAutonomyItemNames.map((n) => AutonomyItem(name: n)).toList()
-        : occ.humanHelp;
+    if (index < occ.autonomy.length && occ.autonomy[index].checked) {
+      return _AutonomyItemState.autonomous;
+    }
+    if (index < occ.attention.length && occ.attention[index].checked) {
+      return _AutonomyItemState.attention;
+    }
+    if (index < occ.humanHelp.length && occ.humanHelp[index].checked) {
+      return _AutonomyItemState.humanHelp;
+    }
+    return _AutonomyItemState.none;
+  }
+
+  /// Pose un état pour l'item `index` en garantissant la mutex : les
+  /// deux autres listes sont forcées à `checked=false` à cet index.
+  /// Met aussi à jour `autonomyDone` automatiquement : true ssi tous
+  /// les items sont marqués `autonomous` (✓).
+  void _setAutonomyItemState(int index, _AutonomyItemState state) {
+    final occ = _active;
+    final auto = List<AutonomyItem>.from(occ.autonomy);
+    final help = List<AutonomyItem>.from(occ.humanHelp);
+    final att = List<AutonomyItem>.from(occ.attention);
+    if (index < auto.length) {
+      auto[index] = AutonomyItem(
+        name: auto[index].name,
+        checked: state == _AutonomyItemState.autonomous,
+      );
+    }
+    if (index < att.length) {
+      att[index] = AutonomyItem(
+        name: att[index].name,
+        checked: state == _AutonomyItemState.attention,
+      );
+    }
+    if (index < help.length) {
+      help[index] = AutonomyItem(
+        name: help[index].name,
+        checked: state == _AutonomyItemState.humanHelp,
+      );
+    }
+    // Autonomy "done" dérivé : vrai uniquement quand TOUS les items
+    // sont marqués `autonomous` (le texte "profil considéré comme
+    // autonome" apparaîtra dans le résumé en bas de section).
+    final allAutonomous =
+        auto.length == kAutonomyItemNames.length && auto.every((i) => i.checked);
     _updateActive(OccupantAutonomy(
       medical: occ.medical,
-      autonomyDone: nextDone,
-      autonomy: autonomyItems,
-      humanHelp: humanHelpItems,
+      autonomyDone: allAutonomous,
+      autonomy: auto,
+      humanHelp: help,
+      attention: att,
     ));
   }
 
   void _toggleAutonomyItem(int index) {
-    final occ = _active;
-    final items = List<AutonomyItem>.from(occ.autonomy);
-    final current = items[index];
-    final nextChecked = !current.checked;
-    items[index] = AutonomyItem(name: current.name, checked: nextChecked);
+    final current = _itemState(index);
+    _setAutonomyItemState(
+      index,
+      current == _AutonomyItemState.autonomous
+          ? _AutonomyItemState.none
+          : _AutonomyItemState.autonomous,
+    );
+  }
 
-    // If marking as "non concerné" (checked=true), clear paired humanHelp
-    final humanHelp = List<AutonomyItem>.from(occ.humanHelp);
-    if (nextChecked && index < humanHelp.length) {
-      humanHelp[index] =
-          AutonomyItem(name: humanHelp[index].name, checked: false);
-    }
-
-    // If every item is checked, auto-set autonomyDone
-    final allChecked = items.every((i) => i.checked);
-
-    _updateActive(OccupantAutonomy(
-      medical: occ.medical,
-      autonomyDone: allChecked ? true : occ.autonomyDone,
-      autonomy: items,
-      humanHelp: humanHelp,
-    ));
+  void _toggleAttentionItem(int index) {
+    final current = _itemState(index);
+    _setAutonomyItemState(
+      index,
+      current == _AutonomyItemState.attention
+          ? _AutonomyItemState.none
+          : _AutonomyItemState.attention,
+    );
   }
 
   void _toggleHumanHelpItem(int index) {
-    final occ = _active;
-    if (index >= occ.humanHelp.length) return;
-    final items = List<AutonomyItem>.from(occ.humanHelp);
-    final current = items[index];
-    items[index] = AutonomyItem(name: current.name, checked: !current.checked);
-    _updateActive(OccupantAutonomy(
-      medical: occ.medical,
-      autonomyDone: occ.autonomyDone,
-      autonomy: occ.autonomy,
-      humanHelp: items,
-    ));
+    final current = _itemState(index);
+    _setAutonomyItemState(
+      index,
+      current == _AutonomyItemState.humanHelp
+          ? _AutonomyItemState.none
+          : _AutonomyItemState.humanHelp,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -434,12 +473,15 @@ class _ContextTabState extends State<ContextTab>
     // pour parité visuelle avec les sous-sections de Bénéficiaire.
     const activeColor = Color(0xFF7C6DAA);
     const inactiveColor = Color(0xFFAE9DB3);
-    return GestureDetector(
-      // HitTestBehavior.opaque → toute la zone de l'Expanded (fond
-      // violet compris) reçoit les taps, pas seulement l'icône/label.
-      behavior: HitTestBehavior.opaque,
+    // SoftTapScale → zoom/dezoom à l'appui, même effet que les boutons
+    // de la sidebar et des tabs du relevé de visite.
+    return SoftTapScale(
       onTap: () => setState(() => _subSection = index),
       child: Container(
+        // Fond transparent garanti sur toute la largeur de l'Expanded
+        // pour que la zone de tap reste identique au GestureDetector
+        // précédent (HitTestBehavior.opaque).
+        color: Colors.transparent,
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -579,91 +621,69 @@ class _ContextTabState extends State<ContextTab>
 
   Widget _buildAutonomy() {
     final occ = _active;
-    final locked = occ.autonomyDone;
-    final homeHelpEnabled = _occupantHomeHelpEnabled(_safeIndex) && !locked;
+    final homeHelpEnabled = _occupantHomeHelpEnabled(_safeIndex);
+    // Statuts dérivés :
+    //   • tous les items ont une coche (quelle qu'elle soit) → diagnostic complet
+    //   • tous les items sont spécifiquement en "autonomous" (✓) → profil autonome
+    final total = kAutonomyItemNames.length;
+    var allFilled = occ.autonomy.length == total;
+    var allAutonomous = allFilled;
+    for (var i = 0; i < total; i++) {
+      final state = _itemState(i);
+      if (state == _AutonomyItemState.none) {
+        allFilled = false;
+        allAutonomous = false;
+        break;
+      }
+      if (state != _AutonomyItemState.autonomous) {
+        allAutonomous = false;
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Ligne 1 : bouton valider + titre AUTONOMIE.
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GestureDetector(
-              onTap: _toggleAutonomyDone,
-              child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: locked ? const Color(0xFF7C6DAA) : Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.check,
-                  size: 14,
-                  color: locked
-                      ? Colors.white
-                      : const Color(0xFF7C6DAA).withValues(alpha: 0.55),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'AUTONOMIE',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF597E8D),
-                letterSpacing: 1,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // Ligne 2 : pills occupants (toujours côte à côte) + badge "Aide
-        // humaine" optionnel à droite. Même quand il n'y a pas de badge, les
-        // pills restent sur cette ligne.
+        // Pills occupants + badge "Aide humaine" optionnel à droite.
         if (_occupantLabels.length > 1 || homeHelpEnabled)
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-                if (_occupantLabels.length > 1)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(_occupantLabels.length, (i) {
-                      final active = i == _safeIndex;
-                      return Padding(
-                        padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
-                        child: GestureDetector(
-                          onTap: () =>
-                              setState(() => _activeOccupantIndex = i),
-                          child: Container(
-                            constraints: const BoxConstraints(minWidth: 64),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 5),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
+              if (_occupantLabels.length > 1)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(_occupantLabels.length, (i) {
+                    final active = i == _safeIndex;
+                    return Padding(
+                      padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
+                      child: GestureDetector(
+                        onTap: () =>
+                            setState(() => _activeOccupantIndex = i),
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 64),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: active
+                                ? const Color(0xFFEDE8F5)
+                                : const Color(0xFFF7F7FA),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            _occupantLabels[i],
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                               color: active
-                                  ? const Color(0xFFEDE8F5)
-                                  : const Color(0xFFF7F7FA),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              _occupantLabels[i],
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: active
-                                    ? const Color(0xFF554A63)
-                                    : const Color(0xFF94A3B8),
-                              ),
+                                  ? const Color(0xFF554A63)
+                                  : const Color(0xFF94A3B8),
                             ),
                           ),
                         ),
-                      );
-                    }),
-                  ),
+                      ),
+                    );
+                  }),
+                ),
               if (homeHelpEnabled) ...[
                 if (_occupantLabels.length > 1) const SizedBox(width: 8),
                 Container(
@@ -687,48 +707,50 @@ class _ContextTabState extends State<ContextTab>
             ],
           ),
         const SizedBox(height: 12),
-        Opacity(
-          opacity: locked ? 0.55 : 1.0,
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7FA),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: List.generate(occ.autonomy.length, (i) {
-                final item = occ.autonomy[i];
-                final helpItem =
-                    i < occ.humanHelp.length ? occ.humanHelp[i] : null;
-                final helpIsChecked = helpItem?.checked ?? false;
-                return _NumberedCheckRow(
-                  index: i + 1,
-                  label: item.name,
-                  concernChecked: item.checked,
-                  onConcernToggle: (locked || helpIsChecked)
-                      ? null
-                      : () => _toggleAutonomyItem(i),
-                  helpChecked: !item.checked && helpIsChecked,
-                  helpEnabled: homeHelpEnabled && !item.checked,
-                  onHelpToggle: () => _toggleHumanHelpItem(i),
-                );
-              }),
-            ),
+        // Liste des 11 items avec 2 ou 3 boutons par ligne (✓ / ! / 👥).
+        // Un seul état possible par ligne (mutex). Quand 👥 (aide humaine)
+        // est coché pour une ligne, les boutons ✓ et ! sont désactivés.
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F7FA),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: List.generate(occ.autonomy.length, (i) {
+              final state = _itemState(i);
+              return _NumberedCheckRow(
+                index: i + 1,
+                label: occ.autonomy[i].name,
+                state: state,
+                showHumanHelp: homeHelpEnabled,
+                onToggleAutonomous: () => _toggleAutonomyItem(i),
+                onToggleAttention: () => _toggleAttentionItem(i),
+                onToggleHumanHelp: () => _toggleHumanHelpItem(i),
+              );
+            }),
           ),
         ),
-        if (locked) ...[
+        // Texte de synthèse : "diagnostic complet" dès que chaque ligne
+        // a reçu une coche ; devient "profil considéré comme autonome"
+        // quand TOUTES les coches sont du type ✓.
+        if (allFilled) ...[
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFF7C6DAA).withValues(alpha: 0.10),
+              color: allAutonomous
+                  ? const Color(0xFF7C6DAA).withValues(alpha: 0.10)
+                  : const Color(0xFFEDE8F5),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Text(
-              'La personne est considérée autonome sur l’ensemble de cette section.',
+            child: Text(
+              allAutonomous
+                  ? 'Profil considéré comme autonome !'
+                  : 'Diagnostic complet !',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: Color(0xFF554A63),
@@ -740,6 +762,9 @@ class _ContextTabState extends State<ContextTab>
     );
   }
 }
+
+// États mutuellement exclusifs possibles pour une ligne d'autonomie.
+enum _AutonomyItemState { none, autonomous, attention, humanHelp }
 
 // =============================================================================
 // Sub-widgets
@@ -840,150 +865,182 @@ class _MedicalFlagRow extends StatelessWidget {
   }
 }
 
+/// Ligne d'autonomie — numéro + libellé + 2 ou 3 boutons d'action
+/// mutuellement exclusifs (✓ autonome, ! à revoir, 👥 aide humaine).
+///
+/// Règles :
+///   • Un seul bouton peut être coché par ligne (mutex).
+///   • Le bouton 👥 n'apparaît que si `showHumanHelp=true` (lié à
+///     "Aide à domicile" dans Bénéficiaire > Santé).
+///   • Quand l'état est `humanHelp`, les boutons ✓ et ! sont affichés
+///     désactivés (non cliquables).
 class _NumberedCheckRow extends StatelessWidget {
   final int index;
   final String label;
-  final bool concernChecked;
-  final VoidCallback? onConcernToggle;
-  final bool helpChecked;
-  final bool helpEnabled;
-  final VoidCallback onHelpToggle;
+  final _AutonomyItemState state;
+  final bool showHumanHelp;
+  final VoidCallback onToggleAutonomous;
+  final VoidCallback onToggleAttention;
+  final VoidCallback onToggleHumanHelp;
 
   const _NumberedCheckRow({
     required this.index,
     required this.label,
-    required this.concernChecked,
-    required this.onConcernToggle,
-    required this.helpChecked,
-    required this.helpEnabled,
-    required this.onHelpToggle,
+    required this.state,
+    required this.showHumanHelp,
+    required this.onToggleAutonomous,
+    required this.onToggleAttention,
+    required this.onToggleHumanHelp,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Coche "concerné/fait" — visuel conservé, toute la zone de la
-    // ligne (coche + numéro + libellé) est cliquable pour faciliter
-    // le toucher sur tablette.
-    final concernCheckbox = Builder(builder: (_) {
-      final disabled = onConcernToggle == null;
-      Color fillColor;
-      Color borderColor;
-      if (disabled && !concernChecked) {
-        fillColor = const Color(0xFFF1F5F9);
-        borderColor = const Color(0xFFE2E8F0);
-      } else if (concernChecked) {
-        fillColor = const Color(0xFF94A3B8);
-        borderColor = const Color(0xFF94A3B8);
-      } else {
-        fillColor = Colors.white;
-        borderColor = const Color(0xFF7C6DAA);
-      }
-      return Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          color: fillColor,
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: borderColor, width: 1.5),
-        ),
-        alignment: Alignment.center,
-        child: Icon(
-          Icons.check,
-          size: 12,
-          color: concernChecked ? Colors.white : Colors.transparent,
-        ),
-      );
-    });
-
-    final rowContent = Row(
-      children: [
-        concernCheckbox,
-        const SizedBox(width: 10),
-        Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            color: concernChecked
-                ? Colors.white
-                : const Color(0xFFE9DFF0),
-            shape: BoxShape.circle,
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            index.toString().padLeft(2, '0'),
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF554A63),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: concernChecked
-                  ? const Color(0xFF94A3B8)
-                  : const Color(0xFF334155),
-              decoration:
-                  concernChecked ? TextDecoration.lineThrough : null,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
-    );
+    final isAutonomous = state == _AutonomyItemState.autonomous;
+    final isAttention = state == _AutonomyItemState.attention;
+    final isHumanHelp = state == _AutonomyItemState.humanHelp;
+    final lockedByHumanHelp = isHumanHelp;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
       child: Row(
         children: [
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onConcernToggle,
-              child: rowContent,
+          // Numéro dans un cercle lilas.
+          Container(
+            width: 28,
+            height: 28,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEDE8F5),
+              shape: BoxShape.circle,
             ),
-          ),
-          if (helpEnabled)
-            GestureDetector(
-              onTap: onHelpToggle,
-              behavior: HitTestBehavior.opaque,
-              // Zone de toucher agrandie (20px réels autour de la
-              // coche) pour faciliter le clic sur tablette, sans
-              // grossir la coche elle-même.
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10),
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: helpChecked
-                        ? const Color(0xFFFEF3C7)
-                        : const Color(0xFFFFFBEB),
-                    borderRadius: BorderRadius.circular(5),
-                    border: Border.all(
-                      color: helpChecked
-                          ? const Color(0xFFF59E0B)
-                          : const Color(0xFFFCD34D),
-                      width: 1.5,
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.check,
-                    size: 12,
-                    color: helpChecked
-                        ? const Color(0xFFB45309)
-                        : Colors.transparent,
-                  ),
-                ),
+            alignment: Alignment.center,
+            child: Text(
+              index.toString(),
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF554A63),
               ),
             ),
+          ),
+          const SizedBox(width: 12),
+          // Libellé de l'item (prend l'espace restant).
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF334155),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          // Bouton ✓ "autonome".
+          _ActionButton(
+            kind: _ActionButtonKind.autonomous,
+            active: isAutonomous,
+            disabled: lockedByHumanHelp,
+            onTap: onToggleAutonomous,
+          ),
+          const SizedBox(width: 6),
+          // Bouton ! "à revoir".
+          _ActionButton(
+            kind: _ActionButtonKind.attention,
+            active: isAttention,
+            disabled: lockedByHumanHelp,
+            onTap: onToggleAttention,
+          ),
+          // Bouton 👥 "aide humaine" — visible uniquement quand "Aide
+          // à domicile" est activée pour cet occupant.
+          if (showHumanHelp) ...[
+            const SizedBox(width: 6),
+            _ActionButton(
+              kind: _ActionButtonKind.humanHelp,
+              active: isHumanHelp,
+              disabled: false,
+              onTap: onToggleHumanHelp,
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+enum _ActionButtonKind { autonomous, attention, humanHelp }
+
+class _ActionButton extends StatelessWidget {
+  final _ActionButtonKind kind;
+  final bool active;
+  final bool disabled;
+  final VoidCallback onTap;
+
+  const _ActionButton({
+    required this.kind,
+    required this.active,
+    required this.disabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Palette par type :
+    //   • autonomous (✓) : violet foncé #7C6DAA
+    //   • attention (!)  : pêche #F5D6B8 / #C2410C
+    //   • humanHelp (👥) : ambre #F59E0B
+    Color activeFill;
+    Color activeBorder;
+    Color activeIcon;
+    Color inactiveBorder;
+    Color inactiveIcon;
+    IconData icon;
+    switch (kind) {
+      case _ActionButtonKind.autonomous:
+        activeFill = const Color(0xFF7C6DAA);
+        activeBorder = const Color(0xFF7C6DAA);
+        activeIcon = Colors.white;
+        inactiveBorder = const Color(0xFFD8CFE0);
+        inactiveIcon = const Color(0xFF7C6DAA);
+        icon = Icons.check;
+        break;
+      case _ActionButtonKind.attention:
+        activeFill = const Color(0xFFF5D6B8);
+        activeBorder = const Color(0xFFF5D6B8);
+        activeIcon = const Color(0xFFC2410C);
+        inactiveBorder = const Color(0xFFD8CFE0);
+        inactiveIcon = const Color(0xFFC2410C);
+        icon = Icons.priority_high;
+        break;
+      case _ActionButtonKind.humanHelp:
+        activeFill = const Color(0xFFFEF3C7);
+        activeBorder = const Color(0xFFF59E0B);
+        activeIcon = const Color(0xFFB45309);
+        inactiveBorder = const Color(0xFFFCD34D);
+        inactiveIcon = const Color(0xFFB45309);
+        icon = Icons.accessibility_new;
+        break;
+    }
+
+    final bg = active ? activeFill : Colors.white;
+    final border = active ? activeBorder : inactiveBorder;
+    final iconColor = active ? activeIcon : inactiveIcon;
+    final opacity = disabled ? 0.35 : 1.0;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: disabled ? null : onTap,
+      child: Opacity(
+        opacity: opacity,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: border, width: 1.5),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 16, color: iconColor),
+        ),
       ),
     );
   }

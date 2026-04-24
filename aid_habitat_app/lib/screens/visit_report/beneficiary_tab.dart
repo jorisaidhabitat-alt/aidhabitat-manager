@@ -462,13 +462,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           const activeColor = Color(0xFF7C6DAA);
           const inactiveColor = Color(0xFFAE9DB3);
           return Expanded(
-            child: GestureDetector(
-              // HitTestBehavior.opaque → toute la zone de l'Expanded
-              // (fond violet compris) reçoit les taps, pas seulement
-              // l'icône et le label visibles.
-              behavior: HitTestBehavior.opaque,
+            child: SoftTapScale(
+              // Zoom/dezoom au tap — mêmes sensations que les boutons
+              // de la sidebar.
               onTap: () => _setSubSection(i),
               child: Container(
+                color: Colors.transparent,
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,

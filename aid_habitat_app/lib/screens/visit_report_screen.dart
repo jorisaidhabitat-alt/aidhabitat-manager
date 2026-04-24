@@ -545,35 +545,41 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         tabs: List.generate(_tabs.length, (i) {
           final label = _tabs[i];
           return Tab(
-            child: AnimatedBuilder(
-              animation: _tabController,
-              builder: (context, _) {
-                final isActive = _tabController.index == i;
-                // Underline strictly smaller than the text and centered
-                // (CrossAxisAlignment.center — défaut). Ratio ~50 % de
-                // la largeur estimée du texte (au lieu de ~100 %).
-                final underlineWidth =
-                    (label.length * 3.2).clamp(18.0, 60.0);
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(label),
-                    const SizedBox(height: 3),
-                    Container(
-                      height: 1.5,
-                      width: underlineWidth,
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? const Color(0xFF7C6DAA) // violet foncé
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(999),
+            // `SoftTapScale.passThrough` observe le pointer event sans
+            // réclamer le tap → le TabBar reste fonctionnel et on ajoute
+            // l'effet zoom/dezoom au-dessus, comme demandé (mêmes
+            // sensations que les boutons de la sidebar).
+            child: SoftTapScale.passThrough(
+              child: AnimatedBuilder(
+                animation: _tabController,
+                builder: (context, _) {
+                  final isActive = _tabController.index == i;
+                  // Underline strictly smaller than the text and centered
+                  // (CrossAxisAlignment.center — défaut). Ratio ~50 % de
+                  // la largeur estimée du texte (au lieu de ~100 %).
+                  final underlineWidth =
+                      (label.length * 3.2).clamp(18.0, 60.0);
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(label),
+                      const SizedBox(height: 3),
+                      Container(
+                        height: 1.5,
+                        width: underlineWidth,
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? const Color(0xFF7C6DAA) // violet foncé
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
           );
         }),
