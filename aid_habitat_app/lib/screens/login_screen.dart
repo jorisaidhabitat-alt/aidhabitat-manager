@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
 import '../services/auth_service.dart';
+import '../services/data_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.onLoggedIn});
@@ -80,7 +81,20 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    widget.onLoggedIn(result.user!);
+    // Après signIn (session remote établie), rafraîchit depuis NocoDB
+    // la liste des users + leurs métadonnées (notamment profilePhotoUrl
+    // du membre ergothérapeute) — la photo s'affiche ensuite directement
+    // dans la sidebar sans attendre un redémarrage de l'app.
+    // Best-effort : si le réseau est indisponible, on garde la valeur
+    // SQLite locale et on ignore silencieusement l'erreur.
+    try {
+      await DataService().refreshLocalAuthStateFromRemote();
+    } catch (_) {
+      // offline — pas bloquant.
+    }
+    final refreshed = await _authService.getCurrentUser();
+    if (!mounted) return;
+    widget.onLoggedIn(refreshed ?? result.user!);
   }
 
   @override
