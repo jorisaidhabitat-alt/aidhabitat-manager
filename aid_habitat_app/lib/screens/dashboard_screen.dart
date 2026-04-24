@@ -501,15 +501,18 @@ class _NextVisitBanner extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(16),
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF6EDFB),
+                shape: BoxShape.circle,
               ),
-              child: const Icon(
-                LucideIcons.car,
-                color: Color(0xFF94A3B8),
-                size: 26,
+              child: const Center(
+                child: Icon(
+                  LucideIcons.car,
+                  color: Color(0xFF907CA1),
+                  size: 26,
+                ),
               ),
             ),
             const SizedBox(width: 16),
@@ -573,9 +576,9 @@ class _NextVisitBanner extends StatelessWidget {
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF6EDFB),
-              borderRadius: BorderRadius.circular(20),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF6EDFB),
+              shape: BoxShape.circle,
             ),
             child: const Center(
               child: Icon(

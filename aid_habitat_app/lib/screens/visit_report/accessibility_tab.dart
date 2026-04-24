@@ -372,21 +372,24 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     super.build(context);
     if (!_loaded) return const Center(child: CircularProgressIndicator());
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Align(
-            alignment: Alignment.topRight,
-            child: SaveStatusIndicator(saving: _saving),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Bandeau sous-menu full-width en haut de la card — parité
+        // avec l'onglet Bénéficiaire.
+        _buildQuickNav(),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_subSection == 0) _buildGeneral() else _buildExterior(),
+              ],
+            ),
           ),
-          const SizedBox(height: 4),
-          _buildQuickNav(),
-          const SizedBox(height: 16),
-          if (_subSection == 0) _buildGeneral() else _buildExterior(),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -400,42 +403,43 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       _QuickNavItem(icon: Icons.place_outlined, label: 'Extérieur'),
     ];
     return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF6EDFB),
-        borderRadius: BorderRadius.circular(22),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      color: const Color(0xFFF6EDFB),
       child: Row(
-        children: List.generate(items.length, (i) {
-          final active = i == _subSection;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _subSection = i),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
-                child: Column(
-                  children: [
-                    Icon(items[i].icon,
-                        size: 20,
-                        color: active
-                            ? Colors.black
-                            : const Color(0xFFAE9DB3)),
-                    const SizedBox(height: 2),
-                    Text(items[i].label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
+        children: [
+          ...List.generate(items.length, (i) {
+            final active = i == _subSection;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _subSection = i),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
+                  child: Column(
+                    children: [
+                      Icon(items[i].icon,
+                          size: 20,
                           color: active
                               ? Colors.black
-                              : const Color(0xFFAE9DB3),
-                        )),
-                  ],
+                              : const Color(0xFFAE9DB3)),
+                      const SizedBox(height: 2),
+                      Text(items[i].label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: active
+                                ? Colors.black
+                                : const Color(0xFFAE9DB3),
+                          )),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+          const SizedBox(width: 8),
+          SaveStatusIndicator(saving: _saving),
+        ],
       ),
     );
   }

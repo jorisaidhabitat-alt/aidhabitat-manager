@@ -382,31 +382,31 @@ class _ContextTabState extends State<ContextTab>
       return const Center(child: CircularProgressIndicator());
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Align(
-            alignment: Alignment.topRight,
-            child: SaveStatusIndicator(saving: _saving),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Bandeau sous-menu full-width en haut de la card — parité
+        // avec l'onglet Bénéficiaire.
+        _buildQuickNav(),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_subSection == 0) _buildMedical() else _buildAutonomy(),
+              ],
+            ),
           ),
-          const SizedBox(height: 4),
-          _buildQuickNav(),
-          const SizedBox(height: 16),
-          if (_subSection == 0) _buildMedical() else _buildAutonomy(),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildQuickNav() {
     return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF6EDFB),
-        borderRadius: BorderRadius.circular(22),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      color: const Color(0xFFF6EDFB),
       child: Row(
         children: [
           Expanded(
@@ -414,6 +414,8 @@ class _ContextTabState extends State<ContextTab>
           ),
           const SizedBox(width: 4),
           Expanded(child: _buildNavBtn(LucideIcons.user, 'Autonomie', 1)),
+          const SizedBox(width: 8),
+          SaveStatusIndicator(saving: _saving),
         ],
       ),
     );
