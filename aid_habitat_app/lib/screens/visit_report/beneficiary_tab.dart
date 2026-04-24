@@ -428,17 +428,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         // au bord supérieur de la card — même traitement que le bandeau
         // "Bénéficiaire" de l'écran dossier.
         _buildQuickNav(),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildActiveSection(),
-              ],
-            ),
-          ),
-        ),
+        // La sous-section active gère elle-même son scroll interne +
+        // épingle ses points de pagination en bas du cadre. On lui
+        // donne directement l'espace restant via Expanded.
+        Expanded(child: _buildActiveSection()),
       ],
     );
   }
@@ -525,19 +518,14 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   Widget _buildBirthDateRow(int index) {
     final occ = _occupants[index];
-    final firstName = occ.firstName.trim().split(' ').first;
-    final hasMultiple = _occupants.length > 1;
-    final label = hasMultiple
-        ? (firstName.isNotEmpty
-            ? 'Date de naissance de $firstName'
-            : "Date de naissance de l'occupant ${index + 1}")
-        : 'Date de naissance';
+    // Plus de "de <Prénom>" dans le label — l'occupant courant est déjà
+    // identifié par le header du cadre quand on swipe entre occupants.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
+        const Text(
+          'Date de naissance',
+          style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
             color: Color(0xFF64748B),
@@ -650,49 +638,63 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final hasMultiple = _occupants.length > 1;
     if (!hasMultiple) {
       // Pas de navigation nécessaire — on rend simplement le contenu
-      // comme avant (pas de header, pas de dots, pas de swipe).
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          perOccupantContent,
-          const SizedBox(height: 24),
-          sharedContent,
-        ],
+      // scrollable comme avant (pas de header, pas de dots, pas de swipe).
+      return SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            perOccupantContent,
+            const SizedBox(height: 24),
+            sharedContent,
+          ],
+        ),
       );
     }
     final idx = _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    // Column principal :
+    //   - header + contenu scrollable (Expanded)
+    //   - dots pinnés tout en bas du cadre (hors scroll)
+    // Le GestureDetector englobe tout : swipe horizontal n'importe où
+    // dans la zone (y compris sur les dots ou le header).
     return GestureDetector(
-      // HitTestBehavior.opaque → le swipe fonctionne même sur les zones
-      // transparentes du Column (entre les champs).
       behavior: HitTestBehavior.opaque,
       onHorizontalDragEnd: (details) {
         final velocity = details.primaryVelocity ?? 0;
-        // Seuil faible (200 px/s) : le geste doit être nettement
-        // horizontal pour éviter les déclenchements accidentels.
         if (velocity.abs() < 200) return;
         setState(() {
           if (velocity < 0) {
-            // Glissement vers la GAUCHE → occupant suivant.
-            _currentOccupantIndex =
-                (idx + 1) % _occupants.length;
+            _currentOccupantIndex = (idx + 1) % _occupants.length;
           } else {
-            // Glissement vers la DROITE → occupant précédent.
             _currentOccupantIndex =
                 (idx - 1 + _occupants.length) % _occupants.length;
           }
         });
       },
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildOccupantHeader(idx),
-          const SizedBox(height: 12),
-          perOccupantContent,
-          const SizedBox(height: 24),
-          sharedContent,
-          const SizedBox(height: 8),
-          Center(child: _buildOccupantDots(idx)),
-          const SizedBox(height: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildOccupantHeader(idx),
+                  const SizedBox(height: 12),
+                  perOccupantContent,
+                  const SizedBox(height: 24),
+                  sharedContent,
+                ],
+              ),
+            ),
+          ),
+          // Dots pinnés au bas du cadre — toujours visibles quel que
+          // soit l'état du scroll interne (demande utilisateur).
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14, top: 6),
+            child: Center(child: _buildOccupantDots(idx)),
+          ),
         ],
       ),
     );
@@ -754,36 +756,38 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildFinanceSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // --- Bloc "Foyer" (titre retiré) --------------------------------
-        // Boutons toujours visibles — pas de bascule en menu déroulant
-        // après sélection (l'ergo doit voir les autres choix pour
-        // changer rapidement son avis).
-        FormToggleGroup(
-          label: 'Situation familiale',
-          options: _familySituationOptions,
-          selected: _familySituation,
-          columns: 2,
-          onChanged: (v) {
-            _familySituation = v;
-            _markChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        FormToggleGroup(
-          label: 'Occupation',
-          options: _occupationOptions,
-          selected: _occupationStatus,
-          columns: 1,
-          onChanged: (v) {
-            _occupationStatus = v;
-            _markChanged();
-          },
-        ),
-        const SizedBox(height: 24),
-      ],
+    // Foyer n'a aucune donnée "par occupant" (situation familiale et
+    // occupation sont partagées pour le ménage). On conserve donc un
+    // simple SingleChildScrollView sans header / swipe / dots.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FormToggleGroup(
+            label: 'Situation familiale',
+            options: _familySituationOptions,
+            selected: _familySituation,
+            columns: 2,
+            onChanged: (v) {
+              _familySituation = v;
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 14),
+          FormToggleGroup(
+            label: 'Occupation',
+            options: _occupationOptions,
+            selected: _occupationStatus,
+            columns: 1,
+            onChanged: (v) {
+              _occupationStatus = v;
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
     );
   }
 
@@ -913,11 +917,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// du label ("Dépendance de Sophie (Canne)"). Toucher la zone label
   /// en état replié rouvre la liste pour modifier. Sélectionner
   /// "Aucune" remet à l'état buttons vide.
-  Widget _buildDependenceSelector(int index, String suffix) {
+  Widget _buildDependenceSelector(int index) {
     final occ = _occupants[index];
     final value = occ.dependenceTxt.trim();
+    // Plus de "de <Prénom>" dans le label — l'occupant courant est déjà
+    // identifié par l'en-tête du cadre et la navigation par swipe.
     return FormToggleGroup(
-      label: 'Dépendance$suffix',
+      label: 'Dépendance',
       options: _dependenceOptions,
       columns: 2,
       selected: value.isEmpty ? 'Aucune' : value,
@@ -932,17 +938,15 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   Widget _buildAidesDependenceBlock(int index) {
     final occ = _occupants[index];
-    final firstName = occ.firstName.trim().split(' ').first;
-    final hasMultiple = _occupants.length > 1;
-    final suffix = hasMultiple
-        ? (firstName.isNotEmpty ? ' de $firstName' : " de l'occupant ${index + 1}")
-        : '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Situation$suffix',
-          style: const TextStyle(
+        // Titre "Situation" sans suffixe "de <Prénom>" — redondant depuis
+        // l'introduction du swipe par occupant (header du cadre identifie
+        // déjà l'occupant courant).
+        const Text(
+          'Situation',
+          style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
             color: Color(0xFF64748B),
@@ -1002,7 +1006,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           ),
         ),
         const SizedBox(height: 10),
-        _buildDependenceSelector(index, suffix),
+        _buildDependenceSelector(index),
       ],
     );
   }
@@ -1013,25 +1017,22 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   Widget _buildAdminPersonalBlock(int index) {
     final occ = _occupants[index];
-    final firstName = occ.firstName.trim().split(' ').first;
-    final hasMultiple = _occupants.length > 1;
-    final suffix = hasMultiple
-        ? (firstName.isNotEmpty ? ' de $firstName' : " de l'occupant ${index + 1}")
-        : '';
+    // Plus de suffixe "de <Prénom>" — l'occupant courant est identifié
+    // par le header du cadre (swipe par occupant).
     final caissePrinc = occ.caisseRetraitePrincipale.trim();
     final caisseCompl = occ.caissesRetraiteComplementaires.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FormTextField(
-          label: 'N° Sécu$suffix',
+          label: 'N° Sécu',
           value: occ.numeroSecuriteSociale,
           onChanged: (v) => _updateOccupant(
               index, occ.copyWith(numeroSecuriteSociale: v)),
         ),
         const SizedBox(height: 14),
         FormSelectDropdown<String>(
-          label: 'Caisse princ.$suffix',
+          label: 'Caisse princ.',
           value: _principalFundNames.contains(caissePrinc)
               ? caissePrinc
               : null,
@@ -1049,7 +1050,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         ),
         const SizedBox(height: 14),
         FormSelectDropdown<String>(
-          label: 'Caisse complém.$suffix',
+          label: 'Caisse complém.',
           value: _retirementFundNames.contains(caisseCompl)
               ? caisseCompl
               : null,

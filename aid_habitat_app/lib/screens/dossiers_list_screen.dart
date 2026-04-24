@@ -265,7 +265,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     ),
                     const SizedBox(height: 2),
                     const Text(
-                      'Dossiers bénéficiaires',
+                      'Mes dossiers',
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
