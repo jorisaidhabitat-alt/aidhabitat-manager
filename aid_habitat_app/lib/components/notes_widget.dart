@@ -1449,6 +1449,14 @@ class _NotesWidgetState extends State<NotesWidget> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _kStackedBorder, width: 1),
       ),
+      // Clip.antiAlias sur le conteneur externe → le contenu (fond du
+      // canvas, strokes, overlays) est rogné au rayon 16 px pour que
+      // les coins arrondis soient aussi visibles que ceux de la carte
+      // texte (demande utilisateur : radius identiques entre les deux
+      // cartes). Remarque : la petite ombre de la toolbar flottante
+      // dépasse légèrement en bas et sera clippée — compromis
+      // acceptable pour garder un visuel cohérent.
+      clipBehavior: Clip.antiAlias,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
