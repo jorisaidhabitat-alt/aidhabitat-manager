@@ -60,6 +60,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     setState(() => _subSectionIndex = i);
     widget.onSubSectionChanged?.call(i);
   }
+
+  /// Index de l'occupant actuellement visible dans les sous-sections
+  /// "par occupant" (Profil / Santé / Admin). Partagé entre ces sections
+  /// pour que l'ergo reste sur le même occupant en changeant de section.
+  /// Mis à jour par un swipe horizontal sur le panneau ou en interne
+  /// quand la composition du foyer change.
+  int _currentOccupantIndex = 0;
   bool _saving = false;
   Timer? _saveTimer;
 
@@ -578,43 +585,167 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   Widget _buildProfilSection() {
     final phoneInvalid = !isValidFrenchPhone(_phone);
     final emailInvalid = !isValidEmail(_email);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // --- Bloc "Identité" : un champ Date de naissance par occupant,
-        // empilés verticalement avec un label personnalisé au-dessus.
-        for (int i = 0; i < _occupants.length; i++) ...[
-          if (i > 0) const SizedBox(height: 14),
-          _buildBirthDateRow(i),
+    final idx =
+        _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    return _buildOccupantSwipeContainer(
+      perOccupantContent: _buildBirthDateRow(idx),
+      sharedContent: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // --- Bloc "Coordonnées" — partagé pour tout le foyer (téléphone
+          // et email ne changent pas d'un occupant à l'autre).
+          FormTextFieldWithWarning(
+            label: 'Téléphone',
+            value: _phone,
+            keyboardType: TextInputType.phone,
+            showWarning: phoneInvalid,
+            warningText: 'Numéro français invalide',
+            onChanged: (v) {
+              _phone = v;
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 14),
+          FormTextFieldWithWarning(
+            label: 'Email',
+            value: _email,
+            keyboardType: TextInputType.emailAddress,
+            showWarning: emailInvalid,
+            warningText: 'Adresse mail invalide',
+            onChanged: (v) {
+              _email = v;
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 24),
         ],
-        const SizedBox(height: 24),
+      ),
+    );
+  }
 
-        // --- Bloc "Coordonnées" (titre retiré à la demande du user) -----
-        FormTextFieldWithWarning(
-          label: 'Téléphone',
-          value: _phone,
-          keyboardType: TextInputType.phone,
-          showWarning: phoneInvalid,
-          warningText: 'Numéro français invalide',
-          onChanged: (v) {
-            _phone = v;
-            _markChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        FormTextFieldWithWarning(
-          label: 'Email',
-          value: _email,
-          keyboardType: TextInputType.emailAddress,
-          showWarning: emailInvalid,
-          warningText: 'Adresse mail invalide',
-          onChanged: (v) {
-            _email = v;
-            _markChanged();
-          },
-        ),
-        const SizedBox(height: 24),
-      ],
+  // ---------------------------------------------------------------------------
+  // Helpers "occupant swipe" — header + content + pagination dots, avec
+  // un GestureDetector horizontal englobant pour la navigation tactile.
+  // ---------------------------------------------------------------------------
+
+  /// Compose un bloc "par occupant" :
+  ///   [header avec prénom de l'occupant courant]
+  ///   [perOccupantContent]  ← ce qui dépend de l'occupant (date de
+  ///                           naissance, APA, invalidité, n° sécu…)
+  ///   [sharedContent]       ← ce qui est commun à tous (téléphone,
+  ///                           personne de confiance, compte Anah…)
+  ///   [pagination dots en bas]
+  ///
+  /// L'ensemble du bloc réagit au swipe horizontal (iPad) : un glissement
+  /// vers la gauche passe à l'occupant suivant, vers la droite au
+  /// précédent. Le header + la partie "per occupant" changent ;
+  /// `sharedContent` reste identique.
+  ///
+  /// Quand le foyer n'a qu'une personne, le header et les dots
+  /// disparaissent (pas de navigation nécessaire).
+  Widget _buildOccupantSwipeContainer({
+    required Widget perOccupantContent,
+    required Widget sharedContent,
+  }) {
+    final hasMultiple = _occupants.length > 1;
+    if (!hasMultiple) {
+      // Pas de navigation nécessaire — on rend simplement le contenu
+      // comme avant (pas de header, pas de dots, pas de swipe).
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          perOccupantContent,
+          const SizedBox(height: 24),
+          sharedContent,
+        ],
+      );
+    }
+    final idx = _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    return GestureDetector(
+      // HitTestBehavior.opaque → le swipe fonctionne même sur les zones
+      // transparentes du Column (entre les champs).
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        // Seuil faible (200 px/s) : le geste doit être nettement
+        // horizontal pour éviter les déclenchements accidentels.
+        if (velocity.abs() < 200) return;
+        setState(() {
+          if (velocity < 0) {
+            // Glissement vers la GAUCHE → occupant suivant.
+            _currentOccupantIndex =
+                (idx + 1) % _occupants.length;
+          } else {
+            // Glissement vers la DROITE → occupant précédent.
+            _currentOccupantIndex =
+                (idx - 1 + _occupants.length) % _occupants.length;
+          }
+        });
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildOccupantHeader(idx),
+          const SizedBox(height: 12),
+          perOccupantContent,
+          const SizedBox(height: 24),
+          sharedContent,
+          const SizedBox(height: 8),
+          Center(child: _buildOccupantDots(idx)),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  /// Header affichant le prénom + nom de l'occupant courant, en violet
+  /// foncé — change quand l'ergo swipe.
+  Widget _buildOccupantHeader(int idx) {
+    final occ = _occupants[idx];
+    final first = occ.firstName.trim();
+    final last = occ.lastName.trim();
+    final fallback = "Occupant ${idx + 1}";
+    final display = (first.isEmpty && last.isEmpty)
+        ? fallback
+        : [first, last.toUpperCase()].where((s) => s.isNotEmpty).join(' ');
+    return Text(
+      display,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF0F172A),
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+
+  /// Points de pagination en bas du cadre — un par occupant, le courant
+  /// est violet plein, les autres gris clair. Cliquables pour sauter
+  /// directement à un occupant sans passer par tous.
+  Widget _buildOccupantDots(int currentIdx) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(_occupants.length, (i) {
+        final isActive = i == currentIdx;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _currentOccupantIndex = i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: isActive ? 10 : 8,
+              height: isActive ? 10 : 8,
+              decoration: BoxDecoration(
+                color: isActive
+                    ? const Color(0xFF7C6DAA)
+                    : const Color(0xFFD8CFE0),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -705,28 +836,25 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildSanteSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // --- Blocs Aides + Dépendance empilés par occupant, labels
-        // personnalisés avec le prénom quand le foyer a 2+ personnes.
-        for (int i = 0; i < _occupants.length; i++) ...[
-          if (i > 0) const SizedBox(height: 24),
-          _buildAidesDependenceBlock(i),
+    final idx =
+        _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    return _buildOccupantSwipeContainer(
+      perOccupantContent: _buildAidesDependenceBlock(idx),
+      sharedContent: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // --- Bloc "Visite" — partagé (une seule fois par dossier).
+          FormTextField(
+            label: 'Personnes présentes à la visite',
+            value: _personnesPresentesVisite,
+            onChanged: (v) {
+              _personnesPresentesVisite = v;
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 24),
         ],
-        const SizedBox(height: 24),
-
-        // --- Bloc "Visite" (titre retiré) -------------------------------
-        FormTextField(
-          label: 'Personnes présentes à la visite',
-          value: _personnesPresentesVisite,
-          onChanged: (v) {
-            _personnesPresentesVisite = v;
-            _markChanged();
-          },
-        ),
-        const SizedBox(height: 24),
-      ],
+      ),
     );
   }
 
@@ -944,85 +1072,84 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   Widget _buildAdminSection() {
     final trustedPhoneInvalid = !isValidFrenchPhone(_trustedPhone);
     final trustedEmailInvalid = !isValidEmail(_trustedEmail);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // --- Bloc "Personnel" : un bloc par occupant, labels personnalisés
-        // avec le prénom quand le foyer a 2+ personnes.
-        for (int i = 0; i < _occupants.length; i++) ...[
-          if (i > 0) const SizedBox(height: 18),
-          _buildAdminPersonalBlock(i),
+    final idx =
+        _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    return _buildOccupantSwipeContainer(
+      perOccupantContent: _buildAdminPersonalBlock(idx),
+      sharedContent: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // --- Bloc "Personne de Confiance" — partagé (une personne de
+          // confiance pour le foyer, pas par occupant).
+          FormTextField(
+            label: 'Personne de confiance',
+            value: _trustedName,
+            onChanged: (v) {
+              _trustedName = v;
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: FormTextFieldWithWarning(
+                  label: 'Téléphone',
+                  value: _trustedPhone,
+                  keyboardType: TextInputType.phone,
+                  showWarning: trustedPhoneInvalid,
+                  warningText: 'Numéro français invalide',
+                  onChanged: (v) {
+                    _trustedPhone = v;
+                    _markChanged();
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FormTextFieldWithWarning(
+                  label: 'Email',
+                  value: _trustedEmail,
+                  keyboardType: TextInputType.emailAddress,
+                  showWarning: trustedEmailInvalid,
+                  warningText: 'Adresse mail invalide',
+                  onChanged: (v) {
+                    _trustedEmail = v;
+                    _markChanged();
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // --- Bloc "Renseignements sur la visite" — partagé.
+          FormToggleGroup(
+            label: 'Envoi du rapport',
+            options: const ['Mail', 'Courrier'],
+            selected: _envoiRapport,
+            columns: 2,
+            onChanged: (v) {
+              _envoiRapport = v;
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 24),
+
+          // --- Bloc "Informations Administratives" — partagé (compte
+          // Anah est un seul dossier au niveau ménage).
+          FormSelectDropdown<String>(
+            label: 'Création compte Anah',
+            value: _compteAnah.isEmpty ? null : _compteAnah,
+            options: _anahOptions,
+            onChanged: (v) {
+              _compteAnah = v ?? '';
+              _markChanged();
+            },
+          ),
         ],
-        const SizedBox(height: 24),
-
-        // --- Bloc "Personne de Confiance" (titre retiré) ----------------
-        FormTextField(
-          label: 'Personne de confiance',
-          value: _trustedName,
-          onChanged: (v) {
-            _trustedName = v;
-            _markChanged();
-          },
-        ),
-        const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: FormTextFieldWithWarning(
-                label: 'Téléphone',
-                value: _trustedPhone,
-                keyboardType: TextInputType.phone,
-                showWarning: trustedPhoneInvalid,
-                warningText: 'Numéro français invalide',
-                onChanged: (v) {
-                  _trustedPhone = v;
-                  _markChanged();
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FormTextFieldWithWarning(
-                label: 'Email',
-                value: _trustedEmail,
-                keyboardType: TextInputType.emailAddress,
-                showWarning: trustedEmailInvalid,
-                warningText: 'Adresse mail invalide',
-                onChanged: (v) {
-                  _trustedEmail = v;
-                  _markChanged();
-                },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-
-        // --- Bloc "Renseignements sur la visite" (titre retiré) ---------
-        FormToggleGroup(
-          label: 'Envoi du rapport',
-          options: const ['Mail', 'Courrier'],
-          selected: _envoiRapport,
-          columns: 2,
-          onChanged: (v) {
-            _envoiRapport = v;
-            _markChanged();
-          },
-        ),
-        const SizedBox(height: 24),
-
-        // --- Bloc "Informations Administratives" (titre retiré) ---------
-        FormSelectDropdown<String>(
-          label: 'Création compte Anah',
-          value: _compteAnah.isEmpty ? null : _compteAnah,
-          options: _anahOptions,
-          onChanged: (v) {
-            _compteAnah = v ?? '';
-            _markChanged();
-          },
-        ),
-      ],
+      ),
     );
   }
 
