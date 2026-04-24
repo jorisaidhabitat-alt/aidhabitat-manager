@@ -134,23 +134,27 @@ class _SidebarState extends State<Sidebar> {
                   child: InkWell(
                     onTap: () => widget.onNavigate(item['id']),
                     borderRadius: BorderRadius.circular(50),
-                    // Nouveau style (demande utilisateur) : icône BLANCHE
-                    // sur fond bleu clair pastel. L'état actif se
-                    // distingue par un bleu légèrement plus soutenu
-                    // pour rester lisible sans rompre le visuel pastel.
+                    // Style aligné avec le reste de l'app :
+                    //   • Actif   : fond violet clair #EDE8F5 + icône
+                    //     violet foncé #7C6DAA (même couleur que les
+                    //     quick-actions Documents / VAD).
+                    //   • Inactif : fond gris #DDE1E8 + icône gris
+                    //     bleuté #8D94A3 pour rester discret.
                     child: Container(
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
                         color: isActive
-                            ? const Color(0xFF7DBAE8) // bleu actif
-                            : const Color(0xFFBFDBFE), // bleu pastel inactif
+                            ? const Color(0xFFEDE8F5)
+                            : const Color(0xFFDDE1E8),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
                         item['icon'],
                         size: 22,
-                        color: Colors.white,
+                        color: isActive
+                            ? const Color(0xFF7C6DAA)
+                            : const Color(0xFF8D94A3),
                       ),
                     ),
                   ),
