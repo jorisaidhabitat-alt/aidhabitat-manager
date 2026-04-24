@@ -631,14 +631,22 @@ class AutonomyItem {
 class OccupantAutonomy {
   final MedicalContext medical;
   final bool autonomyDone;
+  /// État "✓" : cet item est validé autonome (parfait, pas d'aide requise).
   final List<AutonomyItem> autonomy;
+  /// État "👥" : cet item nécessite une aide humaine (affiché seulement
+  /// quand "Aide à domicile" est coché côté Bénéficiaire > Santé).
   final List<AutonomyItem> humanHelp;
+  /// État "!" : cet item est à revoir / pose question (attention
+  /// requise). Exclusif avec `autonomy[i]` et `humanHelp[i]` au niveau
+  /// de la ligne.
+  final List<AutonomyItem> attention;
 
   const OccupantAutonomy({
     this.medical = const MedicalContext(),
     this.autonomyDone = false,
     this.autonomy = const [],
     this.humanHelp = const [],
+    this.attention = const [],
   });
 
   factory OccupantAutonomy.fromJson(Map<String, dynamic> json) => OccupantAutonomy(
@@ -646,6 +654,7 @@ class OccupantAutonomy {
     autonomyDone: json['autonomyDone'] as bool? ?? false,
     autonomy: (json['autonomy'] as List<dynamic>?)?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
     humanHelp: (json['humanHelp'] as List<dynamic>?)?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
+    attention: (json['attention'] as List<dynamic>?)?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
   );
 
   Map<String, dynamic> toJson() => {
@@ -653,6 +662,7 @@ class OccupantAutonomy {
     'autonomyDone': autonomyDone,
     'autonomy': autonomy.map((e) => e.toJson()).toList(),
     'humanHelp': humanHelp.map((e) => e.toJson()).toList(),
+    'attention': attention.map((e) => e.toJson()).toList(),
   };
 }
 
