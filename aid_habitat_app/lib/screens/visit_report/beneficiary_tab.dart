@@ -1043,40 +1043,52 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               index, occ.copyWith(numeroSecuriteSociale: v)),
         ),
         const SizedBox(height: 14),
-        FormSelectDropdown<String>(
-          label: 'Caisse princ.',
-          value: _principalFundNames.contains(caissePrinc)
-              ? caissePrinc
-              : null,
-          options: _principalFundNames
-              .map((name) =>
-                  FormSelectOption<String>(value: name, label: name))
-              .toList(),
-          placeholder: 'Sélectionner...',
-          onChanged: (v) {
-            _updateOccupant(
-              index,
-              occ.copyWith(caisseRetraitePrincipale: v ?? ''),
-            );
-          },
-        ),
-        const SizedBox(height: 14),
-        FormSelectDropdown<String>(
-          label: 'Caisse complém.',
-          value: _retirementFundNames.contains(caisseCompl)
-              ? caisseCompl
-              : null,
-          options: _retirementFundNames
-              .map((name) =>
-                  FormSelectOption<String>(value: name, label: name))
-              .toList(),
-          placeholder: 'Sélectionner une caisse',
-          onChanged: (v) {
-            _updateOccupant(
-              index,
-              occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
-            );
-          },
+        // Caisse principale + caisse complémentaire sur la même ligne
+        // (demande utilisateur). Chaque dropdown occupe la moitié de
+        // la largeur avec un petit gap au centre.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: FormSelectDropdown<String>(
+                label: 'Caisse princ.',
+                value: _principalFundNames.contains(caissePrinc)
+                    ? caissePrinc
+                    : null,
+                options: _principalFundNames
+                    .map((name) =>
+                        FormSelectOption<String>(value: name, label: name))
+                    .toList(),
+                placeholder: 'Sélectionner...',
+                onChanged: (v) {
+                  _updateOccupant(
+                    index,
+                    occ.copyWith(caisseRetraitePrincipale: v ?? ''),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FormSelectDropdown<String>(
+                label: 'Caisse complém.',
+                value: _retirementFundNames.contains(caisseCompl)
+                    ? caisseCompl
+                    : null,
+                options: _retirementFundNames
+                    .map((name) =>
+                        FormSelectOption<String>(value: name, label: name))
+                    .toList(),
+                placeholder: 'Sélectionner une caisse',
+                onChanged: (v) {
+                  _updateOccupant(
+                    index,
+                    occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ],
     );

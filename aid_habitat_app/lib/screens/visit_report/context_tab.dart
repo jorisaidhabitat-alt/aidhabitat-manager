@@ -421,6 +421,8 @@ class _ContextTabState extends State<ContextTab>
       return const Center(child: CircularProgressIndicator());
     }
 
+    final hasMultiple = _contextOccupants.length > 1;
+    final idx = _safeIndex;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -428,17 +430,119 @@ class _ContextTabState extends State<ContextTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            // Swipe horizontal pour changer d'occupant (parité avec
+            // l'onglet Bénéficiaire). Désactivé quand il n'y a qu'une
+            // seule personne dans le foyer.
+            onHorizontalDragEnd: !hasMultiple
+                ? null
+                : (details) {
+                    final velocity = details.primaryVelocity ?? 0;
+                    if (velocity.abs() < 200) return;
+                    setState(() {
+                      if (velocity < 0) {
+                        _activeOccupantIndex =
+                            (idx + 1) % _contextOccupants.length;
+                      } else {
+                        _activeOccupantIndex = (idx - 1 +
+                                _contextOccupants.length) %
+                            _contextOccupants.length;
+                      }
+                    });
+                  },
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_subSection == 0) _buildMedical() else _buildAutonomy(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (hasMultiple) ...[
+                          _buildOccupantHeader(idx),
+                          const SizedBox(height: 12),
+                        ],
+                        if (_subSection == 0)
+                          _buildMedical()
+                        else
+                          _buildAutonomy(),
+                      ],
+                    ),
+                  ),
+                ),
+                // Points de pagination — affichés tout en bas du cadre
+                // quand le foyer a plusieurs occupants (demande
+                // utilisateur : parité avec Bénéficiaire).
+                if (hasMultiple)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14, top: 6),
+                    child: Center(child: _buildOccupantDots(idx)),
+                  ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  /// Header affichant Prénom + NOM de l'occupant courant (violet foncé).
+  /// Mis à jour à chaque swipe / tap sur un point.
+  Widget _buildOccupantHeader(int idx) {
+    final p = widget.dossier.patient;
+    String first = '';
+    String last = '';
+    if (idx == 0) {
+      first = p.firstName.trim();
+      last = p.lastName.trim();
+    } else if (idx < p.occupants.length) {
+      first = p.occupants[idx].firstName.trim();
+      last = p.occupants[idx].lastName.trim();
+    }
+    final display = (first.isEmpty && last.isEmpty)
+        ? 'Occupant ${idx + 1}'
+        : [first, last.toUpperCase()]
+            .where((s) => s.isNotEmpty)
+            .join(' ');
+    return Text(
+      display,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF0F172A),
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+
+  /// Rangée de points centrée — un point par occupant, le courant en
+  /// violet plein, les autres en gris lilas.
+  Widget _buildOccupantDots(int currentIdx) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(_contextOccupants.length, (i) {
+        final isActive = i == currentIdx;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _activeOccupantIndex = i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: isActive ? 10 : 8,
+              height: isActive ? 10 : 8,
+              decoration: BoxDecoration(
+                color: isActive
+                    ? const Color(0xFF7C6DAA)
+                    : const Color(0xFFD8CFE0),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -548,22 +652,9 @@ class _ContextTabState extends State<ContextTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Titre "Médical" retiré. Sélecteur d'occupant conservé à droite
-        // quand le foyer a plusieurs personnes.
-        if (_occupantLabels.length > 1) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OccupantSwitcher(
-                title: '',
-                occupantLabels: _occupantLabels,
-                activeIndex: _safeIndex,
-                onChanged: (i) => setState(() => _activeOccupantIndex = i),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-        ],
+        // Sélecteur d'occupant retiré : l'occupant courant est désormais
+        // identifié par le header du cadre + les points de pagination en
+        // bas, avec navigation par swipe horizontal (parité Bénéficiaire).
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -643,70 +734,31 @@ class _ContextTabState extends State<ContextTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Pills occupants + badge "Aide humaine" optionnel à droite.
-        if (_occupantLabels.length > 1 || homeHelpEnabled)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_occupantLabels.length > 1)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(_occupantLabels.length, (i) {
-                    final active = i == _safeIndex;
-                    return Padding(
-                      padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
-                      child: GestureDetector(
-                        onTap: () =>
-                            setState(() => _activeOccupantIndex = i),
-                        child: Container(
-                          constraints: const BoxConstraints(minWidth: 64),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 5),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: active
-                                ? const Color(0xFFEDE8F5)
-                                : const Color(0xFFF7F7FA),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            _occupantLabels[i],
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: active
-                                  ? const Color(0xFF554A63)
-                                  : const Color(0xFF94A3B8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
+        // Pills occupants retirées — navigation désormais via le
+        // header + les points de pagination en bas du cadre.
+        // Badge "Aide humaine" conservé comme indicateur de statut.
+        if (homeHelpEnabled)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                'Aide humaine',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFB45309),
+                  letterSpacing: 0.5,
                 ),
-              if (homeHelpEnabled) ...[
-                if (_occupantLabels.length > 1) const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    'Aide humaine',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFFB45309),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ],
-            ],
+              ),
+            ),
           ),
-        const SizedBox(height: 12),
+        if (homeHelpEnabled) const SizedBox(height: 12),
         // Liste des 11 items avec 2 ou 3 boutons par ligne (✓ / ! / 👥).
         // Un seul état possible par ligne (mutex). Quand 👥 (aide humaine)
         // est coché pour une ligne, les boutons ✓ et ! sont désactivés.
