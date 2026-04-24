@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../components/beneficiary_badges.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
 
