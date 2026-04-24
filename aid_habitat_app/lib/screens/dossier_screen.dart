@@ -69,9 +69,10 @@ class _DossierScreenState extends State<DossierScreen> {
   late String _incomeCategory;
   double? _fiscalRevenue;
 
-  // Project comment (async-loaded)
-  String _projectComment = '';
-  bool _projectCommentLoaded = false;
+  // Note : `_projectComment` et `_loadProjectComment` retirés — le
+  // commentaire du projet est désormais consulté directement via la
+  // note rapide en haut à droite (demande utilisateur) ; ce bloc
+  // n'affiche plus le champ "Commentaire du projet".
 
   // References
   final ReferencesService _references = ReferencesService();
@@ -99,8 +100,6 @@ class _DossierScreenState extends State<DossierScreen> {
       if (!mounted) return;
       setState(() => _communeOptions = _mapCommunes());
     });
-
-    _loadProjectComment();
   }
 
   List<CommuneOption> _mapCommunes() {
@@ -133,20 +132,6 @@ class _DossierScreenState extends State<DossierScreen> {
       _numberPeople = '5';
     } else {
       _numberPeople = n.toString();
-    }
-  }
-
-  Future<void> _loadProjectComment() async {
-    try {
-      final obs = await _repository.fetchObservations(widget.dossier.id);
-      if (!mounted) return;
-      setState(() {
-        _projectComment = obs?.projetSouhaitUsage ?? '';
-        _projectCommentLoaded = true;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _projectCommentLoaded = true);
     }
   }
 
@@ -618,21 +603,25 @@ class _DossierScreenState extends State<DossierScreen> {
                       multiline: true,
                     ),
                     if (epciLabel.isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
+                      // Libellé + badge communauté de communes. Même style
+                      // de label que les autres champs (violet, w700, 12pt)
+                      // — le badge pastel est juste en dessous.
+                      const Text(
+                        'Communauté de communes',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF907CA1),
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
                       _EpciPillSmall(label: epciLabel),
                     ],
-                    const SizedBox(height: 18),
-                    _PlainField(
-                      label: 'Commentaire du projet',
-                      value: _projectCommentLoaded
-                          ? (_projectComment.trim().isEmpty
-                              ? 'Aucun commentaire renseigné'
-                              : _projectComment)
-                          : 'Chargement du commentaire…',
-                      multiline: true,
-                      muted: !_projectCommentLoaded ||
-                          _projectComment.trim().isEmpty,
-                    ),
+                    // "Commentaire du projet" retiré du bloc Bénéficiaire
+                    // (demande utilisateur) : s'il existe, il est affiché
+                    // par défaut dans la note rapide en haut à droite.
                   ] else ...[
                     // --- Mode édition : libellés violets conservés même
                     // quand les champs deviennent modifiables (demande
@@ -711,18 +700,8 @@ class _DossierScreenState extends State<DossierScreen> {
                         _scheduleSave();
                       },
                     ),
-                    const SizedBox(height: 12),
-                    _PlainField(
-                      label: 'Commentaire du projet',
-                      value: _projectCommentLoaded
-                          ? (_projectComment.trim().isEmpty
-                              ? 'Aucun commentaire renseigné'
-                              : _projectComment)
-                          : 'Chargement du commentaire…',
-                      multiline: true,
-                      muted: !_projectCommentLoaded ||
-                          _projectComment.trim().isEmpty,
-                    ),
+                    // "Commentaire du projet" retiré — déplacé vers la
+                    // note rapide en haut à droite (demande utilisateur).
                   ],
                 ],
               ),
@@ -733,8 +712,11 @@ class _DossierScreenState extends State<DossierScreen> {
     );
   }
 
-  /// Combine adresse rue + code postal + ville en une seule chaîne
-  /// lisible (parité maquette : "16 rue Léo Lagrange, 35131 Chartres-de-Bretagne").
+  /// Combine adresse rue + code postal + ville en deux lignes distinctes :
+  ///   ligne 1 : rue
+  ///   ligne 2 : code postal ville
+  /// Utilise un retour-chariot pour la coupure — le widget _PlainField
+  /// est en `multiline: true` → Flutter respecte les `\n`.
   String _formatFullAddress(String street, String zip, String city) {
     final parts = <String>[];
     if (street.trim().isNotEmpty) parts.add(street.trim());
@@ -742,7 +724,7 @@ class _DossierScreenState extends State<DossierScreen> {
         .where((s) => s.isNotEmpty)
         .join(' ');
     if (cityLine.isNotEmpty) parts.add(cityLine);
-    return parts.join(', ');
+    return parts.join('\n');
   }
 
   /// Résout le libellé EPCI pour l'adresse du bénéficiaire en tentant
@@ -872,13 +854,11 @@ class _PlainField extends StatelessWidget {
   final String label;
   final String value;
   final bool multiline;
-  final bool muted;
 
   const _PlainField({
     required this.label,
     required this.value,
     this.multiline = false,
-    this.muted = false,
   });
 
   @override
@@ -903,7 +883,7 @@ class _PlainField extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: muted ? const Color(0xFF94A3B8) : const Color(0xFF0F172A),
+            color: const Color(0xFF0F172A),
             height: multiline ? 1.4 : 1.2,
           ),
         ),
