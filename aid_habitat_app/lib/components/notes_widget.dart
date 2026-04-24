@@ -1769,39 +1769,40 @@ class _NotesWidgetState extends State<NotesWidget> {
                 if (!mounted) return;
                 if (_canvasSize != size) setState(() => _canvasSize = size);
               });
-              return Stack(
-                children: [
-                  // Fond : freeform (blanc) ou grille.
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _BackgroundPainter(mode: widget.mode),
-                    ),
-                  ),
-                  // Contenu décoratif optionnel derrière le canvas.
-                  if (widget.backgroundContent != null)
+              // ClipRRect EXTERNE qui englobe TOUS les layers du canvas
+              // (fond grid, backgroundContent, strokes). Sans ce clip
+              // global, le _BackgroundPainter (lignes grille, fond) n'est
+              // pas rogné au border radius et les coins apparaissent
+              // "effacés" / carrés. Maintenant le fond ET les strokes
+              // sont clippés au même rayon que la carte parente.
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Stack(
+                  children: [
+                    // Fond : freeform (blanc) ou grille.
                     Positioned.fill(
-                      child: IgnorePointer(child: widget.backgroundContent!),
+                      child: CustomPaint(
+                        painter: _BackgroundPainter(mode: widget.mode),
+                      ),
                     ),
-                  if (!_isLoaded)
-                    const Positioned.fill(
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else
-                    Positioned.fill(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onPanStart: _onDrawStart,
-                        onPanUpdate: _onDrawUpdate,
-                        onPanEnd: _onDrawEnd,
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.precise,
-                          // ClipRRect avec le même borderRadius que la
-                          // carte parente (16 px) → les coins arrondis
-                          // restent nets, identiques à ceux de la note
-                          // écrite. Avant : ClipRect strict cassait les
-                          // coins en angles droits dans la zone dessin.
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
+                    // Contenu décoratif optionnel derrière le canvas.
+                    if (widget.backgroundContent != null)
+                      Positioned.fill(
+                        child: IgnorePointer(child: widget.backgroundContent!),
+                      ),
+                    if (!_isLoaded)
+                      const Positioned.fill(
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanStart: _onDrawStart,
+                          onPanUpdate: _onDrawUpdate,
+                          onPanEnd: _onDrawEnd,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.precise,
                             child: CustomPaint(
                               size: size,
                               painter: _StrokePainter(
@@ -1812,8 +1813,8 @@ class _NotesWidgetState extends State<NotesWidget> {
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               );
             },
           ),

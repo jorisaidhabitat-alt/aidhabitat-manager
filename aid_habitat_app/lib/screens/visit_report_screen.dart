@@ -516,7 +516,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   Widget _buildTabBar() {
     return Container(
-      height: 48,
+      height: 60,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(50),

@@ -465,8 +465,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               onTap: () => _setSubSection(i),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                // Pas de pill individuel — le fond unifié du parent suffit.
-                // La sélection se distingue par la couleur texte/icône.
                 child: Column(
                   children: [
                     Icon(
@@ -485,14 +483,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                         color: active
                             ? Colors.black
                             : const Color(0xFFAE9DB3),
-                        // Souligne le label actif avec une barre noire
-                        // (cohérence avec la TabBar principale).
-                        decoration: active
-                            ? TextDecoration.underline
-                            : TextDecoration.none,
-                        decorationColor: Colors.black,
-                        decorationThickness: 2,
                       ),
+                    ),
+                    // Trait fin 1 px sous le texte, espacé de 6 px, visible
+                    // uniquement pour l'item actif (cohérence avec la
+                    // TabBar principale — mais sans la décoration underline
+                    // qui colle à la baseline).
+                    const SizedBox(height: 6),
+                    Container(
+                      height: 1,
+                      width: 28,
+                      color: active ? Colors.black : Colors.transparent,
                     ),
                   ],
                 ),

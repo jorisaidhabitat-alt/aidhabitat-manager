@@ -435,33 +435,39 @@ class _ContextTabState extends State<ContextTab>
       onTap: () => setState(() => _subSection = index),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        // Pas de pill individuel : le fond unifié du parent _buildQuickNav
-        // suffit. La sélection se voit par la couleur texte/icône.
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: active ? Colors.black : const Color(0xFFAE9DB3),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
                   color: active ? Colors.black : const Color(0xFFAE9DB3),
-                  decoration: active
-                      ? TextDecoration.underline
-                      : TextDecoration.none,
-                  decorationColor: Colors.black,
-                  decorationThickness: 2,
                 ),
-                overflow: TextOverflow.ellipsis,
-              ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: active ? Colors.black : const Color(0xFFAE9DB3),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            // Trait fin 1 px avec 6 px d'espace sous le texte, visible
+            // uniquement pour la sous-section active.
+            const SizedBox(height: 6),
+            Container(
+              height: 1,
+              width: 28,
+              color: active ? Colors.black : Colors.transparent,
             ),
           ],
         ),
