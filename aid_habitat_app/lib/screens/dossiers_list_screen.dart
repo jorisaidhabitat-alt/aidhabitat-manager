@@ -624,14 +624,16 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 ],
               ),
             ),
-            // REVENUS
+            // REVENUS — palette unifiée via IncomeCategoryBadge
+            // (bleu pour Très modeste, jaune/orange pour Modeste,
+            // neutre pour les autres).
             Expanded(
               flex: _flexRevenus,
               child: income.isEmpty
                   ? const SizedBox.shrink()
                   : Align(
                       alignment: Alignment.centerLeft,
-                      child: _IncomeBadge(label: income),
+                      child: IncomeCategoryBadge(value: income),
                     ),
             ),
             // COMMUNAUTÉ DE COMMUNE
@@ -697,41 +699,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   }
 }
 
-/// Badge "Revenus" : pastel vert doux selon la catégorie (très modeste /
-/// modeste / intermédiaire / supérieur…). Fond léger, texte gris foncé.
-class _IncomeBadge extends StatelessWidget {
-  const _IncomeBadge({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = _incomeBg(label);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF334155),
-        ),
-      ),
-    );
-  }
-
-  static Color _incomeBg(String v) {
-    final l = v.toLowerCase();
-    if (l.contains('très modeste')) return const Color(0xFFDCFCE7);
-    if (l.contains('modeste')) return const Color(0xFFDBEAFE);
-    if (l.contains('intermédiaire')) return const Color(0xFFFEF3C7);
-    if (l.contains('supérieur')) return const Color(0xFFFCE7F3);
-    return const Color(0xFFF1F5F9);
-  }
-}
+// (Ancien _IncomeBadge local retiré — remplacé par IncomeCategoryBadge
+// du module components/beneficiary_badges.dart, pour garder la même
+// palette dans tout l'app.)
 
 /// Palette of soft pill backgrounds + matching foreground, stable per EPCI
 /// label. Two dossiers of the same communauté de communes always get the
