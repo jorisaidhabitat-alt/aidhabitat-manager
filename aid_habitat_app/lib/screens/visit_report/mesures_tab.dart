@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
-import '../../components/form_widgets.dart';
 import '../../components/notes_widget.dart';
 
 /// Mesures tab — deux silhouettes (assise + debout) sur fond blanc.
@@ -37,16 +36,8 @@ class _MesuresTabState extends State<MesuresTab>
         : 1;
   }
 
-  List<String> _occupantLabels() {
-    return List.generate(_occupantCount, (i) {
-      final occupants = widget.dossier.patient.occupants;
-      if (i < occupants.length) {
-        final name = occupants[i].firstName.trim();
-        if (name.isNotEmpty) return name.split(' ').first;
-      }
-      return 'Occ. ${i + 1}';
-    });
-  }
+  // _occupantLabels() retiré : l'en-tête affiche maintenant le nom
+  // complet (Prénom NOM) de l'occupant courant via `_buildOccupantHeader`.
 
   /// Occupant 0 → 'Mesures' (rétrocompatibilité). Occupant N → 'Mesures-N'.
   String _tabKeyFor(int index) =>
@@ -58,13 +49,13 @@ class _MesuresTabState extends State<MesuresTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final labels = _occupantLabels();
-    final hasMultiple = labels.length > 1;
+    final hasMultiple = _occupantCount > 1;
+    final idx = _safeIndex;
 
-    return NotesWidget(
-      key: ValueKey('mesures-${widget.dossier.patient.id}-${_safeIndex}'),
+    final notesWidget = NotesWidget(
+      key: ValueKey('mesures-${widget.dossier.patient.id}-$idx'),
       patientId: widget.dossier.patient.id,
-      tabKey: _tabKeyFor(_safeIndex),
+      tabKey: _tabKeyFor(idx),
       title: 'Mesures anthropométriques',
       subtitle: 'Écrivez directement les mesures sur les silhouettes.',
       toolset: NoteToolset.advanced,
@@ -75,14 +66,86 @@ class _MesuresTabState extends State<MesuresTab>
       fillParentHeight: true,
       embedded: false,
       backgroundContent: const _MesuresBackground(),
-      leadingNavWidget: hasMultiple
-          ? OccupantSwitcher(
-              title: '',
-              occupantLabels: labels,
-              activeIndex: _safeIndex,
-              onChanged: (i) => setState(() => _activeOccupantIndex = i),
-            )
-          : null,
+    );
+
+    // Mono-occupant → canvas plein écran (rien à ajouter).
+    if (!hasMultiple) return notesWidget;
+
+    // Multi-occupants : header avec le nom en haut + canvas au milieu
+    // + points de pagination en bas du cadre (parité Bénéficiaire).
+    // Pas de swipe horizontal ici : cela entrerait en conflit avec les
+    // gestures de dessin. L'utilisateur navigue via les points tappables.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+          child: _buildOccupantHeader(idx),
+        ),
+        Expanded(child: notesWidget),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14, top: 6),
+          child: Center(child: _buildOccupantDots(idx)),
+        ),
+      ],
+    );
+  }
+
+  /// Nom + NOM de l'occupant courant — change quand l'utilisateur tape
+  /// un point de pagination (pas de swipe ici, conflit avec le dessin).
+  Widget _buildOccupantHeader(int idx) {
+    final p = widget.dossier.patient;
+    String first = '';
+    String last = '';
+    if (idx == 0) {
+      first = p.firstName.trim();
+      last = p.lastName.trim();
+    } else if (idx < p.occupants.length) {
+      first = p.occupants[idx].firstName.trim();
+      last = p.occupants[idx].lastName.trim();
+    }
+    final display = (first.isEmpty && last.isEmpty)
+        ? 'Occupant ${idx + 1}'
+        : [first, last.toUpperCase()]
+            .where((s) => s.isNotEmpty)
+            .join(' ');
+    return Text(
+      display,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF0F172A),
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+
+  /// Rangée de points centrée — un par occupant, le courant violet plein.
+  /// Tap direct pour sauter à un occupant (pas de swipe sur cet onglet).
+  Widget _buildOccupantDots(int currentIdx) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(_occupantCount, (i) {
+        final isActive = i == currentIdx;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _activeOccupantIndex = i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: isActive ? 10 : 8,
+              height: isActive ? 10 : 8,
+              decoration: BoxDecoration(
+                color: isActive
+                    ? const Color(0xFF7C6DAA)
+                    : const Color(0xFFD8CFE0),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 }
