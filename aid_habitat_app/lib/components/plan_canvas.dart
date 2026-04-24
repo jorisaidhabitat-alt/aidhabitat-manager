@@ -720,7 +720,19 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   top: 8,
                   left: 0,
                   right: 0,
-                  child: Center(child: _buildThicknessPopover()),
+                  child: Center(
+                    child: TapRegion(
+                      // Ferme le popover dès qu'on tape ailleurs
+                      // (canvas, autre outil, n'importe quelle zone
+                      // hors de cette bulle).
+                      onTapOutside: (_) {
+                        if (_thicknessPopoverTool != null) {
+                          setState(() => _thicknessPopoverTool = null);
+                        }
+                      },
+                      child: _buildThicknessPopover(),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -729,12 +741,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
-  /// Toolbar principale (1ère ligne) : outils de tracé + couleur +
-  /// undo/redo + effacer tout + menu "trois points" (télécharger /
-  /// pages) + pagination.
+  /// Toolbar principale (1ère ligne). Ordre :
+  ///   [Crayon][Surligneur][Gomme][Ligne][Rect]  [Couleur]
+  ///   [Undo][Redo][Effacer tout]  …  [Pagination]  [⋮]
+  /// Les boutons sont plus grands et plus espacés qu'avant pour un
+  /// toucher plus confortable sur iPad.
   Widget _buildTopToolbar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -742,30 +756,31 @@ class _PlanCanvasState extends State<PlanCanvas> {
       child: Row(
         children: [
           _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
-          const SizedBox(width: 6),
+          const SizedBox(width: 10),
           _toolBtn(PlanTool.highlighter, LucideIcons.highlighter,
               'Surligneur'),
-          const SizedBox(width: 6),
-          _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
-          const SizedBox(width: 6),
-          _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
-          const SizedBox(width: 6),
+          const SizedBox(width: 10),
+          // Gomme placée juste à côté du surligneur (demande utilisateur)
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
           const SizedBox(width: 10),
-          _buildActiveColorDot(),
+          _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
           const SizedBox(width: 10),
+          _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
+          const SizedBox(width: 14),
+          _buildActiveColorDot(),
+          const SizedBox(width: 14),
           _iconBtn(
             icon: LucideIcons.undo2,
             tooltip: 'Annuler',
             onTap: _undoStack.isEmpty ? null : _undo,
           ),
+          const SizedBox(width: 4),
           _iconBtn(
             icon: LucideIcons.redo2,
             tooltip: 'Rétablir',
             onTap: _redoStack.isEmpty ? null : _redo,
           ),
-          // Corbeille "effacer tout" juste à côté d'undo/redo (demande
-          // utilisateur : bouton facile d'accès, pas enterré dans un menu).
+          const SizedBox(width: 4),
           _iconBtn(
             icon: LucideIcons.trash2,
             tooltip: 'Effacer tout le plan',
@@ -773,20 +788,19 @@ class _PlanCanvasState extends State<PlanCanvas> {
             activeColor: Colors.red.shade400,
           ),
           const Spacer(),
-          _buildMoreMenu(),
+          // Pagination d'abord (chevrons + "1/3")…
           if (widget.currentPage != null && widget.totalPages != null) ...[
-            const SizedBox(width: 4),
             _iconBtn(
               icon: LucideIcons.chevronLeft,
               tooltip: 'Page précédente',
               onTap: (widget.currentPage! > 0) ? widget.onPrevPage : null,
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Text(
                 '${widget.currentPage! + 1}/${widget.totalPages}',
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.w800,
                   color: Color(0xFF334155),
                 ),
@@ -799,7 +813,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   ? widget.onNextPage
                   : null,
             ),
+            const SizedBox(width: 6),
           ],
+          // … puis 3 points tout au bout à droite.
+          _buildMoreMenu(),
         ],
       ),
     );
@@ -818,48 +835,45 @@ class _PlanCanvasState extends State<PlanCanvas> {
           _symbolInsertBtn(
             PlanTool.window,
             Icon(LucideIcons.columns,
-                size: 20, color: Colors.grey.shade700),
+                size: 22, color: Colors.grey.shade700),
             'Fenêtre',
           ),
           const SizedBox(width: 8),
-          // Porte : doorClosed = plus iconique qu'une porte ouverte.
           _symbolInsertBtn(
             PlanTool.door,
             Icon(LucideIcons.doorClosed,
-                size: 20, color: Colors.grey.shade700),
+                size: 22, color: Colors.grey.shade700),
             'Porte',
           ),
           const SizedBox(width: 8),
-          // WC : Lucide 0.257 n'expose pas d'icône toilette. On utilise
-          // le glyphe Unicode 🚽 en guise de pictogramme — visuel
-          // immédiatement reconnaissable sur iPad / macOS.
+          // WC : Material Icons fournit un pictogramme "WC"
+          // sémantique (restroom) — remplace l'emoji par un vrai
+          // glyphe vectoriel cohérent avec les autres icônes.
           _symbolInsertBtn(
             PlanTool.toilet,
-            const Text('🚽', style: TextStyle(fontSize: 20)),
+            Icon(Icons.wc, size: 22, color: Colors.grey.shade700),
             'WC',
           ),
           const SizedBox(width: 8),
-          // Douche : pomme de douche (Lucide showerHead).
           _symbolInsertBtn(
             PlanTool.shower,
             Icon(LucideIcons.showerHead,
-                size: 20, color: Colors.grey.shade700),
+                size: 22, color: Colors.grey.shade700),
             'Douche',
           ),
           const SizedBox(width: 8),
           _symbolInsertBtn(
             PlanTool.bath,
             Icon(LucideIcons.bath,
-                size: 20, color: Colors.grey.shade700),
+                size: 22, color: Colors.grey.shade700),
             'Baignoire',
           ),
           const SizedBox(width: 8),
-          // Lavabo : icône "table" (meuble) — plus cohérent que la
-          // "main" précédente.
+          // Lavabo : simples gouttes d'eau (demande utilisateur).
           _symbolInsertBtn(
             PlanTool.sink,
-            Icon(LucideIcons.table,
-                size: 20, color: Colors.grey.shade700),
+            Icon(LucideIcons.droplets,
+                size: 22, color: Colors.grey.shade700),
             'Lavabo',
           ),
         ],
@@ -1020,8 +1034,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
         key: _colorDotKey,
         onTap: _openColorPresetMenu,
         child: Container(
-          width: 32,
-          height: 32,
+          width: 38,
+          height: 38,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: Color(_penColor),
@@ -1109,13 +1123,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         child: SizedBox(
-          width: 32,
-          height: 32,
+          width: 40,
+          height: 40,
           child: Icon(
             icon,
-            size: 18,
+            size: 20,
             color: enabled ? enabledColor : Colors.grey.shade300,
           ),
         ),
@@ -1273,8 +1287,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
         },
         customBorder: const CircleBorder(),
         child: Container(
-          width: 36,
-          height: 36,
+          width: 44,
+          height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: active ? _kTeal : Colors.transparent,
@@ -1282,7 +1296,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           ),
           child: Icon(
             icon,
-            size: 18,
+            size: 22,
             color: active ? Colors.white : Colors.grey.shade600,
           ),
         ),
@@ -1301,8 +1315,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
         onTap: () => _insertSymbolAtCenter(tool),
         customBorder: const CircleBorder(),
         child: Container(
-          width: 40,
-          height: 40,
+          width: 46,
+          height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: Colors.white,

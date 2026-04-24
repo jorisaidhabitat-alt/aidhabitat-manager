@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -9,6 +10,7 @@ import '../components/commune_field_group.dart';
 import '../components/form_widgets.dart';
 import '../components/notes_widget.dart';
 import '../models/types.dart';
+import '../services/data_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/references_service.dart';
 import 'conflict_resolution_screen.dart';
@@ -69,10 +71,11 @@ class _DossierScreenState extends State<DossierScreen> {
   late String _incomeCategory;
   double? _fiscalRevenue;
 
-  // Note : `_projectComment` et `_loadProjectComment` retirés — le
-  // commentaire du projet est désormais consulté directement via la
-  // note rapide en haut à droite (demande utilisateur) ; ce bloc
-  // n'affiche plus le champ "Commentaire du projet".
+  // Jeton incrémenté après la première hydratation de la note rapide
+  // avec le commentaire projet d'`observations.projetSouhaitUsage` —
+  // permet à NotesWidget de re-fetch quand la seed est terminée et
+  // donc d'afficher le commentaire dès l'ouverture du dossier.
+  int _quickNoteRefreshToken = 0;
 
   // References
   final ReferencesService _references = ReferencesService();
@@ -100,6 +103,57 @@ class _DossierScreenState extends State<DossierScreen> {
       if (!mounted) return;
       setState(() => _communeOptions = _mapCommunes());
     });
+    // Hydrate la note rapide avec le commentaire projet (si la note
+    // rapide n'existe pas encore côté storage — un utilisateur qui a
+    // volontairement effacé la note ne verra pas le commentaire
+    // réapparaître).
+    _seedQuickNoteFromProjectComment();
+  }
+
+  /// Si la note rapide ("notes_rapides") n'existe PAS encore côté
+  /// storage pour ce dossier, et que `observations.projetSouhaitUsage`
+  /// contient un commentaire projet, on pré-remplit la note avec ce
+  /// commentaire. Ensuite, NotesWidget se re-fetch via le jeton de
+  /// rafraîchissement et affiche le texte.
+  ///
+  /// Condition d'idempotence : on ne seede QUE si la ligne n'existe
+  /// pas du tout (DataService.fetchNoteDrawingJson → null). Si
+  /// l'utilisateur a déjà tapé puis effacé la note, il y a une ligne
+  /// (JSON avec texte vide) et on ne touche à rien.
+  Future<void> _seedQuickNoteFromProjectComment() async {
+    try {
+      final existingJson = await DataService().fetchNoteDrawingJson(
+        patientId: widget.dossier.patient.id,
+        tabKey: 'notes_rapides',
+        pageNumber: 0,
+      );
+      if (existingJson != null) return;
+      // Récupère le commentaire projet depuis les observations du dossier.
+      final obs = await _repository.fetchObservations(widget.dossier.id);
+      final comment = (obs?.projetSouhaitUsage ?? '').trim();
+      if (comment.isEmpty) return;
+      // Écrit le commentaire comme texte initial de la page 0 de la
+      // note rapide. Format identique à `_currentDrawingJson()` de
+      // NotesWidget (version:1, text, strokes).
+      final json = jsonEncode({
+        'version': 1,
+        'text': comment,
+        'strokes': <dynamic>[],
+      });
+      await DataService().saveNoteDrawingJson(
+        patientId: widget.dossier.patient.id,
+        tabKey: 'notes_rapides',
+        pageNumber: 0,
+        drawingJson: json,
+      );
+      if (mounted) {
+        // Le jeton externe force NotesWidget à re-fetch sa page 0 — le
+        // commentaire tout juste sauvé apparaît alors dans la zone texte.
+        setState(() => _quickNoteRefreshToken++);
+      }
+    } catch (_) {
+      // silent — la note rapide restera vide si la hydratation échoue.
+    }
   }
 
   List<CommuneOption> _mapCommunes() {
