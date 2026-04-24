@@ -534,12 +534,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         indicatorSize: TabBarIndicatorSize.label,
         indicatorPadding:
             const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
-        // Texte toujours en noir, poids normal (onglet actif +
-        // inactifs). Seul le fond violet pâle #F6EDFB distingue
-        // l'onglet actif.
+        // Texte toujours en noir, poids normal. L'onglet actif est
+        // marqué par un SOULIGNEMENT NOIR sous le texte (en plus du
+        // fond violet pâle du pill).
         labelColor: Colors.black,
         unselectedLabelColor: Colors.black,
-        labelStyle: const TextStyle(fontWeight: FontWeight.normal),
+        labelStyle: const TextStyle(
+          fontWeight: FontWeight.normal,
+          decoration: TextDecoration.underline,
+          decorationColor: Colors.black,
+          decorationThickness: 2,
+        ),
         unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
         labelPadding: const EdgeInsets.symmetric(horizontal: 16),
         tabs: _tabs.map((tab) => Tab(text: tab)).toList(),

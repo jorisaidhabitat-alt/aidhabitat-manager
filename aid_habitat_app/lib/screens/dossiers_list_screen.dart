@@ -382,8 +382,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
         children: [
@@ -418,8 +419,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         padding:
             const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
         child: Row(
           children: [
@@ -448,8 +450,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         padding:
             const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
         child: Row(
           children: [
@@ -487,7 +490,10 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   Widget _buildTableHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      color: const Color(0xFFF7F7FA),
+      // Fond plus clair que le scaffold global (#F7F7FA) pour que la
+      // barre de titres de colonnes se distingue visuellement du fond
+      // de la page.
+      color: const Color(0xFFFAFAFC),
       child: Row(
         children: [
           // BÉNÉFICIAIRE inclut l'avatar rond — prévoir la même

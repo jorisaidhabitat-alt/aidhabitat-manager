@@ -454,6 +454,11 @@ class _ContextTabState extends State<ContextTab>
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: active ? Colors.black : const Color(0xFFAE9DB3),
+                  decoration: active
+                      ? TextDecoration.underline
+                      : TextDecoration.none,
+                  decorationColor: Colors.black,
+                  decorationThickness: 2,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),

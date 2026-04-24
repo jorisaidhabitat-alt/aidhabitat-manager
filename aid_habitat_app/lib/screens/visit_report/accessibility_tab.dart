@@ -435,6 +435,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                             color: active
                                 ? Colors.black
                                 : const Color(0xFFAE9DB3),
+                            decoration: active
+                                ? TextDecoration.underline
+                                : TextDecoration.none,
+                            decorationColor: Colors.black,
+                            decorationThickness: 2,
                           )),
                     ],
                   ),

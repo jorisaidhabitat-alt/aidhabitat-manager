@@ -485,6 +485,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                         color: active
                             ? Colors.black
                             : const Color(0xFFAE9DB3),
+                        // Souligne le label actif avec une barre noire
+                        // (cohérence avec la TabBar principale).
+                        decoration: active
+                            ? TextDecoration.underline
+                            : TextDecoration.none,
+                        decorationColor: Colors.black,
+                        decorationThickness: 2,
                       ),
                     ),
                   ],
