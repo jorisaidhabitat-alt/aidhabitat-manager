@@ -259,7 +259,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Ajouter une préconisation'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF907CA1),
+                backgroundColor: const Color(0xFF7C6DAA),
                 foregroundColor: Colors.white,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -370,7 +370,7 @@ class _RecommendationCard extends StatelessWidget {
                           ? 'Changer la fiche wiki'
                           : 'Choisir une fiche wiki'),
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF907CA1),
+                        foregroundColor: const Color(0xFF7C6DAA),
                         padding: EdgeInsets.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         minimumSize: Size.zero,
@@ -412,7 +412,7 @@ class _RecommendationCard extends StatelessWidget {
                     )
                   : const Icon(
                       Icons.add_photo_alternate_outlined,
-                      color: Color(0xFF907CA1),
+                      color: Color(0xFF7C6DAA),
                       size: 40,
                     ),
             ),

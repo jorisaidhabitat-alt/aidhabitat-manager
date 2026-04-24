@@ -176,7 +176,7 @@ const int _kDefaultHighlighterColor = 0xffFDE047; // yellow-300
 const double _kDefaultPenSize = 2.0;
 const double _kDefaultHighlighterSize = 10.0;
 const double _kDefaultEraserSize = 18.0;
-const Color _kAccentColor = Color(0xFF907CA1);
+const Color _kAccentColor = Color(0xFF7C6DAA);
 const Color _kAccentSoft = Color(0xFFD8D0DC);
 const Color _kActiveText = Color(0xFF554A63);
 const double _kGridCell = 24.0;
@@ -185,9 +185,9 @@ const double _kGridCell = 24.0;
 const Color _kStackedBorder = Color(0xFFEDE9EF);
 // Fond splitter = même violet clair que les icônes Documents / VAD sur
 // l'écran dossier (cohérence visuelle — demande utilisateur).
-const Color _kStackedSplitterBg = Color(0xFFF6EDFB);
-const Color _kStackedViolet = Color(0xFF907CA1);
-const Color _kStackedVioletSoft = Color(0xFFF6EDFB);
+const Color _kStackedSplitterBg = Color(0xFFEDE8F5);
+const Color _kStackedViolet = Color(0xFF7C6DAA);
+const Color _kStackedVioletSoft = Color(0xFFEDE8F5);
 const Color _kStackedPinkSoft = Color(0xFFE8A4B0);
 
 List<NoteTool> _availableToolsFor(NoteToolset toolset) {

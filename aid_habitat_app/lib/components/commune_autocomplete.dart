@@ -155,7 +155,7 @@ class _CommuneAutocompleteState extends State<CommuneAutocomplete> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF6EDFB),
+                              color: const Color(0xFFEDE8F5),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(

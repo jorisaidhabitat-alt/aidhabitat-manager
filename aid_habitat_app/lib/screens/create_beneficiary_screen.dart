@@ -137,12 +137,12 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF6EDFB),
+                          color: const Color(0xFFEDE8F5),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Icon(
                           LucideIcons.userPlus,
-                          color: Color(0xFF907CA1),
+                          color: Color(0xFF7C6DAA),
                           size: 28,
                         ),
                       ),
@@ -265,7 +265,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                         child: ElevatedButton(
                           onPressed: _isSaving ? null : _handleSubmit,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF907CA1),
+                            backgroundColor: const Color(0xFF7C6DAA),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),

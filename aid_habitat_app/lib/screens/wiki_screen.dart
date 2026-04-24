@@ -383,7 +383,7 @@ class _WikiScreenState extends State<WikiScreen> {
             message: 'Ajouter un élément',
             child: FloatingActionButton(
               onPressed: _createItem,
-              backgroundColor: const Color(0xFF907CA1),
+              backgroundColor: const Color(0xFF7C6DAA),
               foregroundColor: Colors.white,
               elevation: 4,
               child: const Icon(LucideIcons.plus, size: 28),
@@ -579,7 +579,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                               );
                             },
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF907CA1),
+                              backgroundColor: const Color(0xFF7C6DAA),
                               foregroundColor: Colors.white,
                               padding:
                                   const EdgeInsets.symmetric(vertical: 16),
@@ -643,7 +643,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.5),
       ),
     );
   }
@@ -856,7 +856,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                   FilledButton(
                     onPressed: _submitting ? null : _submit,
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF907CA1),
+                      backgroundColor: const Color(0xFF7C6DAA),
                       foregroundColor: Colors.white,
                     ),
                     child: _submitting
@@ -928,7 +928,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                       icon: const Icon(LucideIcons.refreshCw, size: 14),
                       label: const Text('Changer'),
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF907CA1),
+                        foregroundColor: const Color(0xFF7C6DAA),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -975,7 +975,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF907CA1),
+                  color: Color(0xFF7C6DAA),
                 ),
               )
             else
@@ -1015,7 +1015,7 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF907CA1) : Colors.white,
+          color: isActive ? const Color(0xFF7C6DAA) : Colors.white,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(

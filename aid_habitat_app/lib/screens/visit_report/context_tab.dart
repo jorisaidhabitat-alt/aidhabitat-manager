@@ -406,7 +406,7 @@ class _ContextTabState extends State<ContextTab>
   Widget _buildQuickNav() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      color: const Color(0xFFF6EDFB),
+      color: const Color(0xFFEDE8F5),
       child: Row(
         children: [
           Expanded(
@@ -574,7 +574,7 @@ class _ContextTabState extends State<ContextTab>
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  color: locked ? const Color(0xFF907CA1) : Colors.white,
+                  color: locked ? const Color(0xFF7C6DAA) : Colors.white,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
@@ -583,7 +583,7 @@ class _ContextTabState extends State<ContextTab>
                   size: 14,
                   color: locked
                       ? Colors.white
-                      : const Color(0xFF907CA1).withValues(alpha: 0.55),
+                      : const Color(0xFF7C6DAA).withValues(alpha: 0.55),
                 ),
               ),
             ),
@@ -624,7 +624,7 @@ class _ContextTabState extends State<ContextTab>
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: active
-                                  ? const Color(0xFFF6EDFB)
+                                  ? const Color(0xFFEDE8F5)
                                   : const Color(0xFFF7F7FA),
                               borderRadius: BorderRadius.circular(999),
                             ),
@@ -701,7 +701,7 @@ class _ContextTabState extends State<ContextTab>
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFF907CA1).withValues(alpha: 0.10),
+              color: const Color(0xFF7C6DAA).withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Text(
@@ -760,11 +760,11 @@ class _MedicalFlagRow extends StatelessWidget {
               height: 20,
               decoration: BoxDecoration(
                 color:
-                    completed ? const Color(0xFF907CA1) : Colors.white,
+                    completed ? const Color(0xFF7C6DAA) : Colors.white,
                 borderRadius: BorderRadius.circular(5),
                 border: Border.all(
                   color: completed
-                      ? const Color(0xFF907CA1)
+                      ? const Color(0xFF7C6DAA)
                       : const Color(0xFFCBD5E1),
                   width: 1.5,
                 ),
@@ -784,7 +784,7 @@ class _MedicalFlagRow extends StatelessWidget {
               decoration: BoxDecoration(
                 color: completed
                     ? const Color(0xFFE9DFF0)
-                    : const Color(0xFFF6EDFB),
+                    : const Color(0xFFEDE8F5),
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
@@ -855,7 +855,7 @@ class _NumberedCheckRow extends StatelessWidget {
         borderColor = const Color(0xFF94A3B8);
       } else {
         fillColor = Colors.white;
-        borderColor = const Color(0xFF907CA1);
+        borderColor = const Color(0xFF7C6DAA);
       }
       return Container(
         width: 20,

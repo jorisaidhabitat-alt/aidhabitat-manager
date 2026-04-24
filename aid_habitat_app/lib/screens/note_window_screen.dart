@@ -45,8 +45,8 @@ class NoteWindowApp extends StatelessWidget {
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFFF7F7FA),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF907CA1),
-          primary: const Color(0xFF907CA1),
+          seedColor: const Color(0xFF7C6DAA),
+          primary: const Color(0xFF7C6DAA),
         ),
         useMaterial3: true,
       ),

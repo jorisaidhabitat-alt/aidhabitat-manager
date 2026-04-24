@@ -125,13 +125,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 56,
                           decoration: BoxDecoration(
                             color: const Color(
-                              0xFF907CA1,
+                              0xFF7C6DAA,
                             ).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(18),
                           ),
                           child: const Icon(
                             LucideIcons.lock,
-                            color: Color(0xFF907CA1),
+                            color: Color(0xFF7C6DAA),
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -225,7 +225,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: FilledButton(
                             onPressed: _isSubmitting ? null : _submit,
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF907CA1),
+                              backgroundColor: const Color(0xFF7C6DAA),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 18),
                               shape: RoundedRectangleBorder(
@@ -267,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFF907CA1), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
     );

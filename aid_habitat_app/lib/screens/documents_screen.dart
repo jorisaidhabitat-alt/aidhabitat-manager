@@ -40,7 +40,7 @@ const List<String> _kAvailableTags = [
   'Autre',
 ];
 
-const Color _kPurple = Color(0xFF907CA1);
+const Color _kPurple = Color(0xFF7C6DAA);
 const Color _kDarkPurple = Color(0xFF554a63);
 
 // ---------------------------------------------------------------------------

@@ -528,7 +528,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         // que le bandeau sous-menu du relevé (Profil / Foyer / …)
         // pour une cohérence visuelle.
         indicator: BoxDecoration(
-          color: const Color(0xFFF6EDFB),
+          color: const Color(0xFFEDE8F5),
           borderRadius: BorderRadius.circular(50),
         ),
         indicatorSize: TabBarIndicatorSize.label,

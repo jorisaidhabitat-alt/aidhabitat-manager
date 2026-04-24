@@ -581,11 +581,11 @@ class _DossierScreenState extends State<DossierScreen> {
           // --- Bandeau violet clair (icône + titre + save + crayon) ---
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            color: const Color(0xFFF6EDFB),
+            color: const Color(0xFFEDE8F5),
             child: Row(
               children: [
                 const Icon(LucideIcons.user,
-                    color: Color(0xFF907CA1), size: 20),
+                    color: Color(0xFF7C6DAA), size: 20),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
@@ -622,7 +622,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             ? LucideIcons.pencil
                             : LucideIcons.check,
                         size: 18,
-                        color: const Color(0xFF907CA1),
+                        color: const Color(0xFF7C6DAA),
                       ),
                     ),
                   ),
@@ -699,7 +699,7 @@ class _DossierScreenState extends State<DossierScreen> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF907CA1),
+                          color: Color(0xFF7C6DAA),
                           letterSpacing: 0.2,
                         ),
                       ),
@@ -721,7 +721,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           child: FormTextField(
                             label: 'Nom',
                             value: _lastName,
-                            labelColor: const Color(0xFF907CA1),
+                            labelColor: const Color(0xFF7C6DAA),
                             onChanged: (v) {
                               _lastName = v;
                               _onChanged();
@@ -733,7 +733,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           child: FormTextField(
                             label: 'Prénom',
                             value: _firstName,
-                            labelColor: const Color(0xFF907CA1),
+                            labelColor: const Color(0xFF7C6DAA),
                             onChanged: (v) {
                               _firstName = v;
                               _onChanged();
@@ -757,7 +757,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             label: 'RFR du foyer',
                             value: _fiscalRevenue,
                             unit: '€',
-                            labelColor: const Color(0xFF907CA1),
+                            labelColor: const Color(0xFF7C6DAA),
                             onChanged: (v) {
                               _fiscalRevenue = v;
                               _onChanged();
@@ -773,7 +773,7 @@ class _DossierScreenState extends State<DossierScreen> {
                       cityId: _cityId,
                       options: _communeOptions,
                       showZipField: false,
-                      labelColor: const Color(0xFF907CA1),
+                      labelColor: const Color(0xFF7C6DAA),
                       onChanged: (update) {
                         setState(() {
                           if (update.city != null) _city = update.city!;
@@ -867,7 +867,7 @@ class _DossierScreenState extends State<DossierScreen> {
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
-            color: Color(0xFF907CA1),
+            color: Color(0xFF7C6DAA),
           ),
         ),
         const SizedBox(height: 6),
@@ -962,7 +962,7 @@ class _PlainField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF907CA1),
+            color: Color(0xFF7C6DAA),
             letterSpacing: 0.2,
           ),
         ),
@@ -1071,10 +1071,10 @@ class _QuickActionButton extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFFF6EDFB),
+                color: const Color(0xFFEDE8F5),
                 borderRadius: BorderRadius.circular(50),
               ),
-              child: Icon(icon, color: const Color(0xFF907CA1)),
+              child: Icon(icon, color: const Color(0xFF7C6DAA)),
             ),
             const SizedBox(height: 16),
             Text(

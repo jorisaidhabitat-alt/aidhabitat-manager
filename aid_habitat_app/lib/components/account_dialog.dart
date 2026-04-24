@@ -159,7 +159,7 @@ class _AccountDialogState extends State<AccountDialog> {
                               height: 88,
                               decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Color(0xFFF6EDFB),
+                                color: Color(0xFFEDE8F5),
                               ),
                               clipBehavior: Clip.antiAlias,
                               child: _photoUrl.isNotEmpty
@@ -200,7 +200,7 @@ class _AccountDialogState extends State<AccountDialog> {
                               right: -4,
                               bottom: -4,
                               child: Material(
-                                color: const Color(0xFF907CA1),
+                                color: const Color(0xFF7C6DAA),
                                 shape: const CircleBorder(),
                                 elevation: 2,
                                 child: InkWell(
@@ -239,7 +239,7 @@ class _AccountDialogState extends State<AccountDialog> {
                                 ? 'Ajouter une photo'
                                 : 'Changer la photo',
                             style: const TextStyle(
-                              color: Color(0xFF907CA1),
+                              color: Color(0xFF7C6DAA),
                               fontWeight: FontWeight.w600,
                             ),
                           ),

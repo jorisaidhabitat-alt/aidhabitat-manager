@@ -449,7 +449,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // interne des pills.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      color: const Color(0xFFF6EDFB),
+      color: const Color(0xFFEDE8F5),
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;

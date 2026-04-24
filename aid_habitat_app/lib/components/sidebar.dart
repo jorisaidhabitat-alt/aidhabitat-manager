@@ -182,7 +182,7 @@ class _SidebarState extends State<Sidebar> {
                   height: 48,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF907CA1),
+                    color: const Color(0xFF7C6DAA),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.1),

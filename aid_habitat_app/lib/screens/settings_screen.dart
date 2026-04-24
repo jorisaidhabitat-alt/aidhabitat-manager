@@ -250,7 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           height: 96,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFF907CA1),
+            color: const Color(0xFF7C6DAA),
           ),
           clipBehavior: Clip.antiAlias,
           child: _photoFile != null

@@ -165,7 +165,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 10),
                         color: selected
-                            ? const Color(0xFFF6EDFB)
+                            ? const Color(0xFFEDE8F5)
                             : Colors.transparent,
                         child: Row(
                           children: [
@@ -354,7 +354,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide:
-                    const BorderSide(color: Color(0xFF907CA1), width: 1.5),
+                    const BorderSide(color: Color(0xFF7C6DAA), width: 1.5),
               ),
             ),
           ),

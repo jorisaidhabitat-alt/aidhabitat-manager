@@ -273,7 +273,7 @@ class _RecentDossiersPanel extends StatelessWidget {
                     "Voir tout",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF907CA1),
+                      color: Color(0xFF7C6DAA),
                     ),
                   ),
                 ),
@@ -378,7 +378,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
                         color: _hover
-                            ? const Color(0xFF907CA1)
+                            ? const Color(0xFF7C6DAA)
                             : const Color(0xFF1E293B),
                       ),
                     ),
@@ -417,7 +417,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 decoration: BoxDecoration(
                   color: visitLabel.isEmpty
                       ? const Color(0xFFF1F5F9)
-                      : const Color(0xFFF6EDFB), // violet clair du thème
+                      : const Color(0xFFEDE8F5), // violet clair du thème
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Row(
@@ -428,7 +428,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                       size: 13,
                       color: visitLabel.isEmpty
                           ? const Color(0xFF94A3B8)
-                          : const Color(0xFF907CA1),
+                          : const Color(0xFF7C6DAA),
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -438,7 +438,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         fontWeight: FontWeight.bold,
                         color: visitLabel.isEmpty
                             ? const Color(0xFF64748B)
-                            : const Color(0xFF907CA1),
+                            : const Color(0xFF7C6DAA),
                       ),
                     ),
                   ],
@@ -449,7 +449,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 LucideIcons.arrowRight,
                 size: 18,
                 color: _hover
-                    ? const Color(0xFF907CA1)
+                    ? const Color(0xFF7C6DAA)
                     : const Color(0xFFCBD5E1), // slate-300
               ),
             ],
@@ -504,13 +504,13 @@ class _NextVisitBanner extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: const BoxDecoration(
-                color: Color(0xFFF6EDFB),
+                color: Color(0xFFEDE8F5),
                 shape: BoxShape.circle,
               ),
               child: const Center(
                 child: Icon(
                   LucideIcons.car,
-                  color: Color(0xFF907CA1),
+                  color: Color(0xFF7C6DAA),
                   size: 26,
                 ),
               ),
@@ -528,7 +528,7 @@ class _NextVisitBanner extends StatelessWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
-                      color: Color(0xFF907CA1),
+                      color: Color(0xFF7C6DAA),
                     ),
                   ),
                   SizedBox(height: 6),
@@ -577,13 +577,13 @@ class _NextVisitBanner extends StatelessWidget {
             width: 56,
             height: 56,
             decoration: const BoxDecoration(
-              color: Color(0xFFF6EDFB),
+              color: Color(0xFFEDE8F5),
               shape: BoxShape.circle,
             ),
             child: const Center(
               child: Icon(
                 LucideIcons.car,
-                color: Color(0xFF907CA1),
+                color: Color(0xFF7C6DAA),
                 size: 28,
               ),
             ),
@@ -602,7 +602,7 @@ class _NextVisitBanner extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.2,
-                    color: Color(0xFF907CA1),
+                    color: Color(0xFF7C6DAA),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -662,7 +662,7 @@ class _NextVisitBanner extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF907CA1),
+                  color: Color(0xFF7C6DAA),
                 ),
               ),
             ],
@@ -772,7 +772,7 @@ class _ActivityBarColumn extends StatelessWidget {
                     height: height,
                     decoration: BoxDecoration(
                       color: isHighlighted
-                          ? const Color(0xFF907CA1)
+                          ? const Color(0xFF7C6DAA)
                           : const Color(0xFFE2E8F0), // slate-200
                       borderRadius: BorderRadius.circular(999),
                     ),

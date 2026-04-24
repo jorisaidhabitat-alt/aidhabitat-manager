@@ -90,7 +90,7 @@ class StartVisitScreen extends StatelessWidget {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF907CA1),
+                      backgroundColor: const Color(0xFF7C6DAA),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
                       textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

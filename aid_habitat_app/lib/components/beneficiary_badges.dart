@@ -34,7 +34,7 @@ class AccompanimentBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6EDFB),
+        color: const Color(0xFFEDE8F5),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: const Color(0xFFD8CFE0)),
       ),

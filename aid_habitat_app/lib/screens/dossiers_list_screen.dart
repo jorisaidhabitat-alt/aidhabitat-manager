@@ -349,7 +349,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
 
   Widget _buildNewDossierButton() {
     return Material(
-      color: const Color(0xFF907CA1),
+      color: const Color(0xFF7C6DAA),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -539,14 +539,17 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
-            // Avatar
+            // Avatar — couleur pastel déterministe (mint/pêche/ciel)
+            // dérivée des initiales du bénéficiaire (demande utilisateur :
+            // varier les cercles entre #B8DDCC, #F4D5C4, #CFE3F0). Même
+            // patient → même couleur à chaque affichage.
             SizedBox(
               width: 64,
               child: Container(
                 width: 44,
                 height: 44,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFD8D0DC),
+                decoration: BoxDecoration(
+                  color: _beneficiaryAvatarBgFor(_initials(p)),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
@@ -768,6 +771,24 @@ _EpciPalette _epciPaletteFor(String label) {
     hash = (hash * 31 + rune) & 0x7FFFFFFF;
   }
   return _kEpciPalettes[hash % _kEpciPalettes.length];
+}
+
+/// Palette pastel des cercles d'avatar bénéficiaire (demande utilisateur) :
+/// mint / pêche / ciel — varie d'un bénéficiaire à l'autre. Hash stable
+/// sur les initiales → même bénéficiaire = même couleur à chaque rendu.
+const List<Color> _kBeneficiaryAvatarBgs = [
+  Color(0xFFB8DDCC), // mint
+  Color(0xFFF4D5C4), // pêche
+  Color(0xFFCFE3F0), // ciel
+];
+
+Color _beneficiaryAvatarBgFor(String seed) {
+  if (seed.isEmpty) return _kBeneficiaryAvatarBgs.first;
+  int hash = 0;
+  for (final rune in seed.runes) {
+    hash = (hash * 31 + rune) & 0x7FFFFFFF;
+  }
+  return _kBeneficiaryAvatarBgs[hash % _kBeneficiaryAvatarBgs.length];
 }
 
 /// Chip showing the communauté de communes with a color-coded background

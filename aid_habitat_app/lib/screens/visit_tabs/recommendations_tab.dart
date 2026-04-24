@@ -131,7 +131,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
                     'Aucune pr\u00e9conisation.\nCliquez \u00ab\u00a0Ajouter\u00a0\u00bb pour commencer.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xFF907CA1),
+                      color: Color(0xFF7C6DAA),
                       fontSize: 13,
                     ),
                   ),
