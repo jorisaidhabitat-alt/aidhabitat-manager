@@ -534,13 +534,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         indicatorSize: TabBarIndicatorSize.label,
         indicatorPadding:
             const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
-        // Texte toujours en noir, poids normal. L'onglet actif est
-        // marqué par un fin trait noir sous le texte, avec un espace
-        // entre le trait et la baseline (plus clean que l'underline
-        // Flutter qui est collée à la baseline).
-        labelColor: Colors.black,
-        unselectedLabelColor: Colors.black,
-        labelStyle: const TextStyle(fontWeight: FontWeight.normal),
+        // Onglet actif : fond violet pâle + texte + trait dark violet
+        // (#7C6DAA). Onglet inactif : texte slate gris foncé.
+        labelColor: const Color(0xFF554A63),
+        unselectedLabelColor: const Color(0xFF334155),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700),
         unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
         labelPadding: const EdgeInsets.symmetric(horizontal: 16),
         tabs: List.generate(_tabs.length, (i) {
@@ -550,22 +548,27 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               animation: _tabController,
               builder: (context, _) {
                 final isActive = _tabController.index == i;
+                // Underline strictly smaller than the text and centered
+                // (CrossAxisAlignment.center — défaut). Ratio ~50 % de
+                // la largeur estimée du texte (au lieu de ~100 %).
+                final underlineWidth =
+                    (label.length * 3.2).clamp(18.0, 60.0);
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(label),
                     const SizedBox(height: 3),
-                    // Trait fin 1 px, largeur proportionnelle à la
-                    // largeur du texte — visible uniquement pour l'onglet
-                    // actif, légèrement rapproché du texte (3 px au lieu
-                    // de 6 — demande utilisateur).
                     Container(
-                      height: 1,
-                      width: (label.length * 6.5).clamp(28, 120),
-                      color: isActive
-                          ? Colors.black
-                          : Colors.transparent,
+                      height: 1.5,
+                      width: underlineWidth,
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? const Color(0xFF7C6DAA) // violet foncé
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
                   ],
                 );

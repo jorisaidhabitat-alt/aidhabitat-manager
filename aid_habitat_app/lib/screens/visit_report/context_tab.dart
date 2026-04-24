@@ -428,6 +428,11 @@ class _ContextTabState extends State<ContextTab>
 
   Widget _buildNavBtn(IconData icon, String label, int index) {
     final active = _subSection == index;
+    // Sur fond violet clair (#EDE8F5), texte + trait actifs passent en
+    // violet foncé (#7C6DAA) pour contraster sans être agressif. Inactif
+    // : pastel lilas #AE9DB3.
+    const activeColor = Color(0xFF7C6DAA);
+    const inactiveColor = Color(0xFFAE9DB3);
     return GestureDetector(
       // HitTestBehavior.opaque → toute la zone de l'Expanded (fond
       // violet compris) reçoit les taps, pas seulement l'icône/label.
@@ -437,6 +442,7 @@ class _ContextTabState extends State<ContextTab>
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -444,7 +450,7 @@ class _ContextTabState extends State<ContextTab>
                 Icon(
                   icon,
                   size: 16,
-                  color: active ? Colors.black : const Color(0xFFAE9DB3),
+                  color: active ? activeColor : inactiveColor,
                 ),
                 const SizedBox(width: 6),
                 Flexible(
@@ -454,20 +460,23 @@ class _ContextTabState extends State<ContextTab>
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: active ? Colors.black : const Color(0xFFAE9DB3),
+                      color: active ? activeColor : inactiveColor,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
-            // Trait fin 1 px avec 6 px d'espace sous le texte, visible
-            // uniquement pour la sous-section active.
+            // Trait fin centré sous le texte, visible uniquement pour la
+            // sous-section active. Plus petit que la largeur du texte.
             const SizedBox(height: 6),
             Container(
-              height: 1,
-              width: 28,
-              color: active ? Colors.black : Colors.transparent,
+              height: 1.5,
+              width: (label.length * 3.2).clamp(18.0, 50.0),
+              decoration: BoxDecoration(
+                color: active ? activeColor : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+              ),
             ),
           ],
         ),

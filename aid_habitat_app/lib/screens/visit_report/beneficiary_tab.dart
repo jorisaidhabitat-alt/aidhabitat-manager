@@ -456,6 +456,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;
+          // Sur fond violet clair : icon/texte/trait en violet foncé
+          // (#7C6DAA). Inactif : pastel lilas.
+          const activeColor = Color(0xFF7C6DAA);
+          const inactiveColor = Color(0xFFAE9DB3);
           return Expanded(
             child: GestureDetector(
               // HitTestBehavior.opaque → toute la zone de l'Expanded
@@ -466,13 +470,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Icon(
                       items[i].icon,
                       size: 20,
-                      color: active
-                          ? Colors.black
-                          : const Color(0xFFAE9DB3),
+                      color: active ? activeColor : inactiveColor,
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -480,20 +483,21 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: active
-                            ? Colors.black
-                            : const Color(0xFFAE9DB3),
+                        color: active ? activeColor : inactiveColor,
                       ),
                     ),
-                    // Trait fin 1 px sous le texte, espacé de 6 px, visible
-                    // uniquement pour l'item actif (cohérence avec la
-                    // TabBar principale — mais sans la décoration underline
-                    // qui colle à la baseline).
+                    // Trait fin centré sous le texte, plus étroit que le
+                    // label, visible uniquement pour l'item actif.
                     const SizedBox(height: 6),
                     Container(
-                      height: 1,
-                      width: 28,
-                      color: active ? Colors.black : Colors.transparent,
+                      height: 1.5,
+                      width: (items[i].label.length * 3.2)
+                          .clamp(18.0, 50.0),
+                      decoration: BoxDecoration(
+                        color:
+                            active ? activeColor : Colors.transparent,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
                   ],
                 ),

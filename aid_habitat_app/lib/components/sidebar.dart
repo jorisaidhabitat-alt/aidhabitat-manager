@@ -134,15 +134,13 @@ class _SidebarState extends State<Sidebar> {
                   textStyle: const TextStyle(color: Colors.white, fontSize: 12),
                   child: SoftTapScale(
                     onTap: () => widget.onNavigate(item['id']),
-                    child: InkWell(
-                    onTap: () => widget.onNavigate(item['id']),
-                    borderRadius: BorderRadius.circular(50),
-                    // Style aligné avec le reste de l'app :
+                    // Un seul rond : pas d'InkWell autour pour éviter
+                    // le halo/splash Material qui dessinait un 2e fond
+                    // circulaire par-dessus l'AnimatedContainer.
                     //   • Actif   : fond violet clair #EDE8F5 + icône
-                    //     violet foncé #7C6DAA (même couleur que les
-                    //     quick-actions Documents / VAD).
+                    //     violet foncé #7C6DAA.
                     //   • Inactif : fond gris #DDE1E8 + icône gris
-                    //     bleuté #8D94A3 pour rester discret.
+                    //     bleuté #8D94A3.
                     child: AnimatedContainer(
                       duration: kSoftMedium,
                       curve: kSoftCurve,
@@ -162,7 +160,6 @@ class _SidebarState extends State<Sidebar> {
                             : const Color(0xFF8D94A3),
                       ),
                     ),
-                  ),
                   ),
                 ),
               );
