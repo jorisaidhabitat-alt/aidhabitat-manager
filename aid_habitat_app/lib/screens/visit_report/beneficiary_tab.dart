@@ -8,6 +8,7 @@ import '../../services/references_service.dart';
 import '../../services/retirement_funds_repository.dart';
 import '../../components/commune_field_group.dart';
 import '../../components/form_widgets.dart';
+import '../../components/soft_transitions.dart';
 
 /// Bénéficiaire tab — parité 1:1 avec la version React (`BeneficiaryForm`).
 ///
@@ -1358,7 +1359,7 @@ class _DateOfBirthField extends StatelessWidget {
       initialScrollOffset:
           initialIdx > 5 ? ((initialIdx ~/ 3) - 1) * 56.0 : 0,
     );
-    return showDialog<int>(
+    return showSoftDialog<int>(
       context: context,
       barrierDismissible: true,
       builder: (dialogCtx) {
@@ -1488,7 +1489,7 @@ class _DateOfBirthField extends StatelessWidget {
       'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
     ];
 
-    return showDialog<int>(
+    return showSoftDialog<int>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
         backgroundColor: Colors.white,

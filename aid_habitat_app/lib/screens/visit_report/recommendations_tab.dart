@@ -5,6 +5,7 @@ import '../../services/dossier_repository.dart';
 import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
 import '../../components/form_widgets.dart';
+import '../../components/soft_transitions.dart';
 
 /// Préconisations tab — parité 1:1 avec `PreconisationsForm` React.
 ///
@@ -167,7 +168,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   Future<void> _openPicker(int index) async {
     if (index < 0 || index >= _items.length) return;
-    final picked = await showDialog<WikiItem>(
+    final picked = await showSoftDialog<WikiItem>(
       context: context,
       builder: (_) => _WikiPickerDialog(items: _wikiItems),
     );

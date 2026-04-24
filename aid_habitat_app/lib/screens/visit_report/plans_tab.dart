@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../components/plan_canvas.dart';
+import '../../components/soft_transitions.dart';
 import '../../models/types.dart';
 import '../../services/data_service.dart';
 
@@ -74,7 +75,7 @@ class _PlansTabState extends State<PlansTab> {
 
   Future<void> _deleteCurrentPage() async {
     if (_totalPages <= 1) return;
-    final confirm = await showDialog<bool>(
+    final confirm = await showSoftDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
