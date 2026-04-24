@@ -1146,9 +1146,13 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: _hovering && !widget.disabled
-                ? _kPurple.withValues(alpha: 0.06)
-                : Colors.white,
+            // Fond violet CONSTANT (légère teinte en base, plus foncée au
+            // hover). Disabled = gris très clair pour distinguer l'état.
+            color: widget.disabled
+                ? const Color(0xFFF1F5F9)
+                : _hovering
+                    ? _kPurple.withValues(alpha: 0.14)
+                    : _kPurple.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(16),
           ),
           child: CustomPaint(
