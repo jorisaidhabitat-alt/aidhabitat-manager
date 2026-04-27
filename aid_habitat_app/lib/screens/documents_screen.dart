@@ -113,18 +113,32 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     if (!silent) setState(() => _isLoading = true);
     final docs = await _dataService.fetchDocuments(_patientId);
     if (!mounted) return;
+    // Si la lecture locale a déjà des documents → on les affiche tout de
+    // suite (spinner off). Sinon, on garde le spinner pendant le refresh
+    // remote pour éviter d'afficher une grille vide trompeuse pendant
+    // que NocoDB répond — typiquement après un clear cache iPad PWA, où
+    // SQLite est vide alors que le dossier a bien des documents côté
+    // serveur.
     setState(() {
       _documents = docs;
-      _isLoading = false;
+      if (docs.isNotEmpty) _isLoading = false;
     });
 
     final refreshed = await _dataService.refreshDocumentsFromRemote(_patientId);
-    if (!refreshed || !mounted) return;
-    final remoteDocs = await _dataService.fetchDocuments(_patientId);
     if (!mounted) return;
-    setState(() {
-      _documents = remoteDocs;
-    });
+    if (refreshed) {
+      final remoteDocs = await _dataService.fetchDocuments(_patientId);
+      if (!mounted) return;
+      setState(() {
+        _documents = remoteDocs;
+        _isLoading = false;
+      });
+    } else {
+      // Remote KO (offline ou erreur) → on relâche le spinner pour
+      // que l'user voie la grille (même vide). Le polling timer (10 s)
+      // retentera plus tard.
+      setState(() => _isLoading = false);
+    }
   }
 
   // ----- Import flows -----

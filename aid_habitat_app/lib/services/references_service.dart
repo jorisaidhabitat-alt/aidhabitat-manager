@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import '../models/types.dart';
+import 'local_database.dart';
 import 'nocodb_api_client.dart';
 
 /// Caches the reference data served by `GET /api/references` and exposes
@@ -21,8 +25,12 @@ class ReferencesService {
   factory ReferencesService() => _instance;
 
   final NocodbApiClient _apiClient = NocodbApiClient();
+  final LocalDatabase _localDb = LocalDatabase.instance;
   final StreamController<ReferencesPayload> _controller =
       StreamController<ReferencesPayload>.broadcast();
+
+  /// Clé du cache local (table `kv_store`).
+  static const _cacheKey = 'references_payload_v1';
 
   ReferencesPayload _payload = const ReferencesPayload();
   bool _loaded = false;
@@ -55,14 +63,97 @@ class ReferencesService {
   }
 
   Future<void> _doLoad() async {
+    // 1. Hydrate depuis le cache SQLite si on n'a encore rien — comme ça
+    //    le badge "Communauté de communes" du dossier (et les autocompletes
+    //    de communes) s'affichent instantanément au cold start, sans
+    //    attendre le round-trip réseau. Sans ce cache, sur iPad PWA après
+    //    un clear cache, le badge n'apparaît qu'après 1-2 secondes alors
+    //    que le reste du dossier est déjà rendu.
+    if (!_loaded) {
+      final cached = await _readFromCache();
+      if (cached != null) {
+        _payload = cached;
+        _loaded = true;
+        if (!_controller.isClosed) _controller.add(cached);
+      }
+    }
+
+    // 2. Refresh réseau (toujours, même si on a un cache — pour récupérer
+    //    les nouvelles communes/EPCIs/barèmes ANAH ajoutés côté NocoDB).
     try {
       final payload = await _apiClient.fetchReferences();
       _payload = payload;
       _loaded = true;
       if (!_controller.isClosed) _controller.add(payload);
+      // 3. Persiste pour le prochain cold start.
+      unawaited(_writeToCache(payload));
     } catch (_) {
-      // Silent fallback: keep the previous payload (or empty) so UI degrades
-      // gracefully to plain text fields.
+      // Silent fallback: keep the previous payload (cached or empty) so UI
+      // degrades gracefully to plain text fields.
+    }
+  }
+
+  Future<ReferencesPayload?> _readFromCache() async {
+    try {
+      final db = await _localDb.database;
+      final rows = await db.query(
+        'kv_store',
+        where: 'key = ?',
+        whereArgs: [_cacheKey],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      final raw = rows.first['value'] as String?;
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+
+      final communes = (decoded['communes'] as List?)
+              ?.whereType<Map>()
+              .map((e) => CommuneRef.fromJson(e.cast<String, dynamic>()))
+              .toList() ??
+          const [];
+      final baremes = (decoded['baremesAnah'] as List?)
+              ?.whereType<Map>()
+              .map((e) => BaremeAnahRef.fromJson(e.cast<String, dynamic>()))
+              .toList() ??
+          const [];
+      final epcis = (decoded['epcis'] as List?)
+              ?.whereType<Map>()
+              .map((e) => EpciRef.fromJson(e.cast<String, dynamic>()))
+              .toList() ??
+          const [];
+
+      return ReferencesPayload(
+        communes: communes,
+        baremesAnah: baremes,
+        epcis: epcis,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeToCache(ReferencesPayload payload) async {
+    try {
+      final db = await _localDb.database;
+      final encoded = jsonEncode({
+        'communes': payload.communes.map((c) => c.toJson()).toList(),
+        'baremesAnah': payload.baremesAnah.map((b) => b.toJson()).toList(),
+        'epcis': payload.epcis.map((e) => e.toJson()).toList(),
+      });
+      await db.insert(
+        'kv_store',
+        {
+          'key': _cacheKey,
+          'value': encoded,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {
+      // Silent — un cache absent n'est pas fatal, le prochain cold start
+      // refera juste le round-trip réseau.
     }
   }
 

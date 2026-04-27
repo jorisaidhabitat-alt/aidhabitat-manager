@@ -584,13 +584,26 @@ class _NotesWidgetState extends State<NotesWidget> {
   Future<void> _loadPages() async {
     setState(() => _isLoaded = false);
 
+    // 1. Première page : on lit en SQLite et on l'affiche IMMÉDIATEMENT.
+    //    Le spinner disparaît dès qu'on a la page courante — les autres
+    //    pages sont sondées en arrière-plan pour ne pas bloquer le rendu.
+    //    Avant ce changement, sur iPad PWA après clear cache, NotesWidget
+    //    sondait jusqu'à 20 pages séquentiellement dans SQLite WASM avant
+    //    d'afficher quoi que ce soit, ce qui prenait plusieurs secondes
+    //    pour la note rapide du dossier.
     final firstJson = await _dataService.fetchNoteDrawingJson(
       patientId: widget.patientId,
       tabKey: widget.tabKey,
       pageNumber: _currentPage,
     );
-    _applyJson(_currentPage, firstJson, hydrateController: true);
+    if (!mounted) return;
+    setState(() {
+      _applyJson(_currentPage, firstJson, hydrateController: true);
+      _isLoaded = true;
+    });
+    _emitMedicalFlagsForCurrentPage();
 
+    // 2. Refresh réseau de la page courante (non-bloquant).
     unawaited(
       _dataService
           .refreshNotePageFromRemote(
@@ -611,19 +624,35 @@ class _NotesWidgetState extends State<NotesWidget> {
           }),
     );
 
-    // Détecte les pages suivantes en mode lazy.
-    var probe = _currentPage + 1;
+    // 3. Sondage des pages suivantes en arrière-plan (non-bloquant).
+    //    On ne ré-affiche un setState qu'à la fin pour éviter les
+    //    repaints intermédiaires.
+    unawaited(_probeAdditionalPages(startFrom: _currentPage + 1));
+  }
+
+  /// Sonde les pages > [startFrom] en lecture locale uniquement.
+  /// Appelée en `unawaited` après le rendu initial pour ne pas bloquer
+  /// l'affichage de la première page.
+  Future<void> _probeAdditionalPages({required int startFrom}) async {
+    var probe = startFrom;
     while (probe < widget.maxPages) {
       final json = await _dataService.fetchNoteDrawingJson(
         patientId: widget.patientId,
         tabKey: widget.tabKey,
         pageNumber: probe,
       );
+      if (!mounted) return;
       if (json == null || json.isEmpty) break;
       _applyJson(probe, json, hydrateController: false);
       probe += 1;
     }
-    if (probe > _totalPages) _totalPages = probe;
+    if (!mounted) return;
+
+    var changed = false;
+    if (probe > _totalPages) {
+      _totalPages = probe;
+      changed = true;
+    }
 
     if (widget.sharedText) {
       // Normalize: take the first non-empty text found across pages
@@ -641,15 +670,21 @@ class _NotesWidgetState extends State<NotesWidget> {
       for (var i = 0; i < _totalPages; i++) {
         _pageTexts[i] = txt;
       }
-      _textController.text = txt;
+      // Ne ré-hydrate le controller que si la valeur courante diffère
+      // (sinon on perd la sélection / position du curseur si l'user a
+      // commencé à taper pendant le sondage).
+      if (_textController.text != txt && !_textFocusNode.hasFocus) {
+        _textController.removeListener(_onTextChanged);
+        _textController.value = TextEditingValue(
+          text: txt,
+          selection: TextSelection.collapsed(offset: txt.length),
+        );
+        _textController.addListener(_onTextChanged);
+        changed = true;
+      }
     }
 
-    if (mounted) {
-      setState(() => _isLoaded = true);
-    }
-    // Une fois les pages chargées, pousse les flags médicaux de la page
-    // courante vers le parent (pour synchroniser les checkboxes/badges).
-    _emitMedicalFlagsForCurrentPage();
+    if (changed) setState(() {});
   }
 
   void _applyJson(int page, String? json, {required bool hydrateController}) {

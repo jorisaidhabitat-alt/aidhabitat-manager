@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 9;
+  static const _dbVersion = 10;
 
   Database? _database;
 
@@ -61,7 +61,30 @@ class LocalDatabase {
     if (oldVersion < 9) {
       await _migrateV8ToV9(db);
     }
+    if (oldVersion < 10) {
+      await _migrateV9ToV10(db);
+    }
   }
+
+  /// v9 → v10: Generic key/value store. Used by `ReferencesService` to
+  /// persist the references payload (communes, EPCIs, barèmes ANAH) on
+  /// disk so the next cold start hydrates synchronously instead of
+  /// waiting for the `/api/references` round-trip. Without this, the
+  /// "Communauté de communes" badge on the dossier page only appears
+  /// once the network call lands — which on iPad PWA after a service
+  /// worker cache clear takes 1-2 seconds and is visibly out of sync
+  /// with the rest of the page.
+  Future<void> _migrateV9ToV10(Database db) async {
+    await _createTableIfMissing(db, 'kv_store', _createKvStoreSQL);
+  }
+
+  static const _createKvStoreSQL = '''
+    CREATE TABLE kv_store (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
 
   /// v8 → v9: Offline image cache for the Flutter web PWA. Native targets
   /// have a filesystem cache via [MediaCacheService], but on web
@@ -559,6 +582,7 @@ class LocalDatabase {
     await db.execute(_createReferenceSyncMetaSQL);
     await db.execute(_createAccessMembersSQL);
     await db.execute(_createWebMediaCacheSQL);
+    await db.execute(_createKvStoreSQL);
 
     // Per-dossier offline tables (visit report sections + recommendations)
     await db.execute(_createContexteDeVieSQL);

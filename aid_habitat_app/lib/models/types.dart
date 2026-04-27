@@ -1217,6 +1217,14 @@ class CommuneRef {
     epciId: json['epciId']?.toString() ?? '',
     epciLabel: json['epciLabel']?.toString() ?? '',
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'label': label,
+    'zipCode': zipCode,
+    'epciId': epciId,
+    'epciLabel': epciLabel,
+  };
 }
 
 class BaremeAnahRef {
@@ -1247,6 +1255,16 @@ class BaremeAnahRef {
     revenueHaut: (json['revenueHaut'] as num?)?.toDouble(),
     plafondYear: (json['plafondYear'] as num?)?.toInt(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'householdSize': householdSize,
+    'revenueTresModeste': revenueTresModeste,
+    'revenueModeste': revenueModeste,
+    'revenueIntermediaire': revenueIntermediaire,
+    'revenueHaut': revenueHaut,
+    'plafondYear': plafondYear,
+  };
 }
 
 class EpciRef {
@@ -1259,6 +1277,11 @@ class EpciRef {
     id: json['id']?.toString() ?? '',
     label: json['label']?.toString() ?? '',
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'label': label,
+  };
 }
 
 class ReferencesPayload {
