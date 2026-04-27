@@ -321,12 +321,13 @@ class _FundCardState extends State<_FundCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ---------- Hero logo ----------
-              // Fond solide (pas de dégradé) — parité demandée avec
-              // les cartes de la Bibliothèque.
+              // Fond blanc uni — pas de dégradé, pas de teinte violette
+              // (demande utilisateur : laisser le logo respirer sur du
+              // blanc pur, comme dans la Bibliothèque).
               Container(
                 height: 120,
                 width: double.infinity,
-                color: const Color(0xFFEDE8F5),
+                color: Colors.white,
                 padding: const EdgeInsets.all(14),
                 child: Center(
                   child: Padding(
