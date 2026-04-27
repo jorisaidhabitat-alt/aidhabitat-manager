@@ -321,62 +321,19 @@ class _FundCardState extends State<_FundCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ---------- Hero logo ----------
-              // Fond blanc uni — laisser respirer le logo. Le numéro de
-              // téléphone est superposé en bas-gauche en pastille noire
-              // semi-transparente (parité avec le tag overlay des cartes
-              // Bibliothèque).
-              SizedBox(
+              // Fond blanc uni — pas d'overlay. Le numéro de téléphone
+              // est désormais affiché en pastille SOUS la date (demande
+              // utilisateur), comme un widget propre dans la zone texte.
+              Container(
                 height: 120,
                 width: double.infinity,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Container(
-                      color: Colors.white,
-                      padding: const EdgeInsets.all(14),
-                      child: Center(
-                        child: Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 12),
-                          child: _FundLogoImage(fund: fund),
-                        ),
-                      ),
-                    ),
-                    if (fund.phone.isNotEmpty)
-                      Positioned(
-                        left: 8,
-                        bottom: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                LucideIcons.phone,
-                                size: 10,
-                                color: Colors.white,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                fund.phone,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
+                color: Colors.white,
+                padding: const EdgeInsets.all(14),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: _FundLogoImage(fund: fund),
+                  ),
                 ),
               ),
 
@@ -399,9 +356,8 @@ class _FundCardState extends State<_FundCard> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      // Date en UPPERCASE + letter-spacing 1.2 — même
-                      // format que le tag secondaire des cartes
-                      // Bibliothèque (info sous le titre).
+                      // Info : date en UPPERCASE — "Modifiée le …" si
+                      // une édition existe, "Ajoutée le …" sinon.
                       Text(
                         widget.dateLabel.toUpperCase(),
                         maxLines: 1,
@@ -413,6 +369,46 @@ class _FundCardState extends State<_FundCard> {
                           letterSpacing: 1.2,
                         ),
                       ),
+                      // Widget : pastille téléphone SOUS la date — fond
+                      // gris très clair, icône + numéro en slate-700.
+                      if (fund.phone.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(50),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  LucideIcons.phone,
+                                  size: 12,
+                                  color: Color(0xFF475569),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    fund.phone,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
