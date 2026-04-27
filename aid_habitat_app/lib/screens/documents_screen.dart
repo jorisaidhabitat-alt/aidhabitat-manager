@@ -3307,15 +3307,25 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
     return Column(
       children: [
         Expanded(
-          child: InteractiveViewer(
-            minScale: 0.5,
-            maxScale: 4.0,
-            child: Center(
-              child: _currentImage == null
-                  ? const SizedBox.shrink()
-                  : Image.memory(_currentImage!, fit: BoxFit.contain),
-            ),
-          ),
+          child: _currentImage == null
+              ? const SizedBox.shrink()
+              // La page rasterisée est wrappée dans `_ImageAnnotator` mode
+              // bytes pour permettre le dessin au stylet. On lui passe la
+              // GlobalKey du parent (`widget.annotatorKey`) pour que le
+              // bouton Save du `_PreviewScreen` puisse appeler
+              // `exportFlatPng()` via `_annotatorKey.currentState` →
+              // `_reuploadFlattenedImage` (branche `kIsWeb`) → enqueue les
+              // bytes flattened pour ré-upload.
+              //
+              // Limitation : changer de page recrée le widget (la key
+              // change avec `_currentPage` via le bytes différent), donc
+              // les strokes en mémoire de la page précédente sont perdus.
+              // L'utilisateur doit sauvegarder avant de naviguer.
+              : _ImageAnnotator(
+                  key: widget.annotatorKey,
+                  imageBytes: _currentImage,
+                  onChanged: widget.onChanged,
+                ),
         ),
         if (_totalPages > 1)
           Container(
