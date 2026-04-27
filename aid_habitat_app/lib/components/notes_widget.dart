@@ -1597,8 +1597,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   /// Actions flottantes en haut-droite du canvas : bouton `+` (cercle
-  /// violet clair avec `+` violet foncé) + corbeille (icône rose, aucun
-  /// fond). Sans conteneur englobant, sans ombre — parité maquette.
+  /// violet **clair** avec `+` violet **foncé`) + corbeille (icône rose,
+  /// aucun fond). Sans conteneur englobant, sans ombre — parité maquette.
   /// Taille 44×44 pour respecter les guidelines tactiles tablette.
   Widget _buildTopRightPageActions() {
     final canAdd = _totalPages < widget.maxPages;
@@ -1608,10 +1608,11 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // "+" : cercle violet foncé de 26px (empreinte visuelle
-        // alignée sur la corbeille 26px juste à droite), avec un "+"
-        // blanc de 16px à l'intérieur. GestureDetector pour éviter
-        // le halo Material (même traitement que la corbeille).
+        // "+" : cercle violet **clair** (#EDE8F5) de 26px avec un `+`
+        // violet **foncé** (#7C6DAA) de 16px à l'intérieur — même
+        // grammaire pastel que la sub-nav du relevé de visite.
+        // GestureDetector pour éviter le halo Material (même traitement
+        // que la corbeille).
         Tooltip(
           message: 'Nouvelle page',
           child: GestureDetector(
@@ -1625,14 +1626,14 @@ class _NotesWidgetState extends State<NotesWidget> {
                   width: 26,
                   height: 26,
                   decoration: const BoxDecoration(
-                    color: _kStackedViolet,
+                    color: _kStackedSplitterBg, // violet clair #EDE8F5
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
                   child: const Icon(
                     LucideIcons.plus,
                     size: 16,
-                    color: Colors.white,
+                    color: _kStackedViolet, // violet foncé #7C6DAA
                   ),
                 ),
               ),
