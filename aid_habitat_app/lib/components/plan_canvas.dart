@@ -847,12 +847,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
             'Porte',
           ),
           const SizedBox(width: 8),
-          // WC : Material Icons fournit un pictogramme "WC"
-          // sémantique (restroom) — remplace l'emoji par un vrai
-          // glyphe vectoriel cohérent avec les autres icônes.
+          // WC : pictogramme dessiné (réservoir + cuvette) identique
+          // au symbole tracé sur le plan — l'utilisateur reconnaît
+          // immédiatement l'élément, comme la baignoire pour la
+          // baignoire (demande utilisateur).
           _symbolInsertBtn(
             PlanTool.toilet,
-            Icon(Icons.wc, size: 22, color: Colors.grey.shade700),
+            _ToiletPictogram(size: 22, color: Colors.grey.shade700),
             'WC',
           ),
           const SizedBox(width: 8),
@@ -1029,21 +1030,30 @@ class _PlanCanvasState extends State<PlanCanvas> {
   /// bleu, vert, jaune) — pas de HSL/hex pour éviter la confusion.
   final GlobalKey _colorDotKey = GlobalKey();
   Widget _buildActiveColorDot() {
+    // Le rond couleur est ramené à la même taille visuelle que les
+    // icônes (poubelle, undo/redo, chevrons) : ~20 px de footprint
+    // dans une zone tactile de 40 × 40 — confort tactile préservé,
+    // empreinte visuelle alignée avec le reste de la barre d'outils.
     return Tooltip(
       message: 'Changer la couleur',
       child: GestureDetector(
         key: _colorDotKey,
         onTap: _openColorPresetMenu,
-        child: Container(
-          width: 38,
-          height: 38,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Color(_penColor),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Colors.grey.shade300,
-              width: 2,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Center(
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: Color(_penColor),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.grey.shade300,
+                  width: 1.5,
+                ),
+              ),
             ),
           ),
         ),
@@ -2387,6 +2397,67 @@ class _DrawPainter extends CustomPainter {
 // Suppress unused import warning (Uint8List reserved for future export needs)
 // ignore: unused_element
 Uint8List _unusedTypedData() => Uint8List(0);
+
+// ---------------------------------------------------------------------------
+// Pictogramme WC — petit dessin vectoriel "vue de dessus" identique au
+// symbole tracé sur le canvas (réservoir + cuvette ovale). Utilisé dans
+// la palette d'insertion à la place de l'icône lettre `Icons.wc` qui ne
+// montrait pas l'élément. Cohérent avec `LucideIcons.bath` pour la
+// baignoire : on voit immédiatement de quel équipement il s'agit.
+// ---------------------------------------------------------------------------
+class _ToiletPictogram extends StatelessWidget {
+  const _ToiletPictogram({this.size = 22, this.color = const Color(0xFF334155)});
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    // Ratio 2:1 (réservoir + cuvette horizontale) — même proportion que
+    // le symbole dessiné sur le plan (`_kSymbolDefaultSize.toilet`).
+    return SizedBox(
+      width: size,
+      height: size * 0.62,
+      child: CustomPaint(painter: _ToiletIconPainter(color: color)),
+    );
+  }
+}
+
+class _ToiletIconPainter extends CustomPainter {
+  _ToiletIconPainter({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final r = Offset.zero & size;
+    // Cuvette (ovale) — 2/3 droits.
+    final bowl = Rect.fromLTWH(
+      r.left + r.width * 0.28,
+      r.top + r.height * 0.08,
+      r.width * 0.70,
+      r.height * 0.84,
+    );
+    canvas.drawOval(bowl, stroke);
+    // Réservoir — 30 % gauche.
+    final tank = Rect.fromLTWH(
+      r.left,
+      r.top + r.height * 0.20,
+      r.width * 0.27,
+      r.height * 0.60,
+    );
+    canvas.drawRect(tank, stroke);
+  }
+
+  @override
+  bool shouldRepaint(_ToiletIconPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
 
 // ---------------------------------------------------------------------------
 // Custom color picker dialog — parité avec React `<input type="color">`
