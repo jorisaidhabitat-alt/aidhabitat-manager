@@ -48,6 +48,10 @@ class CommuneFieldGroup extends StatefulWidget {
   /// `FormTextField.labelSize`.
   final double? labelSize;
 
+  /// Espace entre les libellés "CP" / "Ville" et leur champ
+  /// (défaut : 6). Voir `FormTextField.labelSpacing`.
+  final double? labelSpacing;
+
   const CommuneFieldGroup({
     super.key,
     required this.city,
@@ -61,6 +65,7 @@ class CommuneFieldGroup extends StatefulWidget {
     this.showZipField = true,
     this.labelColor,
     this.labelSize,
+    this.labelSpacing,
   });
 
   @override
@@ -274,7 +279,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: widget.labelSpacing ?? 6),
         TextFormField(
           initialValue: widget.zipCode,
           readOnly: true,
@@ -311,7 +316,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: widget.labelSpacing ?? 6),
         CompositedTransformTarget(
           link: _layerLink,
           child: TextField(

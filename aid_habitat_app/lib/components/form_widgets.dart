@@ -101,6 +101,11 @@ class FormTextField extends StatefulWidget {
   /// Informations Bénéficiaire, par ex.).
   final double? labelSize;
 
+  /// Espace vertical entre le libellé et le champ (défaut : 6). Plus
+  /// grand quand on veut donner de l'air aux labels imposants du bloc
+  /// Informations Bénéficiaire.
+  final double? labelSpacing;
+
   const FormTextField({
     super.key,
     required this.label,
@@ -115,6 +120,7 @@ class FormTextField extends StatefulWidget {
     this.maxLines = 1,
     this.labelColor,
     this.labelSize,
+    this.labelSpacing,
   });
 
   @override
@@ -165,7 +171,7 @@ class _FormTextFieldState extends State<FormTextField> {
             color: widget.labelColor ?? const Color(0xFF64748B),
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: widget.labelSpacing ?? 6),
         TextFormField(
           controller: _controller,
           focusNode: _focusNode,
@@ -234,6 +240,10 @@ class FormNumberField extends StatefulWidget {
   /// Taille du libellé (défaut : 13). Voir `FormTextField.labelSize`.
   final double? labelSize;
 
+  /// Espace entre le libellé et le champ (défaut : 6).
+  /// Voir `FormTextField.labelSpacing`.
+  final double? labelSpacing;
+
   const FormNumberField({
     super.key,
     required this.label,
@@ -245,6 +255,7 @@ class FormNumberField extends StatefulWidget {
     this.unit,
     this.labelColor,
     this.labelSize,
+    this.labelSpacing,
   });
 
   @override
@@ -293,7 +304,7 @@ class _FormNumberFieldState extends State<FormNumberField> {
             color: widget.labelColor ?? const Color(0xFF64748B),
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: widget.labelSpacing ?? 6),
         TextFormField(
           controller: _controller,
           focusNode: _focusNode,
