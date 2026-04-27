@@ -37,6 +37,34 @@ class NocodbSyncService {
   /// to preserve ordering, but different entities can sync concurrently.
   static const int _maxConcurrency = 4;
 
+  /// Lit la valeur `remote_updated_at` de la ligne locale identifiée
+  /// par [idColumn] = [idValue] dans [table]. Renvoie `null` si la
+  /// ligne n'existe pas ou si la colonne est vide.
+  ///
+  /// Utilisé pour câbler le contrôle d'optimistic concurrency au push :
+  /// la valeur retournée est passée au serveur dans
+  /// `expectedUpdatedAt`, et `sendConflictIfStale()` (server/index.mjs)
+  /// renvoie 409 si le serveur a une version plus récente.
+  Future<String?> _readRemoteUpdatedAt({
+    required String table,
+    required String idColumn,
+    required String idValue,
+  }) async {
+    final db = await LocalDatabase.instance.database;
+    final rows = await db.query(
+      table,
+      columns: ['remote_updated_at'],
+      where: '$idColumn = ?',
+      whereArgs: [idValue],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final v = rows.first['remote_updated_at'];
+    if (v == null) return null;
+    final s = v.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
   Future<SyncRunResult> pushPendingChanges() async {
     // Auto-guérison : réhabilite toute opération précédemment marquée
     // `failed` dont l'erreur ressemble à un 5xx / timeout / déconnexion,
@@ -189,6 +217,21 @@ class NocodbSyncService {
           entityLocalId: operation.entityLocalId,
         );
         pushed += 1;
+      } on ConflictException catch (e) {
+        // 409 serveur (optimistic concurrency) — l'op et l'entity row
+        // sont marquées `conflict`. Pas de retry : c'est l'écran de
+        // résolution qui prendra la main quand l'utilisateur ré-ouvre
+        // le dossier.
+        await _syncRepository.markConflict(
+          operationId: operation.id,
+          entityType: operation.entityType,
+          entityLocalId: operation.entityLocalId,
+          error: e.message,
+        );
+        failures.add('${operation.entityType}:conflit');
+        // Stop le groupe : pas la peine de continuer à pousser des
+        // ops sur la même entity quand on sait qu'il y a divergence.
+        break;
       } on TransientRemoteException catch (e) {
         // ignore: avoid_print
         print('[sync] transient ${operation.entityType}:'
@@ -292,10 +335,27 @@ class NocodbSyncService {
     if (dossierId == null || dossierId.isEmpty || updates == null) {
       throw Exception('Payload contexte de vie incomplet');
     }
+    // Optimistic concurrency : on transmet le timestamp serveur connu
+    // localement. Le serveur (sendConflictIfStale) renvoie 409 si la
+    // ligne a été modifiée depuis — l'op est alors marquée `conflict`
+    // et l'écran de résolution est proposé à l'utilisateur.
+    final expected = await _readRemoteUpdatedAt(
+      table: 'dossiers',
+      idColumn: 'local_id',
+      idValue: dossierId,
+    );
+    final updatesWithGuard = <String, dynamic>{
+      ...updates,
+      if (expected != null) 'expectedUpdatedAt': expected,
+    };
     // ignore: avoid_print
     print('[sync] PATCH /api/dossiers/$dossierId (contexte) '
-        'keys=${updates.keys.toList()}');
-    await _apiClient.updateDossier(dossierId: dossierId, updates: updates);
+        'keys=${updates.keys.toList()} '
+        'expectedUpdatedAt=${expected ?? "null"}');
+    await _apiClient.updateDossier(
+      dossierId: dossierId,
+      updates: updatesWithGuard,
+    );
     // Mark the local contexte_de_vie row as synced.
     final db = await LocalDatabase.instance.database;
     await db.update(
@@ -407,11 +467,23 @@ class NocodbSyncService {
       throw Exception('Payload patient incomplet');
     }
     final remoteId = await _resolveRemotePatientId(localId) ?? localId;
+    // Optimistic concurrency (cf. _processContexteDeVieOperation).
+    final expected = await _readRemoteUpdatedAt(
+      table: 'patients',
+      idColumn: 'local_id',
+      idValue: localId,
+    );
+    final updatesWithGuard = <String, dynamic>{
+      ...updates,
+      if (expected != null) 'expectedUpdatedAt': expected,
+    };
     // ignore: avoid_print
-    print('[sync] PATCH /api/beneficiaires/$remoteId  updates=${updates.keys.toList()}');
+    print('[sync] PATCH /api/beneficiaires/$remoteId '
+        'updates=${updates.keys.toList()} '
+        'expectedUpdatedAt=${expected ?? "null"}');
     await _apiClient.updateBeneficiary(
       patientId: remoteId,
-      updates: updates,
+      updates: updatesWithGuard,
     );
     // Mark as synced locally once the push succeeds.
     final db = await LocalDatabase.instance.database;
@@ -444,25 +516,45 @@ class NocodbSyncService {
     final remoteId =
         await _resolveRemoteBeneficiaryIdFromDossier(dossierLocalId) ??
             dossierLocalId;
+    // Optimistic concurrency : on s'appuie sur la `housing_local_id`
+    // référencée par le dossier pour récupérer le timestamp serveur du
+    // logement (le `local_id` du logement est `housing_<dossierId>`).
+    final db = await LocalDatabase.instance.database;
+    final dRows = await db.query(
+      'dossiers',
+      columns: ['housing_local_id'],
+      where: 'local_id = ?',
+      whereArgs: [dossierLocalId],
+      limit: 1,
+    );
+    final housingLocalId = dRows.isEmpty
+        ? null
+        : dRows.first['housing_local_id'] as String?;
+    final expected = housingLocalId == null
+        ? null
+        : await _readRemoteUpdatedAt(
+            table: 'housings',
+            idColumn: 'local_id',
+            idValue: housingLocalId,
+          );
+    final updatesWithGuard = <String, dynamic>{
+      ...updates,
+      if (expected != null) 'expectedUpdatedAt': expected,
+    };
     // ignore: avoid_print
-    print('[sync] PATCH /api/logements/by-beneficiary/$remoteId  updates=${updates.keys.toList()}');
+    print('[sync] PATCH /api/logements/by-beneficiary/$remoteId '
+        'updates=${updates.keys.toList()} '
+        'expectedUpdatedAt=${expected ?? "null"}');
     await _apiClient.updateLogement(
       beneficiaryId: remoteId,
-      updates: updates,
+      updates: updatesWithGuard,
     );
-    final db = await LocalDatabase.instance.database;
-    final rows = await db.query('dossiers',
-        columns: ['housing_local_id'],
-        where: 'local_id = ?',
-        whereArgs: [dossierLocalId],
-        limit: 1);
-    if (rows.isNotEmpty) {
-      final housingId = rows.first['housing_local_id'] as String;
+    if (housingLocalId != null) {
       await db.update(
         'housings',
         {'sync_state': SyncState.synced.name},
         where: 'local_id = ?',
-        whereArgs: [housingId],
+        whereArgs: [housingLocalId],
       );
     }
   }
