@@ -922,6 +922,39 @@ function formatRecoText(reco) {
 }
 
 /**
+ * Calcule le bounding box englobant les widgets (texte + image) d'une
+ * case de préconisation, identifiée par son index dans
+ * RECO_TEXT_FIELDS / RECO_IMAGE_FIELDS. Retourne null si ni le champ
+ * texte ni le champ image ne sont trouvés.
+ *
+ * Sert à blanchir précisément la zone d'une case BOT vide quand on
+ * conserve la page (TOP rempli, BOT vide).
+ */
+function getRecoCaseBoundingBox(fieldsByName, recoIdx) {
+  const textName = RECO_TEXT_FIELDS[recoIdx];
+  const imgName = RECO_IMAGE_FIELDS[recoIdx];
+  const text = fieldsByName.get(textName);
+  const img = fieldsByName.get(imgName);
+  const rects = [];
+  const collectRects = (field) => {
+    const widgets = field?.acroField?.getWidgets?.();
+    if (!Array.isArray(widgets)) return;
+    for (const widget of widgets) {
+      const r = widget.getRectangle?.();
+      if (r) rects.push(r);
+    }
+  };
+  collectRects(text);
+  collectRects(img);
+  if (rects.length === 0) return null;
+  const xMin = Math.min(...rects.map((r) => r.x));
+  const yMin = Math.min(...rects.map((r) => r.y));
+  const xMax = Math.max(...rects.map((r) => r.x + r.width));
+  const yMax = Math.max(...rects.map((r) => r.y + r.height));
+  return { x: xMin, y: yMin, width: xMax - xMin, height: yMax - yMin };
+}
+
+/**
  * Génère un PDF rempli pour le dossier fourni.
  *
  * @param {object} options
@@ -1209,6 +1242,52 @@ export async function generateVisitReport({
     }
   }
 
+  // ---------------------------------------------------------------
+  // Élision des cases de préconisation vides (demande utilisateur :
+  // "le nombre d'espace de préconisation doit être egal au nombre
+  // de préconisations ajoutées… il ne doit pas y'avoir de cases
+  // vides, elles doivent êtes retirées visuellement").
+  //
+  // Le template PDF a 4 pages × 2 cases (TOP + BOT) = 8 slots fixes.
+  // On distingue 3 situations par page :
+  //   - les 2 cases utilisées      → garder la page intacte
+  //   - seule la case TOP utilisée → garder la page mais blanchir
+  //                                   la zone de la case BOT
+  //   - aucune case utilisée       → supprimer la page du PDF
+  //
+  // L'itération se fait en SENS INVERSE (page 14 → 11) pour que la
+  // suppression d'une page n'altère pas l'index des pages restantes
+  // qu'on n'a pas encore traitées.
+  // ---------------------------------------------------------------
+  const recoPageBaseIndex = 10; // page 11 = index 10 dans le PDF
+  const recoCount = recommendations.length;
+  // Pages partielles à blanchir APRÈS flatten (sinon les widgets
+  // aplatis recouvriraient le rectangle blanc). Chaque entrée =
+  // { pageIdx, botRect }.
+  const pendingBotCovers = [];
+  stats.recoPagesRemoved = 0;
+  for (let pageOffset = 3; pageOffset >= 0; pageOffset -= 1) {
+    const topRecoIdx = pageOffset * 2;
+    const botRecoIdx = pageOffset * 2 + 1;
+    const topUsed = topRecoIdx < recoCount;
+    const botUsed = botRecoIdx < recoCount;
+    const pageIdx = recoPageBaseIndex + pageOffset;
+    if (!topUsed && !botUsed) {
+      try {
+        pdfDoc.removePage(pageIdx);
+        stats.recoPagesRemoved += 1;
+      } catch (error) {
+        console.warn(
+          `[generateVisitReport] removePage(${pageIdx}) :`,
+          error?.message || error,
+        );
+      }
+    } else if (topUsed && !botUsed) {
+      const botRect = getRecoCaseBoundingBox(fieldsByName, botRecoIdx);
+      pendingBotCovers.push({ pageIdx, botRect });
+    }
+  }
+
   // Override de l'adresse Aid'Habitat sur la couverture (texte
   // hardcodé dans le PDF — pas un champ de formulaire).
   await applyErgoContactOverlay(pdfDoc);
@@ -1221,6 +1300,32 @@ export async function generateVisitReport({
   // plus un formulaire éditable. Mettre flatten=false pour debug.
   if (flatten) {
     form.flatten();
+  }
+
+  // Blanchiment des cases BOT vides — fait APRÈS flatten pour passer
+  // au-dessus des widgets aplatis (texte vide + bordures éventuelles
+  // laissées par Affinity Publisher). On couvre toute la largeur pour
+  // englober le titre de sous-section ("PHOTOS, CROQUIS, ILLUSTRATION")
+  // et les ornements décoratifs autour de la zone bot.
+  for (const { pageIdx, botRect } of pendingBotCovers) {
+    if (!botRect) continue;
+    let page;
+    try {
+      page = pdfDoc.getPage(pageIdx);
+    } catch (_) {
+      continue;
+    }
+    if (!page) continue;
+    const { width: pageWidth } = page.getSize();
+    const padTop = 90;
+    const padBottom = 20;
+    page.drawRectangle({
+      x: 0,
+      y: Math.max(0, botRect.y - padBottom),
+      width: pageWidth,
+      height: botRect.height + padTop + padBottom,
+      color: rgb(1, 1, 1),
+    });
   }
 
   const bytes = await pdfDoc.save({
