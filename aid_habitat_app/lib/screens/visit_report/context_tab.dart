@@ -450,24 +450,41 @@ class _ContextTabState extends State<ContextTab>
                   Container(
                     color: Colors.white,
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                    child: _buildOccupantHeader(idx),
+                    // Header swipe-occupant : fade + slide entre occupants.
+                    child: SoftSwitcher(
+                      duration: kSoftFast,
+                      fillParent: false,
+                      child: KeyedSubtree(
+                        key: ValueKey<int>(idx),
+                        child: _buildOccupantHeader(idx),
+                      ),
+                    ),
                   ),
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      hasMultiple ? 0 : 16,
-                      20,
-                      12,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_subSection == 0)
-                          _buildMedical()
-                        else
-                          _buildAutonomy(),
-                      ],
+                  // Slide + fade entre sous-sections (Médicale ↔ Autonomie)
+                  // ET entre occupants (l'idx + le subSection sont
+                  // combinés dans la clé). Toute la zone scrollable
+                  // bascule en douceur — parité avec Bénéficiaire.
+                  child: SoftSwitcher(
+                    child: KeyedSubtree(
+                      key: ValueKey<String>('$_subSection-$idx'),
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          hasMultiple ? 0 : 16,
+                          20,
+                          12,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_subSection == 0)
+                              _buildMedical()
+                            else
+                              _buildAutonomy(),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),

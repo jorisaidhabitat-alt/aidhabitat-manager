@@ -510,18 +510,32 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   Widget _buildActiveSection() {
+    final Widget section;
     switch (_subSectionIndex) {
       case 0:
-        return _buildProfilSection();
+        section = _buildProfilSection();
+        break;
       case 1:
-        return _buildFinanceSection();
+        section = _buildFinanceSection();
+        break;
       case 2:
-        return _buildSanteSection();
+        section = _buildSanteSection();
+        break;
       case 3:
-        return _buildAdminSection();
+        section = _buildAdminSection();
+        break;
       default:
-        return const SizedBox.shrink();
+        section = const SizedBox.shrink();
     }
+    // Slide + fade entre sous-sections — même animation que la nav
+    // top-level. La `KeyedSubtree` indique au SoftSwitcher que le
+    // contenu a changé pour qu'il rejoue la transition.
+    return SoftSwitcher(
+      child: KeyedSubtree(
+        key: ValueKey<int>(_subSectionIndex),
+        child: section,
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -693,15 +707,38 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            child: _buildOccupantHeader(idx),
+            // Le header (prénom de l'occupant courant) bascule lui aussi
+            // avec un fade + slide pour que le changement d'occupant
+            // soit clairement perçu (demande utilisateur).
+            // `fillParent: false` → le header conserve sa taille
+            // intrinsèque (pas de StackFit.expand qui le forcerait à
+            // remplir toute la largeur disponible).
+            child: SoftSwitcher(
+              duration: kSoftFast,
+              fillParent: false,
+              child: KeyedSubtree(
+                key: ValueKey<int>(idx),
+                child: _buildOccupantHeader(idx),
+              ),
+            ),
           ),
           Expanded(
+            // Slide + fade entre occupants — appliqué uniquement à la
+            // partie « per occupant ». `sharedContent` (téléphone,
+            // personne de confiance…) reste statique : on le laisse en
+            // dehors du switcher pour éviter le scintillement inutile.
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  perOccupantContent,
+                  SoftSwitcher(
+                    fillParent: false,
+                    child: KeyedSubtree(
+                      key: ValueKey<int>(idx),
+                      child: perOccupantContent,
+                    ),
+                  ),
                   const SizedBox(height: 24),
                   sharedContent,
                 ],

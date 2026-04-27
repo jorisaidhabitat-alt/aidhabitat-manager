@@ -170,20 +170,57 @@ class _WikiScreenState extends State<WikiScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Bibliothèque',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+              // Bandeau d'en-tête : carte blanche avec titre + sous-titre
+              // à gauche et champ de recherche à droite — parité 1:1 avec
+              // l'en-tête de "Caisses de retraite complémentaires".
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Bibliothèque',
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Bibliothèque visuelle pour garder des '
+                            'repères de solutions.',
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    SizedBox(
+                      width: 320,
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Rechercher un élément…',
+                          prefixIcon: const Icon(LucideIcons.search),
+                          filled: true,
+                          fillColor: const Color(0xFFF7F7FA),
+                          border: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Bibliotheque visuelle pour garder des reperes de solutions.',
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
               const SizedBox(height: 24),
+              // Filtres par tag — sous l'en-tête, alignés à gauche.
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -225,154 +262,28 @@ class _WikiScreenState extends State<WikiScreen> {
               else
                 Expanded(
                   child: GridView.builder(
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 280,
-                          mainAxisSpacing: 16,
-                          crossAxisSpacing: 16,
-                          mainAxisExtent: 310,
-                        ),
-                        itemCount: _filteredItems.length,
-                        itemBuilder: (context, index) {
-                          final item = _filteredItems[index];
-                          final primaryTag = item.tags.isNotEmpty
-                              ? item.tags.first
-                              : null;
-                          return InkWell(
-                            onTap: () => _openItem(item),
-                            borderRadius: BorderRadius.circular(28),
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.transparent,
-                                borderRadius: BorderRadius.circular(28),
-                              ),
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: _colorForCategory(
-                                            item.category),
-                                        borderRadius:
-                                            BorderRadius.circular(20),
-                                      ),
-                                      child: Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(20),
-                                            child: (item.imageUrl.isNotEmpty ||
-                                                    item.pendingImageDataUrl
-                                                        .isNotEmpty)
-                                                ? CachedRemoteImage(
-                                                    url: resolveMediaUrl(
-                                                        item.imageUrl),
-                                                    pendingDataUrl: item
-                                                        .pendingImageDataUrl,
-                                                    fit: BoxFit.cover,
-                                                    width: double.infinity,
-                                                    errorWidget: const Center(
-                                                      child: Icon(
-                                                        LucideIcons.image,
-                                                        size: 42,
-                                                        color:
-                                                            Colors.black54,
-                                                      ),
-                                                    ),
-                                                  )
-                                                : const Center(
-                                                    child: Icon(
-                                                      LucideIcons.image,
-                                                      size: 42,
-                                                      color: Colors.black54,
-                                                    ),
-                                                  ),
-                                          ),
-                                          Positioned.fill(
-                                            child: IgnorePointer(
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          20),
-                                                  border: Border.all(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                            alpha: 0.1),
-                                                    width: 1,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          if (primaryTag != null)
-                                            Positioned(
-                                              left: 8,
-                                              bottom: 8,
-                                              child: Container(
-                                                padding: const EdgeInsets
-                                                    .symmetric(
-                                                  horizontal: 8,
-                                                  vertical: 4,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black
-                                                      .withValues(
-                                                          alpha: 0.55),
-                                                  borderRadius:
-                                                      BorderRadius
-                                                          .circular(6),
-                                                ),
-                                                child: Text(
-                                                  primaryTag,
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 10,
-                                                    fontWeight:
-                                                        FontWeight.w700,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    item.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF1E293B),
-                                    ),
-                                  ),
-                                  if (primaryTag != null) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      primaryTag.toUpperCase(),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF94A3B8),
-                                        letterSpacing: 1.2,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 280,
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      // Hauteur alignée sur Caisses (+10 px pour le hero
+                      // image plus haut qu'un logo).
+                      mainAxisExtent: 240,
+                    ),
+                    itemCount: _filteredItems.length,
+                    itemBuilder: (context, index) {
+                      final item = _filteredItems[index];
+                      final primaryTag =
+                          item.tags.isNotEmpty ? item.tags.first : null;
+                      return _WikiCard(
+                        item: item,
+                        primaryTag: primaryTag,
+                        heroBg: _colorForCategory(item.category),
+                        onTap: () => _openItem(item),
+                      );
+                    },
+                  ),
                 ),
             ],
           ),
@@ -1024,6 +935,177 @@ class _FilterChip extends StatelessWidget {
           style: TextStyle(
             color: isActive ? Colors.white : const Color(0xFF475569),
             fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Carte d'un élément de bibliothèque — coque visuelle alignée sur
+/// `_FundCard` de la page Caisses de retraite (fond blanc, ombre douce,
+/// borderRadius 16, lift au survol, clip antialias).
+///
+/// Anatomie :
+///   • Hero (140 px) : image de l'élément cadrée par un fond pastel
+///     dérivé de la catégorie. Tag primaire en superposition bas-gauche.
+///   • Texte : titre 16 px w800 + tag secondaire en 11 px en majuscules.
+class _WikiCard extends StatefulWidget {
+  final WikiItem item;
+  final String? primaryTag;
+  final Color heroBg;
+  final VoidCallback onTap;
+
+  const _WikiCard({
+    required this.item,
+    required this.primaryTag,
+    required this.heroBg,
+    required this.onTap,
+  });
+
+  @override
+  State<_WikiCard> createState() => _WikiCardState();
+}
+
+class _WikiCardState extends State<_WikiCard> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        transform: _hover
+            ? (Matrix4.identity()..translateByDouble(0.0, -3.0, 0.0, 1.0))
+            : Matrix4.identity(),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: _hover
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF7C6DAA).withValues(alpha: 0.18),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: widget.onTap,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ---------- Hero image ----------
+              Container(
+                height: 140,
+                width: double.infinity,
+                color: widget.heroBg,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (item.imageUrl.isNotEmpty ||
+                        item.pendingImageDataUrl.isNotEmpty)
+                      CachedRemoteImage(
+                        url: resolveMediaUrl(item.imageUrl),
+                        pendingDataUrl: item.pendingImageDataUrl,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        errorWidget: const Center(
+                          child: Icon(
+                            LucideIcons.image,
+                            size: 42,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      )
+                    else
+                      const Center(
+                        child: Icon(
+                          LucideIcons.image,
+                          size: 42,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    if (widget.primaryTag != null)
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            widget.primaryTag!,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // ---------- Text content ----------
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      if (widget.primaryTag != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          widget.primaryTag!.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF94A3B8),
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

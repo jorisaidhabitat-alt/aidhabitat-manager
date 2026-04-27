@@ -380,13 +380,23 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_subSection == 0) _buildGeneral() else _buildExterior(),
-              ],
+          // Slide + fade entre Général ↔ Extérieur — parité avec
+          // Bénéficiaire et Contexte de vie.
+          child: SoftSwitcher(
+            child: KeyedSubtree(
+              key: ValueKey<int>(_subSection),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_subSection == 0)
+                      _buildGeneral()
+                    else
+                      _buildExterior(),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

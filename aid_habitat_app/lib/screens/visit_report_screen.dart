@@ -464,49 +464,44 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── Note de la sous-section active ─────────────────────────────
-        // IndexedStack conserve l'état de dessin de chaque section lors
-        // des changements — pas de re-création de NotesWidget quand
-        // l'utilisateur alterne entre Profil / Foyer / Santé / Admin.
+        // On garde TOUS les NotesWidget en vie dans un Stack pour
+        // préserver l'état de dessin (sinon switcher de section perdrait
+        // un trait en cours). Chaque enfant est animé avec un fade +
+        // slide doux quand il devient actif/inactif → effet identique au
+        // SoftSwitcher du formulaire à gauche, pour que l'utilisateur
+        // perçoive la bascule comme un mouvement global de toute la page.
         Expanded(
-          child: IndexedStack(
-            index: safeIdx,
+          child: Stack(
+            fit: StackFit.expand,
             children: List.generate(subsections.length, (i) {
               final section = subsections[i];
               final tabKey = '$activeTab-$section';
               final liveKey = '${_dossier.patient.id}::$tabKey';
-              // Sur "Contexte de vie > Médical", les flags cochés dans
-              // le formulaire apparaissent en badges numérotés sur la
-              // zone de dessin du canvas (plus dans le texte).
-              final isMedical =
-                  tabKey == 'Contexte de vie-Médical';
-              return NotesWidget(
-                key: ValueKey(liveKey),
-                patientId: _dossier.patient.id,
-                tabKey: tabKey,
-                title: section,
-                liveText: _liveText[liveKey],
-                onDraftChange: (draft) =>
-                    _pushDraftToOpenWindow(tabKey, draft.text),
-                onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
-                showSaveButton: false,
-                embedded: false,
-                fillParentHeight: true,
-                allowPagination: true,
-                // Nouvelle mise en page "deux cartes empilées" — texte
-                // en haut, canvas en bas avec pagination flottante en
-                // haut-droite et toolbar en bas-centre.
-                stackedCards: true,
-                backgroundContent: isMedical
-                    ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
-                    : null,
-                // Sur l'onglet Médical : les flags sont stockés PAR PAGE
-                // dans `drawing_json`. La prop `medicalFlags` propage la
-                // sélection des cases ContextTab → NotesWidget sauvegarde
-                // dans la page courante. Le callback inverse rafraîchit
-                // les cases quand l'utilisateur change de page.
-                medicalFlags: isMedical ? _medicalFlagNumbers : null,
-                onMedicalFlagsChanged:
-                    isMedical ? _handleMedicalFlagsFromNotes : null,
+              final isMedical = tabKey == 'Contexte de vie-Médical';
+              final isActive = i == safeIdx;
+              return _NotesPanelLayer(
+                isActive: isActive,
+                child: NotesWidget(
+                  key: ValueKey(liveKey),
+                  patientId: _dossier.patient.id,
+                  tabKey: tabKey,
+                  title: section,
+                  liveText: _liveText[liveKey],
+                  onDraftChange: (draft) =>
+                      _pushDraftToOpenWindow(tabKey, draft.text),
+                  onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
+                  showSaveButton: false,
+                  embedded: false,
+                  fillParentHeight: true,
+                  allowPagination: true,
+                  stackedCards: true,
+                  backgroundContent: isMedical
+                      ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
+                      : null,
+                  medicalFlags: isMedical ? _medicalFlagNumbers : null,
+                  onMedicalFlagsChanged:
+                      isMedical ? _handleMedicalFlagsFromNotes : null,
+                ),
               );
             }),
           ),
@@ -790,6 +785,43 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Couche d'un NotesWidget dans le Stack du panneau de droite. Garde
+/// le widget en vie pour préserver l'état (dessin en cours, sélection
+/// d'outils…), mais l'anime en fade + slide quand il devient
+/// actif/inactif. Mêmes durées et courbes que le `SoftSwitcher` du
+/// formulaire à gauche → l'utilisateur perçoit la bascule comme un
+/// mouvement global.
+class _NotesPanelLayer extends StatelessWidget {
+  const _NotesPanelLayer({
+    required this.isActive,
+    required this.child,
+  });
+
+  final bool isActive;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSlide(
+      offset: isActive ? Offset.zero : const Offset(0, 0.06),
+      duration: kSoftMedium,
+      curve: kSoftCurve,
+      child: AnimatedOpacity(
+        opacity: isActive ? 1.0 : 0.0,
+        duration: kSoftMedium,
+        curve: kSoftCurve,
+        // `IgnorePointer` pour que les sous-sections inactives ne
+        // capturent pas les taps (sinon on cliquerait sur un
+        // NotesWidget invisible posé par-dessus l'actif).
+        child: IgnorePointer(
+          ignoring: !isActive,
+          child: child,
         ),
       ),
     );

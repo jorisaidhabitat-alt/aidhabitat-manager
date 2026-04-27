@@ -219,9 +219,18 @@ class SoftSwitcher extends StatelessWidget {
     super.key,
     required this.child,
     this.duration = kSoftMedium,
+    this.fillParent = true,
   });
   final Widget child;
   final Duration duration;
+
+  /// Quand `true` (défaut), le Stack interne utilise `StackFit.expand`
+  /// → chaque vue occupe toute la surface (utile pour les pages pleine
+  /// largeur). Quand `false`, on utilise le layout par défaut
+  /// d'`AnimatedSwitcher` (Stack alignment center, fit loose) → les
+  /// enfants conservent leur taille intrinsèque, comportement adapté
+  /// aux contenus posés dans un `Column` ou un `SingleChildScrollView`.
+  final bool fillParent;
 
   @override
   Widget build(BuildContext context) {
@@ -229,19 +238,17 @@ class SoftSwitcher extends StatelessWidget {
       duration: duration,
       switchInCurve: kSoftCurve,
       switchOutCurve: kSoftCurveIn,
-      // Par défaut AnimatedSwitcher centre les enfants dans un Stack ; on
-      // utilise `Positioned.fill` pour laisser chaque vue occuper toute la
-      // surface (sinon les écrans « pleine page » deviennent des petits
-      // widgets centrés pendant la transition).
-      layoutBuilder: (currentChild, previousChildren) {
-        return Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            ...previousChildren,
-            if (currentChild != null) currentChild,
-          ],
-        );
-      },
+      layoutBuilder: fillParent
+          ? (currentChild, previousChildren) {
+              return Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  ...previousChildren,
+                  if (currentChild != null) currentChild,
+                ],
+              );
+            }
+          : AnimatedSwitcher.defaultLayoutBuilder,
       transitionBuilder: (child, anim) {
         return FadeTransition(
           opacity: anim,
