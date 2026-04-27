@@ -467,6 +467,10 @@ const buildNotePagePayload = (notePage, absoluteUrl) => ({
   previewDataUrl: stringValue(notePage.previewDataUrl),
   previewUrl: stringValue(notePage.previewUrl) || absoluteUrl(`/public/note-pages/${encodeURIComponent(notePage.id)}/preview`),
   layoutKind: stringValue(notePage.layoutKind) || 'freeform',
+  // 'avant' / 'apres' / null — voir notePages.fields. Côté client
+  // c'est exposé tel quel ; le générateur de rapport PDF s'en sert
+  // pour distinguer les emplacements page 9 vs page 10.
+  planPhase: notePage.planPhase || null,
   updatedAt: notePage.updatedAt,
   remotePath: `note-pages/${notePage.patientId}/${notePage.scopeType || 'legacy'}/${notePage.scopeId || notePage.dossierId || notePage.patientId}/${notePage.tabKey}/${stringValue(notePage.subTabKey) || 'general'}/${Number(notePage.pageNumber) || 0}`,
   remoteUrl: absoluteUrl(`/api/note-pages/${encodeURIComponent(notePage.patientId)}?scopeType=${encodeURIComponent(notePage.scopeType || 'legacy')}&scopeId=${encodeURIComponent(notePage.scopeId || notePage.dossierId || notePage.patientId)}&tabKey=${encodeURIComponent(notePage.tabKey)}&subTabKey=${encodeURIComponent(stringValue(notePage.subTabKey) || 'general')}&pageNumber=${Number(notePage.pageNumber) || 0}`),
@@ -676,6 +680,7 @@ const createLocalStoreAdapter = ({ absoluteUrl }) => ({
     drawingJson,
     previewDataUrl,
     layoutKind,
+    planPhase,
   }) {
     const store = await readNotePagesStore();
     const now = new Date().toISOString();
@@ -718,6 +723,8 @@ const createLocalStoreAdapter = ({ absoluteUrl }) => ({
       previewDataUrl: stringValue(previewDataUrl),
       previewUrl: absoluteUrl(`/public/note-pages/${encodeURIComponent(resolvedNotePageId)}/preview`),
       layoutKind: layoutKind || 'freeform',
+      // 'avant' / 'apres' / null — voir mobileSyncStore.notePages.fields.
+      planPhase: planPhase || null,
       updatedAt: now,
     };
 
@@ -1193,6 +1200,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         previewDataUrl: stringValue(field(record, 'preview_data_url')),
         previewUrl: stringValue(field(record, 'preview_url')),
         layoutKind: stringValue(field(record, 'layout_kind')) || 'freeform',
+        planPhase: stringValue(field(record, 'plan_phase')) || null,
         updatedAt: stringValue(field(record, 'updated_at')) || new Date().toISOString(),
       }))
       .sort((a, b) => Number(a.pageNumber) - Number(b.pageNumber))
@@ -1224,6 +1232,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       previewDataUrl: stringValue(field(existing, 'preview_data_url')),
       previewUrl: stringValue(field(existing, 'preview_url')),
       layoutKind: stringValue(field(existing, 'layout_kind')) || 'freeform',
+      planPhase: stringValue(field(existing, 'plan_phase')) || null,
       updatedAt: stringValue(field(existing, 'updated_at')) || new Date().toISOString(),
     }, absoluteUrl);
   },
@@ -1309,6 +1318,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     drawingJson,
     previewDataUrl,
     layoutKind,
+    planPhase,
     patientFirstName,
     patientLastName,
     patientDisplayName,
@@ -1327,6 +1337,14 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     const resolvedPreviewUrl = absoluteUrl(`/public/note-pages/${encodeURIComponent(stringValue(notePageId) || stringValue(field(existing, 'uuid_source')) || crypto.randomUUID())}/preview`);
     const supportsPreviewField = await supportsNotePageField('preview_data_url');
     const supportsPreviewUrlField = await supportsNotePageField('preview_url');
+    // `plan_phase` n'a été ajouté qu'avec le générateur de rapport
+    // PDF — on conditionne sur la présence de la colonne pour ne pas
+    // casser une instance NocoDB où la migration n'aurait pas encore
+    // été appliquée.
+    const supportsPlanPhaseField = await supportsNotePageField('plan_phase');
+    const normalizedPlanPhase = (planPhase === 'avant' || planPhase === 'apres')
+      ? planPhase
+      : null;
     if (existing) {
       await updateRecord(notePagesTableId, existing.id, {
         dossier_id: dossierId || null,
@@ -1342,6 +1360,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         ...(supportsPreviewField ? { preview_data_url: stringValue(previewDataUrl) } : {}),
         ...(supportsPreviewUrlField ? { preview_url: resolvedPreviewUrl } : {}),
         layout_kind: layoutKind || 'freeform',
+        ...(supportsPlanPhaseField ? { plan_phase: normalizedPlanPhase } : {}),
         updated_at: now,
       });
 
@@ -1374,6 +1393,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         previewDataUrl: stringValue(previewDataUrl),
         previewUrl: resolvedPreviewUrl,
         layoutKind: layoutKind || 'freeform',
+        planPhase: normalizedPlanPhase,
         updatedAt: now,
       }, absoluteUrl);
     }
@@ -1398,6 +1418,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       ...(supportsPreviewField ? { preview_data_url: stringValue(previewDataUrl) } : {}),
       ...(supportsPreviewUrlField ? { preview_url: createdPreviewUrl } : {}),
       layout_kind: layoutKind || 'freeform',
+      ...(supportsPlanPhaseField ? { plan_phase: normalizedPlanPhase } : {}),
       updated_at: now,
     });
 
@@ -1430,6 +1451,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       previewDataUrl: stringValue(previewDataUrl),
       previewUrl: createdPreviewUrl,
       layoutKind: layoutKind || 'freeform',
+      planPhase: normalizedPlanPhase,
       updatedAt: now,
     }, absoluteUrl);
   },

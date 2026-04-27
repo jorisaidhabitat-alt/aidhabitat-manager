@@ -1010,6 +1010,9 @@ class NocodbSyncService {
       return;
     }
 
+    // Phase d'un dessin Plans (avant / apres / null) — saveDrawingJson
+    // et setPlanPhase la propagent dans le payload de la sync_op.
+    final planPhase = payload['planPhase']?.toString();
     final notePage = await _apiClient.upsertNotePage(
       patientId: patientId,
       tabKey: tabKey,
@@ -1017,6 +1020,9 @@ class NocodbSyncService {
       drawingJson: drawingJson,
       scopeType: scopeType,
       scopeId: scopeId,
+      planPhase: (planPhase == 'avant' || planPhase == 'apres')
+          ? planPhase
+          : null,
     );
 
     await _syncRepository.storeNotePageRemoteData(

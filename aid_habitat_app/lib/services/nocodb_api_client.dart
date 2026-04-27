@@ -441,6 +441,7 @@ class NocodbApiClient {
     String? scopeId,
     String? subTabKey,
     String layoutKind = 'freeform',
+    String? planPhase,
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
@@ -463,6 +464,9 @@ class NocodbApiClient {
               'pageNumber': pageNumber,
               'drawingJson': drawingJson,
               'layoutKind': layoutKind,
+              // Phase Plans (avant / apres / null). Côté serveur :
+              // ignoré si la table NocoDB n'a pas encore la colonne.
+              if (planPhase != null) 'planPhase': planPhase,
             }),
           )
           .timeout(_defaultTimeout),

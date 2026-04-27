@@ -244,15 +244,28 @@ class MediaCacheService {
           .get(Uri.parse(resolved), headers: headers)
           .timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        // ignore: avoid_print
+        print(
+          '[media_cache] HTTP ${response.statusCode} on $resolved '
+          '(content-type=${response.headers['content-type'] ?? '-'})',
+        );
         return null;
       }
       final bytes = response.bodyBytes;
-      if (bytes.isEmpty) return null;
+      if (bytes.isEmpty) {
+        // ignore: avoid_print
+        print('[media_cache] Empty body on $resolved (HTTP 200, 0 bytes)');
+        return null;
+      }
       // SPA fallback guard (same as native _download).
       final contentType =
           response.headers['content-type']?.toLowerCase() ?? '';
       if (contentType.contains('text/html') ||
           contentType.contains('application/xhtml')) {
+        // ignore: avoid_print
+        print(
+          '[media_cache] HTML response (probable SPA fallback) on $resolved',
+        );
         return null;
       }
       await db.insert(
@@ -266,8 +279,76 @@ class MediaCacheService {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       return bytes;
-    } catch (_) {
+    } catch (e) {
+      // ignore: avoid_print
+      print('[media_cache] Network error on $resolved: $e');
       return null;
     }
   }
+
+  /// Diagnostic helper : retourne un statut HTTP brut (avec body si non-2xx)
+  /// pour une URL — utilisé quand l'aperçu d'un doc échoue pour distinguer
+  /// 401 (auth), 404 (doc supprimé / corrompu côté serveur), 500 (panne)
+  /// d'une erreur réseau pure. N'écrit rien dans le cache.
+  Future<MediaFetchDiagnosis?> diagnose(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
+    final resolved = resolveMediaUrl(url);
+    if (resolved.isEmpty) {
+      return const MediaFetchDiagnosis(
+        statusCode: 0,
+        message: 'URL vide après résolution',
+      );
+    }
+    try {
+      final response = await http
+          .get(Uri.parse(resolved), headers: headers)
+          .timeout(const Duration(seconds: 20));
+      String? body;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        try {
+          body = response.body.length > 240
+              ? '${response.body.substring(0, 240)}…'
+              : response.body;
+        } catch (_) {}
+      }
+      return MediaFetchDiagnosis(
+        statusCode: response.statusCode,
+        bodyLength: response.bodyBytes.length,
+        contentType: response.headers['content-type'],
+        body: body,
+      );
+    } catch (e) {
+      return MediaFetchDiagnosis(
+        statusCode: -1,
+        message: e.toString(),
+      );
+    }
+  }
+}
+
+/// Résultat d'un diagnostic réseau pour un asset documentaire.
+class MediaFetchDiagnosis {
+  const MediaFetchDiagnosis({
+    required this.statusCode,
+    this.bodyLength = 0,
+    this.contentType,
+    this.body,
+    this.message,
+  });
+
+  /// HTTP status (-1 = erreur réseau, 0 = URL invalide, sinon code HTTP).
+  final int statusCode;
+  final int bodyLength;
+  final String? contentType;
+  final String? body;
+  final String? message;
+
+  bool get isAuthError => statusCode == 401 || statusCode == 403;
+  bool get isMissing => statusCode == 404;
+  bool get isServerError => statusCode >= 500 && statusCode < 600;
+  bool get isNetworkError => statusCode == -1;
+  bool get isEmptyBody =>
+      statusCode >= 200 && statusCode < 300 && bodyLength == 0;
 }

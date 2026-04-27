@@ -3952,6 +3952,17 @@ app.get('/api/mobile-documents/:documentId/content', requireAuth, async (req, re
     if (!content) {
       throw httpError(404, 'Document introuvable');
     }
+    // Garde-fou : un record peut exister côté NocoDB sans contenu binaire
+    // (upload échoué entre la création de la row et le push des chunks
+    // base64). Avant ce filet, on renvoyait 200 + 0 bytes → côté Flutter
+    // `webCachedFetch` retournait null → l'aperçu sortait en
+    // « Aperçu indisponible » avec point vert (l'app voyait la row
+    // synced mais ne pouvait rien afficher). On signale maintenant
+    // explicitement par un 404 — le client peut alors afficher un
+    // message diagnostic clair (fichier corrompu côté serveur).
+    if (!content.buffer || content.buffer.length === 0) {
+      throw httpError(404, 'Document sans contenu (corrompu côté serveur)');
+    }
 
     await resolveBeneficiaryAccess(req.appUser, content.patientId);
     res.setHeader('Content-Type', content.mimeType || 'application/octet-stream');
@@ -4057,6 +4068,13 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
     const drawingJson = typeof req.body?.drawingJson === 'string' ? req.body.drawingJson : JSON.stringify(req.body?.drawingJson ?? '');
     const previewDataUrl = typeof req.body?.previewDataUrl === 'string' ? req.body.previewDataUrl : '';
     const layoutKind = stringValue(req.body?.layoutKind).trim() || 'freeform';
+    // Phase d'un dessin Plans : 'avant' ou 'apres' (autres valeurs
+    // → null). Permet au générateur de rapport PDF de placer le
+    // dessin dans le bon emplacement (pages 9 vs 10 du template).
+    const planPhaseRaw = stringValue(req.body?.planPhase).trim().toLowerCase();
+    const planPhase = (planPhaseRaw === 'avant' || planPhaseRaw === 'apres')
+      ? planPhaseRaw
+      : null;
 
     if (!patientId) {
       throw httpError(400, 'patientId manquant');
@@ -4093,6 +4111,7 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
       drawingJson,
       previewDataUrl,
       layoutKind,
+      planPhase,
       ...notePageContext,
     });
 

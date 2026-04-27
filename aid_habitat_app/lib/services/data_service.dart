@@ -306,6 +306,10 @@ class DataService {
         remotePath: remoteNote['remotePath']?.toString(),
         remoteUrl: remoteNote['remoteUrl']?.toString(),
         updatedAt: remoteNote['updatedAt']?.toString(),
+        // Le serveur renvoie 'avant' / 'apres' / null — on transmet
+        // tel quel à mergeRemoteNotePage qui se charge du fallback
+        // sur la valeur locale si la clé est absente.
+        planPhase: remoteNote['planPhase']?.toString(),
       );
     } catch (_) {
       return false;

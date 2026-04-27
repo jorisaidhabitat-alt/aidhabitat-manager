@@ -2077,6 +2077,10 @@ export const mapStoredNotePage = (notePage) => ({
   previewDataUrl: stringValue(notePage.previewDataUrl),
   previewUrl: absoluteUrl(`/public/note-pages/${encodeURIComponent(notePage.id)}/preview`),
   layoutKind: stringValue(notePage.layoutKind) || 'freeform',
+  // Phase d'un dessin Plans : 'avant' / 'apres' / null. Voir
+  // mobileSyncStore.notePages.fields. Le générateur de rapport PDF
+  // distingue ainsi page 9 (avant travaux) et page 10 (après).
+  planPhase: notePage.planPhase || null,
   updatedAt: notePage.updatedAt,
   remotePath: `note-pages/${notePage.patientId}/${notePage.scopeType || 'legacy'}/${notePage.scopeId || notePage.dossierId || notePage.patientId}/${notePage.tabKey}/${stringValue(notePage.subTabKey) || 'general'}/${Number(notePage.pageNumber) || 0}`,
   remoteUrl: absoluteUrl(`/api/note-pages/${encodeURIComponent(notePage.patientId)}?scopeType=${encodeURIComponent(notePage.scopeType || 'legacy')}&scopeId=${encodeURIComponent(notePage.scopeId || notePage.dossierId || notePage.patientId)}&tabKey=${encodeURIComponent(notePage.tabKey)}&subTabKey=${encodeURIComponent(stringValue(notePage.subTabKey) || 'general')}&pageNumber=${Number(notePage.pageNumber) || 0}`),
