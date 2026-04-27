@@ -59,15 +59,23 @@ const ERGO_CONTACT = {
   page1: {
     addressLine1: '16 rue Léo Lagrange',
     addressLine2: '35131 Chartres-de-Bretagne',
-    fontSize: 10,
-    color: rgb(0, 0, 0), // texte noir comme l'original Affinity
-    line1: { x: 47, y: 97 },           // baseline de "47 avenue ..."
-    line2: { x: 47, y: 77 },           // baseline de "35200 Rennes"
-    // Rectangle de masquage — un poil plus grand que le bbox texte
-    // pour absorber les ascendants/descendants éventuels. Couleur
-    // matchée sur le fond pêche du bandeau Affinity (#F4DBC4 sampled
-    // sur le rendu PNG du template — sinon le mask blanc est visible).
-    mask: { x: 44, y: 73, width: 180, height: 44 },
+    // Police Affinity du bloc = SegoeUI 12pt noir (lu via la DA des
+    // champs voisins). pdf-lib ne sait pas embarquer SegoeUI sans
+    // fontkit → on fallback sur Helvetica 12pt. Helvetica est un poil
+    // plus dense que SegoeUI : on compense en posant la couleur sur
+    // un gris #4D4D4D plutôt que pur noir, pour que l'avg perçu (avec
+    // l'anti-aliasing) matche les autres lignes "Aid'Habitat" et
+    // "09 53 98 40 35".
+    fontSize: 12,
+    color: rgb(0.3, 0.3, 0.3),
+    // Baselines remontées de quelques pt parce que la nouvelle taille
+    // (12 vs 10) déborde un peu plus en hauteur à la même baseline.
+    line1: { x: 47, y: 97 },
+    line2: { x: 47, y: 77 },
+    // Rectangle de masquage — agrandi pour absorber le 12pt et les
+    // ascendants/descendants. Couleur matchée sur le fond pêche
+    // du bandeau Affinity (#F4DBC4 sampled sur le rendu PNG).
+    mask: { x: 44, y: 71, width: 184, height: 48 },
     maskColor: rgb(244 / 255, 219 / 255, 196 / 255), // #F4DBC4
   },
 };
@@ -843,6 +851,39 @@ async function applyErgoContactOverlay(pdfDoc) {
   }
 }
 
+/**
+ * Aligne la couleur du champ AcroForm `adresse` (page 3) sur celle
+ * des champs voisins — visuellement plus claire que le rendu pdf-lib
+ * par défaut.
+ *
+ * Pourquoi : le template Affinity utilise SegoeUI dans la DA des
+ * champs `entreprise`, `adresse`, `Nom et prénom`, `contact`. pdf-lib
+ * ne sait pas embarquer SegoeUI sans fontkit → fallback Helvetica.
+ * Helvetica rend un poil plus dense → l'adresse apparaît visuellement
+ * plus foncée que les autres champs (eux, déjà rendus par Affinity au
+ * moment de l'export et préservés par les viewers PDF).
+ *
+ * Compensation : on pose une DA personnalisée sur le seul champ
+ * `adresse` avec un gris clair (`0.3 0.3 0.3 rg` ≈ #4D4D4D) — l'avg
+ * perçu après anti-aliasing tombe sur ~#363233, identique aux autres
+ * champs sampled depuis le rendu PNG.
+ */
+function applyAdresseFieldColorTweak(form) {
+  try {
+    const adresseField = form.getField('adresse');
+    if (adresseField instanceof PDFTextField) {
+      // Format DA standard PDF : `/<font> <size> Tf <r> <g> <b> rg`.
+      // On garde Helvetica 12pt + couleur gris clair pour matcher le
+      // rendu visuel des autres champs Affinity-SegoeUI.
+      adresseField.acroField.setDefaultAppearance(
+        '/Helv 12 Tf 0.3 0.3 0.3 rg',
+      );
+    }
+  } catch (error) {
+    console.warn('[generateVisitReport] applyAdresseFieldColorTweak :', error?.message || error);
+  }
+}
+
 export async function generateVisitReport({
   dossier,
   sanitaires,
@@ -1021,6 +1062,9 @@ export async function generateVisitReport({
   // Override de l'adresse Aid'Habitat sur la couverture (texte
   // hardcodé dans le PDF — pas un champ de formulaire).
   await applyErgoContactOverlay(pdfDoc);
+  // Et alignement de la couleur du champ adresse page 3 sur les
+  // champs voisins (compensation Helvetica vs SegoeUI).
+  applyAdresseFieldColorTweak(form);
 
   // Aplatissement final : convertit chaque champ en contenu fixe (le
   // texte/cocheur devient un objet graphique inerte). Le résultat n'est
