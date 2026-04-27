@@ -156,10 +156,27 @@ class _SidebarState extends State<Sidebar> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: isActive
-                            ? const Color(0xFFEDE8F5)
-                            : const Color(0xFFDDE1E8),
+                        // Pour les logos de marque (ex. ANAH), fond
+                        // blanc constant pour respecter la charte du
+                        // logo (pas de halo coloré qui vient salir
+                        // l'image officielle).
+                        color: item['assetLogo'] != null
+                            ? Colors.white
+                            : (isActive
+                                ? const Color(0xFFEDE8F5)
+                                : const Color(0xFFDDE1E8)),
                         shape: BoxShape.circle,
+                        // Léger contour gris quand l'item logo n'est
+                        // pas actif, sinon le rond blanc disparaît dans
+                        // la sidebar blanche.
+                        border: item['assetLogo'] != null
+                            ? Border.all(
+                                color: isActive
+                                    ? const Color(0xFF7C6DAA)
+                                    : const Color(0xFFDDE1E8),
+                                width: 1.5,
+                              )
+                            : null,
                       ),
                       // Pour les items "logo de marque" (ex. ANAH), on
                       // affiche l'image embarquée à la place de l'icône

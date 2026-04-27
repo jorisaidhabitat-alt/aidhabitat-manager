@@ -62,6 +62,7 @@ class _DossierScreenState extends State<DossierScreen> {
   late String _firstName;
   late String _lastName;
   late String _numberPeople; // dropdown value: '1'..'5' or '5+'
+  late String _address; // rue + n° (modifiable depuis ce bloc)
   late String _city;
   late String _zipCode;
   late String _cityId;
@@ -176,6 +177,7 @@ class _DossierScreenState extends State<DossierScreen> {
     final p = widget.dossier.patient;
     _firstName = p.firstName;
     _lastName = p.lastName;
+    _address = p.address;
     _city = p.city;
     _zipCode = p.zipCode;
     _cityId = p.cityId;
@@ -250,6 +252,7 @@ class _DossierScreenState extends State<DossierScreen> {
         'first_name': _firstName,
         'last_name': _lastName,
         'number_people': numberPeopleInt,
+        'address': _address,
         'city': _city,
         'zip_code': _zipCode,
         'city_id': _cityId,
@@ -769,12 +772,28 @@ class _DossierScreenState extends State<DossierScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
+                    // Adresse (rue / n°) — modifiable directement depuis
+                    // ce bloc. La ville et le code postal sont sur la
+                    // ligne suivante (CommuneFieldGroup avec showZipField).
+                    FormTextField(
+                      label: 'Adresse',
+                      value: _address,
+                      labelColor: const Color(0xFF7C6DAA),
+                      onChanged: (v) {
+                        _address = v;
+                        _onChanged();
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     CommuneFieldGroup(
                       city: _city,
                       zipCode: _zipCode,
                       cityId: _cityId,
                       options: _communeOptions,
-                      showZipField: false,
+                      // Code postal éditable lui aussi → l'ergo peut
+                      // corriger une commune mal résolue sans repasser
+                      // par le relevé de visite.
+                      showZipField: true,
                       labelColor: const Color(0xFF7C6DAA),
                       onChanged: (update) {
                         setState(() {
