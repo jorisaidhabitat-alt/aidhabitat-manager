@@ -40,7 +40,16 @@ class _SidebarState extends State<Sidebar> {
     {'id': 'dossiers', 'label': 'Dossiers', 'icon': LucideIcons.folderOpen},
     {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.bookOpen},
     {'id': 'precos', 'label': 'Caisses', 'icon': LucideIcons.heart},
-    {'id': 'anah', 'label': 'Anah', 'icon': LucideIcons.coins},
+    // Item ANAH : on n'utilise plus une icône Lucide mais le vrai logo
+    // de l'Anah (asset embarqué `assets/logos/anah.png` → toujours
+    // disponible offline). Le rendu est géré dans le `build` ci-dessous
+    // via la clé `assetLogo`.
+    {
+      'id': 'anah',
+      'label': 'Anah',
+      'icon': LucideIcons.coins, // fallback si l'asset ne charge pas
+      'assetLogo': 'assets/logos/anah.png',
+    },
     // Page "Admin" retirée : la gestion des accès se fait sur NocoDB
     // directement (source de vérité unique → pas de conflit de sync).
   ];
@@ -152,13 +161,34 @@ class _SidebarState extends State<Sidebar> {
                             : const Color(0xFFDDE1E8),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(
-                        item['icon'],
-                        size: 22,
-                        color: isActive
-                            ? const Color(0xFF7C6DAA)
-                            : const Color(0xFF8D94A3),
-                      ),
+                      // Pour les items "logo de marque" (ex. ANAH), on
+                      // affiche l'image embarquée à la place de l'icône
+                      // Lucide. L'image conserve ses couleurs d'origine
+                      // (pas de teinte) pour que la charte de l'Anah
+                      // reste reconnaissable. Disponible offline (asset
+                      // empaqueté dans le bundle).
+                      child: item['assetLogo'] != null
+                          ? Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Image.asset(
+                                item['assetLogo'] as String,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Icon(
+                                  item['icon'],
+                                  size: 22,
+                                  color: isActive
+                                      ? const Color(0xFF7C6DAA)
+                                      : const Color(0xFF8D94A3),
+                                ),
+                              ),
+                            )
+                          : Icon(
+                              item['icon'],
+                              size: 22,
+                              color: isActive
+                                  ? const Color(0xFF7C6DAA)
+                                  : const Color(0xFF8D94A3),
+                            ),
                     ),
                   ),
                 ),
