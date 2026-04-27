@@ -271,6 +271,25 @@ class DocumentRepository {
   Future<void> deleteDocument(String documentId) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
+
+    // Snapshot l'état actuel : si le doc avait déjà été poussé sur
+    // NocoDB (sync_state == synced) il faut envoyer un DELETE remote.
+    // Sinon on peut juste annuler la pending upload et purger.
+    final rows = await db.query(
+      'documents',
+      columns: const ['sync_state', 'remote_file_path', 'remote_public_url'],
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+
+    final wasSynced =
+        (rows.first['sync_state'] as String?) == SyncState.synced.name;
+    final remoteId = _extractRemoteIdFromRow(rows.first, documentId);
+
+    // Marque pending_delete pour cacher immédiatement le doc côté UI
+    // (filtrage SQL `pending_delete = 0` dans `fetchDocuments`).
     await db.update(
       'documents',
       {
@@ -281,18 +300,86 @@ class DocumentRepository {
       where: 'local_id = ?',
       whereArgs: [documentId],
     );
-    // Cancel any pending upload operation — the document is being removed
-    // before it ever reached the remote, so the upload is moot.
+
+    // Annule toute upload encore pending/failed pour ce doc — l'upload
+    // est moot (le doc est en train d'être supprimé).
     await db.delete(
       'sync_operations',
-      where: 'entity_local_id = ? AND status IN (?, ?)',
+      where:
+          'entity_local_id = ? AND operation_type = ? AND status IN (?, ?)',
       whereArgs: [
         documentId,
+        'upload_file',
         SyncOperationStatus.pending.name,
         SyncOperationStatus.failed.name,
       ],
     );
+
+    if (wasSynced && remoteId.isNotEmpty) {
+      // Enqueue un DELETE qui sera traité par `_processDocumentOperation`
+      // côté sync engine. Sans cette op, la suppression locale n'était
+      // JAMAIS propagée au serveur — au prochain pull NocoDB, le doc
+      // était ressuscité (cf. audit critique #4).
+      await db.insert(
+        'sync_operations',
+        {
+          'id': 'sync_delete_$documentId',
+          'entity_type': 'document',
+          'entity_local_id': documentId,
+          'operation_type': 'delete_document',
+          'payload_json': jsonEncode({
+            'remoteDocumentId': remoteId,
+          }),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        },
+        // Idempotent : si l'utilisateur clique deux fois, on remplace
+        // l'op précédente plutôt que de dupliquer.
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } else {
+      // Doc jamais poussé — on peut purger directement le local.
+      await db.delete(
+        'documents',
+        where: 'local_id = ?',
+        whereArgs: [documentId],
+      );
+    }
+
     SyncEngine().notify();
+  }
+
+  /// Pour les documents synced, retrouve l'ID utilisé côté NocoDB pour
+  /// les supprimer via `DELETE /api/documents/<id>`. Trois sources, dans
+  /// l'ordre :
+  ///   1. `local_id` direct (cas standard : Flutter a uploadé le doc, le
+  ///      serveur a réutilisé `clientDocumentId` comme `uuid_source`).
+  ///   2. Préfixe `remote_doc_<id>` retiré (cas où le doc venait du
+  ///      remote sans avoir été uploadé localement).
+  ///   3. Extraction depuis `remote_file_path` ou `remote_public_url`
+  ///      (URL `/api/mobile-documents/<id>/content`) — fallback dur.
+  String _extractRemoteIdFromRow(Map<String, Object?> row, String localId) {
+    if (!localId.startsWith('remote_doc_')) {
+      return localId;
+    }
+    final stripped = localId.substring('remote_doc_'.length);
+    if (stripped.isNotEmpty) return stripped;
+
+    // Fallback : parse l'URL.
+    final candidates = [
+      (row['remote_file_path'] as String?) ?? '',
+      (row['remote_public_url'] as String?) ?? '',
+    ];
+    for (final raw in candidates) {
+      final match = RegExp(r'/mobile-documents/([^/]+)/content').firstMatch(raw);
+      if (match != null) {
+        return Uri.decodeComponent(match.group(1) ?? '');
+      }
+    }
+    return '';
   }
 
   Future<void> mergeRemoteDocuments(
@@ -331,7 +418,18 @@ class DocumentRepository {
 
         final existing = existingRows.isNotEmpty ? existingRows.first : null;
         final existingSyncState = existing?['sync_state'] as String?;
+        // Skip drafts / pending uploads : ils sont en cours de push et ne
+        // doivent pas être écrasés par la version remote tant qu'on n'a
+        // pas confirmé que le push est réussi.
         if (existing != null && existingSyncState != SyncState.synced.name) {
+          continue;
+        }
+        // Anti-resurrection : si l'utilisateur a supprimé le doc localement
+        // (pending_delete=1) et que le DELETE remote n'a pas encore été
+        // traité par le sync engine, on évite de l'écraser en `synced`
+        // (sinon il réapparaît dans l'UI). On laisse la `sync_operations`
+        // (delete_document) faire le DELETE distant + purger le local.
+        if (existing != null && (existing['pending_delete'] as int? ?? 0) == 1) {
           continue;
         }
 

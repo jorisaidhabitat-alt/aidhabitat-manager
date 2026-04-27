@@ -400,6 +400,38 @@ class NocodbApiClient {
     return document;
   }
 
+  /// Supprime un document côté serveur. [remoteDocumentId] est le
+  /// `clientDocumentId` (= `uuid_source` côté NocoDB) que Flutter a
+  /// assigné à l'upload. Renvoie `true` si la suppression a réussi (ou
+  /// si le doc n'existe plus côté serveur — cas idempotent).
+  Future<bool> deleteDocument(String remoteDocumentId) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    if (remoteDocumentId.isEmpty) {
+      throw Exception('deleteDocument: remoteDocumentId vide');
+    }
+    final response = await _client
+        .delete(
+          Uri.parse(
+            '$_baseUrl/api/documents/${Uri.encodeComponent(remoteDocumentId)}',
+          ),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
+
+    // 404 = doc déjà supprimé côté serveur → on considère que c'est un
+    // succès idempotent (on évite que la sync queue boucle indéfiniment
+    // sur un doc qui n'existe plus).
+    if (response.statusCode == 404) return true;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'deleteDocument failed (${response.statusCode}): ${response.body}',
+      );
+    }
+    return true;
+  }
+
   Future<Map<String, dynamic>> upsertNotePage({
     required String patientId,
     required String tabKey,

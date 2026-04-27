@@ -650,6 +650,23 @@ class NocodbSyncService {
     SyncOperation operation,
     Map<String, dynamic> payload,
   ) async {
+    // Branche `delete_document` : enqueued par
+    // `DocumentRepository.deleteDocument` quand le doc avait déjà été
+    // poussé sur NocoDB. On envoie un DELETE puis on supprime
+    // définitivement la ligne locale (sinon `mergeRemoteDocuments` la
+    // laissait avec `pending_delete=1` indéfiniment).
+    if (operation.operationType == 'delete_document') {
+      final remoteId = payload['remoteDocumentId']?.toString() ?? '';
+      if (remoteId.isEmpty) {
+        // Pas de remote id → le doc n'a jamais été poussé, on purge
+        // simplement le local.
+        await _purgeLocalDocument(operation.entityLocalId);
+        return;
+      }
+      await _apiClient.deleteDocument(remoteId);
+      await _purgeLocalDocument(operation.entityLocalId);
+      return;
+    }
     if (operation.operationType != 'upload_file') {
       throw Exception(
         'Opération document non supportée: ${operation.operationType}',
@@ -710,6 +727,22 @@ class NocodbSyncService {
       documentLocalId: operation.entityLocalId,
       remotePath: uploaded['remotePath']?.toString() ?? '',
       publicUrl: uploaded['publicUrl']?.toString() ?? '',
+    );
+  }
+
+  /// Supprime définitivement la ligne `documents` locale après que
+  /// `DELETE /api/documents/<id>` a réussi côté serveur. Avant ce helper,
+  /// `pending_delete=1` restait indéfiniment dans la DB et au prochain
+  /// `mergeRemoteDocuments` le doc pouvait soit être ressuscité (si
+  /// encore présent côté serveur faute de DELETE), soit rester en
+  /// purgatoire local.
+  Future<void> _purgeLocalDocument(String localId) async {
+    if (localId.isEmpty) return;
+    final db = await LocalDatabase.instance.database;
+    await db.delete(
+      'documents',
+      where: 'local_id = ?',
+      whereArgs: [localId],
     );
   }
 
