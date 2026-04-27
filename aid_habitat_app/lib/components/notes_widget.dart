@@ -2854,8 +2854,11 @@ Future<void> _copyToClipboard(String value) async {
 }
 
 /// Variante violette de `_HeaderIconButton` — même taille / padding que
-/// les autres boutons du header de note, mais fond violet + icône
-/// blanche pour signaler l'action primaire "ajouter une page".
+/// les autres boutons du header de note, fond violet **clair** (#EDE8F5)
+/// + icône violet **foncé** (#7C6DAA) pour signaler l'action primaire
+/// « ajouter une page » de manière douce, en cohérence avec la palette
+/// pastel du reste de l'app (sub-nav du relevé de visite, badges
+/// EPCI…). Avant : fond violet foncé + icône blanche, qui détonnait.
 class _VioletHeaderIconButton extends StatelessWidget {
   const _VioletHeaderIconButton({
     required this.icon,
@@ -2870,12 +2873,12 @@ class _VioletHeaderIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
+    const bg = Color(0xFFEDE8F5); // violet clair
+    const fg = _kAccentColor; // violet foncé #7C6DAA
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: enabled
-            ? _kAccentColor
-            : _kAccentColor.withValues(alpha: 0.35),
+        color: enabled ? bg : bg.withValues(alpha: 0.5),
         shape: const CircleBorder(),
         child: InkWell(
           onTap: onTap,
@@ -2886,7 +2889,7 @@ class _VioletHeaderIconButton extends StatelessWidget {
             child: Icon(
               icon,
               size: 18,
-              color: Colors.white,
+              color: enabled ? fg : fg.withValues(alpha: 0.4),
             ),
           ),
         ),
