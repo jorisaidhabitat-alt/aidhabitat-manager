@@ -746,15 +746,41 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // pas besoin d'attendre ici, le doc apparaît déjà localement.
       // Le tag « Rapport » est filtré par DocumentsScreen pour
       // organiser le dossier (cf. `_kAvailableTags`).
-      await _dataService.importDocumentBytes(
-        patientId: _dossier.patient.id,
+      final patientId = _dossier.patient.id;
+      // ignore: avoid_print
+      print('[report] importDocumentBytes patientId="$patientId" '
+          'fileName="${result.fileName}" bytes=${result.bytes.length}');
+      final inserted = await _dataService.importDocumentBytes(
+        patientId: patientId,
+        dossierId: _dossier.id,
         bytes: result.bytes,
         fileName: result.fileName,
         title: result.fileName.replaceAll(RegExp(r'\.pdf$'), ''),
         tags: const ['Rapport'],
       );
+      // ignore: avoid_print
+      print('[report] document local_id=${inserted.id} créé '
+          '(sync_state=${inserted.syncState.name})');
 
-      _showReportSuccess(result);
+      // Vérification immédiate : on relit la liste locale et on
+      // confirme que le doc est bien retrouvable. Si non, on remonte
+      // l'avertissement à l'utilisateur plutôt que de silencieusement
+      // afficher un faux succès.
+      final docs = await _dataService.fetchDocuments(patientId);
+      final found = docs.any((d) => d.id == inserted.id);
+      // ignore: avoid_print
+      print('[report] vérification : ${docs.length} doc(s) pour '
+          'patient="$patientId", trouvé=$found');
+
+      if (!found) {
+        _showReportError(
+          'Rapport généré mais introuvable dans Documents '
+          '(patient="$patientId"). Voir console pour détails.',
+        );
+        return;
+      }
+
+      _showReportSuccess(result, totalDocs: docs.length);
     } catch (error) {
       _showReportError('Génération impossible : $error');
     } finally {
@@ -764,6 +790,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   void _showReportSuccess(
     ({Uint8List bytes, String fileName, Map<String, dynamic>? stats}) result,
+    {int? totalDocs}
   ) {
     if (!mounted) return;
     final stats = result.stats;
@@ -772,13 +799,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final extra = (applied != null && missingValue != null)
         ? ' ($applied champs remplis, $missingValue à compléter)'
         : '';
+    final docCountSuffix = totalDocs != null
+        ? '\n→ $totalDocs document${totalDocs > 1 ? 's' : ''} dans le dossier'
+        : '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Rapport ajouté dans les Documents : ${result.fileName}$extra',
+          'Rapport ajouté dans les Documents : ${result.fileName}$extra'
+          '$docCountSuffix',
         ),
         backgroundColor: const Color(0xFF166534),
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 5),
       ),
     );
   }

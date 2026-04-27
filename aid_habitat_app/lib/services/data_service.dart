@@ -279,7 +279,9 @@ class DataService {
 
   /// Variante web : importe directement les bytes d'une photo
   /// (compressée) sans passer par un File. Utilisé par l'onglet
-  /// Photos du relevé de visite quand on tourne en PWA.
+  /// Photos du relevé de visite quand on tourne en PWA, et par le
+  /// bouton « Générer le rapport » pour pousser le PDF dans
+  /// l'espace Documents du dossier.
   Future<DocItem> importDocumentBytes({
     required String patientId,
     required List<int> bytes,
@@ -287,6 +289,7 @@ class DataService {
     List<String> tags = const ['Autre'],
     String? title,
     int? categoryOrder,
+    String? dossierId,
   }) async {
     return _documentRepository.importDocumentBytes(
       patientId: patientId,
@@ -295,6 +298,7 @@ class DataService {
       tags: tags,
       title: title,
       categoryOrder: categoryOrder,
+      dossierId: dossierId,
     );
   }
 

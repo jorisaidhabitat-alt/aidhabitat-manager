@@ -42,6 +42,7 @@ class DocumentRepository {
     List<String> tags = const ['Autre'],
     String? title,
     int? categoryOrder,
+    String? dossierId,
   }) async {
     final db = await _database.database;
     final now = DateTime.now();
@@ -59,6 +60,10 @@ class DocumentRepository {
     final row = {
       'local_id': localId,
       'patient_local_id': patientId,
+      // Optionnel mais conseillé : permet le scoping par dossier dans
+      // les futures requêtes (ex. liste docs d'une visite spécifique).
+      // Le filtre Documents primaire reste `patient_local_id`.
+      'dossier_local_id': dossierId,
       'title': resolvedTitle,
       'file_name': fileName,
       'file_ext': extension,
