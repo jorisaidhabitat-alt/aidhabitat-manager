@@ -733,7 +733,8 @@ class _DossierScreenState extends State<DossierScreen> {
                             label: 'Nom',
                             value: _lastName,
                             labelColor: const Color(0xFF7C6DAA),
-                            labelSize: 12,
+                            labelSize: 14,
+                            valueSize: 14,
                             onChanged: (v) {
                               _lastName = v;
                               _onChanged();
@@ -746,7 +747,8 @@ class _DossierScreenState extends State<DossierScreen> {
                             label: 'Prénom',
                             value: _firstName,
                             labelColor: const Color(0xFF7C6DAA),
-                            labelSize: 12,
+                            labelSize: 14,
+                            valueSize: 14,
                             onChanged: (v) {
                               _firstName = v;
                               _onChanged();
@@ -771,7 +773,8 @@ class _DossierScreenState extends State<DossierScreen> {
                             value: _fiscalRevenue,
                             unit: '€',
                             labelColor: const Color(0xFF7C6DAA),
-                            labelSize: 12,
+                            labelSize: 14,
+                            valueSize: 14,
                             onChanged: (v) {
                               _fiscalRevenue = v;
                               _onChanged();
@@ -788,7 +791,8 @@ class _DossierScreenState extends State<DossierScreen> {
                       label: 'Adresse',
                       value: _address,
                       labelColor: const Color(0xFF7C6DAA),
-                      labelSize: 12,
+                      labelSize: 14,
+                      valueSize: 14,
                       onChanged: (v) {
                         _address = v;
                         _onChanged();
@@ -805,7 +809,8 @@ class _DossierScreenState extends State<DossierScreen> {
                       // par le relevé de visite.
                       showZipField: true,
                       labelColor: const Color(0xFF7C6DAA),
-                      labelSize: 12,
+                      labelSize: 14,
+                      valueSize: 14,
                       onChanged: (update) {
                         setState(() {
                           if (update.city != null) _city = update.city!;
@@ -893,11 +898,13 @@ class _DossierScreenState extends State<DossierScreen> {
       children: [
         const Text(
           'Occupants',
-          // Libellé violet 12px, aligné sur les autres labels du bloc
-          // Bénéficiaire (FormTextField.labelSize = 12).
+          // Libellé violet 14px, aligné sur les autres labels du bloc
+          // Bénéficiaire (FormTextField.labelSize = 14, valueSize = 14
+          // pour matcher la preview où libellé violet et valeur noire
+          // ont la même taille).
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            fontSize: 12,
+            fontSize: 14,
             color: Color(0xFF7C6DAA),
           ),
         ),
