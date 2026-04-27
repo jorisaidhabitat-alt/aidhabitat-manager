@@ -3312,6 +3312,21 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
   @override
   void dispose() {
     _doc?.close();
+    // Cleanup des PNGs temporaires créés par `_renderPage` (un par page
+    // visitée) — sans ça, à chaque ouverture/fermeture du preview on
+    // créait `<pdf>.page1.png`, `<pdf>.page2.png`, etc. qui restaient
+    // sur disque indéfiniment. Sur iPad après 100 ouvertures, le dossier
+    // offline_documents devenait énorme. Les fichiers `.annotation.json`
+    // sont préservés (c'est la source de vérité des annotations).
+    for (final path in _pagePngPaths.values.toList()) {
+      try {
+        final f = File(path);
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {
+        // Best effort — un échec de cleanup ne doit pas faire crasher
+        // la fermeture de l'aperçu.
+      }
+    }
     super.dispose();
   }
 

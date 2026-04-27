@@ -488,11 +488,22 @@ class DocumentRepository {
       // (filet de sécurité contre un fetch ratée silencieusement).
       // ----------------------------------------------------------------
       if (remoteLocalIds.isNotEmpty) {
+        // Filtre temporel : on ne purge que les docs créés il y a plus de
+        // 5 minutes. Protection contre la consistance éventuelle de
+        // NocoDB — un doc uploadé par un autre device < 5 min plus tôt
+        // peut ne pas encore figurer dans la pull list, et le purger
+        // créerait une perte silencieuse côté ce device. Au prochain
+        // pull (≥ 5 min plus tard), si le doc reste absent du remote,
+        // alors la suppression est légitime et on purge.
+        final ageThreshold = DateTime.now().subtract(
+          const Duration(minutes: 5),
+        );
         final placeholders =
             List.filled(remoteLocalIds.length, '?').join(',');
         final args = <Object?>[
           patientId,
           SyncState.synced.name,
+          ageThreshold.toIso8601String(),
           ...remoteLocalIds,
         ];
         final deleted = await txn.delete(
@@ -500,6 +511,7 @@ class DocumentRepository {
           where:
               'patient_local_id = ? AND sync_state = ? '
               'AND pending_delete = 0 '
+              'AND created_at < ? '
               'AND local_id NOT IN ($placeholders)',
           whereArgs: args,
         );
@@ -507,7 +519,7 @@ class DocumentRepository {
           // ignore: avoid_print
           print(
             '[reconcile] documents (patient=$patientId) : '
-            '$deleted ligne(s) purgée(s) (suppression remote)',
+            '$deleted ligne(s) purgée(s) (suppression remote, âge > 5min)',
           );
         }
       }
