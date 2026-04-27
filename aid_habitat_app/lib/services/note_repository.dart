@@ -53,6 +53,7 @@ class NoteRepository {
     required String tabKey,
     required String drawingJson,
     int pageNumber = 0,
+    String? previewDataUrl,
   }) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
@@ -99,6 +100,13 @@ class NoteRepository {
         'pageNumber': pageNumber,
         'drawingJson': drawingJson,
         if (preservedPhase != null) 'planPhase': preservedPhase,
+        // `previewDataUrl` rasterisé côté Flutter (PNG base64). Stocké
+        // uniquement dans le payload de la sync_op (pas en SQLite
+        // local — gros volume) : le serveur le persiste dans
+        // mobile_note_pages.preview_data_url, et le générateur PDF y
+        // pioche pour les pages 9/10 (plans avant/après).
+        if (previewDataUrl != null && previewDataUrl.isNotEmpty)
+          'previewDataUrl': previewDataUrl,
       }),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,

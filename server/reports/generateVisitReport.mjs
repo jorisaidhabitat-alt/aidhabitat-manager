@@ -514,6 +514,83 @@ function applyEntryToField(field, entry, value) {
 }
 
 /**
+ * Dessine « GIR n » en texte libre juste à droite du dropdown
+ * « Dropdown5 » (APA Oui/Non/En cours). Sans ça, le GIR saisi par
+ * l'ergo ne pouvait s'afficher nulle part — la dropdown du template
+ * ne propose que les 3 options figées et n'a pas de slot dédié au
+ * GIR. On localise le widget du dropdown pour récupérer sa page +
+ * ses coordonnées, puis on pose le texte juste à côté.
+ *
+ * Idempotent : s'exécute toujours, mais ne dessine rien si l'APA
+ * est à 'Non' / vide ou si le GIR n'est pas renseigné.
+ */
+async function applyApaGirOverlay({ pdfDoc, fieldsByName, view }) {
+  const apaLabel = getByPath(view, 'patient.apaLabel');
+  const apaGir = getByPath(view, 'patient.apaGirRaw');
+  if (apaLabel !== 'Oui') return;
+  if (!apaGir) return;
+
+  const dropdown = fieldsByName.get('Dropdown5');
+  if (!dropdown) return;
+
+  const widgets = dropdown.acroField.getWidgets?.() || [];
+  const widget = widgets[0];
+  if (!widget) return;
+
+  // Récupère la page qui héberge ce widget. `widget.P()` renvoie le
+  // `PDFRef` de la page parent — on le matche contre `page.ref` de
+  // chaque page du document. pdf-lib n'expose pas de `widget.getPage()`
+  // direct.
+  const pageRef = widget.P?.();
+  if (!pageRef) return;
+  const page = pdfDoc.getPages().find((p) => p.ref === pageRef);
+  if (!page) return;
+
+  const rect = widget.getRectangle();
+  // Baseline aligné avec le centre vertical du dropdown : y = bottom +
+  // (height - fontSize) / 2 ≈ bottom + 5 pour un texte de 11 pt dans
+  // une box de 21 pt. Décalage horizontal : 8 pt après le bord droit
+  // de la pill.
+  const fontSize = 11;
+  const x = rect.x + rect.width + 8;
+  const y = rect.y + (rect.height - fontSize) / 2 + 1;
+
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  page.drawText(`GIR ${apaGir}`, {
+    x,
+    y,
+    size: fontSize,
+    font: helvetica,
+    color: rgb(0, 0, 0),
+  });
+}
+
+/**
+ * Décale verticalement le rectangle du widget [fieldName] de [dy]
+ * points (positif = vers le haut, négatif = vers le bas — repère
+ * PDF). Sert à corriger un mauvais alignement texte/label dans le
+ * template sans repasser par Affinity Publisher.
+ *
+ * Silencieux si le champ n'existe pas — pour qu'un mapping
+ * obsolète ne fasse pas planter le rendu.
+ */
+function nudgeFieldRect({ fieldsByName, fieldName, dy }) {
+  const field = fieldsByName.get(fieldName);
+  if (!field) return;
+  const widgets = field.acroField.getWidgets?.() || [];
+  for (const widget of widgets) {
+    const rect = widget.getRectangle();
+    if (!rect) continue;
+    widget.setRectangle({
+      x: rect.x,
+      y: rect.y + dy,
+      width: rect.width,
+      height: rect.height,
+    });
+  }
+}
+
+/**
  * Embeds des bytes d'image dans le PDF en détectant le format
  * (JPEG / PNG) à la magic number. Renvoie un PDFImage ou null si
  * le format n'est pas géré (pdf-lib ne sait pas faire de WebP, par
@@ -737,6 +814,23 @@ export async function generateVisitReport({
     applyEntryToField(field, entry, value);
     stats.applied += 1;
   }
+
+  // ---------------------------------------------------------------
+  // Ajustements ciblés post-mapping (champs sans simple bind 1-1)
+  // ---------------------------------------------------------------
+  // Overlay « GIR n » à côté du dropdown APA quand l'option est 'Oui'.
+  // Le dropdown du template n'accepte que les 3 options figées
+  // ('Oui'/'Non'/'En cours') — on ne peut pas y mettre "Oui (GIR 4)".
+  // On dessine donc le GIR en texte libre juste à droite de la pill.
+  await applyApaGirOverlay({ pdfDoc, fieldsByName, view });
+
+  // Descend de quelques points le rectangle des champs « aide à
+  // domicile » et « dépendance » : leurs valeurs apparaissaient au
+  // ras du label en haut de la box, désalignées avec le ":" de la
+  // ligne. On baisse la box de ~4 pt pour que le baseline du texte
+  // soit pile sur la ligne du libellé (demande utilisateur).
+  nudgeFieldRect({ fieldsByName, fieldName: 'aide.à domicile', dy: -4 });
+  nudgeFieldRect({ fieldsByName, fieldName: 'dépendance', dy: -4 });
 
   // ---------------------------------------------------------------
   // Page 8 — Photos visite : 2 Logement, 3 Accès, 3 Sanitaires

@@ -375,12 +375,62 @@ class _PlanCanvasState extends State<PlanCanvas> {
       'format': 'plan_canvas_v1',
       'strokes': _strokes.map((s) => s.toJson()).toList(),
     });
+    // Rasterisation du dessin → data URL PNG. Indispensable pour
+    // alimenter les pages 9 (avant) et 10 (après) du rapport PDF :
+    // pdf-lib n'a aucun moyen de re-rendre les strokes vectoriels
+    // côté serveur, on doit lui livrer une image prête.
+    //
+    // Échec gracieux : si la rasterisation foire (canvas démonté,
+    // `toImage` indisponible — rare), on save quand même les
+    // strokes JSON. Le rapport aura juste page 9/10 vide pour cette
+    // visite.
+    final previewDataUrl = await _rasterizeCanvasDataUrl();
     await _dataService.saveNoteDrawingJson(
       patientId: patientId,
       tabKey: tabKey,
       pageNumber: pageNumber,
       drawingJson: payload,
+      previewDataUrl: previewDataUrl,
     );
+  }
+
+  /// Rasterise le contenu actuel du canvas (fond blanc + grille +
+  /// strokes) en PNG encodé en data URL. Utilise un PictureRecorder
+  /// indépendant — comme `_downloadPng()` — plutôt qu'un
+  /// RepaintBoundary, pour éviter d'avoir à wrapper la zone de dessin
+  /// dans un nouveau widget tree.
+  ///
+  /// Retourne `null` si le canvas n'est pas encore monté ou si le
+  /// rendu échoue. Le caller garde alors `drawingJson` seul — le
+  /// rapport aura juste un slot vide.
+  Future<String?> _rasterizeCanvasDataUrl() async {
+    try {
+      final box =
+          _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) return null;
+      final size = box.size;
+      if (size.width < 1 || size.height < 1) return null;
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        Paint()..color = Colors.white,
+      );
+      _GridPainter().paint(canvas, size);
+      _DrawPainter.paintStrokes(canvas, _strokes, null);
+      final picture = recorder.endRecording();
+      final img = await picture.toImage(
+        size.width.toInt(),
+        size.height.toInt(),
+      );
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return null;
+      final base64 = base64Encode(byteData.buffer.asUint8List());
+      return 'data:image/png;base64,$base64';
+    } catch (_) {
+      return null;
+    }
   }
 
   void _scheduleSave() {

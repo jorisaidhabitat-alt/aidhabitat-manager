@@ -388,12 +388,14 @@ class DataService {
     required String tabKey,
     required String drawingJson,
     int pageNumber = 0,
+    String? previewDataUrl,
   }) async {
     await _noteRepository.saveDrawingJson(
       patientId: patientId,
       tabKey: tabKey,
       drawingJson: drawingJson,
       pageNumber: pageNumber,
+      previewDataUrl: previewDataUrl,
     );
   }
 

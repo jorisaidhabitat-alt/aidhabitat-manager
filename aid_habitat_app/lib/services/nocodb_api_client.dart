@@ -470,6 +470,7 @@ class NocodbApiClient {
     String? subTabKey,
     String layoutKind = 'freeform',
     String? planPhase,
+    String? previewDataUrl,
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
@@ -495,9 +496,15 @@ class NocodbApiClient {
               // Phase Plans (avant / apres / null). Côté serveur :
               // ignoré si la table NocoDB n'a pas encore la colonne.
               if (planPhase != null) 'planPhase': planPhase,
+              // PNG rasterisé du canvas, sous forme de data URL.
+              // Persisté dans `mobile_note_pages.preview_data_url`,
+              // utilisé par le générateur de rapport pour les
+              // pages 9/10 (plans avant/après).
+              if (previewDataUrl != null && previewDataUrl.isNotEmpty)
+                'previewDataUrl': previewDataUrl,
             }),
           )
-          .timeout(_defaultTimeout),
+          .timeout(_uploadTimeout),
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {

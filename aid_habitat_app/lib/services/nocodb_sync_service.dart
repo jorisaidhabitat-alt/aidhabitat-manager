@@ -1013,6 +1013,11 @@ class NocodbSyncService {
     // Phase d'un dessin Plans (avant / apres / null) — saveDrawingJson
     // et setPlanPhase la propagent dans le payload de la sync_op.
     final planPhase = payload['planPhase']?.toString();
+    // Aperçu PNG rasterisé du canvas (data URL). Renseigné par
+    // `_persistForKey` dans plan_canvas.dart pour alimenter les pages
+    // 9/10 du rapport PDF. Optionnel — si absent, le serveur garde la
+    // dernière valeur connue.
+    final previewDataUrl = payload['previewDataUrl']?.toString();
     final notePage = await _apiClient.upsertNotePage(
       patientId: patientId,
       tabKey: tabKey,
@@ -1023,6 +1028,7 @@ class NocodbSyncService {
       planPhase: (planPhase == 'avant' || planPhase == 'apres')
           ? planPhase
           : null,
+      previewDataUrl: previewDataUrl,
     );
 
     await _syncRepository.storeNotePageRemoteData(
