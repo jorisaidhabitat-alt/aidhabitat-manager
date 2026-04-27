@@ -24,10 +24,14 @@ import '../../services/data_service.dart';
 ///   - `Visite - Sanitaires`      → 3 photos portrait (slots
 ///                                   `sani1` / `sani2` / `sani3`)
 ///
-/// Une 4e zone « À classer » liste les photos déjà importées sur le
-/// dossier (typiquement via DocumentsScreen avec le tag « Photo »)
-/// qui n'ont pas encore reçu de tag visite. L'ergo peut alors les
-/// affecter d'un tap.
+/// Décorrélation totale avec l'espace « Documents » du dossier :
+///   - L'onglet Photos n'affiche QUE les images portant un des
+///     trois tags visite (Logement / Accessibilité / Sanitaires).
+///     Les imports faits depuis l'espace Documents (tag « Photo » ou
+///     autre) restent dans Documents et ne polluent pas le rapport.
+///   - À l'inverse, `DocumentsScreen` filtre désormais ces trois
+///     tags visite pour que les photos ajoutées ici ne réapparaissent
+///     pas dans la grille générale.
 ///
 /// L'ordre dans une catégorie est piloté par `documents.category_order`
 /// (entier croissant) — réordonné via drag (ReorderableListView).
@@ -74,15 +78,21 @@ class _PhotosTabState extends State<PhotosTab>
 
   /// Recharge la liste depuis SQLite et la trie par catégorie. Appelé
   /// après chaque action (import / re-tag / delete / reorder).
+  ///
+  /// Filtre : images portant AU MOINS un des trois tags visite. Les
+  /// photos d'archive importées depuis l'espace Documents ne sont pas
+  /// chargées — elles restent dans Documents et n'apparaissent jamais
+  /// ici.
   Future<void> _refresh() async {
     try {
       final docs = await _dataService.fetchDocuments(widget.dossier.patient.id);
-      // Filtre images uniquement — on ignore les PDFs / docs.
-      final imagesOnly =
-          docs.where((d) => d.type == 'image').toList(growable: false);
+      final visitImages = docs
+          .where((d) =>
+              d.type == 'image' && kVisitPhotoTags.any(d.tags.contains))
+          .toList(growable: false);
       if (!mounted) return;
       setState(() {
-        _photos = imagesOnly;
+        _photos = visitImages;
         _isLoading = false;
       });
     } catch (_) {
@@ -105,17 +115,6 @@ class _PhotosTabState extends State<PhotosTab>
         return b.date.compareTo(a.date);
       });
     return filtered;
-  }
-
-  /// Photos non rangées : ce sont les images du dossier qui n'ont
-  /// AUCUN des 3 tags visite. Inclut les anciens imports DocumentsScreen
-  /// taggés simplement « Photo » et les imports faits depuis l'onglet
-  /// Photos avec « Sans catégorie ».
-  List<DocItem> get _unsortedPhotos {
-    return _photos
-        .where((d) => !kVisitPhotoTags.any(d.tags.contains))
-        .toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
   }
 
   // ----- Mutations -----
