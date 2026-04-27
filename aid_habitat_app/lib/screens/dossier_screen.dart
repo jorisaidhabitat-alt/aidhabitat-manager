@@ -698,18 +698,19 @@ class _DossierScreenState extends State<DossierScreen> {
                     if (epciLabel.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       // Libellé + badge communauté de communes. Même style
-                      // de label que les autres champs (violet, w700, 12pt)
-                      // — le badge pastel est juste en dessous.
+                      // de label violet que les autres champs du bloc
+                      // Bénéficiaire en preview (`_PlainField` → 14 px,
+                      // w700) — le badge pastel est juste en dessous.
                       const Text(
                         'Communauté de communes',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFF7C6DAA),
                           letterSpacing: 0.2,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 10),
                       // Variante "large" du widget partagé : padding
                       // 16×9 + fontSize 14 → mieux proportionné à
                       // côté de l'adresse de la preview Bénéficiaire.
