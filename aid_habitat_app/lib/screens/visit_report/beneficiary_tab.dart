@@ -510,22 +510,33 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   Widget _buildActiveSection() {
-    // Pas d'animation entre sous-sections (demande utilisateur) — bascule
-    // instantanée. Les seules transitions animées sont :
-    //   • entre les onglets principaux (slide horizontal natif TabBarView),
-    //   • entre les occupants (cf. `_buildOccupantSwipeContainer`).
+    final Widget section;
     switch (_subSectionIndex) {
       case 0:
-        return _buildProfilSection();
+        section = _buildProfilSection();
+        break;
       case 1:
-        return _buildFinanceSection();
+        section = _buildFinanceSection();
+        break;
       case 2:
-        return _buildSanteSection();
+        section = _buildSanteSection();
+        break;
       case 3:
-        return _buildAdminSection();
+        section = _buildAdminSection();
+        break;
       default:
-        return const SizedBox.shrink();
+        section = const SizedBox.shrink();
     }
+    // Légère animation entre sous-sections — fade + apparition vers
+    // le haut, identique au switch entre vues principales (sidebar
+    // → Accueil/Dossiers/Bibliothèque…). Bascule rapide qui rappelle
+    // à l'utilisateur que le contenu vient de changer.
+    return SoftSwitcher(
+      child: KeyedSubtree(
+        key: ValueKey<int>(_subSectionIndex),
+        child: section,
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------

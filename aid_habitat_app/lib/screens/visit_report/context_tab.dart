@@ -461,21 +461,30 @@ class _ContextTabState extends State<ContextTab>
                             child: _buildOccupantHeader(idx),
                           ),
                         Expanded(
-                          child: SingleChildScrollView(
-                            padding: EdgeInsets.fromLTRB(
-                              20,
-                              hasMultiple ? 0 : 16,
-                              20,
-                              12,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_subSection == 0)
-                                  _buildMedical()
-                                else
-                                  _buildAutonomy(),
-                              ],
+                          // Légère animation entre Médicale ↔ Autonomie —
+                          // fade + apparition vers le haut, identique
+                          // aux autres switches de sous-section.
+                          child: SoftSwitcher(
+                            child: KeyedSubtree(
+                              key: ValueKey<int>(_subSection),
+                              child: SingleChildScrollView(
+                                padding: EdgeInsets.fromLTRB(
+                                  20,
+                                  hasMultiple ? 0 : 16,
+                                  20,
+                                  12,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    if (_subSection == 0)
+                                      _buildMedical()
+                                    else
+                                      _buildAutonomy(),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),

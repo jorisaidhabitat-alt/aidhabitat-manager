@@ -380,19 +380,24 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          // Pas d'animation entre sous-sections (Général ↔ Extérieur) —
-          // bascule instantanée. Les seules transitions animées sont
-          // entre les onglets principaux (slide TabBarView).
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_subSection == 0)
-                  _buildGeneral()
-                else
-                  _buildExterior(),
-              ],
+          // Légère animation entre Général ↔ Extérieur — fade +
+          // apparition vers le haut, mêmes sensations qu'un changement
+          // de vue principale (sidebar).
+          child: SoftSwitcher(
+            child: KeyedSubtree(
+              key: ValueKey<int>(_subSection),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_subSection == 0)
+                      _buildGeneral()
+                    else
+                      _buildExterior(),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

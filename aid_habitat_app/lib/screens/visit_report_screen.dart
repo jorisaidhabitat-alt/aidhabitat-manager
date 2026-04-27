@@ -464,42 +464,45 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── Note de la sous-section active ─────────────────────────────
-        // `IndexedStack` conserve l'état de dessin de chaque sous-section
-        // (un trait en cours n'est pas perdu en switchant Profil ↔ Foyer
-        // par exemple). Bascule instantanée — pas d'animation entre
-        // sous-sections, demandé par l'utilisateur. La seule animation
-        // qui touche ce panneau est le slide horizontal natif du
-        // TabBarView quand on change d'ONGLET (ex. Bénéficiaire ↔
-        // Contexte de vie), parce que `_buildNotesPanel` vit maintenant
-        // dans chaque enfant du TabBarView.
+        // Toutes les notes de l'onglet sont gardées vivantes dans un
+        // Stack pour préserver l'état de dessin (un trait en cours n'est
+        // pas perdu en switchant Profil ↔ Foyer). Chaque couche est
+        // animée en fade + apparition vers le haut quand elle devient
+        // active — même grammaire que les sous-sections du formulaire
+        // à gauche, pour que l'utilisateur sente que le contenu vient
+        // de changer.
         Expanded(
-          child: IndexedStack(
-            index: safeIdx,
+          child: Stack(
+            fit: StackFit.expand,
             children: List.generate(subsections.length, (i) {
               final section = subsections[i];
               final tabKey = '$activeTab-$section';
               final liveKey = '${_dossier.patient.id}::$tabKey';
               final isMedical = tabKey == 'Contexte de vie-Médical';
-              return NotesWidget(
-                key: ValueKey(liveKey),
-                patientId: _dossier.patient.id,
-                tabKey: tabKey,
-                title: section,
-                liveText: _liveText[liveKey],
-                onDraftChange: (draft) =>
-                    _pushDraftToOpenWindow(tabKey, draft.text),
-                onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
-                showSaveButton: false,
-                embedded: false,
-                fillParentHeight: true,
-                allowPagination: true,
-                stackedCards: true,
-                backgroundContent: isMedical
-                    ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
-                    : null,
-                medicalFlags: isMedical ? _medicalFlagNumbers : null,
-                onMedicalFlagsChanged:
-                    isMedical ? _handleMedicalFlagsFromNotes : null,
+              final isActive = i == safeIdx;
+              return _NotesPanelLayer(
+                isActive: isActive,
+                child: NotesWidget(
+                  key: ValueKey(liveKey),
+                  patientId: _dossier.patient.id,
+                  tabKey: tabKey,
+                  title: section,
+                  liveText: _liveText[liveKey],
+                  onDraftChange: (draft) =>
+                      _pushDraftToOpenWindow(tabKey, draft.text),
+                  onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
+                  showSaveButton: false,
+                  embedded: false,
+                  fillParentHeight: true,
+                  allowPagination: true,
+                  stackedCards: true,
+                  backgroundContent: isMedical
+                      ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
+                      : null,
+                  medicalFlags: isMedical ? _medicalFlagNumbers : null,
+                  onMedicalFlagsChanged:
+                      isMedical ? _handleMedicalFlagsFromNotes : null,
+                ),
               );
             }),
           ),
@@ -813,6 +816,46 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // bloc lors d'un changement d'onglet.
             Expanded(child: tabView),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Couche d'un NotesWidget dans le Stack du panneau de droite. Garde
+/// le widget en vie pour préserver l'état (dessin en cours, sélection
+/// d'outils…), mais l'anime en fade + apparition vers le haut quand il
+/// devient actif/inactif. Mêmes durées et courbes que le `SoftSwitcher`
+/// utilisé pour les autres sous-sections du relevé → l'utilisateur
+/// retrouve la même grammaire d'animation partout.
+class _NotesPanelLayer extends StatelessWidget {
+  const _NotesPanelLayer({
+    required this.isActive,
+    required this.child,
+  });
+
+  final bool isActive;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSlide(
+      // Position « repos » = (0, 0). Hors-actif : légèrement décalé vers
+      // le bas pour que la couche entrante donne l'impression de monter
+      // (parité avec `SoftSwitcher`).
+      offset: isActive ? Offset.zero : const Offset(0, 0.06),
+      duration: kSoftMedium,
+      curve: kSoftCurve,
+      child: AnimatedOpacity(
+        opacity: isActive ? 1.0 : 0.0,
+        duration: kSoftMedium,
+        curve: kSoftCurve,
+        // `IgnorePointer` pour que les couches inactives ne capturent
+        // pas les taps (sinon on cliquerait sur un NotesWidget invisible
+        // posé par-dessus l'actif).
+        child: IgnorePointer(
+          ignoring: !isActive,
+          child: child,
         ),
       ),
     );
