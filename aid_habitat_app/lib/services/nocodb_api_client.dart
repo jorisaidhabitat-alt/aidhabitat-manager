@@ -381,13 +381,37 @@ class NocodbApiClient {
       );
     }
 
-    final streamed = await _client.send(request).timeout(_uploadTimeout);
-    final responseBody =
-        await streamed.stream.bytesToString().timeout(_uploadTimeout);
+    // Transient guard manuel : `MultipartRequest.send` ne passe pas par
+    // `_runWithTransientGuard` (qui attend une `Future<http.Response>`),
+    // donc on classifie ici les erreurs réseau / 5xx comme transitoires
+    // pour que le sync engine les retry au cycle suivant au lieu de les
+    // marquer définitivement failed.
+    http.StreamedResponse streamed;
+    String responseBody;
+    try {
+      streamed = await _client.send(request).timeout(_uploadTimeout);
+      responseBody =
+          await streamed.stream.bytesToString().timeout(_uploadTimeout);
+    } catch (error) {
+      if (_isTransientNetworkError(error)) {
+        throw TransientRemoteException(
+          'Document upload network error: $error',
+        );
+      }
+      rethrow;
+    }
 
-    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
-      throw Exception(
+    if (streamed.statusCode >= 500) {
+      // 5xx serveur → transient, retry plus tard.
+      throw TransientRemoteException(
         'Remote document upload failed (${streamed.statusCode})',
+        statusCode: streamed.statusCode,
+      );
+    }
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      // 4xx → vraie erreur fonctionnelle, on remonte.
+      throw Exception(
+        'Remote document upload failed (${streamed.statusCode}): $responseBody',
       );
     }
 
@@ -411,14 +435,17 @@ class NocodbApiClient {
     if (remoteDocumentId.isEmpty) {
       throw Exception('deleteDocument: remoteDocumentId vide');
     }
-    final response = await _client
-        .delete(
-          Uri.parse(
-            '$_baseUrl/api/documents/${Uri.encodeComponent(remoteDocumentId)}',
-          ),
-          headers: _headers,
-        )
-        .timeout(_defaultTimeout);
+    final response = await _runWithTransientGuard(
+      'Document delete',
+      () => _client
+          .delete(
+            Uri.parse(
+              '$_baseUrl/api/documents/${Uri.encodeComponent(remoteDocumentId)}',
+            ),
+            headers: _headers,
+          )
+          .timeout(_defaultTimeout),
+    );
 
     // 404 = doc déjà supprimé côté serveur → on considère que c'est un
     // succès idempotent (on évite que la sync queue boucle indéfiniment

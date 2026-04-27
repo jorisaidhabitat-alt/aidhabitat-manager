@@ -170,10 +170,18 @@ class SyncRepository {
   /// prod avec des 500 dans le passé).
   Future<int> rehabilitateTransientFailures() async {
     final db = await _database.database;
+    // On reset `attempt_count` à 0 en plus du status. Sinon, après un
+    // épisode CORS/Vercel-SSO qui a fait échouer 5+ fois la même op,
+    // le backoff (`_computeOpBackoffSeconds`) la maintient en attente
+    // pendant 5 minutes — l'utilisateur voit l'op « En attente » sans
+    // comprendre qu'elle ne sera pas tentée tout de suite. Réhabiliter
+    // c'est admettre que la cause de l'échec est passée, donc un budget
+    // de tentatives frais est légitime. Si l'op échoue à nouveau, elle
+    // re-démarre le cycle de backoff normal à attempt_count=1.
     final rehabilitated = await db.rawUpdate(
       '''
       UPDATE sync_operations
-      SET status = ?, updated_at = ?
+      SET status = ?, updated_at = ?, attempt_count = 0
       WHERE status = ?
         AND (
           last_error LIKE '%500%'
@@ -186,7 +194,14 @@ class SyncRepository {
           OR last_error LIKE '%HttpException%'
           OR last_error LIKE '%TransientRemoteException%'
           OR last_error LIKE '%Remote note sync failed%'
+          OR last_error LIKE '%Remote document upload failed%'
+          OR last_error LIKE '%Document upload network error%'
           OR last_error LIKE '%network error%' COLLATE NOCASE
+          OR last_error LIKE '%XMLHttpRequest error%' COLLATE NOCASE
+          OR last_error LIKE '%Failed to fetch%' COLLATE NOCASE
+          OR last_error LIKE '%CORS%' COLLATE NOCASE
+          OR last_error LIKE '%(401)%'
+          OR last_error LIKE '%(403)%'
         )
       ''',
       [
