@@ -725,6 +725,24 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     if (_isGeneratingReport) return;
     setState(() => _isGeneratingReport = true);
     try {
+      // Pousse les changements locaux EN ATTENTE vers NocoDB AVANT
+      // d'appeler le serveur de génération PDF — sinon le serveur lit
+      // `getDossiersForApp` (NocoDB direct) et reçoit l'ancienne valeur
+      // pour les champs récemment modifiés (nom, statut d'occupation,
+      // GIR, aide à domicile…). Symptôme reporté : "le nom a été changé
+      // sur l'app mais le rapport PDF garde l'ancien".
+      //
+      // `runSync` flush la queue d'opérations locales (debounced 200 ms
+      // côté `SyncEngine`). On l'attend explicitement ici pour avoir
+      // la garantie que NocoDB est à jour avant le fetch côté serveur.
+      // Si offline ou si la sync échoue, on génère quand même — le
+      // serveur retombera sur ce qu'il connaît, et un toast d'avertissement
+      // sera ajouté plus bas.
+      try {
+        await _dataService.runSync();
+      } catch (_) {
+        // Pas bloquant — on continue avec ce qui est déjà sur NocoDB.
+      }
       final result = await _dataService.downloadVisitReport(
         dossierId: _dossier.id,
       );
