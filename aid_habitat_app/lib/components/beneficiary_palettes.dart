@@ -74,7 +74,10 @@ class EpciBadge extends StatelessWidget {
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        // Empreinte agrandie (padding 14×8, fontSize 13) — même valeur
+        // dans la liste "Mes dossiers" et dans l'en-tête du dossier
+        // détaillé. Source unique : pas de drift visuel possible.
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: palette.bg,
           borderRadius: BorderRadius.circular(999),
@@ -84,7 +87,7 @@ class EpciBadge extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: FontWeight.w700,
             color: palette.fg,
           ),
