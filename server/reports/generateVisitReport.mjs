@@ -66,21 +66,18 @@ const ERGO_CONTACT = {
     addressLine1: '16 rue Léo Lagrange',
     addressLine2: '35131 Chartres-de-Bretagne',
     // Police Affinity du bloc = SegoeUI 12pt noir (lu via la DA des
-    // champs voisins). pdf-lib ne sait pas embarquer SegoeUI sans
-    // fontkit → on fallback sur Helvetica 12pt. Helvetica est un poil
-    // plus dense que SegoeUI : on compense en posant la couleur sur
-    // un gris #4D4D4D plutôt que pur noir, pour que l'avg perçu (avec
-    // l'anti-aliasing) matche les autres lignes "Aid'Habitat" et
-    // "09 53 98 40 35".
+    // champs voisins). pdf-lib fallback sur Helvetica 12pt sans
+    // fontkit — la différence de rendu reste minime à cette taille.
     fontSize: 12,
-    color: rgb(0.3, 0.3, 0.3),
-    // Baselines remontées de quelques pt parce que la nouvelle taille
-    // (12 vs 10) déborde un peu plus en hauteur à la même baseline.
-    line1: { x: 47, y: 97 },
-    line2: { x: 47, y: 77 },
-    // Rectangle de masquage — agrandi pour absorber le 12pt et les
-    // ascendants/descendants. Couleur matchée sur le fond pêche
-    // du bandeau Affinity (#F4DBC4 sampled sur le rendu PNG).
+    color: rgb(0, 0, 0), // noir, demande utilisateur
+    // Baselines remontées de 3pt par rapport au texte original
+    // Affinity pour que l'adresse "respire" mieux dans le bandeau
+    // pêche (demande utilisateur).
+    line1: { x: 47, y: 100 },
+    line2: { x: 47, y: 80 },
+    // Rectangle de masquage — couvre l'ancien texte (y=77-114) ET
+    // la nouvelle position (y=80-112). Couleur matchée sur le fond
+    // pêche du bandeau Affinity (#F4DBC4 sampled sur le rendu PNG).
     mask: { x: 44, y: 71, width: 184, height: 48 },
     maskColor: rgb(244 / 255, 219 / 255, 196 / 255), // #F4DBC4
   },
@@ -1048,12 +1045,11 @@ function applyAdresseFieldColorTweak(form) {
   try {
     const adresseField = form.getField('adresse');
     if (adresseField instanceof PDFTextField) {
-      // Format DA standard PDF : `/<font> <size> Tf <r> <g> <b> rg`.
-      // On garde Helvetica 12pt + couleur gris clair pour matcher le
-      // rendu visuel des autres champs Affinity-SegoeUI.
-      adresseField.acroField.setDefaultAppearance(
-        '/Helv 12 Tf 0.3 0.3 0.3 rg',
-      );
+      // Format DA standard PDF : `/<font> <size> Tf <gray> g`.
+      // Helvetica 12pt en noir pur (demande utilisateur — préfère
+      // l'uniformité noire même si pdf-lib rend un poil plus dense
+      // que les autres champs Affinity-SegoeUI).
+      adresseField.acroField.setDefaultAppearance('/Helv 12 Tf 0 g');
     }
   } catch (error) {
     console.warn('[generateVisitReport] applyAdresseFieldColorTweak :', error?.message || error);

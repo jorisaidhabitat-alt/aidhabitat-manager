@@ -1107,8 +1107,12 @@ class DossierRepository {
     required String now,
   }) async {
     final opId = '${entityType}_update_$entityLocalId';
+    // Filtre sur `pending` uniquement (cf. `updatePatient`) : on évite
+    // de merger une payload obsolète sur une op `running` ou `completed`.
     final existing = await db.query('sync_operations',
-        where: 'id = ?', whereArgs: [opId], limit: 1);
+        where: 'id = ? AND status = ?',
+        whereArgs: [opId, SyncOperationStatus.pending.name],
+        limit: 1);
     Map<String, dynamic> merged = updates;
     if (existing.isNotEmpty) {
       try {
@@ -1393,8 +1397,16 @@ class DossierRepository {
     if (apiUpdates.isEmpty) return;
 
     final opId = 'patient_update_$patientId';
+    // Ne merge qu'avec une op encore `pending`. Si l'op précédente est
+    // déjà `running`/`completed`/`failed`/`conflict`, le sync engine a
+    // pris le payload en mémoire et le pousse en parallèle — re-merger
+    // par-dessus créerait une race où l'op courante envoie une payload
+    // obsolète. En filtrant, on repart d'une payload propre pour la
+    // prochaine op.
     final existing = await db.query('sync_operations',
-        where: 'id = ?', whereArgs: [opId], limit: 1);
+        where: 'id = ? AND status = ?',
+        whereArgs: [opId, SyncOperationStatus.pending.name],
+        limit: 1);
     Map<String, dynamic> mergedUpdates = apiUpdates;
     if (existing.isNotEmpty) {
       try {

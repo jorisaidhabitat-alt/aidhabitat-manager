@@ -123,6 +123,18 @@ class NocodbApiClient {
   /// Create a new beneficiary on the server. The server automatically creates
   /// the associated dossier and housing records.
   /// Returns `{ id: remotePatientId, dossierId: remoteDossierId }`.
+  ///
+  /// Wrappé dans `_runWithTransientGuard` + `.timeout(_defaultTimeout)` :
+  /// avant ce wrap, un timeout système ou une déconnexion Wi-Fi APRÈS
+  /// que NocoDB ait inséré la ligne mais AVANT la réception de la
+  /// réponse → l'op était marquée `failed` puis automatiquement
+  /// réhabilitée par `rehabilitateTransientFailures` (le pattern
+  /// `ClientException` matchait) → POST rejoué à l'aveugle → 2e ligne
+  /// dans NocoDB. Maintenant : 5xx + timeout + erreur réseau remontent
+  /// en `TransientRemoteException` qui passe par `markTransientFailure`
+  /// (pas de bandeau rouge, retry au cycle suivant) ; la garde
+  /// d'idempotence côté `_processDossierOperation` skip le 2e POST si
+  /// le 1er a abouti.
   Future<Map<String, dynamic>> createBeneficiary({
     required Map<String, dynamic> fields,
   }) async {
@@ -130,10 +142,15 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
 
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/api/beneficiaires'),
-      headers: _headers,
-      body: jsonEncode(fields),
+    final response = await _runWithTransientGuard(
+      'Remote beneficiary creation',
+      () => _client
+          .post(
+            Uri.parse('$_baseUrl/api/beneficiaires'),
+            headers: _headers,
+            body: jsonEncode(fields),
+          )
+          .timeout(_defaultTimeout),
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {

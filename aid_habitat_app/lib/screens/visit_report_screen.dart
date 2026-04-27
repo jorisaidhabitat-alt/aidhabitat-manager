@@ -1,13 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 // Desktop only (macOS/Windows/Linux). Sur web + mobile, un stub vide est
 // importé — les appels sont shuntés par un garde `kIsWeb` avant exécution.
 import '../services/multi_window_stub.dart'
@@ -19,7 +15,6 @@ import '../services/data_service.dart';
 import '../components/beneficiary_badges.dart';
 import '../components/notes_widget.dart';
 import '../components/soft_transitions.dart';
-import '../services/web_file_saver.dart';
 import 'visit_report/beneficiary_tab.dart';
 import 'visit_report/context_tab.dart';
 import 'visit_report/mesures_tab.dart';
@@ -717,10 +712,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
-  /// Déclenche la génération du PDF côté serveur puis sauvegarde le
-  /// résultat en local. La fonction est responsable du feedback UX
-  /// (spinner, snackbar succès/erreur) — elle n'enchaîne PAS encore
-  /// vers Drive ni vers NocoDB (Chunk 5.2).
+  /// Déclenche la génération du PDF côté serveur, puis l'insère
+  /// directement dans l'espace **Documents** du dossier (tag
+  /// "Rapport") — la sync engine se charge ensuite de pousser le
+  /// fichier vers NocoDB. Plus de download local ni de Drive : le
+  /// rapport vit désormais comme n'importe quel document du
+  /// dossier, accessible depuis l'écran Documents pour preview /
+  /// téléchargement / suppression.
   Future<void> _generateReport() async {
     if (_isGeneratingReport) return;
     setState(() => _isGeneratingReport = true);
@@ -728,70 +726,35 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // Pousse les changements locaux EN ATTENTE vers NocoDB AVANT
       // d'appeler le serveur de génération PDF — sinon le serveur lit
       // `getDossiersForApp` (NocoDB direct) et reçoit l'ancienne valeur
-      // pour les champs récemment modifiés (nom, statut d'occupation,
-      // GIR, aide à domicile…). Symptôme reporté : "le nom a été changé
-      // sur l'app mais le rapport PDF garde l'ancien".
-      //
-      // `runSync` flush la queue d'opérations locales (debounced 200 ms
-      // côté `SyncEngine`). On l'attend explicitement ici pour avoir
-      // la garantie que NocoDB est à jour avant le fetch côté serveur.
-      // Si offline ou si la sync échoue, on génère quand même — le
-      // serveur retombera sur ce qu'il connaît, et un toast d'avertissement
-      // sera ajouté plus bas.
+      // pour les champs récemment modifiés. `runSync` flush la queue
+      // d'opérations locales (debounced 200 ms côté `SyncEngine`). Si
+      // offline ou si la sync échoue, on génère quand même — le serveur
+      // retombera sur ce qu'il connaît.
       try {
         await _dataService.runSync();
       } catch (_) {
         // Pas bloquant — on continue avec ce qui est déjà sur NocoDB.
       }
+
       final result = await _dataService.downloadVisitReport(
         dossierId: _dossier.id,
       );
-      // Sur web : déclenche un download navigateur via l'helper
-      // partagé (même chemin que DocumentsScreen).
-      if (kIsWeb) {
-        final ok = await triggerWebFileDownload(
-          bytes: result.bytes,
-          fileName: result.fileName,
-          mimeType: 'application/pdf',
-        );
-        if (!ok) {
-          _showReportError('Téléchargement bloqué par le navigateur.');
-          return;
-        }
-        _showReportSuccess(result);
-        return;
-      }
 
-      // Native iOS/iPadOS : `FilePicker.platform.saveFile` n'a pas
-      // d'UI native sur iOS — on écrit dans le répertoire temporaire
-      // de l'app puis on ouvre la sheet de partage iOS qui propose
-      // « Enregistrer dans Fichiers », « Mail », « AirDrop »…
-      // Sur macOS / Windows / Linux desktop : `saveFile` ouvre une
-      // vraie boîte de dialogue.
-      if (Platform.isIOS || Platform.isAndroid) {
-        final tmp = await getTemporaryDirectory();
-        final path =
-            '${tmp.path}/${result.fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')}';
-        await File(path).writeAsBytes(result.bytes, flush: true);
-        await Share.shareXFiles(
-          [XFile(path, name: result.fileName)],
-          subject: result.fileName,
-        );
-        _showReportSuccess(result);
-        return;
-      }
-
-      // Desktop natif (macOS / Windows / Linux) : vraie save dialog.
-      final savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Enregistrer le rapport',
-        fileName: result.fileName,
+      // Insertion dans l'espace Documents du dossier. L'op
+      // `upload_file` queued par `importDocumentBytes` est ensuite
+      // poussée à NocoDB par la sync engine (debounced 200 ms) —
+      // pas besoin d'attendre ici, le doc apparaît déjà localement.
+      // Le tag « Rapport » est filtré par DocumentsScreen pour
+      // organiser le dossier (cf. `_kAvailableTags`).
+      await _dataService.importDocumentBytes(
+        patientId: _dossier.patient.id,
         bytes: result.bytes,
+        fileName: result.fileName,
+        title: result.fileName.replaceAll(RegExp(r'\.pdf$'), ''),
+        tags: const ['Rapport'],
       );
-      if (savedPath == null) {
-        // Annulation utilisateur — pas un échec.
-        return;
-      }
-      _showReportSuccess(result, savedPath: savedPath);
+
+      _showReportSuccess(result);
     } catch (error) {
       _showReportError('Génération impossible : $error');
     } finally {
@@ -801,7 +764,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   void _showReportSuccess(
     ({Uint8List bytes, String fileName, Map<String, dynamic>? stats}) result,
-    {String? savedPath}
   ) {
     if (!mounted) return;
     final stats = result.stats;
@@ -810,10 +772,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final extra = (applied != null && missingValue != null)
         ? ' ($applied champs remplis, $missingValue à compléter)'
         : '';
-    final pathSuffix = savedPath != null ? '\n→ $savedPath' : '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Rapport généré : ${result.fileName}$extra$pathSuffix'),
+        content: Text(
+          'Rapport ajouté dans les Documents : ${result.fileName}$extra',
+        ),
         backgroundColor: const Color(0xFF166534),
         duration: const Duration(seconds: 4),
       ),

@@ -605,10 +605,36 @@ class NocodbSyncService {
         throw Exception('Nom du bénéficiaire obligatoire');
       }
 
+      // GARDE D'IDEMPOTENCE — si la création a déjà abouti côté serveur
+      // lors d'un cycle précédent (POST réussi mais réponse perdue : Wi-Fi
+      // coupé entre l'écriture NocoDB et la réception côté Flutter →
+      // l'op est marquée failed/transient → réhabilitation automatique
+      // → re-POST → DUPLICATE), `patients.remote_patient_id` est déjà
+      // populé localement. Dans ce cas on saute le POST pour éviter de
+      // créer un doublon. C'est la cause racine du bug rapporté
+      // « JORIS Try → JORIS BALS enregistré 2× en JORIS ESS » :
+      // l'op create rejouait, créait une 2e ligne orpheline, et l'update
+      // tapait sur la 2e (la 1ère gardait l'ancien nom).
+      if (patientLocalId.isNotEmpty) {
+        final existingRemoteId =
+            await _syncRepository.resolveRemotePatientId(patientLocalId);
+        if (existingRemoteId != null && existingRemoteId.isNotEmpty) {
+          // ignore: avoid_print
+          print('[sync] dossier:create skip — déjà créé côté serveur '
+              '(patientLocalId=$patientLocalId remoteId=$existingRemoteId)');
+          return;
+        }
+      }
+
       final result = await _apiClient.createBeneficiary(fields: {
         'firstName': firstName,
         'lastName': lastName,
         'ergoId': ergoId,
+        // Clé d'idempotence — le serveur l'utilise pour retrouver une
+        // création précédente partiellement aboutie (cf. patch serveur
+        // associé dans `server/index.mjs`). Sans cette clé, le serveur
+        // n'a aucun moyen de distinguer un retry d'un vrai nouveau dossier.
+        if (patientLocalId.isNotEmpty) 'clientLocalId': patientLocalId,
       });
 
       // Store the remote IDs locally so future updates reference them.
