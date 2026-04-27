@@ -114,6 +114,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   String? _expandedLevel;
   // Affichage de la liste pills pour ajouter un nouveau niveau.
   bool _addLevelMode = false;
+  // Niveau actuellement édité À L'INTÉRIEUR du container "Ajouter un
+  // niveau" (= morphing container). Quand non null, le container
+  // affiche l'éditeur du niveau au lieu du bouton ou du picker. Le
+  // niveau est aussi présent dans `_orderedLevels` mais on le SKIP
+  // dans la liste principale tant qu'il est dans le container, pour
+  // éviter de le rendre deux fois.
+  String? _pendingLevelField;
 
   // Général
   String _yearConstruction = '';
