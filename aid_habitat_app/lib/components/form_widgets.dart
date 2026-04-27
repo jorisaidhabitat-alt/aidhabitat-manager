@@ -161,7 +161,7 @@ class _FormTextFieldState extends State<FormTextField> {
           widget.label,
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            fontSize: 13,
+            fontSize: widget.labelSize ?? 13,
             color: widget.labelColor ?? const Color(0xFF64748B),
           ),
         ),
@@ -231,6 +231,9 @@ class FormNumberField extends StatefulWidget {
   /// même en mode édition.
   final Color? labelColor;
 
+  /// Taille du libellé (défaut : 13). Voir `FormTextField.labelSize`.
+  final double? labelSize;
+
   const FormNumberField({
     super.key,
     required this.label,
@@ -241,6 +244,7 @@ class FormNumberField extends StatefulWidget {
     this.autofocus = false,
     this.unit,
     this.labelColor,
+    this.labelSize,
   });
 
   @override
@@ -285,7 +289,7 @@ class _FormNumberFieldState extends State<FormNumberField> {
           widget.label,
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            fontSize: 13,
+            fontSize: widget.labelSize ?? 13,
             color: widget.labelColor ?? const Color(0xFF64748B),
           ),
         ),

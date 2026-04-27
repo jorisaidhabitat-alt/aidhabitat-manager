@@ -44,6 +44,10 @@ class CommuneFieldGroup extends StatefulWidget {
   /// Permet de surcharger par ex. en violet pour le bloc Bénéficiaire.
   final Color? labelColor;
 
+  /// Taille des libellés "CP" / "Ville" (défaut : 13). Voir
+  /// `FormTextField.labelSize`.
+  final double? labelSize;
+
   const CommuneFieldGroup({
     super.key,
     required this.city,
@@ -56,6 +60,7 @@ class CommuneFieldGroup extends StatefulWidget {
     this.cityLabel = 'Ville',
     this.showZipField = true,
     this.labelColor,
+    this.labelSize,
   });
 
   @override
@@ -264,7 +269,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
           softWrap: false,
           overflow: TextOverflow.fade,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: widget.labelSize ?? 13,
             color: widget.labelColor ?? const Color(0xFF64748B),
             fontWeight: FontWeight.w600,
           ),
@@ -301,7 +306,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
         Text(
           widget.cityLabel,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: widget.labelSize ?? 13,
             color: widget.labelColor ?? const Color(0xFF64748B),
             fontWeight: FontWeight.w600,
           ),
