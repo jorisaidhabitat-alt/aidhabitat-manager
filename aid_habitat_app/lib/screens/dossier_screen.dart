@@ -695,7 +695,16 @@ class _DossierScreenState extends State<DossierScreen> {
                           fullAddress.isEmpty ? 'Non renseignée' : fullAddress,
                       multiline: true,
                     ),
-                    if (epciLabel.isNotEmpty) ...[
+                    // Section "Communauté de communes" — réservée dès qu'on
+                    // a une commune (cityId ou ville ou code postal). Sans
+                    // ça le badge "apparaissait après" le reste du dossier
+                    // sur iPad PWA cold start, parce que `_communeOptions`
+                    // est peuplé seulement quand `/api/references` répond.
+                    // Maintenant on rend la section dans le flux normal et
+                    // on remplace le badge par un skeleton pendant le
+                    // chargement — pas de décalage visuel ni d'apparition
+                    // tardive.
+                    if (_hasCityInfo()) ...[
                       const SizedBox(height: 16),
                       // Libellé + badge communauté de communes. Même style
                       // de label violet que les autres champs du bloc
@@ -711,12 +720,29 @@ class _DossierScreenState extends State<DossierScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      // Variante "large" du widget partagé : padding
-                      // 16×9 + fontSize 14 → mieux proportionné à
-                      // côté de l'adresse de la preview Bénéficiaire.
-                      // La liste "Mes dossiers" garde la taille par
-                      // défaut (12×6, fontSize 12).
-                      EpciBadge(label: epciLabel, large: true),
+                      if (epciLabel.isNotEmpty)
+                        // Variante "large" du widget partagé : padding
+                        // 16×9 + fontSize 14 → mieux proportionné à
+                        // côté de l'adresse de la preview Bénéficiaire.
+                        // La liste "Mes dossiers" garde la taille par
+                        // défaut (12×6, fontSize 12).
+                        EpciBadge(label: epciLabel, large: true)
+                      else if (!_references.isLoaded)
+                        // Skeleton aux mêmes dimensions que le badge
+                        // pour que la mise en page reste stable pendant
+                        // que `/api/references` répond.
+                        const _EpciBadgeSkeleton()
+                      else
+                        // Références chargées mais aucun match (commune
+                        // inconnue ou EPCI manquant côté NocoDB) —
+                        // affichage discret au lieu d'un blanc.
+                        const Text(
+                          '—',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
                     ],
                     // "Commentaire du projet" retiré du bloc Bénéficiaire
                     // (demande utilisateur) : s'il existe, il est affiché
@@ -860,6 +886,17 @@ class _DossierScreenState extends State<DossierScreen> {
   /// Brocéliande…) ont un `cityId` vide ou obsolète sur des dossiers
   /// créés avant la synchronisation NocoDB — sans fallback on perdait
   /// l'affichage du badge EPCI pour ces dossiers-là.
+  /// Vrai dès qu'une info de localisation est saisie sur le dossier.
+  /// Utilisé pour décider si on RÉSERVE la place du badge "Communauté
+  /// de communes" dans la preview du bloc Bénéficiaire — même si
+  /// `_resolveEpciLabel` n'a pas encore résolu (références en cours
+  /// de chargement).
+  bool _hasCityInfo() {
+    return _cityId.trim().isNotEmpty ||
+        _city.trim().isNotEmpty ||
+        _zipCode.trim().isNotEmpty;
+  }
+
   String _resolveEpciLabel({
     required String cityId,
     required String city,
@@ -1091,6 +1128,29 @@ class _QuickActionButton extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Skeleton pour le badge "Communauté de communes" pendant que les
+/// références sont en train de charger. Mêmes dimensions que le badge
+/// "large" (`EpciBadge(large: true)`) — padding 16×9, fontSize 14 —
+/// pour que la mise en page de la preview Bénéficiaire ne saute pas
+/// quand le vrai badge prend la place.
+class _EpciBadgeSkeleton extends StatelessWidget {
+  const _EpciBadgeSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 160,
+      // 14 (fontSize) × 1.2 (line-height) ≈ 17 px texte + 9×2 padding
+      // vertical = 35 px. Match `EpciBadge(large: true)`.
+      height: 35,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE2E8F0),
+        borderRadius: BorderRadius.circular(999),
       ),
     );
   }

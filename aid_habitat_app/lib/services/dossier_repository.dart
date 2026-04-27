@@ -747,7 +747,9 @@ class DossierRepository {
         'email': trusted['email']?.toString() ?? '',
       }),
       'updated_at': now,
-      'remote_updated_at': now,
+      // Voir _buildDossierPayload : on stocke l'updatedAt serveur, pas
+      // l'horodatage local du merge.
+      'remote_updated_at': _extractRemoteUpdatedAt(raw) ?? now,
       'sync_state': SyncState.synced.name,
     };
   }
@@ -847,7 +849,9 @@ class DossierRepository {
       'comments': raw['comments']?.toString() ?? '',
       'access_observation': raw['accessObservation']?.toString() ?? '',
       'updated_at': now,
-      'remote_updated_at': now,
+      // Voir _buildDossierPayload : on stocke l'updatedAt serveur, pas
+      // l'horodatage local du merge (sert au check optimistic au push).
+      'remote_updated_at': _extractRemoteUpdatedAt(raw) ?? now,
       'sync_state': SyncState.synced.name,
     };
   }
@@ -874,9 +878,36 @@ class DossierRepository {
       'autonomy_json':
           raw['autonomy'] is Map ? jsonEncode(raw['autonomy']) : null,
       'updated_at': now,
-      'remote_updated_at': now,
+      // remote_updated_at = horodatage authoritatif du serveur (et non
+      // l'heure locale du merge). Indispensable pour le contrôle
+      // d'optimistic concurrency au push : le client renverra cette
+      // valeur dans `expectedUpdatedAt` et le serveur (via
+      // `sendConflictIfStale`) refusera l'update si quelqu'un d'autre a
+      // modifié la ligne entre-temps.
+      'remote_updated_at': _extractRemoteUpdatedAt(raw) ?? now,
       'sync_state': SyncState.synced.name,
     };
+  }
+
+  /// Lit le timestamp authoritatif renvoyé par NocoDB pour une row.
+  /// Tolère les différentes conventions de nommage rencontrées
+  /// (`updatedAt`, `updated_at`, `UpdatedAt`, fallback sur la date de
+  /// création quand la row n'a jamais été modifiée).
+  String? _extractRemoteUpdatedAt(Map<String, dynamic> raw) {
+    for (final key in const [
+      'updatedAt',
+      'updated_at',
+      'UpdatedAt',
+      'createdAt',
+      'created_at',
+      'CreatedAt',
+    ]) {
+      final v = raw[key];
+      if (v != null && v.toString().trim().isNotEmpty) {
+        return v.toString();
+      }
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------

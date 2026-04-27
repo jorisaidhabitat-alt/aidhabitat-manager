@@ -15,6 +15,7 @@ import 'screens/note_window_screen.dart';
 import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
+import 'services/references_service.dart';
 import 'services/sync_engine.dart';
 // Desktop-only : charge `desktop_multi_window` uniquement sur une
 // plateforme qui le supporte. Sur web, un stub vide est importé à la
@@ -100,6 +101,15 @@ Future<void> main(List<String> args) async {
       timeout: const Duration(seconds: 5));
   await bootStep(
       'ConnectivityService.initialize', ConnectivityService().initialize());
+  // Lance le fetch des références (communes, EPCIs, barèmes ANAH) tout
+  // de suite — sans `await`, pour ne pas bloquer le boot. Le service
+  // hydrate d'abord depuis SQLite (instantané sur les sessions
+  // suivantes), puis refresh réseau en arrière-plan. Ça démarre la
+  // requête réseau pendant que `AuthService` finit son chargement,
+  // donc à l'ouverture du premier dossier les communes sont déjà là
+  // (ou très près d'arriver).
+  // ignore: discarded_futures
+  ReferencesService().ensureLoaded();
   // Connecte le ConnectivityService au SyncEngine : quand la connexion
   // revient, le SyncEngine lance automatiquement un push des opérations
   // en attente (notes, documents, dossiers…) vers NocoDB.
