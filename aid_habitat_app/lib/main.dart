@@ -12,7 +12,6 @@ import 'models/types.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
 import 'screens/note_window_screen.dart';
-import 'services/app_config.dart';
 import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
@@ -26,32 +25,6 @@ import 'services/multi_window_stub.dart'
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Sur web prod : on aligne `apiBaseUrl` sur l'origine courante du
-  // navigateur. Raison : le bundle compilé reçoit `AIDHABITAT_API_BASE_URL`
-  // figé à `--dart-define`, mais Vercel sert ce même bundle sur PLUSIEURS
-  // hôtes (production + alias `-kappa` + previews). Si l'utilisateur ouvre
-  // un alias, toutes les requêtes API partent vers l'URL build-time
-  // (cross-origin) → preflight CORS → 401 si Vercel exige un cookie SSO
-  // sur l'autre host. En forçant l'origine courante on rend les requêtes
-  // SAME-ORIGIN, ce qui élimine le preflight et fait passer le cookie
-  // de session naturellement.
-  //
-  // En local (`localhost` ou `127.0.0.1`), on garde la valeur build-time
-  // pour pointer vers le serveur Express dev (port 3001 par défaut).
-  if (kIsWeb) {
-    try {
-      final pageHost = Uri.base.host;
-      final isDevHost = pageHost == 'localhost' || pageHost == '127.0.0.1';
-      if (!isDevHost && pageHost.isNotEmpty) {
-        AppConfig.setApiBaseUrl(Uri.base.origin);
-      }
-    } catch (_) {
-      // Best effort — sur Flutter web `Uri.base` est toujours défini, mais
-      // on protège quand même au cas où le navigateur exposerait une
-      // origin parsable étrange (ex: `null` dans iframe sandbox).
-    }
-  }
 
   // Sur web : bascule sqflite sur le backend WASM+IndexedDB pour que les
   // appels existants (`sqflite.openDatabase`, `Database.query`, …)
