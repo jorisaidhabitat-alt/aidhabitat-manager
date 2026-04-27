@@ -1,14 +1,14 @@
-/// Catégorisation utilisée par le générateur de rapport PDF
-/// (`server/reports/generateVisitReport.mjs`).
-///
-/// Ce fichier centralise les constantes partagées entre :
-///   - L'onglet Photos du relevé de visite (capture/tag)
-///   - L'écran Documents (filtrage par tag)
-///   - Le backend Express qui injecte les images dans le PDF
-///
-/// **Pourquoi ici plutôt qu'en dur dans chaque écran :** une seule
-/// modification (renommer un tag, ajouter une catégorie) propage
-/// instantanément le filtre côté UI ET le mapping côté serveur.
+// Catégorisation utilisée par le générateur de rapport PDF
+// (`server/reports/generateVisitReport.mjs`).
+//
+// Ce fichier centralise les constantes partagées entre :
+//   - L'onglet Photos du relevé de visite (capture/tag)
+//   - L'écran Documents (filtrage par tag)
+//   - Le backend Express qui injecte les images dans le PDF
+//
+// Pourquoi ici plutôt qu'en dur dans chaque écran : une seule
+// modification (renommer un tag, ajouter une catégorie) propage
+// instantanément le filtre côté UI ET le mapping côté serveur.
 
 // ---------------------------------------------------------------------------
 // Tags des photos prises pendant la visite

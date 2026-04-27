@@ -1015,7 +1015,7 @@ class _PhotoThumbnail extends StatelessWidget {
           base64Decode(base64),
           fit: BoxFit.cover,
           gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => _placeholder(),
+          errorBuilder: (context, error, stack) => _placeholder(),
         );
       } catch (_) {
         return _placeholder();
@@ -1027,7 +1027,7 @@ class _PhotoThumbnail extends StatelessWidget {
         File(localPath),
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _placeholder(),
+        errorBuilder: (context, error, stack) => _placeholder(),
       );
     }
     final url = doc.url;
@@ -1036,7 +1036,7 @@ class _PhotoThumbnail extends StatelessWidget {
         url,
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _placeholder(),
+        errorBuilder: (context, error, stack) => _placeholder(),
       );
     }
     return _placeholder();
