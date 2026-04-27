@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -416,10 +417,11 @@ class DocumentRepository {
 
     // Warm the media cache so document previews (PDFs, images) work offline
     // after the first sync of this dossier.
-    unawaited(_prefetchDocumentAssets(remoteDocuments));
+    unawaited(_prefetchDocumentAssets(patientId, remoteDocuments));
   }
 
   Future<void> _prefetchDocumentAssets(
+    String patientId,
     List<Map<String, dynamic>> remoteDocuments,
   ) async {
     final urls = <String>{};
@@ -428,21 +430,137 @@ class DocumentRepository {
       if (url.isNotEmpty) urls.add(url);
     }
     if (urls.isEmpty) return;
+
     try {
-      // Mêmes headers d'auth web ET native : les URLs patient passent
-      // par `requireAuth` côté serveur dans le mode `nocodb`. Sans le
-      // header, le fetch renvoyait 401 et le warm cache était vide
-      // → réinstallation iPad sans réseau = aucun aperçu disponible.
+      // Étape 1 — warm cache générique (sha1-keyed sur disk en native, blob
+      // SQLite sur web). Mêmes headers d'auth web ET native : les URLs
+      // patient passent par `requireAuth` côté serveur dans le mode
+      // `nocodb`. Sans le header, le fetch renvoyait 401 et le cache
+      // restait vide → réinstallation iPad sans réseau = aucun aperçu.
       await MediaCacheService.instance.prefetchAll(
         urls,
         headers: MediaCacheService.authHeaders(),
       );
     } catch (e) {
-      // Best effort — log mais ne bloque pas le reste du sync. Avant
-      // c'était un `catch (_)` muet : impossible de débugger un cache
-      // foireux en prod.
+      // Best effort — log mais ne bloque pas le reste du sync.
       // ignore: avoid_print
       print('[docs prefetch] warm cache failed: $e');
+    }
+
+    // Étape 2 (native uniquement) — pour chaque document remote, on copie
+    // les bytes vers un emplacement stable
+    // `<docs>/cached_remote_documents/<patientId>/<localId>.<ext>` puis
+    // on met à jour `documents.local_file_path` si vide. Permet à
+    // `_PreviewScreen._buildPreviewBody` (qui exige `File(localPath)
+    // .existsSync()`) d'ouvrir les PDFs distants après une réinstallation
+    // — sans ça, sur iPad réinstallé, aucun PDF synchronisé n'était
+    // consultable.
+    //
+    // Sur web, les PDFs sont déjà dans `web_media_cache` SQLite ; un
+    // chemin natif n'aurait aucun sens.
+    if (kIsWeb) return;
+    try {
+      await _persistRemoteDocumentsLocally(patientId, remoteDocuments);
+    } catch (e) {
+      // ignore: avoid_print
+      print('[docs prefetch] persist-to-disk failed: $e');
+    }
+  }
+
+  /// Pour chaque document remote sans `local_file_path` côté DB, télécharge
+  /// (via le cache MediaCacheService déjà chaud) puis copie le fichier vers
+  /// un chemin stable et persistent et met à jour la table `documents`.
+  /// L'existant est préservé : si l'utilisateur a uploadé le doc en local
+  /// (donc `local_file_path` non-vide), on ne touche à rien.
+  Future<void> _persistRemoteDocumentsLocally(
+    String patientId,
+    List<Map<String, dynamic>> remoteDocuments,
+  ) async {
+    if (remoteDocuments.isEmpty) return;
+    final db = await _database.database;
+
+    // Lit toutes les lignes de ce patient pour résoudre `local_id` à partir
+    // de l'URL remote. C'est `mergeRemoteDocuments` qui décide du
+    // `local_id` final (souvent un id pré-existant si le doc avait
+    // d'abord été uploadé offline).
+    final rows = await db.query(
+      'documents',
+      columns: const [
+        'local_id',
+        'file_ext',
+        'remote_file_path',
+        'remote_public_url',
+        'local_file_path',
+      ],
+      where: 'patient_local_id = ?',
+      whereArgs: [patientId],
+    );
+    if (rows.isEmpty) return;
+
+    // Mappe l'URL remote (publicUrl OU remote_file_path) → ligne DB pour
+    // retrouver le `local_id`.
+    final byKey = <String, Map<String, Object?>>{};
+    for (final row in rows) {
+      final url = (row['remote_public_url'] as String?)?.trim() ?? '';
+      final path = (row['remote_file_path'] as String?)?.trim() ?? '';
+      if (url.isNotEmpty) byKey[url] = row;
+      if (path.isNotEmpty) byKey[path] = row;
+    }
+
+    final docsDir = await getApplicationDocumentsDirectory();
+    for (final remote in remoteDocuments) {
+      final url = remote['publicUrl']?.toString().trim() ?? '';
+      if (url.isEmpty) continue;
+      final row = byKey[url] ??
+          byKey[remote['remotePath']?.toString().trim() ?? ''];
+      if (row == null) continue;
+
+      // Skip si l'utilisateur a déjà des bytes locaux (upload offline,
+      // ou ré-upload après annotation).
+      final existingPath = (row['local_file_path'] as String?)?.trim() ?? '';
+      if (existingPath.isNotEmpty &&
+          await File(existingPath).exists()) {
+        continue;
+      }
+
+      // Récupère via MediaCacheService (auth-aware, déjà chauffé par
+      // l'étape 1).
+      final cached = await MediaCacheService.instance.fetch(
+        url,
+        headers: MediaCacheService.authHeaders(),
+      );
+      if (cached == null) continue;
+
+      final localId = row['local_id'] as String;
+      final ext = (row['file_ext'] as String? ?? '').trim();
+      final extSuffix = ext.isEmpty ? '' : '.$ext';
+
+      try {
+        final targetDir = Directory(
+          p.join(docsDir.path, 'cached_remote_documents', patientId),
+        );
+        if (!await targetDir.exists()) {
+          await targetDir.create(recursive: true);
+        }
+        final target = File(p.join(targetDir.path, '$localId$extSuffix'));
+        if (!await target.exists()) {
+          await cached.copy(target.path);
+        }
+        await db.update(
+          'documents',
+          {'local_file_path': target.path},
+          // Re-vérifie côté SQL : entre l'instant où on a lu la row et
+          // maintenant un autre flux a pu écrire un chemin (ex. user
+          // qui ré-importe le doc localement). On n'écrase que si
+          // toujours vide.
+          where:
+              'local_id = ? AND (local_file_path IS NULL OR local_file_path = "")',
+          whereArgs: [localId],
+        );
+      } catch (e) {
+        // ignore: avoid_print
+        print('[docs persist] copy/update failed for $localId: $e');
+      }
     }
   }
 
