@@ -499,6 +499,53 @@ class DossierRepository {
           continue;
         }
 
+        // Garde de second niveau : on regarde aussi le `patients.sync_state`
+        // ET le `housings.sync_state` du dossier. Avant cette garde, un
+        // pull NocoDB pouvait écraser un patient ou un housing en cours
+        // de push, parce que `dossiers.sync_state` était à `synced` mais
+        // `patients.sync_state` était à `pendingSync`. Symptôme côté UI :
+        // « le nom modifié disparaît pendant quelques secondes » — le
+        // serveur renvoyait l'ancien nom (eventual consistency) et le
+        // merge l'écrivait par-dessus le nouveau nom local.
+        if (existingDossier.isNotEmpty) {
+          final patientLocalIdExisting =
+              existingDossier.first['patient_local_id'] as String?;
+          final housingLocalIdExisting =
+              existingDossier.first['housing_local_id'] as String?;
+          if (patientLocalIdExisting != null &&
+              patientLocalIdExisting.isNotEmpty) {
+            final pRows = await txn.query(
+              'patients',
+              columns: ['sync_state'],
+              where: 'local_id = ?',
+              whereArgs: [patientLocalIdExisting],
+              limit: 1,
+            );
+            if (pRows.isNotEmpty) {
+              final pState = pRows.first['sync_state'] as String?;
+              if (pState != null && pState != SyncState.synced.name) {
+                continue;
+              }
+            }
+          }
+          if (housingLocalIdExisting != null &&
+              housingLocalIdExisting.isNotEmpty) {
+            final hRows = await txn.query(
+              'housings',
+              columns: ['sync_state'],
+              where: 'local_id = ?',
+              whereArgs: [housingLocalIdExisting],
+              limit: 1,
+            );
+            if (hRows.isNotEmpty) {
+              final hState = hRows.first['sync_state'] as String?;
+              if (hState != null && hState != SyncState.synced.name) {
+                continue;
+              }
+            }
+          }
+        }
+
         final now = DateTime.now().toIso8601String();
         final patientJson =
             (raw['patient'] as Map?)?.cast<String, dynamic>() ?? const {};

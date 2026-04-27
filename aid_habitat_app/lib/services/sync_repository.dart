@@ -517,8 +517,19 @@ class SyncRepository {
     required String entityLocalId,
     required SyncState syncState,
   }) async {
+    // Bindings entity_type → table:colonne. Avant ce mapping complet,
+    // les types `patient` / `housing` / `contexte_de_vie` /
+    // `diagnostic_sanitaires` / `visit_recommendations` n'avaient PAS
+    // de binding → leur sync_state restait à `pendingSync` indéfiniment
+    // après un push réussi. Conséquence : `mergeRemoteDossierPayloads`
+    // ne pouvait pas détecter qu'un patient avait une op en cours et
+    // l'écrasait avec les données du serveur (qui pouvaient encore
+    // refléter l'ancienne valeur en cas de eventual consistency NocoDB)
+    // → flash visuel "le nom a disparu pendant quelques secondes".
     final binding = switch (entityType) {
       'dossier' => const _EntityBinding('dossiers', 'local_id'),
+      'patient' => const _EntityBinding('patients', 'local_id'),
+      'housing' => const _EntityBinding('housings', 'local_id'),
       'document' => const _EntityBinding('documents', 'local_id'),
       'note_page' => const _EntityBinding('note_pages', 'local_id'),
       'wiki_item' => const _EntityBinding('wiki_items', 'id'),
