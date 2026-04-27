@@ -544,7 +544,12 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     // qui laisse voir le bureau autour.
     await showGeneralDialog<void>(
       context: context,
-      barrierDismissible: true,
+      // `barrierDismissible: false` — sans ça, un clic sur le fond
+      // sombre ferme le dialog SANS passer par `_handleClose`, donc les
+      // annotations en cours sont perdues silencieusement. La fermeture
+      // doit toujours passer par le bouton X (qui propose Save / Ignorer
+      // si du travail non sauvé est présent).
+      barrierDismissible: false,
       barrierLabel: 'Aperçu du document',
       barrierColor: Colors.black.withValues(alpha: 0.6),
       transitionDuration: const Duration(milliseconds: 180),
@@ -2671,29 +2676,84 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       Navigator.pop(context);
       return;
     }
+    // Confirmation custom : X en haut-droite (annule la sortie),
+    // « Ignorer les modifications » (ferme sans sauver), « Enregistrer »
+    // (sauve puis ferme). barrierDismissible:false sur ce dialog aussi
+    // pour forcer un choix explicite.
     final choice = await showSoftDialog<_UnsavedChoice>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Modifications non enregistrées'),
-        content: const Text(
-          'Souhaitez-vous enregistrer les modifications avant de fermer ?',
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, _UnsavedChoice.cancel),
-            child: const Text('Annuler'),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Modifications non enregistrées',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // X en haut-droite : annule la sortie de l'édition,
+                    // l'utilisateur reste sur le doc avec ses annotations
+                    // intactes.
+                    IconButton(
+                      tooltip: 'Annuler',
+                      icon: const Icon(LucideIcons.x, size: 20),
+                      onPressed: () =>
+                          Navigator.pop(ctx, _UnsavedChoice.cancel),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Vous avez des annotations en cours. Que souhaitez-vous faire ?',
+                  style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () =>
+                          Navigator.pop(ctx, _UnsavedChoice.discard),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFB91C1C),
+                      ),
+                      child: const Text('Ignorer les modifications'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: () =>
+                          Navigator.pop(ctx, _UnsavedChoice.save),
+                      icon: const Icon(LucideIcons.save, size: 16),
+                      label: const Text('Enregistrer'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _kPurple,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, _UnsavedChoice.discard),
-            child: const Text('Fermer sans enregistrer'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(ctx, _UnsavedChoice.save),
-            icon: const Icon(LucideIcons.save, size: 16),
-            label: const Text('Enregistrer et fermer'),
-            style: FilledButton.styleFrom(backgroundColor: _kPurple),
-          ),
-        ],
+        ),
       ),
     );
     if (!mounted || choice == null || choice == _UnsavedChoice.cancel) return;
@@ -3953,6 +4013,13 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     return kEraserPx / shortest;
   }
 
+  /// Pile de redo : chaque entrée est un snapshot complet de [_strokes]
+  /// au moment où l'utilisateur a fait undo. Refaire (`_redo`) repop
+  /// le dernier snapshot. Toute nouvelle action utilisateur (nouveau
+  /// stroke, gomme) clear cette pile — comportement attendu d'un
+  /// historique linéaire.
+  final List<List<_AnnotStroke>> _redoStack = [];
+
   void _eraseAt(Offset normalizedPoint) {
     final r = _eraserRadius;
     final kept = <_AnnotStroke>[];
@@ -3967,7 +4034,13 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
       }
     }
     if (!touched) return;
-    setState(() => _strokes = kept);
+    setState(() {
+      _strokes = kept;
+      _redoStack.clear();
+    });
+    // Notifie le parent (`_PreviewScreen`) que l'annotation a changé →
+    // il rebuild, recalcule `_hasAnyUnsaved`, le bouton Save s'active.
+    widget.onChanged();
   }
 
   void _startStroke(Offset pos) {
@@ -3986,7 +4059,9 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
           points: [normalized],
         ),
       ];
+      _redoStack.clear();
     });
+    widget.onChanged();
   }
 
   void _appendStroke(Offset pos) {
@@ -4003,16 +4078,35 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
         last.copyWith(points: [...last.points, normalized]),
       ];
     });
+    // Pas besoin de notifier ici à chaque move (très bruyant) —
+    // `_startStroke` a déjà notifié au début du trait. Le parent voit
+    // déjà `_hasUnsavedAnnotation = true`.
   }
 
   void _undo() {
     if (_strokes.isEmpty) return;
-    setState(() => _strokes = _strokes.sublist(0, _strokes.length - 1));
+    setState(() {
+      _redoStack.add(List.of(_strokes));
+      _strokes = _strokes.sublist(0, _strokes.length - 1);
+    });
+    widget.onChanged();
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    setState(() {
+      _strokes = _redoStack.removeLast();
+    });
+    widget.onChanged();
   }
 
   void _clear() {
     if (_strokes.isEmpty) return;
-    setState(() => _strokes = []);
+    setState(() {
+      _redoStack.add(List.of(_strokes));
+      _strokes = [];
+    });
+    widget.onChanged();
   }
 
   // ------------------------ Build ------------------------
@@ -4103,7 +4197,11 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _ToolButton(
-            icon: LucideIcons.penTool,
+            // `LucideIcons.pencil` (crayon classique) — même icône que
+            // les autres notes (NotesWidget, plan_canvas) pour la
+            // cohérence visuelle. Avant on utilisait `penTool` (stylo
+            // plume) qui détonnait avec le reste de l'app.
+            icon: LucideIcons.pencil,
             selected: _tool == _AnnotTool.pen,
             tooltip: 'Crayon',
             onTap: () => setState(() => _tool = _AnnotTool.pen),
@@ -4120,6 +4218,12 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
             icon: LucideIcons.undo2,
             tooltip: 'Annuler',
             onTap: _strokes.isEmpty ? null : _undo,
+          ),
+          const SizedBox(width: 6),
+          _ToolButton(
+            icon: LucideIcons.redo2,
+            tooltip: 'Rétablir',
+            onTap: _redoStack.isEmpty ? null : _redo,
           ),
           const SizedBox(width: 6),
           _ToolButton(
