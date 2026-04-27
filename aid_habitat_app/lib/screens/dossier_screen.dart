@@ -990,8 +990,11 @@ class _PlainField extends StatelessWidget {
       children: [
         Text(
           label,
+          // Titre violet à la même taille que la valeur noire dessous
+          // (14 px) pour équilibrer la lecture du bloc Bénéficiaire en
+          // preview — demande utilisateur.
           style: const TextStyle(
-            fontSize: 12,
+            fontSize: 14,
             fontWeight: FontWeight.w700,
             color: Color(0xFF7C6DAA),
             letterSpacing: 0.2,
