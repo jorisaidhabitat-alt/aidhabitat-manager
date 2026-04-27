@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../components/form_widgets.dart';
@@ -600,10 +599,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         const SizedBox(height: 14),
         // 5. Niveaux (cartes), un seul développé à la fois — les autres
         // s'affichent sous forme "Label (pièces cochées) + crayon".
-        // Le nouveau niveau ajouté apparaît EN TÊTE de la liste (juste
-        // sous le bouton "Ajouter un niveau"), avec une transition de
-        // taille fluide (`AnimatedSize`) — cf. `_addLevel`.
-        ..._orderedLevels.map((field) {
+        // On SKIP le niveau actuellement édité dans le container
+        // morphant (`_pendingLevelField`) : il est rendu là-haut, pas
+        // ici, sinon il s'afficherait deux fois.
+        ..._orderedLevels
+            .where((field) => field != _pendingLevelField)
+            .map((field) {
           final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
           return Padding(
             key: ValueKey<String>('level-${cfg.field}'),
@@ -665,43 +666,157 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     );
   }
 
-  /// Bouton "Ajouter un niveau" + liste de pills des niveaux
-  /// disponibles quand _addLevelMode est actif. L'utilisateur clique sur
-  /// un niveau pour l'ajouter : il devient développé, les autres
-  /// niveaux se replient automatiquement, et les pills disparaissent.
+  /// Container "morphant" pour l'ajout d'un niveau — passe par 3 états
+  /// avec une transition fluide (AnimatedSize pour la hauteur,
+  /// AnimatedSwitcher pour le contenu) :
+  ///
+  ///   1. **Bouton** : juste la pill "+ Ajouter un niveau"
+  ///   2. **Picker** : la même boîte étendue, propose les types de
+  ///      niveaux (Sous-sol, RDC, 1er étage, …) en grille 2 colonnes
+  ///   3. **Éditeur** : la boîte se transforme en éditeur du niveau
+  ///      choisi (titre + cases à cocher des pièces + ajout custom)
+  ///
+  /// Quand l'utilisateur clique sur le X de l'éditeur, le niveau est
+  /// "settled" dans la liste des niveaux du foyer (juste en dessous)
+  /// et le container reprend la forme du bouton — toujours en
+  /// transition douce.
   Widget _buildAddLevelInline(List<_LevelConfig> available) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        GestureDetector(
-          key: _addLevelButtonKey,
-          onTap: () => setState(() => _addLevelMode = !_addLevelMode),
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEDE8F5),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+    // Détermine l'état courant + la clé/contenu à afficher.
+    Widget content;
+    Key contentKey;
+    if (_pendingLevelField != null) {
+      final cfg = _kLevelConfigs.firstWhere(
+        (c) => c.field == _pendingLevelField,
+      );
+      contentKey = ValueKey<String>('editor-${cfg.field}');
+      content = _buildLevelCard(cfg);
+    } else if (_addLevelMode) {
+      contentKey = const ValueKey<String>('picker');
+      content = _buildLevelTypePicker(available);
+    } else {
+      contentKey = const ValueKey<String>('button');
+      content = _buildAddLevelButton();
+    }
+
+    // AnimatedSize pour la hauteur (transition douce quand le contenu
+    // grandit/rétrécit) ; AnimatedSwitcher pour le crossfade + slide
+    // léger ("déroulement") du contenu interne.
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOutCubic,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (currentChild, previousChildren) {
+          // Layout par défaut mais sans empilement vertical : on
+          // affiche l'enfant courant en haut, les transitions
+          // sortantes sont en surimpression. Garde la hauteur cohérente
+          // avec AnimatedSize.
+          return Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
+        transitionBuilder: (child, animation) {
+          // "Déroulement" : slide depuis le haut + fondu — donne la
+          // sensation que le contenu se déploie depuis le bord
+          // supérieur du container.
+          final slide = Tween<Offset>(
+            begin: const Offset(0, -0.06),
+            end: Offset.zero,
+          ).animate(animation);
+          return ClipRect(
+            child: FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: slide,
+                child: child,
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.max,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(_addLevelMode ? Icons.close : Icons.add,
-                    size: 16, color: const Color(0xFF554A63)),
-                const SizedBox(width: 8),
-                Text(_addLevelMode ? 'Annuler' : 'Ajouter un niveau',
-                    style: const TextStyle(
-                      color: Color(0xFF554A63),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    )),
-              ],
-            ),
-          ),
+          );
+        },
+        child: KeyedSubtree(key: contentKey, child: content),
+      ),
+    );
+  }
+
+  /// État 1 : pill compact "+ Ajouter un niveau" — point d'entrée du
+  /// container morphant.
+  Widget _buildAddLevelButton() {
+    return GestureDetector(
+      key: _addLevelButtonKey,
+      onTap: () => setState(() => _addLevelMode = true),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDE8F5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
         ),
-        if (_addLevelMode) ...[
+        child: const Row(
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add, size: 16, color: Color(0xFF554A63)),
+            SizedBox(width: 8),
+            Text('Ajouter un niveau',
+                style: TextStyle(
+                  color: Color(0xFF554A63),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// État 2 : picker des types de niveaux — même boîte violet pâle que
+  /// le bouton, avec un X en haut à droite pour annuler. Les types
+  /// disponibles s'affichent en grille 2 colonnes via FormToggleGroup.
+  Widget _buildLevelTypePicker(List<_LevelConfig> available) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDE8F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const SizedBox(width: 4),
+              const Icon(Icons.layers_outlined,
+                  size: 16, color: Color(0xFF554A63)),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Choisir un niveau',
+                  style: TextStyle(
+                    color: Color(0xFF554A63),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: () => setState(() => _addLevelMode = false),
+                borderRadius: BorderRadius.circular(20),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(Icons.close,
+                      size: 16, color: Color(0xFF554A63)),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 10),
           FormToggleGroup(
             label: '',
@@ -714,64 +829,30 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             },
           ),
         ],
-      ],
+      ),
     );
   }
 
   /// Ajoute un nouveau niveau au foyer :
-  ///  - Insertion EN TÊTE de [_orderedLevels] → la nouvelle carte
-  ///    apparaît juste sous le bouton "Ajouter un niveau" (au-dessus
-  ///    des niveaux ajoutés précédemment).
-  ///  - Le niveau est ouvert par défaut, les autres se replient.
-  ///  - Anime un défilement vers la position du bouton "Ajouter un
-  ///    niveau" pour garder le contexte visible (la nouvelle carte
-  ///    apparaît juste en dessous, dans la zone que l'utilisateur
-  ///    regardait déjà).
+  ///  - Insertion EN TÊTE de [_orderedLevels] (persistance).
+  ///  - Marque `_pendingLevelField` → l'éditeur du niveau est rendu
+  ///    À L'INTÉRIEUR du container morphant (au lieu d'apparaître en
+  ///    dessous), et la liste principale skip ce niveau le temps
+  ///    qu'il y reste.
+  ///  - Le niveau est ouvert par défaut.
+  ///  - Aucun scroll automatique : le morphing du container se fait
+  ///    sur place, l'œil de l'utilisateur reste dans la même zone.
   void _addLevel(_LevelConfig cfg) {
     setState(() {
-      // Insert(0) au lieu de add() : nouveau niveau toujours en tête.
       _orderedLevels.insert(0, cfg.field);
       _levelRooms[cfg.field] ??= [];
       _customRoomCtrls.putIfAbsent(
           cfg.field, () => TextEditingController());
       _expandedLevel = cfg.field;
       _addLevelMode = false;
+      _pendingLevelField = cfg.field;
     });
     _scheduleSave();
-    // Animation de défilement après le rebuild — on cible la position
-    // du bouton "Ajouter un niveau" dans le viewport pour que la
-    // nouvelle carte (juste en dessous) soit pleinement visible sans
-    // pour autant masquer les commandes au-dessus.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToAddLevelButton();
-    });
-  }
-
-  /// Défile en douceur (~280 ms, easeOutCubic) jusqu'à la position du
-  /// bouton "Ajouter un niveau" calculée via sa GlobalKey. Si le
-  /// controller n'est pas attaché ou si la position ne peut pas être
-  /// déterminée, ne fait rien (silencieux).
-  void _scrollToAddLevelButton() {
-    if (!_scrollController.hasClients) return;
-    final ctx = _addLevelButtonKey.currentContext;
-    if (ctx == null) return;
-    final box = ctx.findRenderObject();
-    if (box is! RenderBox || !box.attached) return;
-    // Calcule l'offset du bouton dans le viewport interne du
-    // SingleChildScrollView. On veut le ramener proche du haut (16 px
-    // de marge) pour laisser la place à la nouvelle carte juste
-    // dessous.
-    final viewport = RenderAbstractViewport.of(box);
-    final reveal = viewport.getOffsetToReveal(box, 0).offset;
-    final target = reveal.clamp(
-      _scrollController.position.minScrollExtent,
-      _scrollController.position.maxScrollExtent,
-    );
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-    );
   }
 
   /// Éditeur chauffage : pills multi-toggle sur 3 colonnes, toujours
@@ -965,7 +1046,22 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               const Spacer(),
               InkWell(
                 onTap: () {
-                  setState(() => _orderedLevels.remove(cfg.field));
+                  setState(() {
+                    if (_pendingLevelField == cfg.field) {
+                      // Le niveau est dans le container morphant : on
+                      // le "settle" → il sort vers la liste principale
+                      // (le container reprend la forme du bouton).
+                      // Le niveau reste dans `_orderedLevels`, on le
+                      // collapse en pill pour signifier que la session
+                      // d'édition est finie.
+                      _pendingLevelField = null;
+                      _expandedLevel = null;
+                    } else {
+                      // Le niveau est dans la liste principale : X
+                      // = retirer du foyer (comportement existant).
+                      _orderedLevels.remove(cfg.field);
+                    }
+                  });
                   _scheduleSave();
                 },
                 borderRadius: BorderRadius.circular(20),
