@@ -1020,18 +1020,16 @@ class _WikiCardState extends State<_WikiCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ---------- Hero image ----------
-              // Tag overlay restauré en bas-gauche du hero (demande
-              // utilisateur — comme à l'origine).
+              // Pas de tag overlay sur la photo — le tag reste visible
+              // sous le titre. Les filtres par tag en haut de page sont
+              // conservés.
               Container(
                 height: 140,
                 width: double.infinity,
                 color: widget.heroBg,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (item.imageUrl.isNotEmpty ||
+                child: (item.imageUrl.isNotEmpty ||
                         item.pendingImageDataUrl.isNotEmpty)
-                      CachedRemoteImage(
+                    ? CachedRemoteImage(
                         url: resolveMediaUrl(item.imageUrl),
                         pendingDataUrl: item.pendingImageDataUrl,
                         fit: BoxFit.cover,
@@ -1044,40 +1042,13 @@ class _WikiCardState extends State<_WikiCard> {
                           ),
                         ),
                       )
-                    else
-                      const Center(
+                    : const Center(
                         child: Icon(
                           LucideIcons.image,
                           size: 42,
                           color: Colors.black54,
                         ),
                       ),
-                    if (widget.primaryTag != null)
-                      Positioned(
-                        left: 8,
-                        bottom: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                Colors.black.withValues(alpha: 0.55),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            widget.primaryTag!,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
               ),
               // ---------- Text content ----------
               Expanded(

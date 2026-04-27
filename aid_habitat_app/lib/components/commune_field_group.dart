@@ -52,6 +52,11 @@ class CommuneFieldGroup extends StatefulWidget {
   /// (défaut : 6). Voir `FormTextField.labelSpacing`.
   final double? labelSpacing;
 
+  /// Taille du texte saisi dans les champs CP / Ville (défaut : 13).
+  /// Voir `FormTextField.valueSize` — surchargé à 14 dans le bloc
+  /// Informations Bénéficiaire pour matcher la preview.
+  final double? valueSize;
+
   const CommuneFieldGroup({
     super.key,
     required this.city,
@@ -66,6 +71,7 @@ class CommuneFieldGroup extends StatefulWidget {
     this.labelColor,
     this.labelSize,
     this.labelSpacing,
+    this.valueSize,
   });
 
   @override
@@ -283,7 +289,8 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
         TextFormField(
           initialValue: widget.zipCode,
           readOnly: true,
-          style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          style: TextStyle(
+              fontSize: widget.valueSize ?? 13, color: Colors.grey.shade600),
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF7F7FA),
@@ -346,7 +353,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
               }
               _refreshOverlay();
             },
-            style: const TextStyle(fontSize: 13),
+            style: TextStyle(fontSize: widget.valueSize ?? 13),
             decoration: InputDecoration(
               isDense: true,
               contentPadding:

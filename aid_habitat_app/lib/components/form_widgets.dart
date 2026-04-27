@@ -106,6 +106,11 @@ class FormTextField extends StatefulWidget {
   /// Informations Bénéficiaire.
   final double? labelSpacing;
 
+  /// Taille du texte saisi dans l'input (défaut : 12). Surchargeable
+  /// pour les contextes où la valeur doit être plus visible (bloc
+  /// Informations Bénéficiaire — saisie à 14 px).
+  final double? valueSize;
+
   const FormTextField({
     super.key,
     required this.label,
@@ -121,6 +126,7 @@ class FormTextField extends StatefulWidget {
     this.labelColor,
     this.labelSize,
     this.labelSpacing,
+    this.valueSize,
   });
 
   @override
@@ -179,10 +185,10 @@ class _FormTextFieldState extends State<FormTextField> {
           autofocus: widget.autofocus,
           keyboardType: widget.keyboardType,
           maxLines: widget.maxLines,
-          // fontSize 12 + vertical padding 10 → même hauteur (~34 px)
-          // que le pill toggle "Vasque suspendue" (référence visuelle de
-          // tous les champs du relevé de visite).
-          style: const TextStyle(fontSize: 12),
+          // fontSize par défaut 12 (référence pill toggle "Vasque
+          // suspendue" du relevé) — surchargée à 14 dans le bloc
+          // Informations Bénéficiaire pour matcher la preview.
+          style: TextStyle(fontSize: widget.valueSize ?? 12),
           // iPadOS Scribble — permet d'écrire directement avec l'Apple
           // Pencil sans taper le champ d'abord. Défaut Flutter = true
           // sur iOS, on le force explicitement pour documenter l'intention.
@@ -244,6 +250,9 @@ class FormNumberField extends StatefulWidget {
   /// Voir `FormTextField.labelSpacing`.
   final double? labelSpacing;
 
+  /// Taille du texte saisi (défaut : 14). Voir `FormTextField.valueSize`.
+  final double? valueSize;
+
   const FormNumberField({
     super.key,
     required this.label,
@@ -256,6 +265,7 @@ class FormNumberField extends StatefulWidget {
     this.labelColor,
     this.labelSize,
     this.labelSpacing,
+    this.valueSize,
   });
 
   @override
@@ -311,8 +321,10 @@ class _FormNumberFieldState extends State<FormNumberField> {
           autofocus: widget.autofocus,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
-          // fontSize 12 → aligné sur la hauteur du pill "Vasque suspendue".
-          style: const TextStyle(fontSize: 12),
+          // fontSize par défaut 12 (référence pill toggle "Vasque
+          // suspendue" du relevé) — surchargée à 14 dans le bloc
+          // Informations Bénéficiaire pour matcher la preview.
+          style: TextStyle(fontSize: widget.valueSize ?? 12),
           // Scribble (Apple Pencil) — voir FormTextField au-dessus.
           stylusHandwritingEnabled: true,
           onFieldSubmitted: widget.onSubmitted == null
