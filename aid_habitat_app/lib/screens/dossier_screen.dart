@@ -1020,8 +1020,11 @@ class _EpciPillSmall extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = _pastelEpciBgFor(label);
+    // Mêmes dimensions que `_EpciBadge` dans la liste des dossiers
+    // (padding 12×6, fontSize 12) → cohérence visuelle entre la liste
+    // et l'en-tête du dossier détaillé.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
@@ -1029,7 +1032,7 @@ class _EpciPillSmall extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w700,
           color: Color(0xFF334155),
         ),
