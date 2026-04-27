@@ -878,6 +878,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// des options en pills sous la ligne. Les boutons restent visibles en
   /// permanence (pas de repli en "label (valeur) + crayon") pour que
   /// l'ergo puisse changer rapidement.
+  /// Case à cocher ronde (style maquette utilisateur) avec libellé à
+  /// droite. Tap sur la ligne entière (case + label) pour basculer
+  /// l'état. Quand cochée, affiche les options en pills sous la ligne.
   Widget _buildCollapsibleOptionCheckbox({
     required String label,
     required bool checked,
@@ -893,18 +896,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: TogglePillButton(
-            label: label,
-            active: checked,
-            expand: true,
-            onTap: () => onCheckedChanged(!checked),
-          ),
+        _RoundCheckRow(
+          label: label,
+          checked: checked,
+          onTap: () => onCheckedChanged(!checked),
         ),
-        // Boutons de choix toujours visibles quand le bouton est actif
-        // — pas de bascule en "label (valeur) + crayon" : l'ergo doit
-        // pouvoir voir tous les choix pour changer rapidement.
+        // Pills d'options visibles uniquement quand la case est cochée.
         if (checked) ...[
           const SizedBox(height: 6),
           FormToggleGroup(
@@ -1005,10 +1002,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             _updateOccupant(index, occ.copyWith(invalidityTxt: v));
           },
         ),
-        TogglePillButton(
+        _RoundCheckRow(
           label: 'Aide à domicile',
-          active: occ.homeHelp,
-          expand: true,
+          checked: occ.homeHelp,
           onTap: () => _updateOccupant(
             index,
             occ.copyWith(
@@ -1653,6 +1649,73 @@ class _DateOfBirthField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Ligne "case ronde + libellé" pour la section Santé > Situation —
+/// parité avec la maquette utilisateur (Bénéficiaire APA / Reconnaissance
+/// invalidité / Aide à domicile).
+///
+/// • État coché  : cercle violet plein `#7C6DAA` + ✓ blanc.
+/// • État non-coché : cercle vide à contour gris clair.
+/// • Tap sur la ligne entière (case + label) → bascule l'état.
+class _RoundCheckRow extends StatelessWidget {
+  final String label;
+  final bool checked;
+  final VoidCallback onTap;
+
+  const _RoundCheckRow({
+    required this.label,
+    required this.checked,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            // Cercle de check 20×20 — violet plein si coché, contour
+            // gris-lilas sinon.
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: checked ? const Color(0xFF7C6DAA) : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: checked
+                      ? const Color(0xFF7C6DAA)
+                      : const Color(0xFFCBD5E1),
+                  width: 1.5,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.check,
+                size: 12,
+                color: checked ? Colors.white : Colors.transparent,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF334155),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
