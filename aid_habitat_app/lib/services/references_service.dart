@@ -32,9 +32,20 @@ class ReferencesService {
   /// Clé du cache local (table `kv_store`).
   static const _cacheKey = 'references_payload_v1';
 
+  /// Durée pendant laquelle un payload chargé est considéré "frais".
+  /// Au-delà, `ensureLoaded()` déclenche un refresh réseau en arrière-
+  /// plan tout en retournant tout de suite le cache courant
+  /// (sémantique stale-while-revalidate).
+  ///
+  /// 30 minutes : compromis entre fraîcheur (admin ajoute une commune
+  /// dans NocoDB → l'ergo la voit dans la demi-heure sans redémarrage)
+  /// et économies réseau / batterie sur iPad.
+  static const _ttl = Duration(minutes: 30);
+
   ReferencesPayload _payload = const ReferencesPayload();
   bool _loaded = false;
   Future<void>? _inflight;
+  DateTime? _lastFetchedAt;
 
   /// Latest reference data (empty lists if never loaded).
   ReferencesPayload get payload => _payload;
@@ -48,19 +59,63 @@ class ReferencesService {
   /// Fires whenever the cache is (re)loaded with fresh data.
   Stream<ReferencesPayload> get onLoaded => _controller.stream;
 
-  /// Loads references once (subsequent calls are no-ops unless
-  /// [forceRefresh] is true). Errors are swallowed — the app can still
-  /// function with empty references (autocomplete becomes dumb, income
-  /// category stays empty).
-  Future<void> ensureLoaded({bool forceRefresh = false}) {
-    if (_loaded && !forceRefresh) return Future.value();
-    final existing = _inflight;
-    if (existing != null) return existing;
-
-    final future = _doLoad().whenComplete(() => _inflight = null);
-    _inflight = future;
-    return future;
+  /// Renvoie `true` si le payload courant est plus vieux que [_ttl] ou
+  /// si on n'a jamais réussi un fetch réseau (cache SQLite seul).
+  bool get _isStale {
+    final at = _lastFetchedAt;
+    if (at == null) return true;
+    return DateTime.now().difference(at) > _ttl;
   }
+
+  /// Loads references on first call. Subsequent calls :
+  ///  - si le cache est encore frais (< TTL) → no-op
+  ///  - si le cache est stale → retourne immédiatement le payload
+  ///    courant et déclenche un refresh réseau en arrière-plan
+  ///    (sémantique stale-while-revalidate). Le stream `onLoaded`
+  ///    émettra le nouveau payload quand le fetch arrive, ce qui
+  ///    déclenche un rebuild des écrans abonnés.
+  ///  - [forceRefresh] court-circuite le TTL et attend le refresh.
+  ///
+  /// Errors are swallowed — the app can still function with empty
+  /// references (autocomplete becomes dumb, income category stays
+  /// empty).
+  Future<void> ensureLoaded({bool forceRefresh = false}) {
+    // Premier appel : on attend le hydrate cache + premier fetch pour
+    // que les écrans qui font `await ensureLoaded()` aient bien des
+    // données avant de rendre.
+    if (!_loaded) {
+      final existing = _inflight;
+      if (existing != null) return existing;
+      final future = _doLoad().whenComplete(() => _inflight = null);
+      _inflight = future;
+      return future;
+    }
+
+    // Données déjà chargées + appel forcé → on attend le refresh.
+    if (forceRefresh) {
+      final existing = _inflight;
+      if (existing != null) return existing;
+      final future = _doLoad().whenComplete(() => _inflight = null);
+      _inflight = future;
+      return future;
+    }
+
+    // Données chargées + fraîches → no-op.
+    if (!_isStale) return Future.value();
+
+    // Données chargées + stale → on retourne tout de suite avec ce
+    // qu'on a, et on lance un refresh en arrière-plan dont le résultat
+    // sera émis via `onLoaded`. Le caller ne l'attend pas : ses écrans
+    // se mettent à jour via le stream quand le fetch arrive.
+    _inflight ??= _doLoad().whenComplete(() => _inflight = null);
+    return Future.value();
+  }
+
+  /// Force un refresh immédiat des références depuis NocoDB. Utile
+  /// pour les actions explicites de l'utilisateur (pull-to-refresh,
+  /// bouton "actualiser le catalogue", …). Ne lève jamais — silently
+  /// keeps the previous payload si le réseau est KO.
+  Future<void> refresh() => ensureLoaded(forceRefresh: true);
 
   Future<void> _doLoad() async {
     // 1. Hydrate depuis le cache SQLite si on n'a encore rien — comme ça
@@ -84,12 +139,19 @@ class ReferencesService {
       final payload = await _apiClient.fetchReferences();
       _payload = payload;
       _loaded = true;
+      // Marque l'instant du fetch réussi → arme le TTL stale-while-
+      // revalidate (cf. `ensureLoaded`).
+      _lastFetchedAt = DateTime.now();
       if (!_controller.isClosed) _controller.add(payload);
       // 3. Persiste pour le prochain cold start.
       unawaited(_writeToCache(payload));
     } catch (_) {
       // Silent fallback: keep the previous payload (cached or empty) so UI
       // degrades gracefully to plain text fields.
+      //
+      // On NE met PAS à jour `_lastFetchedAt` : le cache reste donc
+      // marqué stale et le prochain `ensureLoaded()` retentera le
+      // refresh.
     }
   }
 
