@@ -3592,6 +3592,120 @@ const fetchSanitairesForDossier = async (dossierId) => {
 };
 
 /**
+ * Liste les photos visite d'un patient — filtre les documents par
+ * tags `Visite - Logement / Accessibilité / Sanitaires`. Retourne
+ * uniquement les images, triées par updatedAt DESC. Le `categoryOrder`
+ * ne remonte pas du serveur (local-only en v1) — l'ordre se fait
+ * client-side ; ici on a juste le récent → ancien.
+ */
+const fetchVisitPhotosForPatient = async (patientId) => {
+  try {
+    const docs = await mobileSyncStore.listDocumentsByPatient(patientId, {});
+    const visitTags = new Set([
+      'Visite - Logement',
+      'Visite - Accessibilité',
+      'Visite - Sanitaires',
+    ]);
+    return asArray(docs).filter((doc) => {
+      const mime = String(doc?.mimeType || '');
+      if (!mime.startsWith('image/')) return false;
+      return asArray(doc?.tags).some((tag) => visitTags.has(String(tag)));
+    });
+  } catch (error) {
+    console.warn('[report] échec listDocumentsByPatient :', error?.message || error);
+    return [];
+  }
+};
+
+/**
+ * Liste les notes-pages de l'onglet Plans pour un patient/dossier.
+ * Filtre côté API par `tabKey='Plans'`. Renvoie celles avec un
+ * `planPhase` défini ('avant' ou 'apres'). Trie par pageNumber.
+ */
+const fetchPlanNotePagesForPatient = async (patientId, dossierId) => {
+  try {
+    const pages = await mobileSyncStore.listNotePagesByPatient(patientId, {
+      tabKey: 'Plans',
+    });
+    return asArray(pages)
+      .filter((pg) => pg && (pg.planPhase === 'avant' || pg.planPhase === 'apres'))
+      // Optionnel : restreindre au scope du dossier passé. Utile si
+      // l'ergo a plusieurs dossiers pour le même patient (rare).
+      .filter((pg) => !dossierId || !pg?.scopeId || String(pg.scopeId) === String(dossierId))
+      .sort((a, b) => Number(a.pageNumber) - Number(b.pageNumber));
+  } catch (error) {
+    console.warn('[report] échec listNotePagesByPatient :', error?.message || error);
+    return [];
+  }
+};
+
+/**
+ * Liste les recommandations d'un dossier — réutilise la logique
+ * de l'endpoint /api/visit-recommendations/:dossierId.
+ */
+const fetchVisitRecommendationsForDossier = async (dossierId) => {
+  try {
+    const tableId = await getVisitRecommendationsTableId();
+    let items = [];
+    if (tableId) {
+      const records = await queryAll(tableId, {
+        fields: VISIT_RECOMMENDATION_FIELDS,
+        where: `(dossier_id,eq,${JSON.stringify(String(dossierId))})`,
+      });
+      items = records
+        .map(mapVisitRecommendationRecord)
+        .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+    } else {
+      const store = await readVisitRecommendationsStore();
+      const payload = store.dossiers?.[dossierId];
+      items = asArray(payload?.items);
+    }
+    return items;
+  } catch (error) {
+    console.warn('[report] échec fetch recos :', error?.message || error);
+    return [];
+  }
+};
+
+/**
+ * Récupère les bytes d'une image (document, URL HTTP, data URL) sous
+ * forme de Buffer + mimeType. Renvoie `null` si l'image n'est pas
+ * accessible / le format ne convient pas. Appelé par le générateur
+ * via le callback `fetchImageBytes`.
+ */
+const fetchImageBytesForReport = async (descriptor) => {
+  try {
+    if (!descriptor) return null;
+    if (descriptor.kind === 'document' && descriptor.id) {
+      const content = await mobileSyncStore.getDocumentContent(descriptor.id);
+      if (!content?.buffer || content.buffer.length === 0) return null;
+      return { buffer: content.buffer, mimeType: content.mimeType || 'image/jpeg' };
+    }
+    if (descriptor.kind === 'dataurl' && descriptor.dataUrl) {
+      const m = String(descriptor.dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+      if (!m) return null;
+      return {
+        buffer: Buffer.from(m[2], 'base64'),
+        mimeType: m[1] || 'image/png',
+      };
+    }
+    if (descriptor.kind === 'url' && descriptor.url) {
+      const res = await fetch(descriptor.url);
+      if (!res.ok) return null;
+      const arrayBuffer = await res.arrayBuffer();
+      return {
+        buffer: Buffer.from(arrayBuffer),
+        mimeType: res.headers.get('content-type') || 'image/jpeg',
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn('[report] échec fetchImageBytesForReport :', descriptor?.kind, error?.message || error);
+    return null;
+  }
+};
+
+/**
  * Lecture (sans middleware HTTP) des observations de synthèse pour
  * un dossier. Renvoie `null` si pas de ligne — page 7 du rapport
  * reste vide.
@@ -3625,10 +3739,17 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
       throw httpError(404, `Dossier ${dossierId} introuvable ou hors scope`);
     }
 
-    // 2) En parallèle : sanitaires + observations. Les deux sont
-    // optionnels — si l'ergo n'a pas encore renseigné ces sections,
-    // les pages 6 et 7 du PDF seront simplement vides.
-    const [sanitaires, observations] = await Promise.all([
+    const patientId = String(dossier?.patient?.id || '').trim();
+
+    // 2) Tout en parallèle. Tout est optionnel — si l'ergo n'a pas
+    // rempli telle ou telle section, le PDF a juste les zones vides.
+    const [
+      sanitaires,
+      observations,
+      documents,
+      notePages,
+      recommendations,
+    ] = await Promise.all([
       fetchSanitairesForDossier(dossierId).catch((err) => {
         console.warn(`[report] échec fetch sanitaires pour ${dossierId}:`, err?.message || err);
         return null;
@@ -3637,12 +3758,19 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
         console.warn(`[report] échec fetch observations pour ${dossierId}:`, err?.message || err);
         return null;
       }),
+      patientId ? fetchVisitPhotosForPatient(patientId) : Promise.resolve([]),
+      patientId ? fetchPlanNotePagesForPatient(patientId, dossierId) : Promise.resolve([]),
+      fetchVisitRecommendationsForDossier(dossierId),
     ]);
 
     const { bytes, stats } = await generateVisitReport({
       dossier,
       sanitaires,
       observations,
+      documents,
+      notePages,
+      recommendations,
+      fetchImageBytes: fetchImageBytesForReport,
     });
     const fileName = buildReportFileName(dossier);
 

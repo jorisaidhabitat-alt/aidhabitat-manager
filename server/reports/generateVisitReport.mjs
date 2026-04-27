@@ -14,7 +14,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PDFDocument, PDFTextField, PDFCheckBox, PDFRadioGroup, PDFDropdown } from 'pdf-lib';
+import {
+  PDFDocument,
+  PDFTextField,
+  PDFCheckBox,
+  PDFRadioGroup,
+  PDFDropdown,
+  PDFButton,
+} from 'pdf-lib';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,6 +80,35 @@ function formatFrenchDate(raw) {
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   const yyyy = date.getUTCFullYear();
   return `${dd}/${mm}/${yyyy}`;
+}
+
+/**
+ * Remplace les caractères non-WinAnsi par des équivalents ASCII.
+ *
+ * Pourquoi : la police par défaut des formulaires AcroForm exportés
+ * par Affinity Publisher est encodée en WinAnsi (CP-1252). pdf-lib,
+ * lors du flatten, regénère les appearances en passant par cette
+ * police — et bloque sur les caractères Unicode hors plage. Les
+ * accents français passent (ils SONT dans WinAnsi), mais pas ≤, …,
+ * tirets cadratins, etc. Plutôt que d'embarquer une police Unicode
+ * (~800 Ko de bundle), on dégrade ces caractères en équivalents ASCII
+ * lisibles. Acceptable pour un rapport ergothérapie.
+ */
+function sanitizeForPdfFont(text) {
+  if (text == null) return '';
+  return String(text)
+    .replace(/≤/g, '<=')
+    .replace(/≥/g, '>=')
+    .replace(/÷/g, '/')
+    .replace(/…/g, '...')
+    .replace(/[—–]/g, '-')
+    .replace(/[“”„]/g, '"')
+    .replace(/[‘’‚]/g, "'")
+    .replace(/•/g, '*')
+    .replace(/·/g, '·')
+    .replace(/→/g, '->')
+    .replace(/±/g, '+/-')
+    .replace(/[′″]/g, "'");
 }
 
 /**
@@ -439,8 +475,8 @@ function applyEntryToField(field, entry, value) {
         return;
       }
       // pdf-lib tronque à `getMaxLength()` si défini ; sinon laisse passer.
-      // String() pour les nombres/booléens éventuels.
-      field.setText(value == null ? '' : String(value));
+      // sanitizeForPdfFont remplace les chars hors WinAnsi (cf. helper).
+      field.setText(sanitizeForPdfFont(value));
     } else if (type === 'check') {
       if (!(field instanceof PDFCheckBox)) {
         console.warn(`[generateVisitReport] champ "${field.getName()}" mappé en check mais c'est un ${field.constructor.name}`);
@@ -469,6 +505,145 @@ function applyEntryToField(field, entry, value) {
 }
 
 /**
+ * Embeds des bytes d'image dans le PDF en détectant le format
+ * (JPEG / PNG) à la magic number. Renvoie un PDFImage ou null si
+ * le format n'est pas géré (pdf-lib ne sait pas faire de WebP, par
+ * exemple — on log et on skip plutôt que de bloquer).
+ */
+async function embedImageAuto(pdfDoc, buffer, mimeHint) {
+  if (!buffer || buffer.length < 8) return null;
+  const isPng =
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47;
+  const isJpg = buffer[0] === 0xff && buffer[1] === 0xd8;
+  try {
+    if (isPng) return await pdfDoc.embedPng(buffer);
+    if (isJpg) return await pdfDoc.embedJpg(buffer);
+    // Hint mime — on tente quand même
+    if (/png/i.test(String(mimeHint || ''))) return await pdfDoc.embedPng(buffer);
+    if (/jpe?g/i.test(String(mimeHint || ''))) return await pdfDoc.embedJpg(buffer);
+    console.warn('[generateVisitReport] format image non supporté', {
+      mime: mimeHint,
+      head: buffer.slice(0, 4).toString('hex'),
+    });
+    return null;
+  } catch (error) {
+    console.warn('[generateVisitReport] embed image a échoué :', error?.message || error);
+    return null;
+  }
+}
+
+/**
+ * Pose une image dans un champ AcroForm "Btn" (les `_af_image` créés
+ * par Affinity Publisher). Si le champ n'est pas trouvé ou si pdf-lib
+ * ne peut pas y poser une image, on log et on continue.
+ */
+async function setImageInField(pdfDoc, form, fieldName, descriptor, fetchImageBytes, stats) {
+  if (!fieldName || !descriptor || !fetchImageBytes) return;
+  let field;
+  try {
+    field = form.getField(fieldName);
+  } catch {
+    stats.imagesMissingField += 1;
+    return;
+  }
+  if (!(field instanceof PDFButton)) {
+    console.warn(`[generateVisitReport] "${fieldName}" n'est pas un PDFButton (got ${field.constructor.name})`);
+    return;
+  }
+  const fetched = await fetchImageBytes(descriptor);
+  if (!fetched?.buffer || fetched.buffer.length === 0) {
+    stats.imagesMissingValue += 1;
+    return;
+  }
+  const pdfImage = await embedImageAuto(pdfDoc, fetched.buffer, fetched.mimeType);
+  if (!pdfImage) {
+    stats.imagesFailedEmbed += 1;
+    return;
+  }
+  try {
+    field.setImage(pdfImage);
+    stats.imagesApplied += 1;
+  } catch (error) {
+    console.warn(`[generateVisitReport] setImage("${fieldName}") a échoué :`, error?.message || error);
+    stats.imagesFailedEmbed += 1;
+  }
+}
+
+/**
+ * Filtre + trie les photos d'une catégorie visite donnée. Le serveur
+ * ne synchronise pas `categoryOrder` (local-only en v1) — on retombe
+ * sur l'ordre date DESC fourni par `listDocumentsByPatient`.
+ */
+function photosForVisitTag(documents, tag) {
+  return documents.filter((doc) =>
+    Array.isArray(doc?.tags) && doc.tags.includes(tag),
+  );
+}
+
+/**
+ * Slot map page 8 du PDF : 2 photos paysage Logement (haut) + 3
+ * portraits Accessibilité (milieu) + 3 portraits Sanitaires (bas).
+ */
+const PAGE8_PHOTO_SLOTS = [
+  { tag: 'Visite - Logement', fields: ['logement', 'logement2'] },
+  { tag: 'Visite - Accessibilité', fields: ['acces1', 'acces2', 'acces3'] },
+  { tag: 'Visite - Sanitaires', fields: ['sani1', 'sani2', 'sani3'] },
+];
+
+/**
+ * Slot map pages 9 (avant) et 10 (après). Le PDF a 4 emplacements :
+ * 2 par page, l'un en haut (`plan avt_af_image`) et l'autre en bas
+ * (`plan avt1_af_image`). On remplit dans l'ordre des pages Plans
+ * de l'app — premier dessin de phase 'avant' → slot 1, deuxième →
+ * slot 2 ; idem pour 'apres'.
+ */
+const PLAN_SLOTS = {
+  avant: ['plan avt_af_image', 'plan avt1_af_image'],
+  apres: ['plan apt_af_image', 'plan apt1_af_image'],
+};
+
+/**
+ * Slot map pages 11-14 : 8 préconisations × (champ texte + champ
+ * image). On alterne `Image*_af_image` (top de page) et
+ * `croquis*_af_image` (bot de page). En v1 (décision utilisateur),
+ * les croquis restent vides — donc on remplit uniquement les `Image`.
+ */
+const RECO_TEXT_FIELDS = [
+  'Préconisations avec argumentaire',
+  'Préconisations avec argumentaire2',
+  'Préconisations avec argumentaire3',
+  'Préconisations avec argumentaire4',
+  'Préconisations avec argumentaire5',
+  'Préconisations avec argumentaire6',
+  'Préconisations avec argumentaire7',
+  'Préconisations avec argumentaire8',
+];
+// Index pair (0, 2, 4, 6) → image de la reco impaire (1ère, 3ème…)
+// posée dans le champ `Image*` du haut de page. Index impair → champ
+// `croquis*` du bas de page (laissé vide en v1).
+const RECO_IMAGE_FIELDS_TOP = [
+  'Image8_af_image',
+  'Image85_af_image',
+  'Image874_af_image',
+  'Image846_af_image',
+];
+
+/**
+ * Met en forme une recommandation pour le champ texte : titre en
+ * début, puis blank line, puis l'argumentaire de l'ergo. pdf-lib
+ * ne supporte pas le rich text, donc tout est en plain text.
+ */
+function formatRecoText(reco) {
+  const title = sanitizeForPdfFont(reco?.customTitle || reco?.wikiTitle || '').trim();
+  const note = sanitizeForPdfFont(reco?.note || '').trim();
+  if (title && note) return `${title}\n\n${note}`;
+  return title || note;
+}
+
+/**
  * Génère un PDF rempli pour le dossier fourni.
  *
  * @param {object} options
@@ -480,6 +655,17 @@ function applyEntryToField(field, entry, value) {
  * @param {object} [options.observations] — payload
  *                  /api/observations/:dossierId. Optionnel — page 7
  *                  reste vide si non fourni.
+ * @param {Array}  [options.documents=[]] — photos visite (filtrées
+ *                  par tags `Visite - *`) pour la page 8.
+ * @param {Array}  [options.notePages=[]] — pages Plans avec phase
+ *                  'avant' / 'apres' pour pages 9 et 10.
+ * @param {Array}  [options.recommendations=[]] — recos pour pages
+ *                  11-14 (8 max en v1 — extension au-delà = chunk
+ *                  4.2c bonus pages).
+ * @param {Function} [options.fetchImageBytes] — async callback qui
+ *                  prend un descripteur `{kind, id|url|dataUrl}` et
+ *                  renvoie `{ buffer, mimeType }` ou null. Sans ce
+ *                  callback, les pages images restent vides.
  * @param {boolean} [options.flatten=true] — aplatit les champs (PDF
  *                  non-modifiable). Mettre à false pour debug : le PDF
  *                  rendu reste éditable champ par champ dans Acrobat.
@@ -489,6 +675,10 @@ export async function generateVisitReport({
   dossier,
   sanitaires,
   observations,
+  documents = [],
+  notePages = [],
+  recommendations = [],
+  fetchImageBytes,
   flatten = true,
 }) {
   const { templateBytes, mapping } = await loadTemplate();
@@ -506,7 +696,17 @@ export async function generateVisitReport({
     fieldsByName.set(field.getName(), field);
   }
 
-  const stats = { applied: 0, missingField: 0, missingValue: 0 };
+  const stats = {
+    applied: 0,
+    missingField: 0,
+    missingValue: 0,
+    imagesApplied: 0,
+    imagesMissingField: 0,
+    imagesMissingValue: 0,
+    imagesFailedEmbed: 0,
+    recoTextApplied: 0,
+    recoOverflow: 0,
+  };
 
   for (const [fieldName, entry] of Object.entries(mapping)) {
     if (fieldName.startsWith('$')) continue; // commentaires/meta dans le JSON
@@ -527,6 +727,106 @@ export async function generateVisitReport({
     }
     applyEntryToField(field, entry, value);
     stats.applied += 1;
+  }
+
+  // ---------------------------------------------------------------
+  // Page 8 — Photos visite : 2 Logement, 3 Accès, 3 Sanitaires
+  // ---------------------------------------------------------------
+  for (const slot of PAGE8_PHOTO_SLOTS) {
+    const photos = photosForVisitTag(documents, slot.tag);
+    for (let i = 0; i < slot.fields.length; i += 1) {
+      const fieldName = slot.fields[i];
+      const photo = photos[i];
+      if (!photo) continue;
+      await setImageInField(
+        pdfDoc,
+        form,
+        fieldName,
+        { kind: 'document', id: photo.id },
+        fetchImageBytes,
+        stats,
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Pages 9-10 — Plans avant / après. Une fois pris depuis l'app
+  // (preview_data_url poussé par le canvas Flutter à la sauvegarde).
+  // ---------------------------------------------------------------
+  for (const phase of ['avant', 'apres']) {
+    const slotNames = PLAN_SLOTS[phase];
+    const phasePages = notePages
+      .filter((pg) => pg && pg.planPhase === phase)
+      .slice(0, slotNames.length);
+    for (let i = 0; i < phasePages.length; i += 1) {
+      const fieldName = slotNames[i];
+      const page = phasePages[i];
+      // 1. preview_data_url (data URL prête à l'emploi)
+      if (page.previewDataUrl) {
+        await setImageInField(
+          pdfDoc, form, fieldName,
+          { kind: 'dataurl', dataUrl: page.previewDataUrl },
+          fetchImageBytes, stats,
+        );
+        continue;
+      }
+      // 2. preview_url (URL HTTP renvoyée par /api/note-pages → preview)
+      if (page.previewUrl) {
+        await setImageInField(
+          pdfDoc, form, fieldName,
+          { kind: 'url', url: page.previewUrl },
+          fetchImageBytes, stats,
+        );
+        continue;
+      }
+      // 3. Pas de preview → on log et on saute. Le canvas Flutter
+      //    devrait pousser une preview à la sauvegarde — si ce n'est
+      //    pas le cas, c'est un bug du sync, pas du générateur.
+      console.warn(
+        `[generateVisitReport] note Plans ${page.id} sans preview, slot ${fieldName} laissé vide`,
+      );
+      stats.imagesMissingValue += 1;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Pages 11-14 — Recommandations (texte + image wiki). 8 slots
+  // fixes en v1 ; au-delà, on incrémente `recoOverflow` mais on ne
+  // génère pas (encore) de pages bonus dynamiques — TODO chunk 4.2c.
+  // ---------------------------------------------------------------
+  for (let i = 0; i < recommendations.length; i += 1) {
+    if (i >= RECO_TEXT_FIELDS.length) {
+      stats.recoOverflow += 1;
+      continue;
+    }
+    const reco = recommendations[i];
+    const textFieldName = RECO_TEXT_FIELDS[i];
+    const textField = fieldsByName.get(textFieldName);
+    if (textField instanceof PDFTextField) {
+      try {
+        textField.setText(formatRecoText(reco));
+        stats.recoTextApplied += 1;
+      } catch (error) {
+        console.warn(
+          `[generateVisitReport] setText("${textFieldName}") :`,
+          error?.message || error,
+        );
+      }
+    }
+    // Image : seulement les recos d'index pair (0, 2, 4, 6) ont leur
+    // wiki photo en haut de page (les croquis bas-de-page restent vides
+    // par décision utilisateur).
+    if (i % 2 === 0) {
+      const imageFieldName = RECO_IMAGE_FIELDS_TOP[Math.floor(i / 2)];
+      const wikiUrl = String(reco?.wikiImageUrl || '').trim();
+      if (imageFieldName && wikiUrl) {
+        await setImageInField(
+          pdfDoc, form, imageFieldName,
+          { kind: 'url', url: wikiUrl },
+          fetchImageBytes, stats,
+        );
+      }
+    }
   }
 
   // Aplatissement final : convertit chaque champ en contenu fixe (le
