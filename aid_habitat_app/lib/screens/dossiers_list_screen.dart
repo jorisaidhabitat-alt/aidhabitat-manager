@@ -485,8 +485,12 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   /// l'en-tête ET chaque rangée pour garder l'alignement vertical.
   /// `_flexEpci` est élargi pour décaler la colonne DATE DE VISITE
   /// plus à droite (demande utilisateur : laisser respirer la date).
+  /// `_flexCommune` est élargi (2 → 4) pour que les noms de villes
+  /// longs ("Châteauneuf-d'Ille-et-Vilaine", "Saint-Méen-le-Grand"…)
+  /// ne soient plus tronqués — ce qui pousse mécaniquement REVENUS et
+  /// COMMUNAUTÉ DE COMMUNE vers la droite.
   static const int _flexBeneficiary = 3;
-  static const int _flexCommune = 2;
+  static const int _flexCommune = 4;
   static const int _flexRevenus = 2;
   static const int _flexEpci = 4;
   static const int _flexDate = 2;
