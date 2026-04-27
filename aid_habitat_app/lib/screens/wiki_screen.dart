@@ -1106,41 +1106,29 @@ class _WikiCardState extends State<_WikiCard> {
                       ),
                       // Widget : pastille avec le tag primaire — même
                       // style que le chip téléphone des cartes Caisses
-                      // (fond gris très clair, texte slate-700).
+                      // (fond gris très clair, texte slate-700). Pas
+                      // d'icône — uniquement le texte du tag.
                       if (widget.primaryTag != null) ...[
                         const SizedBox(height: 10),
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
+                              horizontal: 12,
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFF1F5F9),
                               borderRadius: BorderRadius.circular(50),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  LucideIcons.tag,
-                                  size: 12,
-                                  color: Color(0xFF475569),
-                                ),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    widget.primaryTag!,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF475569),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            child: Text(
+                              widget.primaryTag!,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF475569),
+                              ),
                             ),
                           ),
                         ),
