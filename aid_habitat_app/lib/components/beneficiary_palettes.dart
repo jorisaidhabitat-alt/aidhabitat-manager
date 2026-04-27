@@ -63,10 +63,22 @@ EpciPalette epciPaletteFor(String label) {
 
 /// Pill affichant le nom de la communauté de communes — fond coloré
 /// stable par EPCI, texte slate-700.
+///
+/// Le drapeau [large] augmente le padding et la typo (16×9, fontSize
+/// 14) pour les contextes où le badge accompagne un titre imposant
+/// (ex. preview du bloc Bénéficiaire dans la fiche dossier). La taille
+/// par défaut (12×6, fontSize 12) reste utilisée dans la liste "Mes
+/// dossiers" pour ne pas alourdir le tableau.
 class EpciBadge extends StatelessWidget {
-  const EpciBadge({super.key, required this.label, this.maxWidth = 220});
+  const EpciBadge({
+    super.key,
+    required this.label,
+    this.maxWidth = 220,
+    this.large = false,
+  });
   final String label;
   final double maxWidth;
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
@@ -74,11 +86,9 @@ class EpciBadge extends StatelessWidget {
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: Container(
-        // Taille de référence : celle qui rend bien dans la liste
-        // "Mes dossiers" (padding 12×6, fontSize 12). On garde cette
-        // valeur partout puisque le badge est aussi utilisé dans le
-        // bloc Bénéficiaire de la fiche dossier — source unique.
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: large
+            ? const EdgeInsets.symmetric(horizontal: 16, vertical: 9)
+            : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: palette.bg,
           borderRadius: BorderRadius.circular(999),
@@ -88,7 +98,7 @@ class EpciBadge extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: large ? 14 : 12,
             fontWeight: FontWeight.w700,
             color: palette.fg,
           ),

@@ -710,9 +710,12 @@ class _DossierScreenState extends State<DossierScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      // Même widget que la liste "Mes dossiers" pour
-                      // garantir la même empreinte visuelle.
-                      EpciBadge(label: epciLabel),
+                      // Variante "large" du widget partagé : padding
+                      // 16×9 + fontSize 14 → mieux proportionné à
+                      // côté de l'adresse de la preview Bénéficiaire.
+                      // La liste "Mes dossiers" garde la taille par
+                      // défaut (12×6, fontSize 12).
+                      EpciBadge(label: epciLabel, large: true),
                     ],
                     // "Commentaire du projet" retiré du bloc Bénéficiaire
                     // (demande utilisateur) : s'il existe, il est affiché
