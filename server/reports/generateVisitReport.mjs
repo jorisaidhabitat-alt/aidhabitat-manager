@@ -76,6 +76,142 @@ function formatFrenchDate(raw) {
 }
 
 /**
+ * Aplatit une zone de description multi-occupant (Contexte de vie page
+ * 4 du PDF) en un bloc de texte lisible. Évite les libellés vides et
+ * les sauts de ligne triples.
+ */
+function joinNonEmpty(lines, separator = '\n') {
+  return lines.map((line) => String(line || '').trim()).filter(Boolean).join(separator);
+}
+
+/** Format français concis "X cm / Y kg" — vide si rien. */
+function formatHeightWeight(heightCm, weightKg) {
+  const parts = [];
+  if (heightCm != null && heightCm !== '') parts.push(`${heightCm} cm`);
+  if (weightKg != null && weightKg !== '') parts.push(`${weightKg} kg`);
+  return parts.join(' · ');
+}
+
+/**
+ * Sérialise la zone "I- Environnement" de la page 4 :
+ * pathologies, suivi médical, atteintes sensorielles, taille/poids.
+ * On accepte aussi bien `dossier.medicalContext` (legacy) qu'un
+ * tableau `medicalContextJson[]` ou `autonomy.occupants[].medical`.
+ */
+function buildEnvironnementText(dossier) {
+  const out = [];
+  // 1) cas "legacy" : un seul medicalContext aplati
+  const mc = dossier?.medicalContext;
+  if (mc && (mc.pathology || mc.followUp || mc.sensory || mc.heightCm || mc.weightKg)) {
+    if (mc.pathology) out.push(`Pathologies : ${mc.pathology}`);
+    if (mc.followUp) out.push(`Suivi médical : ${mc.followUp}`);
+    if (mc.sensory) out.push(`Atteintes sensorielles : ${mc.sensory}`);
+    const hw = formatHeightWeight(mc.heightCm, mc.weightKg);
+    if (hw) out.push(`Mensurations : ${hw}`);
+  }
+  // 2) cas multi-occupants : medicalContextJson[] (forme app)
+  const arr = Array.isArray(dossier?.medicalContextJson)
+    ? dossier.medicalContextJson
+    : [];
+  arr.forEach((entry, i) => {
+    const header = arr.length > 1 ? `Occupant ${i + 1}` : null;
+    const lines = [];
+    if (entry.pathology) lines.push(`Pathologies : ${entry.pathology}`);
+    if (entry.followUp) lines.push(`Suivi médical : ${entry.followUp}`);
+    if (entry.sensory) lines.push(`Atteintes sensorielles : ${entry.sensory}`);
+    const hw = formatHeightWeight(entry.heightCm, entry.weightKg);
+    if (hw) lines.push(`Mensurations : ${hw}`);
+    if (lines.length > 0) {
+      if (header) out.push(`— ${header} —`);
+      out.push(...lines);
+    }
+  });
+  return joinNonEmpty(out);
+}
+
+/**
+ * Sérialise la zone "II- Habitudes de vie" de la page 4 :
+ * activités d'autonomie cochées, aide humaine, points d'attention.
+ */
+function buildHabitudesText(dossier) {
+  const out = [];
+  // Forme legacy : `dossier.autonomy.checklist[]`
+  const legacy = dossier?.autonomy;
+  if (legacy?.checklist && Array.isArray(legacy.checklist)) {
+    const done = legacy.checklist
+      .filter((it) => it.checked)
+      .map((it) => `• ${it.name}`);
+    if (done.length > 0) {
+      out.push('Autonomie observée :');
+      out.push(...done);
+    }
+  }
+  // Forme app : occupants[].autonomy[] / humanHelp[] / attention[]
+  const occupants = Array.isArray(dossier?.autonomy?.occupants)
+    ? dossier.autonomy.occupants
+    : Array.isArray(dossier?.autonomyJson)
+      ? dossier.autonomyJson
+      : [];
+  occupants.forEach((occ, i) => {
+    const header = occupants.length > 1 ? `Occupant ${i + 1}` : null;
+    const lines = [];
+    const auto = (occ.autonomy || []).filter((it) => it.checked).map((it) => it.name);
+    if (auto.length > 0) lines.push(`Activités autonomes : ${auto.join(', ')}`);
+    const help = (occ.humanHelp || []).filter((it) => it.checked).map((it) => it.name);
+    if (help.length > 0) lines.push(`Aide humaine nécessaire : ${help.join(', ')}`);
+    const att = (occ.attention || []).filter((it) => it.checked).map((it) => it.name);
+    if (att.length > 0) lines.push(`Points d'attention : ${att.join(', ')}`);
+    if (lines.length > 0) {
+      if (header) out.push(`— ${header} —`);
+      out.push(...lines);
+    }
+  });
+  return joinNonEmpty(out);
+}
+
+/**
+ * Construit l'adresse complète (rue + zip + ville) sans doubler les
+ * espaces. Utilisée pour le champ `Adresse` page 5 du PDF.
+ */
+function buildFullAddress(patient) {
+  const parts = [
+    String(patient?.address || '').trim(),
+    [String(patient?.zipCode || '').trim(), String(patient?.city || '').trim()]
+      .filter(Boolean)
+      .join(' '),
+  ].filter(Boolean);
+  return parts.join(', ');
+}
+
+/**
+ * Renvoie un nombre (entier) compatible avec le DropDown
+ * "nombre d'étage" — qui n'accepte que '1', '2', '3', '4'.
+ * Au-delà → '4'. Vide/null → '1'.
+ */
+function clampLevels(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return '1';
+  if (n > 4) return '4';
+  return String(Math.round(n));
+}
+
+/** Format hauteur cm utilisable dans un champ texte ("78 cm" ou ""). */
+function formatHeightCm(value) {
+  if (value == null || value === '') return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return `${n} cm`;
+}
+
+/** Pareil pour des mm/cm de largeur de porte. */
+function formatWidthCm(value) {
+  if (value == null || value === '') return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return `${n} cm`;
+}
+
+/**
  * Normalise un libellé de situation familiale renvoyé par NocoDB
  * (variants : "Marié(e)", "Mariée", "marié", …) vers le label exact
  * attendu par le PDF (`Célibataire`, `En concubinage`, `Mariée`,
@@ -107,19 +243,23 @@ function normalizeOccupationStatus(raw) {
 }
 
 /**
- * Construit un payload "view-friendly" à partir de l'objet dossier
- * récupéré côté NocoDB. Ajoute des champs dérivés (`fullNameUpper`,
- * `visitDateFr`, etc.) que le mapping JSON peut référencer directement
- * sans logique inline.
+ * Construit un payload "view-friendly" à partir des objets passés au
+ * générateur. Ajoute tous les champs dérivés (`fullNameUpper`,
+ * `housing.heating.electric`, `sanitaires.sdbBaignoireHeight`, etc.)
+ * que le mapping JSON peut référencer sans logique inline.
  *
- * On accepte l'objet brut tel que renvoyé par `/api/dossiers` ou
- * `/api/dossiers/:id` côté serveur — il a déjà la structure {
- *   patient: { firstName, lastName, ... },
- *   ... champs dossier à plat ... }
- * Voir `helpers.mjs` mapStoredDossier pour la liste complète.
+ * Tous les paramètres en plus du `dossier` sont OPTIONNELS — si on
+ * ne les a pas (ex. : pas de SDB renseignée), les champs PDF restent
+ * vides plutôt que de bloquer la génération.
+ *
+ * @param {object} args
+ * @param {object} args.dossier — payload brut /api/dossiers
+ * @param {object} [args.sanitaires] — payload /api/diagnostic-sanitaires
+ * @param {object} [args.observations] — payload /api/observations
  */
-function buildViewModel(dossier) {
+function buildViewModel({ dossier, sanitaires, observations }) {
   const patient = dossier?.patient || {};
+  const housing = dossier?.housing || {};
   const firstName = String(patient.firstName || '').trim();
   const lastName = String(patient.lastName || '').trim();
 
@@ -152,6 +292,94 @@ function buildViewModel(dossier) {
     patient.birthDateMme || patient.occupant2BirthDate,
   );
 
+  // --- Page 5 : Logement ---
+  const heat = housing.heatingDetails || {};
+  const housingView = {
+    fullAddress: buildFullAddress(patient),
+    yearConstruction: String(housing.yearConstruction || '').trim(),
+    yearHabitation: String(housing.yearHabitation || '').trim(),
+    surface: String(housing.surface || '').trim(),
+    typology: String(housing.typology || '').trim(),
+    isMaison: /maison/i.test(String(housing.typology || '')),
+    isAppartement: /appart/i.test(String(housing.typology || '')),
+    levels: clampLevels(housing.levels),
+    basement: Boolean(housing.basement),
+    rdc: Boolean(housing.rdc),
+    floor: Boolean(housing.floor),
+    basementDesc: String(housing.basementDesc || '').trim(),
+    rdcDesc: String(housing.rdcDesc || '').trim(),
+    floorDesc: String(housing.floorDesc || '').trim(),
+    garage: Boolean(housing.garage),
+    veranda: Boolean(housing.veranda),
+    balcon: Boolean(housing.balcon),
+    terrasse: Boolean(housing.terrasse),
+    jardin: Boolean(housing.jardin),
+    heatingMain: Boolean(housing.heatingMain),
+    heating: {
+      electric: Boolean(heat.electric),
+      gas: Boolean(heat.gas),
+      oil: Boolean(heat.oil),
+      heatPump: Boolean(heat.heatPump),
+      collective: Boolean(heat.collective),
+      wood: Boolean(heat.wood),
+      pellet: Boolean(heat.pellet),
+      other: Boolean(heat.other),
+    },
+    accessObservation: joinNonEmpty([
+      housing.accessObservation,
+      housing.comments,
+    ], '\n'),
+  };
+
+  // --- Page 6 : Sanitaires ---
+  // On consolide en une "vue 1ère SDB / 1er WC". Si l'ergo a
+  // plusieurs instances, les autres seront servies via pages bonus
+  // (chunk 4.2c). Pour l'instant on remplit juste la première.
+  const sdb = (Array.isArray(sanitaires?.sdbInstances) && sanitaires.sdbInstances[0]) || {};
+  const wc = (Array.isArray(sanitaires?.wcInstances) && sanitaires.wcInstances[0]) || {};
+  const sanitairesView = {
+    // SDB située au niveau pièces de vie ?
+    sdbAuNiveauPieceVie: Boolean(sdb.sdbNiveauPiecesVie),
+    // Équipements
+    sdbBaignoire: Boolean(sdb.sdbBaignoire),
+    sdbBaignoireHauteurFr: formatHeightCm(sdb.sdbBaignoireHauteur),
+    sdbBacDouche: Boolean(sdb.sdbBacDouche),
+    sdbBacDoucheHauteurFr: formatHeightCm(sdb.sdbBacDoucheHauteur),
+    sdbVasqueSuspendue: Boolean(sdb.sdbVasqueSuspendue),
+    sdbVasqueColonne: Boolean(sdb.sdbVasqueColonne),
+    sdbMeubleVasque: Boolean(sdb.sdbMeubleVasque),
+    sdbBidet: Boolean(sdb.sdbBidet),
+    sdbParoiDouche: Boolean(sdb.sdbParoiDouche),
+    sdbSolGlissant: Boolean(sdb.sdbSolGlissant),
+    sdbMachineALaver: Boolean(sdb.sdbMachineALaver),
+    // Porte SDB
+    porteSdbLargeurSuffisante: Boolean(sdb.porteSdbLargeurSuffisante),
+    porteSdbDimensionFr: formatWidthCm(sdb.porteSdbDimension),
+    porteSdbSensInterieur: Boolean(sdb.porteSdbSensAdapte),
+    porteSdbSensExterieur: !sdb.porteSdbSensAdapte && (sdb.porteSdbDimension != null),
+    // WC
+    wcCuvetteBonneHauteur: Boolean(wc.wcCuvetteBonneHauteur),
+    wcCuvetteTropBasse: Boolean(wc.wcCuvetteTropBasse),
+    wcCuvetteHauteurFr: formatHeightCm(wc.wcCuvetteHauteur),
+    wcBarreRelevement: Boolean(wc.wcBarreRelevement),
+    // Niveau WC : levelField peut être 'rdc' / 'etage' / 'sous_sol'
+    wcAuNiveau: /(rdc|niveau|pieces_de_vie)/i.test(String(wc.levelField || '')),
+    wcEtage: /etage|floor/i.test(String(wc.levelField || '')),
+    // Porte WC
+    porteWcLargeurSuffisante: Boolean(wc.porteWcLargeurSuffisante),
+    porteWcDimensionFr: formatWidthCm(wc.porteWcDimension),
+    porteWcSensInterieur: Boolean(wc.porteWcSensAdapte),
+    porteWcSensExterieur: !wc.porteWcSensAdapte && (wc.porteWcDimension != null),
+    // Observations
+    observationsEquipements: String(wc.observationEquipementsUtilisation || '').trim(),
+  };
+
+  // --- Page 7 : Projet + Résumé ---
+  const observationsView = {
+    projetSouhaitUsage: String(observations?.projetSouhaitUsage || '').trim(),
+    resumePreconisations: String(observations?.resumePreconisations || '').trim(),
+  };
+
   return {
     patient: {
       firstName,
@@ -180,6 +408,13 @@ function buildViewModel(dossier) {
       personnesPresentesVisite: String(dossier?.personnesPresentesVisite || '').trim(),
       visitDateFr: formatFrenchDate(dossier?.visitDate),
     },
+    contexte: {
+      environnement: buildEnvironnementText(dossier),
+      habitudes: buildHabitudesText(dossier),
+    },
+    housing: housingView,
+    sanitaires: sanitairesView,
+    observations: observationsView,
   };
 }
 
@@ -239,14 +474,25 @@ function applyEntryToField(field, entry, value) {
  * @param {object} options
  * @param {object} options.dossier — payload brut tel que renvoyé par
  *                  /api/dossiers/:id côté serveur.
+ * @param {object} [options.sanitaires] — payload
+ *                  /api/diagnostic-sanitaires/:dossierId. Optionnel —
+ *                  page 6 reste vide si non fourni.
+ * @param {object} [options.observations] — payload
+ *                  /api/observations/:dossierId. Optionnel — page 7
+ *                  reste vide si non fourni.
  * @param {boolean} [options.flatten=true] — aplatit les champs (PDF
  *                  non-modifiable). Mettre à false pour debug : le PDF
  *                  rendu reste éditable champ par champ dans Acrobat.
  * @returns {Promise<Uint8Array>} les bytes du PDF généré.
  */
-export async function generateVisitReport({ dossier, flatten = true }) {
+export async function generateVisitReport({
+  dossier,
+  sanitaires,
+  observations,
+  flatten = true,
+}) {
   const { templateBytes, mapping } = await loadTemplate();
-  const view = buildViewModel(dossier);
+  const view = buildViewModel({ dossier, sanitaires, observations });
 
   // pdf-lib ne supporte pas un updateFieldAppearances "léger" sur un
   // PDF chargé avec ignoreEncryption — on charge proprement, le PDF

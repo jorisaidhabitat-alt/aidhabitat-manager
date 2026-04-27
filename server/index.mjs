@@ -3533,6 +3533,84 @@ app.get('/api/dossiers', requireAuth, async (req, res, next) => {
 /// L'header `X-Report-Stats` est joint à la réponse en debug — le
 /// client peut le lire pour afficher "X champs remplis, Y absents
 /// du template" et détecter une dérive de mapping.
+/**
+ * Lecture (sans middleware HTTP) des sanitaires pour un dossierId.
+ * Réutilisable depuis le générateur de rapport. Renvoie `null` si
+ * aucune ligne n'existe pour ce dossier — le PDF aura simplement
+ * page 6 vide, ce qui est OK.
+ */
+const fetchSanitairesForDossier = async (dossierId) => {
+  const records = await queryAll(TABLES.diagnosticSanitaires, {
+    fields: FIELD_SETS.diagnosticSanitaires,
+  });
+  const record = latestByFieldValue(records, 'dossier_id', dossierId);
+  if (!record) return null;
+  const sdbFromJson = parseJsonArrayField(field(record, 'sdb_instances_json'));
+  const wcFromJson = parseJsonArrayField(field(record, 'wc_instances_json'));
+  return {
+    id: field(record, 'uuid_source') || String(record.id),
+    dossierId: field(record, 'dossier_id'),
+    sdbInstances: sdbFromJson.length > 0
+      ? sdbFromJson
+      : buildLegacyBathroomInstances({
+        sdbNiveauPiecesVie: toBool(field(record, 'sdb_niveau_pieces_vie')),
+        sdbBaignoire: toBool(field(record, 'sdb_baignoire')),
+        sdbBaignoireHauteur: toNumber(field(record, 'sdb_baignoire_hauteur')),
+        sdbBacDouche: toBool(field(record, 'sdb_bac_douche')),
+        sdbBacDoucheHauteur: toNumber(field(record, 'sdb_bac_douche_hauteur')),
+        sdbVasqueSuspendue: toBool(field(record, 'sdb_vasque_suspendue')),
+        sdbVasqueSuspendueHauteur: toNumber(field(record, 'sdb_vasque_suspendue_hauteur')),
+        sdbVasqueColonne: toBool(field(record, 'sdb_vasque_colonne')),
+        sdbVasqueColonneHauteur: toNumber(field(record, 'sdb_vasque_colonne_hauteur')),
+        sdbMeubleVasque: toBool(field(record, 'sdb_meuble_vasque')),
+        sdbMeubleVasqueHauteur: toNumber(field(record, 'sdb_meuble_vasque_hauteur')),
+        sdbBidet: toBool(field(record, 'sdb_bidet')),
+        sdbBidetHauteur: toNumber(field(record, 'sdb_bidet_hauteur')),
+        sdbParoiDouche: toBool(field(record, 'sdb_paroi_douche')),
+        sdbParoiDoucheHauteur: toNumber(field(record, 'sdb_paroi_douche_hauteur')),
+        sdbSolGlissant: toBool(field(record, 'sdb_sol_glissant')),
+        sdbMachineALaver: toBool(field(record, 'sdb_machine_a_laver')),
+        sdbMachineALaverHauteur: toNumber(field(record, 'sdb_machine_a_laver_hauteur')),
+        porteSdbLargeurSuffisante: toBool(field(record, 'porte_sdb_largeur_suffisante')),
+        porteSdbDimension: toNumber(field(record, 'porte_sdb_dimension')),
+        porteSdbSensAdapte: toBool(field(record, 'porte_sdb_sens_adapte')),
+      }),
+    wcInstances: wcFromJson.length > 0
+      ? wcFromJson
+      : buildLegacyWcInstances({
+        wcNiveau: toBool(field(record, 'wc_niveau')),
+        wcCuvetteBonneHauteur: toBool(field(record, 'wc_cuvette_bonne_hauteur')),
+        wcCuvetteTropBasse: toBool(field(record, 'wc_cuvette_trop_basse')),
+        wcCuvetteHauteur: toNumber(field(record, 'wc_cuvette_hauteur')),
+        wcBarreRelevement: toBool(field(record, 'wc_barre_relevement')),
+        porteWcLargeurSuffisante: toBool(field(record, 'porte_wc_largeur_suffisante')),
+        porteWcDimension: toNumber(field(record, 'porte_wc_dimension')),
+        porteWcSensAdapte: toBool(field(record, 'porte_wc_sens_adapte')),
+        observationEquipementsUtilisation: stringValue(field(record, 'observation_equipements_utilisation')),
+      }),
+  };
+};
+
+/**
+ * Lecture (sans middleware HTTP) des observations de synthèse pour
+ * un dossier. Renvoie `null` si pas de ligne — page 7 du rapport
+ * reste vide.
+ */
+const fetchObservationsForDossier = async (dossierId) => {
+  const records = await queryAll(TABLES.observations, {
+    fields: FIELD_SETS.observations,
+  });
+  const record = latestByFieldValue(records, 'dossier_id', dossierId);
+  if (!record) return null;
+  return {
+    id: field(record, 'uuid_source') || String(record.id),
+    dossierId: field(record, 'dossier_id'),
+    observationEquipements: stringValue(field(record, 'observation_equipements')),
+    projetSouhaitUsage: stringValue(field(record, 'projet_souhait_usage')),
+    resumePreconisations: stringValue(field(record, 'resume_preconisations')),
+  };
+};
+
 app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) => {
   try {
     const dossierId = String(req.params.dossierId || '').trim();
@@ -3540,13 +3618,32 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
       throw httpError(400, 'dossierId manquant');
     }
 
+    // 1) Dossier (avec scope d'accès appliqué via getDossiersForApp).
     const dossiers = await getDossiersForApp(req.appUser);
     const dossier = dossiers.find((d) => String(d.id) === dossierId);
     if (!dossier) {
       throw httpError(404, `Dossier ${dossierId} introuvable ou hors scope`);
     }
 
-    const { bytes, stats } = await generateVisitReport({ dossier });
+    // 2) En parallèle : sanitaires + observations. Les deux sont
+    // optionnels — si l'ergo n'a pas encore renseigné ces sections,
+    // les pages 6 et 7 du PDF seront simplement vides.
+    const [sanitaires, observations] = await Promise.all([
+      fetchSanitairesForDossier(dossierId).catch((err) => {
+        console.warn(`[report] échec fetch sanitaires pour ${dossierId}:`, err?.message || err);
+        return null;
+      }),
+      fetchObservationsForDossier(dossierId).catch((err) => {
+        console.warn(`[report] échec fetch observations pour ${dossierId}:`, err?.message || err);
+        return null;
+      }),
+    ]);
+
+    const { bytes, stats } = await generateVisitReport({
+      dossier,
+      sanitaires,
+      observations,
+    });
     const fileName = buildReportFileName(dossier);
 
     res.setHeader('Content-Type', 'application/pdf');

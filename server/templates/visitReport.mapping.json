@@ -1,117 +1,122 @@
 {
-  "$comment": "Mapping champs PDF AcroForm → données NocoDB pour le générateur de rapport de visite. Voir server/reports/generateVisitReport.mjs. Format : 'pdfFieldName': { source, type, [match] } où source est un dotted path dans le payload du dossier ('patient.firstName', etc.). type ∈ {'text', 'check', 'radio', 'dropdown'}. Pour 'radio' / 'check' avec match : la case est cochée si la value récupérée === match (utile pour les groupes mutex de checkboxes Affinity Publisher).",
-  "$status": "Couverture pages 1 + 3 (entête + renseignements bénéficiaire). Pages 4-15 viennent en chunk 4.2 suite.",
+  "$comment": "Mapping champs PDF AcroForm → données NocoDB pour le générateur de rapport. Voir server/reports/generateVisitReport.mjs. Format : 'pdfFieldName': { source, type, [match] }. type ∈ {'text', 'check', 'radio', 'dropdown'}. 'check' = case cochée si truthy. 'radio' avec match = case cochée si value === match (case décochée sinon — utile pour les groupes mutex de checkboxes Affinity Publisher).",
+  "$status": "Couverture pages 1, 3, 4, 5, 6, 7. Pages 8 (photos) / 9-10 (plans) / 11-14 (recos) viennent en chunk 4.2b avec injection d'images.",
 
-  "Text1": {
-    "source": "patient.fullNameUpper",
-    "type": "text"
-  },
+  "Text1": { "source": "patient.fullNameUpper", "type": "text" },
 
-  "Nom": {
-    "source": "patient.lastName",
-    "type": "text"
-  },
-  "Prénom": {
-    "source": "patient.firstName",
-    "type": "text"
-  },
+  "Nom": { "source": "patient.lastName", "type": "text" },
+  "Prénom": { "source": "patient.firstName", "type": "text" },
 
-  "date de naissance": {
-    "source": "patient.birthDateMrFr",
-    "type": "text"
-  },
-  "date de naissance mme": {
-    "source": "patient.birthDateMmeFr",
-    "type": "text"
-  },
+  "date de naissance": { "source": "patient.birthDateMrFr", "type": "text" },
+  "date de naissance mme": { "source": "patient.birthDateMmeFr", "type": "text" },
 
-  "Célibataire": {
-    "source": "patient.familySituationNormalized",
-    "type": "radio",
-    "match": "Célibataire"
-  },
-  "En concubinage": {
-    "source": "patient.familySituationNormalized",
-    "type": "radio",
-    "match": "En concubinage"
-  },
-  "Mariée": {
-    "source": "patient.familySituationNormalized",
-    "type": "radio",
-    "match": "Mariée"
-  },
-  "Veufve": {
-    "source": "patient.familySituationNormalized",
-    "type": "radio",
-    "match": "Veufve"
-  },
-  "Divorcée": {
-    "source": "patient.familySituationNormalized",
-    "type": "radio",
-    "match": "Divorcée"
-  },
+  "Célibataire": { "source": "patient.familySituationNormalized", "type": "radio", "match": "Célibataire" },
+  "En concubinage": { "source": "patient.familySituationNormalized", "type": "radio", "match": "En concubinage" },
+  "Mariée": { "source": "patient.familySituationNormalized", "type": "radio", "match": "Mariée" },
+  "Veufve": { "source": "patient.familySituationNormalized", "type": "radio", "match": "Veufve" },
+  "Divorcée": { "source": "patient.familySituationNormalized", "type": "radio", "match": "Divorcée" },
 
-  "Propriétaire": {
-    "source": "patient.occupationStatusNormalized",
-    "type": "radio",
-    "match": "Propriétaire"
-  },
-  "Locataire": {
-    "source": "patient.occupationStatusNormalized",
-    "type": "radio",
-    "match": "Locataire"
-  },
-  "Usufruitiere": {
-    "source": "patient.occupationStatusNormalized",
-    "type": "radio",
-    "match": "Usufruitiere"
-  },
+  "Propriétaire": { "source": "patient.occupationStatusNormalized", "type": "radio", "match": "Propriétaire" },
+  "Locataire": { "source": "patient.occupationStatusNormalized", "type": "radio", "match": "Locataire" },
+  "Usufruitiere": { "source": "patient.occupationStatusNormalized", "type": "radio", "match": "Usufruitiere" },
 
-  "Dropdown5": {
-    "source": "patient.apaLabel",
-    "type": "dropdown"
-  },
+  "Dropdown5": { "source": "patient.apaLabel", "type": "dropdown" },
 
-  "MDPH": {
-    "source": "patient.invalidityDisplay",
-    "type": "text"
-  },
-  "aide.à domicile": {
-    "source": "patient.homeHelpDisplay",
-    "type": "text"
-  },
-  "dépendance": {
-    "source": "patient.dependenceTxt",
-    "type": "text"
-  },
+  "MDPH": { "source": "patient.invalidityDisplay", "type": "text" },
+  "aide.à domicile": { "source": "patient.homeHelpDisplay", "type": "text" },
+  "dépendance": { "source": "patient.dependenceTxt", "type": "text" },
 
-  "tel usager": {
-    "source": "patient.phone",
-    "type": "text"
-  },
-  "mail usager": {
-    "source": "patient.email",
-    "type": "text"
-  },
-  "personne à contacter": {
-    "source": "patient.trustedName",
-    "type": "text"
-  },
-  "tel personne confiance": {
-    "source": "patient.trustedPhone",
-    "type": "text"
-  },
-  "mail personne confiance": {
-    "source": "patient.trustedEmail",
-    "type": "text"
-  },
+  "tel usager": { "source": "patient.phone", "type": "text" },
+  "mail usager": { "source": "patient.email", "type": "text" },
+  "personne à contacter": { "source": "patient.trustedName", "type": "text" },
+  "tel personne confiance": { "source": "patient.trustedPhone", "type": "text" },
+  "mail personne confiance": { "source": "patient.trustedEmail", "type": "text" },
 
-  "personne présente": {
-    "source": "dossier.personnesPresentesVisite",
-    "type": "text"
-  },
-  "date": {
-    "source": "dossier.visitDateFr",
-    "type": "text"
-  }
+  "personne présente": { "source": "dossier.personnesPresentesVisite", "type": "text" },
+  "date": { "source": "dossier.visitDateFr", "type": "text" },
+
+  "$page4": "--- Contexte de vie ---",
+  "Environnement": { "source": "contexte.environnement", "type": "text" },
+  "Habitudes": { "source": "contexte.habitudes", "type": "text" },
+
+  "$page5": "--- Logement ---",
+  "Adresse": { "source": "housing.fullAddress", "type": "text" },
+  "annee1": { "source": "housing.yearConstruction", "type": "text" },
+  "annee2": { "source": "housing.yearHabitation", "type": "text" },
+  "surface": { "source": "housing.surface", "type": "text" },
+  "Maison": { "source": "housing.isMaison", "type": "check" },
+  "Appartement": { "source": "housing.isAppartement", "type": "check" },
+  "nombre d'étage": { "source": "housing.levels", "type": "dropdown" },
+  "Soussol": { "source": "housing.basement", "type": "check" },
+  "Sous sol": { "source": "housing.basementDesc", "type": "text" },
+  "RDC": { "source": "housing.rdc", "type": "check" },
+  "rdc": { "source": "housing.rdcDesc", "type": "text" },
+  "Étage": { "source": "housing.floor", "type": "check" },
+  "etage": { "source": "housing.floorDesc", "type": "text" },
+  "Garage": { "source": "housing.garage", "type": "check" },
+  "Véranda": { "source": "housing.veranda", "type": "check" },
+  "Balcon": { "source": "housing.balcon", "type": "check" },
+  "Terrasse": { "source": "housing.terrasse", "type": "check" },
+  "Jardin": { "source": "housing.jardin", "type": "check" },
+
+  "$chauffage": "Existence + sources de chauffage (CB 9-17 mappées par déduction des coordonnées du PDF).",
+  "Check Box9": { "source": "housing.heatingMain", "type": "check" },
+  "Check Box10": { "source": "housing.heatingMain", "type": "radio", "match": false },
+  "Check Box11": { "source": "housing.heating.electric", "type": "check" },
+  "Check Box15": { "source": "housing.heating.wood", "type": "check" },
+  "Check Box17": { "source": "housing.heating.oil", "type": "check" },
+  "Check Box13": { "source": "housing.heating.gas", "type": "check" },
+  "Check Box12": { "source": "housing.heating.heatPump", "type": "check" },
+  "Check Box16": { "source": "housing.heating.collective", "type": "check" },
+  "Check Box14": { "source": "housing.heating.pellet", "type": "check" },
+
+  "Observations1": { "source": "housing.accessObservation", "type": "text" },
+
+  "$page6": "--- Sanitaires (1ère SDB / 1er WC du dossier en v1) ---",
+  "Oui_2": { "source": "sanitaires.sdbAuNiveauPieceVie", "type": "check" },
+  "Non_2": { "source": "sanitaires.sdbAuNiveauPieceVie", "type": "radio", "match": false },
+
+  "$wcLevel": "ffferze = WC à niveau (rdc) ; Non_2589 = WC à l'étage. Noms générés par Affinity.",
+  "ffferze": { "source": "sanitaires.wcAuNiveau", "type": "check" },
+  "Non_2589": { "source": "sanitaires.wcEtage", "type": "check" },
+
+  "Baignoire": { "source": "sanitaires.sdbBaignoire", "type": "check" },
+  "hauteur1": { "source": "sanitaires.sdbBaignoireHauteurFr", "type": "text" },
+  "Bac à douche": { "source": "sanitaires.sdbBacDouche", "type": "check" },
+  "hauteur2": { "source": "sanitaires.sdbBacDoucheHauteurFr", "type": "text" },
+  "Vasque suspendue": { "source": "sanitaires.sdbVasqueSuspendue", "type": "check" },
+  "Vasque sur colonne": { "source": "sanitaires.sdbVasqueColonne", "type": "check" },
+  "Meuble vasque": { "source": "sanitaires.sdbMeubleVasque", "type": "check" },
+  "Bidet": { "source": "sanitaires.sdbBidet", "type": "check" },
+  "Paroi de douche": { "source": "sanitaires.sdbParoiDouche", "type": "check" },
+  "Sol glissant": { "source": "sanitaires.sdbSolGlissant", "type": "check" },
+
+  "Oui_3": { "source": "sanitaires.sdbMachineALaver", "type": "check" },
+  "Non_3": { "source": "sanitaires.sdbMachineALaver", "type": "radio", "match": false },
+
+  "Cuvette à bonne hauteur": { "source": "sanitaires.wcCuvetteBonneHauteur", "type": "check" },
+  "Cuvette trop basse": { "source": "sanitaires.wcCuvetteTropBasse", "type": "check" },
+  "hauteur3": { "source": "sanitaires.wcCuvetteHauteurFr", "type": "text" },
+
+  "Oui_4": { "source": "sanitaires.wcBarreRelevement", "type": "check" },
+  "Non_4": { "source": "sanitaires.wcBarreRelevement", "type": "radio", "match": false },
+
+  "$portesSdbWc": "Largeur suffisante : Oui/Non SDB (CB1/2) + Oui/Non WC (CB3/4). Sens : Int/Ext SDB (CB5/6) + Int/Ext WC (CB7/8).",
+  "Check Box1": { "source": "sanitaires.porteSdbLargeurSuffisante", "type": "check" },
+  "Check Box2": { "source": "sanitaires.porteSdbLargeurSuffisante", "type": "radio", "match": false },
+  "Check Box3": { "source": "sanitaires.porteWcLargeurSuffisante", "type": "check" },
+  "Check Box4": { "source": "sanitaires.porteWcLargeurSuffisante", "type": "radio", "match": false },
+  "Check Box5": { "source": "sanitaires.porteSdbSensInterieur", "type": "check" },
+  "Check Box6": { "source": "sanitaires.porteSdbSensExterieur", "type": "check" },
+  "Check Box7": { "source": "sanitaires.porteWcSensInterieur", "type": "check" },
+  "Check Box8": { "source": "sanitaires.porteWcSensExterieur", "type": "check" },
+
+  "Text9": { "source": "sanitaires.porteSdbDimensionFr", "type": "text" },
+  "Text10": { "source": "sanitaires.porteWcDimensionFr", "type": "text" },
+
+  "obs": { "source": "sanitaires.observationsEquipements", "type": "text" },
+
+  "$page7": "--- Projet usager + Résumé préconisations ---",
+  "Projet ou souhait de lusager": { "source": "observations.projetSouhaitUsage", "type": "text" },
+  "Résumé des préconisations": { "source": "observations.resumePreconisations", "type": "text" }
 }
