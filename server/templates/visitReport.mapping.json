@@ -35,6 +35,9 @@
   "personne présente": { "source": "dossier.personnesPresentesVisite", "type": "text" },
   "date": { "source": "dossier.visitDateFr", "type": "text" },
 
+  "$ergoBlock": "Bloc 'Renseignements sur l'ergothérapeute' — page 3. Le PDF a Christelle Jeuland / Aid'Habitat / contact en valeur par défaut, on n'override que l'adresse (cf. ERGO_CONTACT dans le générateur).",
+  "adresse": { "source": "constants.ergoAddressOneLine", "type": "text" },
+
   "$page4": "--- Contexte de vie ---",
   "Environnement": { "source": "contexte.environnement", "type": "text" },
   "Habitudes": { "source": "contexte.habitudes", "type": "text" },

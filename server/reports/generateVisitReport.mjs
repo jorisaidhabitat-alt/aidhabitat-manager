@@ -37,6 +37,41 @@ const MAPPING_PATH = path.resolve(
   '../templates/visitReport.mapping.json',
 );
 
+// ---------------------------------------------------------------------------
+// Adresse Aid'Habitat — utilisée à 2 endroits dans le rapport :
+//
+//   - Page 1 (couverture) : texte hardcodé par Affinity Publisher dans
+//     le PDF. Pas un champ de formulaire → on le masque + redessine
+//     dynamiquement (cf. `applyErgoContactOverlay` plus bas).
+//
+//   - Page 3 (renseignements ergothérapeute) : champ AcroForm `adresse`
+//     pré-rempli avec l'ancienne valeur. Override simple via le
+//     mapping JSON qui pointe sur `constants.ergoAddressOneLine`.
+//
+// Quand l'adresse change, on modifie juste cet objet — les deux
+// emplacements suivent automatiquement. Coordonnées page 1 trouvées
+// avec `pdftotext -bbox-layout` ; ajuster les `line1.y` / `line2.y` /
+// `mask.y` si la mise en page bouge à un futur ré-export Affinity.
+// ---------------------------------------------------------------------------
+
+const ERGO_CONTACT = {
+  page3OneLine: '16 rue Léo Lagrange, 35131 Chartres-de-Bretagne',
+  page1: {
+    addressLine1: '16 rue Léo Lagrange',
+    addressLine2: '35131 Chartres-de-Bretagne',
+    fontSize: 10,
+    color: rgb(0, 0, 0), // texte noir comme l'original Affinity
+    line1: { x: 47, y: 97 },           // baseline de "47 avenue ..."
+    line2: { x: 47, y: 77 },           // baseline de "35200 Rennes"
+    // Rectangle de masquage — un poil plus grand que le bbox texte
+    // pour absorber les ascendants/descendants éventuels. Couleur
+    // matchée sur le fond pêche du bandeau Affinity (#F4DBC4 sampled
+    // sur le rendu PNG du template — sinon le mask blanc est visible).
+    mask: { x: 44, y: 73, width: 180, height: 44 },
+    maskColor: rgb(244 / 255, 219 / 255, 196 / 255), // #F4DBC4
+  },
+};
+
 let cachedTemplate = null;
 let cachedMapping = null;
 
@@ -460,6 +495,12 @@ function buildViewModel({ dossier, sanitaires, observations }) {
     housing: housingView,
     sanitaires: sanitairesView,
     observations: observationsView,
+    // Constantes Aid'Habitat — exposées via mapping JSON pour
+    // override des valeurs pré-remplies dans le template (notamment
+    // l'adresse de l'ergothérapeute page 3).
+    constants: {
+      ergoAddressOneLine: ERGO_CONTACT.page3OneLine,
+    },
   };
 }
 
@@ -757,6 +798,51 @@ function formatRecoText(reco) {
  *                  rendu reste éditable champ par champ dans Acrobat.
  * @returns {Promise<Uint8Array>} les bytes du PDF généré.
  */
+
+/**
+ * Couvre le bloc adresse Aid'Habitat hardcodé dans le PDF par
+ * Affinity Publisher (page 1, en bas-gauche) avec un rectangle blanc
+ * puis redessine la nouvelle adresse à la même position. Voir
+ * `ERGO_CONTACT.page1` pour les coordonnées et la couleur.
+ *
+ * Echec gracieux : si la page 1 manque ou si le redraw échoue,
+ * on log et on continue — le PDF aura juste l'ancienne adresse.
+ */
+async function applyErgoContactOverlay(pdfDoc) {
+  try {
+    const page = pdfDoc.getPage(0);
+    const cfg = ERGO_CONTACT.page1;
+    // 1) Masquage : rectangle de la couleur du bandeau (pêche) pour
+    // que la zone se fonde dans le fond Affinity sans liseré blanc
+    // visible.
+    page.drawRectangle({
+      x: cfg.mask.x,
+      y: cfg.mask.y,
+      width: cfg.mask.width,
+      height: cfg.mask.height,
+      color: cfg.maskColor,
+    });
+    // 2) Redraw : 2 lignes de texte avec Helvetica embedded.
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    page.drawText(sanitizeForPdfFont(cfg.addressLine1), {
+      x: cfg.line1.x,
+      y: cfg.line1.y,
+      size: cfg.fontSize,
+      font,
+      color: cfg.color,
+    });
+    page.drawText(sanitizeForPdfFont(cfg.addressLine2), {
+      x: cfg.line2.x,
+      y: cfg.line2.y,
+      size: cfg.fontSize,
+      font,
+      color: cfg.color,
+    });
+  } catch (error) {
+    console.warn('[generateVisitReport] applyErgoContactOverlay :', error?.message || error);
+  }
+}
+
 export async function generateVisitReport({
   dossier,
   sanitaires,
@@ -931,6 +1017,10 @@ export async function generateVisitReport({
       }
     }
   }
+
+  // Override de l'adresse Aid'Habitat sur la couverture (texte
+  // hardcodé dans le PDF — pas un champ de formulaire).
+  await applyErgoContactOverlay(pdfDoc);
 
   // Aplatissement final : convertit chaque champ en contenu fixe (le
   // texte/cocheur devient un objet graphique inerte). Le résultat n'est
