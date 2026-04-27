@@ -20,6 +20,7 @@ import 'package:http/http.dart' as http;
 
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
+import '../models/visit_report_categories.dart';
 import '../services/web_file_picker.dart';
 import '../services/web_file_saver.dart';
 import '../services/app_config.dart';
@@ -31,6 +32,10 @@ import '../services/media_cache_service.dart';
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Tags disponibles dans le picker d'import — mêmes que React +
+/// les 3 catégories visite (`Visite - Logement / Accessibilité /
+/// Sanitaires`) qui alimentent l'onglet Photos du relevé et la page
+/// 8 du rapport PDF (« Photos du logement »).
 const List<String> _kAvailableTags = [
   'Mandat',
   'Rapport',
@@ -38,6 +43,9 @@ const List<String> _kAvailableTags = [
   'Devis',
   'Cerfa',
   'Photo',
+  kPhotoTagLogement,
+  kPhotoTagAccessibilite,
+  kPhotoTagSanitaires,
   'Plan',
   'Autre',
 ];

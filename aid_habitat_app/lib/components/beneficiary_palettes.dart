@@ -27,8 +27,21 @@ Color beneficiaryAvatarBgFor(String seed) {
 }
 
 // ---------------------------------------------------------------------------
-// Communauté de communes (EPCI) — 5 pastels : mint, pêche, ciel, lavande,
-// sable. Même EPCI = même couleur à chaque rendu (hash du label).
+// Communauté de communes (EPCI) — couleur UNIQUE par EPCI, dérivée d'un
+// hash stable du libellé via HSL.
+//
+// Avant : 5 pastels fixes (mint, pêche, ciel, lavande, sable) → collisions
+// dès qu'on dépassait 5 EPCIs distincts (et la base NocoDB en compte
+// largement plus). Maintenant : on hash le libellé en un angle de teinte
+// (0-359°) et on génère la couleur via `HSLColor.fromAHSL(hue, S, L)` en
+// gardant saturation + luminance dans la plage de la DA pastel
+// existante (S ≈ 0.50, L ≈ 0.87) — donc chaque EPCI a sa propre teinte
+// unique mais l'aspect global "pastel doux slate-700" reste identique.
+//
+// Le multiplicateur 137 (proche de l'angle d'or 137.508°) répartit
+// uniformément les teintes sur le cercle chromatique : deux libellés
+// proches (Roche aux Fées vs Roche-aux-Fées) tombent sur des couleurs
+// volontairement différentes pour éviter toute confusion visuelle.
 // ---------------------------------------------------------------------------
 
 class EpciPalette {
@@ -38,17 +51,13 @@ class EpciPalette {
 }
 
 const Color _kPastelEpciFg = Color(0xFF334155);
-
-const List<EpciPalette> kEpciPalettes = [
-  EpciPalette(bg: Color(0xFFC8E6D0), fg: _kPastelEpciFg), // mint
-  EpciPalette(bg: Color(0xFFF5D6B8), fg: _kPastelEpciFg), // pêche
-  EpciPalette(bg: Color(0xFFD9EAF3), fg: _kPastelEpciFg), // ciel
-  EpciPalette(bg: Color(0xFFE8E2F0), fg: _kPastelEpciFg), // lavande
-  EpciPalette(bg: Color(0xFFF0E4CC), fg: _kPastelEpciFg), // sable
-];
+const double _kEpciSaturation = 0.50;
+const double _kEpciLightness = 0.87;
 
 EpciPalette epciPaletteFor(String label) {
   if (label.isEmpty) {
+    // Pas de libellé → gris neutre slate-100. Distinct visuellement
+    // d'un vrai EPCI pour signaler "non renseigné".
     return const EpciPalette(
       bg: Color(0xFFF1F5F9),
       fg: _kPastelEpciFg,
@@ -58,7 +67,17 @@ EpciPalette epciPaletteFor(String label) {
   for (final rune in label.runes) {
     hash = (hash * 31 + rune) & 0x7FFFFFFF;
   }
-  return kEpciPalettes[hash % kEpciPalettes.length];
+  // Spread sur les 360° du cercle chromatique avec un multiplicateur
+  // proche de l'angle d'or (137° ≈ 137.508° / golden angle) pour que
+  // deux hashes consécutifs donnent des teintes éloignées.
+  final hue = ((hash * 137) % 360).toDouble();
+  final hsl = HSLColor.fromAHSL(
+    1.0,
+    hue,
+    _kEpciSaturation,
+    _kEpciLightness,
+  );
+  return EpciPalette(bg: hsl.toColor(), fg: _kPastelEpciFg);
 }
 
 /// Pill affichant le nom de la communauté de communes — fond coloré

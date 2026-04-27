@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 10;
+  static const _dbVersion = 11;
 
   Database? _database;
 
@@ -64,6 +64,20 @@ class LocalDatabase {
     if (oldVersion < 10) {
       await _migrateV9ToV10(db);
     }
+    if (oldVersion < 11) {
+      await _migrateV10ToV11(db);
+    }
+  }
+
+  /// v10 → v11: générateur de rapport PDF — la page « Plan du logement »
+  /// du PDF a deux emplacements (avant travaux / après travaux). On
+  /// ajoute un flag explicite `plan_phase` sur `note_pages` pour que
+  /// l'ergo puisse marquer chaque dessin Plans comme appartenant à
+  /// l'une ou l'autre phase. Valeurs : 'avant', 'apres', ou NULL
+  /// (non encore classé). Ne touche pas aux dessins existants — ils
+  /// resteront NULL jusqu'à ce que l'ergo leur attribue une phase.
+  Future<void> _migrateV10ToV11(Database db) async {
+    await _addColumnIfMissing(db, 'note_pages', 'plan_phase', 'TEXT');
   }
 
   /// v9 → v10: Generic key/value store. Used by `ReferencesService` to
@@ -555,6 +569,7 @@ class LocalDatabase {
         drawing_local_path TEXT,
         drawing_remote_path TEXT,
         drawing_remote_url TEXT,
+        plan_phase TEXT,
         updated_at TEXT NOT NULL,
         sync_state TEXT NOT NULL,
         UNIQUE(patient_local_id, tab_key, page_number)

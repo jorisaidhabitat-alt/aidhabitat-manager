@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/types.dart';
+import '../models/visit_report_categories.dart';
 import 'access_members_repository.dart';
 import 'auth_service.dart';
 import 'dossier_repository.dart';
@@ -321,6 +322,35 @@ class DataService {
       patientId: patientId,
       tabKey: tabKey,
       drawingJson: drawingJson,
+      pageNumber: pageNumber,
+    );
+  }
+
+  /// Met à jour la phase (avant / après / non classé) d'un dessin de
+  /// l'onglet Plans. Voir [NoteRepository.setPlanPhase].
+  Future<void> setNotePlanPhase({
+    required String patientId,
+    required String tabKey,
+    required int pageNumber,
+    required PlanPhase? phase,
+  }) async {
+    await _noteRepository.setPlanPhase(
+      patientId: patientId,
+      tabKey: tabKey,
+      pageNumber: pageNumber,
+      phase: phase,
+    );
+  }
+
+  /// Lit la phase courante d'un dessin Plans (null = non classé).
+  Future<PlanPhase?> fetchNotePlanPhase({
+    required String patientId,
+    required String tabKey,
+    int pageNumber = 0,
+  }) async {
+    return _noteRepository.fetchPlanPhase(
+      patientId: patientId,
+      tabKey: tabKey,
       pageNumber: pageNumber,
     );
   }

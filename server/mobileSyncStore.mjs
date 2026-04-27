@@ -91,6 +91,11 @@ export const MOBILE_SYNC_SCHEMA_SPEC = {
       ['preview_data_url', 'LongText'],
       ['preview_url', 'SingleLineText'],
       ['layout_kind', 'SingleLineText'],
+      // Phase d'un dessin Plans : 'avant' ou 'apres' (null pour les
+      // notes hors onglet Plans). Utilisé par le générateur de
+      // rapport PDF pour décider dans quel emplacement (page 9 ou
+      // page 10) le dessin est injecté.
+      ['plan_phase', 'SingleLineText'],
       ['updated_at', 'DateTime'],
     ],
   },
