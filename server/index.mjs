@@ -3812,12 +3812,60 @@ app.post('/api/beneficiaires', requireAuth, async (req, res, next) => {
       throw new Error('Le nom du bénéficiaire est obligatoire');
     }
 
+    // Clé d'idempotence — Flutter envoie son `local_id` (ex:
+    // `patient_<timestamp>`) comme `clientLocalId`. On le réutilise
+    // comme `uuid_source` du dossier (champ existant côté NocoDB, pas
+    // de migration de schéma nécessaire). Si un dossier avec ce
+    // `uuid_source` existe déjà → la création précédente a abouti
+    // côté NocoDB mais la réponse n'est pas arrivée au client (timeout
+    // Wi-Fi, lambda Vercel coupée…) ; le client a rejoué l'op, et
+    // sans cette garde on créerait un duplicate. On renvoie les IDs
+    // existants au lieu de re-créer.
+    const clientLocalId = stringValue(updates.clientLocalId).trim();
+    if (clientLocalId) {
+      try {
+        const existingDossiers = await queryAll(TABLES.dossiers, {
+          fields: ['uuid_source', 'patient_id', 'beneficiaires_id'],
+          where: `(uuid_source,eq,${JSON.stringify(clientLocalId)})`,
+        });
+        if (existingDossiers.length > 0) {
+          const existing = existingDossiers[0];
+          const beneficiaireRecordId = field(existing, 'beneficiaires_id');
+          const existingPatientSyntheticId = beneficiaireRecordId
+            ? syntheticBeneficiaryId(beneficiaireRecordId)
+            : stringValue(field(existing, 'patient_id'));
+          // ignore: avoid_print
+          console.log(
+            `[POST /beneficiaires] idempotent skip — dossier déjà créé (uuid_source=${clientLocalId})`,
+          );
+          res.status(200).json({
+            success: true,
+            error: null,
+            data: {
+              id: existingPatientSyntheticId,
+              dossierId: clientLocalId,
+              alreadyExisted: true,
+            },
+          });
+          return;
+        }
+      } catch (err) {
+        // Si la requête NocoDB échoue, on continue sur le chemin
+        // normal de création (la garde côté Flutter reste un filet
+        // de sécurité).
+        console.warn('[POST /beneficiaires] idempotency check failed:', err?.message || err);
+      }
+    }
+
     const created = await createRecord(TABLES.beneficiaires, baseFields);
     if (Object.keys(relationFields).length > 0) {
       await updateRecord(TABLES.beneficiaires, created.id, relationFields);
     }
     const createdDossier = await createRecord(TABLES.dossiers, {
-      uuid_source: crypto.randomUUID(),
+      // `uuid_source` : si le client a fourni `clientLocalId`, on
+      // l'utilise tel quel (clé d'idempotence). Sinon fallback sur
+      // un UUID random (ex. dossiers créés via une UI tierce).
+      uuid_source: clientLocalId || crypto.randomUUID(),
       patient_id: syntheticBeneficiaryId(created.id),
       beneficiaires_id: Number(created.id),
       ergo_id: assignedErgoLabel,
