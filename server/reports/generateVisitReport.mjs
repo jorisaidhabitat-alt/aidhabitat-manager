@@ -21,7 +21,13 @@ import {
   PDFRadioGroup,
   PDFDropdown,
   PDFButton,
+  PDFName,
   StandardFonts,
+  pushGraphicsState,
+  popGraphicsState,
+  rectangle,
+  clip,
+  endPath,
   rgb,
 } from 'pdf-lib';
 
@@ -674,8 +680,30 @@ async function embedImageAuto(pdfDoc, buffer, mimeHint) {
  * Pose une image dans un champ AcroForm "Btn" (les `_af_image` créés
  * par Affinity Publisher). Si le champ n'est pas trouvé ou si pdf-lib
  * ne peut pas y poser une image, on log et on continue.
+ *
+ * Modes de fit (paramètre [fit]) :
+ *   - 'contain' (défaut) : utilise `field.setImage()` de pdf-lib qui
+ *     préserve le ratio en laissant des marges blanches si l'image
+ *     n'a pas le même ratio que le slot. Bon pour les images wiki des
+ *     préconisations (illustrations carrées qui ne doivent pas être
+ *     coupées).
+ *   - 'cover' : on dessine l'image directement sur la page via
+ *     `page.drawImage()` après calcul des dimensions qui couvrent
+ *     entièrement le slot (le surplus déborde des bords courts est
+ *     clippé via le rect du slot). Bon pour les photos plein cadre
+ *     du logement / accessibilité / sanitaires : la photo remplit
+ *     la vignette comme dans une mise en page magazine, sans bandes
+ *     blanches gênantes quand le ratio diffère.
+ *
+ * En mode 'cover' on remplace en plus l'apparence du champ par un
+ * stream vide → le placeholder gris d'Affinity ("image_placeholder")
+ * disparaît derrière notre image, sinon il pourrait transparaître si
+ * notre image est translucide (pas le cas en JPEG mais en PNG oui).
  */
-async function setImageInField(pdfDoc, form, fieldName, descriptor, fetchImageBytes, stats) {
+async function setImageInField(
+  pdfDoc, form, fieldName, descriptor, fetchImageBytes, stats,
+  { fit = 'contain' } = {},
+) {
   if (!fieldName || !descriptor || !fetchImageBytes) return;
   let field;
   try {
@@ -698,12 +726,112 @@ async function setImageInField(pdfDoc, form, fieldName, descriptor, fetchImageBy
     stats.imagesFailedEmbed += 1;
     return;
   }
+
+  if (fit === 'cover') {
+    try {
+      drawImageWithCoverFit(pdfDoc, field, pdfImage);
+      stats.imagesApplied += 1;
+    } catch (error) {
+      console.warn(`[generateVisitReport] cover-fit("${fieldName}") a échoué :`, error?.message || error);
+      // Fallback contain via setImage natif → mieux que rien.
+      try {
+        field.setImage(pdfImage);
+        stats.imagesApplied += 1;
+      } catch (e2) {
+        stats.imagesFailedEmbed += 1;
+      }
+    }
+    return;
+  }
+
+  // fit === 'contain' : chemin pdf-lib classique.
   try {
     field.setImage(pdfImage);
     stats.imagesApplied += 1;
   } catch (error) {
     console.warn(`[generateVisitReport] setImage("${fieldName}") a échoué :`, error?.message || error);
     stats.imagesFailedEmbed += 1;
+  }
+}
+
+/**
+ * Dessine [pdfImage] dans le rect du widget de [field] avec un fit
+ * "cover" : l'image remplit toute la zone, les côtés courts qui
+ * dépasseraient sont coupés via un q/Q + clip rect en PDF. Recharge
+ * également l'apparence du champ avec un stream vide pour que le
+ * placeholder gris d'Affinity soit purgé.
+ */
+function drawImageWithCoverFit(pdfDoc, field, pdfImage) {
+  const widgets = field.acroField.getWidgets?.() || [];
+  for (const widget of widgets) {
+    const rect = widget.getRectangle();
+    if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+
+    const pageRef = widget.P?.();
+    if (!pageRef) continue;
+    const page = pdfDoc.getPages().find((p) => p.ref === pageRef);
+    if (!page) continue;
+
+    const slotRatio = rect.width / rect.height;
+    const imgRatio = pdfImage.width / pdfImage.height;
+
+    // Cover : on agrandit jusqu'à ce que les DEUX dimensions remplissent
+    // ou dépassent celles du slot. Pas de bandes blanches.
+    let drawW;
+    let drawH;
+    if (imgRatio > slotRatio) {
+      // Image plus large que le slot → on cale à la hauteur, ça déborde
+      // sur les côtés (clippé).
+      drawH = rect.height;
+      drawW = drawH * imgRatio;
+    } else {
+      // Image plus haute → on cale à la largeur, ça déborde haut/bas.
+      drawW = rect.width;
+      drawH = drawW / imgRatio;
+    }
+    const drawX = rect.x + (rect.width - drawW) / 2;
+    const drawY = rect.y + (rect.height - drawH) / 2;
+
+    // Clip rectangle au slot pour cacher le débordement de l'image
+    // (mode cover). Séquence PDF standard :
+    //   q                    push graphics state
+    //   x y w h re           rectangle path
+    //   W                    set as clipping path
+    //   n                    end path (no fill, no stroke)
+    //   ... drawImage ...
+    //   Q                    pop graphics state
+    // Sans le `q ... Q`, le clip contaminerait tout le reste de la page.
+    // Sans `endPath()` (`n`), certains lecteurs PDF tracent un fin
+    // trait noir le long du clip.
+    page.pushOperators(
+      pushGraphicsState(),
+      rectangle(rect.x, rect.y, rect.width, rect.height),
+      clip(),
+      endPath(),
+    );
+    page.drawImage(pdfImage, {
+      x: drawX,
+      y: drawY,
+      width: drawW,
+      height: drawH,
+    });
+    page.pushOperators(popGraphicsState());
+
+    // Remplace l'apparence du champ par un stream vide → le placeholder
+    // gris d'Affinity ("image_placeholder.png" embedé dans le template)
+    // disparaît au flatten au lieu de transparaître derrière une image
+    // PNG semi-transparente. Pour les JPEG opaques c'est un no-op
+    // visuel, mais on l'applique systématiquement pour éviter le
+    // double-rendu (le button + notre drawImage par-dessus).
+    const emptyStream = pdfDoc.context.formXObject([], {
+      BBox: pdfDoc.context.obj([0, 0, rect.width, rect.height]),
+      Matrix: pdfDoc.context.obj([1, 0, 0, 1, 0, 0]),
+      Resources: pdfDoc.context.obj({}),
+    });
+    const emptyRef = pdfDoc.context.register(emptyStream);
+    const apDict = pdfDoc.context.obj({});
+    apDict.set(PDFName.of('N'), emptyRef);
+    widget.dict.set(PDFName.of('AP'), apDict);
   }
 }
 
@@ -742,9 +870,23 @@ const PLAN_SLOTS = {
 
 /**
  * Slot map pages 11-14 : 8 préconisations × (champ texte + champ
- * image). On alterne `Image*_af_image` (top de page) et
- * `croquis*_af_image` (bot de page). En v1 (décision utilisateur),
- * les croquis restent vides — donc on remplit uniquement les `Image`.
+ * image). Chaque page contient 2 préconisations :
+ *   - haut de page : `Préconisations avec argumentaire(N)` + `Image*_af_image`
+ *   - bas de page  : `Préconisations avec argumentaire(N+1)` + `croquis*_af_image`
+ *
+ * Avant : seules les recos d'index pair recevaient leur image wiki —
+ * les `croquis*` du bas de page restaient toujours vides. Conséquence :
+ * dès que l'ergo permutait l'ordre des préconisations OU en ajoutait
+ * une au milieu, certaines images "disparaissaient" du PDF (la
+ * position dans le tableau changeait → l'index passait de pair à
+ * impair → l'image n'était plus dessinée). Symptôme reporté : "tout
+ * les textes s'ajoutent bien mais certaines images de certaines
+ * précos ne s'affichent pas (ex : evier cuisine évidé)".
+ *
+ * Maintenant : tableau aligné 1-1 sur les positions des recos
+ * (index 0…7), chaque slot reçoit l'image de SA reco — qu'il soit
+ * en haut (`Image*`) ou en bas (`croquis*`). Le contenu suit donc
+ * exactement l'ordre des préconisations dans le dossier.
  */
 const RECO_TEXT_FIELDS = [
   'Préconisations avec argumentaire',
@@ -756,14 +898,15 @@ const RECO_TEXT_FIELDS = [
   'Préconisations avec argumentaire7',
   'Préconisations avec argumentaire8',
 ];
-// Index pair (0, 2, 4, 6) → image de la reco impaire (1ère, 3ème…)
-// posée dans le champ `Image*` du haut de page. Index impair → champ
-// `croquis*` du bas de page (laissé vide en v1).
-const RECO_IMAGE_FIELDS_TOP = [
-  'Image8_af_image',
-  'Image85_af_image',
-  'Image874_af_image',
-  'Image846_af_image',
+const RECO_IMAGE_FIELDS = [
+  'Image8_af_image',     // reco 0 — page 11 haut
+  'croquis2_af_image',   // reco 1 — page 11 bas
+  'Image85_af_image',    // reco 2 — page 12 haut
+  'croquis4_af_image',   // reco 3 — page 12 bas
+  'Image874_af_image',   // reco 4 — page 13 haut
+  'croquis6_af_image',   // reco 5 — page 13 bas
+  'Image846_af_image',   // reco 6 — page 14 haut
+  'croquis8_af_image',   // reco 7 — page 14 bas
 ];
 
 /**
@@ -960,7 +1103,14 @@ export async function generateVisitReport({
   nudgeFieldRect({ fieldsByName, fieldName: 'dépendance', dy: -4 });
 
   // ---------------------------------------------------------------
-  // Page 8 — Photos visite : 2 Logement, 3 Accès, 3 Sanitaires
+  // Page 8 — Photos visite : 2 Logement, 3 Accès, 3 Sanitaires.
+  // Mode 'cover' : la photo remplit toute la vignette (l'excédent
+  // sur les côtés courts est clippé). Sans ça, une photo iPad au
+  // ratio 4:3 placée dans un slot portrait (4:5) laissait de
+  // grosses bandes blanches en haut et en bas → impression de
+  // "non-rempli" reportée par l'utilisateur. Les recos gardent le
+  // mode 'contain' (illustrations wiki carrées qui ne doivent pas
+  // être recoupées).
   // ---------------------------------------------------------------
   for (const slot of PAGE8_PHOTO_SLOTS) {
     const photos = photosForVisitTag(documents, slot.tag);
@@ -975,6 +1125,7 @@ export async function generateVisitReport({
         { kind: 'document', id: photo.id },
         fetchImageBytes,
         stats,
+        { fit: 'cover' },
       );
     }
   }
@@ -1043,19 +1194,18 @@ export async function generateVisitReport({
         );
       }
     }
-    // Image : seulement les recos d'index pair (0, 2, 4, 6) ont leur
-    // wiki photo en haut de page (les croquis bas-de-page restent vides
-    // par décision utilisateur).
-    if (i % 2 === 0) {
-      const imageFieldName = RECO_IMAGE_FIELDS_TOP[Math.floor(i / 2)];
-      const wikiUrl = String(reco?.wikiImageUrl || '').trim();
-      if (imageFieldName && wikiUrl) {
-        await setImageInField(
-          pdfDoc, form, imageFieldName,
-          { kind: 'url', url: wikiUrl },
-          fetchImageBytes, stats,
-        );
-      }
+    // Image wiki : on cible le slot image qui correspond exactement à
+    // la position de cette reco (haut OU bas de page). Permet de garder
+    // l'image alignée avec son texte même quand l'ergo permute / ajoute
+    // / retire des préconisations dans l'app.
+    const imageFieldName = RECO_IMAGE_FIELDS[i];
+    const wikiUrl = String(reco?.wikiImageUrl || '').trim();
+    if (imageFieldName && wikiUrl) {
+      await setImageInField(
+        pdfDoc, form, imageFieldName,
+        { kind: 'url', url: wikiUrl },
+        fetchImageBytes, stats,
+      );
     }
   }
 
