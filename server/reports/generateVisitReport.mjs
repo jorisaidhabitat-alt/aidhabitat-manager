@@ -1133,13 +1133,16 @@ export async function generateVisitReport({
 
   // ---------------------------------------------------------------
   // Page 8 — Photos visite : 2 Logement, 3 Accès, 3 Sanitaires.
-  // Mode 'cover' : la photo remplit toute la vignette (l'excédent
-  // sur les côtés courts est clippé). Sans ça, une photo iPad au
-  // ratio 4:3 placée dans un slot portrait (4:5) laissait de
-  // grosses bandes blanches en haut et en bas → impression de
-  // "non-rempli" reportée par l'utilisateur. Les recos gardent le
-  // mode 'contain' (illustrations wiki carrées qui ne doivent pas
-  // être recoupées).
+  // Mode 'contain' (défaut) : la photo est insérée ENTIÈRE dans la
+  // vignette en préservant son ratio. Si une photo paysage tombe
+  // dans un slot portrait (ou l'inverse), du blanc apparaît
+  // au-dessus/dessous (ou sur les côtés) plutôt que de cropper la
+  // photo. Demande utilisateur : "les images ne doivent pas être
+  // cropées si c'est un format paysage sur un encadré portrait,
+  // elle doit simplement être plus petite pour que tout passe quitte
+  // à laisser du blanc au dessus et en dessous de l'image qui sera
+  // centrée dans son cadre". `setImage` de pdf-lib applique
+  // exactement cette logique (scaleToFit + ImageAlignment.Center).
   // ---------------------------------------------------------------
   for (const slot of PAGE8_PHOTO_SLOTS) {
     const photos = photosForVisitTag(documents, slot.tag);
@@ -1154,7 +1157,6 @@ export async function generateVisitReport({
         { kind: 'document', id: photo.id },
         fetchImageBytes,
         stats,
-        { fit: 'cover' },
       );
     }
   }
@@ -1279,8 +1281,14 @@ export async function generateVisitReport({
         );
       }
     } else if (topUsed && !botUsed) {
+      // On stocke le bbox de la case BOT (à blanchir) et le bbox de
+      // la case TOP (utilisé comme borne haute pour ne JAMAIS
+      // déborder sur la zone TOP — sinon la 3ème ou 4ème reco
+      // disparaissait quand elle était la dernière, cf. bug
+      // utilisateur).
       const botRect = getRecoCaseBoundingBox(fieldsByName, botRecoIdx);
-      pendingBotCovers.push({ pageIdx, botRect });
+      const topRect = getRecoCaseBoundingBox(fieldsByName, topRecoIdx);
+      pendingBotCovers.push({ pageIdx, botRect, topRect });
     }
   }
 
@@ -1300,10 +1308,16 @@ export async function generateVisitReport({
 
   // Blanchiment des cases BOT vides — fait APRÈS flatten pour passer
   // au-dessus des widgets aplatis (texte vide + bordures éventuelles
-  // laissées par Affinity Publisher). On couvre toute la largeur pour
-  // englober le titre de sous-section ("PHOTOS, CROQUIS, ILLUSTRATION")
-  // et les ornements décoratifs autour de la zone bot.
-  for (const { pageIdx, botRect } of pendingBotCovers) {
+  // laissées par Affinity Publisher).
+  //
+  // Borne haute du rectangle = juste sous la case TOP (bord inférieur
+  // de la bbox TOP - 6 pt de garde). Garantit qu'on n'avale JAMAIS
+  // une partie de la TOP, même si les fields BOT (texte + croquis)
+  // s'étendent étonnamment haut. Borne basse = bord inférieur de la
+  // page (couvre titre de section "PHOTOS, CROQUIS, ILLUSTRATION",
+  // bordures, footer éventuel — la zone est censée disparaître).
+  // Couvre toute la largeur de la page.
+  for (const { pageIdx, botRect, topRect } of pendingBotCovers) {
     if (!botRect) continue;
     let page;
     try {
@@ -1312,14 +1326,18 @@ export async function generateVisitReport({
       continue;
     }
     if (!page) continue;
-    const { width: pageWidth } = page.getSize();
-    const padTop = 90;
-    const padBottom = 20;
+    const { width: pageWidth, height: pageHeight } = page.getSize();
+    // Limite haute = bord bas de la TOP - 6pt (gap visuel) ; sinon
+    // mi-hauteur de la page comme garde-fou si TOP rect manque.
+    const upperY = topRect != null
+      ? Math.max(0, topRect.y - 6)
+      : pageHeight / 2;
+    if (upperY <= 0) continue;
     page.drawRectangle({
       x: 0,
-      y: Math.max(0, botRect.y - padBottom),
+      y: 0,
       width: pageWidth,
-      height: botRect.height + padTop + padBottom,
+      height: upperY,
       color: rgb(1, 1, 1),
     });
   }
