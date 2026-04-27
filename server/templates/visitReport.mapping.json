@@ -1,0 +1,49 @@
+{
+  "$comment": "Mapping champs PDF AcroForm → données NocoDB pour le générateur de rapport de visite. Voir server/reports/generateVisitReport.mjs. Format : 'pdfFieldName': { source, type } où source est un dotted path dans le payload du dossier ('patient.firstName', 'dossier.visitDate', etc.). type = 'text' (Tx), 'check' (Btn coché si truthy), 'radio' (Btn coché si valeur correspond à `match`).",
+  "$pocOnly": "POC chunk 4 — 10 champs page 1 + page 3 pour valider la chaîne pdf-lib + Express. Sera étendu aux 130 champs en chunk 4.2.",
+
+  "Text1": {
+    "source": "patient.fullNameUpper",
+    "type": "text"
+  },
+  "Nom": {
+    "source": "patient.lastName",
+    "type": "text"
+  },
+  "Prénom": {
+    "source": "patient.firstName",
+    "type": "text"
+  },
+  "date de naissance": {
+    "source": "patient.birthDateFr",
+    "type": "text"
+  },
+  "tel usager": {
+    "source": "patient.phone",
+    "type": "text"
+  },
+  "mail usager": {
+    "source": "patient.email",
+    "type": "text"
+  },
+  "personne à contacter": {
+    "source": "patient.trustedName",
+    "type": "text"
+  },
+  "tel personne confiance": {
+    "source": "patient.trustedPhone",
+    "type": "text"
+  },
+  "mail personne confiance": {
+    "source": "patient.trustedEmail",
+    "type": "text"
+  },
+  "personne présente": {
+    "source": "dossier.personnesPresentesVisite",
+    "type": "text"
+  },
+  "date": {
+    "source": "dossier.visitDateFr",
+    "type": "text"
+  }
+}

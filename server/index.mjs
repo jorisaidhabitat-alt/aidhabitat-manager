@@ -12,6 +12,10 @@ import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
 import { putObject, statObject, getJson, putJson } from './storage.mjs';
+import {
+  generateVisitReport,
+  buildReportFileName,
+} from './reports/generateVisitReport.mjs';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -3510,6 +3514,49 @@ app.post('/api/mobile-sync/migrate', requireAuth, async (_req, res, next) => {
 app.get('/api/dossiers', requireAuth, async (req, res, next) => {
   try {
     res.json(await getDossiersForApp(req.appUser));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/// Génère le rapport de visite PDF pour un dossier donné. Retourne
+/// directement les bytes du PDF en `application/pdf` avec un
+/// `Content-Disposition: attachment` — le client n'a qu'à streamer
+/// la réponse vers un téléchargement / un upload Drive / un attach
+/// NocoDB selon ses besoins (voir Chunk 5).
+///
+/// Filtrage d'accès : `getDossiersForApp(req.appUser)` applique déjà
+/// les scopes de l'utilisateur. On cherche le dossier dans cette
+/// liste — un appel à un dossierId hors scope renvoie 404 plutôt que
+/// 403 pour ne pas leak l'existence de dossiers d'autres ergos.
+///
+/// L'header `X-Report-Stats` est joint à la réponse en debug — le
+/// client peut le lire pour afficher "X champs remplis, Y absents
+/// du template" et détecter une dérive de mapping.
+app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) => {
+  try {
+    const dossierId = String(req.params.dossierId || '').trim();
+    if (!dossierId) {
+      throw httpError(400, 'dossierId manquant');
+    }
+
+    const dossiers = await getDossiersForApp(req.appUser);
+    const dossier = dossiers.find((d) => String(d.id) === dossierId);
+    if (!dossier) {
+      throw httpError(404, `Dossier ${dossierId} introuvable ou hors scope`);
+    }
+
+    const { bytes, stats } = await generateVisitReport({ dossier });
+    const fileName = buildReportFileName(dossier);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(fileName)}"`,
+    );
+    res.setHeader('X-Report-Stats', JSON.stringify(stats));
+    // Bytes Uint8Array → Buffer pour Express.
+    res.send(Buffer.from(bytes));
   } catch (error) {
     next(error);
   }

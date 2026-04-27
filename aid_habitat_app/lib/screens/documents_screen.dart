@@ -1642,90 +1642,141 @@ class _DocCardState extends State<_DocCard> {
                         ),
                       ),
                     ),
-                  // Sync badge + delete button (top-right) — hidden in selection mode
+                  // Sync badge (top-right) — hidden in selection mode.
+                  // Les actions « Télécharger » et « Supprimer » sont
+                  // déplacées dans le menu kebab (3 points) sur le
+                  // bandeau blanc en bas de la card — plus d'icônes
+                  // flottantes sur la vignette.
                   if (!selMode)
                     Positioned(
                       top: 8,
                       right: 8,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          _SyncBadge(syncState: doc.syncState),
-                          const SizedBox(height: 6),
-                          _IconButton(
-                            icon: LucideIcons.trash2,
-                            color: Colors.red,
-                            tooltip: 'Supprimer',
-                            onPressed: widget.onDelete,
-                          ),
-                        ],
-                      ),
-                    ),
-                  // Download button (bottom-right) — hidden in selection mode
-                  if (!selMode)
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: _IconButton(
-                        icon: LucideIcons.download,
-                        color: _kDarkPurple,
-                        tooltip: 'Télécharger',
-                        onPressed: widget.onDownload,
-                      ),
+                      child: _SyncBadge(syncState: doc.syncState),
                     ),
                 ],
               ),
             ),
-            // Title + date
+            // Title + date (gauche) + menu actions kebab (droite).
+            // Le bandeau blanc accueille à la fois le titre éditable
+            // et un bouton 3 points qui ouvre un menu avec « Télécharger »
+            // / « Supprimer » — choix design utilisateur pour libérer
+            // la vignette de toute icône flottante.
             Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Inline editable title
-                  _isEditingTitle
-                      ? TextField(
-                          controller: _titleCtrl,
-                          focusNode: _titleFocus,
-                          maxLines: 1,
-                          textInputAction: TextInputAction.done,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Inline editable title
+                        _isEditingTitle
+                            ? TextField(
+                                controller: _titleCtrl,
+                                focusNode: _titleFocus,
+                                maxLines: 1,
+                                textInputAction: TextInputAction.done,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                ),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 4,
+                                  ),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                ),
+                                onSubmitted: (_) => _commitRename(),
+                                onTapOutside: (_) => _commitRename(),
+                              )
+                            : GestureDetector(
+                                onTap: selMode ? null : _startEditing,
+                                behavior: HitTestBehavior.opaque,
+                                child: Text(
+                                  doc.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                        const SizedBox(height: 2),
+                        Text(
+                          dateLabel,
                           style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: Colors.black87,
-                          ),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
-                            ),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                          ),
-                          onSubmitted: (_) => _commitRename(),
-                          onTapOutside: (_) => _commitRename(),
-                        )
-                      : GestureDetector(
-                          onTap: selMode ? null : _startEditing,
-                          behavior: HitTestBehavior.opaque,
-                          child: Text(
-                            doc.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Colors.black87,
-                            ),
+                            fontSize: 10,
+                            color: Colors.grey,
                           ),
                         ),
-                  const SizedBox(height: 2),
-                  Text(
-                    dateLabel,
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      ],
+                    ),
                   ),
+                  // Menu kebab (3 points) — caché en mode sélection,
+                  // sinon expose Télécharger + Supprimer.
+                  if (!selMode)
+                    PopupMenuButton<String>(
+                      tooltip: 'Actions',
+                      icon: const Icon(
+                        LucideIcons.moreVertical,
+                        size: 18,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      padding: EdgeInsets.zero,
+                      splashRadius: 18,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      onSelected: (value) {
+                        if (value == 'download') {
+                          widget.onDownload();
+                        } else if (value == 'delete') {
+                          widget.onDelete();
+                        }
+                      },
+                      itemBuilder: (ctx) => const [
+                        PopupMenuItem<String>(
+                          value: 'download',
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.download,
+                                size: 16,
+                                color: _kDarkPurple,
+                              ),
+                              SizedBox(width: 10),
+                              Text('Télécharger'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuDivider(),
+                        PopupMenuItem<String>(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.trash2,
+                                size: 16,
+                                color: Colors.red,
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Supprimer',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -2259,40 +2310,6 @@ class _SyncBadge extends StatelessWidget {
   }
 }
 
-class _IconButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String tooltip;
-  final VoidCallback onPressed;
-
-  const _IconButton({
-    required this.icon,
-    required this.color,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 1,
-      child: InkWell(
-        onTap: onPressed,
-        customBorder: const CircleBorder(),
-        child: Tooltip(
-          message: tooltip,
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: Icon(icon, size: 14, color: color),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
@@ -2592,6 +2609,18 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     try {
       final bytes = await annotator.exportFlatPng();
       if (bytes == null) return;
+      // Web : pas de filesystem → on enqueue directement les bytes via
+      // la variante `enqueueAnnotatedReuploadBytes` qui les encode en
+      // data URL côté SQLite et dans le payload de sync.
+      if (kIsWeb) {
+        await DocumentRepository().enqueueAnnotatedReuploadBytes(
+          documentId: widget.doc.id,
+          bytes: bytes,
+        );
+        return;
+      }
+      // Native : on écrit un fichier `.flat.png` à côté de l'original
+      // puis on enqueue par chemin disque (parité avec l'historique).
       final localPath = widget.doc.localPath;
       if (localPath == null || localPath.isEmpty) return;
       final flatPath = '$localPath.flat.png';
@@ -2863,8 +2892,9 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     final isImage = _looksLikeImage();
     final isPdf = _looksLikePdf();
 
-    // Image locale → annotation directe.
-    if (isImage &&
+    // Image locale (natif) → annotation directe sur le fichier disque.
+    if (!kIsWeb &&
+        isImage &&
         doc.localPath != null &&
         doc.localPath!.isNotEmpty &&
         File(doc.localPath!).existsSync()) {
@@ -2874,8 +2904,26 @@ class _PreviewScreenState extends State<_PreviewScreen> {
         onChanged: () => setState(() {}),
       );
     }
-    // Image distante → on télécharge via MediaCacheService pour obtenir un
-    // fichier local, puis on active l'annotation dessus.
+    // Image avec dataUrl local (web, doc importé offline pas encore poussé)
+    // → annotation directe sur les bytes décodés.
+    if (kIsWeb && isImage && doc.dataUrl != null && doc.dataUrl!.isNotEmpty) {
+      final dataUrl = doc.dataUrl!;
+      final comma = dataUrl.indexOf(',');
+      if (comma > 0) {
+        try {
+          final bytes = base64Decode(dataUrl.substring(comma + 1));
+          return _ImageAnnotator(
+            key: _annotatorKey,
+            imageBytes: bytes,
+            onChanged: () => setState(() {}),
+          );
+        } catch (_) {
+          // dataUrl mal formé → on tombe sur l'URL distante.
+        }
+      }
+    }
+    // Image distante → on télécharge via MediaCacheService (fichier sur
+    // natif, bytes sur web), puis on active l'annotation dessus.
     if (isImage && doc.url != null && doc.url!.isNotEmpty) {
       return _RemoteImageAnnotatorWrapper(
         url: doc.url!,
@@ -2906,11 +2954,16 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     }
 
     // PDF distant sur web → on télécharge les bytes (cache SQLite +
-    // auth-aware) et on les rend via `PdfDocument.openData` en lecture
-    // seule. Sans ce path, le PWA iPad affichait un panneau "Aperçu non
-    // disponible" alors qu'on a tout ce qu'il faut côté browser.
+    // auth-aware), on rend la page courante en PNG via `pdfx
+    // .openData` puis on l'enveloppe dans `_ImageAnnotator` (mode
+    // bytes) pour permettre le dessin au stylet. Le re-upload du
+    // résultat flattened passe par `enqueueAnnotatedReuploadBytes`.
     if (kIsWeb && isPdf) {
-      return _WebPdfViewer(doc: doc);
+      return _WebPdfAnnotatorWrapper(
+        doc: doc,
+        annotatorKey: _annotatorKey,
+        onChanged: () => setState(() {}),
+      );
     }
 
     return _unsupportedPanel();
@@ -3610,7 +3663,12 @@ class _RemoteImageAnnotatorWrapper extends StatefulWidget {
 
 class _RemoteImageAnnotatorWrapperState
     extends State<_RemoteImageAnnotatorWrapper> {
+  /// Mode natif : `File` issu du cache filesystem.
   File? _file;
+
+  /// Mode web : bytes issus du cache SQLite (`webCachedFetch`).
+  Uint8List? _bytes;
+
   bool _failed = false;
 
   @override
@@ -3624,15 +3682,29 @@ class _RemoteImageAnnotatorWrapperState
     super.didUpdateWidget(old);
     if (old.url != widget.url) {
       _file = null;
+      _bytes = null;
       _failed = false;
       _load();
     }
   }
 
   Future<void> _load() async {
-    // Passe l'auth `X-App-Session` au fetch pour que les URLs privées
-    // (`/api/mobile-documents/<id>/content`, mode nocodb) ne renvoient
-    // pas un 401 silencieux qui mettait l'annotation en `_failed`.
+    // Web : fetch bytes via le cache SQLite (`dart:io File` n'existe pas
+    // dans le navigateur). Native : fetch File via le cache filesystem.
+    // Dans les deux cas on passe l'auth `X-App-Session` pour que les URLs
+    // privées `/api/mobile-documents/<id>/content` ne renvoient pas 401.
+    if (kIsWeb) {
+      final bytes = await MediaCacheService.instance.webCachedFetch(
+        widget.url,
+        headers: MediaCacheService.authHeaders(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _bytes = bytes;
+        _failed = bytes == null;
+      });
+      return;
+    }
     final file = await MediaCacheService().fetch(
       widget.url,
       headers: MediaCacheService.authHeaders(),
@@ -3647,7 +3719,7 @@ class _RemoteImageAnnotatorWrapperState
   @override
   Widget build(BuildContext context) {
     if (_failed) return widget.fallback;
-    if (_file == null) {
+    if (_file == null && _bytes == null) {
       return Container(
         color: Colors.grey.shade900,
         alignment: Alignment.center,
@@ -3656,14 +3728,21 @@ class _RemoteImageAnnotatorWrapperState
     }
     return _ImageAnnotator(
       key: widget.annotatorKey,
-      imagePath: _file!.path,
+      imagePath: _file?.path,
+      imageBytes: _bytes,
       onChanged: widget.onChanged,
     );
   }
 }
 
 class _ImageAnnotator extends StatefulWidget {
-  final String imagePath;
+  /// Chemin disque de l'image — mode natif (`dart:io File`).
+  final String? imagePath;
+
+  /// Bytes de l'image — mode web (pas de filesystem accessible). Au moins
+  /// l'un des deux doit être fourni, sinon le widget rend un placeholder.
+  final Uint8List? imageBytes;
+
   final VoidCallback onChanged;
 
   /// Si fourni, ces strokes sont utilisés au démarrage au lieu de charger
@@ -3674,15 +3753,20 @@ class _ImageAnnotator extends StatefulWidget {
 
   /// Si false, [saveAnnotation] n'écrit pas sur disque — le parent s'en
   /// charge lui-même via sa propre logique (ex: flush multi-page au Save).
+  /// Forcé `false` automatiquement quand `imagePath` est null (web mode).
   final bool autoPersistToDisk;
 
   const _ImageAnnotator({
     super.key,
-    required this.imagePath,
+    this.imagePath,
+    this.imageBytes,
     required this.onChanged,
     this.initialStrokes,
     this.autoPersistToDisk = true,
-  });
+  }) : assert(
+          imagePath != null || imageBytes != null,
+          '_ImageAnnotator: provide imagePath OR imageBytes',
+        );
 
   @override
   State<_ImageAnnotator> createState() => _ImageAnnotatorState();
@@ -3701,7 +3785,18 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   static const Color _color = Color(0xFF111827); // noir (dark gray)
   final double _strokeWidth = 2.0;
 
+  /// Mode natif uniquement — sur web (`imagePath == null`) on ne persiste
+  /// rien sur disque (les annotations vivent en mémoire jusqu'au Save qui
+  /// flatten + ré-upload).
   String get _annotationPath => '${widget.imagePath}.annotation.json';
+
+  /// True quand on tourne en mode "bytes only" (web). Dans ce mode :
+  ///   • Pas de chargement depuis le disque (`_loadAnnotation` no-op)
+  ///   • Pas d'écriture sur le disque (`saveAnnotation` met juste à jour
+  ///     `_savedHash` pour faire disparaître le badge "Modifié")
+  ///   • Le rendu image utilise `Image.memory(bytes)` au lieu de
+  ///     `Image.file`
+  bool get _webMode => widget.imagePath == null;
 
   bool get hasUnsavedChanges => _hashStrokes(_strokes) != _savedHash;
 
@@ -3717,12 +3812,15 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
       // Seed depuis la mémoire (changement de page PDF) — pas de disque.
       _strokes = List.of(seeded);
       _savedHash = _hashStrokes(_strokes);
-    } else {
+    } else if (!_webMode) {
       _loadAnnotation();
     }
+    // Web mode : pas de chargement depuis disque (impossible dans le
+    // navigateur). Les annotations démarrent vides à chaque ouverture.
   }
 
   Future<void> _loadAnnotation() async {
+    if (_webMode) return; // garde-fou : appelé indirectement, ne fait rien.
     final f = File(_annotationPath);
     if (!await f.exists()) return;
     try {
@@ -3757,7 +3855,9 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
       // Mode "piloté par le parent" (ex: PDF multi-pages) → ne touche pas
       // au disque, mais met juste à jour le hash pour indiquer que les
       // modifs courantes sont considérées comme sauvegardées.
-      if (!widget.autoPersistToDisk) {
+      // Idem en mode web (`_webMode`) : pas de filesystem, le re-upload
+      // de l'image flattenée se fait via le bouton Save du _PreviewScreen.
+      if (!widget.autoPersistToDisk || _webMode) {
         if (!mounted) return;
         setState(() => _savedHash = _hashStrokes(_strokes));
         widget.onChanged();
@@ -3916,8 +4016,13 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   }
 
   Widget _buildImageWithOverlay() {
-    final file = File(widget.imagePath);
-    final img = Image.file(file, fit: BoxFit.contain);
+    // Charge l'image depuis bytes (web) OU disque (natif). Avant ce switch
+    // l'annotation web était impossible car `Image.file` (et `dart:io File`)
+    // ne fonctionnent pas dans le navigateur — l'utilisateur tombait sur un
+    // placeholder vide.
+    final Image img = _webMode
+        ? Image.memory(widget.imageBytes!, fit: BoxFit.contain)
+        : Image.file(File(widget.imagePath!), fit: BoxFit.contain);
     // Enroule image + canvas dans le même widget pour que le RepaintBoundary
     // capture tout en cohérence.
     return LayoutBuilder(

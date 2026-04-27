@@ -174,6 +174,87 @@ class DocumentRepository {
     return _mapRow(row);
   }
 
+  /// Variante **web** : prend les bytes flattened directement (pas de
+  /// filesystem dans le navigateur). Encode en data URL et enqueue une
+  /// op d'upload qui sera ré-hydratée par `_processDocumentOperation`
+  /// via le champ `dataUrl` du payload. Le `documentLocalId` reste le
+  /// même, donc côté NocoDB on remplace l'asset existant (parité avec
+  /// la variante natif `enqueueAnnotatedReupload`).
+  Future<void> enqueueAnnotatedReuploadBytes({
+    required String documentId,
+    required Uint8List bytes,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final row = rows.first;
+    final patientId = row['patient_local_id'] as String;
+    final title = row['title'] as String? ?? 'Document';
+    final originalName = row['file_name'] as String? ?? 'document.bin';
+    final flatName =
+        '${p.basenameWithoutExtension(originalName)}-annoté.png';
+    final dataUrl = 'data:image/png;base64,${base64Encode(bytes)}';
+    final now = DateTime.now().toIso8601String();
+    final tagsJson = row['tags_json'] as String? ?? '[]';
+    final tags = (jsonDecode(tagsJson) as List<dynamic>).cast<String>();
+
+    // Annule toute upload en attente pour ce doc — on remplace par la
+    // version annotée.
+    await db.delete(
+      'sync_operations',
+      where:
+          'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
+      whereArgs: [
+        documentId,
+        'document',
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.failed.name,
+      ],
+    );
+
+    // Persiste le data URL côté SQLite local pour que la vignette du
+    // doc reflète immédiatement la version annotée même avant que la
+    // sync remote ne s'achève.
+    await db.update(
+      'documents',
+      {
+        'local_file_data_url': dataUrl,
+        'sync_state': SyncState.pendingSync.name,
+        'updated_at': now,
+      },
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+    );
+
+    await db.insert('sync_operations', {
+      'id': 'sync_${documentId}_${DateTime.now().microsecondsSinceEpoch}',
+      'entity_type': 'document',
+      'entity_local_id': documentId,
+      'operation_type': 'upload_file',
+      'payload_json': jsonEncode({
+        'patientLocalId': patientId,
+        'documentLocalId': documentId,
+        'dataUrl': dataUrl,
+        'title': title,
+        'fileName': flatName,
+        'mimeType': 'image/png',
+        'tags': tags,
+      }),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now,
+      'updated_at': now,
+    });
+
+    SyncEngine().notify();
+  }
+
   /// Re-upload d'un document existant avec le même `documentLocalId` et un
   /// fichier "flattened" (image + annotations aplaties). Le serveur remplace
   /// l'asset existant sur dedup par `documentLocalId`. Appelé après un save
