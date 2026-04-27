@@ -556,7 +556,21 @@ class _MainScreenState extends State<MainScreen> {
           onSyncNow: _handleSyncNow,
           onSelectDossier: _handleSelectDossier,
           userName: widget.currentUser.displayName,
-          onNavigateToDossiers: () => _handleViewChange('dossiers'),
+          // Le bouton « Voir tout » du dashboard renvoie TOUJOURS vers
+          // la liste plate « Mes dossiers » — on ne restaure pas le
+          // dernier dossier visité (comportement par défaut de
+          // `_handleViewChange('dossiers')` qui restaurerait le
+          // dossier_detail mémorisé). On contourne en réinitialisant
+          // d'abord l'état profond, puis on délègue.
+          onNavigateToDossiers: () {
+            _pushHistory();
+            setState(() {
+              _activeView = 'dossiers';
+              _selectedDossier = null;
+              _lastDossierTreeView = null;
+              _lastDossierTreeSelected = null;
+            });
+          },
         );
       case 'create_beneficiary':
         return CreateBeneficiaryScreen(
