@@ -703,7 +703,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               ),
             ] else
               const Text(
-                'Générer le rapport',
+                'Générer',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 13,
