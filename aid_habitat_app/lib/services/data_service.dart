@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
@@ -328,6 +329,16 @@ class DataService {
   /// Supprime un document. Voir [DocumentRepository.deleteDocument].
   Future<void> deleteDocument(String documentId) async {
     await _documentRepository.deleteDocument(documentId);
+  }
+
+  /// Génère le rapport PDF côté serveur et renvoie ses bytes + nom
+  /// de fichier proposé. Voir
+  /// [NocodbApiClient.downloadVisitReport]. Le caller est responsable
+  /// de l'ouverture / sauvegarde / partage des bytes — ce service ne
+  /// touche pas au filesystem.
+  Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats})>
+      downloadVisitReport({required String dossierId}) async {
+    return _nocodbApiClient.downloadVisitReport(dossierId: dossierId);
   }
 
   Future<String?> fetchNoteDrawingJson({

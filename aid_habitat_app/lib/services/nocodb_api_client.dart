@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -510,6 +511,67 @@ class NocodbApiClient {
       throw Exception('Unexpected note payload');
     }
     return notePage;
+  }
+
+  /// POST /api/reports/visit/:dossierId — génère le PDF du rapport
+  /// de visite côté serveur (cf. server/reports/generateVisitReport.mjs)
+  /// et retourne directement les bytes du PDF.
+  ///
+  /// Le serveur fait :
+  ///   1. Vérifie l'auth via X-App-Session
+  ///   2. Récupère le dossier scopé pour l'utilisateur
+  ///   3. Charge le template PDF + le mapping JSON
+  ///   4. Remplit les champs AcroForm avec les valeurs du dossier
+  ///   5. Aplatit le formulaire (PDF non-modifiable)
+  ///   6. Renvoie `application/pdf`
+  ///
+  /// L'header `X-Report-Stats` contient un JSON `{applied, missingField,
+  /// missingValue}` utile en debug pour diagnostiquer une dérive de
+  /// mapping (champ renommé côté template par exemple).
+  Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats})>
+      downloadVisitReport({required String dossierId}) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _runWithTransientGuard(
+      'Visit report generation',
+      () => _client
+          .post(
+            Uri.parse('$_baseUrl/api/reports/visit/$dossierId'),
+            headers: _headers,
+          )
+          .timeout(_uploadTimeout),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Génération du rapport échouée (${response.statusCode}): '
+        '${response.body}',
+      );
+    }
+    // Filename : on extrait depuis Content-Disposition si fourni,
+    // sinon fallback "rapport.pdf".
+    String fileName = 'rapport.pdf';
+    final disposition = response.headers['content-disposition'] ?? '';
+    final match = RegExp(r'filename="?([^";]+)"?').firstMatch(disposition);
+    if (match != null) {
+      try {
+        fileName = Uri.decodeComponent(match.group(1) ?? fileName);
+      } catch (_) {
+        fileName = match.group(1) ?? fileName;
+      }
+    }
+    Map<String, dynamic>? stats;
+    final statsHeader = response.headers['x-report-stats'];
+    if (statsHeader != null && statsHeader.isNotEmpty) {
+      try {
+        stats = jsonDecode(statsHeader) as Map<String, dynamic>;
+      } catch (_) {}
+    }
+    return (
+      bytes: response.bodyBytes,
+      fileName: fileName,
+      stats: stats,
+    );
   }
 
   Future<List<Map<String, dynamic>>> fetchDocuments(String patientId) async {

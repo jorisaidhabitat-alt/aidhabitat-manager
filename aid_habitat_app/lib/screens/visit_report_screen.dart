@@ -1,8 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 // Desktop only (macOS/Windows/Linux). Sur web + mobile, un stub vide est
 // importé — les appels sont shuntés par un garde `kIsWeb` avant exécution.
 import '../services/multi_window_stub.dart'
@@ -14,6 +19,7 @@ import '../services/data_service.dart';
 import '../components/beneficiary_badges.dart';
 import '../components/notes_widget.dart';
 import '../components/soft_transitions.dart';
+import '../services/web_file_saver.dart';
 import 'visit_report/beneficiary_tab.dart';
 import 'visit_report/context_tab.dart';
 import 'visit_report/mesures_tab.dart';
@@ -85,6 +91,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   // flags de la page de note actuellement visible (NotesWidget pousse
   // les flags à chaque changement de page via `onMedicalFlagsChanged`).
   Set<int> _medicalFlagNumbers = <int>{};
+
+  /// True quand le bouton « Générer le rapport » est en cours d'appel.
+  /// Affiche un spinner et bloque les double-taps.
+  bool _isGeneratingReport = false;
 
   static const List<String> _tabs = [
     'Bénéficiaire',
@@ -614,6 +624,166 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
+  /// Bouton violet « Générer le rapport » à droite de l'entête VAD.
+  /// Appelle [_generateReport] qui invoque le serveur, récupère le
+  /// PDF et le pousse vers le téléchargement local (web) ou la
+  /// boîte « Enregistrer sous » / partage natif (iOS/Android/macOS).
+  ///
+  /// Pendant l'appel : le bouton affiche un spinner blanc et est
+  /// désactivé pour éviter les double-taps.
+  Widget _buildGenerateReportButton() {
+    return InkWell(
+      onTap: _isGeneratingReport ? null : _generateReport,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        decoration: BoxDecoration(
+          color: _isGeneratingReport
+              ? const Color(0xFF9888B5)
+              : const Color(0xFF7C6DAA),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF7C6DAA).withValues(alpha: 0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isGeneratingReport)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            else
+              const Icon(
+                LucideIcons.fileDown,
+                size: 18,
+                color: Colors.white,
+              ),
+            const SizedBox(width: 9),
+            Text(
+              _isGeneratingReport
+                  ? 'Génération…'
+                  : 'Générer le rapport',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Déclenche la génération du PDF côté serveur puis sauvegarde le
+  /// résultat en local. La fonction est responsable du feedback UX
+  /// (spinner, snackbar succès/erreur) — elle n'enchaîne PAS encore
+  /// vers Drive ni vers NocoDB (Chunk 5.2).
+  Future<void> _generateReport() async {
+    if (_isGeneratingReport) return;
+    setState(() => _isGeneratingReport = true);
+    try {
+      final result = await _dataService.downloadVisitReport(
+        dossierId: _dossier.id,
+      );
+      // Sur web : déclenche un download navigateur via l'helper
+      // partagé (même chemin que DocumentsScreen).
+      if (kIsWeb) {
+        final ok = await triggerWebFileDownload(
+          bytes: result.bytes,
+          fileName: result.fileName,
+          mimeType: 'application/pdf',
+        );
+        if (!ok) {
+          _showReportError('Téléchargement bloqué par le navigateur.');
+          return;
+        }
+        _showReportSuccess(result);
+        return;
+      }
+
+      // Native iOS/iPadOS : `FilePicker.platform.saveFile` n'a pas
+      // d'UI native sur iOS — on écrit dans le répertoire temporaire
+      // de l'app puis on ouvre la sheet de partage iOS qui propose
+      // « Enregistrer dans Fichiers », « Mail », « AirDrop »…
+      // Sur macOS / Windows / Linux desktop : `saveFile` ouvre une
+      // vraie boîte de dialogue.
+      if (Platform.isIOS || Platform.isAndroid) {
+        final tmp = await getTemporaryDirectory();
+        final path =
+            '${tmp.path}/${result.fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')}';
+        await File(path).writeAsBytes(result.bytes, flush: true);
+        await Share.shareXFiles(
+          [XFile(path, name: result.fileName)],
+          subject: result.fileName,
+        );
+        _showReportSuccess(result);
+        return;
+      }
+
+      // Desktop natif (macOS / Windows / Linux) : vraie save dialog.
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Enregistrer le rapport',
+        fileName: result.fileName,
+        bytes: result.bytes,
+      );
+      if (savedPath == null) {
+        // Annulation utilisateur — pas un échec.
+        return;
+      }
+      _showReportSuccess(result, savedPath: savedPath);
+    } catch (error) {
+      _showReportError('Génération impossible : $error');
+    } finally {
+      if (mounted) setState(() => _isGeneratingReport = false);
+    }
+  }
+
+  void _showReportSuccess(
+    ({Uint8List bytes, String fileName, Map<String, dynamic>? stats}) result,
+    {String? savedPath}
+  ) {
+    if (!mounted) return;
+    final stats = result.stats;
+    final applied = stats?['applied'];
+    final missingValue = stats?['missingValue'];
+    final extra = (applied != null && missingValue != null)
+        ? ' ($applied champs remplis, $missingValue à compléter)'
+        : '';
+    final pathSuffix = savedPath != null ? '\n→ $savedPath' : '';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Rapport généré : ${result.fileName}$extra$pathSuffix'),
+        backgroundColor: const Color(0xFF166534),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _showReportError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFFB91C1C),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+
   /// Habille l'onglet [tabName] de sa carte blanche + son panneau de
   /// notes latéral quand l'onglet a des sous-sections (cf.
   /// [_tabSubsections]). Sinon retourne juste la carte (Mesures, Plans,
@@ -817,6 +987,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     ],
                   ),
                 ),
+                // Bouton violet « Générer le rapport » à droite de
+                // l'entête VAD — appelle le serveur et déclenche le
+                // téléchargement du PDF (cf. _generateReport).
+                const SizedBox(width: 12),
+                _buildGenerateReportButton(),
               ],
             ),
             const SizedBox(height: 12),
