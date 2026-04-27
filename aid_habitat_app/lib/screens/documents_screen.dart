@@ -3145,29 +3145,38 @@ class _TopbarButton extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Web PDF viewer (lecture seule)
+// Web PDF viewer + annotator (mode bytes)
 // ---------------------------------------------------------------------------
 
-/// Visualise un PDF côté **web** en téléchargeant les bytes via
-/// `MediaCacheService.webCachedFetch` (cache SQLite + auth `X-App-Session`)
-/// puis en utilisant `pdfx` (PdfDocument.openData) pour rendre chaque page
-/// en raster.
+/// Visualise + annote un PDF côté **web**. Chargement des bytes via
+/// `MediaCacheService.webCachedFetch` (cache SQLite + auth
+/// `X-App-Session`), rendu de chaque page en PNG via `pdfx` (PdfDocument
+/// .openData), puis enveloppe la page courante dans un `_ImageAnnotator`
+/// (mode bytes) pour permettre le dessin au stylet.
 ///
-/// Lecture seule : l'annotation au stylet n'est pas supportée ici car
-/// `_ImageAnnotator` et `_PdfAnnotatorWrapper` reposent sur `File` IO pour
-/// persister les PNGs annotés (`<pdf>.page$N.png` + `<pdf>.page$N.png.
-/// annotation.json`). L'annotation web reste TODO ; en attendant, l'ergo
-/// peut basculer sur macOS pour annoter, et le PWA iPad permet au moins
-/// la consultation.
-class _WebPdfViewer extends StatefulWidget {
-  const _WebPdfViewer({required this.doc});
+/// Le re-upload du résultat flattened (page courante annotée) passe par
+/// `DocumentRepository.enqueueAnnotatedReuploadBytes` — déclenché depuis
+/// le bouton Save du `_PreviewScreen` via `exportFlatPng()`.
+///
+/// Limitation : le flatten est par-page (idem natif). Annoter plusieurs
+/// pages nécessite de sauvegarder une à une.
+class _WebPdfAnnotatorWrapper extends StatefulWidget {
+  const _WebPdfAnnotatorWrapper({
+    required this.doc,
+    required this.annotatorKey,
+    required this.onChanged,
+  });
+
   final DocItem doc;
+  final GlobalKey<_ImageAnnotatorState> annotatorKey;
+  final VoidCallback onChanged;
 
   @override
-  State<_WebPdfViewer> createState() => _WebPdfViewerState();
+  State<_WebPdfAnnotatorWrapper> createState() =>
+      _WebPdfAnnotatorWrapperState();
 }
 
-class _WebPdfViewerState extends State<_WebPdfViewer> {
+class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
   PdfDocument? _doc;
   int _currentPage = 1;
   int _totalPages = 1;
