@@ -321,19 +321,62 @@ class _FundCardState extends State<_FundCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ---------- Hero logo ----------
-              // Fond blanc uni — pas de dégradé, pas de teinte violette
-              // (demande utilisateur : laisser le logo respirer sur du
-              // blanc pur, comme dans la Bibliothèque).
-              Container(
+              // Fond blanc uni — laisser respirer le logo. Le numéro de
+              // téléphone est superposé en bas-gauche en pastille noire
+              // semi-transparente (parité avec le tag overlay des cartes
+              // Bibliothèque).
+              SizedBox(
                 height: 120,
                 width: double.infinity,
-                color: Colors.white,
-                padding: const EdgeInsets.all(14),
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: _FundLogoImage(fund: fund),
-                  ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.all(14),
+                      child: Center(
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 12),
+                          child: _FundLogoImage(fund: fund),
+                        ),
+                      ),
+                    ),
+                    if (fund.phone.isNotEmpty)
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                LucideIcons.phone,
+                                size: 10,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                fund.phone,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
 
@@ -355,34 +398,21 @@ class _FundCardState extends State<_FundCard> {
                           letterSpacing: -0.3,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(LucideIcons.clock3,
-                              size: 11, color: Colors.grey.shade500),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              widget.dateLabel,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.grey.shade500,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (fund.phone.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _HeroChip(
-                          icon: LucideIcons.phone,
-                          label: fund.phone,
+                      const SizedBox(height: 6),
+                      // Date en UPPERCASE + letter-spacing 1.2 — même
+                      // format que le tag secondaire des cartes
+                      // Bibliothèque (info sous le titre).
+                      Text(
+                        widget.dateLabel.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF94A3B8),
+                          letterSpacing: 1.2,
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
@@ -395,40 +425,8 @@ class _FundCardState extends State<_FundCard> {
   }
 }
 
-class _HeroChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _HeroChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(50),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: const Color(0xFF475569)),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF475569),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// _HeroChip retiré : remplacé par une pastille noire semi-transparente
+// superposée sur le hero (parité visuelle avec les cartes Bibliothèque).
 
 class _RetirementFundDialog extends StatefulWidget {
   const _RetirementFundDialog({required this.fund, required this.onSaved});
