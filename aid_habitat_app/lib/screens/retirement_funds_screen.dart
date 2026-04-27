@@ -134,30 +134,41 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
                 ),
               ),
               const SizedBox(width: 24),
+              // Style aligné avec la barre de recherche de
+              // "Mes dossiers" : pastille pill (radius 999), fond blanc,
+              // contour gris #E2E8F0, icône search + champ sans
+              // bordures internes.
               SizedBox(
                 width: 320,
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: 'Klésia, AG2R, Pro BTP...',
-                    prefixIcon: const Icon(LucideIcons.search),
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
+                child: Container(
+                  height: 52,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.search,
+                          size: 18, color: Color(0xFF64748B)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(
+                            hintText: 'Klésia, AG2R, Pro BTP...',
+                            hintStyle:
+                                TextStyle(color: Color(0xFF94A3B8)),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            isCollapsed: true,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
