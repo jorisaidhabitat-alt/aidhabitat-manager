@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/beneficiary_badges.dart';
+import '../components/beneficiary_palettes.dart';
 import '../components/commune_field_group.dart';
 import '../components/form_widgets.dart';
 import '../components/notes_widget.dart';
@@ -487,7 +488,7 @@ class _DossierScreenState extends State<DossierScreen> {
           child: _QuickActionButton(
             icon: LucideIcons.home,
             label: 'VAD',
-            subLabel: 'Relevés, mesures, photos...',
+            subLabel: 'Relevé de visite',
             onTap: () async {
               // Prefer the in-shell navigation (callback) so the left
               // sidebar stays visible. Fallback to Navigator.push only if
@@ -709,7 +710,9 @@ class _DossierScreenState extends State<DossierScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      _EpciPillSmall(label: epciLabel),
+                      // Même widget que la liste "Mes dossiers" pour
+                      // garantir la même empreinte visuelle.
+                      EpciBadge(label: epciLabel),
                     ],
                     // "Commentaire du projet" retiré du bloc Bénéficiaire
                     // (demande utilisateur) : s'il existe, il est affiché
@@ -1009,58 +1012,10 @@ class _PlainField extends StatelessWidget {
 }
 
 /// Petite pastille "communauté de communes" pour le bloc Bénéficiaire.
-/// Utilise la même palette pastel que `_EpciBadge` de la liste des
-/// dossiers (cohérence visuelle entre la liste et le détail d'un
-/// dossier — demande utilisateur : fonds pastel uniquement, texte
-/// slate foncé pour la lisibilité).
-class _EpciPillSmall extends StatelessWidget {
-  final String label;
-  const _EpciPillSmall({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = _pastelEpciBgFor(label);
-    // Mêmes dimensions que `_EpciBadge` dans la liste des dossiers
-    // (padding 12×6, fontSize 12) → cohérence visuelle entre la liste
-    // et l'en-tête du dossier détaillé.
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF334155),
-        ),
-      ),
-    );
-  }
-}
-
-/// Palette "Équilibrée" partagée entre la liste des dossiers et le
-/// détail Bénéficiaire — même hash → même couleur pour un EPCI donné.
-/// 5 tons pastel doux pour éviter le code couleur clinique.
-const List<Color> _kPastelEpciBgs = [
-  Color(0xFFC8E6D0), // mint
-  Color(0xFFF5D6B8), // pêche
-  Color(0xFFD9EAF3), // ciel
-  Color(0xFFE8E2F0), // lavande
-  Color(0xFFF0E4CC), // sable
-];
-
-/// Hachage déterministe label → couleur de fond pastel.
-Color _pastelEpciBgFor(String label) {
-  if (label.isEmpty) return const Color(0xFFF1F5F9);
-  int hash = 0;
-  for (final rune in label.runes) {
-    hash = (hash * 31 + rune) & 0x7FFFFFFF;
-  }
-  return _kPastelEpciBgs[hash % _kPastelEpciBgs.length];
-}
+// (Ancien _EpciPillSmall + palette locale supprimés — le bloc
+// Bénéficiaire utilise désormais le widget partagé `EpciBadge` de
+// `beneficiary_palettes.dart`, identique à celui de la liste "Mes
+// dossiers". Une seule source de vérité pour le visuel des EPCI.)
 
 // Anciens widgets _ReadonlyField / _IncomeBadge et helpers _sync*
 // retirés : le header du dossier et le bloc Bénéficiaire utilisent
