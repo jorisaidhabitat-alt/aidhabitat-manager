@@ -527,14 +527,18 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   Future<void> _previewDocument(DocItem doc) async {
-    // Sur web, toutes les preview d'images passent par la lightbox simple
-    // (InteractiveViewer + bouton fermeture). Le `_PreviewScreen` complet
-    // (PDF controller, annotator) repose sur `dart:io File` qui n'existe
-    // pas dans le navigateur et resterait bloqué sur "loading".
-    if (kIsWeb && doc.type == 'image') {
-      await _showWebImagePreview(doc);
-      return;
-    }
+    // Tous les types passent désormais par `_PreviewScreen` (toolbar
+    // d'annotation + bouton Save + bouton Download + bouton Delete).
+    // Avant, le web shuntait les images vers une lightbox simple
+    // `_showWebImagePreview` qui ne supportait pas l'annotation au
+    // stylet — l'utilisateur signalait à juste titre qu'il ne pouvait
+    // plus dessiner depuis la version Vercel.
+    //
+    // `_PreviewScreen._buildPreviewBody` détecte `kIsWeb` et route :
+    //   - Image (data URL local OU URL distante) → `_ImageAnnotator`
+    //     mode bytes (rendu via `Image.memory`, annotations en mémoire)
+    //   - PDF → `_WebPdfAnnotatorWrapper` (rasterise chaque page via
+    //     `pdfx.openData` + wrap dans `_ImageAnnotator` mode bytes)
     // Quick-Look style pop-up : dialog centré, fond semi-transparent, escape
     // pour fermer. On utilise une barrier colorée + une Dialog translucide
     // qui laisse voir le bureau autour.
