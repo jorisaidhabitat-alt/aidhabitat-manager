@@ -277,7 +277,7 @@ class _WikiScreenState extends State<WikiScreen> {
                       crossAxisSpacing: 16,
                       // Hauteur alignée sur Caisses (+10 px pour le hero
                       // image plus haut qu'un logo).
-                      mainAxisExtent: 240,
+                      mainAxisExtent: 260,
                     ),
                     itemCount: _filteredItems.length,
                     itemBuilder: (context, index) {
@@ -950,14 +950,43 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
+/// Étiquette de date pour une carte bibliothèque : "Modifié le …" si
+/// `updatedAt` diffère de `createdAt`, sinon "Ajouté le …", sinon
+/// "Nouveau". Format DD/MM/YYYY. Symétrique de `_buildDateLabel` côté
+/// Caisses de retraite.
+String _wikiDateLabel(WikiItem item) {
+  final created = item.createdAt;
+  final updated = item.updatedAt;
+  final hasUpdate = updated.isNotEmpty &&
+      updated != created &&
+      DateTime.tryParse(updated) != null;
+  if (hasUpdate) {
+    final formatted = _formatWikiDate(updated);
+    if (formatted != null) return 'Modifié le $formatted';
+  }
+  if (created.isNotEmpty) {
+    final formatted = _formatWikiDate(created);
+    if (formatted != null) return 'Ajouté le $formatted';
+  }
+  return 'Nouveau';
+}
+
+String? _formatWikiDate(String iso) {
+  final date = DateTime.tryParse(iso);
+  if (date == null) return null;
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  return '$day/$month/${date.year}';
+}
+
 /// Carte d'un élément de bibliothèque — coque visuelle alignée sur
 /// `_FundCard` de la page Caisses de retraite (fond blanc, ombre douce,
 /// borderRadius 16, lift au survol, clip antialias).
 ///
 /// Anatomie :
 ///   • Hero (140 px) : image de l'élément cadrée par un fond pastel
-///     dérivé de la catégorie. Tag primaire en superposition bas-gauche.
-///   • Texte : titre 16 px w800 + tag secondaire en 11 px en majuscules.
+///     dérivé de la catégorie. Pas d'overlay.
+///   • Texte : titre 16 px w800 + date uppercase + chip tag primaire.
 class _WikiCard extends StatefulWidget {
   final WikiItem item;
   final String? primaryTag;
@@ -1051,6 +1080,10 @@ class _WikiCardState extends State<_WikiCard> {
                       ),
               ),
               // ---------- Text content ----------
+              // Anatomie identique aux cartes Caisses :
+              //   • titre
+              //   • info (date d'ajout/modif uppercase)
+              //   • widget (pastille avec le tag primaire)
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -1068,17 +1101,58 @@ class _WikiCardState extends State<_WikiCard> {
                           letterSpacing: -0.3,
                         ),
                       ),
+                      const SizedBox(height: 6),
+                      // Date d'ajout / modification — format uppercase,
+                      // identique aux cartes Caisses de retraite.
+                      Text(
+                        _wikiDateLabel(item).toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF94A3B8),
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      // Widget : pastille avec le tag primaire — même
+                      // style que le chip téléphone des cartes Caisses
+                      // (fond gris très clair, texte slate-700).
                       if (widget.primaryTag != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          widget.primaryTag!.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF94A3B8),
-                            letterSpacing: 1.2,
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(50),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  LucideIcons.tag,
+                                  size: 12,
+                                  color: Color(0xFF475569),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    widget.primaryTag!,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
