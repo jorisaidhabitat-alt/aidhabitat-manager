@@ -96,6 +96,11 @@ class FormTextField extends StatefulWidget {
   /// Bénéficiaire ont besoin d'un libellé violet même en mode édition.
   final Color? labelColor;
 
+  /// Taille du libellé au-dessus du champ (défaut : 13). Surchargeable
+  /// pour les contextes où le libellé doit être plus visible (bloc
+  /// Informations Bénéficiaire, par ex.).
+  final double? labelSize;
+
   const FormTextField({
     super.key,
     required this.label,
@@ -109,6 +114,7 @@ class FormTextField extends StatefulWidget {
     this.suffix,
     this.maxLines = 1,
     this.labelColor,
+    this.labelSize,
   });
 
   @override

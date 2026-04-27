@@ -686,14 +686,21 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Header sticky : épinglé tout en haut du cadre, fond blanc
+          // opaque pour cacher le contenu qui défile en dessous
+          // (demande utilisateur). Son padding inclut le 16 px du haut
+          // du scroll d'origine pour que la mise en page n'évolue pas.
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: _buildOccupantHeader(idx),
+          ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildOccupantHeader(idx),
-                  const SizedBox(height: 12),
                   perOccupantContent,
                   const SizedBox(height: 24),
                   sharedContent,

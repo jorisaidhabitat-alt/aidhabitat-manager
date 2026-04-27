@@ -78,7 +78,11 @@ class _MesuresTabState extends State<MesuresTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
+        // Header sticky : fond blanc opaque pour parité avec Bénéficiaire
+        // et Contexte de vie (le NotesWidget en dessous ne défile pas
+        // mais on garde le même traitement visuel).
+        Container(
+          color: Colors.white,
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
           child: _buildOccupantHeader(idx),
         ),
