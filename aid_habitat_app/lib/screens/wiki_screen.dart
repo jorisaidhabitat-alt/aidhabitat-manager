@@ -170,54 +170,62 @@ class _WikiScreenState extends State<WikiScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Bandeau d'en-tête : carte blanche avec titre + sous-titre
-              // à gauche et champ de recherche à droite — parité 1:1 avec
-              // l'en-tête de "Caisses de retraite complémentaires".
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Bibliothèque',
-                            style: TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                            ),
+              // En-tête : titre + sous-titre à gauche, champ de recherche
+              // standalone à droite (fond blanc arrondi, pas de carte
+              // englobante). Style aligné avec "Caisses de retraite
+              // complémentaires".
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Bibliothèque',
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Bibliothèque visuelle pour garder des '
-                            'repères de solutions.',
-                            style: TextStyle(color: Colors.grey.shade600),
-                          ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Bibliothèque visuelle pour garder des '
+                          'repères de solutions.',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 24),
-                    SizedBox(
-                      width: 320,
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'Rechercher un élément…',
-                          prefixIcon: const Icon(LucideIcons.search),
-                          filled: true,
-                          fillColor: const Color(0xFFF7F7FA),
-                          border: InputBorder.none,
+                  ),
+                  const SizedBox(width: 24),
+                  SizedBox(
+                    width: 320,
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher un élément…',
+                        prefixIcon: const Icon(LucideIcons.search),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
               const SizedBox(height: 24),
               // Filtres par tag — sous l'en-tête, alignés à gauche.

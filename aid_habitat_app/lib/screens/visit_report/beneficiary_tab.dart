@@ -527,14 +527,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       default:
         section = const SizedBox.shrink();
     }
-    // Slide + fade entre sous-sections — même animation que la nav
-    // top-level. La `KeyedSubtree` indique au SoftSwitcher que le
-    // contenu a changé pour qu'il rejoue la transition.
-    return SoftSwitcher(
-      child: KeyedSubtree(
-        key: ValueKey<int>(_subSectionIndex),
-        child: section,
-      ),
+    // Slide horizontal entre sous-sections (Profil → Foyer → Santé →
+    // Admin) — même sens et même direction que le swap de tabs Material,
+    // pour que le formulaire et le panneau de notes glissent
+    // visuellement comme une seule page qui change.
+    return HorizontalSlideSwitcher(
+      index: _subSectionIndex,
+      child: section,
     );
   }
 
@@ -707,24 +706,20 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            // Le header (prénom de l'occupant courant) bascule lui aussi
-            // avec un fade + slide pour que le changement d'occupant
-            // soit clairement perçu (demande utilisateur).
-            // `fillParent: false` → le header conserve sa taille
-            // intrinsèque (pas de StackFit.expand qui le forcerait à
-            // remplir toute la largeur disponible).
-            child: SoftSwitcher(
+            // Header de l'occupant courant : slide horizontal entre
+            // occupants (gauche ↔ droite suivant la direction du swipe
+            // ou du tap sur les dots). Mêmes sensations qu'un swap
+            // d'onglet TabBarView.
+            child: HorizontalSlideSwitcher(
+              index: idx,
               duration: kSoftFast,
               fillParent: false,
-              child: KeyedSubtree(
-                key: ValueKey<int>(idx),
-                child: _buildOccupantHeader(idx),
-              ),
+              child: _buildOccupantHeader(idx),
             ),
           ),
           Expanded(
-            // Slide + fade entre occupants — appliqué uniquement à la
-            // partie « per occupant ». `sharedContent` (téléphone,
+            // Slide horizontal entre occupants — appliqué uniquement à
+            // la partie « per occupant ». `sharedContent` (téléphone,
             // personne de confiance…) reste statique : on le laisse en
             // dehors du switcher pour éviter le scintillement inutile.
             child: SingleChildScrollView(
@@ -732,12 +727,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SoftSwitcher(
+                  HorizontalSlideSwitcher(
+                    index: idx,
                     fillParent: false,
-                    child: KeyedSubtree(
-                      key: ValueKey<int>(idx),
-                      child: perOccupantContent,
-                    ),
+                    child: perOccupantContent,
                   ),
                   const SizedBox(height: 24),
                   sharedContent,

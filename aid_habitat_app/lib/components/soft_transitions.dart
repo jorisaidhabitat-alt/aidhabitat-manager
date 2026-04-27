@@ -265,3 +265,98 @@ class SoftSwitcher extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// 5. Horizontal slide switcher — same feel as a TabBarView page change
+// ---------------------------------------------------------------------------
+
+/// Switcher qui fait glisser le contenu **horizontalement** (gauche ↔
+/// droite) entre deux états indexés. La direction du slide est déduite
+/// du sens du changement d'index :
+///   • index croissant → le nouveau contenu entre par la droite,
+///     l'ancien sort vers la gauche (sens de lecture occidental, comme
+///     un TabBarView Material classique).
+///   • index décroissant → le nouveau contenu entre par la gauche,
+///     l'ancien sort vers la droite.
+///
+/// Sensations identiques au glissement d'onglet d'un TabBarView, à
+/// utiliser pour synchroniser les transitions de plusieurs zones de la
+/// page (formulaire à gauche + notes à droite, switch d'occupants…).
+class HorizontalSlideSwitcher extends StatefulWidget {
+  const HorizontalSlideSwitcher({
+    super.key,
+    required this.index,
+    required this.child,
+    this.duration = kSoftMedium,
+    this.fillParent = true,
+  });
+
+  /// Index du contenu actuel. Un changement déclenche le slide.
+  final int index;
+  final Widget child;
+  final Duration duration;
+  final bool fillParent;
+
+  @override
+  State<HorizontalSlideSwitcher> createState() =>
+      _HorizontalSlideSwitcherState();
+}
+
+class _HorizontalSlideSwitcherState extends State<HorizontalSlideSwitcher> {
+  /// `+1` → nouveau contenu vient de la droite ; `-1` → vient de la gauche.
+  int _direction = 1;
+
+  @override
+  void didUpdateWidget(covariant HorizontalSlideSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.index != oldWidget.index) {
+      _direction = widget.index > oldWidget.index ? 1 : -1;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentIndex = widget.index;
+    return AnimatedSwitcher(
+      duration: widget.duration,
+      switchInCurve: kSoftCurve,
+      switchOutCurve: kSoftCurveIn,
+      layoutBuilder: widget.fillParent
+          ? (currentChild, previousChildren) => Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  ...previousChildren,
+                  if (currentChild != null) currentChild,
+                ],
+              )
+          : AnimatedSwitcher.defaultLayoutBuilder,
+      transitionBuilder: (child, anim) {
+        final dir = _direction.toDouble();
+        // On distingue l'enfant entrant (key = index courant) de l'enfant
+        // sortant (key = précédent) pour leur appliquer une trajectoire
+        // miroir : l'entrant arrive depuis `+dir`, le sortant part vers
+        // `-dir`. Sans cette distinction les deux glisseraient dans le
+        // même sens et se télescoperaient.
+        final key = child.key;
+        final isIncoming =
+            key is ValueKey<int> && key.value == currentIndex;
+        final beginOffset = isIncoming
+            ? Offset(dir, 0)
+            : Offset(-dir, 0);
+        return ClipRect(
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: beginOffset,
+              end: Offset.zero,
+            ).animate(anim),
+            child: child,
+          ),
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey<int>(widget.index),
+        child: widget.child,
+      ),
+    );
+  }
+}

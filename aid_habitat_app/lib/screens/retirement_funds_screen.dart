@@ -117,51 +117,61 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Caisses de retraite complémentaires',
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                        ),
+          // En-tête : titre + sous-titre directs (pas de carte blanche),
+          // champ de recherche en pill blanc à droite — parité 1:1 avec
+          // l'en-tête Bibliothèque.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Caisses de retraite complémentaires',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Ouvre une fiche, ajuste les consignes, puis enregistre.',
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Ouvre une fiche, ajuste les consignes, puis enregistre.',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 24),
-                SizedBox(
-                  width: 320,
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Klésia, AG2R, Pro BTP...',
-                      prefixIcon: const Icon(LucideIcons.search),
-                      filled: true,
-                      fillColor: const Color(0xFFF7F7FA),
-                      border: InputBorder.none,
+              ),
+              const SizedBox(width: 24),
+              SizedBox(
+                width: 320,
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Klésia, AG2R, Pro BTP...',
+                    prefixIcon: const Icon(LucideIcons.search),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           if (_isLoading)
@@ -311,16 +321,12 @@ class _FundCardState extends State<_FundCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ---------- Hero logo ----------
+              // Fond solide (pas de dégradé) — parité demandée avec
+              // les cartes de la Bibliothèque.
               Container(
                 height: 120,
                 width: double.infinity,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFFF8F4FB), Color(0xFFFFFFFF)],
-                  ),
-                ),
+                color: const Color(0xFFEDE8F5),
                 padding: const EdgeInsets.all(14),
                 child: Center(
                   child: Padding(

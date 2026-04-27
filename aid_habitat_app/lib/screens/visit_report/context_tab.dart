@@ -450,40 +450,40 @@ class _ContextTabState extends State<ContextTab>
                   Container(
                     color: Colors.white,
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                    // Header swipe-occupant : fade + slide entre occupants.
-                    child: SoftSwitcher(
+                    // Header swipe-occupant : slide horizontal entre
+                    // occupants — même sensation qu'un swap d'onglet
+                    // TabBarView Material.
+                    child: HorizontalSlideSwitcher(
+                      index: idx,
                       duration: kSoftFast,
                       fillParent: false,
-                      child: KeyedSubtree(
-                        key: ValueKey<int>(idx),
-                        child: _buildOccupantHeader(idx),
-                      ),
+                      child: _buildOccupantHeader(idx),
                     ),
                   ),
                 Expanded(
-                  // Slide + fade entre sous-sections (Médicale ↔ Autonomie)
-                  // ET entre occupants (l'idx + le subSection sont
-                  // combinés dans la clé). Toute la zone scrollable
-                  // bascule en douceur — parité avec Bénéficiaire.
-                  child: SoftSwitcher(
-                    child: KeyedSubtree(
-                      key: ValueKey<String>('$_subSection-$idx'),
-                      child: SingleChildScrollView(
-                        padding: EdgeInsets.fromLTRB(
-                          20,
-                          hasMultiple ? 0 : 16,
-                          20,
-                          12,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_subSection == 0)
-                              _buildMedical()
-                            else
-                              _buildAutonomy(),
-                          ],
-                        ),
+                  // Slide horizontal entre sous-sections (Médicale ↔
+                  // Autonomie) ET entre occupants. La clé combine les
+                  // deux : changer l'un OU l'autre déclenche la
+                  // transition. La direction « monte » avec la valeur
+                  // composite (subSection × N + idx) pour rester
+                  // cohérente quel que soit l'axe choisi.
+                  child: HorizontalSlideSwitcher(
+                    index: _subSection * 1000 + idx,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        hasMultiple ? 0 : 16,
+                        20,
+                        12,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_subSection == 0)
+                            _buildMedical()
+                          else
+                            _buildAutonomy(),
+                        ],
                       ),
                     ),
                   ),

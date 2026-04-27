@@ -479,8 +479,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               final liveKey = '${_dossier.patient.id}::$tabKey';
               final isMedical = tabKey == 'Contexte de vie-Médical';
               final isActive = i == safeIdx;
+              // Position relative à la sous-section active : 0 = visible,
+              // +N = à droite (off-screen), -N = à gauche (off-screen).
+              // Permet à `_NotesPanelLayer` d'animer un slide horizontal
+              // (au lieu d'un fade vertical) en parité avec le formulaire
+              // de gauche.
+              final relativePosition = (i - safeIdx).toDouble();
               return _NotesPanelLayer(
                 isActive: isActive,
+                relativePosition: relativePosition,
                 child: NotesWidget(
                   key: ValueKey(liveKey),
                   patientId: _dossier.patient.id,
@@ -606,12 +613,44 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
+  /// Habille l'onglet [tabName] de sa carte blanche + son panneau de
+  /// notes latéral quand l'onglet a des sous-sections (cf.
+  /// [_tabSubsections]). Sinon retourne juste la carte (Mesures, Plans,
+  /// Préconisations occupent toute la largeur).
+  Widget _wrapTabWithNotes(String tabName, Widget formContent) {
+    final formCard = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: formContent,
+    );
+    final subsections = _tabSubsections[tabName];
+    if (subsections == null || subsections.isEmpty) {
+      return formCard;
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 1, child: formCard),
+        const SizedBox(width: 24),
+        Expanded(
+          flex: 2,
+          child: _buildNotesPanel(tabName, subsections),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final activeTab = _tabs[_tabController.index];
-    // Sous-sections de l'onglet courant — null pour Mesures/Plans/Préconisations
-    final subsections = _tabSubsections[activeTab];
-
+    // Chaque entrée du TabBarView intègre maintenant son propre panneau
+    // de notes (quand l'onglet en a). Conséquence : changer d'onglet
+    // (ex. Bénéficiaire → Contexte de vie) fait glisser **simultanément**
+    // le formulaire ET les notes par le slide horizontal natif du
+    // TabBarView Material. C'est exactement la sensation demandée :
+    // toute la page bascule comme un seul bloc.
     final tabView = TabBarView(
       controller: _tabController,
       // Désactive le swipe horizontal entre onglets. Raison : l'onglet
@@ -622,58 +661,68 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // haut (TabBar est isScrollable=true).
       physics: const NeverScrollableScrollPhysics(),
       children: [
-        BeneficiaryTab(
-          dossier: _dossier,
-          repository: _repository,
-          onPatientChanged: _refreshDossier,
-          initialSubSection:
-              _activeSubsectionByTab['Bénéficiaire'] ?? 0,
-          onSubSectionChanged: (i) => setState(
-              () => _activeSubsectionByTab['Bénéficiaire'] = i),
+        _wrapTabWithNotes(
+          'Bénéficiaire',
+          BeneficiaryTab(
+            dossier: _dossier,
+            repository: _repository,
+            onPatientChanged: _refreshDossier,
+            initialSubSection:
+                _activeSubsectionByTab['Bénéficiaire'] ?? 0,
+            onSubSectionChanged: (i) => setState(
+                () => _activeSubsectionByTab['Bénéficiaire'] = i),
+          ),
         ),
-        ContextTab(
-          dossier: _dossier,
-          repository: _repository,
-          onMedicalFlagToggled: _handleMedicalFlagToggle,
-          // Les cases Pathologie / Suivi / Sensoriel reflètent la PAGE
-          // COURANTE de la note Médical — pas le dossier. NotesWidget
-          // pousse ces flags via `onMedicalFlagsChanged` à chaque
-          // changement/chargement de page.
-          currentMedicalFlags: _medicalFlagNumbers,
+        _wrapTabWithNotes(
+          'Contexte de vie',
+          ContextTab(
+            dossier: _dossier,
+            repository: _repository,
+            onMedicalFlagToggled: _handleMedicalFlagToggle,
+            // Les cases Pathologie / Suivi / Sensoriel reflètent la PAGE
+            // COURANTE de la note Médical — pas le dossier. NotesWidget
+            // pousse ces flags via `onMedicalFlagsChanged` à chaque
+            // changement/chargement de page.
+            currentMedicalFlags: _medicalFlagNumbers,
+          ),
         ),
-        MesuresTab(dossier: _dossier, repository: _repository),
-        AccessibilityTab(
-          dossier: _dossier,
-          repository: _repository,
-          onHousingChanged: _notifyHousingChanged,
+        _wrapTabWithNotes(
+          'Mesures',
+          MesuresTab(dossier: _dossier, repository: _repository),
         ),
-        BathroomTab(
-          dossier: _dossier,
-          repository: _repository,
-          housingRefreshToken: _housingVersion,
+        _wrapTabWithNotes(
+          'Accessibilité',
+          AccessibilityTab(
+            dossier: _dossier,
+            repository: _repository,
+            onHousingChanged: _notifyHousingChanged,
+          ),
         ),
-        WcTab(
-          dossier: _dossier,
-          repository: _repository,
-          housingRefreshToken: _housingVersion,
+        _wrapTabWithNotes(
+          'Salle de bain',
+          BathroomTab(
+            dossier: _dossier,
+            repository: _repository,
+            housingRefreshToken: _housingVersion,
+          ),
         ),
-        RecommendationsTab(dossier: _dossier, repository: _repository),
-        PlansTab(dossier: _dossier),
+        _wrapTabWithNotes(
+          'WC',
+          WcTab(
+            dossier: _dossier,
+            repository: _repository,
+            housingRefreshToken: _housingVersion,
+          ),
+        ),
+        _wrapTabWithNotes(
+          'Préconisations',
+          RecommendationsTab(dossier: _dossier, repository: _repository),
+        ),
+        _wrapTabWithNotes(
+          'Plans',
+          PlansTab(dossier: _dossier),
+        ),
       ],
-    );
-
-    // Carte blanche du formulaire — sans padding global pour que les
-    // bandeaux internes des tabs (ex: sous-menu Profil/Foyer/Santé/Admin
-    // du Bénéficiaire) puissent aller de bord à bord jusqu'en haut,
-    // comme le bandeau "Bénéficiaire" de l'écran dossier. Chaque tab
-    // gère son propre padding interne pour le contenu.
-    final formPanel = Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: tabView,
     );
 
     // Header bénéficiaire — même pattern que DocumentsScreen : NOM Prénom
@@ -767,23 +816,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // Ligne 2 : barre de navigation des onglets sur toute la largeur.
             _buildTabBar(),
             const SizedBox(height: 16),
-            // Content area — two columns except on Mesures/Plans where the
-            // form takes the full width (no notes panel).
-            Expanded(
-              child: (subsections == null || subsections.isEmpty)
-                  ? formPanel
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(flex: 1, child: formPanel),
-                        const SizedBox(width: 24),
-                        Expanded(
-                          flex: 2,
-                          child: _buildNotesPanel(activeTab, subsections),
-                        ),
-                      ],
-                    ),
-            ),
+            // Content area — chaque entrée du TabBarView intègre désormais
+            // son layout 1 colonne (Mesures/Plans/Préconisations) ou 2
+            // colonnes (formulaire + notes), donc le contenu glisse en
+            // bloc lors d'un changement d'onglet.
+            Expanded(child: tabView),
           ],
         ),
       ),
@@ -793,32 +830,42 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
 /// Couche d'un NotesWidget dans le Stack du panneau de droite. Garde
 /// le widget en vie pour préserver l'état (dessin en cours, sélection
-/// d'outils…), mais l'anime en fade + slide quand il devient
-/// actif/inactif. Mêmes durées et courbes que le `SoftSwitcher` du
-/// formulaire à gauche → l'utilisateur perçoit la bascule comme un
-/// mouvement global.
+/// d'outils…) tout en l'animant horizontalement (gauche ↔ droite) selon
+/// sa position relative à la sous-section active. Le formulaire de
+/// gauche utilise `HorizontalSlideSwitcher` avec la même direction →
+/// les deux glissent ensemble comme une seule page.
+///
+///   • [relativePosition] = 0  → couche active, centrée (visible).
+///   • [relativePosition] = +1 → couche suivante, off-screen à droite.
+///   • [relativePosition] = -1 → couche précédente, off-screen à gauche.
 class _NotesPanelLayer extends StatelessWidget {
   const _NotesPanelLayer({
     required this.isActive,
+    required this.relativePosition,
     required this.child,
   });
 
   final bool isActive;
+  final double relativePosition;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedSlide(
-      offset: isActive ? Offset.zero : const Offset(0, 0.06),
+      offset: Offset(relativePosition, 0),
       duration: kSoftMedium,
       curve: kSoftCurve,
       child: AnimatedOpacity(
+        // Fade out subtil quand la couche n'est pas active : aide la
+        // lecture (la couche sortante s'efface plutôt que de rester en
+        // overlap pendant la translation), et évite tout artefact
+        // d'antialiasing quand deux couches se chevauchent à mi-course.
         opacity: isActive ? 1.0 : 0.0,
         duration: kSoftMedium,
         curve: kSoftCurve,
-        // `IgnorePointer` pour que les sous-sections inactives ne
-        // capturent pas les taps (sinon on cliquerait sur un
-        // NotesWidget invisible posé par-dessus l'actif).
+        // `IgnorePointer` pour que les couches off-screen ne capturent
+        // pas les taps (sinon on cliquerait sur un NotesWidget invisible
+        // posé par-dessus l'actif).
         child: IgnorePointer(
           ignoring: !isActive,
           child: child,
