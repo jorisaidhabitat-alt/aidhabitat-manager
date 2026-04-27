@@ -461,10 +461,23 @@ class DossierRepository {
     if (payloads.isEmpty) return;
     final db = await _database.database;
 
+    // Sets canoniques d'IDs remote — utilisés à la fin de la transaction
+    // pour réconcilier les suppressions côté NocoDB (toute ligne
+    // `synced` localement qui n'apparaît plus dans la liste remote a
+    // été supprimée sur le serveur → on la purge en local).
+    final remoteDossierIds = <String>{};
+    final remotePatientIds = <String>{};
+    final remoteHousingIds = <String>{};
+
     await db.transaction((txn) async {
       for (final raw in payloads) {
         final dossierId = raw['id']?.toString() ?? '';
         if (dossierId.isEmpty) continue;
+        remoteDossierIds.add(dossierId);
+        final pJson = (raw['patient'] as Map?)?.cast<String, dynamic>();
+        final pid = pJson?['id']?.toString() ?? dossierId;
+        remotePatientIds.add(pid);
+        remoteHousingIds.add('housing_$dossierId');
 
         final existingDossier = await txn.query(
           'dossiers',
@@ -542,7 +555,119 @@ class DossierRepository {
           data: dossierData,
         );
       }
+
+      // ----------------------------------------------------------------
+      // Réconciliation des suppressions remote (chantier sync #1).
+      //
+      // Pour chaque table dont la liste remote vient d'être pullée
+      // intégralement, on supprime toute ligne localement `synced`
+      // dont l'identifiant n'apparaît plus dans la liste remote.
+      // Les drafts locaux (sync_state != synced) sont préservés.
+      //
+      // Garde-fou : le payload remote est non-vide (vérifié au-dessus
+      // dans `refreshWorkspaceFromRemote`) — donc une réponse API
+      // vide ne déclenche jamais de purge de masse.
+      // ----------------------------------------------------------------
+      await _reconcileDeletions(
+        txn: txn,
+        table: 'dossiers',
+        idColumn: 'local_id',
+        remoteIds: remoteDossierIds,
+      );
+      await _reconcileDeletions(
+        txn: txn,
+        table: 'housings',
+        idColumn: 'local_id',
+        remoteIds: remoteHousingIds,
+      );
+      await _reconcileDeletions(
+        txn: txn,
+        table: 'patients',
+        idColumn: 'local_id',
+        remoteIds: remotePatientIds,
+      );
+      // Cascade applicative : nettoyage des rows liées aux dossiers
+      // disparus (FK SQLite non garantie selon le schéma). On scope à
+      // ce qui devient orphelin (parent_local_id absent du remote).
+      await _purgeOrphansByParent(
+        txn: txn,
+        table: 'visit_recommendations',
+        parentColumn: 'dossier_local_id',
+        validParentIds: remoteDossierIds,
+      );
+      await _purgeOrphansByParent(
+        txn: txn,
+        table: 'documents',
+        parentColumn: 'patient_local_id',
+        validParentIds: remotePatientIds,
+      );
     });
+  }
+
+  /// Supprime de [table] toutes les lignes en état `synced` dont
+  /// l'identifiant ([idColumn]) n'apparaît plus dans [remoteIds].
+  /// Les lignes en `pendingSync` ou `localOnly` (drafts) sont
+  /// préservées : elles seront pushées au prochain cycle, et c'est le
+  /// serveur qui décidera (création nouvelle, ou rejet 4xx → conflit).
+  ///
+  /// Si [remoteIds] est vide, on ne supprime rien (le caller doit
+  /// avoir déjà filtré ce cas — éviter une purge totale en cas
+  /// d'erreur silencieuse côté API).
+  Future<int> _reconcileDeletions({
+    required Transaction txn,
+    required String table,
+    required String idColumn,
+    required Set<String> remoteIds,
+  }) async {
+    if (remoteIds.isEmpty) return 0;
+    final placeholders = List.filled(remoteIds.length, '?').join(',');
+    final args = <Object?>[
+      SyncState.synced.name,
+      ...remoteIds,
+    ];
+    final deleted = await txn.delete(
+      table,
+      where: 'sync_state = ? AND $idColumn NOT IN ($placeholders)',
+      whereArgs: args,
+    );
+    if (deleted > 0) {
+      // ignore: avoid_print
+      print(
+        '[reconcile] $table : $deleted ligne(s) purgée(s) (suppression remote)',
+      );
+    }
+    return deleted;
+  }
+
+  /// Supprime les lignes orphelines : celles dont la colonne
+  /// [parentColumn] référence un parent qui n'est plus dans
+  /// [validParentIds]. Toujours scopé aux rows `synced` pour ne pas
+  /// jeter un draft local en attente de push.
+  Future<int> _purgeOrphansByParent({
+    required Transaction txn,
+    required String table,
+    required String parentColumn,
+    required Set<String> validParentIds,
+  }) async {
+    if (validParentIds.isEmpty) return 0;
+    final placeholders = List.filled(validParentIds.length, '?').join(',');
+    final args = <Object?>[
+      SyncState.synced.name,
+      ...validParentIds,
+    ];
+    final deleted = await txn.delete(
+      table,
+      where:
+          'sync_state = ? AND $parentColumn NOT IN ($placeholders)',
+      whereArgs: args,
+    );
+    if (deleted > 0) {
+      // ignore: avoid_print
+      print(
+        '[reconcile] $table : $deleted orphelin(s) purgé(s) (parent disparu)',
+      );
+    }
+    return deleted;
   }
 
   /// Insert or UPDATE a row identified by `local_id`. If a row exists, the

@@ -24,6 +24,10 @@ class RetirementFundsRepository {
     if (remoteFunds.isEmpty) return;
     final db = await _database.database;
 
+    // Set canonique des IDs remote — sert à purger les caisses
+    // supprimées sur NocoDB (chantier sync #1).
+    final remoteIds = remoteFunds.map((f) => f.id).toSet();
+
     await db.transaction((txn) async {
       for (final fund in remoteFunds) {
         final existing = await txn.query(
@@ -56,6 +60,23 @@ class RetirementFundsRepository {
           'pending_logo_data_url': null,
           'sync_state': SyncState.synced.name,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+
+      // Réconciliation des suppressions remote : on supprime localement
+      // toute caisse `synced` qui n'apparaît plus côté NocoDB. Les
+      // drafts (sync_state != synced) sont préservés.
+      final placeholders = List.filled(remoteIds.length, '?').join(',');
+      final deleted = await txn.delete(
+        'retirement_funds',
+        where: 'sync_state = ? AND id NOT IN ($placeholders)',
+        whereArgs: [SyncState.synced.name, ...remoteIds],
+      );
+      if (deleted > 0) {
+        // ignore: avoid_print
+        print(
+          '[reconcile] retirement_funds : $deleted ligne(s) purgée(s) '
+          '(suppression remote)',
+        );
       }
     });
 

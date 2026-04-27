@@ -302,6 +302,11 @@ class DocumentRepository {
   ) async {
     final db = await _database.database;
 
+    // Set canonique des `local_id` qui existent côté NocoDB pour ce
+    // patient — alimenté pendant la boucle pour réconcilier ensuite
+    // les suppressions remote (chantier sync #1).
+    final remoteLocalIds = <String>{};
+
     await db.transaction((txn) async {
       for (final remote in remoteDocuments) {
         final remotePath = remote['remotePath']?.toString();
@@ -336,10 +341,11 @@ class DocumentRepository {
             .extension(fileName)
             .replaceFirst('.', '')
             .toLowerCase();
+        final localId = existing?['local_id'] as String? ??
+            'remote_doc_${remote['id'] ?? DateTime.now().microsecondsSinceEpoch}';
+        remoteLocalIds.add(localId);
         final row = {
-          'local_id':
-              existing?['local_id'] as String? ??
-              'remote_doc_${remote['id'] ?? DateTime.now().microsecondsSinceEpoch}',
+          'local_id': localId,
           'patient_local_id': patientId,
           'title': remote['title']?.toString() ?? fileName,
           'file_name': fileName,
@@ -374,6 +380,39 @@ class DocumentRepository {
           row,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
+      }
+
+      // ----------------------------------------------------------------
+      // Réconciliation des suppressions NocoDB scopée à ce patient.
+      // Toute ligne `synced` (donc déjà connue du serveur) qui n'est
+      // PAS dans le set canonique remote est purgée. Les drafts
+      // (sync_state != synced) et les soft-deletes (pending_delete=1)
+      // sont préservés. On ne purge rien si remoteDocuments est vide
+      // (filet de sécurité contre un fetch ratée silencieusement).
+      // ----------------------------------------------------------------
+      if (remoteLocalIds.isNotEmpty) {
+        final placeholders =
+            List.filled(remoteLocalIds.length, '?').join(',');
+        final args = <Object?>[
+          patientId,
+          SyncState.synced.name,
+          ...remoteLocalIds,
+        ];
+        final deleted = await txn.delete(
+          'documents',
+          where:
+              'patient_local_id = ? AND sync_state = ? '
+              'AND pending_delete = 0 '
+              'AND local_id NOT IN ($placeholders)',
+          whereArgs: args,
+        );
+        if (deleted > 0) {
+          // ignore: avoid_print
+          print(
+            '[reconcile] documents (patient=$patientId) : '
+            '$deleted ligne(s) purgée(s) (suppression remote)',
+          );
+        }
       }
     });
 

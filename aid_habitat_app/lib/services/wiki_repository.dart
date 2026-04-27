@@ -35,6 +35,10 @@ class WikiRepository {
     if (remoteItems.isEmpty) return;
     final db = await _database.database;
 
+    // Set canonique des IDs remote — nécessaire pour purger les items
+    // que NocoDB a supprimés (chantier sync #1).
+    final remoteIds = remoteItems.map((i) => i.id).toSet();
+
     await db.transaction((txn) async {
       for (final item in remoteItems) {
         final existing = await txn.query(
@@ -66,6 +70,25 @@ class WikiRepository {
           'pending_image_data_url': null,
           'sync_state': SyncState.synced.name,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+
+      // Réconciliation des suppressions remote : on supprime localement
+      // toute fiche `synced` qui n'apparaît plus dans la liste NocoDB.
+      // Les drafts (`local_draft_*` / sync_state != synced) sont
+      // préservés. La garde `remoteIds.isNotEmpty` est implicitement
+      // assurée par le `if (remoteItems.isEmpty) return;` plus haut.
+      final placeholders = List.filled(remoteIds.length, '?').join(',');
+      final deleted = await txn.delete(
+        'wiki_items',
+        where: 'sync_state = ? AND id NOT IN ($placeholders)',
+        whereArgs: [SyncState.synced.name, ...remoteIds],
+      );
+      if (deleted > 0) {
+        // ignore: avoid_print
+        print(
+          '[reconcile] wiki_items : $deleted ligne(s) purgée(s) '
+          '(suppression remote)',
+        );
       }
     });
 
