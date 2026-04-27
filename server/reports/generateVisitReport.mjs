@@ -952,6 +952,32 @@ function getRecoCaseBoundingBox(fieldsByName, recoIdx) {
 }
 
 /**
+ * Trouve l'index de la page qui héberge le widget d'un champ donné.
+ * Retourne -1 si le champ n'a pas de widget ou si la page parente
+ * ne correspond à aucune page du PDF.
+ *
+ * Utilise `widget.P()` (référence vers la page parente) puis matche
+ * contre `pdfDoc.getPages()` — robuste à n'importe quelle structure
+ * de template (pas besoin de connaître les numéros de page absolus).
+ */
+function findPageIndexForField(pdfDoc, field) {
+  const widgets = field?.acroField?.getWidgets?.() || [];
+  if (widgets.length === 0) return -1;
+  let pageRef;
+  try {
+    pageRef = widgets[0].P();
+  } catch (_) {
+    return -1;
+  }
+  if (!pageRef) return -1;
+  const pages = pdfDoc.getPages();
+  for (let i = 0; i < pages.length; i += 1) {
+    if (pages[i].ref === pageRef) return i;
+  }
+  return -1;
+}
+
+/**
  * Génère un PDF rempli pour le dossier fourni.
  *
  * @param {object} options
@@ -1253,15 +1279,22 @@ export async function generateVisitReport({
   //                                   la zone de la case BOT
   //   - aucune case utilisée       → supprimer la page du PDF
   //
-  // L'itération se fait en SENS INVERSE (page 14 → 11) pour que la
-  // suppression d'une page n'altère pas l'index des pages restantes
-  // qu'on n'a pas encore traitées.
+  // IMPORTANT : on retrouve l'index réel de chaque page via la
+  // référence du widget TOP (`widget.P()`), au lieu de hardcoder
+  // `recoPageBaseIndex + pageOffset`. C'était la cause du bug "la
+  // dernière préco disparaît si c'est la 3ème ou la 4ème" : selon le
+  // template Affinity, page 11 visuelle peut être à l'index 10 OU 11
+  // (présence ou non d'une page de garde). En lisant la page directement
+  // depuis le widget, on est immunisé contre ce décalage.
+  //
+  // L'itération se fait en SENS INVERSE (du dernier slot vers le
+  // premier) pour que la suppression d'une page n'altère pas l'index
+  // des pages restantes qu'on n'a pas encore traitées.
   // ---------------------------------------------------------------
-  const recoPageBaseIndex = 10; // page 11 = index 10 dans le PDF
   const recoCount = recommendations.length;
   // Pages partielles à blanchir APRÈS flatten (sinon les widgets
   // aplatis recouvriraient le rectangle blanc). Chaque entrée =
-  // { pageIdx, botRect }.
+  // { pageIdx, botRect, topRect }.
   const pendingBotCovers = [];
   stats.recoPagesRemoved = 0;
   for (let pageOffset = 3; pageOffset >= 0; pageOffset -= 1) {
@@ -1269,7 +1302,11 @@ export async function generateVisitReport({
     const botRecoIdx = pageOffset * 2 + 1;
     const topUsed = topRecoIdx < recoCount;
     const botUsed = botRecoIdx < recoCount;
-    const pageIdx = recoPageBaseIndex + pageOffset;
+    // Lookup la page réelle qui héberge le widget TOP (et BOT par
+    // construction — les 2 cases sont toujours sur la même page).
+    const topField = fieldsByName.get(RECO_TEXT_FIELDS[topRecoIdx]);
+    const pageIdx = findPageIndexForField(pdfDoc, topField);
+    if (pageIdx === -1) continue; // template sans cette page : skip
     if (!topUsed && !botUsed) {
       try {
         pdfDoc.removePage(pageIdx);
@@ -1283,9 +1320,7 @@ export async function generateVisitReport({
     } else if (topUsed && !botUsed) {
       // On stocke le bbox de la case BOT (à blanchir) et le bbox de
       // la case TOP (utilisé comme borne haute pour ne JAMAIS
-      // déborder sur la zone TOP — sinon la 3ème ou 4ème reco
-      // disparaissait quand elle était la dernière, cf. bug
-      // utilisateur).
+      // déborder sur la zone TOP).
       const botRect = getRecoCaseBoundingBox(fieldsByName, botRecoIdx);
       const topRect = getRecoCaseBoundingBox(fieldsByName, topRecoIdx);
       pendingBotCovers.push({ pageIdx, botRect, topRect });
