@@ -510,31 +510,22 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   Widget _buildActiveSection() {
-    final Widget section;
+    // Pas d'animation entre sous-sections (demande utilisateur) — bascule
+    // instantanée. Les seules transitions animées sont :
+    //   • entre les onglets principaux (slide horizontal natif TabBarView),
+    //   • entre les occupants (cf. `_buildOccupantSwipeContainer`).
     switch (_subSectionIndex) {
       case 0:
-        section = _buildProfilSection();
-        break;
+        return _buildProfilSection();
       case 1:
-        section = _buildFinanceSection();
-        break;
+        return _buildFinanceSection();
       case 2:
-        section = _buildSanteSection();
-        break;
+        return _buildSanteSection();
       case 3:
-        section = _buildAdminSection();
-        break;
+        return _buildAdminSection();
       default:
-        section = const SizedBox.shrink();
+        return const SizedBox.shrink();
     }
-    // Slide horizontal entre sous-sections (Profil → Foyer → Santé →
-    // Admin) — même sens et même direction que le swap de tabs Material,
-    // pour que le formulaire et le panneau de notes glissent
-    // visuellement comme une seule page qui change.
-    return HorizontalSlideSwitcher(
-      index: _subSectionIndex,
-      child: section,
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -699,47 +690,45 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header sticky : épinglé tout en haut du cadre, fond blanc
-          // opaque pour cacher le contenu qui défile en dessous
-          // (demande utilisateur). Son padding inclut le 16 px du haut
-          // du scroll d'origine pour que la mise en page n'évolue pas.
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            // Header de l'occupant courant : slide horizontal entre
-            // occupants (gauche ↔ droite suivant la direction du swipe
-            // ou du tap sur les dots). Mêmes sensations qu'un swap
-            // d'onglet TabBarView.
+          // Toute la zone occupant (header + champs « per occupant » +
+          // sharedContent) glisse en bloc lors d'un changement
+          // d'occupant. Les dots de pagination, eux, restent fixes en
+          // bas — ce sont des indicateurs de navigation, pas du
+          // contenu de l'occupant.
+          Expanded(
             child: HorizontalSlideSwitcher(
               index: idx,
-              duration: kSoftFast,
-              fillParent: false,
-              child: _buildOccupantHeader(idx),
-            ),
-          ),
-          Expanded(
-            // Slide horizontal entre occupants — appliqué uniquement à
-            // la partie « per occupant ». `sharedContent` (téléphone,
-            // personne de confiance…) reste statique : on le laisse en
-            // dehors du switcher pour éviter le scintillement inutile.
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  HorizontalSlideSwitcher(
-                    index: idx,
-                    fillParent: false,
-                    child: perOccupantContent,
+                  // Header sticky : prénom de l'occupant courant, fond
+                  // blanc opaque pour cacher le contenu qui défile.
+                  Container(
+                    color: Colors.white,
+                    padding:
+                        const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                    child: _buildOccupantHeader(idx),
                   ),
-                  const SizedBox(height: 24),
-                  sharedContent,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          perOccupantContent,
+                          const SizedBox(height: 24),
+                          sharedContent,
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
           // Dots pinnés au bas du cadre — toujours visibles quel que
-          // soit l'état du scroll interne (demande utilisateur).
+          // soit l'état du scroll interne. Hors du switcher pour ne
+          // pas glisser avec le contenu.
           Padding(
             padding: const EdgeInsets.only(bottom: 14, top: 6),
             child: Center(child: _buildOccupantDots(idx)),

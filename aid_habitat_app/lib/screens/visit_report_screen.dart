@@ -464,51 +464,42 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── Note de la sous-section active ─────────────────────────────
-        // On garde TOUS les NotesWidget en vie dans un Stack pour
-        // préserver l'état de dessin (sinon switcher de section perdrait
-        // un trait en cours). Chaque enfant est animé avec un fade +
-        // slide doux quand il devient actif/inactif → effet identique au
-        // SoftSwitcher du formulaire à gauche, pour que l'utilisateur
-        // perçoive la bascule comme un mouvement global de toute la page.
+        // `IndexedStack` conserve l'état de dessin de chaque sous-section
+        // (un trait en cours n'est pas perdu en switchant Profil ↔ Foyer
+        // par exemple). Bascule instantanée — pas d'animation entre
+        // sous-sections, demandé par l'utilisateur. La seule animation
+        // qui touche ce panneau est le slide horizontal natif du
+        // TabBarView quand on change d'ONGLET (ex. Bénéficiaire ↔
+        // Contexte de vie), parce que `_buildNotesPanel` vit maintenant
+        // dans chaque enfant du TabBarView.
         Expanded(
-          child: Stack(
-            fit: StackFit.expand,
+          child: IndexedStack(
+            index: safeIdx,
             children: List.generate(subsections.length, (i) {
               final section = subsections[i];
               final tabKey = '$activeTab-$section';
               final liveKey = '${_dossier.patient.id}::$tabKey';
               final isMedical = tabKey == 'Contexte de vie-Médical';
-              final isActive = i == safeIdx;
-              // Position relative à la sous-section active : 0 = visible,
-              // +N = à droite (off-screen), -N = à gauche (off-screen).
-              // Permet à `_NotesPanelLayer` d'animer un slide horizontal
-              // (au lieu d'un fade vertical) en parité avec le formulaire
-              // de gauche.
-              final relativePosition = (i - safeIdx).toDouble();
-              return _NotesPanelLayer(
-                isActive: isActive,
-                relativePosition: relativePosition,
-                child: NotesWidget(
-                  key: ValueKey(liveKey),
-                  patientId: _dossier.patient.id,
-                  tabKey: tabKey,
-                  title: section,
-                  liveText: _liveText[liveKey],
-                  onDraftChange: (draft) =>
-                      _pushDraftToOpenWindow(tabKey, draft.text),
-                  onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
-                  showSaveButton: false,
-                  embedded: false,
-                  fillParentHeight: true,
-                  allowPagination: true,
-                  stackedCards: true,
-                  backgroundContent: isMedical
-                      ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
-                      : null,
-                  medicalFlags: isMedical ? _medicalFlagNumbers : null,
-                  onMedicalFlagsChanged:
-                      isMedical ? _handleMedicalFlagsFromNotes : null,
-                ),
+              return NotesWidget(
+                key: ValueKey(liveKey),
+                patientId: _dossier.patient.id,
+                tabKey: tabKey,
+                title: section,
+                liveText: _liveText[liveKey],
+                onDraftChange: (draft) =>
+                    _pushDraftToOpenWindow(tabKey, draft.text),
+                onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
+                showSaveButton: false,
+                embedded: false,
+                fillParentHeight: true,
+                allowPagination: true,
+                stackedCards: true,
+                backgroundContent: isMedical
+                    ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
+                    : null,
+                medicalFlags: isMedical ? _medicalFlagNumbers : null,
+                onMedicalFlagsChanged:
+                    isMedical ? _handleMedicalFlagsFromNotes : null,
               );
             }),
           ),
@@ -822,53 +813,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // bloc lors d'un changement d'onglet.
             Expanded(child: tabView),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Couche d'un NotesWidget dans le Stack du panneau de droite. Garde
-/// le widget en vie pour préserver l'état (dessin en cours, sélection
-/// d'outils…) tout en l'animant horizontalement (gauche ↔ droite) selon
-/// sa position relative à la sous-section active. Le formulaire de
-/// gauche utilise `HorizontalSlideSwitcher` avec la même direction →
-/// les deux glissent ensemble comme une seule page.
-///
-///   • [relativePosition] = 0  → couche active, centrée (visible).
-///   • [relativePosition] = +1 → couche suivante, off-screen à droite.
-///   • [relativePosition] = -1 → couche précédente, off-screen à gauche.
-class _NotesPanelLayer extends StatelessWidget {
-  const _NotesPanelLayer({
-    required this.isActive,
-    required this.relativePosition,
-    required this.child,
-  });
-
-  final bool isActive;
-  final double relativePosition;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedSlide(
-      offset: Offset(relativePosition, 0),
-      duration: kSoftMedium,
-      curve: kSoftCurve,
-      child: AnimatedOpacity(
-        // Fade out subtil quand la couche n'est pas active : aide la
-        // lecture (la couche sortante s'efface plutôt que de rester en
-        // overlap pendant la translation), et évite tout artefact
-        // d'antialiasing quand deux couches se chevauchent à mi-course.
-        opacity: isActive ? 1.0 : 0.0,
-        duration: kSoftMedium,
-        curve: kSoftCurve,
-        // `IgnorePointer` pour que les couches off-screen ne capturent
-        // pas les taps (sinon on cliquerait sur un NotesWidget invisible
-        // posé par-dessus l'actif).
-        child: IgnorePointer(
-          ignoring: !isActive,
-          child: child,
         ),
       ),
     );

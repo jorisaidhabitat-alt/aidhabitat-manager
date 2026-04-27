@@ -443,48 +443,43 @@ class _ContextTabState extends State<ContextTab>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Header sticky : épinglé en haut du cadre, fond blanc
-                // opaque pour cacher le contenu qui défile en dessous
-                // (demande utilisateur). N'apparaît qu'en multi-occupants.
-                if (hasMultiple)
-                  Container(
-                    color: Colors.white,
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                    // Header swipe-occupant : slide horizontal entre
-                    // occupants — même sensation qu'un swap d'onglet
-                    // TabBarView Material.
-                    child: HorizontalSlideSwitcher(
-                      index: idx,
-                      duration: kSoftFast,
-                      fillParent: false,
-                      child: _buildOccupantHeader(idx),
-                    ),
-                  ),
+                // Tout le bloc de l'occupant (header + scroll
+                // medical/autonomy) glisse en bloc quand on change
+                // d'occupant. Pas d'animation entre les sous-sections
+                // (Médicale ↔ Autonomie) — bascule instantanée.
                 Expanded(
-                  // Slide horizontal entre sous-sections (Médicale ↔
-                  // Autonomie) ET entre occupants. La clé combine les
-                  // deux : changer l'un OU l'autre déclenche la
-                  // transition. La direction « monte » avec la valeur
-                  // composite (subSection × N + idx) pour rester
-                  // cohérente quel que soit l'axe choisi.
                   child: HorizontalSlideSwitcher(
-                    index: _subSection * 1000 + idx,
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.fromLTRB(
-                        20,
-                        hasMultiple ? 0 : 16,
-                        20,
-                        12,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (_subSection == 0)
-                            _buildMedical()
-                          else
-                            _buildAutonomy(),
-                        ],
-                      ),
+                    index: idx,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (hasMultiple)
+                          Container(
+                            color: Colors.white,
+                            padding:
+                                const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                            child: _buildOccupantHeader(idx),
+                          ),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.fromLTRB(
+                              20,
+                              hasMultiple ? 0 : 16,
+                              20,
+                              12,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_subSection == 0)
+                                  _buildMedical()
+                                else
+                                  _buildAutonomy(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
