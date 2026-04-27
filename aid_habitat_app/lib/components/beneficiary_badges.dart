@@ -102,21 +102,31 @@ IncomeCategoryPalette incomePaletteFor(String value) {
 class IncomeCategoryBadge extends StatelessWidget {
   final String value;
   final bool large;
+
+  /// Variante sans couleur : fond gris neutre (slate-100), texte
+  /// gris foncé. Utilisée dans la liste « Mes dossiers » où le badge
+  /// doit rester discret pour ne pas concurrencer les autres
+  /// informations affichées.
+  final bool monochrome;
+
   const IncomeCategoryBadge({
     super.key,
     required this.value,
     this.large = false,
+    this.monochrome = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final palette = incomePaletteFor(value);
+    final bg = monochrome ? const Color(0xFFF1F5F9) : palette.bg;
+    final fg = monochrome ? const Color(0xFF334155) : palette.fg;
     return Container(
       padding: large
           ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
           : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: palette.bg,
+        color: bg,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -124,7 +134,7 @@ class IncomeCategoryBadge extends StatelessWidget {
         style: TextStyle(
           fontSize: large ? 14 : 12,
           fontWeight: FontWeight.w700,
-          color: palette.fg,
+          color: fg,
         ),
       ),
     );

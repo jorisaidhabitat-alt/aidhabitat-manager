@@ -645,16 +645,21 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 ],
               ),
             ),
-            // REVENUS — palette unifiée via IncomeCategoryBadge
-            // (bleu pour Très modeste, jaune/orange pour Modeste,
-            // neutre pour les autres).
+            // REVENUS — variante monochrome (sans couleur) demandée
+            // par l'utilisateur sur la liste « Mes dossiers » : fond
+            // gris neutre, texte gris foncé. Les couleurs (bleu Très
+            // modeste, jaune/orange Modeste…) restent utilisées dans
+            // les autres écrans (header de dossier, relevé de visite).
             Expanded(
               flex: _flexRevenus,
               child: income.isEmpty
                   ? const SizedBox.shrink()
                   : Align(
                       alignment: Alignment.centerLeft,
-                      child: IncomeCategoryBadge(value: income),
+                      child: IncomeCategoryBadge(
+                        value: income,
+                        monochrome: true,
+                      ),
                     ),
             ),
             // COMMUNAUTÉ DE COMMUNE
