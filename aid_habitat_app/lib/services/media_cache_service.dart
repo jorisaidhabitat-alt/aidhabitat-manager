@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'app_config.dart';
 import 'local_database.dart';
 import 'url_resolver.dart';
 
@@ -58,7 +59,13 @@ class MediaCacheService {
   /// Returns a local [File] for [url]. Downloads it on first call. If the
   /// download fails and no cached copy exists, returns null so the caller can
   /// fall back to a placeholder.
-  Future<File?> fetch(String url) async {
+  ///
+  /// [headers] is optional and only used for the network fetch on a cache
+  /// miss — auth headers don't participate in the cache key so cached bytes
+  /// remain readable offline regardless of token freshness. Pass `null` (or
+  /// omit) for public URLs ; pass `_authHeaders()` for private API URLs that
+  /// need `X-App-Session` (typical: `/api/mobile-documents/<id>/content`).
+  Future<File?> fetch(String url, {Map<String, String>? headers}) async {
     final resolved = resolveMediaUrl(url);
     if (resolved.isEmpty) return null;
 
@@ -68,11 +75,13 @@ class MediaCacheService {
     // Cache hit — serve from disk.
     if (await file.exists()) return file;
 
-    // Dedupe concurrent fetches for the same URL.
+    // Dedupe concurrent fetches for the same URL. The dedup key includes
+    // only the URL (not headers) since the persisted bytes are identical
+    // regardless of auth context.
     final existing = _inFlight[resolved];
     if (existing != null) return existing;
 
-    final future = _download(resolved, file);
+    final future = _download(resolved, file, headers: headers);
     _inFlight[resolved] = future;
     try {
       return await future;
@@ -81,9 +90,23 @@ class MediaCacheService {
     }
   }
 
-  Future<File?> _download(String url, File target) async {
+  /// Builds the same auth headers as `NocoDbApiClient` so private API
+  /// endpoints (`/api/mobile-documents/...`) authenticate correctly. Empty
+  /// session token (= unauthenticated user) returns no headers — caller is
+  /// then on its own to handle 401.
+  static Map<String, String> authHeaders() {
+    final token = AppConfig.appSessionToken.trim();
+    if (token.isEmpty) return const {};
+    return {'X-App-Session': token};
+  }
+
+  Future<File?> _download(
+    String url,
+    File target, {
+    Map<String, String>? headers,
+  }) async {
     try {
-      final response = await http.get(Uri.parse(url)).timeout(
+      final response = await http.get(Uri.parse(url), headers: headers).timeout(
             const Duration(seconds: 20),
           );
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -136,15 +159,27 @@ class MediaCacheService {
   ///
   /// On web, delegates to [webCachedFetch] (SQLite-backed cache). On native
   /// targets, uses [fetch] (filesystem-backed cache).
-  Future<void> prefetchAll(Iterable<String> urls) async {
+  ///
+  /// [headers] : passed to both web and native fetchers — set
+  /// `MediaCacheService.authHeaders()` for private API URLs that need
+  /// `X-App-Session` (e.g. patient documents in `nocodb` mode where the
+  /// download endpoint is gated by `requireAuth`).
+  Future<void> prefetchAll(
+    Iterable<String> urls, {
+    Map<String, String>? headers,
+  }) async {
     for (final url in urls) {
       if (url.trim().isEmpty) continue;
       // Fire-and-forget — don't await, but catch so one failure doesn't stop
       // the chain.
       if (kIsWeb) {
-        unawaited(webCachedFetch(url).then((_) {}, onError: (_) {}));
+        unawaited(
+          webCachedFetch(url, headers: headers).then((_) {}, onError: (_) {}),
+        );
       } else {
-        unawaited(fetch(url).then((_) {}, onError: (_) {}));
+        unawaited(
+          fetch(url, headers: headers).then((_) {}, onError: (_) {}),
+        );
       }
     }
   }

@@ -2,13 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
-import 'app_config.dart';
 import 'local_database.dart';
 import 'media_cache_service.dart';
 import 'sync_engine.dart';
@@ -431,25 +429,20 @@ class DocumentRepository {
     }
     if (urls.isEmpty) return;
     try {
-      if (kIsWeb) {
-        // Web : les URLs patient sont privées (require `X-App-Session`).
-        // On passe directement par `webCachedFetch` avec le token courant —
-        // `prefetchAll` ne connaît pas les headers d'auth.
-        for (final url in urls) {
-          unawaited(
-            MediaCacheService.instance
-                .webCachedFetch(
-                  url,
-                  headers: {'X-App-Session': AppConfig.appSessionToken},
-                )
-                .then((_) {}, onError: (_) {}),
-          );
-        }
-      } else {
-        await MediaCacheService.instance.prefetchAll(urls);
-      }
-    } catch (_) {
-      // Best effort — one failed doc shouldn't block others.
+      // Mêmes headers d'auth web ET native : les URLs patient passent
+      // par `requireAuth` côté serveur dans le mode `nocodb`. Sans le
+      // header, le fetch renvoyait 401 et le warm cache était vide
+      // → réinstallation iPad sans réseau = aucun aperçu disponible.
+      await MediaCacheService.instance.prefetchAll(
+        urls,
+        headers: MediaCacheService.authHeaders(),
+      );
+    } catch (e) {
+      // Best effort — log mais ne bloque pas le reste du sync. Avant
+      // c'était un `catch (_)` muet : impossible de débugger un cache
+      // foireux en prod.
+      // ignore: avoid_print
+      print('[docs prefetch] warm cache failed: $e');
     }
   }
 

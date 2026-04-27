@@ -1895,16 +1895,26 @@ class _RemoteImageState extends State<_RemoteImage> {
       return;
     }
 
-    // 3. Native : MediaCacheService (cache filesystem).
-    final file = await MediaCacheService().fetch(widget.url);
+    // 3. Native : MediaCacheService (cache filesystem). On lui passe
+    //    directement le header `X-App-Session` pour les URLs privées
+    //    (`/api/mobile-documents/<id>/content`) — sinon le 1er download
+    //    renvoie 401 et on perd un round-trip avant de retomber sur le
+    //    fallback authentifié ci-dessous.
+    final file = await MediaCacheService().fetch(
+      widget.url,
+      headers: MediaCacheService.authHeaders(),
+    );
     if (!mounted) return;
     if (file != null) {
       setState(() => _file = file);
       return;
     }
 
-    // 4. Fallback : l'URL est probablement privée et a besoin du header
-    //    `X-App-Session`. On fetch directement via http avec auth.
+    // 4. Fallback final : si même la fetch authentifiée a échoué (URL
+    //    inaccessible, déconnexion, etc.), on tente un dernier http.get
+    //    pour disposer des bytes en mémoire le temps de la session — le
+    //    but est de servir l'image quand le filesystem ne peut pas être
+    //    écrit (ex: quota plein) plutôt que d'afficher l'icône d'erreur.
     try {
       final uri = _buildAuthedUri(widget.url);
       if (uri == null) throw Exception('bad url');
@@ -3227,7 +3237,13 @@ class _RemoteImageAnnotatorWrapperState
   }
 
   Future<void> _load() async {
-    final file = await MediaCacheService().fetch(widget.url);
+    // Passe l'auth `X-App-Session` au fetch pour que les URLs privées
+    // (`/api/mobile-documents/<id>/content`, mode nocodb) ne renvoient
+    // pas un 401 silencieux qui mettait l'annotation en `_failed`.
+    final file = await MediaCacheService().fetch(
+      widget.url,
+      headers: MediaCacheService.authHeaders(),
+    );
     if (!mounted) return;
     setState(() {
       _file = file;

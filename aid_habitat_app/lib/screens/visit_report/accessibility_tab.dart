@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../components/form_widgets.dart';
@@ -85,10 +86,24 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   @override
   bool get wantKeepAlive => true;
 
+  /// Index de la sous-section active : 0 = Général, 1 = Équipements,
+  /// 2 = Extérieur. Équipements regroupe chauffage + volets (sortis de
+  /// Général sur demande utilisateur, pour aérer le formulaire).
   int _subSection = 0;
   bool _saving = false;
   bool _loaded = false;
   Timer? _saveTimer;
+
+  /// ScrollController du formulaire — utilisé pour ramener le haut de
+  /// la liste des niveaux dans le viewport après ajout d'un niveau
+  /// (le nouveau niveau s'insère juste sous le bouton "Ajouter un
+  /// niveau" et l'écran défile vers lui en douceur).
+  final ScrollController _scrollController = ScrollController();
+
+  /// GlobalKey posée sur le bouton "Ajouter un niveau" — sert à
+  /// localiser sa position absolue dans le viewport pour scroller
+  /// pile en dessous quand on ajoute un nouveau niveau.
+  final GlobalKey _addLevelButtonKey = GlobalKey();
 
   // Niveaux : field actuellement "ouvert" (carte pleine). Les autres
   // niveaux sont repliés en "Nom (pièces cochées)" + crayon. Null quand
@@ -162,6 +177,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _scrollController.dispose();
     for (final c in _customRoomCtrls.values) {
       c.dispose();
     }
@@ -387,12 +403,20 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             child: KeyedSubtree(
               key: ValueKey<int>(_subSection),
               child: SingleChildScrollView(
+                // Le controller n'est utile qu'en sous-section Général
+                // (auto-scroll après ajout d'un niveau). On le branche
+                // partout pour simplicité — pas d'effet de bord, juste
+                // une référence vers la position du viewport courant.
+                controller:
+                    _subSection == 0 ? _scrollController : null,
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (_subSection == 0)
                       _buildGeneral()
+                    else if (_subSection == 1)
+                      _buildEquipements()
                     else
                       _buildExterior(),
                   ],
@@ -412,6 +436,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   Widget _buildQuickNav() {
     const items = [
       _QuickNavItem(icon: Icons.home_outlined, label: 'Général'),
+      _QuickNavItem(icon: Icons.tune, label: 'Équipements'),
       _QuickNavItem(icon: Icons.place_outlined, label: 'Extérieur'),
     ];
     return Container(
@@ -568,18 +593,35 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         const SizedBox(height: 14),
         // 5. Niveaux (cartes), un seul développé à la fois — les autres
         // s'affichent sous forme "Label (pièces cochées) + crayon".
+        // Le nouveau niveau ajouté apparaît EN TÊTE de la liste (juste
+        // sous le bouton "Ajouter un niveau"), avec une transition de
+        // taille fluide (`AnimatedSize`) — cf. `_addLevel`.
         ..._orderedLevels.map((field) {
           final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
           return Padding(
+            key: ValueKey<String>('level-${cfg.field}'),
             padding: const EdgeInsets.only(bottom: 8),
             child: _buildLevelCard(cfg),
           );
         }),
-        const SizedBox(height: 14),
-        // 6. Chauffage (multi-select pills toujours visibles).
+        // (Chauffage + volets ont été déplacés vers la sous-section
+        // "Équipements" pour aérer Général — demande utilisateur.)
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Équipements (chauffage + volets)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildEquipements() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Chauffage (multi-select pills toujours visibles).
         _buildHeatingEditor(),
-        const SizedBox(height: 14),
-        // 7. Volets (pills toujours visibles, pas de repli).
+        const SizedBox(height: 18),
+        // 2. Volets (pills toujours visibles, pas de repli).
         _buildVoletRow(
           'Volets roulants manuels',
           _voletsManStatus,
@@ -625,6 +667,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         GestureDetector(
+          key: _addLevelButtonKey,
           onTap: () => setState(() => _addLevelMode = !_addLevelMode),
           child: Container(
             padding:
@@ -660,19 +703,67 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             columns: 2,
             onChanged: (picked) {
               final cfg = available.firstWhere((c) => c.label == picked);
-              setState(() {
-                _orderedLevels.add(cfg.field);
-                _levelRooms[cfg.field] ??= [];
-                _customRoomCtrls.putIfAbsent(
-                    cfg.field, () => TextEditingController());
-                _expandedLevel = cfg.field;
-                _addLevelMode = false;
-              });
-              _scheduleSave();
+              _addLevel(cfg);
             },
           ),
         ],
       ],
+    );
+  }
+
+  /// Ajoute un nouveau niveau au foyer :
+  ///  - Insertion EN TÊTE de [_orderedLevels] → la nouvelle carte
+  ///    apparaît juste sous le bouton "Ajouter un niveau" (au-dessus
+  ///    des niveaux ajoutés précédemment).
+  ///  - Le niveau est ouvert par défaut, les autres se replient.
+  ///  - Anime un défilement vers la position du bouton "Ajouter un
+  ///    niveau" pour garder le contexte visible (la nouvelle carte
+  ///    apparaît juste en dessous, dans la zone que l'utilisateur
+  ///    regardait déjà).
+  void _addLevel(_LevelConfig cfg) {
+    setState(() {
+      // Insert(0) au lieu de add() : nouveau niveau toujours en tête.
+      _orderedLevels.insert(0, cfg.field);
+      _levelRooms[cfg.field] ??= [];
+      _customRoomCtrls.putIfAbsent(
+          cfg.field, () => TextEditingController());
+      _expandedLevel = cfg.field;
+      _addLevelMode = false;
+    });
+    _scheduleSave();
+    // Animation de défilement après le rebuild — on cible la position
+    // du bouton "Ajouter un niveau" dans le viewport pour que la
+    // nouvelle carte (juste en dessous) soit pleinement visible sans
+    // pour autant masquer les commandes au-dessus.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToAddLevelButton();
+    });
+  }
+
+  /// Défile en douceur (~280 ms, easeOutCubic) jusqu'à la position du
+  /// bouton "Ajouter un niveau" calculée via sa GlobalKey. Si le
+  /// controller n'est pas attaché ou si la position ne peut pas être
+  /// déterminée, ne fait rien (silencieux).
+  void _scrollToAddLevelButton() {
+    if (!_scrollController.hasClients) return;
+    final ctx = _addLevelButtonKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject();
+    if (box is! RenderBox || !box.attached) return;
+    // Calcule l'offset du bouton dans le viewport interne du
+    // SingleChildScrollView. On veut le ramener proche du haut (16 px
+    // de marge) pour laisser la place à la nouvelle carte juste
+    // dessous.
+    final viewport = RenderAbstractViewport.of(box);
+    final reveal = viewport.getOffsetToReveal(box, 0).offset;
+    final target = reveal.clamp(
+      _scrollController.position.minScrollExtent,
+      _scrollController.position.maxScrollExtent,
+    );
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -887,9 +978,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             crossAxisCount: 2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 5.5,
-            mainAxisSpacing: 6,
-            crossAxisSpacing: 8,
+            // Demande utilisateur : boutons des pièces nettement plus
+            // grands (ils étaient si compressés que les libellés
+            // longs comme "Salle de bain" se faisaient tronquer).
+            // Aspect ratio 3.2 = environ 60 px de haut pour ~190 px
+            // de large → place pour un libellé d'une ligne avec
+            // confort tactile sur iPad.
+            childAspectRatio: 3.2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
             children: allItems.map((room) {
               final checked = rooms.contains(room);
               return TogglePillButton(
