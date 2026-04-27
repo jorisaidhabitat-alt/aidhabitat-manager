@@ -177,25 +177,14 @@ class _WikiScreenState extends State<WikiScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Bibliothèque',
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Bibliothèque visuelle pour garder des '
-                          'repères de solutions.',
-                          style: TextStyle(color: Colors.grey.shade600),
-                        ),
-                      ],
+                  const Expanded(
+                    child: Text(
+                      'Bibliothèque',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 24),

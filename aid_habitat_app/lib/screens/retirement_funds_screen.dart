@@ -123,24 +123,14 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Caisses de retraite complémentaires',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Ouvre une fiche, ajuste les consignes, puis enregistre.',
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
-                  ],
+              const Expanded(
+                child: Text(
+                  'Caisses de retraite complémentaires',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
                 ),
               ),
               const SizedBox(width: 24),
