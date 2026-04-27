@@ -76,6 +76,37 @@ function formatFrenchDate(raw) {
 }
 
 /**
+ * Normalise un libellé de situation familiale renvoyé par NocoDB
+ * (variants : "Marié(e)", "Mariée", "marié", …) vers le label exact
+ * attendu par le PDF (`Célibataire`, `En concubinage`, `Mariée`,
+ * `Veufve`, `Divorcée`). Renvoie '' si on ne reconnaît rien.
+ */
+function normalizeFamilySituation(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return '';
+  if (s.startsWith('célib') || s.startsWith('celib')) return 'Célibataire';
+  if (s.includes('concubin')) return 'En concubinage';
+  if (s.startsWith('mari')) return 'Mariée';
+  if (s.startsWith('veuf') || s.startsWith('veuv')) return 'Veufve';
+  if (s.startsWith('divorc')) return 'Divorcée';
+  return '';
+}
+
+/**
+ * Idem pour le statut d'occupation : `Propriétaire` / `Locataire` /
+ * `Usufruitiere` (sans accent côté PDF — c'est le nom du champ tel
+ * qu'on l'a vu dans Affinity Publisher).
+ */
+function normalizeOccupationStatus(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return '';
+  if (s.startsWith('proprié') || s.startsWith('proprie')) return 'Propriétaire';
+  if (s.startsWith('locat')) return 'Locataire';
+  if (s.startsWith('usufrui')) return 'Usufruitiere';
+  return '';
+}
+
+/**
  * Construit un payload "view-friendly" à partir de l'objet dossier
  * récupéré côté NocoDB. Ajoute des champs dérivés (`fullNameUpper`,
  * `visitDateFr`, etc.) que le mapping JSON peut référencer directement
@@ -92,17 +123,58 @@ function buildViewModel(dossier) {
   const firstName = String(patient.firstName || '').trim();
   const lastName = String(patient.lastName || '').trim();
 
+  // Affichage de l'aide à domicile : si l'ergo a saisi du texte, on
+  // l'affiche tel quel (ex. "2x/semaine, ADMR"). Sinon "Oui" si la
+  // case est cochée, "Non" si elle ne l'est pas (UX confirmée par
+  // l'utilisateur : "si ce n'est pas coché c'est forcément non").
+  const homeHelpTxt = String(patient.homeHelpTxt || '').trim();
+  const homeHelp = Boolean(patient.homeHelp);
+  const homeHelpDisplay =
+    homeHelpTxt || (homeHelp ? 'Oui' : 'Non');
+
+  // Reconnaissance MDPH : on privilégie le texte (qui contient
+  // typiquement le %) mais on retombe sur "Oui" si la case est cochée
+  // sans détail. Vide sinon — on n'écrit pas "Non" car le PDF n'a
+  // pas vraiment de UI Non explicite à côté du champ.
+  const invalidityTxt = String(patient.invalidityTxt || '').trim();
+  const invalidity = Boolean(patient.invalidity);
+  const invalidityDisplay =
+    invalidityTxt || (invalidity ? 'Oui' : '');
+
+  // Dates de naissance : on utilise les variantes Mr/Mme dédiées
+  // (mapPatient les expose déjà). `patient.birthDate` fallback sur
+  // madame dans certains dossiers — on l'évite pour bien remplir
+  // chaque slot du PDF.
+  const birthDateMrFr = formatFrenchDate(
+    patient.birthDateMr || patient.occupant1BirthDate || patient.birthDate,
+  );
+  const birthDateMmeFr = formatFrenchDate(
+    patient.birthDateMme || patient.occupant2BirthDate,
+  );
+
   return {
     patient: {
       firstName,
       lastName,
       fullNameUpper: [lastName.toUpperCase(), firstName].filter(Boolean).join(' '),
-      birthDateFr: formatFrenchDate(patient.birthDate),
+      // birthDateFr garde le sens "monsieur" pour la compat ascendante
+      // avec le mapping POC.
+      birthDateFr: birthDateMrFr,
+      birthDateMrFr,
+      birthDateMmeFr,
       phone: String(patient.phone || '').trim(),
       email: String(patient.email || '').trim(),
       trustedName: String(patient?.trustedPerson?.name || '').trim(),
       trustedPhone: String(patient?.trustedPerson?.phone || '').trim(),
       trustedEmail: String(patient?.trustedPerson?.email || '').trim(),
+      // Champs dérivés pour les checkbox-radios.
+      familySituationNormalized: normalizeFamilySituation(patient.familySituation),
+      occupationStatusNormalized: normalizeOccupationStatus(patient.occupationStatus),
+      // APA : Dropdown5 du PDF prend 'Oui' / 'Non' littéral.
+      apaLabel: patient.apa ? 'Oui' : 'Non',
+      invalidityDisplay,
+      homeHelpDisplay,
+      dependenceTxt: String(patient.dependenceTxt || '').trim(),
     },
     dossier: {
       personnesPresentesVisite: String(dossier?.personnesPresentesVisite || '').trim(),

@@ -1,11 +1,12 @@
 {
-  "$comment": "Mapping champs PDF AcroForm → données NocoDB pour le générateur de rapport de visite. Voir server/reports/generateVisitReport.mjs. Format : 'pdfFieldName': { source, type } où source est un dotted path dans le payload du dossier ('patient.firstName', 'dossier.visitDate', etc.). type = 'text' (Tx), 'check' (Btn coché si truthy), 'radio' (Btn coché si valeur correspond à `match`).",
-  "$pocOnly": "POC chunk 4 — 10 champs page 1 + page 3 pour valider la chaîne pdf-lib + Express. Sera étendu aux 130 champs en chunk 4.2.",
+  "$comment": "Mapping champs PDF AcroForm → données NocoDB pour le générateur de rapport de visite. Voir server/reports/generateVisitReport.mjs. Format : 'pdfFieldName': { source, type, [match] } où source est un dotted path dans le payload du dossier ('patient.firstName', etc.). type ∈ {'text', 'check', 'radio', 'dropdown'}. Pour 'radio' / 'check' avec match : la case est cochée si la value récupérée === match (utile pour les groupes mutex de checkboxes Affinity Publisher).",
+  "$status": "Couverture pages 1 + 3 (entête + renseignements bénéficiaire). Pages 4-15 viennent en chunk 4.2 suite.",
 
   "Text1": {
     "source": "patient.fullNameUpper",
     "type": "text"
   },
+
   "Nom": {
     "source": "patient.lastName",
     "type": "text"
@@ -14,10 +15,76 @@
     "source": "patient.firstName",
     "type": "text"
   },
+
   "date de naissance": {
-    "source": "patient.birthDateFr",
+    "source": "patient.birthDateMrFr",
     "type": "text"
   },
+  "date de naissance mme": {
+    "source": "patient.birthDateMmeFr",
+    "type": "text"
+  },
+
+  "Célibataire": {
+    "source": "patient.familySituationNormalized",
+    "type": "radio",
+    "match": "Célibataire"
+  },
+  "En concubinage": {
+    "source": "patient.familySituationNormalized",
+    "type": "radio",
+    "match": "En concubinage"
+  },
+  "Mariée": {
+    "source": "patient.familySituationNormalized",
+    "type": "radio",
+    "match": "Mariée"
+  },
+  "Veufve": {
+    "source": "patient.familySituationNormalized",
+    "type": "radio",
+    "match": "Veufve"
+  },
+  "Divorcée": {
+    "source": "patient.familySituationNormalized",
+    "type": "radio",
+    "match": "Divorcée"
+  },
+
+  "Propriétaire": {
+    "source": "patient.occupationStatusNormalized",
+    "type": "radio",
+    "match": "Propriétaire"
+  },
+  "Locataire": {
+    "source": "patient.occupationStatusNormalized",
+    "type": "radio",
+    "match": "Locataire"
+  },
+  "Usufruitiere": {
+    "source": "patient.occupationStatusNormalized",
+    "type": "radio",
+    "match": "Usufruitiere"
+  },
+
+  "Dropdown5": {
+    "source": "patient.apaLabel",
+    "type": "dropdown"
+  },
+
+  "MDPH": {
+    "source": "patient.invalidityDisplay",
+    "type": "text"
+  },
+  "aide.à domicile": {
+    "source": "patient.homeHelpDisplay",
+    "type": "text"
+  },
+  "dépendance": {
+    "source": "patient.dependenceTxt",
+    "type": "text"
+  },
+
   "tel usager": {
     "source": "patient.phone",
     "type": "text"
@@ -38,6 +105,7 @@
     "source": "patient.trustedEmail",
     "type": "text"
   },
+
   "personne présente": {
     "source": "dossier.personnesPresentesVisite",
     "type": "text"

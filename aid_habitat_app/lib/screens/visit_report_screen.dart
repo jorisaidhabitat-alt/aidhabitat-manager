@@ -535,72 +535,100 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(50),
       ),
-      child: TabBar(
-        controller: _tabController,
-        isScrollable: true,
-        // Fond de l'onglet actif : violet pâle F6EDFB — même teinte
-        // que le bandeau sous-menu du relevé (Profil / Foyer / …)
-        // pour une cohérence visuelle.
-        indicator: BoxDecoration(
-          color: const Color(0xFFEDE8F5),
-          borderRadius: BorderRadius.circular(50),
-        ),
-        indicatorSize: TabBarIndicatorSize.label,
-        indicatorPadding:
-            const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
-        // Onglet actif : fond violet pâle + texte + trait dark violet
-        // (#7C6DAA). Onglet inactif : texte slate gris foncé.
-        labelColor: const Color(0xFF554A63),
-        unselectedLabelColor: const Color(0xFF334155),
-        labelStyle: const TextStyle(fontWeight: FontWeight.w700),
-        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
-        labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-        tabs: List.generate(_tabs.length, (i) {
-          final label = _tabs[i];
-          return Tab(
-            // `SoftTapScale.passThrough` observe le pointer event sans
-            // réclamer le tap → le TabBar reste fonctionnel et on ajoute
-            // l'effet zoom/dezoom au-dessus, comme demandé (mêmes
-            // sensations que les boutons de la sidebar).
-            child: SoftTapScale.passThrough(
-              child: AnimatedBuilder(
-                animation: _tabController,
-                builder: (context, _) {
-                  final isActive = _tabController.index == i;
-                  // Underline strictly smaller than the text and centered
-                  // (CrossAxisAlignment.center — défaut). Ratio ~50 % de
-                  // la largeur estimée du texte (au lieu de ~100 %).
-                  final underlineWidth =
-                      (label.length * 3.2).clamp(18.0, 60.0);
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(label),
-                      const SizedBox(height: 3),
-                      Container(
-                        height: 1.5,
-                        width: underlineWidth,
-                        decoration: BoxDecoration(
-                          color: isActive
-                              ? const Color(0xFF7C6DAA) // violet foncé
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ],
-                  );
-                },
+      // Le pill blanc de la barre de navigation contient désormais à
+      // la fois la TabBar (gauche, scrollable) ET le bouton « Générer
+      // le rapport » (droite, dernière entrée). On utilise un Row :
+      // - `Expanded(TabBar)` prend toute la place restante
+      // - `_buildGenerateReportButton()` est posé en bout, séparé par
+      //   un padding vertical pour s'aligner avec les onglets.
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              // Fond de l'onglet actif : violet pâle F6EDFB — même teinte
+              // que le bandeau sous-menu du relevé (Profil / Foyer / …)
+              // pour une cohérence visuelle.
+              indicator: BoxDecoration(
+                color: const Color(0xFFEDE8F5),
+                borderRadius: BorderRadius.circular(50),
               ),
+              indicatorSize: TabBarIndicatorSize.label,
+              indicatorPadding:
+                  const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
+              // Onglet actif : fond violet pâle + texte + trait dark violet
+              // (#7C6DAA). Onglet inactif : texte slate gris foncé.
+              labelColor: const Color(0xFF554A63),
+              unselectedLabelColor: const Color(0xFF334155),
+              labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+              unselectedLabelStyle:
+                  const TextStyle(fontWeight: FontWeight.normal),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+              tabs: List.generate(_tabs.length, (i) {
+                final label = _tabs[i];
+                return Tab(
+                  // `SoftTapScale.passThrough` observe le pointer event sans
+                  // réclamer le tap → le TabBar reste fonctionnel et on ajoute
+                  // l'effet zoom/dezoom au-dessus, comme demandé (mêmes
+                  // sensations que les boutons de la sidebar).
+                  child: SoftTapScale.passThrough(
+                    child: AnimatedBuilder(
+                      animation: _tabController,
+                      builder: (context, _) {
+                        final isActive = _tabController.index == i;
+                        // Underline strictly smaller than the text and centered
+                        // (CrossAxisAlignment.center — défaut). Ratio ~50 % de
+                        // la largeur estimée du texte (au lieu de ~100 %).
+                        final underlineWidth =
+                            (label.length * 3.2).clamp(18.0, 60.0);
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(label),
+                            const SizedBox(height: 3),
+                            Container(
+                              height: 1.5,
+                              width: underlineWidth,
+                              decoration: BoxDecoration(
+                                color: isActive
+                                    ? const Color(0xFF7C6DAA) // violet foncé
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                );
+              }),
+              dividerColor: Colors.transparent,
+              padding: const EdgeInsets.all(4),
+              tabAlignment: TabAlignment.start,
+              overlayColor: WidgetStateProperty.all(Colors.transparent),
+              splashFactory: NoSplash.splashFactory,
             ),
-          );
-        }),
-        dividerColor: Colors.transparent,
-        padding: const EdgeInsets.all(4),
-        tabAlignment: TabAlignment.start,
-        overlayColor: WidgetStateProperty.all(Colors.transparent),
-        splashFactory: NoSplash.splashFactory,
+          ),
+          // Séparateur visuel discret entre les onglets et l'action
+          // « Générer le rapport ». Trait fin slate-200 vertical.
+          Container(
+            width: 1,
+            height: 28,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            color: const Color(0xFFE2E8F0),
+          ),
+          // Bouton d'action en bout de barre — dernière entrée, intégré
+          // dans le même pill blanc que les onglets.
+          Padding(
+            padding: const EdgeInsets.only(left: 4, right: 6),
+            child: _buildGenerateReportButton(),
+          ),
+        ],
       ),
     );
   }
@@ -624,64 +652,65 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
-  /// Bouton violet « Générer le rapport » à droite de l'entête VAD.
+  /// Bouton violet « Générer le rapport » — dernière entrée de la
+  /// barre de navigation des onglets (cf. `_buildTabBar`).
   /// Appelle [_generateReport] qui invoque le serveur, récupère le
   /// PDF et le pousse vers le téléchargement local (web) ou la
   /// boîte « Enregistrer sous » / partage natif (iOS/Android/macOS).
   ///
-  /// Pendant l'appel : le bouton affiche un spinner blanc et est
-  /// désactivé pour éviter les double-taps.
+  /// Pas d'icône (demande utilisateur — le label se suffit à
+  /// lui-même dans le contexte de la barre de nav). Pendant
+  /// l'appel : un spinner blanc remplace le label et le tap est
+  /// neutralisé pour éviter les double-clics.
   Widget _buildGenerateReportButton() {
     return InkWell(
       onTap: _isGeneratingReport ? null : _generateReport,
       borderRadius: BorderRadius.circular(999),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        height: 48,
+        // Hauteur 44 px = pill du tab bar (60 px) - 8 px de padding
+        // vertical → l'action s'aligne pile avec la zone cliquable
+        // des onglets.
+        height: 44,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
           color: _isGeneratingReport
               ? const Color(0xFF9888B5)
               : const Color(0xFF7C6DAA),
           borderRadius: BorderRadius.circular(999),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF7C6DAA).withValues(alpha: 0.25),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_isGeneratingReport)
+            if (_isGeneratingReport) ...[
               const SizedBox(
-                width: 18,
-                height: 18,
+                width: 16,
+                height: 16,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
+                  strokeWidth: 2.2,
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
-              )
-            else
-              const Icon(
-                LucideIcons.fileDown,
-                size: 18,
-                color: Colors.white,
               ),
-            const SizedBox(width: 9),
-            Text(
-              _isGeneratingReport
-                  ? 'Génération…'
-                  : 'Générer le rapport',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
+              const SizedBox(width: 9),
+              const Text(
+                'Génération…',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
               ),
-            ),
+            ] else
+              const Text(
+                'Générer le rapport',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
+              ),
           ],
         ),
       ),
@@ -987,15 +1016,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     ],
                   ),
                 ),
-                // Bouton violet « Générer le rapport » à droite de
-                // l'entête VAD — appelle le serveur et déclenche le
-                // téléchargement du PDF (cf. _generateReport).
-                const SizedBox(width: 12),
-                _buildGenerateReportButton(),
+                // Le bouton « Générer le rapport » est désormais
+                // intégré comme dernière entrée de la barre de
+                // navigation des onglets (cf. `_buildTabBar`) — plus
+                // de pill flottant à droite de l'entête VAD.
               ],
             ),
             const SizedBox(height: 12),
-            // Ligne 2 : barre de navigation des onglets sur toute la largeur.
+            // Ligne 2 : barre de navigation des onglets + bouton
+            // « Générer le rapport » en dernière position.
             _buildTabBar(),
             const SizedBox(height: 16),
             // Content area — chaque entrée du TabBarView intègre désormais
