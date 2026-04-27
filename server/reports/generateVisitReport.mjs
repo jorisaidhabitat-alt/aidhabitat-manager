@@ -21,6 +21,8 @@ import {
   PDFRadioGroup,
   PDFDropdown,
   PDFButton,
+  StandardFonts,
+  rgb,
 } from 'pdf-lib';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -434,8 +436,15 @@ function buildViewModel({ dossier, sanitaires, observations }) {
       // Champs dérivés pour les checkbox-radios.
       familySituationNormalized: normalizeFamilySituation(patient.familySituation),
       occupationStatusNormalized: normalizeOccupationStatus(patient.occupationStatus),
-      // APA : Dropdown5 du PDF prend 'Oui' / 'Non' littéral.
+      // APA : Dropdown5 du PDF n'accepte que 'Oui' / 'Non' / 'En cours'
+      // (options figées dans le template). On garde ces valeurs strictes
+      // pour la dropdown, et on rend le GIR séparément via un overlay
+      // texte (cf. `applyApaGirOverlay`) à côté du dropdown — sinon
+      // pdf-lib refuse les chaînes hors-options.
       apaLabel: patient.apa ? 'Oui' : 'Non',
+      apaGirRaw: patient.apa
+        ? String(patient.apaGir || '').trim()
+        : '',
       invalidityDisplay,
       homeHelpDisplay,
       dependenceTxt: String(patient.dependenceTxt || '').trim(),
