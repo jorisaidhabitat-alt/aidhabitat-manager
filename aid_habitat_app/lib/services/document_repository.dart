@@ -40,6 +40,7 @@ class DocumentRepository {
     required String fileName,
     List<String> tags = const ['Autre'],
     String? title,
+    int? categoryOrder,
   }) async {
     final db = await _database.database;
     final now = DateTime.now();
@@ -66,6 +67,7 @@ class DocumentRepository {
       'remote_file_path': null,
       'remote_public_url': null,
       'tags_json': jsonEncode(tags),
+      'category_order': categoryOrder,
       'created_at': now.toIso8601String(),
       'updated_at': now.toIso8601String(),
       'sync_state': SyncState.pendingSync.name,
@@ -103,6 +105,7 @@ class DocumentRepository {
     required File sourceFile,
     List<String> tags = const ['Autre'],
     String? title,
+    int? categoryOrder,
   }) async {
     final db = await _database.database;
     final now = DateTime.now();
@@ -137,6 +140,7 @@ class DocumentRepository {
       'remote_file_path': null,
       'remote_public_url': null,
       'tags_json': jsonEncode(tags),
+      'category_order': categoryOrder,
       'created_at': now.toIso8601String(),
       'updated_at': now.toIso8601String(),
       'sync_state': SyncState.pendingSync.name,
@@ -266,6 +270,67 @@ class DocumentRepository {
       whereArgs: [documentId],
     );
     SyncEngine().notify();
+  }
+
+  /// Met à jour la catégorisation visite d'un document — utilisé
+  /// exclusivement par l'onglet Photos du relevé de visite.
+  ///
+  /// - [tags] : la liste cible (le caller a déjà calculé ce que la
+  ///   nouvelle catégorie implique — ajout du tag visite, retrait des
+  ///   éventuels autres tags visite, conservation des tags non-visite).
+  /// - [categoryOrder] : position dans la catégorie. `null` quand le
+  ///   document est retiré d'une catégorie visite (passe à « À classer »).
+  ///
+  /// `category_order` est purement local en v1 (pas d'envoi au serveur).
+  /// La mise à jour des tags par contre est synchronisée à NocoDB via
+  /// le sync engine pour qu'on retrouve le tag à la prochaine connexion.
+  Future<void> setVisitCategorization({
+    required String documentId,
+    required List<String> tags,
+    int? categoryOrder,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    await db.update(
+      'documents',
+      {
+        'tags_json': jsonEncode(tags),
+        'category_order': categoryOrder,
+        'updated_at': now,
+        'sync_state': SyncState.pendingSync.name,
+      },
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+    );
+    SyncEngine().notify();
+  }
+
+  /// Réordonne plusieurs documents d'une catégorie en une seule
+  /// transaction. Appelé après un drag-to-reorder côté UI : le caller
+  /// fournit la liste des `documentId` dans le NOUVEL ordre voulu et
+  /// chacun reçoit son index comme `category_order`.
+  Future<void> reorderVisitCategory({
+    required List<String> orderedDocumentIds,
+  }) async {
+    if (orderedDocumentIds.isEmpty) return;
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final batch = db.batch();
+    for (var i = 0; i < orderedDocumentIds.length; i++) {
+      batch.update(
+        'documents',
+        {
+          'category_order': i,
+          'updated_at': now,
+          'sync_state': SyncState.pendingSync.name,
+        },
+        where: 'local_id = ?',
+        whereArgs: [orderedDocumentIds[i]],
+      );
+    }
+    await batch.commit(noResult: true);
+    // Pas de notification au sync engine : `category_order` est local-only
+    // pour l'instant. Si un autre champ change, c'est un autre code-path.
   }
 
   Future<void> deleteDocument(String documentId) async {
@@ -694,6 +759,7 @@ class DocumentRepository {
       dataUrl: row['local_file_data_url'] as String?,
       tags: decodedTags,
       syncState: SyncState.values.byName(row['sync_state'] as String),
+      categoryOrder: (row['category_order'] as num?)?.toInt(),
     );
   }
 

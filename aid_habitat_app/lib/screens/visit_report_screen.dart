@@ -20,6 +20,7 @@ import 'visit_report/mesures_tab.dart';
 import 'visit_report/accessibility_tab.dart';
 import 'visit_report/bathroom_tab.dart';
 import 'visit_report/wc_tab.dart';
+import 'visit_report/photos_tab.dart';
 import 'visit_report/recommendations_tab.dart';
 import 'visit_report/plans_tab.dart';
 
@@ -92,14 +93,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     'Accessibilité',
     'Salle de bain',
     'WC',
+    // Onglet « Photos » inséré entre WC et Préconisations : flow
+    // d'observation (SDB/WC) → capture (Photos) → analyse
+    // (Préconisations) → dessin (Plans). Alimente la page 8 du
+    // rapport PDF (« Photos du logement »).
+    'Photos',
     'Préconisations',
     'Plans',
   ];
 
   /// Sous-sections de chaque onglet. Le panneau notes à droite affiche
   /// une note indépendante par sous-section (tabKey = '$tab-$section').
-  /// Les onglets absents de cette map (Mesures, Plans, Préconisations)
-  /// sont en pleine largeur et n'ont pas de panneau notes latéral.
+  /// Les onglets absents de cette map (Mesures, Photos, Plans,
+  /// Préconisations) sont en pleine largeur et n'ont pas de panneau
+  /// notes latéral.
   static const Map<String, List<String>> _tabSubsections = {
     'Bénéficiaire': ['Profil', 'Foyer', 'Santé', 'Admin'],
     'Contexte de vie': ['Médical', 'Autonomie'],
@@ -707,6 +714,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             repository: _repository,
             housingRefreshToken: _housingVersion,
           ),
+        ),
+        // Onglet Photos — pleine largeur (pas de notes latérales).
+        // Voir `lib/screens/visit_report/photos_tab.dart`.
+        _wrapTabWithNotes(
+          'Photos',
+          PhotosTab(dossier: _dossier),
         ),
         _wrapTabWithNotes(
           'Préconisations',

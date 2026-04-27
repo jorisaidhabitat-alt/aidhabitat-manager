@@ -1074,6 +1074,14 @@ class DocItem {
   final List<String> tags;
   final SyncState syncState;
 
+  /// Position d'une photo dans sa catégorie de l'onglet Photos du
+  /// relevé de visite (Logement / Accessibilité / Sanitaires). Plus
+  /// petit = plus haut dans la grille, donc occupe le slot 1, 2, … du
+  /// PDF généré. `null` pour les documents qui ne sont pas catégorisés
+  /// pour le rapport (anciens docs, autres tags). Local-only pour
+  /// l'instant — non synchronisé à NocoDB en v1.
+  final int? categoryOrder;
+
   DocItem({
     required this.id,
     required this.type,
@@ -1085,6 +1093,7 @@ class DocItem {
     this.dataUrl,
     this.tags = const [],
     this.syncState = SyncState.localOnly,
+    this.categoryOrder,
   });
 }
 

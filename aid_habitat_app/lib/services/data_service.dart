@@ -266,12 +266,68 @@ class DataService {
     required String patientId,
     required String filePath,
     List<String> tags = const ['Autre'],
+    int? categoryOrder,
   }) async {
     return _documentRepository.importDocument(
       patientId: patientId,
       sourceFile: File(filePath),
       tags: tags,
+      categoryOrder: categoryOrder,
     );
+  }
+
+  /// Variante web : importe directement les bytes d'une photo
+  /// (compressée) sans passer par un File. Utilisé par l'onglet
+  /// Photos du relevé de visite quand on tourne en PWA.
+  Future<DocItem> importDocumentBytes({
+    required String patientId,
+    required List<int> bytes,
+    required String fileName,
+    List<String> tags = const ['Autre'],
+    String? title,
+    int? categoryOrder,
+  }) async {
+    return _documentRepository.importDocumentBytes(
+      patientId: patientId,
+      bytes: bytes,
+      fileName: fileName,
+      tags: tags,
+      title: title,
+      categoryOrder: categoryOrder,
+    );
+  }
+
+  /// Met à jour les tags + l'ordre dans la catégorie visite d'un
+  /// document (Logement / Accessibilité / Sanitaires / À classer).
+  /// Utilisé par l'onglet Photos pour déplacer une photo entre
+  /// catégories ou la sortir d'une catégorie. Voir
+  /// [DocumentRepository.setVisitCategorization].
+  Future<void> setDocumentVisitCategorization({
+    required String documentId,
+    required List<String> tags,
+    int? categoryOrder,
+  }) async {
+    await _documentRepository.setVisitCategorization(
+      documentId: documentId,
+      tags: tags,
+      categoryOrder: categoryOrder,
+    );
+  }
+
+  /// Réordonne plusieurs documents d'une catégorie en une fois
+  /// (drag-to-reorder). Voir
+  /// [DocumentRepository.reorderVisitCategory].
+  Future<void> reorderVisitCategoryDocuments({
+    required List<String> orderedDocumentIds,
+  }) async {
+    await _documentRepository.reorderVisitCategory(
+      orderedDocumentIds: orderedDocumentIds,
+    );
+  }
+
+  /// Supprime un document. Voir [DocumentRepository.deleteDocument].
+  Future<void> deleteDocument(String documentId) async {
+    await _documentRepository.deleteDocument(documentId);
   }
 
   Future<String?> fetchNoteDrawingJson({
