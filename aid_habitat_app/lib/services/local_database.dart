@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 11;
+  static const _dbVersion = 12;
 
   Database? _database;
 
@@ -67,6 +67,20 @@ class LocalDatabase {
     if (oldVersion < 11) {
       await _migrateV10ToV11(db);
     }
+    if (oldVersion < 12) {
+      await _migrateV11ToV12(db);
+    }
+  }
+
+  /// v11 → v12: générateur de rapport PDF (suite). L'onglet Photos du
+  /// relevé de visite groupe les photos par catégorie (Logement /
+  /// Accessibilité / Sanitaires) et permet à l'ergo de les
+  /// **réordonner** dans une catégorie pour décider quelle photo
+  /// occupe le slot 1, 2, 3 du PDF. On ajoute `category_order` —
+  /// un entier croissant scoping (patient × tag) — pour persister
+  /// cet ordre. NULL = pas encore positionné dans une catégorie.
+  Future<void> _migrateV11ToV12(Database db) async {
+    await _addColumnIfMissing(db, 'documents', 'category_order', 'INTEGER');
   }
 
   /// v10 → v11: générateur de rapport PDF — la page « Plan du logement »
@@ -550,6 +564,7 @@ class LocalDatabase {
         remote_file_path TEXT,
         remote_public_url TEXT,
         tags_json TEXT NOT NULL,
+        category_order INTEGER,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         sync_state TEXT NOT NULL,

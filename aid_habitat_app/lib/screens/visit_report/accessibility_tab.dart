@@ -93,16 +93,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   bool _loaded = false;
   Timer? _saveTimer;
 
-  /// ScrollController du formulaire — utilisé pour ramener le haut de
-  /// la liste des niveaux dans le viewport après ajout d'un niveau
-  /// (le nouveau niveau s'insère juste sous le bouton "Ajouter un
-  /// niveau" et l'écran défile vers lui en douceur).
+  /// ScrollController du formulaire — préserve la position de scroll
+  /// entre les rebuilds de la sous-section Général.
   final ScrollController _scrollController = ScrollController();
-
-  /// GlobalKey posée sur le bouton "Ajouter un niveau" — sert à
-  /// localiser sa position absolue dans le viewport pour scroller
-  /// pile en dessous quand on ajoute un nouveau niveau.
-  final GlobalKey _addLevelButtonKey = GlobalKey();
 
   // Niveaux : field actuellement "ouvert" (carte pleine). Les autres
   // niveaux sont repliés en "Nom (pièces cochées)" + crayon. Null quand
@@ -689,7 +682,26 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         (c) => c.field == _pendingLevelField,
       );
       contentKey = ValueKey<String>('editor-${cfg.field}');
-      content = _buildLevelCard(cfg);
+      // Bouton "+ Ajouter un niveau" toujours visible AU-DESSUS de
+      // l'éditeur du niveau pending — permet à l'utilisateur
+      // d'enchaîner sans devoir d'abord fermer le niveau en cours.
+      // Le tap "settle" le niveau pending puis rouvre la picker
+      // (cf. `_settlePendingAndOpenPicker`).
+      final stillAvailable = _kLevelConfigs
+          .where((c) =>
+              !_orderedLevels.contains(c.field) || c.field == cfg.field)
+          .where((c) => c.field != cfg.field)
+          .toList();
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (stillAvailable.isNotEmpty) ...[
+            _buildAddLevelButton(onTap: _settlePendingAndOpenPicker),
+            const SizedBox(height: 10),
+          ],
+          _buildLevelCard(cfg),
+        ],
+      );
     } else if (_addLevelMode) {
       contentKey = const ValueKey<String>('picker');
       content = _buildLevelTypePicker(available);
@@ -745,12 +757,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     );
   }
 
-  /// État 1 : pill compact "+ Ajouter un niveau" — point d'entrée du
-  /// container morphant.
-  Widget _buildAddLevelButton() {
+  /// Pill "+ Ajouter un niveau" — utilisée à la fois comme état 1 du
+  /// container morphant (rentre dans la picker au tap) ET en haut de
+  /// l'éditeur (état 3) pour permettre d'enchaîner l'ajout d'un autre
+  /// niveau sans devoir d'abord refermer celui en cours d'édition.
+  /// [onTap] permet aux deux call sites de fournir le bon handler.
+  Widget _buildAddLevelButton({VoidCallback? onTap}) {
     return GestureDetector(
-      key: _addLevelButtonKey,
-      onTap: () => setState(() => _addLevelMode = true),
+      onTap: onTap ?? () => setState(() => _addLevelMode = true),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
@@ -774,6 +788,20 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         ),
       ),
     );
+  }
+
+  /// Settle le niveau en cours d'édition (le sort du container vers la
+  /// liste, collapsé en pill) puis rouvre la picker pour qu'un nouveau
+  /// type de niveau puisse être choisi tout de suite. Appelé quand
+  /// l'utilisateur clique sur le bouton "+ Ajouter un niveau"
+  /// affiché en haut de l'éditeur d'un niveau pending — chaîne fluide
+  /// d'ajout de plusieurs niveaux dans la foulée.
+  void _settlePendingAndOpenPicker() {
+    setState(() {
+      _pendingLevelField = null;
+      _expandedLevel = null;
+      _addLevelMode = true;
+    });
   }
 
   /// État 2 : picker des types de niveaux — même boîte violet pâle que
