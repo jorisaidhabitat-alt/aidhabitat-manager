@@ -21,6 +21,7 @@ import 'package:http/http.dart' as http;
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/web_file_picker.dart';
+import '../services/web_file_saver.dart';
 import '../services/app_config.dart';
 import '../services/data_service.dart';
 import '../services/document_repository.dart';
@@ -630,6 +631,39 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   /// Copie le fichier local du document vers un emplacement choisi par
   /// l'utilisateur (Files app, Téléchargements…) via file_picker.
   Future<void> _downloadDocument(DocItem doc) async {
+    final fileName = doc.name.isNotEmpty ? doc.name : '${doc.title}.bin';
+    final mime = _mimeTypeFor(doc);
+
+    // Web : pas de filesystem accessible. On résout les bytes (data URL ou
+    // cache SQLite des bytes distants) puis on déclenche un download via
+    // un Blob → anchor `<a download>`. Avant ce fix, le bouton lisait
+    // `doc.localPath` qui est toujours null sur web → erreur "Fichier
+    // local indisponible" sur tous les docs synchronisés.
+    if (kIsWeb) {
+      try {
+        final bytes = await _resolveWebDocumentBytes(doc);
+        if (bytes == null) {
+          _showError('Fichier indisponible (vérifiez la connexion).');
+          return;
+        }
+        final ok = await triggerWebFileDownload(
+          bytes: bytes,
+          fileName: fileName,
+          mimeType: mime,
+        );
+        if (!ok) {
+          _showError('Téléchargement bloqué par le navigateur.');
+          return;
+        }
+        _showSnack('Téléchargement lancé : $fileName');
+      } catch (err) {
+        _showError('Téléchargement impossible : $err');
+      }
+      return;
+    }
+
+    // Native : lit le fichier local (ou la copie persistée par le
+    // pipeline `_persistRemoteDocumentsLocally` pour les docs synchronisés).
     final sourcePath = doc.localPath;
     if (sourcePath == null || sourcePath.isEmpty) {
       _showError('Fichier local indisponible.');
@@ -642,7 +676,6 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
     try {
       final bytes = await source.readAsBytes();
-      final fileName = doc.name.isNotEmpty ? doc.name : '${doc.title}.bin';
       final savedPath = await FilePicker.platform.saveFile(
         dialogTitle: 'Enregistrer le document',
         fileName: fileName,
@@ -652,6 +685,54 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       _showSnack('Enregistré dans : $savedPath');
     } catch (err) {
       _showError('Téléchargement impossible : $err');
+    }
+  }
+
+  /// Résout les bytes d'un document côté web. Trois sources, dans l'ordre :
+  ///   1. `local_file_data_url` (upload offline avant push) — décodé depuis
+  ///      le data URL stocké en SQLite.
+  ///   2. `doc.url` distante → cache SQLite via `webCachedFetch` (auth-aware).
+  ///   3. null si rien ne marche (déclenche le snack d'erreur côté caller).
+  Future<Uint8List?> _resolveWebDocumentBytes(DocItem doc) async {
+    final dataUrl = doc.dataUrl;
+    if (dataUrl != null && dataUrl.isNotEmpty) {
+      final comma = dataUrl.indexOf(',');
+      if (comma > 0) {
+        try {
+          return base64Decode(dataUrl.substring(comma + 1));
+        } catch (_) {
+          // dataUrl mal formé — on tombe sur l'URL distante.
+        }
+      }
+    }
+    final url = doc.url;
+    if (url != null && url.isNotEmpty) {
+      return MediaCacheService.instance.webCachedFetch(
+        url,
+        headers: MediaCacheService.authHeaders(),
+      );
+    }
+    return null;
+  }
+
+  String _mimeTypeFor(DocItem doc) {
+    final ext = doc.name.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'svg':
+        return 'image/svg+xml';
+      default:
+        return 'application/octet-stream';
     }
   }
 
@@ -2720,7 +2801,10 @@ class _PreviewScreenState extends State<_PreviewScreen> {
 
     // PDF local → on rend chaque page en PNG via pdfx et on permet
     // l'annotation au stylet sur chaque page (navigation précédent / suivant).
-    if (isPdf &&
+    // Native uniquement : `_PdfAnnotatorWrapper` repose sur `File` IO pour
+    // persister les PNGs annotés.
+    if (!kIsWeb &&
+        isPdf &&
         doc.localPath != null &&
         doc.localPath!.isNotEmpty &&
         File(doc.localPath!).existsSync()) {
@@ -2730,6 +2814,14 @@ class _PreviewScreenState extends State<_PreviewScreen> {
         wrapperKey: _pdfWrapperKey,
         onChanged: () => setState(() {}),
       );
+    }
+
+    // PDF distant sur web → on télécharge les bytes (cache SQLite +
+    // auth-aware) et on les rend via `PdfDocument.openData` en lecture
+    // seule. Sans ce path, le PWA iPad affichait un panneau "Aperçu non
+    // disponible" alors qu'on a tout ce qu'il faut côté browser.
+    if (kIsWeb && isPdf) {
+      return _WebPdfViewer(doc: doc);
     }
 
     return _unsupportedPanel();
@@ -2909,6 +3001,203 @@ class _TopbarButton extends StatelessWidget {
 // - Export : aplati l'annotation sur l'image et renvoie les bytes PNG
 // - Toolbar : pen (3 couleurs), eraser, undo, clear
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Web PDF viewer (lecture seule)
+// ---------------------------------------------------------------------------
+
+/// Visualise un PDF côté **web** en téléchargeant les bytes via
+/// `MediaCacheService.webCachedFetch` (cache SQLite + auth `X-App-Session`)
+/// puis en utilisant `pdfx` (PdfDocument.openData) pour rendre chaque page
+/// en raster.
+///
+/// Lecture seule : l'annotation au stylet n'est pas supportée ici car
+/// `_ImageAnnotator` et `_PdfAnnotatorWrapper` reposent sur `File` IO pour
+/// persister les PNGs annotés (`<pdf>.page$N.png` + `<pdf>.page$N.png.
+/// annotation.json`). L'annotation web reste TODO ; en attendant, l'ergo
+/// peut basculer sur macOS pour annoter, et le PWA iPad permet au moins
+/// la consultation.
+class _WebPdfViewer extends StatefulWidget {
+  const _WebPdfViewer({required this.doc});
+  final DocItem doc;
+
+  @override
+  State<_WebPdfViewer> createState() => _WebPdfViewerState();
+}
+
+class _WebPdfViewerState extends State<_WebPdfViewer> {
+  PdfDocument? _doc;
+  int _currentPage = 1;
+  int _totalPages = 1;
+  Uint8List? _currentImage;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _open();
+  }
+
+  @override
+  void dispose() {
+    // ignore: discarded_futures
+    _doc?.close();
+    super.dispose();
+  }
+
+  Future<void> _open() async {
+    final url = widget.doc.url;
+    final dataUrl = widget.doc.dataUrl;
+
+    Uint8List? bytes;
+    // 1. data URL local (upload offline non encore poussé)
+    if (dataUrl != null && dataUrl.isNotEmpty) {
+      final comma = dataUrl.indexOf(',');
+      if (comma > 0) {
+        try {
+          bytes = base64Decode(dataUrl.substring(comma + 1));
+        } catch (_) {}
+      }
+    }
+    // 2. URL distante via cache SQLite (auth-aware)
+    if (bytes == null && url != null && url.isNotEmpty) {
+      bytes = await MediaCacheService.instance.webCachedFetch(
+        url,
+        headers: MediaCacheService.authHeaders(),
+      );
+    }
+    if (!mounted) return;
+    if (bytes == null || bytes.isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = 'PDF introuvable (vérifiez la connexion).';
+      });
+      return;
+    }
+    try {
+      final doc = await PdfDocument.openData(bytes);
+      if (!mounted) {
+        // ignore: discarded_futures
+        doc.close();
+        return;
+      }
+      _doc = doc;
+      _totalPages = doc.pagesCount;
+      await _renderCurrent();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Lecture du PDF impossible : $e';
+      });
+    }
+  }
+
+  Future<void> _renderCurrent() async {
+    final doc = _doc;
+    if (doc == null) return;
+    setState(() => _loading = true);
+    try {
+      final page = await doc.getPage(_currentPage);
+      // Render à 2x la taille naturelle pour un peu de netteté sur les
+      // écrans Retina sans exploser la mémoire.
+      final raster = await page.render(
+        width: page.width * 2,
+        height: page.height * 2,
+        format: PdfPageImageFormat.png,
+      );
+      await page.close();
+      if (!mounted) return;
+      setState(() {
+        _currentImage = raster?.bytes;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Rendu page $_currentPage impossible : $e';
+      });
+    }
+  }
+
+  void _goPrev() {
+    if (_currentPage <= 1) return;
+    setState(() => _currentPage -= 1);
+    // ignore: discarded_futures
+    _renderCurrent();
+  }
+
+  void _goNext() {
+    if (_currentPage >= _totalPages) return;
+    setState(() => _currentPage += 1);
+    // ignore: discarded_futures
+    _renderCurrent();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(
+            _error!,
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    if (_loading && _currentImage == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Column(
+      children: [
+        Expanded(
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Center(
+              child: _currentImage == null
+                  ? const SizedBox.shrink()
+                  : Image.memory(_currentImage!, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+        if (_totalPages > 1)
+          Container(
+            color: Colors.black.withValues(alpha: 0.6),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(LucideIcons.chevronLeft,
+                      color: Colors.white),
+                  onPressed: _currentPage > 1 ? _goPrev : null,
+                  tooltip: 'Page précédente',
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '$_currentPage / $_totalPages',
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                const SizedBox(width: 12),
+                IconButton(
+                  icon: const Icon(LucideIcons.chevronRight,
+                      color: Colors.white),
+                  onPressed: _currentPage < _totalPages ? _goNext : null,
+                  tooltip: 'Page suivante',
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
 
 /// Wrapper qui télécharge une image distante via [MediaCacheService] puis
 /// affiche un [_ImageAnnotator] sur le fichier local mis en cache. Permet
