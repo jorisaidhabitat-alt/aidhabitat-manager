@@ -585,6 +585,16 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         );
       },
     );
+    // Refresh à la fermeture de la modale : si l'utilisateur a sauvé
+    // une annotation, `enqueueAnnotatedReuploadBytes` a écrit un nouveau
+    // `local_file_data_url` côté SQLite. Sans ce reload, la grille
+    // continuait d'afficher l'ancienne vignette pendant ~10s (le temps
+    // du polling auto). Avec, le thumbnail bascule immédiatement sur
+    // la version annotée — `_DocThumbnail.didUpdateWidget` invalide
+    // son cache mémoire dès que `dataUrl` change.
+    if (mounted) {
+      await _loadDocuments(silent: true);
+    }
   }
 
   /// Simple preview dialog for web image documents. Bytes come from (in
@@ -1837,6 +1847,14 @@ class _DocThumbnailState extends State<_DocThumbnail> {
     super.didUpdateWidget(old);
     if (old.doc.id != widget.doc.id ||
         old.doc.dataUrl != widget.doc.dataUrl) {
+      // Invalidate le cache mémoire pour cet `id` quand le dataUrl a
+      // changé (cas typique : l'utilisateur vient d'annoter + sauver →
+      // `enqueueAnnotatedReuploadBytes` a écrit un nouveau data URL en
+      // SQLite). Sans ça, `_primeBytes` retournait l'ancien décodage
+      // et la vignette restait sur l'image pré-annotation.
+      if (old.doc.dataUrl != widget.doc.dataUrl) {
+        _bytesCache.remove(widget.doc.id);
+      }
       _primeBytes();
     }
   }
@@ -2806,12 +2824,25 @@ class _PreviewScreenState extends State<_PreviewScreen> {
         if (didPop) return;
         _handleClose();
       },
-      child: Center(
-        child: GestureDetector(
-          onTap: () {}, // absorber tap sur le body (barrier ferme le dialog)
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
+      // Tap sur le fond sombre (en dehors de la card) → on route vers
+      // `_handleClose` qui se charge de la logique :
+      //   • Aucune modif non sauvée → ferme directement
+      //   • Modifs en cours → dialog de confirmation (X / Ignorer / Save)
+      // Avant : `barrierDismissible: false` bloquait la fermeture sur
+      // clic extérieur, donc même APRÈS un Save l'utilisateur devait
+      // cliquer le X. Maintenant, un click extérieur post-save ferme
+      // immédiatement (pas de prompt, le travail est sauvé).
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _handleClose,
+        child: Center(
+          child: GestureDetector(
+            // Absorbe le tap sur le body pour qu'il ne remonte pas au
+            // GestureDetector du fond (sinon dessiner = fermer la modale).
+            onTap: () {},
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
               width: maxWidth,
               height: maxHeight,
               decoration: BoxDecoration(
@@ -2837,6 +2868,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
