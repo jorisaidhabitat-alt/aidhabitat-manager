@@ -78,10 +78,27 @@ class _MainScreenState extends State<MainScreen> {
     _connectivitySubscription = connectivity.offlineStream.listen((offline) {
       if (mounted) setState(() => _isOffline = offline);
     });
-    // Preload reference data (communes, barèmes ANAH, ...) in the
-    // background so the beneficiary autocomplete + income auto-calc work
-    // as soon as the user opens a dossier.
+    // Préchargement parallèle de TOUTES les données du workspace dès
+    // l'arrivée sur l'écran principal — sans bloquer le rendu. Sans ça,
+    // chaque écran (Bibliothèque, Caisses de retraite, …) faisait son
+    // propre fetch à sa première ouverture après login → l'user voyait
+    // une grille vide pendant 1-3s sur iPad PWA.
+    //
+    // Maintenant : tout fetch en parallèle pendant que l'user regarde
+    // le dashboard. Quand il navigue vers Bibliothèque ou Caisses, la
+    // SQLite locale est déjà chaude → rendu instantané depuis le
+    // cache, et le refresh remote interne au screen est un no-op (les
+    // données sont déjà mergées).
+    //
+    // Ces appels sont best-effort : ils échouent silencieusement si on
+    // est offline, et chaque écran a son propre fallback offline-first
+    // sur le cache SQLite de toute façon.
+    // ignore: discarded_futures
     ReferencesService().ensureLoaded();
+    // ignore: discarded_futures
+    _dataService.refreshWikiItemsFromRemote();
+    // ignore: discarded_futures
+    _dataService.refreshRetirementFundsFromRemote();
     _loadData();
   }
 

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import '../models/types.dart';
+import 'app_config.dart';
 import 'local_database.dart';
 import 'nocodb_api_client.dart';
 
@@ -133,17 +134,42 @@ class ReferencesService {
       }
     }
 
-    // 2. Refresh réseau (toujours, même si on a un cache — pour récupérer
+    // 2. Si la config NocoDB n'est pas encore prête (pas de session
+    //    token côté `AppConfig`), on n'arme PAS le TTL et on ne marque
+    //    PAS `_loaded`. Sinon, le pré-fetch au boot (déclenché avant
+    //    que `AuthService.restoreRemoteSession()` ait fini de poser le
+    //    token) reçoit un `ReferencesPayload` vide via le fallback
+    //    `NocodbApiClient.fetchReferences()` (cf. `if
+    //    (!AppConfig.hasRemoteConfig) return const ReferencesPayload()`),
+    //    persisterait ce payload vide en cache et bloquerait tous les
+    //    `ensureLoaded()` ultérieurs en no-op (TTL frais) → badge EPCI
+    //    et autocomplete commune cassés à vie jusqu'au prochain clear
+    //    cache.
+    if (!AppConfig.hasRemoteConfig) {
+      return;
+    }
+
+    // 3. Refresh réseau (toujours, même si on a un cache — pour récupérer
     //    les nouvelles communes/EPCIs/barèmes ANAH ajoutés côté NocoDB).
     try {
       final payload = await _apiClient.fetchReferences();
+      // Sécurité : si malgré la garde au-dessus le serveur renvoie un
+      // payload totalement vide, on ne le persiste pas et on ne marque
+      // pas le TTL — le prochain `ensureLoaded` retentera. Ça couvre le
+      // cas où le serveur est joignable mais les tables NocoDB sont
+      // temporairement indisponibles (réplication, maintenance…).
+      if (payload.communes.isEmpty &&
+          payload.epcis.isEmpty &&
+          payload.baremesAnah.isEmpty) {
+        return;
+      }
       _payload = payload;
       _loaded = true;
       // Marque l'instant du fetch réussi → arme le TTL stale-while-
       // revalidate (cf. `ensureLoaded`).
       _lastFetchedAt = DateTime.now();
       if (!_controller.isClosed) _controller.add(payload);
-      // 3. Persiste pour le prochain cold start.
+      // 4. Persiste pour le prochain cold start.
       unawaited(_writeToCache(payload));
     } catch (_) {
       // Silent fallback: keep the previous payload (cached or empty) so UI
