@@ -846,19 +846,34 @@ export async function generateVisitReport({
 }
 
 /**
- * Construit un nom de fichier propre pour le PDF généré, du genre
- * `Rapport_DUPONT_Marie_2024-07-22.pdf`.
+ * Construit un nom de fichier propre pour le PDF généré, format
+ * `Rapport - DUPONT Marie.pdf` (demande utilisateur — plus lisible que
+ * l'ancien `Rapport_DUPONT_Marie_2024-07-22.pdf` snake_case + date).
+ *
+ * Caractères filtrés : on garde lettres accentuées + chiffres + tirets
+ * + apostrophes (les caractères filesystem-safe sur les 3 OS cibles
+ * macOS/Windows/Linux). Les autres deviennent des espaces qui sont
+ * ensuite collapsés.
  */
 export function buildReportFileName(dossier) {
   const patient = dossier?.patient || {};
-  const last = String(patient.lastName || '').toUpperCase().replace(/[^A-Z0-9_-]+/g, '_');
-  const first = String(patient.firstName || '').replace(/[^A-Za-zÀ-ÿ0-9_-]+/g, '_');
-  const dateRaw = dossier?.visitDate;
-  const date = dateRaw ? new Date(dateRaw) : new Date();
-  const yyyy = date.getUTCFullYear();
-  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(date.getUTCDate()).padStart(2, '0');
-  return `Rapport_${last || 'Beneficiaire'}_${first || ''}_${yyyy}-${mm}-${dd}.pdf`
-    .replace(/_+/g, '_')
-    .replace(/_\./g, '.');
+  const sanitize = (raw) =>
+    String(raw || '')
+      // Bannir les caractères réservés sur Windows (`<>:"/\|?*`) et les
+      // caractères de contrôle. Les autres restent (accents, espaces,
+      // apostrophes, tirets).
+      .replace(/[<>:"/\\|?*\x00-\x1F]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const last = sanitize(patient.lastName).toUpperCase();
+  const first = sanitize(patient.firstName);
+
+  // Compose "DUPONT Marie" en sautant les parties vides — un dossier
+  // sans nom renvoie "Bénéficiaire" pour qu'on n'ait jamais un
+  // "Rapport - .pdf" malformé.
+  const composed = [last, first].filter(Boolean).join(' ').trim();
+  const display = composed || 'Bénéficiaire';
+
+  return `Rapport - ${display}.pdf`;
 }
