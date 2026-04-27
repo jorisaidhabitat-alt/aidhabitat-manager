@@ -20,6 +20,7 @@ import 'package:http/http.dart' as http;
 
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
+import '../models/visit_report_categories.dart';
 import '../services/web_file_picker.dart';
 import '../services/web_file_saver.dart';
 import '../services/app_config.dart';
@@ -898,7 +899,12 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   List<DocItem> get _filteredDocuments {
-    Iterable<DocItem> docs = _documents;
+    // Décorrélation avec l'onglet Photos du relevé de visite : les
+    // documents portant un des trois tags visite (Logement /
+    // Accessibilité / Sanitaires) sont gérés exclusivement là-bas et
+    // ne doivent pas apparaître dans la grille générale Documents.
+    Iterable<DocItem> docs = _documents
+        .where((doc) => !doc.tags.any(kVisitPhotoTags.contains));
 
     final query = _searchTerm.trim().toLowerCase();
     if (query.isNotEmpty) {

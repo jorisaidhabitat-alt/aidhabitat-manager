@@ -288,6 +288,9 @@ class _PhotosTabState extends State<PhotosTab>
         children: [
           // 3 catégories principales (Logement / Accessibilité /
           // Sanitaires) — mêmes paramètres pour toutes, on itère.
+          // La 4e zone « À classer » a été retirée : l'onglet Photos
+          // est désormais hermétique à l'espace Documents — un import
+          // fait là-bas n'apparaît plus ici, et inversement.
           for (final tag in kVisitPhotoTags) ...[
             _buildCategorySection(
               tag: tag,
@@ -296,9 +299,6 @@ class _PhotosTabState extends State<PhotosTab>
             ),
             const SizedBox(height: 18),
           ],
-          // 4e zone : photos non taguées (importées via Documents
-          // ou via le bouton « Sans catégorie » de l'onglet Photos).
-          _buildUnsortedSection(),
         ],
       ),
     );
@@ -531,90 +531,6 @@ class _PhotosTabState extends State<PhotosTab>
     );
   }
 
-  Widget _buildUnsortedSection() {
-    final unsorted = _unsortedPhotos;
-    if (unsorted.isEmpty) return const SizedBox.shrink();
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFDE68A)),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  LucideIcons.folderOpen,
-                  size: 18,
-                  color: Color(0xFFB45309),
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'À classer',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF92400E),
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '${unsorted.length}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF92400E),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Photos déjà importées sur ce dossier sans catégorie visite. '
-            'Tape sur une photo pour l\'affecter à une catégorie.',
-            style: TextStyle(fontSize: 12, color: Color(0xFF92400E)),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: unsorted
-                .map(
-                  (doc) => _UnsortedTile(
-                    doc: doc,
-                    onAssign: (tag) => _moveToCategory(doc: doc, newTag: tag),
-                    onDelete: () => _deletePhoto(doc),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildAddButton({
     required IconData icon,
     required String label,
@@ -843,152 +759,6 @@ class _PhotoTile extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Tile « À classer » — petite carte qui propose 3 boutons d'affectation
-// ---------------------------------------------------------------------------
-
-class _UnsortedTile extends StatelessWidget {
-  final DocItem doc;
-  final ValueChanged<String> onAssign;
-  final VoidCallback onDelete;
-
-  const _UnsortedTile({
-    required this.doc,
-    required this.onAssign,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _showAssignSheet(context),
-      child: Container(
-        width: 88,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFFDE68A)),
-        ),
-        clipBehavior: Clip.hardEdge,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: _PhotoThumbnail(doc: doc),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: Text(
-                doc.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF92400E),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showAssignSheet(BuildContext context) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Affecter "${doc.title}"',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
-                ),
-              ),
-              const SizedBox(height: 12),
-              for (final tag in kVisitPhotoTags)
-                ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  leading: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEDE8F5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      _iconForTag(tag),
-                      size: 16,
-                      color: const Color(0xFF7C6DAA),
-                    ),
-                  ),
-                  title: Text(
-                    visitPhotoTagShortLabel(tag),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    onAssign(tag);
-                  },
-                ),
-              const Divider(height: 12),
-              ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                leading: const Icon(LucideIcons.trash2,
-                    size: 20, color: Color(0xFFB91C1C)),
-                title: const Text(
-                  'Supprimer la photo',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFB91C1C),
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onDelete();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  IconData _iconForTag(String tag) {
-    switch (tag) {
-      case kPhotoTagLogement:
-        return LucideIcons.home;
-      case kPhotoTagAccessibilite:
-        return LucideIcons.armchair;
-      case kPhotoTagSanitaires:
-        return LucideIcons.bath;
-      default:
-        return LucideIcons.image;
-    }
   }
 }
 
