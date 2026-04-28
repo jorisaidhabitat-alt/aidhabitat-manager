@@ -227,6 +227,7 @@ class NotesWidget extends StatefulWidget {
     this.allowTextModal = true,
     this.showSaveButton = true,
     this.showCanvas = true,
+    this.expandModalFullscreen = false,
     this.onDraftChange,
     this.embedded = false,
     this.toolbarPlacement = NoteToolbarPlacement.bottomCenter,
@@ -325,6 +326,14 @@ class NotesWidget extends StatefulWidget {
   /// Utilisé pour les notes VAD textuelles (Préconisations-Projet,
   /// Préconisations-Résumé, etc.) où le dessin n'apporte rien.
   final bool showCanvas;
+
+  /// Si true, le modal d'expansion s'ouvre en pleine largeur d'écran
+  /// dès le départ (au lieu du floating window 420×340 par défaut).
+  /// Pratique pour les notes textuelles compactes où l'utilisateur
+  /// veut écrire confortablement quand il agrandit. Le bouton de
+  /// bascule fullscreen ↔ fenêtré reste accessible dans le modal.
+  final bool expandModalFullscreen;
+
   final bool embedded;
   final NoteToolbarPlacement toolbarPlacement;
   final bool toolbarDockedToBorder;
@@ -1307,6 +1316,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             initialText: _textController.text,
             placeholder: widget.placeholder,
             title: widget.title,
+            startFullscreen: widget.expandModalFullscreen,
             onChanged: (value) {
               if (_textController.text == value) return;
               _textController.value = TextEditingValue(
@@ -2501,6 +2511,7 @@ class _FloatingTextModal extends StatefulWidget {
     required this.title,
     required this.onChanged,
     required this.onClose,
+    this.startFullscreen = false,
   });
 
   final String initialText;
@@ -2508,6 +2519,11 @@ class _FloatingTextModal extends StatefulWidget {
   final String title;
   final ValueChanged<String> onChanged;
   final VoidCallback onClose;
+
+  /// Si true, le modal s'ouvre directement en pleine largeur (rect
+  /// `(12, 12, screen.width - 24, screen.height - 24)`). Le bouton
+  /// de bascule reste actif pour revenir en fenêtré si besoin.
+  final bool startFullscreen;
 
   @override
   State<_FloatingTextModal> createState() => _FloatingTextModalState();
@@ -2520,13 +2536,14 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
   late Offset _pos;
   late Size _size;
   late final TextEditingController _controller;
-  bool _fullscreen = false;
+  late bool _fullscreen;
 
   @override
   void initState() {
     super.initState();
     _pos = _sharedPos;
     _size = _sharedSize;
+    _fullscreen = widget.startFullscreen;
     _controller = TextEditingController(text: widget.initialText);
     _controller.addListener(() => widget.onChanged(_controller.text));
   }
