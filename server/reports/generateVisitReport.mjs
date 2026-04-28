@@ -372,13 +372,13 @@ function buildViewModel({
   const lastName = String(patient.lastName || '').trim();
 
   // Affichage de l'aide à domicile : si l'ergo a saisi du texte, on
-  // l'affiche tel quel (ex. "2x/semaine, ADMR"). Sinon "Oui" si la
-  // case est cochée, "Non" si elle ne l'est pas (UX confirmée par
-  // l'utilisateur : "si ce n'est pas coché c'est forcément non").
-  const homeHelpTxt = String(patient.homeHelpTxt || '').trim();
+  // « Aide à domicile » : binaire pur — Oui/Non (demande utilisateur,
+  // « met simplement oui ou non »). On IGNORE désormais le texte
+  // détaillé (ex. « aide-ménagère 2h/sem ») : il pollue la ligne du
+  // PDF et l'ergo veut une réponse courte. Le détail reste consultable
+  // dans NocoDB pour les besoins administratifs.
   const homeHelp = Boolean(patient.homeHelp);
-  const homeHelpDisplay =
-    homeHelpTxt || (homeHelp ? 'Oui' : 'Non');
+  const homeHelpDisplay = homeHelp ? 'Oui' : 'Non';
 
   // Reconnaissance MDPH : on privilégie le texte (qui contient
   // typiquement le %) mais on retombe sur "Oui" si la case est cochée
@@ -526,7 +526,13 @@ function buildViewModel({
         : '',
       invalidityDisplay,
       homeHelpDisplay,
-      dependenceTxt: String(patient.dependenceTxt || '').trim(),
+      // Dépendance particulière : on n'affiche QUE le mot-clé (Canne /
+      // Déambulateur / Fauteuil roulant / Aucune) et pas la description
+      // libre saisie en complément. Demande utilisateur : « simplement
+      // un élément ». On match d'abord le texte contre les options
+      // connues, fallback sur le 1er segment avant virgule/point si
+      // aucune correspondance.
+      dependenceTxt: normalizeDependenceForReport(patient.dependenceTxt),
     },
     dossier: {
       personnesPresentesVisite: String(dossier?.personnesPresentesVisite || '').trim(),
