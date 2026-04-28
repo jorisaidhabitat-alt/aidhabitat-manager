@@ -1797,15 +1797,13 @@ export async function generateVisitReport({
         // Itérations user sur l'inset horizontal : 30 → 32 → 31 → 30
         // → 30.5 pt (demande "ça dépasse, reduis de 0.5 de chaque côté").
         const hLineXInset = 30.5;
-        // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 → 0.2 → 0.1 pt.
-        // Limite extrême — selon le viewer (Aperçu macOS, Acrobat, Preview
-        // iOS) le rendu peut faire un sub-pixel rendering ; à l'impression
-        // A4 reste discret mais visible.
+        // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 → 0.2 → 0.1 → 0.2
+        // (0.1 trop fin à l'œil, retour au sweet spot 0.2).
         partialPage.drawRectangle({
           x: hLineXInset,
           y: orangeLineY,
           width: partialPage.getSize().width - hLineXInset * 2,
-          height: 0.1,
+          height: 0.2,
           color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
         });
       }
