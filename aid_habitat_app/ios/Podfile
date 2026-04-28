@@ -1,5 +1,7 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# Plateforme cible iOS minimum. 13.0 = aligné sur AppFrameworkInfo.plist
+# (`MinimumOSVersion`) et sur la baseline Flutter 3.x. Couvre ~99% du
+# parc iPad/iPhone actif.
+platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'

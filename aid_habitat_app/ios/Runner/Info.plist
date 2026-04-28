@@ -107,5 +107,29 @@
 		<string>tel</string>
 		<string>sms</string>
 	</array>
+
+	<!-- ====================================================== -->
+	<!-- Catégorie App Store (visible dans Settings → Storage    -->
+	<!-- et utilisée par la fiche App Store Connect).            -->
+	<!-- "medical" convient pour une app métier ergothérapie.    -->
+	<!-- Liste : https://developer.apple.com/library/archive/    -->
+	<!--   documentation/General/Reference/                       -->
+	<!--   InfoPlistKeyReference/Articles/LaunchServicesKeys.html -->
+	<!-- ====================================================== -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.medical</string>
+
+	<!-- ====================================================== -->
+	<!-- iPadOS Multi-Window (Split View / Stage Manager)        -->
+	<!-- Active officiellement le support multi-fenêtre iPad —   -->
+	<!-- bonus pour la review Apple sur les apps métier iPad.    -->
+	<!-- ====================================================== -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict/>
+	</dict>
 </dict>
 </plist>

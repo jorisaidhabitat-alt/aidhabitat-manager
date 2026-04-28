@@ -1790,18 +1790,19 @@ export async function generateVisitReport({
         // Centrage vertical entre la TOP et le cadre descriptif, puis
         // drop vers le bas. Itérations utilisateur : -3 → -6 pt
         // (demande "descend encore légèrement le trait horizontal").
+        // Itérations user : -3 → -6 → -8 pt (descend un tout petit
+        // peu de plus).
         const orangeLineY =
-            (topRect.y + descriptifFrameTop) / 2 - 6;
+            (topRect.y + descriptifFrameTop) / 2 - 8;
         const hLineXInset = 32;
-        // Épaisseur restaurée à 0.5 pt — demande user "remet
-        // l'epaisseur precedente" : à la position basse (−6 pt) le
-        // trait disparaissait visuellement à 0.3, on remonte à 0.5
-        // qui matche aussi mieux les autres traits du gabarit.
+        // Épaisseur 0.5 → 0.4 (demande user "réduis encore légèrement
+        // l'épaisseur"). Compromis entre 0.3 (un poil trop fin) et 0.5
+        // (un poil trop épais).
         partialPage.drawRectangle({
           x: hLineXInset,
           y: orangeLineY,
           width: partialPage.getSize().width - hLineXInset * 2,
-          height: 0.5,
+          height: 0.4,
           color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
         });
       }

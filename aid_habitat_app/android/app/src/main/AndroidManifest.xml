@@ -1,6 +1,31 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ====================================================== -->
+    <!-- Permissions runtime (Android 6+)                        -->
+    <!-- Doivent matcher les usages iOS Info.plist               -->
+    <!-- ====================================================== -->
+
+    <!-- image_picker (camera) : VAD photos logement / sanitaires -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- image_picker (gallery) Android 13+ : photo seulement -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- image_picker (gallery) Android 12 et inférieur -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- url_launcher : ouverture d'URL externes (mailto, tel, https) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- connectivity_plus : détection on/off-line -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Camera optionnelle (l'app fonctionne sans) -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <application
-        android:label="aid_habitat_app"
+        android:label="Aid'Habitat"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
