@@ -62,33 +62,48 @@ class SyncRepository {
     );
   }
 
+  /// Marque une op comme `completed` UNIQUEMENT si elle est encore
+  /// `running`. Si entre temps l'utilisateur a tapé d'autres caractères
+  /// (donc `dossier_repository.updatePatient` a fait `INSERT(replace)`
+  /// sur la même `id`, ce qui repasse le row à `pending` avec un
+  /// nouveau payload), la transition est rejetée → le row reste
+  /// `pending` avec sa payload fraîche, le SyncEngine la repushera au
+  /// prochain cycle, et l'utilisateur ne perd PAS sa frappe. C'est le
+  /// fix de la race « Bro → B » (avril 2026).
   Future<void> markCompleted({
     required String operationId,
     required String entityType,
     required String entityLocalId,
   }) async {
-    final db = await _database.database;
-    final now = DateTime.now().toIso8601String();
-
-    await _updateOperation(
+    final updated = await _updateOperation(
       operationId: operationId,
       status: SyncOperationStatus.completed,
       clearError: true,
+      expectedStatus: SyncOperationStatus.running,
     );
+    if (updated == 0) {
+      // L'op a été remplacée par une nouvelle version `pending` pendant
+      // le PATCH en vol. Ne PAS marquer l'entité `synced` — il y a une
+      // mutation locale plus récente à pousser. On laisse la nouvelle
+      // op `pending` faire son travail au prochain cycle.
+      return;
+    }
+    final db = await _database.database;
     await _updateEntitySyncState(
       db: db,
       entityType: entityType,
       entityLocalId: entityLocalId,
       syncState: SyncState.synced,
     );
-    await db.update(
-      'sync_operations',
-      {'updated_at': now},
-      where: 'id = ?',
-      whereArgs: [operationId],
-    );
   }
 
+  /// Marque une op comme `failed` UNIQUEMENT si elle est encore
+  /// `running` (cf. `markCompleted` pour le rationale du verrou). Si
+  /// l'op a été remplacée par une version `pending` pendant le PATCH en
+  /// vol, la transition est rejetée → le row reste `pending` avec sa
+  /// payload fraîche, et n'est PAS marqué `failed` (sinon on
+  /// déclencherait un bandeau rouge UI alors que la mutation suivante
+  /// va potentiellement réussir).
   Future<void> markFailed({
     required String operationId,
     required String entityType,
@@ -99,15 +114,18 @@ class SyncRepository {
     final rows = await db.query(
       'sync_operations',
       columns: ['attempt_count'],
-      where: 'id = ?',
-      whereArgs: [operationId],
+      where: 'id = ? AND status = ?',
+      whereArgs: [operationId, SyncOperationStatus.running.name],
       limit: 1,
     );
-    final attempts = rows.isEmpty
-        ? 0
-        : (rows.first['attempt_count'] as int? ?? 0);
+    if (rows.isEmpty) {
+      // L'op a été remplacée pendant le PATCH — laisser le row `pending`
+      // tel quel, il sera retenté au prochain cycle.
+      return;
+    }
+    final attempts = rows.first['attempt_count'] as int? ?? 0;
 
-    await db.update(
+    final updated = await db.update(
       'sync_operations',
       {
         'status': SyncOperationStatus.failed.name,
@@ -115,9 +133,14 @@ class SyncRepository {
         'last_error': error,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [operationId],
+      where: 'id = ? AND status = ?',
+      whereArgs: [operationId, SyncOperationStatus.running.name],
     );
+    if (updated == 0) {
+      // Race : la transition pending→running a été annulée juste avant
+      // notre UPDATE. Identique au cas `rows.isEmpty` ci-dessus.
+      return;
+    }
 
     await _updateEntitySyncState(
       db: db,
@@ -493,21 +516,41 @@ class SyncRepository {
     );
   }
 
-  Future<void> _updateOperation({
+  /// Met à jour le statut d'une `sync_operation`. Si [expectedStatus] est
+  /// fourni, la transition n'a lieu QUE si le row est actuellement dans
+  /// cet état — sinon `0` est renvoyé (no-op). Crucial pour le verrou
+  /// par status="running" qui empêche un `markCompleted` de squasher
+  /// un row qui a été remplacé par une nouvelle version pending pendant
+  /// que le PATCH HTTP était en vol (cf. fix race « Bro → B »).
+  ///
+  /// Renvoie le nombre de lignes effectivement mises à jour (0 ou 1).
+  Future<int> _updateOperation({
     required String operationId,
     required SyncOperationStatus status,
     required bool clearError,
+    SyncOperationStatus? expectedStatus,
   }) async {
     final db = await _database.database;
-    await db.update(
+    final values = <String, Object?>{
+      'status': status.name,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    if (clearError) {
+      values['last_error'] = null;
+    }
+    if (expectedStatus == null) {
+      return db.update(
+        'sync_operations',
+        values,
+        where: 'id = ?',
+        whereArgs: [operationId],
+      );
+    }
+    return db.update(
       'sync_operations',
-      {
-        'status': status.name,
-        'last_error': clearError ? null : undefined,
-        'updated_at': DateTime.now().toIso8601String(),
-      }..removeWhere((key, value) => value == undefined),
-      where: 'id = ?',
-      whereArgs: [operationId],
+      values,
+      where: 'id = ? AND status = ?',
+      whereArgs: [operationId, expectedStatus.name],
     );
   }
 

@@ -24,7 +24,6 @@ import 'visit_report/bathroom_tab.dart';
 import 'visit_report/wc_tab.dart';
 import 'visit_report/photos_tab.dart';
 import 'visit_report/recommendations_tab.dart';
-import 'visit_report/observations_tab.dart';
 import 'visit_report/plans_tab.dart';
 
 /// In-memory cache of the last active tab index per dossier, so navigating
@@ -1071,13 +1070,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         _wrapTabWithNotes(
           'Préconisations',
           RecommendationsTab(dossier: _dossier, repository: _repository),
-        ),
-        // Onglet Observations — pleine largeur, alimente les pages 6 et 7
-        // du rapport PDF (Projet usager + Résumé préconisations +
-        // Observations équipements). Cf. observations_tab.dart.
-        _wrapTabWithNotes(
-          'Observations',
-          ObservationsTab(dossier: _dossier),
         ),
         _wrapTabWithNotes(
           'Plans',

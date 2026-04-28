@@ -3803,6 +3803,60 @@ const fetchContexteNotePagesForPatient = async (patientId, dossierId) => {
 };
 
 /**
+ * Récupère les NotesWidget VAD qui ont remplacé l'ancien onglet
+ * « Observations » (cf. demande utilisateur 2026-04-28). Trois
+ * tabKeys :
+ *   - `Préconisations-Projet`     → page 7 PDF, champ « Projet ou souhait
+ *                                   de l'usager »
+ *   - `Préconisations-Résumé`     → page 7 PDF, champ « Résumé des
+ *                                   préconisations »
+ *   - `Accessibilité-Équipements` → page 6 PDF, champ `obs`
+ *
+ * Concatène les `textContent` de toutes les pages d'un même tabKey
+ * (séparateur double-newline) si l'ergo a fait défiler plusieurs
+ * pages dans le NotesWidget. Renvoie un objet plat `{ projet, resume,
+ * observation }`. Si aucune note n'existe pour un tabKey, le champ
+ * correspondant est `null` → fallback en aval sur observations_synthese.
+ */
+const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
+  if (!patientId) return { projet: null, resume: null, observation: null };
+  try {
+    const [projetPages, resumePages, equipPages] = await Promise.all([
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Préconisations-Projet',
+      }),
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Préconisations-Résumé',
+      }),
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Accessibilité-Équipements',
+      }),
+    ]);
+    const joinPages = (pages) => {
+      const filtered = asArray(pages)
+        .filter((pg) => !!pg)
+        // Si dossierId fourni, on restreint au scope du dossier (cas
+        // multi-dossiers même patient — rare).
+        .filter((pg) => !dossierId || !pg?.scopeId || String(pg.scopeId) === String(dossierId))
+        .sort((a, b) => Number(a.pageNumber) - Number(b.pageNumber));
+      const text = filtered
+        .map((pg) => stringValue(pg?.textContent).trim())
+        .filter(Boolean)
+        .join('\n\n');
+      return text || null;
+    };
+    return {
+      projet: joinPages(projetPages),
+      resume: joinPages(resumePages),
+      observation: joinPages(equipPages),
+    };
+  } catch (error) {
+    console.warn('[report] échec fetchVadOverlayNotes :', error?.message || error);
+    return { projet: null, resume: null, observation: null };
+  }
+};
+
+/**
  * Liste les recommandations d'un dossier — réutilise la logique
  * de l'endpoint /api/visit-recommendations/:dossierId.
  */
@@ -4121,11 +4175,12 @@ app.post(
     // rempli telle ou telle section, le PDF a juste les zones vides.
     const [
       sanitaires,
-      observations,
+      legacyObservations,
       remoteDocuments,
       remoteNotePages,
       contexteNotes,
       recommendations,
+      vadOverlayNotes,
     ] = await Promise.all([
       fetchSanitairesForDossier(dossierId).catch((err) => {
         console.warn(`[report] échec fetch sanitaires pour ${dossierId}:`, err?.message || err);
@@ -4139,12 +4194,45 @@ app.post(
       patientId ? fetchPlanNotePagesForPatient(patientId, dossierId) : Promise.resolve([]),
       patientId ? fetchContexteNotePagesForPatient(patientId, dossierId) : Promise.resolve([]),
       fetchVisitRecommendationsForDossier(dossierId),
+      // NEW (2026-04-28) : les 3 textes VAD sont maintenant dans des
+      // NotesWidget (Préconisations-Projet, Préconisations-Résumé,
+      // Accessibilité-Équipements) au lieu de la table
+      // `observations_synthese`. On lit les 2 sources et on merge —
+      // les notes gagnent en priorité, observations_synthese reste un
+      // fallback pour les dossiers historiques.
+      patientId
+        ? fetchVadOverlayNotesForReport(patientId, dossierId)
+        : Promise.resolve({ projet: null, resume: null, observation: null }),
     ]);
 
     // 3) Merge inline + remote. Inline gagne en cas de doublon (state
     // local plus récent que NocoDB pendant la fenêtre intermittente).
     const documents = mergeInlineDocuments(remoteDocuments, inlineAssets.documents);
     const notePages = mergeInlineNotePages(remoteNotePages, inlineAssets.plans);
+
+    // 3b) Merge VAD overlay notes (nouvelle source) avec
+    // `observations_synthese` (ancienne source). Notes gagnent.
+    const observations = (() => {
+      const base = legacyObservations || {
+        id: null,
+        dossierId,
+        observationEquipements: '',
+        projetSouhaitUsage: '',
+        resumePreconisations: '',
+      };
+      return {
+        ...base,
+        projetSouhaitUsage:
+          (vadOverlayNotes.projet && vadOverlayNotes.projet.trim()) ||
+          base.projetSouhaitUsage,
+        resumePreconisations:
+          (vadOverlayNotes.resume && vadOverlayNotes.resume.trim()) ||
+          base.resumePreconisations,
+        observationEquipements:
+          (vadOverlayNotes.observation && vadOverlayNotes.observation.trim()) ||
+          base.observationEquipements,
+      };
+    })();
 
     const { bytes, stats } = await generateVisitReport({
       dossier,
