@@ -1684,11 +1684,14 @@ export async function generateVisitReport({
   // préservent le cadre orange du gabarit qui entoure la page.
   const COVER_X_INSET = 25;
   const COVER_BOTTOM_Y = 18;
-  // Décalage vers le bas du bord supérieur du masque pour que la
-  // "fin de préconisation" ne soit pas mangée par le blanc et qu'on
-  // voie clairement la coupure de la case TOP (demande utilisateur :
-  // "redescend encore légèrement le masque").
-  const COVER_TOP_DROP = 20;
+  // Décalage vers le bas du bord supérieur du masque. Plus la valeur
+  // est grande, plus le bord haut du masque descend, donc plus les
+  // traits orange verticaux du gabarit (qui s'étendent dans toute la
+  // page) restent visibles bas dessous la case TOP. Demande user :
+  // "redescend encore le masque pour que les traits orange verticaux
+  // aillent légèrement plus bas et rejoignent le trait horizontal."
+  // 20 → 34 = +14 pt de plus de verticales orange visibles.
+  const COVER_TOP_DROP = 34;
   for (const { pageIdx, botRect, topRect } of pendingBotCovers) {
     if (!botRect) continue;
     let page;
@@ -1771,18 +1774,26 @@ export async function generateVisitReport({
       // Trait orange horizontal de fermeture de la zone préco —
       // demande utilisateur. Centré verticalement entre le bord bas
       // de la TOP (`topRect.y`) et le bord HAUT du cadre orange du
-      // descriptif (`drawY + cropHeight`). Joint EXACTEMENT les
-      // verticales orange du gabarit (mêmes x que `COVER_X_INSET` à
-      // gauche / `pageWidth - COVER_X_INSET` à droite). Épaisseur
-      // 0.5 pt = même finesse que les verticales.
+      // descriptif (`drawY + cropHeight`).
+      //
+      // Calage horizontal : les traits verticaux orange du gabarit
+      // sont à x ≈ 30 / pageWidth - 30 (mesurés sur le PDF rendu).
+      // L'ancien `COVER_X_INSET` (25) faisait dépasser le trait
+      // horizontal de ~5 pt à chaque extrémité. On utilise donc un
+      // inset dédié `H_LINE_X_INSET = 30` qui aligne pile les
+      // extrémités du trait horizontal avec les verticales du
+      // gabarit. Épaisseur réduite à 0.3 pt (vs 0.5 avant) pour
+      // matcher la finesse des verticales — l'utilisateur trouvait
+      // 0.5 encore trop épais.
       if (topRect != null) {
         const descriptifFrameTop = drawY + cropHeight;
         const orangeLineY = (topRect.y + descriptifFrameTop) / 2;
+        const hLineXInset = 30;
         partialPage.drawRectangle({
-          x: COVER_X_INSET,
+          x: hLineXInset,
           y: orangeLineY,
-          width: partialPage.getSize().width - COVER_X_INSET * 2,
-          height: 0.5,
+          width: partialPage.getSize().width - hLineXInset * 2,
+          height: 0.3,
           color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
         });
       }
