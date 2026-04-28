@@ -3804,13 +3804,24 @@ const fetchContexteNotePagesForPatient = async (patientId, dossierId) => {
 
 /**
  * Récupère les NotesWidget VAD qui ont remplacé l'ancien onglet
- * « Observations » (cf. demande utilisateur 2026-04-28). Trois
- * tabKeys :
+ * « Observations » (cf. demande utilisateur 2026-04-28). tabKeys
+ * sources :
  *   - `Préconisations-Projet`     → page 7 PDF, champ « Projet ou souhait
  *                                   de l'usager »
  *   - `Préconisations-Résumé`     → page 7 PDF, champ « Résumé des
  *                                   préconisations »
- *   - `Accessibilité-Équipements` → page 6 PDF, champ `obs`
+ *   - `Accessibilité-Général` + `Accessibilité-Extérieur` (concaténés)
+ *                                 → page 6 PDF, champ `obs`. Le bloc
+ *                                   embedded `Accessibilité-Équipements`
+ *                                   a été supprimé du form (demande
+ *                                   utilisateur 2026-04-28 — « rien à
+ *                                   ajouter, simplement une connexion
+ *                                   à établir »). On lit donc les notes
+ *                                   du panneau latéral (haut-droite du
+ *                                   formulaire) qui sont indexées par
+ *                                   sous-section. `Accessibilité-Équipements`
+ *                                   reste lu en fallback pour les
+ *                                   dossiers historiques.
  *
  * Concatène les `textContent` de toutes les pages d'un même tabKey
  * (séparateur double-newline) si l'ergo a fait défiler plusieurs
@@ -3821,12 +3832,24 @@ const fetchContexteNotePagesForPatient = async (patientId, dossierId) => {
 const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
   if (!patientId) return { projet: null, resume: null, observation: null };
   try {
-    const [projetPages, resumePages, equipPages] = await Promise.all([
+    const [
+      projetPages,
+      resumePages,
+      accGeneralPages,
+      accExterieurPages,
+      legacyEquipPages,
+    ] = await Promise.all([
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Préconisations-Projet',
       }),
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Préconisations-Résumé',
+      }),
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Accessibilité-Général',
+      }),
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Accessibilité-Extérieur',
       }),
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Accessibilité-Équipements',
@@ -3870,10 +3893,27 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
         .join('\n\n');
       return text || null;
     };
+    // `observation` du PDF (page 6 / champ `obs`) : on assemble les
+    // deux sous-sections du panneau latéral Accessibilité (Général +
+    // Extérieur). Si l'une est vide on n'en met qu'une, si les deux
+    // ont du contenu on les sépare par un double-newline. En dernier
+    // recours, fallback sur l'ancien tabKey `Accessibilité-Équipements`
+    // (bloc embedded supprimé en avril 2026 mais toujours lu pour les
+    // dossiers historiques).
+    const accGeneralText = joinPages(accGeneralPages);
+    const accExterieurText = joinPages(accExterieurPages);
+    const legacyEquipText = joinPages(legacyEquipPages);
+    const observation = (() => {
+      const merged = [accGeneralText, accExterieurText]
+        .filter((s) => typeof s === 'string' && s.trim())
+        .join('\n\n');
+      if (merged.trim()) return merged;
+      return legacyEquipText;
+    })();
     return {
       projet: joinPages(projetPages),
       resume: joinPages(resumePages),
-      observation: joinPages(equipPages),
+      observation,
     };
   } catch (error) {
     console.warn('[report] échec fetchVadOverlayNotes :', error?.message || error);
