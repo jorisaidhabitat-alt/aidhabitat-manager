@@ -1710,19 +1710,10 @@ export async function generateVisitReport({
       height: upperY - COVER_BOTTOM_Y,
       color: rgb(1, 1, 1),
     });
-    // Fin trait orange horizontal pour fermer la zone préconisation
-    // sous la dernière case TOP (demande utilisateur). Positionné
-    // juste sous le bord bas de la TOP, à l'intérieur du masque blanc.
-    if (topRect != null) {
-      const orangeY = Math.max(COVER_BOTTOM_Y, topRect.y - 8);
-      page.drawRectangle({
-        x: COVER_X_INSET,
-        y: orangeY,
-        width: pageWidth - COVER_X_INSET * 2,
-        height: 0.8,
-        color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
-      });
-    }
+    // Le trait orange horizontal de fermeture de la zone préco est
+    // dessiné PLUS BAS, dans le bloc descriptif (cf. après embedPage),
+    // pour pouvoir être centré entre la TOP et le cadre orange du
+    // descriptif et joindre exactement les traits verticaux.
   }
 
   // ---------------------------------------------------------------
@@ -1777,6 +1768,24 @@ export async function generateVisitReport({
         width: 555,
         height: cropHeight,
       });
+      // Trait orange horizontal de fermeture de la zone préco —
+      // demande utilisateur. Centré verticalement entre le bord bas
+      // de la TOP (`topRect.y`) et le bord HAUT du cadre orange du
+      // descriptif (`drawY + cropHeight`). Joint EXACTEMENT les
+      // verticales orange du gabarit (mêmes x que `COVER_X_INSET` à
+      // gauche / `pageWidth - COVER_X_INSET` à droite). Épaisseur
+      // 0.5 pt = même finesse que les verticales.
+      if (topRect != null) {
+        const descriptifFrameTop = drawY + cropHeight;
+        const orangeLineY = (topRect.y + descriptifFrameTop) / 2;
+        partialPage.drawRectangle({
+          x: COVER_X_INSET,
+          y: orangeLineY,
+          width: partialPage.getSize().width - COVER_X_INSET * 2,
+          height: 0.5,
+          color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
+        });
+      }
       stats.descriptifMerged = true;
     } catch (error) {
       console.warn(
