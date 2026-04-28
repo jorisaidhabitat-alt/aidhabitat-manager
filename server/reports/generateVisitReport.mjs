@@ -172,6 +172,82 @@ function joinNonEmpty(lines, separator = '\n') {
   return lines.map((line) => String(line || '').trim()).filter(Boolean).join(separator);
 }
 
+/**
+ * Marqueur zero-width space utilisé côté Flutter (accessibility_tab) pour
+ * préserver l'état "Localisé sans texte" dans `volets_*_localisation`.
+ * Côté PDF on l'enlève avant affichage (sinon vide visuel suffit).
+ */
+const VOLETS_LOCALIZED_MARKER = '​';
+
+/**
+ * Format ligne unique pour un type de volet — entrée :
+ *   - status : 'Aucun' (entier=false, loc=='') / 'Entier' (entier=true)
+ *             / 'Localisé' (entier=false, loc!='')
+ *   - loc    : description fournie par l'ergo (ou marqueur ZWSP si vide)
+ * Renvoie '' si "Aucun" (on saute la ligne dans le récap), sinon
+ *   "Entier" ou "Localisé : <texte>" / "Localisé" si pas de précision.
+ */
+function formatVoletLine(label, entier, rawLoc) {
+  const loc = String(rawLoc || '').replace(VOLETS_LOCALIZED_MARKER, '').trim();
+  if (entier) return `${label} : Entier`;
+  if (loc) return `${label} : Localisé (${loc})`;
+  // Localisé sans précision — on l'affiche pour signaler la présence,
+  // mais sans valeur si l'ergo n'a pas rempli le détail.
+  if (rawLoc && rawLoc.length > 0) return `${label} : Localisé`;
+  return ''; // Aucun → on saute
+}
+
+/**
+ * Récap textuel des champs accessibilité « extras » qui n'ont pas leur
+ * propre case dans le template PDF (volets, motorisations, accès rue).
+ * Injecté dans le champ `Observations1` page 5 (auparavant orphelin).
+ *
+ * Format compact, une ligne par valeur non-Aucun, ordre stable :
+ *   Accès depuis la rue : Facile / À revoir
+ *   Volets roulants manuels : Entier
+ *   Volets roulants électriques : Localisé (chambres)
+ *   Volets persiennes : Aucun         ← (skipped si Aucun)
+ *   Porte de garage : Manuel
+ *   Portail : Électrique
+ *
+ * Si aucune donnée pertinente, retourne '' → champ PDF vide (ce qui
+ * est acceptable, page 5 le tolère sans casser la mise en page).
+ */
+function buildAccessExtrasText(housing) {
+  const lines = [];
+  // Accès depuis la rue — toujours rendu (binaire bool, sens utile dans les 2 cas).
+  lines.push(`Accès depuis la rue : ${housing.easyAccess ? 'Facile' : 'À revoir'}`);
+  // Volets — 3 types, on saute si Aucun.
+  const v1 = formatVoletLine(
+    'Volets roulants manuels',
+    Boolean(housing.voletsRoulantsManuelsEntier),
+    housing.voletsRoulantsManuelsLocalisation,
+  );
+  if (v1) lines.push(v1);
+  const v2 = formatVoletLine(
+    'Volets roulants électriques',
+    Boolean(housing.voletsRoulantsElectriquesEntier),
+    housing.voletsRoulantsElectriquesLocalisation,
+  );
+  if (v2) lines.push(v2);
+  const v3 = formatVoletLine(
+    'Volets persiennes',
+    Boolean(housing.voletsPersiennesEntier),
+    housing.voletsPersiennesLocalisation,
+  );
+  if (v3) lines.push(v3);
+  // Motorisations — saute si 'Aucun' / vide.
+  const garage = String(housing.motorisationPorteGarage || '').trim();
+  if (garage && garage !== 'Aucun') {
+    lines.push(`Porte de garage : ${garage}`);
+  }
+  const portail = String(housing.motorisationPortail || '').trim();
+  if (portail && portail !== 'Aucun') {
+    lines.push(`Portail : ${portail}`);
+  }
+  return lines.join('\n');
+}
+
 /** Format français concis "X cm / Y kg" — vide si rien. */
 function formatHeightWeight(heightCm, weightKg) {
   const parts = [];
@@ -462,8 +538,19 @@ function buildViewModel({
       pellet: Boolean(heat.pellet),
       other: Boolean(heat.other),
     },
+    // Champ `Observations1` page 5 — récap textuel des données
+    // accessibilité « extras » qui n'ont pas leur propre case dans le
+    // template (volets manuels/élec/persiennes, motorisations garage/
+    // portail, accès depuis la rue). Sans ça, ces saisies utilisateur
+    // étaient écrites en NocoDB mais jamais visibles dans le rapport
+    // PDF (mapping orphelin sur `housing.accessObservation` qui est
+    // wipé en permanence côté Flutter — accessibility_tab `_save`).
+    //
+    // Format : une ligne par valeur non-vide, ordre stable. Cf.
+    // `buildAccessExtrasText` plus haut. Concatène en plus
+    // `housing.comments` (commentaire libre legacy) si présent.
     accessObservation: joinNonEmpty([
-      housing.accessObservation,
+      buildAccessExtrasText(housing),
       housing.comments,
     ], '\n'),
   };
