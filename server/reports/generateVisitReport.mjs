@@ -1529,22 +1529,22 @@ export async function generateVisitReport({
     form.flatten();
   }
 
-  // Blanchiment des cases BOT vides — fait APRÈS flatten pour passer
-  // au-dessus des widgets aplatis (texte vide + bordures éventuelles).
+  // Blanchiment de la zone BOT vide — fait APRÈS flatten pour passer
+  // au-dessus des widgets aplatis. La case BOT du gabarit a sa propre
+  // boîte noire + libellés ("Préconisations avec argumentaire" /
+  // "Photos, croquis, illustration") qu'on ne veut pas voir traîner.
   //
-  // Le cadre orange du gabarit Affinity (bordure décorative qui
-  // entoure tout le bloc préconisations) est préservé sur les côtés
-  // et en bas grâce à un INSET horizontal et vertical. Idem pour le
-  // trait noir qui ferme la case TOP : on laisse `topPreserveGap` pt
-  // entre le bord bas de la bbox TOP et le haut de notre rectangle
-  // blanc. Enfin, on dessine un fin trait orange juste au-dessus du
-  // rectangle pour FERMER visuellement le bloc préconisations
-  // (mirroir du cadre orange du gabarit).
-  const COVER_X_INSET = 25;          // préserve le cadre orange latéral
-  const COVER_BOTTOM_Y = 18;         // préserve le bord orange du bas
-  const TOP_PRESERVE_GAP = 15;       // préserve le trait noir bas de la TOP
-  // Couleur orange du cadre (échantillonnée visuellement sur le PDF).
-  const FRAME_ORANGE = rgb(0xED / 255, 0x98 / 255, 0x44 / 255);
+  // Demande utilisateur : ne PAS recréer de trait orange ni de trait
+  // noir de fermeture — on s'appuie sur le cadre orange du descriptif
+  // (embedé juste en dessous) pour la fermeture visuelle naturelle.
+  // Le cover monte donc jusqu'à `topRect.y` (bord bas de la bbox TOP),
+  // ce qui efface aussi le trait noir bas qui pendrait sinon dans le
+  // vide sans BOT en dessous.
+  //
+  // Marges latérales (COVER_X_INSET) et basse (COVER_BOTTOM_Y)
+  // préservent le cadre orange du gabarit qui entoure la page.
+  const COVER_X_INSET = 25;
+  const COVER_BOTTOM_Y = 18;
   for (const { pageIdx, botRect, topRect } of pendingBotCovers) {
     if (!botRect) continue;
     let page;
@@ -1556,27 +1556,15 @@ export async function generateVisitReport({
     if (!page) continue;
     const { width: pageWidth, height: pageHeight } = page.getSize();
     const upperY = topRect != null
-      ? Math.max(0, topRect.y - TOP_PRESERVE_GAP)
+      ? Math.max(0, topRect.y)
       : pageHeight / 2;
     if (upperY <= COVER_BOTTOM_Y) continue;
-    // 1. Rectangle blanc dans la zone BOT (avec marges latérales et
-    //    basse pour préserver le cadre orange du gabarit).
     page.drawRectangle({
       x: COVER_X_INSET,
       y: COVER_BOTTOM_Y,
       width: pageWidth - COVER_X_INSET * 2,
       height: upperY - COVER_BOTTOM_Y,
       color: rgb(1, 1, 1),
-    });
-    // 2. Fin trait orange de fermeture (1 pt) au sommet du blanc, pour
-    //    qu'on voit bien que la zone préconisations se termine ici
-    //    avant le bloc descriptif des aides en dessous.
-    page.drawRectangle({
-      x: COVER_X_INSET,
-      y: upperY - 1,
-      width: pageWidth - COVER_X_INSET * 2,
-      height: 1,
-      color: FRAME_ORANGE,
     });
   }
 
@@ -1605,20 +1593,31 @@ export async function generateVisitReport({
       // Bbox du tableau orange sur la page descriptif (coordonnées
       // PDF, origine bas-gauche). Ajusté visuellement pour englober
       // le titre, le tableau complet et la marge intérieure du cadre.
+      const cropTop = 825;
+      const cropBottom = 435;
       const embedded = await pdfDoc.embedPage(descriptifPage, {
         left: 20,
-        bottom: 435,
+        bottom: cropBottom,
         right: 575,
-        top: 825,
+        top: cropTop,
       });
-      const { pageIdx: partialPageIdx } = pendingBotCovers[0];
+      const cropHeight = cropTop - cropBottom; // 390 pt
+      const { pageIdx: partialPageIdx, topRect } = pendingBotCovers[0];
       const partialPage = pdfDoc.getPage(partialPageIdx);
-      // Aspect ratio préservé : 555 × 390 (= bbox crop).
+      // Position : on colle le HAUT du descriptif juste sous le bord
+      // bas de la case TOP (`topRect.y`). Le cadre orange du
+      // descriptif sert ainsi de fermeture naturelle de la zone
+      // préconisations — pas besoin de redessiner un trait orange ou
+      // noir nous-mêmes (demande utilisateur).
+      const drawY = topRect != null
+        ? Math.max(COVER_BOTTOM_Y, topRect.y - cropHeight)
+        : 40;
+      // Aspect ratio préservé : 555 × 390.
       partialPage.drawPage(embedded, {
         x: 20,
-        y: 40,
+        y: drawY,
         width: 555,
-        height: 390,
+        height: cropHeight,
       });
       pdfDoc.removePage(descriptifPageIdxAtFlatten);
       stats.descriptifMerged = true;
