@@ -1297,11 +1297,15 @@ export async function generateVisitReport({
     // Renseignements sur la visite (page 1)
     'personne présente',
     'date',
-    // Renseignements sur l'ergo (page 3)
-    'adresse',
   ]) {
     nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
   }
+
+  // Adresse de l'ergo (page 3, bandeau orange) : -4 était excessif —
+  // la valeur descendait trop par rapport à la ligne. -2 la repose
+  // pile sur le baseline du libellé (demande utilisateur :
+  // « remonte légèrement l'adresse dans le bandeau orange »).
+  nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: -2 });
 
   // Section "Logement" page 5 — même symptôme de baseline trop haute
   // que sur "aide à domicile" / "dépendance" : l'adresse, les années
