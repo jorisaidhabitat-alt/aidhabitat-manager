@@ -215,41 +215,49 @@ class _RecommendationsTabState extends State<RecommendationsTab>
             ),
 
           // ============================================================
-          // 2 blocs note-écrite VAD (anciennement onglet Observations,
-          // fusionnés ici cf. demande utilisateur). Mode texte-seul
-          // (showCanvas: false) — pas de container, pas de titre/desc,
-          // pas de canvas dessin. Le placeholder fait office de titre.
-          // L'expand button (haut-gauche) ouvre le modal classique pour
-          // une saisie longue.
+          // 2 blocs note-écrite VAD côte-à-côte (anciennement onglet
+          // Observations, fusionnés ici cf. demande utilisateur). Mode
+          // texte-seul (showCanvas: false) — placeholder = titre,
+          // expand button pour les saisies longues.
           //
           // - tabKey 'Préconisations-Projet'  → page 7 PDF
           // - tabKey 'Préconisations-Résumé'  → page 7 PDF
           // ============================================================
-          NotesWidget(
-            key: ValueKey(
-              'reco-note-projet-${widget.dossier.patient.id}',
-            ),
-            patientId: widget.dossier.patient.id,
-            tabKey: 'Préconisations-Projet',
-            placeholder: 'Projet ou souhait de l’usager…',
-            showCanvas: false,
-            embedded: true,
-            showSaveButton: false,
-            allowPagination: false,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: NotesWidget(
+                  key: ValueKey(
+                    'reco-note-projet-${widget.dossier.patient.id}',
+                  ),
+                  patientId: widget.dossier.patient.id,
+                  tabKey: 'Préconisations-Projet',
+                  placeholder: 'Projet ou souhait de l’usager…',
+                  showCanvas: false,
+                  embedded: true,
+                  showSaveButton: false,
+                  allowPagination: false,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: NotesWidget(
+                  key: ValueKey(
+                    'reco-note-resume-${widget.dossier.patient.id}',
+                  ),
+                  patientId: widget.dossier.patient.id,
+                  tabKey: 'Préconisations-Résumé',
+                  placeholder: 'Résumé des préconisations…',
+                  showCanvas: false,
+                  embedded: true,
+                  showSaveButton: false,
+                  allowPagination: false,
+                ),
+              ),
+            ],
           ),
-          NotesWidget(
-            key: ValueKey(
-              'reco-note-resume-${widget.dossier.patient.id}',
-            ),
-            patientId: widget.dossier.patient.id,
-            tabKey: 'Préconisations-Résumé',
-            placeholder: 'Résumé des préconisations…',
-            showCanvas: false,
-            embedded: true,
-            showSaveButton: false,
-            allowPagination: false,
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           const Divider(color: Color(0xFFE2E8F0), height: 1),
           const SizedBox(height: 16),
 
