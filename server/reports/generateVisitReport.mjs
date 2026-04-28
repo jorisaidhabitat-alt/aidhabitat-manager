@@ -1303,14 +1303,8 @@ export async function generateVisitReport({
     nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
   }
 
-  // Adresse de l'ergo (page 1, bandeau orange « Renseignements sur
-  // l'ergothérapeute ») : itérations user — l'adresse doit se placer
-  // pile entre la ligne « Aid'Habitat » et le numéro de téléphone du
-  // bandeau orange. Historique :
-  //   - -4 (groupe par défaut) : trop bas, débordait sur la ligne suivante
-  //   - -2, 0, +2 : toujours trop bas
-  //   - +8 (actuel) : remonté entre Aid'Habitat et le téléphone.
-  nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: 8 });
+  // TEST diagnostic : +50 pour vérifier si le nudge marche tout court.
+  nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: 50 });
 
   // Section "Logement" page 5 — baseline légèrement trop haute par
   // rapport au libellé Affinity. Premier essai à -4 pt mais l'ergo a
