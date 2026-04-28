@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 13;
+  static const _dbVersion = 14;
 
   Database? _database;
 
@@ -73,6 +73,27 @@ class LocalDatabase {
     if (oldVersion < 13) {
       await _migrateV12ToV13(db);
     }
+    if (oldVersion < 14) {
+      await _migrateV13ToV14(db);
+    }
+  }
+
+  /// v13 → v14 : annotation par page des PDFs dans l'espace Documents.
+  /// Avant cette colonne, l'écriture sur un PDF flatten remplaçait le
+  /// document local entier par un PNG (perte de la structure PDF →
+  /// plus de navigation possible). Maintenant on stocke un JSON
+  /// `{ "1": "data:image/png;base64,...", "3": "data:image/png;..." }`
+  /// qui mappe un n° de page à son aplat (PDF page + traits ergo
+  /// fusionnés). Le PDF original reste intact dans
+  /// `local_file_data_url` — la preview applique l'overlay PNG quand
+  /// la page courante a une entrée dans la map, sinon rendu PDF brut.
+  Future<void> _migrateV13ToV14(Database db) async {
+    await _addColumnIfMissing(
+      db,
+      'documents',
+      'annotations_json',
+      'TEXT',
+    );
   }
 
   /// v12 → v13 : statut d'occupation (« Propriétaire / Locataire /
@@ -584,6 +605,7 @@ class LocalDatabase {
         remote_public_url TEXT,
         tags_json TEXT NOT NULL,
         category_order INTEGER,
+        annotations_json TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         sync_state TEXT NOT NULL,

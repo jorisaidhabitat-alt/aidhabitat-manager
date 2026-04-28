@@ -2561,8 +2561,25 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
     final media = MediaQuery.of(context);
     final screen = media.size;
 
+    // Mode "fullscreen" (qui est en réalité un grand pop-up centré sur
+    // l'écran, pas un fullscreen total) :
+    //   - Largeur ~ 90% de l'écran, capée à 1100 px (lisibilité sur
+    //     iPad / desktop large).
+    //   - Hauteur ~ 80% de l'écran, capée à 720 px.
+    //   - Centré horizontalement ET verticalement.
+    // Le backdrop noir 35% donne un effet "le focus est sur le pop-up,
+    // le reste est en arrière-plan".
     final rect = _fullscreen
-        ? Rect.fromLTWH(12, 12, screen.width - 24, screen.height - 24)
+        ? () {
+            final w = math.min(1100.0, screen.width * 0.9);
+            final h = math.min(720.0, screen.height * 0.8);
+            return Rect.fromLTWH(
+              (screen.width - w) / 2,
+              (screen.height - h) / 2,
+              w,
+              h,
+            );
+          }()
         : Rect.fromLTWH(
             _pos.dx.clamp(0, math.max(0, screen.width - 120)),
             _pos.dy.clamp(0, math.max(0, screen.height - 60)),
@@ -2576,7 +2593,7 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: widget.onClose,
-            child: Container(color: Colors.black.withValues(alpha: 0.15)),
+            child: Container(color: Colors.black.withValues(alpha: 0.35)),
           ),
         ),
         AnimatedPositioned(
