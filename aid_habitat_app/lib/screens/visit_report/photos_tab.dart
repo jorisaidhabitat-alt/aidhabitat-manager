@@ -282,24 +282,38 @@ class _PhotosTabState extends State<PhotosTab>
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
+    // Layout 3 colonnes (Logement / Accessibilité / Sanitaires) côte
+    // à côte. Demande utilisateur : sur iPad au format paysage on a
+    // largement la place pour afficher les 3 catégories sans scroll
+    // vertical → l'ergo voit d'un coup d'œil l'état de remplissage
+    // des 3 buckets pendant la VAD.
+    //
+    // Chaque colonne a `crossAxisAlignment: CrossAxisAlignment.start`
+    // pour que les en-têtes restent alignés haut, et `IntrinsicHeight`
+    // côté parent assure que les fonds blancs aient la même hauteur
+    // (visuel propre, pas de "marche d'escalier" entre les 3
+    // sections quand l'une a 3 photos et l'autre 0).
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-      child: ListView(
-        children: [
-          // 3 catégories principales (Logement / Accessibilité /
-          // Sanitaires) — mêmes paramètres pour toutes, on itère.
-          // La 4e zone « À classer » a été retirée : l'onglet Photos
-          // est désormais hermétique à l'espace Documents — un import
-          // fait là-bas n'apparaît plus ici, et inversement.
-          for (final tag in kVisitPhotoTags) ...[
-            _buildCategorySection(
-              tag: tag,
-              icon: _iconForCategory(tag),
-              maxSlots: kVisitPhotoSlotCount[tag] ?? 0,
-            ),
-            const SizedBox(height: 18),
-          ],
-        ],
+      child: SingleChildScrollView(
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < kVisitPhotoTags.length; i++) ...[
+                if (i > 0) const SizedBox(width: 14),
+                Expanded(
+                  child: _buildCategorySection(
+                    tag: kVisitPhotoTags[i],
+                    icon: _iconForCategory(kVisitPhotoTags[i]),
+                    maxSlots:
+                        kVisitPhotoSlotCount[kVisitPhotoTags[i]] ?? 0,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

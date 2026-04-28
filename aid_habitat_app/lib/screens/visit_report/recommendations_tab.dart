@@ -6,6 +6,7 @@ import '../../services/save_debounce.dart';
 import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
 import '../../components/form_widgets.dart';
+import '../../components/notes_widget.dart';
 import '../../components/soft_transitions.dart';
 
 /// Préconisations tab — parité 1:1 avec `PreconisationsForm` React.
@@ -212,6 +213,42 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                 child: SaveStatusIndicator(saving: true),
               ),
             ),
+
+          // ============================================================
+          // Bloc « Projet usager » + « Résumé des préconisations »
+          // (anciennement onglet Observations, fusionné ici cf. demande
+          // utilisateur). Alimente les pages 7 du PDF du rapport.
+          //
+          // - tabKey 'Préconisations-Projet'   → champ PDF
+          //                                      « Projet ou souhait de l'usager »
+          // - tabKey 'Préconisations-Résumé'   → champ PDF
+          //                                      « Résumé des préconisations »
+          //
+          // Format identique aux notes des autres onglets : texte +
+          // dessin + multi-pages, syncé via le NotesWidget standard.
+          // ============================================================
+          _buildVadNote(
+            tabKey: 'Préconisations-Projet',
+            title: 'Projet ou souhait de l’usager',
+            subtitle:
+                'Ce que le bénéficiaire souhaite obtenir grâce à la visite '
+                '(maintien à domicile, aménagement spécifique, plus '
+                'd’autonomie pour la toilette…). Apparaîtra page 7 '
+                'du rapport.',
+          ),
+          const SizedBox(height: 20),
+          _buildVadNote(
+            tabKey: 'Préconisations-Résumé',
+            title: 'Résumé des préconisations',
+            subtitle:
+                'Synthèse rédigée des préconisations majeures à présenter '
+                'en amont du détail. Apparaîtra page 7 du rapport, juste '
+                'sous le projet usager.',
+          ),
+          const SizedBox(height: 24),
+          const Divider(color: Color(0xFFE2E8F0), height: 1),
+          const SizedBox(height: 16),
+
           if (_items.isEmpty)
             _buildEmpty()
           else
