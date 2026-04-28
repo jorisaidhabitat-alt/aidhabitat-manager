@@ -218,7 +218,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
           child: SizedBox(
-            height: 64,
+            height: 84,
             child: Row(
               children: [
                 Expanded(
