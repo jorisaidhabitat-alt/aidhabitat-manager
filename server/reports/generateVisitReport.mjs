@@ -1787,8 +1787,16 @@ export async function generateVisitReport({
       // 0.5 encore trop épais.
       if (topRect != null) {
         const descriptifFrameTop = drawY + cropHeight;
-        const orangeLineY = (topRect.y + descriptifFrameTop) / 2;
-        const hLineXInset = 30;
+        // Centrage vertical entre la TOP et le cadre descriptif, puis
+        // léger drop de 3 pt vers le bas (demande user : "redescend
+        // légèrement le trait horizontal").
+        const orangeLineY =
+            (topRect.y + descriptifFrameTop) / 2 - 3;
+        // Inset horizontal +2 pt par rapport à la précédente itération
+        // (30 → 32) pour que les extrémités tombent PILE sur les
+        // verticales orange du gabarit. Demande user : "raccourci
+        // extrêmement légèrement la largeur".
+        const hLineXInset = 32;
         partialPage.drawRectangle({
           x: hLineXInset,
           y: orangeLineY,
