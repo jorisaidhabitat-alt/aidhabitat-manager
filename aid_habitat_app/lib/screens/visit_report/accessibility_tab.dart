@@ -1081,7 +1081,32 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       );
     }
 
-    return Container(
+    // Tap-to-fold sur tout le container violet de l'éditeur — même
+    // pattern que le picker (« Choisir un niveau ») : tap sur une pill
+    // de pièce ou sur le champ texte « Ajouter une pièce » est absorbé
+    // par le widget concerné (gagne l'arène) ; tap n'importe où ailleurs
+    // (titre, padding, espace inter-pills) replie l'éditeur. Demande
+    // utilisateur 2026-04-28 (« fait la meme fonctionnalité une fois
+    // que j'ai choisi un niveau pour la partie choix des types de
+    // pieces »).
+    //
+    // **Action toujours = collapse, jamais delete** : le tap n'importe
+    // où ne fait QUE replier (équivalent du chevron). La suppression
+    // reste exclusive à la croix top-right (intention explicite, à
+    // l'abri des taps accidentels). Pour un niveau pending →
+    // settle+collapse ; pour un niveau ré-ouvert → simple collapse.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        setState(() {
+          if (_pendingLevelField == cfg.field) {
+            _pendingLevelField = null;
+          }
+          _expandedLevel = null;
+        });
+        _scheduleSave();
+      },
+      child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFFEDE8F5),
@@ -1246,6 +1271,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             ],
           ),
         ],
+      ),
       ),
     );
   }
