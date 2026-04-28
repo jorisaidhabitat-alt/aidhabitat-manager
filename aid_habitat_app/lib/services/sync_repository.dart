@@ -250,15 +250,19 @@ class SyncRepository {
     final rows = await db.query(
       'sync_operations',
       columns: ['attempt_count'],
-      where: 'id = ?',
-      whereArgs: [operationId],
+      where: 'id = ? AND status = ?',
+      whereArgs: [operationId, SyncOperationStatus.running.name],
       limit: 1,
     );
-    final attempts = rows.isEmpty
-        ? 0
-        : (rows.first['attempt_count'] as int? ?? 0);
+    if (rows.isEmpty) {
+      // L'op a été remplacée par une version `pending` plus récente
+      // pendant le PATCH en vol — ne pas écraser. La nouvelle version
+      // contient déjà la donnée la plus récente et sera retentée.
+      return;
+    }
+    final attempts = rows.first['attempt_count'] as int? ?? 0;
 
-    await db.update(
+    final updated = await db.update(
       'sync_operations',
       {
         'status': SyncOperationStatus.pending.name,
@@ -266,9 +270,12 @@ class SyncRepository {
         'last_error': error,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [operationId],
+      where: 'id = ? AND status = ?',
+      whereArgs: [operationId, SyncOperationStatus.running.name],
     );
+    if (updated == 0) {
+      return;
+    }
 
     // On laisse sync_state sur `pendingSync` (c'est le statut "en cours
     // de sync" normal) plutôt que `syncError` pour ne pas alarmer l'UI.
@@ -287,16 +294,24 @@ class SyncRepository {
     required String error,
   }) async {
     final db = await _database.database;
-    await db.update(
+    final updated = await db.update(
       'sync_operations',
       {
         'status': 'conflict',
         'last_error': error,
         'updated_at': DateTime.now().toIso8601String(),
       },
-      where: 'id = ?',
-      whereArgs: [operationId],
+      where: 'id = ? AND status = ?',
+      whereArgs: [operationId, SyncOperationStatus.running.name],
     );
+    if (updated == 0) {
+      // L'op a été remplacée pendant le PATCH par une version `pending`
+      // plus récente — la nouvelle version va re-PATCHer avec la
+      // dernière donnée locale et résoudra (ou pas) le conflit serveur
+      // de son côté. Ne pas marquer l'entité en `conflict` ici : on
+      // ferait clignoter l'UI à tort.
+      return;
+    }
 
     await _updateEntitySyncState(
       db: db,
