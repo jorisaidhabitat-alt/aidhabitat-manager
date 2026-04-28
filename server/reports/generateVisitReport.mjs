@@ -70,15 +70,18 @@ const ERGO_CONTACT = {
     // fontkit — la différence de rendu reste minime à cette taille.
     fontSize: 12,
     color: rgb(0, 0, 0), // noir, demande utilisateur
-    // Baselines remontées de 3pt par rapport au texte original
-    // Affinity pour que l'adresse "respire" mieux dans le bandeau
-    // pêche (demande utilisateur).
-    line1: { x: 47, y: 100 },
-    line2: { x: 47, y: 80 },
-    // Rectangle de masquage — couvre l'ancien texte (y=77-114) ET
-    // la nouvelle position (y=80-112). Couleur matchée sur le fond
-    // pêche du bandeau Affinity (#F4DBC4 sampled sur le rendu PNG).
-    mask: { x: 44, y: 71, width: 184, height: 48 },
+    // Baselines remontées de +15pt par rapport à la position
+    // précédente (y=100/80 → y=115/95) pour faire respirer l'adresse
+    // entre la ligne « Aid'Habitat » et le numéro de téléphone du
+    // bandeau orange (demande utilisateur : « remonte le rectangle
+    // orange + l'adresse »).
+    line1: { x: 47, y: 115 },
+    line2: { x: 47, y: 95 },
+    // Rectangle de masquage — décalé de +15pt aussi pour suivre le
+    // texte. Hauteur 48pt suffit à couvrir l'ancien texte + la
+    // nouvelle position. Couleur matchée sur le fond pêche du
+    // bandeau Affinity (#F4DBC4 sampled sur le rendu PNG).
+    mask: { x: 44, y: 86, width: 184, height: 48 },
     maskColor: rgb(244 / 255, 219 / 255, 196 / 255), // #F4DBC4
   },
 };
