@@ -1304,11 +1304,12 @@ export async function generateVisitReport({
   }
 
   // Adresse de l'ergo (page 1, bandeau orange « Renseignements sur
-  // l'ergothérapeute ») : -4 était excessif — la valeur descendait
-  // trop par rapport à la ligne. -2 la repose pile sur le baseline
-  // du libellé (demande utilisateur : « remonte légèrement l'adresse
-  // dans le bandeau orange »).
-  nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: -2 });
+  // l'ergothérapeute ») : itérations user :
+  //   - -4 (groupe par défaut) : trop bas, débord sur la ligne suivante
+  //   - -2 : encore un peu trop bas
+  //   - 0 (actuel) : position native du template, à valider visuellement.
+  //     Si toujours pas bon, passer à un dy POSITIF (+1, +2 = remonter).
+  nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: 0 });
 
   // Section "Logement" page 5 — baseline légèrement trop haute par
   // rapport au libellé Affinity. Premier essai à -4 pt mais l'ergo a
