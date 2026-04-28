@@ -3832,6 +3832,24 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
         tabKey: 'Accessibilité-Équipements',
       }),
     ]);
+    // Le texte saisi par l'ergo dans NotesWidget est bundle DANS
+    // `drawing_json` (champ JSON `{"text": "…", "strokes": [...]}`),
+    // pas dans la colonne SQL `text_content` qui reste vide en
+    // pratique (cf. components/notes_widget.dart `_currentDrawingJson`).
+    // On parse donc le JSON pour extraire le texte.
+    const extractTextFromDrawingJson = (raw) => {
+      const s = stringValue(raw);
+      if (!s) return '';
+      try {
+        const decoded = JSON.parse(s);
+        if (decoded && typeof decoded === 'object' && typeof decoded.text === 'string') {
+          return decoded.text;
+        }
+      } catch {
+        // drawing_json non-JSON (data legacy ou tronqué) → on ignore.
+      }
+      return '';
+    };
     const joinPages = (pages) => {
       const filtered = asArray(pages)
         .filter((pg) => !!pg)
@@ -3840,7 +3858,14 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
         .filter((pg) => !dossierId || !pg?.scopeId || String(pg.scopeId) === String(dossierId))
         .sort((a, b) => Number(a.pageNumber) - Number(b.pageNumber));
       const text = filtered
-        .map((pg) => stringValue(pg?.textContent).trim())
+        .map((pg) => {
+          // Priorité au texte JSON dans drawing_json (NotesWidget).
+          // Fallback sur textContent au cas où certaines pages legacy
+          // utiliseraient cette colonne directement.
+          const fromJson = extractTextFromDrawingJson(pg?.drawingJson).trim();
+          if (fromJson) return fromJson;
+          return stringValue(pg?.textContent).trim();
+        })
         .filter(Boolean)
         .join('\n\n');
       return text || null;

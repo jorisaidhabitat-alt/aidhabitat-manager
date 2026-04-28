@@ -1112,7 +1112,22 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // En-tête niveau + bouton supprimer
+          // En-tête niveau + bouton fermer/supprimer.
+          //
+          // L'icône change selon le « moment » de l'édition (demande
+          // utilisateur 2026-04-28 : « on doit simplement avoir un
+          // chevron pour refermer mais pas une croix, la croix apparait
+          // seulement quand on reclique dessus si on souhaite supprimer
+          // le niveau ajouté precedemment ») :
+          //   - Niveau qui vient d'être ajouté (encore dans le container
+          //     morphant, `_pendingLevelField == cfg.field`) → chevron
+          //     vers le haut. Le tap "settle" le niveau dans la liste
+          //     principale et collapse l'éditeur en pill (donnée
+          //     préservée).
+          //   - Niveau ré-ouvert depuis sa pill (déjà settle dans la
+          //     liste, `_pendingLevelField != cfg.field`) → croix. Le
+          //     tap retire le niveau du foyer (intention destructive
+          //     explicite, utilisateur a choisi de re-cliquer dessus).
           Row(
             children: [
               Text(
@@ -1146,10 +1161,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   _scheduleSave();
                 },
                 borderRadius: BorderRadius.circular(20),
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child:
-                      Icon(Icons.close, size: 16, color: Color(0xFF94A3B8)),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    _pendingLevelField == cfg.field
+                        ? Icons.expand_less
+                        : Icons.close,
+                    size: _pendingLevelField == cfg.field ? 20 : 16,
+                    color: const Color(0xFF94A3B8),
+                  ),
                 ),
               ),
             ],

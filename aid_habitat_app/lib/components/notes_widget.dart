@@ -226,6 +226,7 @@ class NotesWidget extends StatefulWidget {
     this.sharedText = false,
     this.allowTextModal = true,
     this.showSaveButton = true,
+    this.showCanvas = true,
     this.onDraftChange,
     this.embedded = false,
     this.toolbarPlacement = NoteToolbarPlacement.bottomCenter,
@@ -317,6 +318,13 @@ class NotesWidget extends StatefulWidget {
   final bool showText;
   final NoteToolset toolset;
   final bool showSaveButton;
+
+  /// Si false, masque entièrement la zone canvas (dessin + toolbar +
+  /// page-nav). Le widget devient un simple bloc-note texte. Garde
+  /// l'expand button et le sync via drawing_json (avec strokes vides).
+  /// Utilisé pour les notes VAD textuelles (Préconisations-Projet,
+  /// Préconisations-Résumé, etc.) où le dessin n'apporte rien.
+  final bool showCanvas;
   final bool embedded;
   final NoteToolbarPlacement toolbarPlacement;
   final bool toolbarDockedToBorder;
@@ -1322,6 +1330,19 @@ class _NotesWidgetState extends State<NotesWidget> {
             borderRadius: BorderRadius.circular(16),
           );
 
+    // Mode "texte seul" (showCanvas: false) — bloc-note allégé sans
+    // canvas/toolbar/pagination. Garde l'expand button du _buildTextEditor.
+    if (!widget.showCanvas) {
+      final textOnly = widget.fillParentHeight
+          ? SizedBox.expand(child: _buildTextEditor())
+          : _buildTextEditor();
+      return Container(
+        key: _outerKey,
+        decoration: decoration,
+        child: textOnly,
+      );
+    }
+
     final content = Column(
       children: [
         if (widget.showText) _buildTextEditor(),
@@ -1739,17 +1760,17 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
-  Widget _buildTextEditor() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Container(
-        height: _textAreaHeight,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: Colors.grey.shade200),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Stack(
+  Widget _buildTextEditor({bool fillHeight = false}) {
+    // En mode texte-seul (showCanvas: false → fillHeight: true), la
+    // zone texte remplit toute la hauteur disponible. Sinon hauteur
+    // fixe pilotée par le splitter (mode classique).
+    final inner = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Stack(
           children: [
             // Zone texte — remplit toute la zone, avec une petite marge à
             // gauche pour la poignée d'agrandissement.
