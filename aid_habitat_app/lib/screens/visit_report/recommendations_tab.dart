@@ -210,24 +210,37 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Header sticky : la note « Résumé des préconisations » en haut.
-        // Pas de canvas, pas de pagination — juste un champ texte avec
-        // le titre en placeholder gris et l'expand button (haut-gauche)
-        // pour les saisies longues. tabKey 'Préconisations-Résumé'
-        // alimente le champ « Résumé des préconisations » page 7 PDF.
+        // Très compact (~48 px = 1 ligne visible) — l'expand button
+        // (haut-gauche) ouvre le modal pour les saisies longues.
+        // Wrappée dans un Container fond gris-lavande clair pour
+        // matérialiser la zone "header sticky" et la séparer
+        // visuellement du fond blanc de la page.
+        // tabKey 'Préconisations-Résumé' → page 7 PDF.
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: NotesWidget(
-            key: ValueKey(
-              'reco-note-resume-${widget.dossier.patient.id}',
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F2F8),
+              borderRadius: BorderRadius.circular(14),
             ),
-            patientId: widget.dossier.patient.id,
-            tabKey: 'Préconisations-Résumé',
-            placeholder: 'Résumé des préconisations',
-            showCanvas: false,
-            embedded: true,
-            showSaveButton: false,
-            allowPagination: false,
-            allowTextModal: true,
+            child: SizedBox(
+              height: 48,
+              child: NotesWidget(
+                key: ValueKey(
+                  'reco-note-resume-${widget.dossier.patient.id}',
+                ),
+                patientId: widget.dossier.patient.id,
+                tabKey: 'Préconisations-Résumé',
+                placeholder: 'Résumé des préconisations',
+                showCanvas: false,
+                embedded: true,
+                showSaveButton: false,
+                allowPagination: false,
+                allowTextModal: true,
+                fillParentHeight: true,
+              ),
+            ),
           ),
         ),
         // Zone scrollable : liste des préconisations + bouton d'ajout.
