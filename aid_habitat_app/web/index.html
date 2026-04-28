@@ -35,6 +35,34 @@
 
   <title>aid'Habitat</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    pdfjs-dist : nécessaire au package `pdfx` côté web pour
+    rasteriser les PDF (`PdfDocument.openData`). Sans ce script, on
+    obtient `Exception: Pdfjs library not loaded` à l'ouverture du
+    moindre PDF.
+
+    Version 2.13.216 — proven stable avec `pdfx ^2.6.x` (cf. la doc
+    officielle du package). Le `crossorigin="anonymous"` est requis
+    parce que le PWA tourne en `Cross-Origin-Embedder-Policy:
+    credentialless` (cf. vercel.json) — sans ça le browser refuse
+    d'exécuter le script.
+
+    Service Worker Flutter cache le script après la 1re visite, donc
+    pas de roundtrip réseau ensuite : la preview s'ouvre instantanément.
+  -->
+  <script
+    src="https://unpkg.com/pdfjs-dist@2.13.216/build/pdf.min.js"
+    crossorigin="anonymous"></script>
+  <script>
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://unpkg.com/pdfjs-dist@2.13.216/build/pdf.worker.min.js';
+    } else {
+      // ignore: avoid_print
+      console.warn('[pdfjs] pdf.min.js non chargé — vérifiez la connectivité ou les CSP/COEP du serveur.');
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
