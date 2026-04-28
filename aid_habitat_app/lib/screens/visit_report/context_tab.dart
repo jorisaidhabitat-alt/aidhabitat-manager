@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
+import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
 
@@ -353,7 +354,7 @@ class _ContextTabState extends State<ContextTab>
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(seconds: 2), _save);
+    _saveTimer = Timer(kSaveDebouncePills, _save);
   }
 
   Future<void> _save() async {
