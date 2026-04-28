@@ -6,6 +6,7 @@ import '../../services/save_debounce.dart';
 import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
 import '../../components/form_widgets.dart';
+import '../../components/notes_widget.dart';
 import '../../components/soft_transitions.dart';
 
 /// Préconisations tab — parité 1:1 avec `PreconisationsForm` React.
@@ -199,84 +200,109 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     if (!_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_saving)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: SaveStatusIndicator(saving: true),
-              ),
+    // Layout : header sticky en haut (note « Résumé des préconisations »)
+    // + zone scrollable en dessous (liste des préconisations + bouton).
+    // L'header n'est PAS dans le SingleChildScrollView, donc le scroll
+    // gesture du TextField interne ne capture pas les gestes verticaux
+    // destinés à la page (résout le bug "je scroll dans la note au lieu
+    // de la page" — demande utilisateur 2026-04-28).
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header sticky : la note « Résumé des préconisations » en haut.
+        // Pas de canvas, pas de pagination — juste un champ texte avec
+        // le titre en placeholder gris et l'expand button (haut-gauche)
+        // pour les saisies longues. tabKey 'Préconisations-Résumé'
+        // alimente le champ « Résumé des préconisations » page 7 PDF.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          child: NotesWidget(
+            key: ValueKey(
+              'reco-note-resume-${widget.dossier.patient.id}',
             ),
-
-          // NB : les 2 NotesWidget « Projet usager » + « Résumé
-          // préconisations » ont été retirés (UX scroll conflict — le
-          // TextField multiligne capturait les gestes verticaux et
-          // bloquait le scroll de la page entière). À réintégrer plus
-          // tard avec une UX différente (ex. bouton « Ajouter une note »
-          // qui ouvre un modal). Le serveur continue de lire depuis
-          // tabKeys `Préconisations-Projet` / `Préconisations-Résumé`
-          // si jamais des dossiers ont déjà du contenu, sinon fallback
-          // sur `observations_synthese`.
-
-          if (_items.isEmpty)
-            _buildEmpty()
-          else
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _items.length,
-              onReorder: _reorderItem,
-              // Drag handle géré manuellement dans la carte (icône en haut
-              // au centre de la carte, dans _RecommendationCard).
-              buildDefaultDragHandles: false,
-              // Pendant le drag, préserver l'apparence de la carte (radius
-              // 24, transparence, légère élévation) — sans proxyDecorator,
-              // Flutter entoure la carte d'un Material carré qui casse le
-              // border radius arrondi.
-              proxyDecorator: (child, index, animation) {
-                return Material(
-                  color: Colors.transparent,
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(16),
-                  clipBehavior: Clip.antiAlias,
-                  child: child,
-                );
-              },
-              itemBuilder: (context, i) {
-                final item = _items[i];
-                return _RecommendationCard(
-                  key: ValueKey(item.id),
-                  item: item,
-                  index: i,
-                  reorderable: _items.length > 1,
-                  onChange: (updated) => _updateItem(i, updated),
-                  onRemove: () => _removeItem(i),
-                  onPickWiki: () => _openPicker(i),
-                );
-              },
-            ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: ElevatedButton.icon(
-              onPressed: _addItem,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Ajouter une préconisation'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7C6DAA),
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              ),
+            patientId: widget.dossier.patient.id,
+            tabKey: 'Préconisations-Résumé',
+            placeholder: 'Résumé des préconisations',
+            showCanvas: false,
+            embedded: true,
+            showSaveButton: false,
+            allowPagination: false,
+            allowTextModal: true,
+          ),
+        ),
+        // Zone scrollable : liste des préconisations + bouton d'ajout.
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_saving)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: SaveStatusIndicator(saving: true),
+                    ),
+                  ),
+                if (_items.isEmpty)
+                  _buildEmpty()
+                else
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _items.length,
+                    onReorder: _reorderItem,
+                    // Drag handle géré manuellement dans la carte (icône
+                    // en haut au centre de la carte, dans
+                    // _RecommendationCard).
+                    buildDefaultDragHandles: false,
+                    // Pendant le drag, préserver l'apparence de la carte
+                    // (radius 24, transparence, légère élévation) — sans
+                    // proxyDecorator, Flutter entoure la carte d'un
+                    // Material carré qui casse le border radius arrondi.
+                    proxyDecorator: (child, index, animation) {
+                      return Material(
+                        color: Colors.transparent,
+                        elevation: 4,
+                        borderRadius: BorderRadius.circular(16),
+                        clipBehavior: Clip.antiAlias,
+                        child: child,
+                      );
+                    },
+                    itemBuilder: (context, i) {
+                      final item = _items[i];
+                      return _RecommendationCard(
+                        key: ValueKey(item.id),
+                        item: item,
+                        index: i,
+                        reorderable: _items.length > 1,
+                        onChange: (updated) => _updateItem(i, updated),
+                        onRemove: () => _removeItem(i),
+                        onPickWiki: () => _openPicker(i),
+                      );
+                    },
+                  ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ElevatedButton.icon(
+                    onPressed: _addItem,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Ajouter une préconisation'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7C6DAA),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
