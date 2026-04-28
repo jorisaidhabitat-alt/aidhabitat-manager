@@ -1333,8 +1333,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     // Mode "texte seul" (showCanvas: false) — bloc-note allégé sans
     // canvas/toolbar/pagination. Garde l'expand button du _buildTextEditor.
     //
-    // Hauteur par défaut (~90 px = 3-4 lignes visibles) : compact pour
-    // ne pas écraser l'espace utile autour (ex. liste préconisations
+    // Hauteur par défaut **60 px** (≈ 1-2 lignes visibles) : très
+    // compact pour libérer l'espace autour (ex. liste préconisations
     // dessous). L'expand button (haut-gauche) ouvre le modal pour les
     // saisies longues. Override possible en wrappant dans un SizedBox
     // côté caller.
@@ -1342,7 +1342,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       final editor = _buildTextEditor(fillHeight: true);
       final textOnly = widget.fillParentHeight
           ? SizedBox.expand(child: editor)
-          : SizedBox(height: 90, child: editor);
+          : SizedBox(height: 60, child: editor);
       return Container(
         key: _outerKey,
         decoration: decoration,
@@ -1832,8 +1832,13 @@ class _NotesWidgetState extends State<NotesWidget> {
       child: fillHeight ? stack : SizedBox(height: _textAreaHeight, child: stack),
     );
 
+    // En mode texte-seul (fillHeight) on resserre le padding externe
+    // pour que la carte prenne le minimum d'espace autour.
+    final outerPadding = fillHeight
+        ? const EdgeInsets.fromLTRB(4, 4, 4, 4)
+        : const EdgeInsets.fromLTRB(16, 12, 16, 8);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: outerPadding,
       child: boxedContainer,
     );
   }
