@@ -1642,6 +1642,11 @@ export async function generateVisitReport({
   // préservent le cadre orange du gabarit qui entoure la page.
   const COVER_X_INSET = 25;
   const COVER_BOTTOM_Y = 18;
+  // Décalage vers le bas du bord supérieur du masque pour que la
+  // "fin de préconisation" ne soit pas mangée par le blanc et qu'on
+  // voie clairement la coupure de la case TOP (demande utilisateur :
+  // "redescend encore légèrement le masque").
+  const COVER_TOP_DROP = 15;
   for (const { pageIdx, botRect, topRect } of pendingBotCovers) {
     if (!botRect) continue;
     let page;
@@ -1653,7 +1658,7 @@ export async function generateVisitReport({
     if (!page) continue;
     const { width: pageWidth, height: pageHeight } = page.getSize();
     const upperY = topRect != null
-      ? Math.max(0, topRect.y)
+      ? Math.max(0, topRect.y - COVER_TOP_DROP)
       : pageHeight / 2;
     if (upperY <= COVER_BOTTOM_Y) continue;
     page.drawRectangle({
