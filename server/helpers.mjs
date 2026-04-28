@@ -2514,10 +2514,34 @@ export const mapBeneficiaryUpdatesToFields = (updates, references) => {
       : (has('occupant2BirthDate')
         ? nullableString(updates.occupant2BirthDate)
         : (has('birthDateMme') ? nullableString(updates.birthDateMme) : undefined)),
-    situation_proprietaire_id1: has('familySituation') ? (situationMatch ? Number(situationMatch.id) : null) : undefined,
-    statut_occupation_id1: has('occupationStatus') ? (occupationMatch ? Number(occupationMatch.id) : null) : undefined,
+    // Garde-fous référence-dépendants : non-vide non-matché → `undefined`
+    // (no-op) au lieu de `null` (efface la sélection). Cf. commentaires
+    // détaillés dans `index.mjs` ligne ~2648. Symptôme évité :
+    // sélection ergo qui se ré-initialise toute seule au prochain pull
+    // workspace quand la ref NocoDB diffère légèrement du label saisi.
+    situation_proprietaire_id1: (() => {
+      if (!has('familySituation')) return undefined;
+      const v = updates.familySituation;
+      if (v === '' || v == null) return null;
+      if (situationMatch) return Number(situationMatch.id);
+      console.warn(`[patient] familySituation "${v}" ne matche aucune ref → no-op`);
+      return undefined;
+    })(),
+    statut_occupation_id1: (() => {
+      if (!has('occupationStatus')) return undefined;
+      const v = updates.occupationStatus;
+      if (v === '' || v == null) return null;
+      if (occupationMatch) return Number(occupationMatch.id);
+      console.warn(`[patient] occupationStatus "${v}" ne matche aucune ref → no-op`);
+      return undefined;
+    })(),
     nombre_personnes: has('numberPeople') ? updates.numberPeople : undefined,
-    categorie_revenu_id1: has('numberPeople') ? (baremeMatch ? Number(baremeMatch.id) : null) : undefined,
+    categorie_revenu_id1: (() => {
+      if (!has('numberPeople')) return undefined;
+      if (baremeMatch) return Number(baremeMatch.id);
+      console.warn(`[patient] aucun bareme ANAH applicable pour numberPeople="${updates.numberPeople}" → no-op`);
+      return undefined;
+    })(),
     revenu_fiscal_reference: has('fiscalRevenue') ? updates.fiscalRevenue : undefined,
     beneficiaire_apa: has('apa') ? updates.apa : undefined,
     reconnaissance_invalidite_mdph: has('invalidity') ? updates.invalidity : undefined,
@@ -2525,7 +2549,14 @@ export const mapBeneficiaryUpdatesToFields = (updates, references) => {
     aide_a_domicile: has('homeHelp') ? updates.homeHelp : undefined,
     aide_a_domicile_txt: has('homeHelpTxt') ? nullableString(updates.homeHelpTxt) : undefined,
     dependance_particuliere_txt: has('dependenceTxt') ? nullableString(updates.dependenceTxt) : undefined,
-    dependances_particulieres_id: has('dependenceTxt') ? (dependenceMatch ? Number(dependenceMatch.id) : null) : undefined,
+    dependances_particulieres_id: (() => {
+      if (!has('dependenceTxt')) return undefined;
+      const v = updates.dependenceTxt;
+      if (v === '' || v == null) return null;
+      if (dependenceMatch) return Number(dependenceMatch.id);
+      console.warn(`[patient] dependenceTxt "${v}" ne matche aucune ref → no-op (fallback _txt préservé)`);
+      return undefined;
+    })(),
     personne_confiance: trustedPersonNameValue === undefined ? undefined : nullableString(trustedPersonNameValue),
     telephone_personne_confiance: trustedPersonPhoneValue === undefined ? undefined : nullableString(trustedPersonPhoneValue),
     mail_personne_confiance: trustedPersonEmailValue === undefined ? undefined : nullableString(trustedPersonEmailValue),
