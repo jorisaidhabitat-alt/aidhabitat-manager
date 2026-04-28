@@ -841,13 +841,21 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   ),
                 ),
               ),
+              // Chevron pour replier le picker (et pas de croix —
+              // demande utilisateur 2026-04-28 : « met un chevron dès
+              // le début ne met pas de croix, la croix apparaît
+              // seulement pour supprimer un niveau si on RE CLIQUE
+              // dessus »). La croix « supprimer » reste réservée à
+              // l'éditeur d'un niveau RÉ-OUVERT depuis sa pill (cf.
+              // `_buildLevelCard`) — pas au picker, qui n'a aucune
+              // donnée à supprimer, juste à se replier.
               InkWell(
                 onTap: () => setState(() => _addLevelMode = false),
                 borderRadius: BorderRadius.circular(20),
                 child: const Padding(
                   padding: EdgeInsets.all(4),
-                  child: Icon(Icons.close,
-                      size: 16, color: Color(0xFF554A63)),
+                  child: Icon(Icons.expand_less,
+                      size: 20, color: Color(0xFF554A63)),
                 ),
               ),
             ],
