@@ -363,13 +363,38 @@ class _PhotosTabState extends State<PhotosTab>
     final overCapacity = count > maxSlots;
     final shortLabel = visitPhotoTagShortLabel(tag);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+    // DragTarget englobe TOUT le container — drop n'importe où dans la
+    // section (entête, photos, espace vide, boutons) accepte la photo.
+    // Le drop se traduit par `_moveToCategory(doc, newTag = tag)` :
+    //   - si l'origine == catégorie courante → no-op (déjà au bon endroit)
+    //   - sinon → la photo est re-taggée et apparaît dans cette section.
+    //
+    // `onWillAcceptWithDetails` highlight la cible quand un drag survole
+    // (border violet → bleu pâle), retour à la normale au leave.
+    return DragTarget<_DragPhotoPayload>(
+      onWillAcceptWithDetails: (details) =>
+          details.data.fromTag != tag,
+      onAcceptWithDetails: (details) async {
+        if (details.data.fromTag == tag) return;
+        await _moveToCategory(doc: details.data.doc, newTag: tag);
+      },
+      builder: (context, candidates, rejected) {
+        final hovering = candidates.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            color: hovering
+                ? const Color(0xFFEDE8F5)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: hovering
+                  ? _kPurple
+                  : const Color(0xFFE2E8F0),
+              width: hovering ? 2 : 1,
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -444,6 +469,8 @@ class _PhotosTabState extends State<PhotosTab>
           ),
         ],
       ),
+        );
+      },
     );
   }
 
@@ -518,42 +545,95 @@ class _PhotosTabState extends State<PhotosTab>
     );
   }
 
-  /// Layout horizontal des photos d'une catégorie : chaque photo
-  /// occupe 1/N de la largeur du container (avec N = nombre de
-  /// photos), de sorte que toutes rentrent côte à côte sans changer
-  /// la taille du container. Plus la grille se remplit, plus chaque
-  /// vignette rétrécit. Demande utilisateur 2026-04-28 : "chaque
-  /// photo doit se mettre les unes à côté des autres et donc réduire
-  /// la taille des autres pour ne pas changer la taille du container".
+  /// Layout horizontal des photos d'une catégorie. Chaque photo a une
+  /// taille FIXE = 1/3 de la largeur du container (peu importe le
+  /// nombre de photos affichées) : avec 1 photo elle occupe ~1/3, le
+  /// reste est vide ; avec 3 photos elles remplissent ; avec 4+ on
+  /// passe à la ligne suivante via Wrap. Demande user 2026-04-28 :
+  /// "ne change jamais la taille des images, met les toujours dans
+  /// un format petit comme s'il y'en avait 3".
   ///
-  /// Conséquence : on perd le drag-to-reorder vertical (qui était
-  /// peu utilisé en pratique — la majorité des ergos prennent les
-  /// photos dans l'ordre voulu). Le kebab menu "Déplacer vers"
-  /// permet toujours de changer de catégorie ou de retirer une photo.
+  /// Drag-and-drop : chaque tile est wrappée dans `LongPressDraggable`
+  /// (maintien long → drag) avec un payload `_DragPhotoPayload`. Les
+  /// `DragTarget` correspondants sont posés au niveau du container
+  /// catégorie (`_buildCategorySection`) → drop sur une autre
+  /// catégorie déclenche `_moveToCategory(doc, newTag)`. Demande
+  /// user : "en maintenant une des photos on peut la déplacer dans
+  /// sa partie ou dans une autre partie de photos".
   Widget _buildReorderableGrid({
     required String tag,
     required List<DocItem> photos,
     required int maxSlots,
   }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < photos.length; i++) ...[
-          if (i > 0) const SizedBox(width: 6),
-          Expanded(
-            child: _PhotoTile(
-              key: ValueKey('photo_${photos[i].id}'),
-              doc: photos[i],
-              slotNumber: i + 1,
-              inSlot: i < maxSlots,
-              onMoveTo: (newTag) =>
-                  _moveToCategory(doc: photos[i], newTag: newTag),
-              onUntag: () => _moveToCategory(doc: photos[i], newTag: null),
-              onDelete: () => _deletePhoto(photos[i]),
-            ),
-          ),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 6.0;
+        // 3 tiles + 2 gaps = constraints.maxWidth → tile = (w - 2*gap) / 3.
+        final tileWidth = (constraints.maxWidth - 2 * spacing) / 3;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (var i = 0; i < photos.length; i++)
+              SizedBox(
+                width: tileWidth,
+                child: LongPressDraggable<_DragPhotoPayload>(
+                  data: _DragPhotoPayload(
+                    doc: photos[i],
+                    fromTag: tag,
+                  ),
+                  delay: const Duration(milliseconds: 350),
+                  // Feedback visuel pendant le drag : la même tile en
+                  // semi-transparent flotte sous le doigt. La largeur
+                  // est forcée pour matcher la cible (sinon Material
+                  // dimensionne en intrinsic et la tile devient
+                  // énorme).
+                  feedback: Material(
+                    color: Colors.transparent,
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Opacity(
+                      opacity: 0.85,
+                      child: SizedBox(
+                        width: tileWidth,
+                        child: _PhotoTile(
+                          key: ValueKey('photo_drag_${photos[i].id}'),
+                          doc: photos[i],
+                          slotNumber: i + 1,
+                          inSlot: i < maxSlots,
+                          onMoveTo: (_) {},
+                          onDelete: () {},
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Ghost à la place d'origine pendant le drag —
+                  // signale visuellement à l'ergo où la photo "était".
+                  childWhenDragging: Opacity(
+                    opacity: 0.3,
+                    child: _PhotoTile(
+                      key: ValueKey('photo_ghost_${photos[i].id}'),
+                      doc: photos[i],
+                      slotNumber: i + 1,
+                      inSlot: i < maxSlots,
+                      onMoveTo: (_) {},
+                      onDelete: () {},
+                    ),
+                  ),
+                  child: _PhotoTile(
+                    key: ValueKey('photo_${photos[i].id}'),
+                    doc: photos[i],
+                    slotNumber: i + 1,
+                    inSlot: i < maxSlots,
+                    onMoveTo: (newTag) =>
+                        _moveToCategory(doc: photos[i], newTag: newTag),
+                    onDelete: () => _deletePhoto(photos[i]),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -592,6 +672,19 @@ class _PhotosTabState extends State<PhotosTab>
 }
 
 // ---------------------------------------------------------------------------
+// Drag payload — passé entre LongPressDraggable (source) et DragTarget
+// (destination) via le système de gestures Flutter. Le `fromTag`
+// permet à la cible de détecter "je suis déjà la catégorie d'origine
+// → ne rien faire" sans round-trip dans la liste de tags du document.
+// ---------------------------------------------------------------------------
+
+class _DragPhotoPayload {
+  final DocItem doc;
+  final String fromTag;
+  const _DragPhotoPayload({required this.doc, required this.fromTag});
+}
+
+// ---------------------------------------------------------------------------
 // Tile — une photo d'une catégorie visite, draggable + actions
 // ---------------------------------------------------------------------------
 
@@ -600,7 +693,6 @@ class _PhotoTile extends StatelessWidget {
   final int slotNumber;
   final bool inSlot;
   final ValueChanged<String> onMoveTo;
-  final VoidCallback onUntag;
   final VoidCallback onDelete;
 
   const _PhotoTile({
@@ -609,7 +701,6 @@ class _PhotoTile extends StatelessWidget {
     required this.slotNumber,
     required this.inSlot,
     required this.onMoveTo,
-    required this.onUntag,
     required this.onDelete,
   });
 
@@ -716,9 +807,7 @@ class _PhotoTile extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       onSelected: (value) {
-                        if (value == 'untag') {
-                          onUntag();
-                        } else if (value == 'delete') {
+                        if (value == 'delete') {
                           onDelete();
                         } else if (value.startsWith('move:')) {
                           onMoveTo(value.substring('move:'.length));
@@ -747,21 +836,9 @@ class _PhotoTile extends StatelessWidget {
                             ),
                           );
                         }
+                        // « Retirer la catégorie » retiré (demande user
+                        // 2026-04-28 — sans utilité dans le flux ergo).
                         items.add(const PopupMenuDivider());
-                        items.add(
-                          const PopupMenuItem<String>(
-                            value: 'untag',
-                            child: Row(
-                              children: [
-                                Icon(LucideIcons.folderMinus,
-                                    size: 14,
-                                    color: Color(0xFF92400E)),
-                                SizedBox(width: 8),
-                                Text('Retirer la catégorie'),
-                              ],
-                            ),
-                          ),
-                        );
                         items.add(
                           const PopupMenuItem<String>(
                             value: 'delete',
