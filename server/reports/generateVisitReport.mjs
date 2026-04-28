@@ -1710,6 +1710,19 @@ export async function generateVisitReport({
       height: upperY - COVER_BOTTOM_Y,
       color: rgb(1, 1, 1),
     });
+    // Fin trait orange horizontal pour fermer la zone préconisation
+    // sous la dernière case TOP (demande utilisateur). Positionné
+    // juste sous le bord bas de la TOP, à l'intérieur du masque blanc.
+    if (topRect != null) {
+      const orangeY = Math.max(COVER_BOTTOM_Y, topRect.y - 8);
+      page.drawRectangle({
+        x: COVER_X_INSET,
+        y: orangeY,
+        width: pageWidth - COVER_X_INSET * 2,
+        height: 0.8,
+        color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
+      });
+    }
   }
 
   // ---------------------------------------------------------------
