@@ -370,6 +370,10 @@ class Patient {
   final String city;
   final String zipCode;
   final String familySituation;
+  /// Statut d'occupation du logement : « Propriétaire » / « Locataire » /
+  /// « Usufruitier » (ou vide si pas encore renseigné). Utilisé par le
+  /// rapport PDF pour cocher la case correspondante.
+  final String occupationStatus;
   final String incomeCategory;
   final String secondFirstName;
   final String secondLastName;
@@ -398,6 +402,7 @@ class Patient {
     required this.city,
     required this.zipCode,
     required this.familySituation,
+    this.occupationStatus = '',
     required this.incomeCategory,
     this.secondFirstName = '',
     this.secondLastName = '',

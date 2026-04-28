@@ -723,7 +723,27 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     if (_isGeneratingReport) return;
     setState(() => _isGeneratingReport = true);
     try {
-      // Pousse les changements locaux EN ATTENTE vers NocoDB AVANT
+      // 1. Force-push de la liste de préconisations LOCALE vers
+      //    NocoDB. Le PUT côté serveur fait un "wipe and replace"
+      //    (cf. /api/visit-recommendations/:dossierId), donc si l'ergo
+      //    a supprimé une reco en local sans déclencher de save (ex:
+      //    cache local nettoyé, ou bug de debounce), NocoDB peut
+      //    encore avoir des recos fantômes — qui finissent dans le
+      //    rapport PDF (symptôme reporté : "barre de redressement lit
+      //    visible sur le rapport alors qu'il n'y en a aucune sur
+      //    l'app"). On force ici un PUT du contenu local courant
+      //    (potentiellement vide) pour aligner NocoDB sur la vérité
+      //    locale avant que le serveur ne lise les recos.
+      try {
+        final localRecos =
+            await _repository.fetchVisitRecommendations(_dossier.id);
+        await _repository.saveVisitRecommendations(_dossier.id, localRecos);
+      } catch (_) {
+        // Pas bloquant : si la fetch/save échoue, on tombe sur
+        // l'ancienne sémantique (NocoDB tel quel).
+      }
+
+      // 2. Pousse les changements locaux EN ATTENTE vers NocoDB AVANT
       // d'appeler le serveur de génération PDF — sinon le serveur lit
       // `getDossiersForApp` (NocoDB direct) et reçoit l'ancienne valeur
       // pour les champs récemment modifiés.

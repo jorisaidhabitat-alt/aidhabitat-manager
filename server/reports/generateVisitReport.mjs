@@ -382,7 +382,16 @@ function buildViewModel({ dossier, sanitaires, observations }) {
     fullAddress: buildFullAddress(patient),
     yearConstruction: String(housing.yearConstruction || '').trim(),
     yearHabitation: String(housing.yearHabitation || '').trim(),
-    surface: String(housing.surface || '').trim(),
+    // Surface habitable : on suffixe " m²" si la valeur est un nombre
+    // (ou une chaîne numérique) — l'ergo saisit juste un nombre dans
+    // l'app, c'est nous qui décorons côté rendu PDF. Si l'ergo a déjà
+    // tapé "120 m²" ou "120m2", on respecte sa saisie tel quel.
+    surface: (() => {
+      const raw = String(housing.surface || '').trim();
+      if (!raw) return '';
+      const isPureNumber = /^[\d.,]+$/.test(raw);
+      return isPureNumber ? `${raw} m²` : raw;
+    })(),
     typology: String(housing.typology || '').trim(),
     isMaison: /maison/i.test(String(housing.typology || '')),
     isAppartement: /appart/i.test(String(housing.typology || '')),
@@ -543,13 +552,34 @@ function applyEntryToField(field, entry, value) {
         console.warn(`[generateVisitReport] champ "${field.getName()}" mappé en check mais c'est un ${field.constructor.name}`);
         return;
       }
-      if (value) field.check(); else field.uncheck();
+      if (value) {
+        field.check();
+      } else {
+        forceUncheckField(field);
+      }
     } else if (type === 'radio') {
       if (!(field instanceof PDFRadioGroup)) {
         // Cas typique : Affinity Publisher exporte les "radios" comme
         // checkbox indépendantes. On gère via `match` côté checkbox.
         if (field instanceof PDFCheckBox && entry.match != null) {
-          if (value === entry.match) field.check(); else field.uncheck();
+          if (value === entry.match) {
+            field.check();
+          } else {
+            // `field.uncheck()` seul ne suffit pas pour les templates
+            // Affinity où la box a un état "checked" par défaut : pdf-lib
+            // ne réécrit pas l'AS du widget si la valeur courante est
+            // déjà non-Off, donc le flatten conserve l'apparence cochée.
+            // `forceUncheckField` écrit explicitement /Off dans
+            // l'AcroField + tous les widgets pour garantir la remise à
+            // zéro. Sans ce reset, le radio « Propriétaire » restait
+            // coché par défaut quand l'utilisateur n'avait rien
+            // sélectionné dans l'app — bug remonté par Joris sur DENA Paul.
+            forceUncheckField(field);
+          }
+        } else if (entry.match != null) {
+          // Field d'un type inattendu (PDFButton, etc.) — on tente
+          // quand même un reset bas niveau si value !== match.
+          if (value !== entry.match) forceUncheckField(field);
         }
         return;
       }
@@ -563,6 +593,35 @@ function applyEntryToField(field, entry, value) {
   } catch (error) {
     console.warn(`[generateVisitReport] échec écriture "${field.getName()}" (${type}) :`, error?.message || error);
   }
+}
+
+/**
+ * Force un champ AcroForm à l'état « Off » de manière agressive : appel
+ * `field.uncheck()` standard PUIS écriture directe dans le dict de
+ * l'AcroField + tous les widgets enfants (`AS` = appearance state,
+ * `V` = value). Cette double approche est nécessaire pour les templates
+ * Affinity Publisher où certains checkbox ont un état coché par défaut
+ * que pdf-lib ne réécrit pas via le simple `uncheck()`.
+ */
+function forceUncheckField(field) {
+  try {
+    if (typeof field?.uncheck === 'function') field.uncheck();
+  } catch (_) {}
+  try {
+    const acro = field?.acroField;
+    if (acro?.dict) {
+      acro.dict.set(PDFName.of('AS'), PDFName.of('Off'));
+      acro.dict.set(PDFName.of('V'), PDFName.of('Off'));
+    }
+    const widgets = (typeof acro?.getWidgets === 'function')
+      ? acro.getWidgets()
+      : [];
+    for (const widget of widgets) {
+      if (widget?.dict) {
+        widget.dict.set(PDFName.of('AS'), PDFName.of('Off'));
+      }
+    }
+  } catch (_) {}
 }
 
 /**
@@ -838,8 +897,21 @@ function drawImageWithCoverFit(pdfDoc, field, pdfImage) {
  * sur l'ordre date DESC fourni par `listDocumentsByPatient`.
  */
 function photosForVisitTag(documents, tag) {
+  // Comparaison normalisée (lowercase + NFD strip-accents + spaces
+  // collapse) — même logique que dans `fetchVisitPhotosForPatient`
+  // côté serveur. Garantit qu'un tag NocoDB stocké sous une forme
+  // légèrement différente de la constante Flutter (NFC vs NFD,
+  // espace insécable, casse) tombe quand même dans le bon slot.
+  const normalize = (s) => String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const target = normalize(tag);
   return documents.filter((doc) =>
-    Array.isArray(doc?.tags) && doc.tags.includes(tag),
+    Array.isArray(doc?.tags) &&
+    doc.tags.some((t) => normalize(t) === target),
   );
 }
 
@@ -1156,6 +1228,53 @@ export async function generateVisitReport({
   // soit pile sur la ligne du libellé (demande utilisateur).
   nudgeFieldRect({ fieldsByName, fieldName: 'aide.à domicile', dy: -4 });
   nudgeFieldRect({ fieldsByName, fieldName: 'dépendance', dy: -4 });
+
+  // Même symptôme « baseline trop haute » pour les autres champs texte
+  // des blocs Bénéficiaire / Coordonnées usager / Renseignements visite
+  // (page 1) et Ergo (page 3). Demande utilisateur : « redescendre
+  // légèrement les résultats pour qu'ils s'affichent bien en face de
+  // la ligne ». Référence d'alignement : `aide à domicile` et
+  // `dépendance` (nudgés -4 ci-dessus, validés "parfaitement alignés").
+  for (const fieldName of [
+    // Bénéficiaire (page 1)
+    'Nom',
+    'Prénom',
+    'date de naissance',
+    'date de naissance mme',
+    'MDPH',
+    // Coordonnées de l'usager (page 1)
+    'tel usager',
+    'mail usager',
+    'personne à contacter',
+    'tel personne confiance',
+    'mail personne confiance',
+    // Renseignements sur la visite (page 1)
+    'personne présente',
+    'date',
+    // Renseignements sur l'ergo (page 3)
+    'adresse',
+  ]) {
+    nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
+  }
+
+  // Section "Logement" page 5 — même symptôme de baseline trop haute
+  // que sur "aide à domicile" / "dépendance" : l'adresse, les années
+  // et les descriptions de niveaux flottent au-dessus de la ligne du
+  // libellé Affinity. On descend ces 7 champs texte de 4 pt.
+  // EXCLU explicite : `nombre d'étage` (PDFDropdown) — la dropdown a
+  // déjà son propre baseline correct côté Affinity et le toucher
+  // décalerait la pill.
+  for (const fieldName of [
+    'Adresse',
+    'annee1',
+    'annee2',
+    'surface',
+    'Sous sol',
+    'rdc',
+    'etage',
+  ]) {
+    nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
+  }
 
   // ---------------------------------------------------------------
   // Page 8 — Photos visite : 2 Logement, 3 Accès, 3 Sanitaires.

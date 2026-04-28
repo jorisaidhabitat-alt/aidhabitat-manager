@@ -70,6 +70,7 @@ class DossierRepository {
         'city': '',
         'zip_code': '',
         'family_situation': '',
+        'occupation_status': '',
         'income_category': '',
         'trusted_person_json': jsonEncode({
           'name': '',
@@ -264,6 +265,7 @@ class DossierRepository {
         p.city_id AS patient_city_id,
         p.zip_code AS patient_zip_code,
         p.family_situation AS patient_family_situation,
+        p.occupation_status AS patient_occupation_status,
         p.income_category AS patient_income_category,
         p.number_people AS patient_number_people,
         p.fiscal_revenue AS patient_fiscal_revenue,
@@ -392,6 +394,7 @@ class DossierRepository {
           'city': dossier.patient.city,
           'zip_code': dossier.patient.zipCode,
           'family_situation': dossier.patient.familySituation,
+          'occupation_status': dossier.patient.occupationStatus,
           'income_category': dossier.patient.incomeCategory,
           // Preserve numberPeople across the pull → merge → UI round-trip.
           // Without this, ConflictAlgorithm.replace would reset the column
@@ -772,6 +775,7 @@ class DossierRepository {
       'city_id': raw['cityId']?.toString() ?? '',
       'zip_code': raw['zipCode']?.toString() ?? '',
       'family_situation': raw['familySituation']?.toString() ?? '',
+      'occupation_status': raw['occupationStatus']?.toString() ?? '',
       'income_category': raw['incomeCategory']?.toString() ?? '',
       'number_people': _asInt(raw['numberPeople']),
       'fiscal_revenue': _asDouble(raw['fiscalRevenue']),
@@ -1026,6 +1030,7 @@ class DossierRepository {
         'city': remote.patient.city,
         'zip_code': remote.patient.zipCode,
         'family_situation': remote.patient.familySituation,
+        'occupation_status': remote.patient.occupationStatus,
         'income_category': remote.patient.incomeCategory,
         'trusted_person_json': jsonEncode({
           'name': remote.patient.trustedPerson.name,
@@ -1287,6 +1292,8 @@ class DossierRepository {
         cityId: row['patient_city_id'] as String? ?? '',
         zipCode: row['patient_zip_code'] as String,
         familySituation: row['patient_family_situation'] as String,
+        occupationStatus:
+            row['patient_occupation_status'] as String? ?? '',
         incomeCategory: row['patient_income_category'] as String,
         numberPeople: row['patient_number_people'] as int?,
         fiscalRevenue: (row['patient_fiscal_revenue'] as num?)?.toDouble(),
@@ -1508,6 +1515,7 @@ class DossierRepository {
       'city_id': 'cityId',
       'zip_code': 'zipCode',
       'family_situation': 'familySituation',
+      'occupation_status': 'occupationStatus',
       'income_category': 'incomeCategory',
       'fiscal_revenue': 'fiscalRevenue',
       'number_people': 'numberPeople',

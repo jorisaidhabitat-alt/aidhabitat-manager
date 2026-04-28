@@ -214,6 +214,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     _phone = p.phone;
     _email = p.email;
     _familySituation = p.familySituation;
+    _occupationStatus = p.occupationStatus;
     _incomeCategory = p.incomeCategory;
     _fiscalRevenue = p.fiscalRevenue;
     _numberPeople =
@@ -342,6 +343,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         'phone': _phone,
         'email': _email,
         'family_situation': _familySituation,
+        // Statut d'occupation (Propriétaire / Locataire / Usufruitier).
+        // Avant ce push, le champ n'était jamais sauvé → la sélection
+        // utilisateur restait orpheline en mémoire et le PDF affichait
+        // par défaut la case « Propriétaire » cochée pour tous les
+        // dossiers. Maintenant le serveur reçoit la vraie valeur (ou
+        // vide si l'utilisateur n'a rien coché → aucune case dans le PDF).
+        'occupation_status': _occupationStatus,
         'income_category': _incomeCategory,
         // Legacy aggregate column: store the sum of per-occupant RFRs so
         // backward-compatible consumers keep working.

@@ -3601,15 +3601,30 @@ const fetchSanitairesForDossier = async (dossierId) => {
 const fetchVisitPhotosForPatient = async (patientId) => {
   try {
     const docs = await mobileSyncStore.listDocumentsByPatient(patientId, {});
-    const visitTags = new Set([
-      'Visite - Logement',
-      'Visite - Accessibilité',
-      'Visite - Sanitaires',
+    // Normalisation robuste pour la comparaison : on retire les
+    // accents, on lowercase, on collapse les espaces. Comme ça, un
+    // tag stocké en NocoDB sous une forme légèrement différente de
+    // la constante Flutter (ex. NFC vs NFD pour le `é` de
+    // "Accessibilité", espace insécable au lieu de simple, …) matche
+    // quand même. Symptôme reporté : photos Logement + Accessibilité
+    // absentes du PDF alors qu'elles existaient bien dans l'app.
+    const normalizeTag = (s) => String(s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const visitTagsNormalized = new Set([
+      'visite - logement',
+      'visite - accessibilite',
+      'visite - sanitaires',
     ]);
     return asArray(docs).filter((doc) => {
       const mime = String(doc?.mimeType || '');
       if (!mime.startsWith('image/')) return false;
-      return asArray(doc?.tags).some((tag) => visitTags.has(String(tag)));
+      return asArray(doc?.tags).some((tag) =>
+        visitTagsNormalized.has(normalizeTag(tag)),
+      );
     });
   } catch (error) {
     console.warn('[report] échec listDocumentsByPatient :', error?.message || error);

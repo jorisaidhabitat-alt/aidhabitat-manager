@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 12;
+  static const _dbVersion = 13;
 
   Database? _database;
 
@@ -70,6 +70,24 @@ class LocalDatabase {
     if (oldVersion < 12) {
       await _migrateV11ToV12(db);
     }
+    if (oldVersion < 13) {
+      await _migrateV12ToV13(db);
+    }
+  }
+
+  /// v12 → v13 : statut d'occupation (« Propriétaire / Locataire /
+  /// Usufruitier ») pour le bloc Foyer du relevé de visite. Avant cette
+  /// colonne, le `_occupationStatus` n'était NI lu NI sauvé côté Flutter
+  /// → la sélection de l'utilisateur n'arrivait jamais en NocoDB et le
+  /// PDF affichait par défaut la case "Propriétaire" cochée pour tous
+  /// les dossiers.
+  Future<void> _migrateV12ToV13(Database db) async {
+    await _addColumnIfMissing(
+      db,
+      'patients',
+      'occupation_status',
+      "TEXT NOT NULL DEFAULT ''",
+    );
   }
 
   /// v11 → v12: générateur de rapport PDF (suite). L'onglet Photos du
@@ -443,6 +461,7 @@ class LocalDatabase {
         city TEXT NOT NULL,
         zip_code TEXT NOT NULL,
         family_situation TEXT NOT NULL,
+        occupation_status TEXT NOT NULL DEFAULT '',
         income_category TEXT NOT NULL,
         trusted_person_json TEXT NOT NULL,
         second_first_name TEXT NOT NULL DEFAULT '',

@@ -1198,6 +1198,8 @@ class NocodbApiClient {
         cityId: patientJson['cityId']?.toString() ?? '',
         zipCode: patientJson['zipCode']?.toString() ?? '',
         familySituation: patientJson['familySituation']?.toString() ?? '',
+        occupationStatus:
+            patientJson['occupationStatus']?.toString() ?? '',
         incomeCategory: patientJson['incomeCategory']?.toString() ?? '',
         numberPeople: _parseInt(patientJson['numberPeople']),
         fiscalRevenue: _parseDouble(patientJson['fiscalRevenue']),
