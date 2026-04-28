@@ -203,7 +203,29 @@ class _DossierScreenState extends State<DossierScreen> {
     super.dispose();
   }
 
-  void _onChanged() {
+  /// Handler pour les champs texte qui n'influencent PAS la catégorie de
+  /// revenus (Nom, Prénom, Adresse, …). Pas de `_recomputeIncomeCategory`
+  /// ni de `setState(() {})` : seul le state local de mémorisation
+  /// est mis à jour (l'affectation `_lastName = v` est déjà faite par
+  /// l'appelant). On planifie juste le save SQLite débouncé. Le
+  /// FormTextField conserve sa valeur affichée (controller géré
+  /// localement) — pas besoin de rebuild.
+  ///
+  /// Avant cette séparation : chaque keystroke sur Nom déclenchait
+  /// _recomputeIncomeCategory + setState global, ce qui rebuildait
+  /// tout le bloc dossier (badges, EpciBadge, photos, …) et
+  /// occasionnellement faisait perdre des keystrokes ("BALS" arrivait
+  /// en SQLite comme "BAL" voire "BAI"). Symptôme reporté.
+  void _onTextChanged() {
+    _scheduleSave();
+  }
+
+  /// Handler pour les champs qui influencent la catégorie de revenus
+  /// (Occupants dropdown, RFR du foyer). On recalcule la catégorie
+  /// puis on rebuild pour rafraîchir le badge — le coût rebuild est
+  /// acceptable parce que ces 2 champs ne génèrent pas de keystrokes
+  /// rapides (dropdown ou champ numérique).
+  void _onIncomeAffectingChanged() {
     _recomputeIncomeCategory();
     setState(() {});
     _scheduleSave();
@@ -234,10 +256,14 @@ class _DossierScreenState extends State<DossierScreen> {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    // 150 ms so the local SQLite write (and the refresh of dossier list /
-    // dashboard / visit report header) is effectively instant. NocoDB
-    // receives the push ~200 ms later via the SyncEngine debounce.
-    _saveTimer = Timer(const Duration(milliseconds: 150), _save);
+    // 400 ms : assez court pour que l'utilisateur sente une persistance
+    // locale réactive après une pause de frappe, mais suffisamment long
+    // pour absorber les pauses naturelles entre 2 caractères d'un même
+    // mot (≈ 300 ms en moyenne). Avant, 150 ms tirait le save mid-mot
+    // sur certains iPad — cf. symptôme "BALS save → BAL".
+    // NocoDB reçoit le push ~200 ms après le save local via le debounce
+    // du SyncEngine, soit ~600 ms depuis la dernière touche. Acceptable.
+    _saveTimer = Timer(const Duration(milliseconds: 400), _save);
   }
 
   Future<void> _save() async {
@@ -524,13 +550,37 @@ class _DossierScreenState extends State<DossierScreen> {
   /// state. Called on return from the visit report so edits made there
   /// propagate back to the dossier screen without requiring a full
   /// navigation refresh.
+  ///
+  /// Doubly-guarded contre l'écrasement des saisies en cours :
+  ///   1. Si un `_saveTimer` est actif, l'utilisateur est en train de
+  ///      taper — on skip pour ne PAS overwrite ses keystrokes en
+  ///      vol.
+  ///   2. Si le bénéficiaire local est marqué `pendingSync`, on skip
+  ///      aussi : un push NocoDB est en cours et la valeur fraîche
+  ///      retournée par fetchDossierById pourrait représenter
+  ///      l'ancienne version remote (eventual consistency NocoDB) —
+  ///      on l'écraserait par-dessus la valeur locale qui est en
+  ///      réalité la plus récente.
   Future<void> _refreshFromRepository() async {
     if (!mounted) return;
+    if (_saveTimer?.isActive == true) return;
     final fresh = await _repository.fetchDossierById(widget.dossier.id);
     if (fresh == null || !mounted) return;
-    // Preserve in-flight edits: only copy fields that aren't currently
-    // being typed (i.e. no pending save).
-    if (_saveTimer?.isActive == true) return;
+    // Garde supplémentaire : ne pas overwrite si la modification
+    // locale n'est pas encore confirmée par NocoDB. On compare le
+    // payload qu'on vient de fetcher au state local pour les champs
+    // de saisie : si différent, c'est qu'une saisie est en cours
+    // (ou en attente de sync), on garde le local.
+    final hasUnsyncedTextEdits = fresh.patient.firstName != _firstName ||
+        fresh.patient.lastName != _lastName ||
+        fresh.patient.address != _address ||
+        fresh.patient.city != _city ||
+        fresh.patient.zipCode != _zipCode;
+    if (hasUnsyncedTextEdits) {
+      // L'utilisateur a des modifications locales différentes du
+      // payload — on garde son state local, on n'overwrite pas.
+      return;
+    }
     setState(() {
       _firstName = fresh.patient.firstName;
       _lastName = fresh.patient.lastName;
@@ -764,7 +814,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             valueSize: 14,
                             onChanged: (v) {
                               _lastName = v;
-                              _onChanged();
+                              _onTextChanged();
                             },
                           ),
                         ),
@@ -778,7 +828,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             valueSize: 14,
                             onChanged: (v) {
                               _firstName = v;
-                              _onChanged();
+                              _onTextChanged();
                             },
                           ),
                         ),
@@ -804,7 +854,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             valueSize: 14,
                             onChanged: (v) {
                               _fiscalRevenue = v;
-                              _onChanged();
+                              _onIncomeAffectingChanged();
                             },
                           ),
                         ),
@@ -822,7 +872,7 @@ class _DossierScreenState extends State<DossierScreen> {
                       valueSize: 14,
                       onChanged: (v) {
                         _address = v;
-                        _onChanged();
+                        _onTextChanged();
                       },
                     ),
                     const SizedBox(height: 12),
