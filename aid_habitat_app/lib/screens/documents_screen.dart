@@ -1884,6 +1884,40 @@ class _DocThumbnailState extends State<_DocThumbnail> {
   /// rechargeait le décodeur d'image).
   static final Map<String, Uint8List> _bytesCache = {};
 
+  /// Cache partagé des aplats d'annotation (PNG bytes décodés) keyed
+  /// par `doc.id`. Invalidé quand `doc.annotationsJson` change (cf.
+  /// `didUpdateWidget`) pour que la vignette reflète immédiatement la
+  /// dernière save.
+  static final Map<String, Uint8List> _annotationOverlayCache = {};
+  static final Map<String, String> _annotationCacheJsonKey = {};
+
+  /// Retourne les bytes PNG de l'aplat « page 1 + traits ergo » si
+  /// disponibles dans `documents.annotations_json` (clé "1"). null si
+  /// le doc n'a pas d'annotation pour la page 1, ou si le JSON est
+  /// invalide. Cache mémoire pour éviter de re-decode chaque frame.
+  static Uint8List? _firstPageAnnotationBytes(DocItem doc) {
+    final raw = doc.annotationsJson;
+    if (raw == null || raw.isEmpty) return null;
+    // Cache hit ssi le JSON brut n'a pas changé.
+    if (_annotationCacheJsonKey[doc.id] == raw) {
+      final cached = _annotationOverlayCache[doc.id];
+      if (cached != null) return cached;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final dataUrl = decoded['1'];
+      if (dataUrl is! String || dataUrl.isEmpty) return null;
+      final bytes = _decodeDataUrl(dataUrl);
+      if (bytes == null || bytes.isEmpty) return null;
+      _annotationOverlayCache[doc.id] = bytes;
+      _annotationCacheJsonKey[doc.id] = raw;
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Uint8List? _bytes;
 
   @override
@@ -1906,6 +1940,13 @@ class _DocThumbnailState extends State<_DocThumbnail> {
         _bytesCache.remove(widget.doc.id);
       }
       _primeBytes();
+    }
+    // Invalidate aussi le cache d'aplat d'annotation quand le JSON a
+    // changé (l'ergo vient de saver une annotation page 1) — sinon la
+    // vignette PDF restait sur l'aplat précédent (ou pas d'aplat du tout).
+    if (old.doc.annotationsJson != widget.doc.annotationsJson) {
+      _annotationOverlayCache.remove(widget.doc.id);
+      _annotationCacheJsonKey.remove(widget.doc.id);
     }
   }
 
@@ -1963,6 +2004,24 @@ class _DocThumbnailState extends State<_DocThumbnail> {
       }
     }
     if (doc.type == 'pdf') {
+      // 1) PRIORITÉ : si l'ergo a annoté la page 1 du PDF, on affiche
+      //    directement l'aplat PNG (PDF page 1 + traits) stocké dans
+      //    `documents.annotations_json` sous la clé "1". Évite à
+      //    l'utilisateur d'ouvrir le doc pour voir qu'il y a une note
+      //    par-dessus — cf. demande utilisateur 2026-04-28.
+      //
+      //    Le décodage est mis en cache mémoire (statique partagé)
+      //    pour que les rebuilds de la grille ne re-decode pas chaque
+      //    frame (pareil que `_bytesCache` pour les images).
+      final overlayBytes = _firstPageAnnotationBytes(doc);
+      if (overlayBytes != null) {
+        return Image.memory(
+          overlayBytes,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: _fallback,
+        );
+      }
       // Web : on a soit les bytes en mémoire (upload web → dataUrl
       // décodé par `_primeBytes`), soit on les récupère depuis la
       // cache MediaCacheService (`webCachedFetch`) en passant l'URL
@@ -2029,7 +2088,7 @@ class _DocThumbnailState extends State<_DocThumbnail> {
 
   /// Decodes a `data:<mime>;base64,<...>` URL into raw bytes. Returns null
   /// if malformed (missing `,` separator or invalid base64).
-  Uint8List? _decodeDataUrl(String dataUrl) {
+  static Uint8List? _decodeDataUrl(String dataUrl) {
     final comma = dataUrl.indexOf(',');
     if (comma < 0) return null;
     try {
