@@ -729,6 +729,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     if (_isGeneratingReport) return;
     setState(() => _isGeneratingReport = true);
     try {
+      // 0. Settling : absorber les debounces de save des tabs (Bénéficiaire,
+      //    Observations, Préconisations…) qui ont peut-être un timer
+      //    encore actif. Sans cette pause, un user qui tape rapidement et
+      //    clique Generate verrait son dernier keystroke perdu :
+      //    `_saveTimer` (kSaveDebounceText = 400ms) n'aurait pas tiré →
+      //    sync_op pas encore enqueued → runSync() n'aurait rien à
+      //    pousser → NocoDB resterait sur l'ancienne version.
+      //    Symptôme reporté : "j'ai changé le nom en EVANS, le PDF
+      //    affiche juste Joris". 600ms = 400ms debounce + 200ms marge.
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+
       // 1. Force-push de la liste de préconisations LOCALE vers
       //    NocoDB. Le PUT côté serveur fait un "wipe and replace"
       //    (cf. /api/visit-recommendations/:dossierId), donc si l'ergo

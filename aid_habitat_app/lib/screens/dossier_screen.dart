@@ -200,7 +200,15 @@ class _DossierScreenState extends State<DossierScreen> {
   @override
   void dispose() {
     _refSub?.cancel();
-    _saveTimer?.cancel();
+    // Flush last-shot synchrone si une saisie attendait le debounce.
+    // dispose() ne peut pas await, mais _save() écrit en SQLite avec
+    // une promesse qu'on laisse partir — au pire elle complète après le
+    // démontage (le `await _database.database` ne dépend pas du widget).
+    if (_saveTimer?.isActive == true) {
+      _saveTimer!.cancel();
+      // ignore: discarded_futures
+      _save();
+    }
     super.dispose();
   }
 
@@ -260,6 +268,19 @@ class _DossierScreenState extends State<DossierScreen> {
     // Debounce uniformisé sur `kSaveDebounceText` (400 ms) — voir
     // `lib/services/save_debounce.dart` pour le rationale détaillé.
     _saveTimer = Timer(kSaveDebounceText, _save);
+  }
+
+  /// Annule le timer de save en cours et exécute `_save()` immédiatement
+  /// si quelque chose était en attente. Appelé avant chaque navigation
+  /// qui pourrait emmener l'utilisateur loin du dossier (VAD, Documents,
+  /// etc.) pour garantir que la dernière saisie est en SQLite + dans la
+  /// queue de sync_op AVANT que le code suivant tente de relire les
+  /// données.
+  Future<void> _flushPendingSave() async {
+    if (_saveTimer?.isActive == true) {
+      _saveTimer!.cancel();
+      await _save();
+    }
   }
 
   Future<void> _save() async {
@@ -493,15 +514,23 @@ class _DossierScreenState extends State<DossierScreen> {
             label: 'Documents',
             subLabel: 'Photos, scans, plans...',
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => DocumentsScreen(
-                    dossier: widget.dossier,
-                    onBack: () => Navigator.pop(context),
+              // Flush avant navigation : même rationale que pour le
+              // bouton VAD — éviter qu'un dossier modifié localement
+              // (mais pas encore sauvé à 400 ms près) ne soit lu en
+              // version stale dans Documents.
+              () async {
+                await _flushPendingSave();
+                if (!mounted) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DocumentsScreen(
+                      dossier: widget.dossier,
+                      onBack: () => Navigator.pop(context),
+                    ),
                   ),
-                ),
-              );
+                );
+              }();
             },
           ),
         ),
@@ -512,6 +541,15 @@ class _DossierScreenState extends State<DossierScreen> {
             label: 'VAD',
             subLabel: 'Relevé de visite',
             onTap: () async {
+              // Flush des éventuelles modifs en attente (debounce 400 ms
+              // du Nom/Prénom/Adresse) AVANT de naviguer vers VAD —
+              // sinon "Générer le rapport" depuis VAD pousserait un PDF
+              // basé sur l'ancienne version NocoDB. Symptôme reporté :
+              // "j'ai changé le nom en EVANS, le PDF affiche juste Joris"
+              // → le _saveTimer n'avait pas encore tiré quand l'user a
+              // cliqué Generate.
+              await _flushPendingSave();
+
               // Prefer the in-shell navigation (callback) so the left
               // sidebar stays visible. Fallback to Navigator.push only if
               // the parent didn't wire a handler (isolated testing).
