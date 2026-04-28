@@ -54,6 +54,8 @@ const baseDossier = {
     invalidityTxt: 'Entre 50 et 79%',
     homeHelp: true,
     homeHelpTxt: 'aide-ménagère 2h/sem (ADMR), portage repas (Aid\'Habitat)',
+    // Texte volontairement bavard côté NocoDB pour vérifier que le PDF
+    // ne garde QUE le mot-clé reconnu (« Canne ») — le reste pollue.
     dependenceTxt: 'Canne en intérieur, déambulateur en extérieur',
     occupants: [],
     trustedPerson: {
