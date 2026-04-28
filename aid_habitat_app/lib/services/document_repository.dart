@@ -31,6 +31,94 @@ class DocumentRepository {
     return rows.map(_mapRow).toList();
   }
 
+  /// Charge les bytes locaux des documents VAD (tags `Visite - …`) pour
+  /// un patient, en vue de les embarquer **inline** dans la requête de
+  /// génération PDF. Permet au serveur de générer le rapport même si la
+  /// sync NocoDB est en retard ou a échoué partiellement (cf. edge case
+  /// "réseau intermittent" : 8 photos prises offline, certaines sont
+  /// montées avant la coupure, d'autres pas — sans inline, le PDF
+  /// arrive incomplet ou la génération est différée).
+  ///
+  /// Filtre :
+  ///   - tag matche un préfixe `Visite - ` (logement / acces / sani)
+  ///   - `pending_delete = 0`
+  ///   - bytes disponibles localement (`local_file_data_url` web ou
+  ///     `local_file_path` natif)
+  ///   - `sync_state != synced` — les docs déjà sur NocoDB n'ont pas
+  ///     besoin d'être renvoyés (le serveur les fetche en parallèle)
+  ///
+  /// Renvoie une liste de `InlineDocumentBytes`, prête à être convertie
+  /// en `MultipartFile` par [NocodbApiClient.downloadVisitReport].
+  Future<List<InlineDocumentBytes>> fetchVisitReportInlineBytes(
+    String patientId,
+  ) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      where: 'patient_local_id = ? AND pending_delete = 0 '
+          "AND sync_state != ? "
+          "AND mime_type LIKE 'image/%' "
+          "AND tags_json LIKE '%Visite - %'",
+      whereArgs: [patientId, SyncState.synced.name],
+      orderBy: 'created_at DESC',
+    );
+
+    final result = <InlineDocumentBytes>[];
+    for (final row in rows) {
+      final tagsRaw = row['tags_json'] as String? ?? '[]';
+      final tags = (jsonDecode(tagsRaw) as List<dynamic>).cast<String>();
+      // Double-filtre côté Dart (le LIKE SQL ci-dessus est approximatif).
+      final hasVisitTag = tags.any((t) => t.startsWith('Visite - '));
+      if (!hasVisitTag) continue;
+
+      Uint8List? bytes;
+
+      // 1) Web/PWA : bytes encodés en base64 dans `local_file_data_url`.
+      final dataUrl = row['local_file_data_url'] as String?;
+      if (dataUrl != null && dataUrl.isNotEmpty) {
+        final match =
+            RegExp(r'^data:[^;]+;base64,(.+)$').firstMatch(dataUrl);
+        if (match != null) {
+          try {
+            bytes = base64Decode(match.group(1)!);
+          } catch (_) {
+            // dataUrl corrompu : on tente la fallback file path.
+          }
+        }
+      }
+
+      // 2) Natif : fichier copié dans le sandbox app via `local_file_path`.
+      if (bytes == null && !kIsWeb) {
+        final filePath = row['local_file_path'] as String?;
+        if (filePath != null && filePath.isNotEmpty) {
+          try {
+            final file = File(filePath);
+            if (await file.exists()) {
+              bytes = await file.readAsBytes();
+            }
+          } catch (_) {
+            // I/O error : on skip ce doc, le serveur retombera sur NocoDB.
+          }
+        }
+      }
+
+      if (bytes == null || bytes.isEmpty) continue;
+
+      result.add(
+        InlineDocumentBytes(
+          localId: row['local_id'] as String,
+          fileName: row['file_name'] as String,
+          mimeType: row['mime_type'] as String,
+          tags: tags,
+          title: row['title'] as String? ?? '',
+          dossierId: row['dossier_local_id'] as String?,
+          bytes: bytes,
+        ),
+      );
+    }
+    return result;
+  }
+
   /// Web-friendly import that takes bytes + metadata directly (no
   /// [File]) since PWAs don't have a filesystem. The bytes are stored as
   /// a `data:<mime>;base64,…` URL in `documents.local_file_data_url` and
@@ -871,4 +959,33 @@ class DocumentRepository {
         return 'application/octet-stream';
     }
   }
+}
+
+/// Container plat pour un document à embarquer **inline** dans la
+/// requête HTTP de génération PDF. Construit par
+/// [DocumentRepository.fetchVisitReportInlineBytes].
+///
+/// Les champs `tags`, `title`, `dossierId`, `mimeType` sont sérialisés
+/// dans un champ multipart `inline_doc_<localId>_meta` (JSON). Les
+/// `bytes` sont attachés comme `MultipartFile` avec le fieldname
+/// `inline_doc_<localId>`. Côté serveur, cf.
+/// `parseInlineReportAssets()` dans `server/index.mjs`.
+class InlineDocumentBytes {
+  InlineDocumentBytes({
+    required this.localId,
+    required this.fileName,
+    required this.mimeType,
+    required this.tags,
+    required this.bytes,
+    this.title = '',
+    this.dossierId,
+  });
+
+  final String localId;
+  final String fileName;
+  final String mimeType;
+  final List<String> tags;
+  final String title;
+  final String? dossierId;
+  final Uint8List bytes;
 }
