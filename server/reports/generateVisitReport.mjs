@@ -360,6 +360,26 @@ function joinNotePagesText(pages) {
     .trim();
 }
 
+/**
+ * Pour le champ "Dépendance" du PDF, l'ergo saisit souvent du texte
+ * libre du genre "Canne, marche difficilement". Le rapport ne garde
+ * que le mot-clé (Aucune / Canne / Déambulateur / Fauteuil roulant)
+ * — match d'abord contre les options connues, sinon fallback sur la
+ * 1ère portion avant virgule ou point.
+ */
+function normalizeDependenceForReport(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  const known = ['Aucune', 'Canne', 'Déambulateur', 'Fauteuil roulant'];
+  const lc = text.toLowerCase();
+  for (const opt of known) {
+    if (lc.includes(opt.toLowerCase())) return opt;
+  }
+  // Fallback : 1er segment avant virgule/point.
+  const first = text.split(/[,.;]/)[0]?.trim() || text;
+  return first;
+}
+
 function buildViewModel({
   dossier,
   sanitaires,
