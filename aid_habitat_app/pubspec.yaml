@@ -60,6 +60,10 @@ dependencies:
   flutter_inappwebview: ^6.1.5
   flutter_svg: ^2.0.10
   desktop_multi_window: ^0.2.1
+  # Lecture dynamique de la version (CFBundleShortVersionString iOS,
+  # versionName Android, .app version macOS, package.json web). Utilisé
+  # par l'écran « À propos » pour afficher la version courante.
+  package_info_plus: ^8.0.0
 
 dev_dependencies:
   flutter_test:

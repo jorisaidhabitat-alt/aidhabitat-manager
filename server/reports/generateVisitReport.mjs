@@ -1795,14 +1795,13 @@ export async function generateVisitReport({
         const orangeLineY =
             (topRect.y + descriptifFrameTop) / 2 - 8;
         const hLineXInset = 32;
-        // Épaisseur 0.5 → 0.4 (demande user "réduis encore légèrement
-        // l'épaisseur"). Compromis entre 0.3 (un poil trop fin) et 0.5
-        // (un poil trop épais).
+        // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 pt
+        // (demande "reduis l'épaisseur du trait légèrement").
         partialPage.drawRectangle({
           x: hLineXInset,
           y: orangeLineY,
           width: partialPage.getSize().width - hLineXInset * 2,
-          height: 0.4,
+          height: 0.35,
           color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
         });
       }

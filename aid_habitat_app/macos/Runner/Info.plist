@@ -28,6 +28,27 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+
+	<!-- ====================================================== -->
+	<!-- Permissions macOS (NSUsageDescriptions)                 -->
+	<!-- Mac App Store rejette toute app qui appelle ces APIs    -->
+	<!-- sans purpose string, comme iOS.                         -->
+	<!-- ====================================================== -->
+	<key>NSCameraUsageDescription</key>
+	<string>Aid&apos;Habitat utilise l&apos;appareil photo pour prendre des photos du logement, des sanitaires et des éléments d&apos;accessibilité pendant la visite à domicile.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Aid&apos;Habitat accède à votre photothèque pour ajouter des photos existantes au dossier du bénéficiaire.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Aid&apos;Habitat enregistre les rapports PDF et les photos exportées dans votre photothèque, à votre demande.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Aid&apos;Habitat accède au dossier Documents pour importer ou enregistrer des fichiers liés au dossier du bénéficiaire.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Aid&apos;Habitat enregistre les rapports PDF générés dans votre dossier Téléchargements.</string>
+
+	<!-- Catégorie Mac App Store -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.medical</string>
+
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- `NSAllowsArbitraryLoadsInWebContent` : permet à toutes les WebViews
