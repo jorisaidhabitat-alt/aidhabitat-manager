@@ -5,6 +5,7 @@ import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
+import '../../components/notes_widget.dart';
 import '../../components/soft_transitions.dart';
 
 /// Accessibilité tab — refonte :
@@ -651,6 +652,61 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             if (s != 'Localisé') _voletsPersLoc = '';
           }),
           (l) => setState(() => _voletsPersLoc = l),
+        ),
+        const SizedBox(height: 24),
+        // ============================================================
+        // Note « Observations sur les équipements et utilisation »
+        // (anciennement onglet Observations, fusionné ici cf. demande
+        // utilisateur). Alimente le champ `obs` page 6 du PDF.
+        // ============================================================
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Observations sur les équipements et utilisation',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF7C6DAA),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Difficultés rencontrées, besoins non couverts par les '
+                'équipements actuels (sanitaires, escalier, mobilier…). '
+                'Apparaîtra page 6 du rapport.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 220,
+                child: NotesWidget(
+                  key: ValueKey(
+                    'acc-equip-note-${widget.dossier.patient.id}',
+                  ),
+                  patientId: widget.dossier.patient.id,
+                  tabKey: 'Accessibilité-Équipements',
+                  title: '',
+                  showText: true,
+                  allowPagination: true,
+                  embedded: true,
+                  fillParentHeight: true,
+                  showSaveButton: false,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

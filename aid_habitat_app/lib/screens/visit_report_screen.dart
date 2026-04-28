@@ -105,12 +105,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // (Préconisations) → dessin (Plans). Alimente la page 8 du
     // rapport PDF (« Photos du logement »).
     'Photos',
+    // L'onglet « Préconisations » a fusionné l'ancien onglet
+    // « Observations » (cf. demande utilisateur 2026-04-28) : le projet
+    // usager + le résumé des préconisations sont maintenant 2 NotesWidget
+    // en haut de Préconisations, et l'observation équipements est
+    // descendue dans la sous-section Équipements de l'onglet
+    // Accessibilité. Alimente toujours les pages 6 et 7 du PDF.
     'Préconisations',
-    // Onglet « Observations » inséré entre Préconisations et Plans :
-    // l'ergo y synthétise le projet usager + résumé des préconisations
-    // après les avoir détaillées dans Préconisations. Alimente les
-    // pages 6 et 7 du rapport PDF (cf. observations_tab.dart).
-    'Observations',
     'Plans',
   ];
 

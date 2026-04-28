@@ -306,6 +306,67 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     );
   }
 
+  /// Wrapper compact pour un NotesWidget VAD (Projet / Résumé) — ne
+  /// montre que la zone de texte (`showText: true, allowPagination:
+  /// true`), avec un titre violet et un sous-titre explicatif. Le canvas
+  /// drawing reste accessible via la barre d'outils (cohérent avec les
+  /// notes Médical / Autonomie).
+  Widget _buildVadNote({
+    required String tabKey,
+    required String title,
+    required String subtitle,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF7C6DAA),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF64748B),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Hauteur intrinsèque limitée — le NotesWidget par défaut veut
+          // s'étirer au max. Dans une carte de la liste Préconisations
+          // on lui donne une bounded height pour éviter qu'il avale tout
+          // l'espace vertical.
+          SizedBox(
+            height: 220,
+            child: NotesWidget(
+              key: ValueKey('reco-note-$tabKey-${widget.dossier.patient.id}'),
+              patientId: widget.dossier.patient.id,
+              tabKey: tabKey,
+              title: '',
+              showText: true,
+              allowPagination: true,
+              embedded: true,
+              fillParentHeight: true,
+              showSaveButton: false,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmpty() {
     return Container(
       padding: const EdgeInsets.all(24),
