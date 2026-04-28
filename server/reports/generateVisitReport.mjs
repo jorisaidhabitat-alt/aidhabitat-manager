@@ -1304,12 +1304,13 @@ export async function generateVisitReport({
   }
 
   // Adresse de l'ergo (page 1, bandeau orange « Renseignements sur
-  // l'ergothérapeute ») : itérations user :
-  //   - -4 (groupe par défaut) : trop bas, débord sur la ligne suivante
-  //   - -2, 0 : toujours un poil trop bas
-  //   - +2 (actuel) : remonté de 2 pt au-dessus de la position native
-  //     du template. À valider visuellement, ajuster +1/-1 si besoin.
-  nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: 2 });
+  // l'ergothérapeute ») : itérations user — l'adresse doit se placer
+  // pile entre la ligne « Aid'Habitat » et le numéro de téléphone du
+  // bandeau orange. Historique :
+  //   - -4 (groupe par défaut) : trop bas, débordait sur la ligne suivante
+  //   - -2, 0, +2 : toujours trop bas
+  //   - +8 (actuel) : remonté entre Aid'Habitat et le téléphone.
+  nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: 8 });
 
   // Section "Logement" page 5 — baseline légèrement trop haute par
   // rapport au libellé Affinity. Premier essai à -4 pt mais l'ergo a
