@@ -153,6 +153,11 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     _scheduleSave();
   }
 
+  // Conservé pour réactivation future (drag-to-reorder sera réintroduit
+  // si on bascule sur un package de grille reorderable, ex.
+  // `reorderable_grid_view`). Le layout actuel est une grille 3 cols
+  // manuelle (Row+Expanded), incompatible avec ReorderableListView.
+  // ignore: unused_element
   void _reorderItem(int oldIndex, int newIndex) {
     setState(() {
       final next = List<VisitRecommendationItem>.from(_items);
@@ -278,41 +283,13 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                 if (_items.isEmpty)
                   _buildEmpty()
                 else
-                  ReorderableListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _items.length,
-                    onReorder: _reorderItem,
-                    // Drag handle géré manuellement dans la carte (icône
-                    // en haut au centre de la carte, dans
-                    // _RecommendationCard).
-                    buildDefaultDragHandles: false,
-                    // Pendant le drag, préserver l'apparence de la carte
-                    // (radius 24, transparence, légère élévation) — sans
-                    // proxyDecorator, Flutter entoure la carte d'un
-                    // Material carré qui casse le border radius arrondi.
-                    proxyDecorator: (child, index, animation) {
-                      return Material(
-                        color: Colors.transparent,
-                        elevation: 4,
-                        borderRadius: BorderRadius.circular(16),
-                        clipBehavior: Clip.antiAlias,
-                        child: child,
-                      );
-                    },
-                    itemBuilder: (context, i) {
-                      final item = _items[i];
-                      return _RecommendationCard(
-                        key: ValueKey(item.id),
-                        item: item,
-                        index: i,
-                        reorderable: _items.length > 1,
-                        onChange: (updated) => _updateItem(i, updated),
-                        onRemove: () => _removeItem(i),
-                        onPickWiki: () => _openPicker(i),
-                      );
-                    },
-                  ),
+                  // Grille 3 colonnes : chaque préconisation est ajoutée
+                  // sur la même ligne jusqu'à 3, puis on saute à une
+                  // nouvelle ligne (demande utilisateur 2026-04-28).
+                  // Le drag-to-reorder est désactivé dans ce mode (la
+                  // grille manuelle Row+Expanded est incompatible avec
+                  // ReorderableListView qui est mono-axial).
+                  _buildRecommendationsGrid(),
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -333,6 +310,56 @@ class _RecommendationsTabState extends State<RecommendationsTab>
           ),
         ),
       ],
+    );
+  }
+
+  /// Grille 3 colonnes pour les cartes de préconisations. Chaque ligne
+  /// contient toujours 3 `Expanded` pour que les cartes aient une
+  /// largeur uniforme — les emplacements vides (dernière ligne
+  /// incomplète) sont rendus en `SizedBox.shrink`. Espacement vertical
+  /// 12 px entre lignes, horizontal 12 px entre colonnes.
+  Widget _buildRecommendationsGrid() {
+    const int columns = 3;
+    const double gap = 12.0;
+    final rows = <Widget>[];
+    for (int rowStart = 0; rowStart < _items.length; rowStart += columns) {
+      final children = <Widget>[];
+      for (int col = 0; col < columns; col++) {
+        if (col > 0) {
+          children.add(const SizedBox(width: gap));
+        }
+        final idx = rowStart + col;
+        if (idx < _items.length) {
+          final item = _items[idx];
+          children.add(Expanded(
+            child: _RecommendationCard(
+              key: ValueKey(item.id),
+              item: item,
+              index: idx,
+              // Drag handle masqué : pas de reorder dans ce layout grid.
+              reorderable: false,
+              onChange: (updated) => _updateItem(idx, updated),
+              onRemove: () => _removeItem(idx),
+              onPickWiki: () => _openPicker(idx),
+            ),
+          ));
+        } else {
+          // Placeholder invisible pour préserver la largeur uniforme
+          // des cartes quand la dernière ligne n'est pas pleine.
+          children.add(const Expanded(child: SizedBox.shrink()));
+        }
+      }
+      rows.add(Padding(
+        padding: const EdgeInsets.only(bottom: gap),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        ),
+      ));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
     );
   }
 
