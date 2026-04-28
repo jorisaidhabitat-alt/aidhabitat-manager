@@ -373,18 +373,15 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         'occupants_json':
             jsonEncode(_occupants.map((o) => o.toJson()).toList()),
       });
-      await widget.repository.updateDossierFields(widget.dossier.id, {
-        'compte_anah': _compteAnah,
-        'envoi_rapport': _envoiRapport,
-        'personnes_presentes_visite': _personnesPresentesVisite,
-      });
-      // Notify the parent (VisitReportScreen) so it re-fetches the dossier
-      // and propagates the fresh patient data (name / city / …) to every
-      // other tab and to any view listening to the same dossier.
-      widget.onPatientChanged?.call();
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    await widget.repository.updateDossierFields(widget.dossier.id, {
+      'compte_anah': _compteAnah,
+      'envoi_rapport': _envoiRapport,
+      'personnes_presentes_visite': _personnesPresentesVisite,
+    });
+    // Notify the parent (VisitReportScreen) so it re-fetches the dossier
+    // and propagates the fresh patient data (name / city / …) to every
+    // other tab and to any view listening to the same dossier.
+    widget.onPatientChanged?.call();
   }
 
   /// Aggregate household fiscal revenue = sum of every occupant's RFR.
