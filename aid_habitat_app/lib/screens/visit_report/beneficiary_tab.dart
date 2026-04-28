@@ -10,6 +10,7 @@ import '../../services/retirement_funds_repository.dart';
 import '../../components/commune_field_group.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
+import '../../components/two_threshold_swipe.dart';
 
 /// Bénéficiaire tab — parité 1:1 avec la version React (`BeneficiaryForm`).
 ///
