@@ -335,6 +335,23 @@ class DataService {
     await _documentRepository.deleteDocument(documentId);
   }
 
+  /// Lit les observations de synthèse d'un dossier (Projet usager,
+  /// Résumé préconisations, Observations équipements). Renvoie un
+  /// objet vide si aucune ligne n'existe encore.
+  Future<ObservationsSynthese> fetchObservations(String dossierId) async {
+    final existing = await _dossierRepository.fetchObservations(dossierId);
+    return existing ?? ObservationsSynthese(dossierId: dossierId);
+  }
+
+  /// Upsert local + sync NocoDB des observations de synthèse.
+  /// Voir [DossierRepository.upsertObservations].
+  Future<void> upsertObservations(
+    String dossierId,
+    ObservationsSynthese observations,
+  ) async {
+    await _dossierRepository.upsertObservations(dossierId, observations);
+  }
+
   /// Génère le rapport PDF côté serveur et renvoie ses bytes + nom
   /// de fichier proposé. Voir
   /// [NocodbApiClient.downloadVisitReport]. Le caller est responsable

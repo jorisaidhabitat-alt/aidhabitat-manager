@@ -1827,6 +1827,52 @@ class DossierRepository {
     } else {
       await db.update('mesures_anthropometriques', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
     }
+
+    // Enqueue NocoDB push (manqué dans la version initiale — symptôme
+    // reporté : "les mesures saisies n'arrivent jamais sur NocoDB").
+    // Pattern aligné sur `upsertContexteDeVie`.
+    final updates = <String, dynamic>{
+      'deboutHauteurCoude': mesures.deboutHauteurCoude,
+      'assisHauteurAssise': mesures.assisHauteurAssise,
+      'assisProfondeurGenoux': mesures.assisProfondeurGenoux,
+      'assisHauteurCoudes': mesures.assisHauteurCoudes,
+      'observations': mesures.observations,
+    };
+    final opId = 'mesures_update_$dossierId';
+    final existingOp = await db.query('sync_operations',
+        where: 'id = ?', whereArgs: [opId], limit: 1);
+    Map<String, dynamic> merged = updates;
+    if (existingOp.isNotEmpty) {
+      try {
+        final prev = jsonDecode(existingOp.first['payload_json'] as String)
+            as Map<String, dynamic>;
+        final prevUpdates =
+            (prev['updates'] as Map?)?.cast<String, dynamic>();
+        if (prevUpdates != null) {
+          merged = {...prevUpdates, ...updates};
+        }
+      } catch (_) {/* fall through */}
+    }
+    await db.insert(
+      'sync_operations',
+      {
+        'id': opId,
+        'entity_type': 'mesures_anthropometriques',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'dossierId': dossierId,
+          'updates': merged,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    SyncEngine().notify();
   }
 
   Future<ObservationsSynthese?> fetchObservations(String dossierId) async {
@@ -1860,6 +1906,50 @@ class DossierRepository {
     } else {
       await db.update('observations_synthese', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
     }
+
+    // Enqueue NocoDB push — débloque les pages 7 (Projet usager + Résumé
+    // préconisations) du rapport PDF qui restaient vides faute de sync.
+    // Pattern aligné sur `upsertContexteDeVie`.
+    final updates = <String, dynamic>{
+      'observationEquipements': obs.observationEquipements,
+      'projetSouhaitUsage': obs.projetSouhaitUsage,
+      'resumePreconisations': obs.resumePreconisations,
+    };
+    final opId = 'observations_update_$dossierId';
+    final existingOp = await db.query('sync_operations',
+        where: 'id = ?', whereArgs: [opId], limit: 1);
+    Map<String, dynamic> merged = updates;
+    if (existingOp.isNotEmpty) {
+      try {
+        final prev = jsonDecode(existingOp.first['payload_json'] as String)
+            as Map<String, dynamic>;
+        final prevUpdates =
+            (prev['updates'] as Map?)?.cast<String, dynamic>();
+        if (prevUpdates != null) {
+          merged = {...prevUpdates, ...updates};
+        }
+      } catch (_) {/* fall through */}
+    }
+    await db.insert(
+      'sync_operations',
+      {
+        'id': opId,
+        'entity_type': 'observations_synthese',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'dossierId': dossierId,
+          'updates': merged,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    SyncEngine().notify();
   }
 
   Future<List<VisitRecommendationItem>> fetchVisitRecommendations(String dossierId) async {

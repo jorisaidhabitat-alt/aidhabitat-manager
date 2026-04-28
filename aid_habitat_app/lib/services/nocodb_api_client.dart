@@ -246,6 +246,82 @@ class NocodbApiClient {
     }
   }
 
+  /// PUT /api/mesures/:dossierId — upsert mesures anthropométriques.
+  /// Body : `{deboutHauteurCoude, assisHauteurAssise, assisProfondeurGenoux,
+  /// assisHauteurCoudes, observations}` — toutes en string nullable.
+  Future<void> updateMesures({
+    required String dossierId,
+    required Map<String, dynamic> updates,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _runWithTransientGuard(
+      'Mesures update',
+      () => _client
+          .put(
+            Uri.parse('$_baseUrl/api/mesures/$dossierId'),
+            headers: _headers,
+            body: jsonEncode(updates),
+          )
+          .timeout(_defaultTimeout),
+    );
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? remoteData;
+      try {
+        remoteData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+      throw ConflictException(
+        'Conflit mesures pour le dossier $dossierId',
+        remoteData: remoteData,
+      );
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote mesures update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
+  /// PUT /api/observations/:dossierId — upsert observations de synthèse
+  /// (Projet usager, Résumé préconisations, Observations équipements).
+  /// Alimente les pages 6 (« Observation sur les équipements ») et 7
+  /// (« Projet ou souhait de l'usager » + « Résumé des préconisations »)
+  /// du rapport PDF.
+  Future<void> updateObservations({
+    required String dossierId,
+    required Map<String, dynamic> updates,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    final response = await _runWithTransientGuard(
+      'Observations update',
+      () => _client
+          .put(
+            Uri.parse('$_baseUrl/api/observations/$dossierId'),
+            headers: _headers,
+            body: jsonEncode(updates),
+          )
+          .timeout(_defaultTimeout),
+    );
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? remoteData;
+      try {
+        remoteData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+      throw ConflictException(
+        'Conflit observations pour le dossier $dossierId',
+        remoteData: remoteData,
+      );
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote observations update failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
   /// GET /api/diagnostic-sanitaires/:dossierId — returns the latest
   /// persisted SDB + WC instances for the dossier, or null if no record
   /// has ever been saved server-side.

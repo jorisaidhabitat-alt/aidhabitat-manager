@@ -295,6 +295,12 @@ class NocodbSyncService {
       case 'diagnostic_sanitaires':
         await _processDiagnosticSanitairesOperation(operation, payload);
         return;
+      case 'mesures_anthropometriques':
+        await _processMesuresOperation(operation, payload);
+        return;
+      case 'observations_synthese':
+        await _processObservationsOperation(operation, payload);
+        return;
       case 'visit_recommendations':
         await _processVisitRecommendationsOperation(operation, payload);
         return;
@@ -360,6 +366,74 @@ class NocodbSyncService {
     final db = await LocalDatabase.instance.database;
     await db.update(
       'contexte_de_vie',
+      {'sync_state': SyncState.synced.name},
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+    );
+  }
+
+  /// Push des mesures anthropométriques via `PUT /api/mesures/:dossierId`.
+  /// Avant cette méthode, les saisies (taille debout, hauteur d'assise,
+  /// profondeur genoux, hauteur coudes) ne quittaient JAMAIS l'iPad —
+  /// `upsertMesures` n'enqueueait pas de sync_op.
+  Future<void> _processMesuresOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    if (operation.operationType != 'update') {
+      throw Exception(
+        'Opération mesures non supportée: ${operation.operationType}',
+      );
+    }
+    final dossierId = payload['dossierId']?.toString();
+    final updates = (payload['updates'] as Map?)?.cast<String, dynamic>();
+    if (dossierId == null || dossierId.isEmpty || updates == null) {
+      throw Exception('Payload mesures incomplet');
+    }
+    // ignore: avoid_print
+    print('[sync] PUT /api/mesures/$dossierId '
+        'keys=${updates.keys.toList()}');
+    await _apiClient.updateMesures(
+      dossierId: dossierId,
+      updates: updates,
+    );
+    final db = await LocalDatabase.instance.database;
+    await db.update(
+      'mesures_anthropometriques',
+      {'sync_state': SyncState.synced.name},
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+    );
+  }
+
+  /// Push des observations de synthèse via
+  /// `PUT /api/observations/:dossierId`. Alimente les pages 6 et 7 du
+  /// rapport PDF (« Projet ou souhait de l'usager », « Résumé des
+  /// préconisations », « Observation sur les équipements »).
+  Future<void> _processObservationsOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    if (operation.operationType != 'update') {
+      throw Exception(
+        'Opération observations non supportée: ${operation.operationType}',
+      );
+    }
+    final dossierId = payload['dossierId']?.toString();
+    final updates = (payload['updates'] as Map?)?.cast<String, dynamic>();
+    if (dossierId == null || dossierId.isEmpty || updates == null) {
+      throw Exception('Payload observations incomplet');
+    }
+    // ignore: avoid_print
+    print('[sync] PUT /api/observations/$dossierId '
+        'keys=${updates.keys.toList()}');
+    await _apiClient.updateObservations(
+      dossierId: dossierId,
+      updates: updates,
+    );
+    final db = await LocalDatabase.instance.database;
+    await db.update(
+      'observations_synthese',
       {'sync_state': SyncState.synced.name},
       where: 'dossier_local_id = ?',
       whereArgs: [dossierId],
