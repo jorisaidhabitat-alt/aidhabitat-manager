@@ -61,17 +61,19 @@ const List<String> kVisitPhotoTags = [
 
 /// Nombre max de photos utilisées par le PDF dans chaque catégorie.
 /// Au-delà, les photos restent en base mais sont marquées « non
-/// utilisées dans le rapport ». Les 3 catégories de la 2e ligne
-/// (plans + autres) n'ont pas de slot PDF — la limite est purement
-/// indicative pour l'UI ; on met une valeur élevée pour ne jamais
-/// déclencher l'état "surplus".
+/// utilisées dans le rapport » (pastille rouge `+` sur la tile).
+/// Les 3 catégories de la 2e ligne (plans + autres) n'ont pas de
+/// slot PDF — la limite est purement indicative pour l'UI.
 const Map<String, int> kVisitPhotoSlotCount = {
   kPhotoTagLogement: 2,
   kPhotoTagAccessibilite: 3,
   kPhotoTagSanitaires: 3,
-  kPhotoTagPlanAvant: 6,
-  kPhotoTagPlanApres: 6,
-  kPhotoTagAutres: 6,
+  // 2 slots pour Plan avant / Plan après / Autres — demande user
+  // 2026-04-28 : "les deux parties plans et la partie autres
+  // nécessitent seulement 2 images pas 6".
+  kPhotoTagPlanAvant: 2,
+  kPhotoTagPlanApres: 2,
+  kPhotoTagAutres: 2,
 };
 
 /// Libellé court pour l'UI (sans le préfixe « Visite - »).
