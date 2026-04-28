@@ -1723,9 +1723,20 @@ class DossierRepository {
 
   static Map<String, dynamic> _mapHousingFieldsToApi(
       Map<String, dynamic> fields) {
-    // The /api/logements endpoint accepts snake_case / French keys directly
-    // (see server mapHousingUpdatesToFields). We pass through most keys and
-    // just convert a few known camelCase-only fields.
+    // PATCH /api/logements server-side reads :
+    //   - les champs simples en camelCase : `yearConstruction`,
+    //     `voletsRoulantsManuelsEntier`, `voletsRoulantsManuelsLocalisation`,
+    //     `cheminementEscalierExterieur`, …
+    //   - le chauffage en objet structuré `heatingDetails: { electric,
+    //     gas, oil, heatPump, collective, wood, pellet, other }`
+    //
+    // Notre côté Flutter écrit en SQLite avec les noms de colonnes
+    // SQL (snake_case + `heating_details_json` JSON-encoded). Avant ce
+    // mapping correct, le mapper laissait passer les clés snake_case
+    // quasi-telles-quelles → le serveur recevait `undefined` pour
+    // toutes ces clés → écriture NocoDB vide → au pull workspace
+    // suivant le local était écrasé par le vide → l'ergo voyait ses
+    // chauffages + volets RESET à chaque rechargement de l'app.
     const snakeToCamel = <String, String>{
       'year_construction': 'yearConstruction',
       'year_habitation': 'yearHabitation',
@@ -1736,14 +1747,69 @@ class DossierRepository {
       'access_observation': 'accessObservation',
       'motorisation_porte_garage': 'motorisationPorteGarage',
       'motorisation_portail': 'motorisationPortail',
+      // Volets — 6 clés (3 types × 2 champs entier/localisation).
+      'volets_roulants_manuels_entier': 'voletsRoulantsManuelsEntier',
+      'volets_roulants_manuels_localisation':
+          'voletsRoulantsManuelsLocalisation',
+      'volets_roulants_electriques_entier': 'voletsRoulantsElectriquesEntier',
+      'volets_roulants_electriques_localisation':
+          'voletsRoulantsElectriquesLocalisation',
+      'volets_persiennes_entier': 'voletsPersiennesEntier',
+      'volets_persiennes_localisation': 'voletsPersiennesLocalisation',
+      // Annexes (boolean) — connues du serveur sous le même nom snake_case.
+      // Le `else` du forEach les passe correctement, mais on est plus
+      // explicite ici.
+      // Cheminement (boolean).
+      'cheminement_escalier_exterieur': 'cheminementEscalierExterieur',
+      'cheminement_escalier_interieur': 'cheminementEscalierInterieur',
+      'cheminement_pente_douce': 'cheminementPenteDouce',
+      'cheminement_plat': 'cheminementPlat',
+      'cheminement_quelques_marches': 'cheminementQuelquesMarches',
+      'cheminement_par_arriere': 'cheminementParArriere',
+      'cheminement_seuil_porte': 'cheminementSeuilPorte',
     };
     final out = <String, dynamic>{};
     fields.forEach((key, value) {
       if (key == 'updated_at' || key == 'sync_state') return;
+
+      // Cas spécial : `heating_details_json` est un JSON encodé
+      // (Map<String label, bool>). On le décode et on le convertit
+      // au format structuré attendu par le serveur :
+      // `heatingDetails: { electric, gas, oil, heatPump, collective,
+      // wood, pellet, other }`.
+      if (key == 'heating_details_json') {
+        if (value is String && value.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(value);
+            if (decoded is Map) {
+              out['heatingDetails'] = {
+                'electric': decoded['Électrique'] == true,
+                'gas': decoded['Gaz'] == true,
+                'oil': decoded['Fioul'] == true,
+                'heatPump': decoded['Pompe à chaleur'] == true ||
+                    decoded['PAC'] == true,
+                'collective': decoded['Collectif'] == true,
+                'wood': decoded['Bois'] == true,
+                'pellet': decoded['Granulés'] == true,
+                'other': decoded['Autre'] == true,
+              };
+            }
+          } catch (_) {
+            // JSON malformé — on ne pousse rien plutôt que d'écraser
+            // les données serveur avec du vide.
+          }
+        }
+        return;
+      }
+
       if (snakeToCamel.containsKey(key)) {
-        out[snakeToCamel[key]!] = value is int && (key == 'easy_access')
-            ? value == 1
-            : value;
+        // Cas spécial easy_access : stocké en int 0/1 côté SQLite,
+        // attendu en bool côté API.
+        if (key == 'easy_access' && value is int) {
+          out[snakeToCamel[key]!] = value == 1;
+        } else {
+          out[snakeToCamel[key]!] = value;
+        }
       } else {
         // Pass boolean-ish integer columns as bool where obvious.
         if (value is int && (value == 0 || value == 1)) {
