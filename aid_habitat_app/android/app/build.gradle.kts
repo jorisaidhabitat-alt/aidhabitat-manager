@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.aid_habitat_app"
+    namespace = "com.aidhabitat.manager"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,8 +20,11 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.aid_habitat_app"
+        // Bundle ID Aid'Habitat. Doit matcher l'ID enregistré dans la
+        // Play Console (Play Store) avant la publication. Ne JAMAIS le
+        // changer après publication, sinon nouvelle app distincte côté
+        // Play Store (utilisateurs perdent l'historique).
+        applicationId = "com.aidhabitat.manager"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

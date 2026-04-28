@@ -1788,20 +1788,20 @@ export async function generateVisitReport({
       if (topRect != null) {
         const descriptifFrameTop = drawY + cropHeight;
         // Centrage vertical entre la TOP et le cadre descriptif, puis
-        // léger drop de 3 pt vers le bas (demande user : "redescend
-        // légèrement le trait horizontal").
+        // drop vers le bas. Itérations utilisateur : -3 → -6 pt
+        // (demande "descend encore légèrement le trait horizontal").
         const orangeLineY =
-            (topRect.y + descriptifFrameTop) / 2 - 3;
-        // Inset horizontal +2 pt par rapport à la précédente itération
-        // (30 → 32) pour que les extrémités tombent PILE sur les
-        // verticales orange du gabarit. Demande user : "raccourci
-        // extrêmement légèrement la largeur".
+            (topRect.y + descriptifFrameTop) / 2 - 6;
         const hLineXInset = 32;
+        // Épaisseur restaurée à 0.5 pt — demande user "remet
+        // l'epaisseur precedente" : à la position basse (−6 pt) le
+        // trait disparaissait visuellement à 0.3, on remonte à 0.5
+        // qui matche aussi mieux les autres traits du gabarit.
         partialPage.drawRectangle({
           x: hLineXInset,
           y: orangeLineY,
           width: partialPage.getSize().width - hLineXInset * 2,
-          height: 0.3,
+          height: 0.5,
           color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
         });
       }

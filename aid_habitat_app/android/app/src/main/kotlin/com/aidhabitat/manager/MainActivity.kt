@@ -1,4 +1,4 @@
-package com.example.aid_habitat_app
+package com.aidhabitat.manager
 
 import io.flutter.embedding.android.FlutterActivity
 
