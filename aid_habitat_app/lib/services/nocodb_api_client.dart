@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 
 import '../models/types.dart';
 import 'app_config.dart';
@@ -725,19 +724,16 @@ class NocodbApiClient {
     // boundary. Auth via X-App-Session uniquement.
     request.headers['X-App-Session'] = AppConfig.appSessionToken;
 
+    // Note : on n'attache pas de `contentType` à `MultipartFile.fromBytes`
+    // (évite la dépendance directe `http_parser` juste pour MediaType).
+    // Le serveur déduit le mime du champ JSON `_meta` qu'on envoie en
+    // parallèle, c'est largement suffisant pour le routage inline.
     for (final doc in inlineDocuments) {
-      MediaType contentType;
-      try {
-        contentType = MediaType.parse(doc.mimeType);
-      } catch (_) {
-        contentType = MediaType('application', 'octet-stream');
-      }
       request.files.add(
         http.MultipartFile.fromBytes(
           'inline_doc_${doc.localId}',
           doc.bytes,
           filename: doc.fileName,
-          contentType: contentType,
         ),
       );
       request.fields['inline_doc_${doc.localId}_meta'] = jsonEncode({
@@ -750,18 +746,11 @@ class NocodbApiClient {
     }
 
     for (final plan in inlinePlans) {
-      MediaType contentType;
-      try {
-        contentType = MediaType.parse(plan.mimeType);
-      } catch (_) {
-        contentType = MediaType('image', 'png');
-      }
       request.files.add(
         http.MultipartFile.fromBytes(
           'inline_plan_${plan.localId}',
           plan.bytes,
           filename: '${plan.localId}.png',
-          contentType: contentType,
         ),
       );
       request.fields['inline_plan_${plan.localId}_meta'] = jsonEncode({

@@ -1688,7 +1688,7 @@ export async function generateVisitReport({
   // "fin de préconisation" ne soit pas mangée par le blanc et qu'on
   // voie clairement la coupure de la case TOP (demande utilisateur :
   // "redescend encore légèrement le masque").
-  const COVER_TOP_DROP = 35;
+  const COVER_TOP_DROP = 20;
   for (const { pageIdx, botRect, topRect } of pendingBotCovers) {
     if (!botRect) continue;
     let page;
@@ -1753,7 +1753,7 @@ export async function generateVisitReport({
       // légèrement la coupure du cadre"). 22 pt = aération visible
       // entre le bord bas de la case TOP et le cadre orange du
       // descriptif, sans déborder hors de l'espace utile.
-      const TOP_GAP = 22;
+      const TOP_GAP = 35;
       const drawY = topRect != null
         ? Math.max(COVER_BOTTOM_Y, topRect.y - cropHeight - TOP_GAP)
         : 40;
