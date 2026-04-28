@@ -10,6 +10,7 @@ import '../services/multi_window_stub.dart'
     if (dart.library.io) 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
+import '../services/connectivity_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/data_service.dart';
 import '../components/beneficiary_badges.dart';
@@ -728,6 +729,21 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   Future<void> _generateReport() async {
     if (_isGeneratingReport) return;
     setState(() => _isGeneratingReport = true);
+
+    // Détection offline en amont : si la connectivité est perdue, on
+    // ne tente même pas la génération online (qui finirait en timeout
+    // 60s et frustration). On enqueue directement la génération
+    // différée ; le sync engine la drainera dès le retour réseau.
+    if (ConnectivityService().isOffline) {
+      await _enqueueReportForLater(
+        reason:
+            'Hors ligne — votre rapport sera généré automatiquement '
+            'dès la prochaine connexion.',
+      );
+      if (mounted) setState(() => _isGeneratingReport = false);
+      return;
+    }
+
     try {
       // Note : plus de settle delay ici depuis que `kSaveDebounceText`
       // est à 0 ms. Chaque keystroke a déjà écrit en SQLite + enqueued
@@ -759,11 +775,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // `getDossiersForApp` (NocoDB direct) et reçoit l'ancienne valeur
       // pour les champs récemment modifiés.
       //
-      // Si la sync échoue partiellement (ex: PATCH patient en 400/500),
-      // on ABORTE la génération avec un message clair plutôt que de
-      // silencieusement produire un PDF basé sur des données obsolètes
-      // (symptôme reporté : "j'ai changé le nom en BALS mais le rapport
-      // affiche AB" — l'ancienne valeur NocoDB).
+      // Si la sync échoue (réseau KO, timeout, 5xx), on bascule sur la
+      // génération différée plutôt que d'aborter sec : le sync engine
+      // prendra le relais dès la prochaine fenêtre de connectivité
+      // stable et pousera D'ABORD les modifs locales en attente, PUIS
+      // déclenchera la génération du rapport. Garantit que le rapport
+      // contient toujours les dernières données saisies.
       try {
         final syncResult = await _dataService.runSync();
         // ignore: avoid_print
@@ -771,27 +788,58 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             'failed=${syncResult.failedOperations} '
             'conflicts=${syncResult.conflictCount} '
             'msg="${syncResult.message}"');
-        if (syncResult.failedOperations > 0 || syncResult.conflictCount > 0) {
+        if (syncResult.conflictCount > 0) {
+          // Conflits = action utilisateur requise (résolution manuelle).
+          // Pas un cas pour la queue offline — on remonte l'erreur.
           _showReportError(
-            'Synchronisation incomplète avant génération '
-            '(${syncResult.failedOperations} échec(s), '
-            '${syncResult.conflictCount} conflit(s)). '
-            'Le rapport pourrait afficher des valeurs obsolètes. '
-            'Détails : ${syncResult.message}',
+            'Synchronisation incomplète : ${syncResult.conflictCount} '
+            'conflit(s) à résoudre avant de pouvoir générer le rapport.',
+          );
+          return;
+        }
+        if (syncResult.failedOperations > 0) {
+          // Échec transitoire (réseau, 5xx serveur) → queue différée.
+          await _enqueueReportForLater(
+            reason:
+                'Synchronisation interrompue '
+                '(${syncResult.failedOperations} échec(s)) — votre '
+                'rapport sera généré automatiquement à la prochaine '
+                'reprise de la sync.',
           );
           return;
         }
       } catch (error) {
-        _showReportError(
-          'Impossible de synchroniser avant génération : $error. '
-          'Réessayez quand la connexion est stable.',
+        // runSync a levé : très probablement perte de connectivité
+        // entre le check `isOffline` initial et le push. Queue.
+        await _enqueueReportForLater(
+          reason:
+              'Connexion perdue pendant la synchronisation — votre '
+              'rapport sera généré automatiquement dès le retour '
+              'réseau.',
         );
         return;
       }
 
-      final result = await _dataService.downloadVisitReport(
-        dossierId: _dossier.id,
-      );
+      // 3. Génération online : on télécharge le PDF synchroneously
+      // pour pouvoir l'afficher tout de suite dans Documents.
+      final ({Uint8List bytes, String fileName, Map<String, dynamic>? stats})
+          result;
+      try {
+        result = await _dataService.downloadVisitReport(
+          dossierId: _dossier.id,
+        );
+      } catch (error) {
+        // Échec de l'appel /api/reports/visit/:dossierId (timeout,
+        // 5xx, 502 Vercel cold start, etc.) → queue différée. Ne pas
+        // abandonner le travail de l'ergo qui voit son clic « Générer »
+        // disparaître dans le vide.
+        await _enqueueReportForLater(
+          reason:
+              'Le serveur n\'a pas pu générer le rapport tout de suite '
+              ': $error\nIl sera retenté automatiquement.',
+        );
+        return;
+      }
 
       // Insertion dans l'espace Documents du dossier. L'op
       // `upload_file` queued par `importDocumentBytes` est ensuite
@@ -835,9 +883,43 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
       _showReportSuccess(result, totalDocs: docs.length);
     } catch (error) {
-      _showReportError('Génération impossible : $error');
+      // Filet de sécurité : toute autre exception non capturée → queue
+      // différée plutôt qu'une erreur sèche.
+      await _enqueueReportForLater(
+        reason: 'Génération interrompue : $error. Sera retentée plus tard.',
+      );
     } finally {
       if (mounted) setState(() => _isGeneratingReport = false);
+    }
+  }
+
+  /// Met en file d'attente la génération du rapport pour traitement
+  /// par le `SyncEngine` dès la prochaine reprise de connectivité.
+  /// Affiche un toast clair pour rassurer l'ergo (« sera généré
+  /// automatiquement ») au lieu d'une erreur sèche.
+  Future<void> _enqueueReportForLater({required String reason}) async {
+    try {
+      await _repository.enqueueReportGeneration(
+        dossierId: _dossier.id,
+        patientId: _dossier.patient.id,
+      );
+      // ignore: avoid_print
+      print('[report] enqueued report_gen pour dossier=${_dossier.id} '
+          '(raison: $reason)');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('📄 Rapport en attente — $reason'),
+          backgroundColor: const Color(0xFF7C6DAA),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } catch (error) {
+      // ignore: avoid_print
+      print('[report] échec enqueue : $error');
+      _showReportError(
+        'Impossible de mettre le rapport en attente : $error',
+      );
     }
   }
 

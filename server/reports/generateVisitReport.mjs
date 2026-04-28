@@ -736,67 +736,6 @@ async function applyApaGirOverlay({ pdfDoc, fieldsByName, view }) {
  * remonter au-dessus du téléphone tout en restant en dessous de
  * « Aid'Habitat ». Ajustable si l'œil exige plus ou moins.
  */
-async function applyErgoAddressOverlay({ pdfDoc, fieldsByName, view }) {
-  const address = String(getByPath(view, 'constants.ergoAddressOneLine') || '').trim();
-  console.log('[overlay] start, address=', JSON.stringify(address));
-  if (!address) {
-    console.log('[overlay] STOP: address vide');
-    return;
-  }
-
-  const field = fieldsByName.get('adresse');
-  console.log('[overlay] field found?', !!field, field?.constructor?.name);
-  if (!field) return;
-  const widgets = field.acroField.getWidgets?.() || [];
-  console.log('[overlay] widgets count=', widgets.length);
-  const widget = widgets[0];
-  if (!widget) return;
-
-  const pageRef = widget.P?.();
-  console.log('[overlay] pageRef=', pageRef);
-  if (!pageRef) {
-    console.log('[overlay] STOP: pageRef null');
-    return;
-  }
-  const allPages = pdfDoc.getPages();
-  const page = allPages.find((p) => p.ref === pageRef);
-  const pageIndex = page ? allPages.indexOf(page) : -1;
-  console.log('[overlay] page resolved?', !!page, 'index 0-based=', pageIndex, '/ total=', allPages.length);
-  if (!page) return;
-
-  const rect = widget.getRectangle();
-  console.log('[overlay] widget rect=', rect);
-  console.log('[overlay] page size=', page.getSize());
-
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  // TEST DIAGNOSTIC : on dessine sur TOUTES les pages pour être sûr de
-  // voir quelque chose. Si le user voit « PAGE N » en rouge sur une
-  // page, on saura quelle page est laquelle dans son lecteur.
-  for (let i = 0; i < allPages.length; i++) {
-    const p = allPages[i];
-    p.drawRectangle({
-      x: 20,
-      y: 750,
-      width: 250,
-      height: 40,
-      color: rgb(1, 0, 0),
-    });
-    p.drawText(`PAGE ${i + 1} (idx ${i})`, {
-      x: 30,
-      y: 765,
-      size: 18,
-      font,
-      color: rgb(1, 1, 1),
-    });
-  }
-
-  console.log('[overlay] drawText + drawRectangle effectués');
-  try {
-    if (typeof field.setText === 'function') field.setText('');
-  } catch (_) {}
-}
-
 /**
  * Décale verticalement le rectangle du widget [fieldName] de [dy]
  * points (positif = vers le haut, négatif = vers le bas — repère
@@ -1384,12 +1323,12 @@ export async function generateVisitReport({
     nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
   }
 
-  // Adresse de l'ergo : `nudgeFieldRect` n'a aucun effet sur ce widget
-  // (Affinity Publisher a pré-baké l'apparence avec coordonnées fixes
-  // — pdf-lib ignore les changements de rect lors du flatten). On
-  // bypass via un overlay texte direct sur la page, à côté/sous les
-  // libellés « Aid'Habitat » et le téléphone du bandeau orange.
-  await applyErgoAddressOverlay({ pdfDoc, fieldsByName, view });
+  // Adresse de l'ergo (champ `adresse` page 3) : aucun nudge — la
+  // position native du template est correcte. Les itérations de nudge
+  // précédentes étaient sur le mauvais élément (page 1 a une adresse
+  // bakée en dur dans le content stream Affinity, pas un champ
+  // AcroForm — c'est cette adresse-là que l'utilisateur voulait
+  // déplacer, à traiter séparément si besoin).
 
   // Section "Logement" page 5 — baseline légèrement trop haute par
   // rapport au libellé Affinity. Premier essai à -4 pt mais l'ergo a

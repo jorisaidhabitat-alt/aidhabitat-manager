@@ -2076,6 +2076,51 @@ class DossierRepository {
     }
   }
 
+  /// Met en file d'attente la génération du rapport PDF pour [dossierId].
+  /// Utilisé par `_generateReport` côté UI quand l'ergo clique « Générer »
+  /// alors qu'il est offline (ou que la requête réseau échoue) — l'op
+  /// sera traitée dès le retour de connexion par
+  /// `NocodbSyncService._processReportGenerationOperation`, qui appellera
+  /// le serveur Express, récupèrera le PDF et l'insèrera comme document
+  /// taggé « Rapport » dans l'espace Documents du dossier.
+  ///
+  /// Idempotent : un id `report_gen_<dossierId>` + `ConflictAlgorithm.
+  /// replace` font qu'un nouveau clic sur « Générer » avant que l'ancienne
+  /// op ait été drainée ne crée pas un doublon — la dernière intention
+  /// gagne.
+  ///
+  /// Renvoie l'identifiant de la sync_op enqueued, utile pour afficher
+  /// l'état dans la sidebar (« 1 rapport en attente »).
+  Future<String> enqueueReportGeneration({
+    required String dossierId,
+    required String patientId,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final opId = 'report_gen_$dossierId';
+    await db.insert(
+      'sync_operations',
+      {
+        'id': opId,
+        'entity_type': 'report_generation',
+        'entity_local_id': dossierId,
+        'operation_type': 'generate',
+        'payload_json': jsonEncode({
+          'dossierId': dossierId,
+          'patientId': patientId,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    SyncEngine().notify();
+    return opId;
+  }
+
   /// Pulls the remote diagnostic sanitaires payload for [dossierId] and
   /// merges it into SQLite WITHOUT enqueuing a sync operation.
   ///
