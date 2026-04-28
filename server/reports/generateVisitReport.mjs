@@ -1235,6 +1235,8 @@ export async function generateVisitReport({
     imagesFailedEmbed: 0,
     recoTextApplied: 0,
     recoOverflow: 0,
+    recoPagesRemoved: 0,
+    descriptifMerged: false,
   };
 
   for (const [fieldName, entry] of Object.entries(mapping)) {
@@ -1301,10 +1303,11 @@ export async function generateVisitReport({
     nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
   }
 
-  // Adresse de l'ergo (page 3, bandeau orange) : -4 était excessif —
-  // la valeur descendait trop par rapport à la ligne. -2 la repose
-  // pile sur le baseline du libellé (demande utilisateur :
-  // « remonte légèrement l'adresse dans le bandeau orange »).
+  // Adresse de l'ergo (page 1, bandeau orange « Renseignements sur
+  // l'ergothérapeute ») : -4 était excessif — la valeur descendait
+  // trop par rapport à la ligne. -2 la repose pile sur le baseline
+  // du libellé (demande utilisateur : « remonte légèrement l'adresse
+  // dans le bandeau orange »).
   nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: -2 });
 
   // Section "Logement" page 5 — même symptôme de baseline trop haute
@@ -1511,16 +1514,21 @@ export async function generateVisitReport({
   }
 
   // Blanchiment des cases BOT vides — fait APRÈS flatten pour passer
-  // au-dessus des widgets aplatis (texte vide + bordures éventuelles
-  // laissées par Affinity Publisher).
+  // au-dessus des widgets aplatis (texte vide + bordures éventuelles).
   //
-  // Borne haute du rectangle = juste sous la case TOP (bord inférieur
-  // de la bbox TOP - 6 pt de garde). Garantit qu'on n'avale JAMAIS
-  // une partie de la TOP, même si les fields BOT (texte + croquis)
-  // s'étendent étonnamment haut. Borne basse = bord inférieur de la
-  // page (couvre titre de section "PHOTOS, CROQUIS, ILLUSTRATION",
-  // bordures, footer éventuel — la zone est censée disparaître).
-  // Couvre toute la largeur de la page.
+  // Le cadre orange du gabarit Affinity (bordure décorative qui
+  // entoure tout le bloc préconisations) est préservé sur les côtés
+  // et en bas grâce à un INSET horizontal et vertical. Idem pour le
+  // trait noir qui ferme la case TOP : on laisse `topPreserveGap` pt
+  // entre le bord bas de la bbox TOP et le haut de notre rectangle
+  // blanc. Enfin, on dessine un fin trait orange juste au-dessus du
+  // rectangle pour FERMER visuellement le bloc préconisations
+  // (mirroir du cadre orange du gabarit).
+  const COVER_X_INSET = 25;          // préserve le cadre orange latéral
+  const COVER_BOTTOM_Y = 18;         // préserve le bord orange du bas
+  const TOP_PRESERVE_GAP = 15;       // préserve le trait noir bas de la TOP
+  // Couleur orange du cadre (échantillonnée visuellement sur le PDF).
+  const FRAME_ORANGE = rgb(0xED / 255, 0x98 / 255, 0x44 / 255);
   for (const { pageIdx, botRect, topRect } of pendingBotCovers) {
     if (!botRect) continue;
     let page;
@@ -1531,19 +1539,83 @@ export async function generateVisitReport({
     }
     if (!page) continue;
     const { width: pageWidth, height: pageHeight } = page.getSize();
-    // Limite haute = bord bas de la TOP - 6pt (gap visuel) ; sinon
-    // mi-hauteur de la page comme garde-fou si TOP rect manque.
     const upperY = topRect != null
-      ? Math.max(0, topRect.y - 6)
+      ? Math.max(0, topRect.y - TOP_PRESERVE_GAP)
       : pageHeight / 2;
-    if (upperY <= 0) continue;
+    if (upperY <= COVER_BOTTOM_Y) continue;
+    // 1. Rectangle blanc dans la zone BOT (avec marges latérales et
+    //    basse pour préserver le cadre orange du gabarit).
     page.drawRectangle({
-      x: 0,
-      y: 0,
-      width: pageWidth,
-      height: upperY,
+      x: COVER_X_INSET,
+      y: COVER_BOTTOM_Y,
+      width: pageWidth - COVER_X_INSET * 2,
+      height: upperY - COVER_BOTTOM_Y,
       color: rgb(1, 1, 1),
     });
+    // 2. Fin trait orange de fermeture (1 pt) au sommet du blanc, pour
+    //    qu'on voit bien que la zone préconisations se termine ici
+    //    avant le bloc descriptif des aides en dessous.
+    page.drawRectangle({
+      x: COVER_X_INSET,
+      y: upperY - 1,
+      width: pageWidth - COVER_X_INSET * 2,
+      height: 1,
+      color: FRAME_ORANGE,
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Remontée du "Descriptif des aides prévisionnelles" sur la même
+  // page que la dernière préconisation, quand celle-ci est seule sur
+  // sa page (impair = 1, 3, 5, 7). Demande utilisateur : utiliser
+  // l'espace libre laissé par la case BOT vide pour caser le tableau
+  // descriptif au lieu d'imprimer une page presque blanche suivie
+  // d'une page descriptif quasi vide elle aussi.
+  //
+  // Méthode :
+  //   1. On localise dynamiquement la page descriptif via un de ses
+  //      champs (`Caisse de retraite complémentaire`).
+  //   2. embedPage avec un bbox cropé sur la zone du tableau orange
+  //      (déterminé visuellement sur le rendu PNG du gabarit).
+  //   3. drawPage de cet XObject sur la page partielle, dans la
+  //      moitié BOT (sous le trait orange de fermeture, au-dessus du
+  //      cadre orange bas du gabarit).
+  //   4. removePage de la page descriptif d'origine pour ne pas la
+  //      voir apparaître deux fois.
+  // ---------------------------------------------------------------
+  if (pendingBotCovers.length === 1) {
+    const descriptifAnchor = fieldsByName.get('Caisse de retraite complémentaire');
+    const descriptifPageIdx = findPageIndexForField(pdfDoc, descriptifAnchor);
+    if (descriptifPageIdx !== -1) {
+      try {
+        const descriptifPage = pdfDoc.getPage(descriptifPageIdx);
+        // Bbox du tableau orange sur la page descriptif (coordonnées
+        // PDF, origine bas-gauche). Ajusté visuellement pour englober
+        // le titre, le tableau complet et la marge intérieure du cadre.
+        const embedded = await pdfDoc.embedPage(descriptifPage, {
+          left: 20,
+          bottom: 435,
+          right: 575,
+          top: 825,
+        });
+        const { pageIdx: partialPageIdx } = pendingBotCovers[0];
+        const partialPage = pdfDoc.getPage(partialPageIdx);
+        // Aspect ratio préservé : 555 × 390 (= bbox crop).
+        partialPage.drawPage(embedded, {
+          x: 20,
+          y: 40,
+          width: 555,
+          height: 390,
+        });
+        pdfDoc.removePage(descriptifPageIdx);
+        stats.descriptifMerged = true;
+      } catch (error) {
+        console.warn(
+          '[generateVisitReport] descriptif merge a échoué :',
+          error?.message || error,
+        );
+      }
+    }
   }
 
   const bytes = await pdfDoc.save({
