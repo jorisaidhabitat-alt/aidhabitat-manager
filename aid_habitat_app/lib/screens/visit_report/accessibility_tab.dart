@@ -1159,22 +1159,67 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               // En mode chevron, on garde la hit area d'origine (le
               // tap-anywhere du parent absorbe les ratés).
               InkWell(
-                onTap: () {
-                  setState(() {
-                    if (_pendingLevelField == cfg.field) {
-                      // Le niveau est dans le container morphant : on
-                      // le "settle" → il sort vers la liste principale
-                      // (le container reprend la forme du bouton).
-                      // Le niveau reste dans `_orderedLevels`, on le
-                      // collapse en pill pour signifier que la session
-                      // d'édition est finie.
+                onTap: () async {
+                  if (_pendingLevelField == cfg.field) {
+                    // Pending = juste créé, pas de confirmation
+                    // nécessaire — le chevron up "settle" sans
+                    // perdre de données saisies.
+                    setState(() {
                       _pendingLevelField = null;
                       _expandedLevel = null;
-                    } else {
-                      // Le niveau est dans la liste principale : X
-                      // = retirer du foyer (comportement existant).
-                      _orderedLevels.remove(cfg.field);
-                    }
+                    });
+                    _scheduleSave();
+                    return;
+                  }
+
+                  // Niveau déjà settled : la croix est destructive.
+                  // Confirmation explicite avant de supprimer + reset
+                  // total des données (pièces cochées, descriptions)
+                  // pour que le niveau parte sur un état vierge si
+                  // l'ergo le ré-ajoute plus tard. Demande user
+                  // 2026-04-28 : "si je supprime le niveau ça doit
+                  // tout réinitialiser, pas garder les boutons cochés
+                  // au prochain ajout".
+                  final confirm = await showSoftDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      title: const Text('Supprimer ce niveau ?'),
+                      content: Text(
+                        'Le niveau « ${cfg.label} » et toutes les '
+                        'pièces cochées dessus seront supprimés du '
+                        'foyer. Cette action est définitive.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Annuler'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFB91C1C),
+                          ),
+                          child: const Text('Supprimer'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm != true || !mounted) return;
+
+                  setState(() {
+                    _orderedLevels.remove(cfg.field);
+                    // Reset complet des données du niveau — sans ça
+                    // un re-add ressort les anciennes pills cochées.
+                    _levelRooms[cfg.field] = [];
+                    // Sync annexe Garage : si le Garage était coché
+                    // uniquement parce qu'il était dans ce niveau, on
+                    // doit le retirer aussi de la liste annexes.
+                    final stillPresent = _levelRooms.values
+                        .any((rooms) => rooms.contains('Garage'));
+                    if (!stillPresent) _annexes.remove('Garage');
                   });
                   _scheduleSave();
                 },
