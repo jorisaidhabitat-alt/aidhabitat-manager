@@ -629,6 +629,13 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Layout vertical "card" (demande utilisateur 2026-04-28) :
+    //   - Top row : numéro de slot (gauche) + drag handle + menu kebab (droite)
+    //   - Body    : preview pleine largeur (aspect 4:3, BoxFit.cover) cliquable
+    //
+    // Plus de titre ni de label « Slot X du rapport » — le numéro
+    // dans la pastille en haut suffit. Permet à l'ergo de voir BIEN
+    // ses photos dans la grille.
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
@@ -642,162 +649,145 @@ class _PhotoTile extends StatelessWidget {
           ),
         ),
         padding: const EdgeInsets.all(8),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Drag handle (à gauche pour faciliter l'accès au pouce)
-            ReorderableDragStartListener(
-              index: dragHandleIndex,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6),
-                child: Icon(
-                  LucideIcons.gripVertical,
-                  size: 18,
-                  color: Color(0xFF94A3B8),
+            // Top row : pastille numéro à gauche, drag handle au
+            // milieu (Spacer), kebab menu à droite. Hauteur compacte.
+            Row(
+              children: [
+                // Pastille numéro / "+" (surplus). Vert / rouge selon
+                // que la photo occupe un slot du PDF ou est en surplus.
+                Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: inSlot
+                        ? const Color(0xFFDCFCE7)
+                        : const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    inSlot ? '$slotNumber' : '+',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: inSlot
+                          ? const Color(0xFF15803D)
+                          : const Color(0xFFB91C1C),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            // Numéro de slot (1, 2, 3, …) — vert si occupe un slot,
-            // rouge "+" si surplus.
-            Container(
-              width: 28,
-              height: 28,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: inSlot
-                    ? const Color(0xFFDCFCE7)
-                    : const Color(0xFFFEE2E2),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                inSlot ? '$slotNumber' : '+',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: inSlot
-                      ? const Color(0xFF15803D)
-                      : const Color(0xFFB91C1C),
+                const Spacer(),
+                // Drag handle — long-press dessus déclenche le
+                // reorder. Sur l'iPad on peut aussi long-press
+                // n'importe où sur la card grâce à
+                // `ReorderableListView` mais on garde l'icône pour
+                // la découvrabilité.
+                ReorderableDragStartListener(
+                  index: dragHandleIndex,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      LucideIcons.gripVertical,
+                      size: 18,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
                 ),
-              ),
+                // Menu kebab : Déplacer vers / Retirer / Supprimer.
+                PopupMenuButton<String>(
+                  tooltip: 'Actions',
+                  icon: const Icon(
+                    LucideIcons.moreVertical,
+                    size: 18,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  // Padding réduit pour économiser de la hauteur
+                  // dans la top-row.
+                  padding: EdgeInsets.zero,
+                  splashRadius: 18,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  onSelected: (value) {
+                    if (value == 'untag') {
+                      onUntag();
+                    } else if (value == 'delete') {
+                      onDelete();
+                    } else if (value.startsWith('move:')) {
+                      onMoveTo(value.substring('move:'.length));
+                    }
+                  },
+                  itemBuilder: (ctx) {
+                    final items = <PopupMenuEntry<String>>[];
+                    final currentTag = doc.tags.firstWhere(
+                      kVisitPhotoTags.contains,
+                      orElse: () => '',
+                    );
+                    for (final tag in kVisitPhotoTags) {
+                      if (tag == currentTag) continue;
+                      items.add(
+                        PopupMenuItem<String>(
+                          value: 'move:$tag',
+                          child: Row(
+                            children: [
+                              const Icon(LucideIcons.arrowRight,
+                                  size: 14, color: Color(0xFF7C6DAA)),
+                              const SizedBox(width: 8),
+                              Text(visitPhotoTagShortLabel(tag)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    items.add(const PopupMenuDivider());
+                    items.add(
+                      const PopupMenuItem<String>(
+                        value: 'untag',
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.folderMinus,
+                                size: 14, color: Color(0xFF92400E)),
+                            SizedBox(width: 8),
+                            Text('Retirer la catégorie'),
+                          ],
+                        ),
+                      ),
+                    );
+                    items.add(
+                      const PopupMenuItem<String>(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.trash2,
+                                size: 14, color: Color(0xFFB91C1C)),
+                            SizedBox(width: 8),
+                            Text('Supprimer'),
+                          ],
+                        ),
+                      ),
+                    );
+                    return items;
+                  },
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            // Thumbnail cliquable — tap → ouvre la photo en grand
-            // dans une dialog plein écran. Bord violet à hover/tap
-            // pour signaler le côté interactif.
+            const SizedBox(height: 8),
+            // Preview pleine largeur — aspect 4:3 (ratio iPad photo
+            // par défaut). Tap → ouvre la dialog plein écran avec
+            // pinch-zoom.
             InkWell(
               onTap: () => _openFullscreen(context),
               borderRadius: BorderRadius.circular(8),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 56,
-                  height: 56,
+                child: AspectRatio(
+                  aspectRatio: 4 / 3,
                   child: _PhotoThumbnail(doc: doc),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            // Métadonnées
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    doc.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    inSlot
-                        ? 'Slot $slotNumber du rapport'
-                        : 'Surplus — non utilisé',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: inSlot
-                          ? const Color(0xFF64748B)
-                          : const Color(0xFFB91C1C),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Menu d'actions
-            PopupMenuButton<String>(
-              tooltip: 'Actions',
-              icon: const Icon(
-                LucideIcons.moreVertical,
-                size: 18,
-                color: Color(0xFF94A3B8),
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              onSelected: (value) {
-                if (value == 'untag') {
-                  onUntag();
-                } else if (value == 'delete') {
-                  onDelete();
-                } else if (value.startsWith('move:')) {
-                  onMoveTo(value.substring('move:'.length));
-                }
-              },
-              itemBuilder: (ctx) {
-                final items = <PopupMenuEntry<String>>[];
-                // Sous-menu « Déplacer vers »
-                final currentTag = doc.tags
-                    .firstWhere(kVisitPhotoTags.contains, orElse: () => '');
-                for (final tag in kVisitPhotoTags) {
-                  if (tag == currentTag) continue;
-                  items.add(
-                    PopupMenuItem<String>(
-                      value: 'move:$tag',
-                      child: Row(
-                        children: [
-                          const Icon(LucideIcons.arrowRight,
-                              size: 14, color: Color(0xFF7C6DAA)),
-                          const SizedBox(width: 8),
-                          Text(visitPhotoTagShortLabel(tag)),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-                items.add(const PopupMenuDivider());
-                items.add(
-                  const PopupMenuItem<String>(
-                    value: 'untag',
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.folderMinus,
-                            size: 14, color: Color(0xFF92400E)),
-                        SizedBox(width: 8),
-                        Text('Retirer la catégorie'),
-                      ],
-                    ),
-                  ),
-                );
-                items.add(
-                  const PopupMenuItem<String>(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.trash2,
-                            size: 14, color: Color(0xFFB91C1C)),
-                        SizedBox(width: 8),
-                        Text('Supprimer'),
-                      ],
-                    ),
-                  ),
-                );
-                return items;
-              },
             ),
           ],
         ),
