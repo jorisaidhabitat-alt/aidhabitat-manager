@@ -101,6 +101,18 @@ app.use((req, res, next) => {
   }
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Session, If-Unmodified-Since');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  // Expose les headers custom au JavaScript du PWA. Sans cette ligne, le
+  // navigateur n'expose PAS `Content-Disposition` à `fetch()` — Flutter
+  // ne pouvait donc pas extraire le nom de fichier proprement formaté du
+  // rapport PDF (« Rapport - DENA Paul.pdf ») et tombait sur le fallback
+  // hard-codé `'rapport.pdf'`. Conséquence : le doc apparaissait dans
+  // l'espace Documents du bénéficiaire avec le titre « rapport » au lieu
+  // du nom complet. On expose aussi `X-Report-Stats` qui sert au debug
+  // du mapping AcroForm côté Flutter.
+  res.header(
+    'Access-Control-Expose-Headers',
+    'Content-Disposition, X-Report-Stats',
+  );
   // The Flutter PWA runs in a crossOriginIsolated context
   // (COEP: credentialless + COOP: same-origin) so SharedArrayBuffer —
   // required by sqflite_common_ffi_web's shared worker — is available.
@@ -2675,7 +2687,18 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
       return undefined;
     })(),
     nombre_personnes: has('numberPeople') ? updates.numberPeople : undefined,
-    categorie_revenu_id1: has('numberPeople') ? (baremeMatch ? Number(baremeMatch.id) : null) : undefined,
+    // Catégorie de revenu : dérivée serveur du nombre d'occupants via
+    // les barèmes ANAH. Si `selectBaremeAnah` ne trouve aucun barème
+    // applicable (rare, ex. valeur extrême), on `undefined` plutôt que
+    // `null` pour ne pas effacer la catégorie déjà calculée. Le pull
+    // workspace ne réinitialisera plus à "Modeste" (fallback hardcodé
+    // côté lecture).
+    categorie_revenu_id1: (() => {
+      if (!has('numberPeople')) return undefined;
+      if (baremeMatch) return Number(baremeMatch.id);
+      console.warn(`[patient] aucun bareme ANAH applicable pour numberPeople="${updates.numberPeople}" → no-op`);
+      return undefined;
+    })(),
     revenu_fiscal_reference: has('fiscalRevenue') ? updates.fiscalRevenue : undefined,
     beneficiaire_apa: has('apa') ? updates.apa : undefined,
     reconnaissance_invalidite_mdph: has('invalidity') ? updates.invalidity : undefined,
@@ -2683,7 +2706,18 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
     aide_a_domicile: has('homeHelp') ? updates.homeHelp : undefined,
     aide_a_domicile_txt: has('homeHelpTxt') ? nullableString(updates.homeHelpTxt) : undefined,
     dependance_particuliere_txt: has('dependenceTxt') ? nullableString(updates.dependenceTxt) : undefined,
-    dependances_particulieres_id: has('dependenceTxt') ? (dependenceMatch ? Number(dependenceMatch.id) : null) : undefined,
+    // Dépendance particulière : la table de réf NocoDB `dependances`
+    // est limitée (Canne / Déambulateur / Fauteuil…). Le `_txt` au-
+    // dessus garantit que la valeur saisie est préservée même si la
+    // ref ne matche pas → on suit la même règle protective.
+    dependances_particulieres_id: (() => {
+      if (!has('dependenceTxt')) return undefined;
+      const v = updates.dependenceTxt;
+      if (v === '' || v == null) return null;
+      if (dependenceMatch) return Number(dependenceMatch.id);
+      console.warn(`[patient] dependenceTxt "${v}" ne matche aucune ref. dependances → no-op (fallback _txt préservé)`);
+      return undefined;
+    })(),
     personne_confiance: trustedPersonNameValue === undefined ? undefined : nullableString(trustedPersonNameValue),
     telephone_personne_confiance: trustedPersonPhoneValue === undefined ? undefined : nullableString(trustedPersonPhoneValue),
     mail_personne_confiance: trustedPersonEmailValue === undefined ? undefined : nullableString(trustedPersonEmailValue),
@@ -2693,8 +2727,28 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
     numero_securite_sociale_madame: has('occupant2SocialSecurityNumber')
       ? nullableString(updates.occupant2SocialSecurityNumber)
       : (has('numeroSecuriteSocialeMadame') ? nullableString(updates.numeroSecuriteSocialeMadame) : undefined),
-    caisses_de_retraite_id: has('caisseRetraitePrincipale') ? (caisseMatch ? Number(caisseMatch.id) : null) : undefined,
-    caisses_de_retraite_complementaires_id: has('caissesRetraiteComplementaires') ? (caisseCompMatch ? Number(caisseCompMatch.id) : null) : undefined,
+    // Caisses de retraite : ces deux colonnes n'ont PAS de fallback
+    // texte côté NocoDB — si la ref ne matche pas et qu'on écrit
+    // null, la sélection ergo est définitivement perdue côté serveur
+    // (même symptôme que occupationStatus). On applique le même garde-
+    // fou : non-vide non-matché → `undefined` (no-op), '' explicite →
+    // `null` (vidage volontaire).
+    caisses_de_retraite_id: (() => {
+      if (!has('caisseRetraitePrincipale')) return undefined;
+      const v = updates.caisseRetraitePrincipale;
+      if (v === '' || v == null) return null;
+      if (caisseMatch) return Number(caisseMatch.id);
+      console.warn(`[patient] caisseRetraitePrincipale "${v}" ne matche aucune ref. caisses_retraite → no-op`);
+      return undefined;
+    })(),
+    caisses_de_retraite_complementaires_id: (() => {
+      if (!has('caissesRetraiteComplementaires')) return undefined;
+      const v = updates.caissesRetraiteComplementaires;
+      if (v === '' || v == null) return null;
+      if (caisseCompMatch) return Number(caisseCompMatch.id);
+      console.warn(`[patient] caissesRetraiteComplementaires "${v}" ne matche aucune ref. caisses_retraite_comp → no-op`);
+      return undefined;
+    })(),
   });
 };
 
