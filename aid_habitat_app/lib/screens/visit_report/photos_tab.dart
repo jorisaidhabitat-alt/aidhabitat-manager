@@ -717,18 +717,16 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Layout vertical "card" — utilisé maintenant en mode horizontal :
-    // chaque tile est posée à côté des autres dans la `Row` parent
-    // (`_buildReorderableGrid`) et partage la largeur du container.
-    // Plus la grille se remplit, plus chaque vignette rétrécit.
+    // Layout vertical "card" — chaque tile est posée à côté des
+    // autres dans la `Row` parent (`_buildReorderableGrid`) et partage
+    // la largeur du container.
     //
-    //   - Top row : numéro de slot (gauche) + drag handle horizontal
-    //               (centré, purement décoratif) + menu kebab (droite)
+    //   - Top row : numéro de slot (gauche) + menu kebab (droite)
     //   - Body    : preview aspect 4:3, BoxFit.cover, cliquable → fullscreen
     //
-    // Le drag-to-reorder a été retiré (la grille passe à un layout
-    // horizontal qui n'utilise plus `ReorderableListView`). Le menu
-    // kebab garde "Déplacer vers" pour changer de catégorie.
+    // Pas d'indicateur de drag visuel — la card est draggable via
+    // long-press partout (LongPressDraggable wrappe l'ensemble côté
+    // parent), pas besoin d'icône grip.
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
@@ -757,11 +755,18 @@ class _PhotoTile extends StatelessWidget {
             // doivent être centrés en haut, cependant les trois
             // petits points en haut à droite". On utilise Stack +
             // Align pour découpler les positions.
+            // Top row sur 2 zones :
+            //   - gauche : pastille numéro de slot (vert si slot du
+            //     PDF utilisé, rouge `+` pour les surplus)
+            //   - droite : menu kebab (3 points verticaux) — Déplacer
+            //     vers / Supprimer
+            // Aucun indicateur central : le drag se fait par long-press
+            // n'importe où sur la card via le `LongPressDraggable`
+            // parent.
             SizedBox(
               height: 28,
               child: Stack(
                 children: [
-                  // Gauche : pastille numéro
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Container(
@@ -786,12 +791,6 @@ class _PhotoTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // (Ancien drag handle horizontal retiré : la grille
-                  // est passée à un layout horizontal côte-à-côte qui
-                  // n'utilise plus `ReorderableListView`. Le tile a
-                  // donc plus rien à drag — déplacements via le menu
-                  // kebab "Déplacer vers" uniquement.)
-                  // Droite : menu kebab.
                   Align(
                     alignment: Alignment.centerRight,
                     child: PopupMenuButton<String>(
