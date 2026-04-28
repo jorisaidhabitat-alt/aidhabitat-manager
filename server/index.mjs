@@ -3839,6 +3839,16 @@ const fetchVisitRecommendationsForDossier = async (dossierId) => {
 const fetchImageBytesForReport = async (descriptor) => {
   try {
     if (!descriptor) return null;
+    // `note_page` est un kind virtuel introduit pour le routing inline
+    // (cf. buildInlineFirstFetcher). Si on arrive ici sans wrapper, ça
+    // veut dire qu'il n'y a pas d'inline pour ce plan → on retourne
+    // null et le générateur enchaîne sur previewDataUrl/previewUrl.
+    if (descriptor.kind === 'note_page') return null;
+    // Idem pour `inline_resolved` : descriptor factice utilisé quand
+    // les bytes sont déjà résolus en amont (cf. générateur, étape 0
+    // des plans). Le fetcher passé est inline, ce wrapper n'est pas
+    // appelé — mais par sûreté on no-op.
+    if (descriptor.kind === 'inline_resolved') return null;
     if (descriptor.kind === 'document' && descriptor.id) {
       const content = await mobileSyncStore.getDocumentContent(descriptor.id);
       if (!content?.buffer || content.buffer.length === 0) return null;
@@ -3968,17 +3978,23 @@ const parseInlineReportAssets = (req) => {
  * les images parce qu'elles sont dans la requête.
  */
 const buildInlineFirstFetcher = (inlineAssets) => async (descriptor) => {
+  // Documents (photos page 8) embarqués inline.
   if (descriptor && descriptor.kind === 'document' && descriptor.id) {
     const inline = inlineAssets.documents.get(String(descriptor.id));
     if (inline?.buffer && inline.buffer.length > 0) {
       return { buffer: inline.buffer, mimeType: inline.mimeType || 'image/jpeg' };
     }
   }
-  if (descriptor && descriptor.kind === 'dataurl' && descriptor.notePageId) {
-    const inline = inlineAssets.plans.get(String(descriptor.notePageId));
+  // Plans (pages 9-10) embarqués inline. Le générateur appelle avec
+  // `{kind: 'note_page', id}` AVANT d'essayer previewDataUrl, donc on
+  // intercepte ici. Si pas en cache → null → le générateur enchaîne
+  // sur le fallback NocoDB (previewDataUrl persisté côté serveur).
+  if (descriptor && descriptor.kind === 'note_page' && descriptor.id) {
+    const inline = inlineAssets.plans.get(String(descriptor.id));
     if (inline?.buffer && inline.buffer.length > 0) {
       return { buffer: inline.buffer, mimeType: inline.mimeType || 'image/png' };
     }
+    return null; // pas d'inline pour ce plan → fallback dans le générateur
   }
   return fetchImageBytesForReport(descriptor);
 };

@@ -1348,9 +1348,6 @@ export async function generateVisitReport({
     // Bénéficiaire (page 1) — Nom/Prénom restent à -4
     'Nom',
     'Prénom',
-    // Renseignements sur la visite (page 1)
-    'personne présente',
-    'date',
   ]) {
     nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
   }
@@ -1366,6 +1363,13 @@ export async function generateVisitReport({
     'personne à contacter',
     'tel personne confiance',
     'mail personne confiance',
+    // Renseignements sur la visite (page 1) — remontés à -2 (au lieu
+    // de -4) pour s'aligner avec les libellés Affinity de la même
+    // ligne. Demande utilisateur explicite : « parfait, remonte
+    // légerement de la meme maniere dans renseignements sur la
+    // visite ».
+    'personne présente',
+    'date',
   ]) {
     nudgeFieldRect({ fieldsByName, fieldName, dy: -2 });
   }
@@ -1453,6 +1457,30 @@ export async function generateVisitReport({
     for (let i = 0; i < phasePages.length; i += 1) {
       const fieldName = slotNames[i];
       const page = phasePages[i];
+      // 0. note_page (cache inline embarqué dans la requête HTTP).
+      //    Cas typique : plan dessiné offline, pas encore synchronisé
+      //    vers NocoDB → previewDataUrl absent côté serveur, mais le
+      //    client a envoyé les bytes PNG en multipart. Le wrapper
+      //    fetchImageBytes (cf. buildInlineFirstFetcher dans index.mjs)
+      //    retourne le buffer directement. Si pas d'inline, retourne
+      //    null et on tombe sur les fallbacks suivants.
+      const inlineNotePageBytes = await fetchImageBytes({
+        kind: 'note_page',
+        id: page.id,
+      }).catch(() => null);
+      if (inlineNotePageBytes?.buffer && inlineNotePageBytes.buffer.length > 0) {
+        // On utilise une descriptor `dataurl` factice pour réutiliser
+        // setImageInField — mais on contourne fetchImageBytes en
+        // passant un fetcher qui retourne directement les bytes déjà
+        // résolus. Évite un deuxième appel inutile.
+        await setImageInField(
+          pdfDoc, form, fieldName,
+          { kind: 'inline_resolved' },
+          async () => inlineNotePageBytes,
+          stats,
+        );
+        continue;
+      }
       // 1. preview_data_url (data URL prête à l'emploi)
       if (page.previewDataUrl) {
         await setImageInField(
