@@ -2558,7 +2558,8 @@ class _FloatingTextModal extends StatefulWidget {
   State<_FloatingTextModal> createState() => _FloatingTextModalState();
 }
 
-class _FloatingTextModalState extends State<_FloatingTextModal> {
+class _FloatingTextModalState extends State<_FloatingTextModal>
+    with SingleTickerProviderStateMixin {
   static Offset _sharedPos = const Offset(60, 40);
   static Size _sharedSize = const Size(420, 340);
 
@@ -2566,6 +2567,13 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
   late Size _size;
   late final TextEditingController _controller;
   late bool _fullscreen;
+
+  /// Animation d'ouverture/fermeture — match `softDialogRouteBuilder`
+  /// (cf. components/soft_transitions.dart) : fade 0→1 + scale 0.94→1.0
+  /// sur 220 ms (kSoftMedium), easeOutCubic. Cohérent avec les autres
+  /// pop-ups de l'app (showSoftDialog).
+  late final AnimationController _entryController;
+  bool _closing = false;
 
   @override
   void initState() {
@@ -2575,6 +2583,10 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
     _fullscreen = widget.startFullscreen;
     _controller = TextEditingController(text: widget.initialText);
     _controller.addListener(() => widget.onChanged(_controller.text));
+    _entryController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    )..forward();
   }
 
   @override
@@ -2582,7 +2594,19 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
     _sharedPos = _pos;
     _sharedSize = _size;
     _controller.dispose();
+    _entryController.dispose();
     super.dispose();
+  }
+
+  /// Ferme le pop-up en jouant l'animation à l'envers (fade-out + scale
+  /// down) avant d'appeler `widget.onClose` qui retire l'OverlayEntry.
+  /// Évite le pop "abrupt" quand on tape sur le backdrop ou la croix.
+  void _animateClose() {
+    if (_closing) return;
+    _closing = true;
+    _entryController.reverse().whenComplete(() {
+      if (mounted) widget.onClose();
+    });
   }
 
   @override
@@ -2616,13 +2640,27 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
             _size.height,
           );
 
+    // Animation d'ouverture/fermeture (parité showSoftDialog) :
+    //   - Backdrop : fade 0→0.35 d'alpha
+    //   - Pop-up   : fade 0→1 + scale 0.94→1.0
+    //   - 220 ms, easeOutCubic
+    final curved = CurvedAnimation(
+      parent: _entryController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    final scaleTween = Tween<double>(begin: 0.94, end: 1.0).animate(curved);
+
     return Stack(
       children: [
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: widget.onClose,
-            child: Container(color: Colors.black.withValues(alpha: 0.35)),
+            onTap: _animateClose,
+            child: FadeTransition(
+              opacity: curved,
+              child: Container(color: Colors.black.withValues(alpha: 0.35)),
+            ),
           ),
         ),
         AnimatedPositioned(
@@ -2632,7 +2670,11 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
           top: rect.top,
           width: rect.width,
           height: rect.height,
-          child: Material(
+          child: FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: scaleTween,
+              child: Material(
             elevation: 12,
             borderRadius: BorderRadius.circular(16),
             color: Colors.white,
@@ -2690,7 +2732,10 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
                           IconButton(
                             tooltip: 'Fermer',
                             icon: const Icon(LucideIcons.x, size: 16),
-                            onPressed: widget.onClose,
+                            // Route via _animateClose pour rejouer
+                            // l'animation de fermeture (fade-out +
+                            // scale-down) avant de retirer l'overlay.
+                            onPressed: _animateClose,
                           ),
                         ],
                       ),
@@ -2746,6 +2791,8 @@ class _FloatingTextModalState extends State<_FloatingTextModal> {
               ],
             ),
           ),
+            ), // close ScaleTransition
+          ), // close FadeTransition
         ),
       ],
     );
