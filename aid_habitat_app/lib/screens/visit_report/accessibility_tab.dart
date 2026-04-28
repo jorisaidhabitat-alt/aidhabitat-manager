@@ -164,6 +164,45 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   static const _voletStatuses = ['Aucun', 'Entier', 'Localisé'];
   static const _motorisationOptions = ['Aucun', 'Manuel', 'Électrique'];
 
+  /// Marqueur invisible (zero-width space) stocké dans la colonne
+  /// `volets_*_localisation` quand l'ergo a sélectionné "Localisé"
+  /// sans préciser la localisation. Permet de distinguer
+  /// "Aucun volet" (loc="") de "Localisé mais pas encore renseigné"
+  /// (loc="​") qui s'inféreraient sinon tous les deux comme
+  /// "Aucun" au reload — bug reporté 2026-04-28.
+  ///
+  /// Aucun risque de collision : zero-width space n'est pas saisissable
+  /// au clavier et invisible dans NocoDB UI / le rapport PDF.
+  static const String _kVoletsLocalizedMarker = '​';
+
+  /// Infère le statut volets ('Aucun' / 'Entier' / 'Localisé') depuis
+  /// les 2 champs persistés (`entier`, `localisation`). Si la
+  /// localisation contient le marqueur invisible OU n'est pas vide,
+  /// le statut est 'Localisé' — l'ancien comportement (loc empty →
+  /// 'Aucun') est préservé pour les anciens dossiers.
+  static String _inferVoletsStatus(bool entier, String rawLoc) {
+    if (entier) return 'Entier';
+    if (rawLoc.isEmpty) return 'Aucun';
+    return 'Localisé';
+  }
+
+  /// Nettoie la localisation pour l'affichage : retire le marqueur
+  /// invisible si présent (l'ergo doit voir un champ vide, pas un
+  /// caractère bizarre).
+  static String _cleanVoletsLoc(String rawLoc) {
+    if (rawLoc == _kVoletsLocalizedMarker) return '';
+    return rawLoc;
+  }
+
+  /// Sérialise la localisation pour la save : si l'ergo est en
+  /// "Localisé" avec un champ texte vide, on stocke le marqueur
+  /// invisible pour préserver l'intention au reload.
+  static String _serializeVoletsLoc(String status, String loc) {
+    if (status != 'Localisé') return '';
+    if (loc.isEmpty) return _kVoletsLocalizedMarker;
+    return loc;
+  }
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -220,36 +259,39 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       _heatingTypes.add('PAC');
     }
 
-    // Volets
+    // Volets — le statut ('Aucun' / 'Entier' / 'Localisé') est inféré
+    // depuis les colonnes persistées via `_inferVoletsStatus`. Le
+    // marqueur invisible `_kVoletsLocalizedMarker` permet de préserver
+    // un état "Localisé sans texte" (sinon ça repasserait à "Aucun").
     final manEntier =
         ((row?['volets_roulants_manuels_entier'] as int?) ??
                 (h.voletsRoulantsManuelsEntier ? 1 : 0)) ==
             1;
-    _voletsManLoc = (row?['volets_roulants_manuels_localisation'] as String?) ??
-        h.voletsRoulantsManuelsLocalisation;
-    _voletsManStatus =
-        manEntier ? 'Entier' : (_voletsManLoc.isNotEmpty ? 'Localisé' : 'Aucun');
+    final manRawLoc =
+        (row?['volets_roulants_manuels_localisation'] as String?) ??
+            h.voletsRoulantsManuelsLocalisation;
+    _voletsManStatus = _inferVoletsStatus(manEntier, manRawLoc);
+    _voletsManLoc = _cleanVoletsLoc(manRawLoc);
 
     final elecEntier =
         ((row?['volets_roulants_electriques_entier'] as int?) ??
                 (h.voletsRoulantsElectriquesEntier ? 1 : 0)) ==
             1;
-    _voletsElecLoc =
+    final elecRawLoc =
         (row?['volets_roulants_electriques_localisation'] as String?) ??
             h.voletsRoulantsElectriquesLocalisation;
-    _voletsElecStatus = elecEntier
-        ? 'Entier'
-        : (_voletsElecLoc.isNotEmpty ? 'Localisé' : 'Aucun');
+    _voletsElecStatus = _inferVoletsStatus(elecEntier, elecRawLoc);
+    _voletsElecLoc = _cleanVoletsLoc(elecRawLoc);
 
     final persEntier =
         ((row?['volets_persiennes_entier'] as int?) ??
                 (h.voletsPersiennesEntier ? 1 : 0)) ==
             1;
-    _voletsPersLoc = (row?['volets_persiennes_localisation'] as String?) ??
-        h.voletsPersiennesLocalisation;
-    _voletsPersStatus = persEntier
-        ? 'Entier'
-        : (_voletsPersLoc.isNotEmpty ? 'Localisé' : 'Aucun');
+    final persRawLoc =
+        (row?['volets_persiennes_localisation'] as String?) ??
+            h.voletsPersiennesLocalisation;
+    _voletsPersStatus = _inferVoletsStatus(persEntier, persRawLoc);
+    _voletsPersLoc = _cleanVoletsLoc(persRawLoc);
 
     // Extérieur
     _easyAccess =

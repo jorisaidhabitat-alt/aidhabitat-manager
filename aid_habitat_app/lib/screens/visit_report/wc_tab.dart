@@ -239,8 +239,10 @@ class _WcTabState extends State<WcTab>
           GestureDetector(
             onTap: () => setState(() => _activeLevelIndex = i),
             child: Container(
+              // Padding bumpé pour rester proportionné au fontSize 12
+              // (avant 10 + 12/6 → maintenant 12 + 14/8).
               padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: _activeLevelIndex == i
                     ? const Color(0xFFEDE8F5)
@@ -250,7 +252,9 @@ class _WcTabState extends State<WcTab>
               child: Text(
                 _instances[i].levelLabel.toUpperCase(),
                 style: TextStyle(
-                  fontSize: 10,
+                  // 10 → 12 (demande utilisateur 2026-04-28 : "met les
+                  // en taille légèrement plus grande").
+                  fontSize: 12,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.4,
                   color: _activeLevelIndex == i
