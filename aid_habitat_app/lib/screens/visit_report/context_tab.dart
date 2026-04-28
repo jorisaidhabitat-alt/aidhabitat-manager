@@ -7,6 +7,7 @@ import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
+import '../../components/two_threshold_swipe.dart';
 
 /// Contexte de vie tab — parité 1:1 avec la version React (`ContextForm`).
 ///
@@ -416,27 +417,31 @@ class _ContextTabState extends State<ContextTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            // Swipe horizontal pour changer d'occupant (parité avec
-            // l'onglet Bénéficiaire). Désactivé quand il n'y a qu'une
-            // seule personne dans le foyer.
-            onHorizontalDragEnd: !hasMultiple
-                ? null
-                : (details) {
-                    final velocity = details.primaryVelocity ?? 0;
-                    if (velocity.abs() < 200) return;
-                    setState(() {
-                      if (velocity < 0) {
-                        _activeOccupantIndex =
-                            (idx + 1) % _contextOccupants.length;
-                      } else {
-                        _activeOccupantIndex = (idx - 1 +
-                                _contextOccupants.length) %
-                            _contextOccupants.length;
-                      }
-                    });
-                  },
+          // Swipe horizontal à deux seuils :
+          //   - léger (< 35 % largeur) → occupant suivant/précédent
+          //     (uniquement si > 1 occupant dans le foyer)
+          //   - large (≥ 55 % largeur) → bascule Médical ↔ Autonomie
+          // Demande utilisateur 2026-04-28.
+          child: TwoThresholdSwipe(
+            onLightSwipeLeft: !hasMultiple ? null : () {
+              setState(() {
+                _activeOccupantIndex =
+                    (idx + 1) % _contextOccupants.length;
+              });
+            },
+            onLightSwipeRight: !hasMultiple ? null : () {
+              setState(() {
+                _activeOccupantIndex = (idx - 1 +
+                        _contextOccupants.length) %
+                    _contextOccupants.length;
+              });
+            },
+            onWideSwipeLeft: () {
+              setState(() => _subSection = (_subSection + 1) % 2);
+            },
+            onWideSwipeRight: () {
+              setState(() => _subSection = (_subSection - 1 + 2) % 2);
+            },
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

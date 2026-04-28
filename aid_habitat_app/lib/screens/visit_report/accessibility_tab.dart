@@ -6,6 +6,7 @@ import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
+import '../../components/two_threshold_swipe.dart';
 
 /// Accessibilité tab — refonte :
 ///   Général : type logement · années · surface · chauffage · niveaux
@@ -469,30 +470,42 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          // Légère animation entre Général ↔ Extérieur — fade +
-          // apparition vers le haut, mêmes sensations qu'un changement
-          // de vue principale (sidebar).
-          child: SoftSwitcher(
-            child: KeyedSubtree(
-              key: ValueKey<int>(_subSection),
-              child: SingleChildScrollView(
-                // Le controller n'est utile qu'en sous-section Général
-                // (auto-scroll après ajout d'un niveau). On le branche
-                // partout pour simplicité — pas d'effet de bord, juste
-                // une référence vers la position du viewport courant.
-                controller:
-                    _subSection == 0 ? _scrollController : null,
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_subSection == 0)
-                      _buildGeneral()
-                    else if (_subSection == 1)
-                      _buildEquipements()
-                    else
-                      _buildExterior(),
-                  ],
+          // Swipe LARGE horizontal → bascule entre Général /
+          // Équipements / Extérieur. Pas de swipe léger câblé : pas
+          // d'occupants dans cet onglet. Demande utilisateur
+          // 2026-04-28.
+          child: TwoThresholdSwipe(
+            onWideSwipeLeft: () {
+              setState(() => _subSection = (_subSection + 1) % 3);
+            },
+            onWideSwipeRight: () {
+              setState(() => _subSection = (_subSection - 1 + 3) % 3);
+            },
+            child: SoftSwitcher(
+              // Légère animation entre Général ↔ Équipements ↔ Extérieur —
+              // fade + apparition vers le haut, mêmes sensations qu'un
+              // changement de vue principale (sidebar).
+              child: KeyedSubtree(
+                key: ValueKey<int>(_subSection),
+                child: SingleChildScrollView(
+                  // Le controller n'est utile qu'en sous-section Général
+                  // (auto-scroll après ajout d'un niveau). On le branche
+                  // partout pour simplicité — pas d'effet de bord, juste
+                  // une référence vers la position du viewport courant.
+                  controller:
+                      _subSection == 0 ? _scrollController : null,
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_subSection == 0)
+                        _buildGeneral()
+                      else if (_subSection == 1)
+                        _buildEquipements()
+                      else
+                        _buildExterior(),
+                    ],
+                  ),
                 ),
               ),
             ),

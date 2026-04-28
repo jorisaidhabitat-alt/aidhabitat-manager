@@ -468,6 +468,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   @override
   Widget build(BuildContext context) {
     super.build(context); // AutomaticKeepAliveClientMixin
+    final hasOccupantSwipe = _hasOccupantSwipeInCurrentSection();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -478,7 +479,24 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         // La sous-section active gère elle-même son scroll interne +
         // épingle ses points de pagination en bas du cadre. On lui
         // donne directement l'espace restant via Expanded.
-        Expanded(child: _buildActiveSection()),
+        //
+        // Swipe horizontal à deux seuils (cf. TwoThresholdSwipe) :
+        //   - léger (< 35 % largeur) → occupant suivant/précédent
+        //     (uniquement sur Profil / Santé / Admin, pas Foyer)
+        //   - large (≥ 55 % largeur) → sous-section suivante/précédente
+        // Demande utilisateur 2026-04-28 : « le slide doit être léger
+        // et centré pour switch entre les occupants, mais sur toute la
+        // majeur partie de la largeur d'une sous partie ça change de
+        // sous partie ».
+        Expanded(
+          child: TwoThresholdSwipe(
+            onLightSwipeLeft: hasOccupantSwipe ? _occupantNext : null,
+            onLightSwipeRight: hasOccupantSwipe ? _occupantPrev : null,
+            onWideSwipeLeft: _subSectionNext,
+            onWideSwipeRight: _subSectionPrev,
+            child: _buildActiveSection(),
+          ),
+        ),
       ],
     );
   }
@@ -728,70 +746,59 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // Column principal :
     //   - header + contenu scrollable (Expanded)
     //   - dots pinnés tout en bas du cadre (hors scroll)
-    // Le GestureDetector englobe tout : swipe horizontal n'importe où
-    // dans la zone (y compris sur les dots ou le header).
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragEnd: (details) {
-        final velocity = details.primaryVelocity ?? 0;
-        if (velocity.abs() < 200) return;
-        setState(() {
-          if (velocity < 0) {
-            _currentOccupantIndex = (idx + 1) % _occupants.length;
-          } else {
-            _currentOccupantIndex =
-                (idx - 1 + _occupants.length) % _occupants.length;
-          }
-        });
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Toute la zone occupant (header + champs « per occupant » +
-          // sharedContent) glisse en bloc lors d'un changement
-          // d'occupant. Les dots de pagination, eux, restent fixes en
-          // bas — ce sont des indicateurs de navigation, pas du
-          // contenu de l'occupant.
-          Expanded(
-            child: HorizontalSlideSwitcher(
-              index: idx,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Header sticky : prénom de l'occupant courant, fond
-                  // blanc opaque pour cacher le contenu qui défile.
-                  Container(
-                    color: Colors.white,
-                    padding:
-                        const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                    child: _buildOccupantHeader(idx),
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          perOccupantContent,
-                          const SizedBox(height: 24),
-                          sharedContent,
-                        ],
-                      ),
+    //
+    // Le GestureDetector horizontal a été retiré ici : le swipe est
+    // désormais géré au niveau du `build()` parent via
+    // `TwoThresholdSwipe` (light → occupant, large → sous-section).
+    // Garder un détecteur ici en plus créerait un conflit d'arène
+    // dans les sous-sections Profil/Santé/Admin.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Toute la zone occupant (header + champs « per occupant » +
+        // sharedContent) glisse en bloc lors d'un changement
+        // d'occupant. Les dots de pagination, eux, restent fixes en
+        // bas — ce sont des indicateurs de navigation, pas du
+        // contenu de l'occupant.
+        Expanded(
+          child: HorizontalSlideSwitcher(
+            index: idx,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header sticky : prénom de l'occupant courant, fond
+                // blanc opaque pour cacher le contenu qui défile.
+                Container(
+                  color: Colors.white,
+                  padding:
+                      const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                  child: _buildOccupantHeader(idx),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        perOccupantContent,
+                        const SizedBox(height: 24),
+                        sharedContent,
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          // Dots pinnés au bas du cadre — toujours visibles quel que
-          // soit l'état du scroll interne. Hors du switcher pour ne
-          // pas glisser avec le contenu.
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14, top: 6),
-            child: Center(child: _buildOccupantDots(idx)),
-          ),
-        ],
-      ),
+        ),
+        // Dots pinnés au bas du cadre — toujours visibles quel que
+        // soit l'état du scroll interne. Hors du switcher pour ne
+        // pas glisser avec le contenu.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14, top: 6),
+          child: Center(child: _buildOccupantDots(idx)),
+        ),
+      ],
     );
   }
 
