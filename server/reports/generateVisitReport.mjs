@@ -74,8 +74,15 @@ const ERGO_CONTACT = {
     // 105/85 (toujours trop hauts). À +2pt → y=102/82.
     line1: { x: 47, y: 102 },
     line2: { x: 47, y: 82 },
-    // Rectangle de masquage — décalé de +2pt aussi pour suivre.
-    mask: { x: 44, y: 73, width: 184, height: 48 },
+    // Rectangle de masquage — strictement dimensionné autour des 2
+    // lignes de texte (Helvetica 12pt : baseline + ~8pt en haut +
+    // ~3pt descender en bas). Un masque trop grand débordait sur la
+    // ligne « Aid'Habitat » au-dessus ou sur le téléphone en dessous
+    // (demande utilisateur). Calcul :
+    //   - bottom : line2.y - 4 = 78
+    //   - top    : line1.y + 9 = 111
+    //   - height : 33
+    mask: { x: 44, y: 78, width: 184, height: 33 },
     maskColor: rgb(244 / 255, 219 / 255, 196 / 255), // #F4DBC4
   },
 };
