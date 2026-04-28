@@ -1310,10 +1310,11 @@ export async function generateVisitReport({
   // dans le bandeau orange »).
   nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: -2 });
 
-  // Section "Logement" page 5 — même symptôme de baseline trop haute
-  // que sur "aide à domicile" / "dépendance" : l'adresse, les années
-  // et les descriptions de niveaux flottent au-dessus de la ligne du
-  // libellé Affinity. On descend ces 7 champs texte de 4 pt.
+  // Section "Logement" page 5 — baseline légèrement trop haute par
+  // rapport au libellé Affinity. Premier essai à -4 pt mais l'ergo a
+  // remonté que ça descendait alors TROP bas. On affine à -2 pt :
+  // assez pour aligner le baseline avec le ":" du libellé sans le
+  // pousser en-dessous de la ligne.
   // EXCLU explicite : `nombre d'étage` (PDFDropdown) — la dropdown a
   // déjà son propre baseline correct côté Affinity et le toucher
   // décalerait la pill.
@@ -1326,7 +1327,7 @@ export async function generateVisitReport({
     'rdc',
     'etage',
   ]) {
-    nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
+    nudgeFieldRect({ fieldsByName, fieldName, dy: -2 });
   }
 
   // ---------------------------------------------------------------
