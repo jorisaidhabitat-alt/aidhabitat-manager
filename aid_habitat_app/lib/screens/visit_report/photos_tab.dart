@@ -652,127 +652,144 @@ class _PhotoTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Top row : pastille numéro à gauche, drag handle au
-            // milieu (Spacer), kebab menu à droite. Hauteur compacte.
-            Row(
-              children: [
-                // Pastille numéro / "+" (surplus). Vert / rouge selon
-                // que la photo occupe un slot du PDF ou est en surplus.
-                Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: inSlot
-                        ? const Color(0xFFDCFCE7)
-                        : const Color(0xFFFEE2E2),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    inSlot ? '$slotNumber' : '+',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: inSlot
-                          ? const Color(0xFF15803D)
-                          : const Color(0xFFB91C1C),
+            // Top row sur 3 zones positionnées indépendamment via
+            // Stack :
+            //   - gauche : pastille numéro (slot ou surplus)
+            //   - centre : drag handle (gripVertical) — VRAIMENT
+            //              centré horizontalement, indépendant des
+            //              autres éléments
+            //   - droite : menu kebab (3 points verticaux)
+            //
+            // Demande utilisateur : "les petits points pour déplacer
+            // doivent être centrés en haut, cependant les trois
+            // petits points en haut à droite". On utilise Stack +
+            // Align pour découpler les positions.
+            SizedBox(
+              height: 28,
+              child: Stack(
+                children: [
+                  // Gauche : pastille numéro
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      width: 26,
+                      height: 26,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: inSlot
+                            ? const Color(0xFFDCFCE7)
+                            : const Color(0xFFFEE2E2),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        inSlot ? '$slotNumber' : '+',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: inSlot
+                              ? const Color(0xFF15803D)
+                              : const Color(0xFFB91C1C),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const Spacer(),
-                // Drag handle — long-press dessus déclenche le
-                // reorder. Sur l'iPad on peut aussi long-press
-                // n'importe où sur la card grâce à
-                // `ReorderableListView` mais on garde l'icône pour
-                // la découvrabilité.
-                ReorderableDragStartListener(
-                  index: dragHandleIndex,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(
-                      LucideIcons.gripVertical,
-                      size: 18,
-                      color: Color(0xFF94A3B8),
+                  // Centre : drag handle parfaitement centré.
+                  // `Align(center)` aligne l'enfant au milieu du
+                  // Stack — indépendamment de la pastille à gauche
+                  // et du kebab à droite.
+                  Align(
+                    alignment: Alignment.center,
+                    child: ReorderableDragStartListener(
+                      index: dragHandleIndex,
+                      child: const Icon(
+                        LucideIcons.gripVertical,
+                        size: 18,
+                        color: Color(0xFF94A3B8),
+                      ),
                     ),
                   ),
-                ),
-                // Menu kebab : Déplacer vers / Retirer / Supprimer.
-                PopupMenuButton<String>(
-                  tooltip: 'Actions',
-                  icon: const Icon(
-                    LucideIcons.moreVertical,
-                    size: 18,
-                    color: Color(0xFF94A3B8),
-                  ),
-                  // Padding réduit pour économiser de la hauteur
-                  // dans la top-row.
-                  padding: EdgeInsets.zero,
-                  splashRadius: 18,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  onSelected: (value) {
-                    if (value == 'untag') {
-                      onUntag();
-                    } else if (value == 'delete') {
-                      onDelete();
-                    } else if (value.startsWith('move:')) {
-                      onMoveTo(value.substring('move:'.length));
-                    }
-                  },
-                  itemBuilder: (ctx) {
-                    final items = <PopupMenuEntry<String>>[];
-                    final currentTag = doc.tags.firstWhere(
-                      kVisitPhotoTags.contains,
-                      orElse: () => '',
-                    );
-                    for (final tag in kVisitPhotoTags) {
-                      if (tag == currentTag) continue;
-                      items.add(
-                        PopupMenuItem<String>(
-                          value: 'move:$tag',
-                          child: Row(
-                            children: [
-                              const Icon(LucideIcons.arrowRight,
-                                  size: 14, color: Color(0xFF7C6DAA)),
-                              const SizedBox(width: 8),
-                              Text(visitPhotoTagShortLabel(tag)),
-                            ],
+                  // Droite : menu kebab.
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: PopupMenuButton<String>(
+                      tooltip: 'Actions',
+                      icon: const Icon(
+                        LucideIcons.moreVertical,
+                        size: 18,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      padding: EdgeInsets.zero,
+                      splashRadius: 18,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      onSelected: (value) {
+                        if (value == 'untag') {
+                          onUntag();
+                        } else if (value == 'delete') {
+                          onDelete();
+                        } else if (value.startsWith('move:')) {
+                          onMoveTo(value.substring('move:'.length));
+                        }
+                      },
+                      itemBuilder: (ctx) {
+                        final items = <PopupMenuEntry<String>>[];
+                        final currentTag = doc.tags.firstWhere(
+                          kVisitPhotoTags.contains,
+                          orElse: () => '',
+                        );
+                        for (final tag in kVisitPhotoTags) {
+                          if (tag == currentTag) continue;
+                          items.add(
+                            PopupMenuItem<String>(
+                              value: 'move:$tag',
+                              child: Row(
+                                children: [
+                                  const Icon(LucideIcons.arrowRight,
+                                      size: 14,
+                                      color: Color(0xFF7C6DAA)),
+                                  const SizedBox(width: 8),
+                                  Text(visitPhotoTagShortLabel(tag)),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        items.add(const PopupMenuDivider());
+                        items.add(
+                          const PopupMenuItem<String>(
+                            value: 'untag',
+                            child: Row(
+                              children: [
+                                Icon(LucideIcons.folderMinus,
+                                    size: 14,
+                                    color: Color(0xFF92400E)),
+                                SizedBox(width: 8),
+                                Text('Retirer la catégorie'),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                    items.add(const PopupMenuDivider());
-                    items.add(
-                      const PopupMenuItem<String>(
-                        value: 'untag',
-                        child: Row(
-                          children: [
-                            Icon(LucideIcons.folderMinus,
-                                size: 14, color: Color(0xFF92400E)),
-                            SizedBox(width: 8),
-                            Text('Retirer la catégorie'),
-                          ],
-                        ),
-                      ),
-                    );
-                    items.add(
-                      const PopupMenuItem<String>(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(LucideIcons.trash2,
-                                size: 14, color: Color(0xFFB91C1C)),
-                            SizedBox(width: 8),
-                            Text('Supprimer'),
-                          ],
-                        ),
-                      ),
-                    );
-                    return items;
-                  },
-                ),
-              ],
+                        );
+                        items.add(
+                          const PopupMenuItem<String>(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(LucideIcons.trash2,
+                                    size: 14,
+                                    color: Color(0xFFB91C1C)),
+                                SizedBox(width: 8),
+                                Text('Supprimer'),
+                              ],
+                            ),
+                          ),
+                        );
+                        return items;
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             // Preview pleine largeur — aspect 4:3 (ratio iPad photo
