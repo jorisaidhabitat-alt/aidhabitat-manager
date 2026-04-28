@@ -1332,14 +1332,17 @@ class _NotesWidgetState extends State<NotesWidget> {
 
     // Mode "texte seul" (showCanvas: false) — bloc-note allégé sans
     // canvas/toolbar/pagination. Garde l'expand button du _buildTextEditor.
+    //
+    // Hauteur par défaut (~90 px = 3-4 lignes visibles) : compact pour
+    // ne pas écraser l'espace utile autour (ex. liste préconisations
+    // dessous). L'expand button (haut-gauche) ouvre le modal pour les
+    // saisies longues. Override possible en wrappant dans un SizedBox
+    // côté caller.
     if (!widget.showCanvas) {
-      // fillHeight: true → le Container interne n'a pas de hauteur fixe,
-      // il remplit toute la place du parent (SizedBox.expand quand le
-      // parent fournit fillParentHeight).
       final editor = _buildTextEditor(fillHeight: true);
       final textOnly = widget.fillParentHeight
           ? SizedBox.expand(child: editor)
-          : SizedBox(height: 220, child: editor);
+          : SizedBox(height: 90, child: editor);
       return Container(
         key: _outerKey,
         decoration: decoration,
