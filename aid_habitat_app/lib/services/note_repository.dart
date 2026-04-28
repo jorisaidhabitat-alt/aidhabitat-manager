@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:sqflite/sqflite.dart';
 
@@ -6,6 +7,34 @@ import '../models/types.dart';
 import '../models/visit_report_categories.dart';
 import 'local_database.dart';
 import 'sync_engine.dart';
+
+/// Container plat pour un plan (page de l'onglet Plans) à embarquer
+/// **inline** dans la requête HTTP de génération PDF. Construit par
+/// [NoteRepository.fetchPlanReportInlineBytes].
+///
+/// Les bytes proviennent du `previewDataUrl` rasterisé au moment de la
+/// dernière sauvegarde par `plan_canvas.dart`. Comme cette data URL
+/// n'est PAS persistée dans la table `note_pages` locale (trop gros),
+/// on la lit depuis le payload de la `sync_op` en attente — qui la
+/// contient justement pour l'envoyer au serveur. Élégant : la queue de
+/// sync devient aussi notre cache d'images inline pour le report.
+class InlinePlanBytes {
+  InlinePlanBytes({
+    required this.localId,
+    required this.planPhase,
+    required this.pageNumber,
+    required this.bytes,
+    this.scopeId,
+    this.mimeType = 'image/png',
+  });
+
+  final String localId;
+  final String planPhase;
+  final int pageNumber;
+  final String? scopeId;
+  final String mimeType;
+  final Uint8List bytes;
+}
 
 class NoteRow {
   final String textContent;
@@ -46,6 +75,95 @@ class NoteRepository {
     );
     if (rows.isEmpty) return null;
     return rows.first['drawing_json'] as String?;
+  }
+
+  /// Charge les bytes PNG des plans VAD (onglet Plans, phase non-null)
+  /// pour un patient/dossier, en vue de les embarquer **inline** dans
+  /// la requête de génération PDF. Cf. [InlinePlanBytes] pour la
+  /// motivation.
+  ///
+  /// Stratégie : on join `note_pages` (filtre tab_key='Plans' + phase
+  /// non-null + sync_state != synced) avec `sync_operations` (latest
+  /// pending op pour cette note) et on pioche `previewDataUrl` dans le
+  /// payload JSON. Les plans déjà synchronisés vers NocoDB ne sont
+  /// **pas** retournés (le serveur les a déjà via
+  /// `mobile_note_pages.preview_data_url`).
+  Future<List<InlinePlanBytes>> fetchPlanReportInlineBytes(
+    String patientId, {
+    String? dossierId,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'note_pages',
+      columns: const [
+        'local_id',
+        'tab_key',
+        'page_number',
+        'plan_phase',
+        'dossier_local_id',
+        'sync_state',
+      ],
+      where: 'patient_local_id = ? AND tab_key = ? '
+          'AND plan_phase IS NOT NULL '
+          'AND sync_state != ?',
+      whereArgs: [patientId, 'Plans', SyncState.synced.name],
+    );
+
+    final result = <InlinePlanBytes>[];
+    for (final row in rows) {
+      final localId = row['local_id'] as String;
+      final phase = row['plan_phase'] as String?;
+      if (phase == null || phase.isEmpty) continue;
+
+      // Optionnel : restreindre au scope du dossier passé.
+      final rowDossier = row['dossier_local_id'] as String?;
+      if (dossierId != null && rowDossier != null && rowDossier != dossierId) {
+        continue;
+      }
+
+      // Lit `previewDataUrl` dans la sync_op en attente pour ce plan.
+      final opRows = await db.query(
+        'sync_operations',
+        columns: const ['payload_json'],
+        where: 'entity_type = ? AND entity_local_id = ?',
+        whereArgs: ['note_page', localId],
+        orderBy: 'updated_at DESC',
+        limit: 1,
+      );
+      if (opRows.isEmpty) continue;
+      final payloadRaw = opRows.first['payload_json'] as String? ?? '{}';
+      Map<String, dynamic> payload;
+      try {
+        payload = jsonDecode(payloadRaw) as Map<String, dynamic>;
+      } catch (_) {
+        continue;
+      }
+      final previewDataUrl = payload['previewDataUrl']?.toString();
+      if (previewDataUrl == null || previewDataUrl.isEmpty) continue;
+
+      final match = RegExp(r'^data:([^;]+);base64,(.+)$')
+          .firstMatch(previewDataUrl);
+      if (match == null) continue;
+      Uint8List bytes;
+      try {
+        bytes = base64Decode(match.group(2)!);
+      } catch (_) {
+        continue;
+      }
+      if (bytes.isEmpty) continue;
+
+      result.add(
+        InlinePlanBytes(
+          localId: localId,
+          planPhase: phase,
+          pageNumber: (row['page_number'] as num?)?.toInt() ?? 0,
+          scopeId: rowDossier,
+          mimeType: match.group(1) ?? 'image/png',
+          bytes: bytes,
+        ),
+      );
+    }
+    return result;
   }
 
   Future<void> saveDrawingJson({

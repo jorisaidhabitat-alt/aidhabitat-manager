@@ -1244,6 +1244,45 @@ function applyAdresseFieldColorTweak(form) {
   }
 }
 
+/**
+ * Aligne la taille de police des champs texte du bloc « Le Logement »
+ * (page 5) sur celle du reste du rapport (12 pt).
+ *
+ * Pourquoi : l'utilisateur a remonté que « dans la partie Le Logement
+ * les textes sont plus petits, ils doivent être de la meme taille que
+ * les autres textes ». Le template Affinity a une DA plus petite
+ * (~10 pt) sur ces champs, on l'override en /Helv 12 Tf 0 g comme
+ * `adresse` (page 3). pdf-lib regénère l'apparence avec cette DA
+ * quand on setText.
+ *
+ * Champs concernés : Adresse, annee1, annee2, surface, Sous sol, rdc,
+ * etage, Observations1. EXCLU : `nombre d'étage` (PDFDropdown — sa
+ * pill a un baseline déjà OK et toucher la DA déforme l'affichage).
+ */
+function applyLogementFontSizeTweak(form) {
+  const logementTextFields = [
+    'Adresse',
+    'annee1',
+    'annee2',
+    'surface',
+    'Sous sol',
+    'rdc',
+    'etage',
+    'Observations1',
+  ];
+  for (const fieldName of logementTextFields) {
+    try {
+      const field = form.getField(fieldName);
+      if (field instanceof PDFTextField) {
+        field.acroField.setDefaultAppearance('/Helv 12 Tf 0 g');
+      }
+    } catch {
+      // Silencieux : un champ inexistant ne doit pas planter le rendu
+      // (template peut évoluer indépendamment du code).
+    }
+  }
+}
+
 export async function generateVisitReport({
   dossier,
   sanitaires,
@@ -1618,6 +1657,9 @@ export async function generateVisitReport({
   // Et alignement de la couleur du champ adresse page 3 sur les
   // champs voisins (compensation Helvetica vs SegoeUI).
   applyAdresseFieldColorTweak(form);
+  // Et bump de la taille de police du bloc « Le Logement » (page 5)
+  // de ~10 pt à 12 pt pour s'aligner sur le reste du rapport.
+  applyLogementFontSizeTweak(form);
 
   // Aplatissement final : convertit chaque champ en contenu fixe (le
   // texte/cocheur devient un objet graphique inerte). Le résultat n'est
