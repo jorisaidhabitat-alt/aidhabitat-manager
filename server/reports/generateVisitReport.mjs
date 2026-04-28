@@ -1334,18 +1334,20 @@ export async function generateVisitReport({
   // la ligne ». Référence d'alignement : `aide à domicile` et
   // `dépendance` (nudgés -4 ci-dessus, validés "parfaitement alignés").
   //
-  // EXCEPTIONS : la date de naissance et tous les champs des
-  // « Coordonnées de l'usager » (tel/mail usager, personne de confiance)
-  // sont moins descendus (-2 au lieu de -4) : à -4 ils tombaient un
-  // tout petit peu trop bas. Demande utilisateur explicite :
+  // EXCEPTIONS : la date de naissance, la reconnaissance d'invalidité
+  // (champ `MDPH`) et tous les champs des « Coordonnées de l'usager »
+  // (tel/mail usager, personne de confiance) sont moins descendus (-2
+  // au lieu de -4) : à -4 ils tombaient un tout petit peu trop bas.
+  // Demande utilisateur explicite :
   //   « remonte légèrement le texte de la date de naissance »
   //   « pour les coordonnées de l'usager remonte tout les textes
-  //    légèrement pour qu'ils soient bien alignés ».
+  //    légèrement pour qu'ils soient bien alignés »
+  //   « remonte légèrement le texte reponse de reconnaissance
+  //    d'invalidité ».
   for (const fieldName of [
-    // Bénéficiaire (page 1) — Nom/Prénom/MDPH restent à -4
+    // Bénéficiaire (page 1) — Nom/Prénom restent à -4
     'Nom',
     'Prénom',
-    'MDPH',
     // Renseignements sur la visite (page 1)
     'personne présente',
     'date',
@@ -1356,6 +1358,8 @@ export async function generateVisitReport({
     // Bénéficiaire — date de naissance (un peu moins descendu)
     'date de naissance',
     'date de naissance mme',
+    // Reconnaissance d'invalidité (MDPH)
+    'MDPH',
     // Coordonnées de l'usager (page 1) — un peu moins descendus
     'tel usager',
     'mail usager',
