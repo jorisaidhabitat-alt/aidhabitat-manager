@@ -359,7 +359,7 @@ class _ContextTabState extends State<ContextTab>
 
   Future<void> _save() async {
     if (!mounted) return;
-    setState(() => _saving = true);
+    // Pas de setState(_saving) — voir dossier_screen.dart.
     final primary = _contextOccupants.isNotEmpty
         ? _contextOccupants.first
         : const OccupantAutonomy();
@@ -368,16 +368,12 @@ class _ContextTabState extends State<ContextTab>
       checklist: primary.autonomy,
       occupants: _contextOccupants,
     );
-    try {
-      await widget.repository.upsertContexteDeVie(
-        widget.dossier.id,
-        widget.dossier.patient.id,
-        medicalContext: primary.medical,
-        autonomy: autonomy,
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    await widget.repository.upsertContexteDeVie(
+      widget.dossier.id,
+      widget.dossier.patient.id,
+      medicalContext: primary.medical,
+      autonomy: autonomy,
+    );
   }
 
   // ---------------------------------------------------------------------------

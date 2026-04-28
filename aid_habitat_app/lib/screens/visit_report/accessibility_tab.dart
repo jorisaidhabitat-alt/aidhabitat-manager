@@ -311,8 +311,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
 
   Future<void> _save() async {
     if (!mounted) return;
-    setState(() => _saving = true);
-
+    // Pas de setState(_saving) — voir dossier_screen.dart pour le
+    // rationale (rebuild lourd inutile, indicateur visuel toujours vide).
     final heatingJson = <String, bool>{
       for (final opt in _heatingOptions) opt: _heatingTypes.contains(opt),
     };
@@ -367,12 +367,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       map[cfg.roomsField] = jsonEncode(_levelRooms[cfg.field] ?? []);
     }
 
-    try {
-      await widget.repository.updateHousing(widget.dossier.id, map);
-      widget.onHousingChanged?.call();
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    await widget.repository.updateHousing(widget.dossier.id, map);
+    widget.onHousingChanged?.call();
   }
 
   void _markChanged() {

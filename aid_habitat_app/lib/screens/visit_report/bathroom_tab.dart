@@ -244,15 +244,11 @@ class _BathroomTabState extends State<BathroomTab>
 
   Future<void> _save() async {
     if (_diagnostic == null) return;
-    setState(() => _saving = true);
-    try {
-      await widget.repository.upsertDiagnosticSanitaire(
-        widget.dossier.id,
-        _diagnostic!,
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    // Pas de setState(_saving) — voir dossier_screen.dart.
+    await widget.repository.upsertDiagnosticSanitaire(
+      widget.dossier.id,
+      _diagnostic!,
+    );
   }
 
   void _updateActive(BathroomInstance updated) {

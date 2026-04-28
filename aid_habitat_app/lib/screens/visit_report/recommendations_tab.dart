@@ -100,13 +100,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   Future<void> _save() async {
     if (!mounted) return;
-    setState(() => _saving = true);
-    try {
-      await widget.repository
-          .saveVisitRecommendations(widget.dossier.id, _items);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    // Pas de setState(_saving) — voir dossier_screen.dart.
+    await widget.repository
+        .saveVisitRecommendations(widget.dossier.id, _items);
   }
 
   // ---------------------------------------------------------------------------

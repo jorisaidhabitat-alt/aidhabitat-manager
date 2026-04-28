@@ -34,8 +34,11 @@ import 'dart:async';
 /// SyncEngine (200ms) absorbent l'overhead réseau.
 const Duration kSaveDebounceText = Duration.zero;
 
-/// Debounce pour les onglets qui n'ont que des toggles / dropdowns.
-const Duration kSaveDebouncePills = Duration(seconds: 2);
+/// Debounce pour les onglets de toggles / dropdowns. Aussi à zéro
+/// (demande utilisateur — instantanéité totale entre saisie et rapport
+/// PDF). Le SyncEngine.notify() debounce déjà à 200 ms en interne, donc
+/// 5 clics rapprochés ne génèrent qu'un seul push réseau.
+const Duration kSaveDebouncePills = Duration.zero;
 
 /// Helper pour redémarrer un timer de save sans dupliquer le pattern
 /// dans chaque onglet. Annule le timer précédent puis en démarre un
