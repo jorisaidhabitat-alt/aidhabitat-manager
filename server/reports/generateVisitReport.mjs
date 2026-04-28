@@ -1794,10 +1794,9 @@ export async function generateVisitReport({
         // peu de plus).
         const orangeLineY =
             (topRect.y + descriptifFrameTop) / 2 - 8;
-        // Itérations user sur l'inset horizontal : 30 → 32 → 31 pt
-        // (demande "ajoute 1 à gauche et 1 à droite" → on rallonge
-        // de 2 pt total = 1 de chaque côté).
-        const hLineXInset = 31;
+        // Itérations user sur l'inset horizontal : 30 → 32 → 31 → 30 pt
+        // (demande "ajoute encore 1 de chaque côté de largeur").
+        const hLineXInset = 30;
         // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 → 0.2 pt
         // (demande finale "passe l'épaisseur à 0.2"). Très fin —
         // proche de la limite minimale visible à l'écran et en
