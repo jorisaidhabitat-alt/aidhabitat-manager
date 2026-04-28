@@ -1143,6 +1143,21 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 ),
               ),
               const Spacer(),
+              // Bouton fermer/supprimer.
+              //
+              // **Hit area agrandie en mode croix** : comme le reste du
+              // container violet replie l'éditeur (cf. GestureDetector
+              // parent), il faut que la croix de suppression ait une
+              // zone tactile généreuse pour être atteignable sans
+              // déclencher le repli par accident. Demande utilisateur
+              // 2026-04-28 : « rend la croix plus facilement cliquable
+              // si elle est présente car le reste du container le
+              // repli ». Padding 12 + icon 18 → ~42 × 42 pt de hit
+              // area, au-dessus du seuil HIG (44 pt) sans couper
+              // visuellement avec le reste du header.
+              //
+              // En mode chevron, on garde la hit area d'origine (le
+              // tap-anywhere du parent absorbe les ratés).
               InkWell(
                 onTap: () {
                   setState(() {
@@ -1165,12 +1180,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 },
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
-                  padding: const EdgeInsets.all(4),
+                  padding: EdgeInsets.all(
+                    _pendingLevelField == cfg.field ? 4 : 12,
+                  ),
                   child: Icon(
                     _pendingLevelField == cfg.field
                         ? Icons.expand_less
                         : Icons.close,
-                    size: _pendingLevelField == cfg.field ? 20 : 16,
+                    size: _pendingLevelField == cfg.field ? 20 : 18,
                     color: const Color(0xFF94A3B8),
                   ),
                 ),
