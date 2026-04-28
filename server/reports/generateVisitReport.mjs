@@ -341,7 +341,27 @@ function normalizeOccupationStatus(raw) {
  * @param {object} [args.sanitaires] — payload /api/diagnostic-sanitaires
  * @param {object} [args.observations] — payload /api/observations
  */
-function buildViewModel({ dossier, sanitaires, observations }) {
+/**
+ * Concatène les `textContent` de toutes les pages d'un sous-onglet
+ * de la note Contexte de vie (Médical ou Autonomie). Si l'ergo a
+ * plusieurs pages dans la même note, on les sépare par une ligne
+ * vide. Strip les whitespaces périphériques pour éviter les blocs
+ * vides en tête/fin de section dans le PDF.
+ */
+function joinNotePagesText(pages) {
+  return pages
+    .map((pg) => String(pg?.textContent || '').trim())
+    .filter((s) => s.length > 0)
+    .join('\n\n')
+    .trim();
+}
+
+function buildViewModel({
+  dossier,
+  sanitaires,
+  observations,
+  contexteNotes = [],
+}) {
   const patient = dossier?.patient || {};
   const housing = dossier?.housing || {};
   const firstName = String(patient.firstName || '').trim();
@@ -508,10 +528,30 @@ function buildViewModel({ dossier, sanitaires, observations }) {
       personnesPresentesVisite: String(dossier?.personnesPresentesVisite || '').trim(),
       visitDateFr: formatFrenchDate(dossier?.visitDate),
     },
-    contexte: {
-      environnement: buildEnvironnementText(dossier),
-      habitudes: buildHabitudesText(dossier),
-    },
+    contexte: (() => {
+      // Source primaire : les NOTES écrites par l'ergo dans
+      // `Contexte de vie > Médical` (Environnement) et
+      // `Contexte de vie > Autonomie` (Habitudes de vie). Demande
+      // utilisateur — la note libre est plus riche que les données
+      // structurées du formulaire (cases cochées + textes courts).
+      //
+      // Fallback : si aucune note n'a été saisie, on retombe sur
+      // l'ancienne agrégation des champs structurés du dossier
+      // (`buildEnvironnementText` / `buildHabitudesText`) pour ne
+      // jamais avoir de section vide.
+      const medicalPages = contexteNotes.filter(
+        (pg) => String(pg?.tabKey || '') === 'Contexte de vie-Médical',
+      );
+      const autonomyPages = contexteNotes.filter(
+        (pg) => String(pg?.tabKey || '') === 'Contexte de vie-Autonomie',
+      );
+      const envFromNotes = joinNotePagesText(medicalPages);
+      const habFromNotes = joinNotePagesText(autonomyPages);
+      return {
+        environnement: envFromNotes || buildEnvironnementText(dossier),
+        habitudes: habFromNotes || buildHabitudesText(dossier),
+      };
+    })(),
     housing: housingView,
     sanitaires: sanitairesView,
     observations: observationsView,
@@ -1160,12 +1200,18 @@ export async function generateVisitReport({
   observations,
   documents = [],
   notePages = [],
+  contexteNotes = [],
   recommendations = [],
   fetchImageBytes,
   flatten = true,
 }) {
   const { templateBytes, mapping } = await loadTemplate();
-  const view = buildViewModel({ dossier, sanitaires, observations });
+  const view = buildViewModel({
+    dossier,
+    sanitaires,
+    observations,
+    contexteNotes,
+  });
 
   // pdf-lib ne supporte pas un updateFieldAppearances "léger" sur un
   // PDF chargé avec ignoreEncryption — on charge proprement, le PDF

@@ -3655,6 +3655,41 @@ const fetchPlanNotePagesForPatient = async (patientId, dossierId) => {
 };
 
 /**
+ * Liste les notes de la section « Contexte de vie » (sous-onglets
+ * Médical + Autonomie) pour ce patient/dossier. Le générateur de
+ * rapport utilise leur `textContent` pour remplir « Environnement »
+ * (Médical) et « Habitudes de vie » (Autonomie) du PDF — on
+ * privilégie la note manuscrite/saisie de l'ergo plutôt que les
+ * données structurées du formulaire (demande utilisateur, plus
+ * proche du libellé attendu dans le rapport).
+ *
+ * Le tabKey côté Flutter est `"Contexte de vie-Médical"` ou
+ * `"Contexte de vie-Autonomie"` (cf. `notesWidget` qui concatène
+ * `$tab-$section`). On retourne donc toutes les notes commençant par
+ * `Contexte de vie` ; le caller filtre ensuite par sous-section.
+ */
+const fetchContexteNotePagesForPatient = async (patientId, dossierId) => {
+  try {
+    const allTabs = await Promise.all([
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Contexte de vie-Médical',
+      }),
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Contexte de vie-Autonomie',
+      }),
+    ]);
+    return allTabs
+      .flat()
+      .filter((pg) => !!pg)
+      .filter((pg) => !dossierId || !pg?.scopeId || String(pg.scopeId) === String(dossierId))
+      .sort((a, b) => Number(a.pageNumber) - Number(b.pageNumber));
+  } catch (error) {
+    console.warn('[report] échec contexte notes :', error?.message || error);
+    return [];
+  }
+};
+
+/**
  * Liste les recommandations d'un dossier — réutilise la logique
  * de l'endpoint /api/visit-recommendations/:dossierId.
  */
@@ -3763,6 +3798,7 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
       observations,
       documents,
       notePages,
+      contexteNotes,
       recommendations,
     ] = await Promise.all([
       fetchSanitairesForDossier(dossierId).catch((err) => {
@@ -3775,6 +3811,7 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
       }),
       patientId ? fetchVisitPhotosForPatient(patientId) : Promise.resolve([]),
       patientId ? fetchPlanNotePagesForPatient(patientId, dossierId) : Promise.resolve([]),
+      patientId ? fetchContexteNotePagesForPatient(patientId, dossierId) : Promise.resolve([]),
       fetchVisitRecommendationsForDossier(dossierId),
     ]);
 
@@ -3784,6 +3821,11 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
       observations,
       documents,
       notePages,
+      // Notes Contexte de vie (sous-onglets Médical + Autonomie). Le
+      // générateur extrait leur `textContent` pour remplir
+      // « Environnement » et « Habitudes de vie » du PDF (demande
+      // utilisateur).
+      contexteNotes,
       recommendations,
       fetchImageBytes: fetchImageBytesForReport,
     });
