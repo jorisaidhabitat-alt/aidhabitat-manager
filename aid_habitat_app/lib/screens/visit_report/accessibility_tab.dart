@@ -812,66 +812,82 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   }
 
   /// État 2 : picker des types de niveaux — même boîte violet pâle que
-  /// le bouton, avec un X en haut à droite pour annuler. Les types
+  /// le bouton, chevron en haut à droite pour replier. Les types
   /// disponibles s'affichent en grille 2 colonnes via FormToggleGroup.
+  ///
+  /// **Tap-to-fold sur tout le container** : tap n'importe où dans la
+  /// boîte violette qui n'est pas un des boutons de type → repli du
+  /// picker (équivalent au tap sur le chevron). Demande utilisateur
+  /// 2026-04-28 : « si je veux refermer le bouton la fonctionnalité du
+  /// chevron doit être active sur toute le container violet si je n'ai
+  /// pas cliqué sur un bouton ». Les pills `FormToggleGroup` ont leur
+  /// propre gesture handler, elles gagnent l'arène pour leur zone —
+  /// donc tap sur une pill → ajoute le niveau, tap ailleurs → replie.
   Widget _buildLevelTypePicker(List<_LevelConfig> available) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEDE8F5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const SizedBox(width: 4),
-              const Icon(Icons.layers_outlined,
-                  size: 16, color: Color(0xFF554A63)),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Choisir un niveau',
-                  style: TextStyle(
-                    color: Color(0xFF554A63),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _addLevelMode = false),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDE8F5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const SizedBox(width: 4),
+                const Icon(Icons.layers_outlined,
+                    size: 16, color: Color(0xFF554A63)),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Choisir un niveau',
+                    style: TextStyle(
+                      color: Color(0xFF554A63),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
-              ),
-              // Chevron pour replier le picker (et pas de croix —
-              // demande utilisateur 2026-04-28 : « met un chevron dès
-              // le début ne met pas de croix, la croix apparaît
-              // seulement pour supprimer un niveau si on RE CLIQUE
-              // dessus »). La croix « supprimer » reste réservée à
-              // l'éditeur d'un niveau RÉ-OUVERT depuis sa pill (cf.
-              // `_buildLevelCard`) — pas au picker, qui n'a aucune
-              // donnée à supprimer, juste à se replier.
-              InkWell(
-                onTap: () => setState(() => _addLevelMode = false),
-                borderRadius: BorderRadius.circular(20),
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Icon(Icons.expand_less,
-                      size: 20, color: Color(0xFF554A63)),
+                // Chevron pour replier le picker. Comportement
+                // dupliqué côté container parent (cf. GestureDetector
+                // au-dessus) — l'icône reste comme affordance visuelle
+                // explicite mais n'est plus le seul endroit cliquable.
+                // Pas de croix — demande utilisateur 2026-04-28 :
+                // « met un chevron dès le début ne met pas de croix,
+                // la croix apparaît seulement pour supprimer un niveau
+                // si on RE CLIQUE dessus ». La croix « supprimer »
+                // reste réservée à l'éditeur d'un niveau RÉ-OUVERT
+                // depuis sa pill (cf. `_buildLevelCard`) — pas au
+                // picker, qui n'a aucune donnée à supprimer.
+                InkWell(
+                  onTap: () => setState(() => _addLevelMode = false),
+                  borderRadius: BorderRadius.circular(20),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.expand_less,
+                        size: 20, color: Color(0xFF554A63)),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          FormToggleGroup(
-            label: '',
-            options: available.map((c) => c.label).toList(),
-            selected: '',
-            columns: 2,
-            onChanged: (picked) {
-              final cfg = available.firstWhere((c) => c.label == picked);
-              _addLevel(cfg);
-            },
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 10),
+            FormToggleGroup(
+              label: '',
+              options: available.map((c) => c.label).toList(),
+              selected: '',
+              columns: 2,
+              onChanged: (picked) {
+                final cfg = available.firstWhere((c) => c.label == picked);
+                _addLevel(cfg);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
