@@ -215,37 +215,41 @@ class _RecommendationsTabState extends State<RecommendationsTab>
             ),
 
           // ============================================================
-          // Bloc « Projet usager » + « Résumé des préconisations »
-          // (anciennement onglet Observations, fusionné ici cf. demande
-          // utilisateur). Alimente les pages 7 du PDF du rapport.
+          // 2 blocs note-écrite VAD (anciennement onglet Observations,
+          // fusionnés ici cf. demande utilisateur). Mode texte-seul
+          // (showCanvas: false) — pas de container, pas de titre/desc,
+          // pas de canvas dessin. Le placeholder fait office de titre.
+          // L'expand button (haut-gauche) ouvre le modal classique pour
+          // une saisie longue.
           //
-          // - tabKey 'Préconisations-Projet'   → champ PDF
-          //                                      « Projet ou souhait de l'usager »
-          // - tabKey 'Préconisations-Résumé'   → champ PDF
-          //                                      « Résumé des préconisations »
-          //
-          // Format identique aux notes des autres onglets : texte +
-          // dessin + multi-pages, syncé via le NotesWidget standard.
+          // - tabKey 'Préconisations-Projet'  → page 7 PDF
+          // - tabKey 'Préconisations-Résumé'  → page 7 PDF
           // ============================================================
-          _buildVadNote(
+          NotesWidget(
+            key: ValueKey(
+              'reco-note-projet-${widget.dossier.patient.id}',
+            ),
+            patientId: widget.dossier.patient.id,
             tabKey: 'Préconisations-Projet',
-            title: 'Projet ou souhait de l’usager',
-            subtitle:
-                'Ce que le bénéficiaire souhaite obtenir grâce à la visite '
-                '(maintien à domicile, aménagement spécifique, plus '
-                'd’autonomie pour la toilette…). Apparaîtra page 7 '
-                'du rapport.',
+            placeholder: 'Projet ou souhait de l’usager…',
+            showCanvas: false,
+            embedded: true,
+            showSaveButton: false,
+            allowPagination: false,
           ),
-          const SizedBox(height: 20),
-          _buildVadNote(
+          NotesWidget(
+            key: ValueKey(
+              'reco-note-resume-${widget.dossier.patient.id}',
+            ),
+            patientId: widget.dossier.patient.id,
             tabKey: 'Préconisations-Résumé',
-            title: 'Résumé des préconisations',
-            subtitle:
-                'Synthèse rédigée des préconisations majeures à présenter '
-                'en amont du détail. Apparaîtra page 7 du rapport, juste '
-                'sous le projet usager.',
+            placeholder: 'Résumé des préconisations…',
+            showCanvas: false,
+            embedded: true,
+            showSaveButton: false,
+            allowPagination: false,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           const Divider(color: Color(0xFFE2E8F0), height: 1),
           const SizedBox(height: 16),
 
@@ -299,67 +303,6 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Wrapper compact pour un NotesWidget VAD (Projet / Résumé) — ne
-  /// montre que la zone de texte (`showText: true, allowPagination:
-  /// true`), avec un titre violet et un sous-titre explicatif. Le canvas
-  /// drawing reste accessible via la barre d'outils (cohérent avec les
-  /// notes Médical / Autonomie).
-  Widget _buildVadNote({
-    required String tabKey,
-    required String title,
-    required String subtitle,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF7C6DAA),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF64748B),
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Hauteur intrinsèque limitée — le NotesWidget par défaut veut
-          // s'étirer au max. Dans une carte de la liste Préconisations
-          // on lui donne une bounded height pour éviter qu'il avale tout
-          // l'espace vertical.
-          SizedBox(
-            height: 220,
-            child: NotesWidget(
-              key: ValueKey('reco-note-$tabKey-${widget.dossier.patient.id}'),
-              patientId: widget.dossier.patient.id,
-              tabKey: tabKey,
-              title: '',
-              showText: true,
-              allowPagination: true,
-              embedded: true,
-              fillParentHeight: true,
-              showSaveButton: false,
             ),
           ),
         ],

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -10,7 +11,9 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../components/soft_transitions.dart';
 import '../../models/types.dart';
 import '../../models/visit_report_categories.dart';
+import '../../services/app_config.dart';
 import '../../services/data_service.dart';
+import '../../services/media_cache_service.dart';
 
 /// Onglet « Photos » du relevé de visite — alimente la page 8 du
 /// rapport PDF (« Photos du logement »).
@@ -158,20 +161,34 @@ class _PhotosTabState extends State<PhotosTab>
     final fileName = _buildPhotoFileName(categoryTag, xfile.name);
     if (kIsWeb) {
       final bytes = await xfile.readAsBytes();
-      await _dataService.importDocumentBytes(
+      final inserted = await _dataService.importDocumentBytes(
         patientId: widget.dossier.patient.id,
         bytes: bytes,
         fileName: fileName,
         tags: [categoryTag],
         categoryOrder: order,
       );
+      // Prime le cache mémoire des vignettes avec les bytes qu'on
+      // vient de capturer → la vignette s'affiche INSTANTANÉMENT au
+      // prochain `_refresh` sans attendre un re-decode base64.
+      _photoBytesCache[inserted.id] = Uint8List.fromList(bytes);
     } else {
-      await _dataService.importDocument(
+      final inserted = await _dataService.importDocument(
         patientId: widget.dossier.patient.id,
         filePath: xfile.path,
         tags: [categoryTag],
         categoryOrder: order,
       );
+      // Native : on lit le fichier qu'on vient d'écrire pour primer
+      // la cache. Coût ~quelques Mo en RAM mais l'image était déjà
+      // chargée par image_picker, on évite un round-trip filesystem.
+      try {
+        final bytes = await xfile.readAsBytes();
+        _photoBytesCache[inserted.id] = bytes;
+      } catch (_) {
+        // Pas critique : si la lecture échoue, le cache se remplira
+        // au 1er rendu de la vignette via _resolvePhotoBytes.
+      }
     }
     await _refresh();
   }
@@ -603,6 +620,17 @@ class _PhotoTile extends StatelessWidget {
     required this.onDelete,
   });
 
+  /// Ouvre une dialog plein écran centrée sur la photo. Permet à
+  /// l'ergo de vérifier la qualité / le cadrage avant validation,
+  /// sans devoir naviguer vers l'espace Documents.
+  Future<void> _openFullscreen(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      builder: (ctx) => _PhotoFullscreenDialog(doc: doc),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -657,13 +685,19 @@ class _PhotoTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            // Thumbnail
-            ClipRRect(
+            // Thumbnail cliquable — tap → ouvre la photo en grand
+            // dans une dialog plein écran. Bord violet à hover/tap
+            // pour signaler le côté interactif.
+            InkWell(
+              onTap: () => _openFullscreen(context),
               borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                width: 56,
-                height: 56,
-                child: _PhotoThumbnail(doc: doc),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 56,
+                  height: 56,
+                  child: _PhotoThumbnail(doc: doc),
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -777,51 +811,150 @@ class _PhotoTile extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Helper widget — affiche une vignette quel que soit le support
+// Helper widget — vignette photo avec cache mémoire + cache SQLite
+// (MediaCacheService) pour un affichage INSTANTANÉ après le 1er rendu.
 // ---------------------------------------------------------------------------
 
-class _PhotoThumbnail extends StatelessWidget {
+/// Cache global partagé par toutes les instances de `_PhotoThumbnail`
+/// et `_PhotoFullscreenDialog` — clé = `doc.id`. Une fois que les
+/// bytes ont été décodés (base64) ou téléchargés (URL), toutes les
+/// vignettes du même doc s'affichent en O(1) depuis cette map. Le
+/// cache vit pour la durée du process — survit aux changements
+/// d'onglet, scrolls, rebuilds réorderables.
+final Map<String, Uint8List> _photoBytesCache = {};
+
+/// Inflight de-dup : si plusieurs widgets demandent les mêmes bytes
+/// en parallèle (mounting de plusieurs tiles simultané), une seule
+/// fetch réseau est lancée et toutes attendent la même Future.
+final Map<String, Future<Uint8List?>> _photoBytesInflight = {};
+
+/// Récupère les bytes d'une photo via la chaîne de fallback :
+///   1. cache mémoire (`_photoBytesCache`)
+///   2. inflight (autre instance en train de fetch)
+///   3. `dataUrl` (web upload encore en mémoire) → décodage base64
+///   4. `localPath` (native filesystem) → readAsBytes
+///   5. `url` (NocoDB signed URL) → MediaCacheService web cache
+///      (SQLite-backed, persistant offline-first)
+///
+/// Renvoie null seulement si aucune source n'a marché.
+Future<Uint8List?> _resolvePhotoBytes(DocItem doc) async {
+  final cached = _photoBytesCache[doc.id];
+  if (cached != null) return cached;
+
+  final pending = _photoBytesInflight[doc.id];
+  if (pending != null) return pending;
+
+  final future = () async {
+    final dataUrl = doc.dataUrl;
+    if (dataUrl != null && dataUrl.startsWith('data:')) {
+      try {
+        final b64 = dataUrl.split(',').last;
+        return base64Decode(b64);
+      } catch (_) {}
+    }
+    if (!kIsWeb) {
+      final localPath = doc.localPath;
+      if (localPath != null && localPath.isNotEmpty) {
+        try {
+          final file = File(localPath);
+          if (await file.exists()) {
+            return await file.readAsBytes();
+          }
+        } catch (_) {}
+      }
+    }
+    final url = doc.url?.trim() ?? '';
+    if (url.isNotEmpty) {
+      try {
+        if (kIsWeb) {
+          final bytes = await MediaCacheService.instance.webCachedFetch(
+            url,
+            headers: {'X-App-Session': AppConfig.appSessionToken},
+          );
+          if (bytes != null) return bytes;
+        } else {
+          final file = await MediaCacheService.instance.fetch(
+            url,
+            headers: MediaCacheService.authHeaders(),
+          );
+          if (file != null) return await file.readAsBytes();
+        }
+      } catch (_) {}
+    }
+    return null;
+  }();
+
+  _photoBytesInflight[doc.id] = future;
+  try {
+    final bytes = await future;
+    if (bytes != null) {
+      _photoBytesCache[doc.id] = bytes;
+    }
+    return bytes;
+  } finally {
+    _photoBytesInflight.remove(doc.id);
+  }
+}
+
+class _PhotoThumbnail extends StatefulWidget {
   final DocItem doc;
   const _PhotoThumbnail({required this.doc});
 
   @override
+  State<_PhotoThumbnail> createState() => _PhotoThumbnailState();
+}
+
+class _PhotoThumbnailState extends State<_PhotoThumbnail> {
+  Uint8List? _bytes;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PhotoThumbnail old) {
+    super.didUpdateWidget(old);
+    if (old.doc.id != widget.doc.id ||
+        old.doc.dataUrl != widget.doc.dataUrl ||
+        old.doc.url != widget.doc.url) {
+      _bytes = null;
+      _failed = false;
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    // Cache hit synchrone → render direct, pas de flicker.
+    final cached = _photoBytesCache[widget.doc.id];
+    if (cached != null) {
+      _bytes = cached;
+      return;
+    }
+    final bytes = await _resolvePhotoBytes(widget.doc);
+    if (!mounted) return;
+    if (bytes != null) {
+      setState(() => _bytes = bytes);
+    } else {
+      setState(() => _failed = true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Ordre de préférence pour l'affichage :
-    //   1. PWA web : `dataUrl` (bytes capturés ou anciens imports web)
-    //   2. natif   : `localPath` (fichier filesystem)
-    //   3. fallback : `url` distant si déjà uploadé sur NocoDB
-    final dataUrl = doc.dataUrl;
-    if (dataUrl != null && dataUrl.startsWith('data:')) {
-      try {
-        final base64 = dataUrl.split(',').last;
-        return Image.memory(
-          base64Decode(base64),
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (context, error, stack) => _placeholder(),
-        );
-      } catch (_) {
-        return _placeholder();
-      }
-    }
-    final localPath = doc.localPath;
-    if (!kIsWeb && localPath != null && File(localPath).existsSync()) {
-      return Image.file(
-        File(localPath),
+    if (_bytes != null) {
+      return Image.memory(
+        _bytes!,
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (context, error, stack) => _placeholder(),
+        errorBuilder: (_, _, _) => _placeholder(),
       );
     }
-    final url = doc.url;
-    if (url != null && url.isNotEmpty) {
-      return Image.network(
-        url,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stack) => _placeholder(),
-      );
-    }
+    if (_failed) return _placeholder();
+    // Loading state — placeholder neutre pour ne pas faire flasher
+    // un spinner sur des chargements < 50 ms (cas courant cache hit).
     return _placeholder();
   }
 
@@ -834,4 +967,117 @@ class _PhotoThumbnail extends StatelessWidget {
           color: Color(0xFF94A3B8),
         ),
       );
+}
+
+// ---------------------------------------------------------------------------
+// Dialog plein écran — affiche la photo en grand avec un fond noir.
+// Tap n'importe où pour fermer. Lit les bytes via le même cache que
+// la vignette → ouverture instantanée (l'image est déjà décodée).
+// ---------------------------------------------------------------------------
+
+class _PhotoFullscreenDialog extends StatefulWidget {
+  final DocItem doc;
+  const _PhotoFullscreenDialog({required this.doc});
+
+  @override
+  State<_PhotoFullscreenDialog> createState() =>
+      _PhotoFullscreenDialogState();
+}
+
+class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
+  Uint8List? _bytes;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final bytes = await _resolvePhotoBytes(widget.doc);
+    if (!mounted) return;
+    if (bytes != null) {
+      setState(() => _bytes = bytes);
+    } else {
+      setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(24),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          children: [
+            Center(
+              child: _bytes != null
+                  ? InteractiveViewer(
+                      // Pinch-to-zoom et pan natifs — utile pour
+                      // examiner un détail de la photo (par ex. un
+                      // équipement, un défaut sanitaire).
+                      maxScale: 4.0,
+                      child: Image.memory(
+                        _bytes!,
+                        fit: BoxFit.contain,
+                        gaplessPlayback: true,
+                      ),
+                    )
+                  : _failed
+                      ? const Icon(
+                          LucideIcons.imageOff,
+                          size: 64,
+                          color: Colors.white54,
+                        )
+                      : const CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+            ),
+            // Bouton fermer en haut à droite — toujours accessible
+            // même si l'utilisateur a zoomé/pan dans la photo.
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.4),
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(LucideIcons.x, color: Colors.white),
+                  tooltip: 'Fermer',
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ),
+            // Titre de la photo en bas
+            Positioned(
+              left: 16,
+              right: 56,
+              bottom: 16,
+              child: Text(
+                widget.doc.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  shadows: [
+                    Shadow(
+                      offset: Offset(0, 1),
+                      blurRadius: 3,
+                      color: Colors.black54,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

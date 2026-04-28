@@ -1333,9 +1333,13 @@ class _NotesWidgetState extends State<NotesWidget> {
     // Mode "texte seul" (showCanvas: false) — bloc-note allégé sans
     // canvas/toolbar/pagination. Garde l'expand button du _buildTextEditor.
     if (!widget.showCanvas) {
+      // fillHeight: true → le Container interne n'a pas de hauteur fixe,
+      // il remplit toute la place du parent (SizedBox.expand quand le
+      // parent fournit fillParentHeight).
+      final editor = _buildTextEditor(fillHeight: true);
       final textOnly = widget.fillParentHeight
-          ? SizedBox.expand(child: _buildTextEditor())
-          : _buildTextEditor();
+          ? SizedBox.expand(child: editor)
+          : SizedBox(height: 220, child: editor);
       return Container(
         key: _outerKey,
         decoration: decoration,
@@ -1764,60 +1768,70 @@ class _NotesWidgetState extends State<NotesWidget> {
     // En mode texte-seul (showCanvas: false → fillHeight: true), la
     // zone texte remplit toute la hauteur disponible. Sinon hauteur
     // fixe pilotée par le splitter (mode classique).
-    final inner = Container(
+    final stack = Stack(
+      children: [
+        // Zone texte — remplit toute la zone, avec une petite marge à
+        // gauche pour la poignée d'agrandissement.
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            widget.allowTextModal ? 38 : 14,
+            10,
+            14,
+            10,
+          ),
+          child: TextField(
+            controller: _textController,
+            focusNode: _textFocusNode,
+            maxLines: null,
+            expands: true,
+            textAlignVertical: TextAlignVertical.top,
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: widget.placeholder,
+              hintStyle: TextStyle(color: Colors.grey.shade500),
+              isCollapsed: true,
+            ),
+          ),
+        ),
+        // Poignée d'agrandissement — petite zone de tap confinée en haut-gauche
+        // pour ne pas intercepter les taps destinés au TextField.
+        if (widget.allowTextModal)
+          Positioned(
+            left: 6,
+            top: 6,
+            child: InkWell(
+              onTap: _openTextModal,
+              customBorder: const CircleBorder(),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  LucideIcons.maximize2,
+                  size: 14,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    final boxedContainer = Container(
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: Colors.grey.shade200),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Stack(
-          children: [
-            // Zone texte — remplit toute la zone, avec une petite marge à
-            // gauche pour la poignée d'agrandissement.
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                widget.allowTextModal ? 38 : 14,
-                10,
-                14,
-                10,
-              ),
-              child: TextField(
-                controller: _textController,
-                focusNode: _textFocusNode,
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                style: const TextStyle(fontSize: 14),
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  hintText: widget.placeholder,
-                  hintStyle: TextStyle(color: Colors.grey.shade500),
-                  isCollapsed: true,
-                ),
-              ),
-            ),
-            // Poignée d'agrandissement — petite zone de tap confinée en haut-gauche
-            // pour ne pas intercepter les taps destinés au TextField.
-            if (widget.allowTextModal)
-              Positioned(
-                left: 6,
-                top: 6,
-                child: InkWell(
-                  onTap: _openTextModal,
-                  customBorder: const CircleBorder(),
-                  child: Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Icon(
-                      LucideIcons.maximize2,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+      // En mode texte-seul (fillHeight: true), pas de hauteur intrinsèque
+      // : le parent (SizedBox.expand dans la branche showCanvas: false)
+      // contraint la zone. En mode classique, hauteur pilotée par le
+      // splitter via _textAreaHeight.
+      child: fillHeight ? stack : SizedBox(height: _textAreaHeight, child: stack),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: boxedContainer,
     );
   }
 
