@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy Manifest — obligatoire depuis mai 2024 pour toute soumission
+  App Store. Apple refuse l'upload de tout binaire dont le manifest
+  est absent ou incomplet.
+
+  Référence : https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
+
+  Aid'Habitat est une app métier interne pour ergothérapeutes :
+   - aucun tracking publicitaire
+   - aucune intégration ATT (App Tracking Transparency)
+   - aucun SDK tiers de tracking
+   - les données collectées (identité, contact, photos médicales) le
+     sont uniquement pour l'usage métier (fichiers patients), liées
+     à l'identité de l'utilisateur, mais JAMAIS pour du tracking inter-apps
+-->
+<plist version="1.0">
+<dict>
+	<!-- ============================================================== -->
+	<!-- Tracking : NON. Aid'Habitat ne fait aucun tracking publicitaire -->
+	<!-- ni cross-app, et n'utilise pas l'IDFA.                          -->
+	<!-- ============================================================== -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+
+	<!-- Aucun domaine de tracking. -->
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- ============================================================== -->
+	<!-- Required Reasons API : déclaration obligatoire des APIs        -->
+	<!-- "sensibles" qu'on appelle. Si on en utilise une sans la         -->
+	<!-- déclarer ici, Apple rejette la soumission.                      -->
+	<!--                                                                 -->
+	<!-- Liste exhaustive des "reason codes" :                           -->
+	<!-- https://developer.apple.com/documentation/bundleresources/      -->
+	<!--   privacy_manifest_files/describing_use_of_required_reason_api -->
+	<!-- ============================================================== -->
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- UserDefaults : utilisé par sqflite, share_plus, file_picker, -->
+		<!-- flutter_inappwebview, image_picker. Reason CA92.1 = "Access  -->
+		<!-- info from same app, per docs".                                -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+
+		<!-- File Timestamp : utilisé par path_provider, sqflite, -->
+		<!-- file_picker, image_picker, open_filex pour lire la date     -->
+		<!-- de modif des fichiers locaux. Reason C617.1 = "Inside app   -->
+		<!-- container, app group container, or the app's CloudKit       -->
+		<!-- container".                                                  -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+
+		<!-- System Boot Time : utilisé par certains plugins Flutter     -->
+		<!-- (notamment pour générer des UUIDs uniques de session).      -->
+		<!-- Reason 35F9.1 = "Calculate absolute event timestamps".       -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+
+		<!-- Disk Space : utilisé par sqflite (DB locale) et             -->
+		<!-- path_provider pour vérifier l'espace dispo avant écriture.  -->
+		<!-- Reason E174.1 = "Display info to user about available       -->
+		<!-- storage on device".                                          -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>E174.1</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- ============================================================== -->
+	<!-- Données collectées (NSPrivacyCollectedDataTypes).               -->
+	<!-- À déclarer aussi dans App Store Connect → "App Privacy".         -->
+	<!--                                                                 -->
+	<!-- Sémantique :                                                    -->
+	<!--   Linked = lié à l'identité du user (oui pour nous, c'est un    -->
+	<!--            outil métier nominatif)                              -->
+	<!--   Tracking = utilisé pour suivre l'user à travers d'autres apps -->
+	<!--              (NON dans notre cas)                               -->
+	<!--   Purposes : raisons d'être de la collecte                      -->
+	<!-- ============================================================== -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+
+		<!-- Nom de l'utilisateur (ergothérapeute connecté) ET du         -->
+		<!-- bénéficiaire saisi pendant la VAD.                           -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeName</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+
+		<!-- Email (login ergo + contact bénéficiaire). -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+
+		<!-- Téléphone (contact bénéficiaire / personne de confiance). -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhoneNumber</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+
+		<!-- Adresse postale du bénéficiaire (logement à diagnostiquer). -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhysicalAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+
+		<!-- Données de santé : niveau de dépendance, MDPH, GIR, aide à -->
+		<!-- domicile. Catégorie sensible — Apple impose une attention   -->
+		<!-- particulière (description privacy policy + base légale     -->
+		<!-- RGPD côté serveur).                                          -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeHealth</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+
+		<!-- Photos prises pendant la VAD (logement, sanitaires, plans). -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+
+		<!-- User ID (identifiant ergo en interne — pour scoping accès -->
+		<!-- aux dossiers).                                              -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeUserID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAuthentication</string>
+			</array>
+		</dict>
+
+		<!-- Crash data : pas activement collecté en v1, mais on le     -->
+		<!-- déclare au cas où (TestFlight remonte automatiquement les   -->
+		<!-- crashs aux développeurs Apple Developer Account).           -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCrashData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Aid Habitat App</string>
+	<string>Aid&apos;Habitat</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -45,5 +45,67 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- ====================================================== -->
+	<!-- Permissions (NSUsageDescriptions)                       -->
+	<!-- Apple rejette toute app qui appelle ces APIs sans       -->
+	<!-- description "purpose string" — la pop-up système        -->
+	<!-- système l'affiche à l'utilisateur lors du 1er accès.   -->
+	<!-- ====================================================== -->
+
+	<!-- image_picker (camera) : prise de photo VAD du logement / sanitaires -->
+	<key>NSCameraUsageDescription</key>
+	<string>Aid&apos;Habitat utilise l&apos;appareil photo pour vous permettre de prendre des photos du logement, des sanitaires et des éléments d&apos;accessibilité pendant la visite à domicile. Ces photos sont attachées au dossier du bénéficiaire et insérées dans le rapport PDF généré.</string>
+
+	<!-- image_picker (gallery) + file_picker : import depuis la photothèque -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Aid&apos;Habitat accède à votre photothèque pour vous permettre d&apos;ajouter des photos existantes (logement, sanitaires, plans) au dossier du bénéficiaire.</string>
+
+	<!-- share_plus + open_filex : sauvegarde de PDF / photos dans la photothèque -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Aid&apos;Habitat enregistre les rapports PDF et les photos exportées dans votre photothèque, à votre demande explicite.</string>
+
+	<!-- file_picker : accès aux fichiers locaux (Documents) -->
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Aid&apos;Habitat accède à votre dossier Documents pour importer ou enregistrer des fichiers liés au dossier du bénéficiaire (rapports PDF, justificatifs).</string>
+
+	<!-- ====================================================== -->
+	<!-- Export Compliance                                       -->
+	<!-- "false" = on n&apos;utilise QUE de la crypto standard    -->
+	<!-- exemptée (HTTPS/TLS via NSURLSession). Évite le         -->
+	<!-- formulaire d&apos;encryption export à chaque build       -->
+	<!-- TestFlight / App Store Connect.                         -->
+	<!-- ====================================================== -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- ====================================================== -->
+	<!-- App Transport Security                                  -->
+	<!-- HTTPS-only. Aucune exception. NocoDB et le backend      -->
+	<!-- Aid&apos;Habitat sont servis en TLS uniquement.            -->
+	<!-- ====================================================== -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+	</dict>
+
+	<!-- ====================================================== -->
+	<!-- iPad multi-tasking : Split View + Slide Over            -->
+	<!-- Apple privilégie les apps qui supportent le             -->
+	<!-- multi-fenêtre iPadOS. Activé par défaut chez Flutter.  -->
+	<!-- ====================================================== -->
+	<key>UIRequiresFullScreen</key>
+	<false/>
+
+	<!-- url_launcher : autorise les schémes utilisés (mailto, tel, https) -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+		<string>mailto</string>
+		<string>tel</string>
+		<string>sms</string>
+	</array>
 </dict>
 </plist>
