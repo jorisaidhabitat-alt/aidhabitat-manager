@@ -215,8 +215,163 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
             const SizedBox(height: 16),
             _buildPasswordCard(),
+            const SizedBox(height: 32),
+            _buildAboutCard(),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Carte « À propos » : version, lien politique de confidentialité,
+  /// support, site web. Cherchée par les reviewers App Store Apple
+  /// (Guideline 5.1.1 — Privacy / 5.1.2 — Data Use and Sharing).
+  /// Cf. https://developer.apple.com/app-store/review/guidelines/#privacy
+  Widget _buildAboutCard() {
+    final versionLabel = _appVersion.isEmpty
+        ? '—'
+        : (_appBuildNumber.isEmpty
+            ? _appVersion
+            : '$_appVersion ($_appBuildNumber)');
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey.shade100,
+                ),
+                child: Icon(
+                  LucideIcons.info,
+                  size: 18,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Text(
+                  'À propos',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildAboutRow(
+            label: 'Version',
+            value: versionLabel,
+            icon: LucideIcons.tag,
+          ),
+          const Divider(height: 24),
+          _buildAboutRow(
+            label: 'Politique de confidentialité',
+            value: _privacyPolicyUrl,
+            icon: LucideIcons.shield,
+            onTap: () => _openExternalUrl(_privacyPolicyUrl),
+            isLink: true,
+          ),
+          const Divider(height: 24),
+          _buildAboutRow(
+            label: 'Support',
+            value: _supportEmail,
+            icon: LucideIcons.mail,
+            onTap: () => _openExternalUrl('mailto:$_supportEmail'),
+            isLink: true,
+          ),
+          const Divider(height: 24),
+          _buildAboutRow(
+            label: 'Site web',
+            value: _websiteUrl,
+            icon: LucideIcons.globe,
+            onTap: () => _openExternalUrl(_websiteUrl),
+            isLink: true,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Aid\'Habitat — application métier d\'aide à l\'évaluation '
+            'd\'accessibilité du logement pour ergothérapeutes.',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade600,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '© 2026 Aid\'Habitat. Tous droits réservés.',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAboutRow({
+    required String label,
+    required String value,
+    required IconData icon,
+    VoidCallback? onTap,
+    bool isLink = false,
+  }) {
+    final row = Row(
+      children: [
+        Icon(icon, size: 14, color: Colors.grey.shade600),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isLink ? const Color(0xFF7C6DAA) : Colors.black87,
+                  decoration: isLink ? TextDecoration.underline : null,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        if (onTap != null)
+          Icon(LucideIcons.externalLink,
+              size: 14, color: Colors.grey.shade400),
+      ],
+    );
+    if (onTap == null) return row;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: row,
       ),
     );
   }

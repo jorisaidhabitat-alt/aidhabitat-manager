@@ -1798,13 +1798,15 @@ export async function generateVisitReport({
         // (demande "ajoute 1 à gauche et 1 à droite" → on rallonge
         // de 2 pt total = 1 de chaque côté).
         const hLineXInset = 31;
-        // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 pt
-        // (demande "reduis l'épaisseur du trait légèrement").
+        // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 → 0.2 pt
+        // (demande finale "passe l'épaisseur à 0.2"). Très fin —
+        // proche de la limite minimale visible à l'écran et en
+        // impression A4.
         partialPage.drawRectangle({
           x: hLineXInset,
           y: orangeLineY,
           width: partialPage.getSize().width - hLineXInset * 2,
-          height: 0.35,
+          height: 0.2,
           color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
         });
       }
