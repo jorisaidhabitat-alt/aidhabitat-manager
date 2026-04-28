@@ -726,14 +726,36 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // Pousse les changements locaux EN ATTENTE vers NocoDB AVANT
       // d'appeler le serveur de génération PDF — sinon le serveur lit
       // `getDossiersForApp` (NocoDB direct) et reçoit l'ancienne valeur
-      // pour les champs récemment modifiés. `runSync` flush la queue
-      // d'opérations locales (debounced 200 ms côté `SyncEngine`). Si
-      // offline ou si la sync échoue, on génère quand même — le serveur
-      // retombera sur ce qu'il connaît.
+      // pour les champs récemment modifiés.
+      //
+      // Si la sync échoue partiellement (ex: PATCH patient en 400/500),
+      // on ABORTE la génération avec un message clair plutôt que de
+      // silencieusement produire un PDF basé sur des données obsolètes
+      // (symptôme reporté : "j'ai changé le nom en BALS mais le rapport
+      // affiche AB" — l'ancienne valeur NocoDB).
       try {
-        await _dataService.runSync();
-      } catch (_) {
-        // Pas bloquant — on continue avec ce qui est déjà sur NocoDB.
+        final syncResult = await _dataService.runSync();
+        // ignore: avoid_print
+        print('[report] runSync : pushed=${syncResult.pushedOperations} '
+            'failed=${syncResult.failedOperations} '
+            'conflicts=${syncResult.conflictCount} '
+            'msg="${syncResult.message}"');
+        if (syncResult.failedOperations > 0 || syncResult.conflictCount > 0) {
+          _showReportError(
+            'Synchronisation incomplète avant génération '
+            '(${syncResult.failedOperations} échec(s), '
+            '${syncResult.conflictCount} conflit(s)). '
+            'Le rapport pourrait afficher des valeurs obsolètes. '
+            'Détails : ${syncResult.message}',
+          );
+          return;
+        }
+      } catch (error) {
+        _showReportError(
+          'Impossible de synchroniser avant génération : $error. '
+          'Réessayez quand la connexion est stable.',
+        );
+        return;
       }
 
       final result = await _dataService.downloadVisitReport(
