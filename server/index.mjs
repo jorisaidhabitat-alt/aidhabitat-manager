@@ -3731,6 +3731,13 @@ const fetchVisitPhotosForPatient = async (patientId) => {
       'visite - logement',
       'visite - accessibilite',
       'visite - sanitaires',
+      // 3 catégories ajoutées 2026-04-28 — buckets d'organisation pour
+      // l'ergo (pas de slot PDF dédié pour l'instant, mais il faut
+      // les filtrer ici pour qu'elles soient bien fetchées et
+      // re-routables depuis l'onglet Photos / le menu Déplacer).
+      'visite - plan avant',
+      'visite - plan apres',
+      'visite - autres',
     ]);
     return asArray(docs).filter((doc) => {
       const mime = String(doc?.mimeType || '');

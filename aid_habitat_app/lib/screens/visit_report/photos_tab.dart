@@ -266,23 +266,11 @@ class _PhotosTabState extends State<PhotosTab>
     await _refresh();
   }
 
-  Future<void> _reorderInCategory({
-    required String categoryTag,
-    required int oldIndex,
-    required int newIndex,
-  }) async {
-    final list = _photosForCategory(categoryTag);
-    if (oldIndex < 0 || oldIndex >= list.length) return;
-    // Convention ReorderableListView : si on bouge vers le bas, le
-    // newIndex est décalé d'un cran qu'il faut compenser.
-    final adjusted = newIndex > oldIndex ? newIndex - 1 : newIndex;
-    final moved = list.removeAt(oldIndex);
-    list.insert(adjusted.clamp(0, list.length), moved);
-    await _dataService.reorderVisitCategoryDocuments(
-      orderedDocumentIds: list.map((d) => d.id).toList(),
-    );
-    await _refresh();
-  }
+  // `_reorderInCategory` retiré : le drag-to-reorder a été supprimé
+  // avec le passage au layout horizontal côte-à-côte (la `Row` ne
+  // supporte pas le ReorderableListView). La réorganisation se fait
+  // désormais via `_moveToCategory` (kebab "Déplacer vers") + l'ordre
+  // d'ajout naturel.
 
   void _showError(String message) {
     if (!mounted) return;
@@ -299,35 +287,49 @@ class _PhotosTabState extends State<PhotosTab>
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Layout 3 colonnes (Logement / Accessibilité / Sanitaires) côte
-    // à côte. Chaque colonne s'adapte à SA propre hauteur de contenu —
-    // pas de stretch pour aligner sur la plus grande des 3 (demande
-    // utilisateur : "il ne faut pas les aligner horizontalement,
-    // simplement qu'ils soient adaptés à ce qu'ils contiennent").
+    // Layout sur 2 lignes de 3 colonnes (demande utilisateur 2026-04-28) :
+    //   Ligne 1 : Logement · Accessibilité · Sanitaires
+    //   Ligne 2 : Plan avant travaux · Plan travaux préconisés · Autres
     //
-    // Donc `CrossAxisAlignment.start` (pas `stretch`) et pas
-    // d'`IntrinsicHeight` — chaque container fait exactement la
-    // hauteur de son contenu (en-tête + photos + boutons).
+    // Chaque colonne fait 1/3 de la largeur disponible. Le container
+    // s'adapte en hauteur à son contenu (pas de stretch). Les photos
+    // dans chaque colonne sont posées HORIZONTALEMENT (côte à côte)
+    // et se redimensionnent automatiquement pour rentrer toutes dans
+    // la largeur du container — pas de scroll, pas de stack vertical.
+    final tagsRow1 = kVisitPhotoTags.sublist(0, 3);
+    final tagsRow2 = kVisitPhotoTags.sublist(3);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       child: SingleChildScrollView(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < kVisitPhotoTags.length; i++) ...[
-              if (i > 0) const SizedBox(width: 14),
-              Expanded(
-                child: _buildCategorySection(
-                  tag: kVisitPhotoTags[i],
-                  icon: _iconForCategory(kVisitPhotoTags[i]),
-                  maxSlots:
-                      kVisitPhotoSlotCount[kVisitPhotoTags[i]] ?? 0,
-                ),
-              ),
-            ],
+            _buildCategoryRow(tagsRow1),
+            const SizedBox(height: 14),
+            _buildCategoryRow(tagsRow2),
           ],
         ),
       ),
+    );
+  }
+
+  /// Construit une ligne de 3 colonnes pour les tags donnés. Chaque
+  /// colonne occupe 1/3 de la largeur et appelle `_buildCategorySection`.
+  Widget _buildCategoryRow(List<String> tags) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < tags.length; i++) ...[
+          if (i > 0) const SizedBox(width: 14),
+          Expanded(
+            child: _buildCategorySection(
+              tag: tags[i],
+              icon: _iconForCategory(tags[i]),
+              maxSlots: kVisitPhotoSlotCount[tags[i]] ?? 0,
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -339,6 +341,12 @@ class _PhotosTabState extends State<PhotosTab>
         return LucideIcons.armchair;
       case kPhotoTagSanitaires:
         return LucideIcons.bath;
+      case kPhotoTagPlanAvant:
+        return LucideIcons.map;
+      case kPhotoTagPlanApres:
+        return LucideIcons.layers;
+      case kPhotoTagAutres:
+        return LucideIcons.folderPlus;
       default:
         return LucideIcons.image;
     }
@@ -510,51 +518,42 @@ class _PhotosTabState extends State<PhotosTab>
     );
   }
 
+  /// Layout horizontal des photos d'une catégorie : chaque photo
+  /// occupe 1/N de la largeur du container (avec N = nombre de
+  /// photos), de sorte que toutes rentrent côte à côte sans changer
+  /// la taille du container. Plus la grille se remplit, plus chaque
+  /// vignette rétrécit. Demande utilisateur 2026-04-28 : "chaque
+  /// photo doit se mettre les unes à côté des autres et donc réduire
+  /// la taille des autres pour ne pas changer la taille du container".
+  ///
+  /// Conséquence : on perd le drag-to-reorder vertical (qui était
+  /// peu utilisé en pratique — la majorité des ergos prennent les
+  /// photos dans l'ordre voulu). Le kebab menu "Déplacer vers"
+  /// permet toujours de changer de catégorie ou de retirer une photo.
   Widget _buildReorderableGrid({
     required String tag,
     required List<DocItem> photos,
     required int maxSlots,
   }) {
-    return ReorderableListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      buildDefaultDragHandles: false,
-      itemCount: photos.length,
-      onReorder: (oldIndex, newIndex) => _reorderInCategory(
-        categoryTag: tag,
-        oldIndex: oldIndex,
-        newIndex: newIndex,
-      ),
-      proxyDecorator: (child, _, animation) => AnimatedBuilder(
-        animation: animation,
-        builder: (ctx, _) {
-          final t = Curves.easeInOut.transform(animation.value);
-          return Material(
-            color: Colors.transparent,
-            elevation: 6 * t,
-            shadowColor: Colors.black.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(12),
-            child: Transform.scale(
-              scale: 1 + 0.02 * t,
-              child: child,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < photos.length; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          Expanded(
+            child: _PhotoTile(
+              key: ValueKey('photo_${photos[i].id}'),
+              doc: photos[i],
+              slotNumber: i + 1,
+              inSlot: i < maxSlots,
+              onMoveTo: (newTag) =>
+                  _moveToCategory(doc: photos[i], newTag: newTag),
+              onUntag: () => _moveToCategory(doc: photos[i], newTag: null),
+              onDelete: () => _deletePhoto(photos[i]),
             ),
-          );
-        },
-      ),
-      itemBuilder: (ctx, index) {
-        final doc = photos[index];
-        final inSlot = index < maxSlots;
-        return _PhotoTile(
-          key: ValueKey('photo_${doc.id}'),
-          doc: doc,
-          slotNumber: index + 1,
-          inSlot: inSlot,
-          dragHandleIndex: index,
-          onMoveTo: (newTag) => _moveToCategory(doc: doc, newTag: newTag),
-          onUntag: () => _moveToCategory(doc: doc, newTag: null),
-          onDelete: () => _deletePhoto(doc),
-        );
-      },
+          ),
+        ],
+      ],
     );
   }
 
@@ -600,7 +599,6 @@ class _PhotoTile extends StatelessWidget {
   final DocItem doc;
   final int slotNumber;
   final bool inSlot;
-  final int dragHandleIndex;
   final ValueChanged<String> onMoveTo;
   final VoidCallback onUntag;
   final VoidCallback onDelete;
@@ -610,7 +608,6 @@ class _PhotoTile extends StatelessWidget {
     required this.doc,
     required this.slotNumber,
     required this.inSlot,
-    required this.dragHandleIndex,
     required this.onMoveTo,
     required this.onUntag,
     required this.onDelete,
@@ -629,37 +626,34 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Layout vertical "card" (demande utilisateur 2026-04-28) :
-    //   - Top row : numéro de slot (gauche) + drag handle horizontal
-    //               (centré) + menu kebab (droite)
-    //   - Body    : preview pleine largeur (aspect 4:3, BoxFit.cover)
-    //               cliquable → fullscreen
+    // Layout vertical "card" — utilisé maintenant en mode horizontal :
+    // chaque tile est posée à côté des autres dans la `Row` parent
+    // (`_buildReorderableGrid`) et partage la largeur du container.
+    // Plus la grille se remplit, plus chaque vignette rétrécit.
     //
-    // Toute la card est wrappée par `ReorderableDelayedDragStartListener`
-    // → long-press n'importe où dessus déclenche le réordonnancement
-    // (parité comportementale avec une grille type Pinterest). Les taps
-    // courts continuent de fonctionner pour le menu kebab et le tap
-    // sur l'image — Flutter dispatche les gestes via l'arène et le
-    // long-press gagne contre le tap simple, le tap simple gagne
-    // contre l'inactivité du long-press.
-    return ReorderableDelayedDragStartListener(
-      index: dragHandleIndex,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: inSlot
-                  ? const Color(0xFFE2E8F0)
-                  : const Color(0xFFFEE2E2),
-            ),
+    //   - Top row : numéro de slot (gauche) + drag handle horizontal
+    //               (centré, purement décoratif) + menu kebab (droite)
+    //   - Body    : preview aspect 4:3, BoxFit.cover, cliquable → fullscreen
+    //
+    // Le drag-to-reorder a été retiré (la grille passe à un layout
+    // horizontal qui n'utilise plus `ReorderableListView`). Le menu
+    // kebab garde "Déplacer vers" pour changer de catégorie.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: inSlot
+                ? const Color(0xFFE2E8F0)
+                : const Color(0xFFFEE2E2),
           ),
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        ),
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             // Top row sur 3 zones positionnées indépendamment via
             // Stack :
             //   - gauche : pastille numéro (slot ou surplus)
@@ -701,20 +695,11 @@ class _PhotoTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Centre : drag handle horizontal — purement
-                  // visuel. Le drag est en réalité capturé par le
-                  // `ReorderableDelayedDragStartListener` qui wrappe
-                  // toute la card → long-press n'importe où réordonne.
-                  // Cette icône est juste un indicateur affordance pour
-                  // l'utilisateur ("ça se déplace").
-                  const Align(
-                    alignment: Alignment.center,
-                    child: Icon(
-                      LucideIcons.gripHorizontal,
-                      size: 18,
-                      color: Color(0xFF94A3B8),
-                    ),
-                  ),
+                  // (Ancien drag handle horizontal retiré : la grille
+                  // est passée à un layout horizontal côte-à-côte qui
+                  // n'utilise plus `ReorderableListView`. Le tile a
+                  // donc plus rien à drag — déplacements via le menu
+                  // kebab "Déplacer vers" uniquement.)
                   // Droite : menu kebab.
                   Align(
                     alignment: Alignment.centerRight,
@@ -816,7 +801,6 @@ class _PhotoTile extends StatelessWidget {
           ],
         ),
       ),
-        ),
     );
   }
 }

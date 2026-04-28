@@ -29,22 +29,49 @@ const String kPhotoTagAccessibilite = 'Visite - Accessibilité';
 /// max 3 photos portrait 153×191pt).
 const String kPhotoTagSanitaires = 'Visite - Sanitaires';
 
+/// Tag attribué aux clichés/photos du plan du logement avant travaux
+/// (croquis main, plan archi existant, photo d'un plan papier…).
+/// Catégorie d'organisation pour l'ergo — pas de slot PDF dédié dans
+/// le rapport actuel, mais vit dans l'onglet Photos pour ne pas
+/// polluer l'espace Documents général.
+const String kPhotoTagPlanAvant = 'Visite - Plan avant';
+
+/// Tag attribué aux clichés/photos du plan des travaux préconisés
+/// (croquis ergo, plan modifié, mockup). Pareil que [kPhotoTagPlanAvant] :
+/// catégorie d'organisation, pas de slot PDF dédié.
+const String kPhotoTagPlanApres = 'Visite - Plan après';
+
+/// Tag fourre-tout — photos de la visite qui ne tombent dans aucune
+/// des autres catégories (anomalies, détail particulier, etc.).
+const String kPhotoTagAutres = 'Visite - Autres';
+
 /// Tous les tags photos visite réunis pour faciliter le filtrage
 /// dans DocumentsScreen et l'onglet Photos. L'ordre détermine l'ordre
-/// d'affichage des sections dans l'UI.
+/// d'affichage des sections dans l'UI :
+///   ligne 1 : Logement / Accessibilité / Sanitaires
+///   ligne 2 : Plan avant / Plan après / Autres
 const List<String> kVisitPhotoTags = [
   kPhotoTagLogement,
   kPhotoTagAccessibilite,
   kPhotoTagSanitaires,
+  kPhotoTagPlanAvant,
+  kPhotoTagPlanApres,
+  kPhotoTagAutres,
 ];
 
 /// Nombre max de photos utilisées par le PDF dans chaque catégorie.
 /// Au-delà, les photos restent en base mais sont marquées « non
-/// utilisées dans le rapport ».
+/// utilisées dans le rapport ». Les 3 catégories de la 2e ligne
+/// (plans + autres) n'ont pas de slot PDF — la limite est purement
+/// indicative pour l'UI ; on met une valeur élevée pour ne jamais
+/// déclencher l'état "surplus".
 const Map<String, int> kVisitPhotoSlotCount = {
   kPhotoTagLogement: 2,
   kPhotoTagAccessibilite: 3,
   kPhotoTagSanitaires: 3,
+  kPhotoTagPlanAvant: 6,
+  kPhotoTagPlanApres: 6,
+  kPhotoTagAutres: 6,
 };
 
 /// Libellé court pour l'UI (sans le préfixe « Visite - »).
@@ -56,6 +83,12 @@ String visitPhotoTagShortLabel(String tag) {
       return 'Accessibilité';
     case kPhotoTagSanitaires:
       return 'Sanitaires';
+    case kPhotoTagPlanAvant:
+      return 'Plan avant travaux';
+    case kPhotoTagPlanApres:
+      return 'Plan travaux préconisés';
+    case kPhotoTagAutres:
+      return 'Autres';
     default:
       return tag;
   }
