@@ -968,12 +968,41 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   List<DocItem> get _filteredDocuments {
-    // Décorrélation avec l'onglet Photos du relevé de visite : les
-    // documents portant un des trois tags visite (Logement /
-    // Accessibilité / Sanitaires) sont gérés exclusivement là-bas et
-    // ne doivent pas apparaître dans la grille générale Documents.
-    Iterable<DocItem> docs = _documents
-        .where((doc) => !doc.tags.any(kVisitPhotoTags.contains));
+    // Décorrélation avec l'onglet Photos du relevé de visite : les 6
+    // tags visite (Logement, Accessibilité, Sanitaires, Plan avant,
+    // Plan après, Autres) sont gérés exclusivement dans VAD > Photos
+    // et NE DOIVENT PAS apparaître dans la grille générale Documents.
+    //
+    // Matching robuste : on lowercase + retire les diacritiques pour
+    // attraper les variations historiques d'encoding (NFC/NFD) ou de
+    // casse qui pourraient s'être glissées en base. Sans ça, une
+    // photo taggée 'visite - accessibilite' (sans accent) passerait à
+    // travers le filtre et s'afficherait des deux côtés.
+    String norm(String s) => s
+        .toLowerCase()
+        .replaceAll('é', 'e')
+        .replaceAll('è', 'e')
+        .replaceAll('ê', 'e')
+        .replaceAll('à', 'a')
+        .replaceAll('â', 'a')
+        .replaceAll('ô', 'o')
+        .replaceAll('î', 'i')
+        .replaceAll('û', 'u')
+        .replaceAll('ç', 'c')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final visitTagsNormalized =
+        kVisitPhotoTags.map(norm).toSet();
+    // Filet supplémentaire : tout tag qui commence par "visite - " est
+    // considéré comme une photo VAD, même si le suffixe ne matche pas
+    // un des 6 tags officiels (variation libre ou typo historique).
+    bool isVisitTag(String tag) {
+      final n = norm(tag);
+      if (visitTagsNormalized.contains(n)) return true;
+      return n.startsWith('visite - ') || n.startsWith('visite-');
+    }
+    Iterable<DocItem> docs =
+        _documents.where((doc) => !doc.tags.any(isVisitTag));
 
     final query = _searchTerm.trim().toLowerCase();
     if (query.isNotEmpty) {
