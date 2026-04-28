@@ -6,7 +6,6 @@ import '../../services/save_debounce.dart';
 import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
 import '../../components/form_widgets.dart';
-import '../../components/notes_widget.dart';
 import '../../components/soft_transitions.dart';
 
 /// Préconisations tab — parité 1:1 avec `PreconisationsForm` React.
@@ -214,52 +213,15 @@ class _RecommendationsTabState extends State<RecommendationsTab>
               ),
             ),
 
-          // ============================================================
-          // 2 blocs note-écrite VAD côte-à-côte (anciennement onglet
-          // Observations, fusionnés ici cf. demande utilisateur). Mode
-          // texte-seul (showCanvas: false) — placeholder = titre,
-          // expand button pour les saisies longues.
-          //
-          // - tabKey 'Préconisations-Projet'  → page 7 PDF
-          // - tabKey 'Préconisations-Résumé'  → page 7 PDF
-          // ============================================================
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: NotesWidget(
-                  key: ValueKey(
-                    'reco-note-projet-${widget.dossier.patient.id}',
-                  ),
-                  patientId: widget.dossier.patient.id,
-                  tabKey: 'Préconisations-Projet',
-                  placeholder: 'Projet ou souhait de l’usager…',
-                  showCanvas: false,
-                  embedded: true,
-                  showSaveButton: false,
-                  allowPagination: false,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: NotesWidget(
-                  key: ValueKey(
-                    'reco-note-resume-${widget.dossier.patient.id}',
-                  ),
-                  patientId: widget.dossier.patient.id,
-                  tabKey: 'Préconisations-Résumé',
-                  placeholder: 'Résumé des préconisations…',
-                  showCanvas: false,
-                  embedded: true,
-                  showSaveButton: false,
-                  allowPagination: false,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Divider(color: Color(0xFFE2E8F0), height: 1),
-          const SizedBox(height: 16),
+          // NB : les 2 NotesWidget « Projet usager » + « Résumé
+          // préconisations » ont été retirés (UX scroll conflict — le
+          // TextField multiligne capturait les gestes verticaux et
+          // bloquait le scroll de la page entière). À réintégrer plus
+          // tard avec une UX différente (ex. bouton « Ajouter une note »
+          // qui ouvre un modal). Le serveur continue de lire depuis
+          // tabKeys `Préconisations-Projet` / `Préconisations-Résumé`
+          // si jamais des dossiers ont déjà du contenu, sinon fallback
+          // sur `observations_synthese`.
 
           if (_items.isEmpty)
             _buildEmpty()

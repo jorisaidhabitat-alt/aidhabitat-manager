@@ -547,6 +547,59 @@ class DossierRepository {
               }
             }
           }
+
+          // Garde de troisième niveau : fenêtre anti-flicker (10 s)
+          // après une sync_op récemment `completed`. Le sync_state
+          // local repasse à `synced` dès que markCompleted s'exécute,
+          // mais NocoDB peut encore renvoyer l'ancienne valeur côté
+          // read replica pendant la durée de propagation. Si un
+          // refresh tombe dans ce trou, le merge écrase la valeur
+          // locale fraîche par la valeur stale du serveur — l'ergo
+          // voit le nom revenir à une version antérieure (« Yanis
+          // Foyer » → « Yanis test » signalé le 2026-04-28).
+          //
+          // On regarde aussi les ops non-terminées (pending/running/
+          // failed) pour cette entité : si elles existent c'est qu'il
+          // y a du travail en cours, surtout pas d'écraser le local.
+          final cutoff = DateTime.now()
+              .subtract(const Duration(seconds: 10))
+              .toIso8601String();
+          final recentPatientOps = patientLocalIdExisting == null
+              ? const <Map<String, Object?>>[]
+              : await txn.rawQuery(
+                  '''
+                  SELECT 1 FROM sync_operations
+                  WHERE entity_type = 'patient'
+                    AND entity_local_id = ?
+                    AND (
+                      status IN ('pending', 'running', 'failed')
+                      OR (status = 'completed' AND updated_at > ?)
+                    )
+                  LIMIT 1
+                  ''',
+                  [patientLocalIdExisting, cutoff],
+                );
+          if (recentPatientOps.isNotEmpty) {
+            continue;
+          }
+          final recentHousingOps = housingLocalIdExisting == null
+              ? const <Map<String, Object?>>[]
+              : await txn.rawQuery(
+                  '''
+                  SELECT 1 FROM sync_operations
+                  WHERE entity_type = 'housing'
+                    AND entity_local_id = ?
+                    AND (
+                      status IN ('pending', 'running', 'failed')
+                      OR (status = 'completed' AND updated_at > ?)
+                    )
+                  LIMIT 1
+                  ''',
+                  [housingLocalIdExisting, cutoff],
+                );
+          if (recentHousingOps.isNotEmpty) {
+            continue;
+          }
         }
 
         final now = DateTime.now().toIso8601String();
