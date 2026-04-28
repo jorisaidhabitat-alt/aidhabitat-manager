@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 14;
+  static const _dbVersion = 15;
 
   Database? _database;
 
@@ -75,6 +75,102 @@ class LocalDatabase {
     }
     if (oldVersion < 14) {
       await _migrateV13ToV14(db);
+    }
+    if (oldVersion < 15) {
+      await _migrateV14ToV15(db);
+    }
+  }
+
+  /// v14 → v15 : reset global des niveaux + pièces dans `housings`
+  /// (demande utilisateur 2026-04-28). Symptôme avant ce reset : des
+  /// pièces (Salle de bain, WC) restaient cochées sur des niveaux qui
+  /// avaient été désélectionnés, créant des SDB/WC fantômes au reload
+  /// (l'inférence pour les onglets SDB/WC se base sur la présence du
+  /// label dans `*_rooms_json`, indépendamment du flag de niveau).
+  ///
+  /// Effet :
+  ///   - Tous les niveaux désactivés (`basement=0, rdc=0, floor=0,
+  ///     second_floor=0, third_floor=0, levels=0`)
+  ///   - Tous les `*_rooms_json` remis à `'[]'`
+  ///   - Chaque housing passe en `pendingSync` pour propager le reset
+  ///     vers NocoDB (sous_sol/rdc/etage repassent à false côté serveur)
+  ///   - Une `sync_op` `housing_update` est enqueuée par row touchée
+  ///
+  /// Idempotent : si la migration a déjà été appliquée (pas de housings
+  /// avec un niveau actif et/ou rooms non-vides), c'est un no-op.
+  ///
+  /// L'ergo devra re-cocher les niveaux et leurs pièces après cette
+  /// migration pour les dossiers concernés. Les autres données (volets,
+  /// chauffage, surface, sanitaires équipement, mesures…) restent
+  /// intactes — seules les colonnes niveaux+rooms sont touchées.
+  Future<void> _migrateV14ToV15(Database db) async {
+    final now = DateTime.now().toIso8601String();
+    final rows = await db.query(
+      'housings',
+      columns: ['local_id', 'patient_local_id'],
+    );
+    for (final row in rows) {
+      final housingLocalId = row['local_id'] as String?;
+      if (housingLocalId == null) continue;
+      // Reset des 11 colonnes ciblées + bump updated_at + pendingSync.
+      await db.update(
+        'housings',
+        {
+          'basement': 0,
+          'rdc': 0,
+          'floor': 0,
+          'second_floor': 0,
+          'third_floor': 0,
+          'levels': 0,
+          'basement_rooms_json': '[]',
+          'rdc_rooms_json': '[]',
+          'floor_rooms_json': '[]',
+          'second_floor_rooms_json': '[]',
+          'third_floor_rooms_json': '[]',
+          'updated_at': now,
+          'sync_state': 'pendingSync',
+        },
+        where: 'local_id = ?',
+        whereArgs: [housingLocalId],
+      );
+
+      // Enqueue une sync_op `housing` pour propager vers NocoDB.
+      // Le sync engine consomme ce type via `_processHousingOperation`
+      // qui PATCH `/api/logements/by-beneficiary/:id`. Côté serveur on
+      // ne pousse que les flags (sous_sol, rdc, etage, nombre_niveaux)
+      // — les `*_rooms_json` sont local-only (pas de colonne NocoDB).
+      //
+      // Le `local_id` du housing est `housing_<dossierId>` → on
+      // retrouve le dossierId pour résoudre le beneficiaryId côté
+      // remote (cf. `_resolveRemoteBeneficiaryIdFromDossier`).
+      final dossierId = housingLocalId.startsWith('housing_')
+          ? housingLocalId.substring('housing_'.length)
+          : housingLocalId;
+      final opId = 'housing_update_reset_v15_$dossierId';
+      await db.insert(
+        'sync_operations',
+        {
+          'id': opId,
+          'entity_type': 'housing',
+          'entity_local_id': dossierId,
+          'operation_type': 'update',
+          'payload_json': jsonEncode({
+            'dossierLocalId': dossierId,
+            'updates': {
+              'basement': false,
+              'rdc': false,
+              'floor': false,
+              'levels': 0,
+            },
+          }),
+          'status': 'pending',
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
   }
 
