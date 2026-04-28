@@ -797,6 +797,22 @@ class DocumentRepository {
             (remote['tags'] as List?)?.map((tag) => '$tag').toList() ??
                 const <String>[],
           ),
+          // CRITICAL aussi : `category_order` (ordre de la photo dans
+          // sa catégorie de l'onglet Photos du relevé) est local-only
+          // — le serveur ne le connaît pas. Sans cette préservation,
+          // le polling silencieux de `_loadDocuments` (toutes les 10 s)
+          // remet TOUTES les photos visite à `category_order = NULL` →
+          // le tri perd son sens.
+          'category_order':
+              existing?['category_order'] ?? remote['category_order'],
+          // CRITICAL aussi : `annotations_json` (overlays par page d'un
+          // PDF annoté côté ergo) est local-only en v1. Sans cette
+          // préservation, à chaque polling remote (10 s) la colonne
+          // était réécrite à NULL → les annotations disparaissaient.
+          // Symptôme reporté : "j'écris sur le PDF, je clique
+          // enregistrer, je quitte, la note se voit pas, je rouvre
+          // elle est là, je requitte/rouvre elle a disparu".
+          'annotations_json': existing?['annotations_json'],
           'created_at':
               remote['createdAt']?.toString() ??
               existing?['created_at'] as String? ??
