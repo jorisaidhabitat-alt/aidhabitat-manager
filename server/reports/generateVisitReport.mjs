@@ -1485,66 +1485,40 @@ export async function generateVisitReport({
   }
 
   // ---------------------------------------------------------------
-  // Pages 9-10 — Plans avant / après. Une fois pris depuis l'app
-  // (preview_data_url poussé par le canvas Flutter à la sauvegarde).
-  // ---------------------------------------------------------------
-  for (const phase of ['avant', 'apres']) {
-    const slotNames = PLAN_SLOTS[phase];
-    const phasePages = notePages
-      .filter((pg) => pg && pg.planPhase === phase)
-      .slice(0, slotNames.length);
-    for (let i = 0; i < phasePages.length; i += 1) {
-      const fieldName = slotNames[i];
-      const page = phasePages[i];
-      // 0. note_page (cache inline embarqué dans la requête HTTP).
-      //    Cas typique : plan dessiné offline, pas encore synchronisé
-      //    vers NocoDB → previewDataUrl absent côté serveur, mais le
-      //    client a envoyé les bytes PNG en multipart. Le wrapper
-      //    fetchImageBytes (cf. buildInlineFirstFetcher dans index.mjs)
-      //    retourne le buffer directement. Si pas d'inline, retourne
-      //    null et on tombe sur les fallbacks suivants.
-      const inlineNotePageBytes = await fetchImageBytes({
-        kind: 'note_page',
-        id: page.id,
-      }).catch(() => null);
-      if (inlineNotePageBytes?.buffer && inlineNotePageBytes.buffer.length > 0) {
-        // On utilise une descriptor `dataurl` factice pour réutiliser
-        // setImageInField — mais on contourne fetchImageBytes en
-        // passant un fetcher qui retourne directement les bytes déjà
-        // résolus. Évite un deuxième appel inutile.
-        await setImageInField(
-          pdfDoc, form, fieldName,
-          { kind: 'inline_resolved' },
-          async () => inlineNotePageBytes,
-          stats,
-        );
-        continue;
-      }
-      // 1. preview_data_url (data URL prête à l'emploi)
-      if (page.previewDataUrl) {
-        await setImageInField(
-          pdfDoc, form, fieldName,
-          { kind: 'dataurl', dataUrl: page.previewDataUrl },
-          fetchImageBytes, stats,
-        );
-        continue;
-      }
-      // 2. preview_url (URL HTTP renvoyée par /api/note-pages → preview)
-      if (page.previewUrl) {
-        await setImageInField(
-          pdfDoc, form, fieldName,
-          { kind: 'url', url: page.previewUrl },
-          fetchImageBytes, stats,
-        );
-        continue;
-      }
-      // 3. Pas de preview → on log et on saute. Le canvas Flutter
-      //    devrait pousser une preview à la sauvegarde — si ce n'est
-      //    pas le cas, c'est un bug du sync, pas du générateur.
-      console.warn(
-        `[generateVisitReport] note Plans ${page.id} sans preview, slot ${fieldName} laissé vide`,
+  // Pages 9-10 — Plans avant / après. Source : UNIQUEMENT les photos
+  // taggées `Visite - Plan avant` / `Visite - Plan après` dans
+  // l'onglet Photos du relevé. Demande user 2026-04-28 : "les pages
+  // 9 et 10 doivent être uniquement câblés par les images qui seront
+  // importées dans Photos, les plans dessinés sur l'app ne doivent
+  // pas apparaître dans le rapport PDF".
+  //
+  // Conséquence : les notePages de l'onglet Plans (canvas dessinés)
+  // ne sont plus utilisées par le générateur. Elles restent stockées
+  // côté SQLite + NocoDB (l'ergo peut continuer à dessiner pour son
+  // usage interne), simplement le rapport PDF ne les lit plus.
+  //
+  // Photos prises pour chaque slot : ordre = celui de
+  // `photosForVisitTag` (date DESC par défaut), max 2 par phase.
+  for (const slot of [
+    { tag: 'Visite - Plan avant', fields: PLAN_SLOTS.avant },
+    { tag: 'Visite - Plan après', fields: PLAN_SLOTS.apres },
+  ]) {
+    const photos = photosForVisitTag(documents, slot.tag);
+    for (let i = 0; i < slot.fields.length; i += 1) {
+      const fieldName = slot.fields[i];
+      const photo = photos[i];
+      if (!photo) continue;
+      await setImageInField(
+        pdfDoc,
+        form,
+        fieldName,
+        { kind: 'document', id: photo.id },
+        fetchImageBytes,
+        stats,
+        // Mode 'contain' (parité avec les photos page 8) — garde
+        // l'image entière sans cropper, fond blanc autour si le ratio
+        // diffère du slot.
       );
-      stats.imagesMissingValue += 1;
     }
   }
 
