@@ -762,16 +762,21 @@ async function applyErgoAddressOverlay({ pdfDoc, fieldsByName, view }) {
   const x = rect.x + 4;
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  page.drawText(sanitizeForPdfFont(address), {
+  // TEST DIAGNOSTIC : on dessine en ROUGE avec un texte distinctif pour
+  // vérifier que l'overlay touche bien le PDF généré. Si tu vois
+  // « >>> OVERLAY ACTIF <<< » en rouge sur le bandeau orange → le
+  // mécanisme marche, on a juste un mauvais positionnement et/ou la
+  // couleur d'origine était invisible. Sinon → l'overlay ne s'exécute
+  // jamais (regarder les logs Vercel).
+  page.drawText('>>> OVERLAY ACTIF <<<', {
     x,
     y,
-    size: fontSize,
+    size: fontSize + 4,
     font,
-    color: rgb(1, 1, 1), // texte blanc — bandeau orange foncé
+    color: rgb(1, 0, 0),
   });
 
-  // Vide le widget natif pour éviter le double affichage de l'adresse
-  // au mauvais endroit (ancien rendu Affinity).
+  // Vide le widget natif pour éviter le double affichage de l'adresse.
   try {
     if (typeof field.setText === 'function') field.setText('');
   } catch (_) {}
