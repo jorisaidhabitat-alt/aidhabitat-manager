@@ -440,8 +440,12 @@ class _NotesWidgetState extends State<NotesWidget> {
   // Text area height (splitter) — équivalent de `textAreaHeight` (default 92px).
   double _textAreaHeight = 92.0;
 
-  // Modal flottant
-  bool _showTextModal = false;
+  // Modal flottant — inséré dans l'Overlay global (root) plutôt que
+  // dans le Stack local pour qu'il puisse couvrir TOUTE la fenêtre, y
+  // compris quand le NotesWidget est dans un SizedBox borné (ex. note
+  // sticky 64 px en haut de Préconisations). Sans Overlay, le pop-up
+  // restait clippé aux dimensions de la note source.
+  OverlayEntry? _textModalEntry;
 
   @override
   void initState() {
@@ -542,6 +546,11 @@ class _NotesWidgetState extends State<NotesWidget> {
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
     _textFocusNode.dispose();
+    // Sécurité : si le pop-up est encore visible quand le NotesWidget
+    // est démonté (ex. navigation arrière), on retire l'OverlayEntry
+    // pour éviter de garder un orphelin sur l'écran.
+    _textModalEntry?.remove();
+    _textModalEntry = null;
     super.dispose();
   }
 
@@ -1293,11 +1302,40 @@ class _NotesWidgetState extends State<NotesWidget> {
       widget.onExpandToTab!();
       return;
     }
-    setState(() => _showTextModal = true);
+    if (!widget.allowTextModal) return;
+    if (_textModalEntry != null) return;
+
+    // On insère dans l'Overlay racine (pas le local) pour que le pop-up
+    // couvre toute la fenêtre indépendamment des contraintes de la note
+    // source (ex. SizedBox(64) du header sticky Préconisations).
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final entry = OverlayEntry(
+      builder: (_) => _FloatingTextModal(
+        initialText: _textController.text,
+        placeholder: widget.placeholder,
+        title: widget.title,
+        startFullscreen: widget.expandModalFullscreen,
+        onChanged: (value) {
+          if (_textController.text == value) return;
+          _textController.value = TextEditingValue(
+            text: value,
+            selection: TextSelection.collapsed(offset: value.length),
+          );
+        },
+        onClose: _closeTextModal,
+      ),
+    );
+    _textModalEntry = entry;
+    overlay.insert(entry);
+    setState(() {}); // pour rafraîchir un éventuel indicateur visuel
   }
 
   void _closeTextModal() {
-    setState(() => _showTextModal = false);
+    final entry = _textModalEntry;
+    if (entry == null) return;
+    entry.remove();
+    _textModalEntry = null;
+    if (mounted) setState(() {});
   }
 
   // ---------------------------------------------------------------------------
@@ -1306,27 +1344,10 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final container = _buildMainBody();
-    return Stack(
-      children: [
-        Positioned.fill(child: container),
-        if (_showTextModal && widget.allowTextModal)
-          _FloatingTextModal(
-            initialText: _textController.text,
-            placeholder: widget.placeholder,
-            title: widget.title,
-            startFullscreen: widget.expandModalFullscreen,
-            onChanged: (value) {
-              if (_textController.text == value) return;
-              _textController.value = TextEditingValue(
-                text: value,
-                selection: TextSelection.collapsed(offset: value.length),
-              );
-            },
-            onClose: _closeTextModal,
-          ),
-      ],
-    );
+    // Le _FloatingTextModal n'est PAS dans ce Stack — il est inséré
+    // dans l'Overlay racine via _openTextModal pour pouvoir couvrir
+    // toute la fenêtre indépendamment des contraintes de ce widget.
+    return _buildMainBody();
   }
 
   Widget _buildMainBody() {
