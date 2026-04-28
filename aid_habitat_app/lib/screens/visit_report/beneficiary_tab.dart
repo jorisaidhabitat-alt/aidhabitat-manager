@@ -324,13 +324,14 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
-      final primary =
-          _occupants.isNotEmpty ? _occupants.first : const Occupant();
-      final secondary =
-          _occupants.length > 1 ? _occupants[1] : const Occupant();
-      await widget.repository.updatePatient(widget.dossier.patient.id, {
+    // Pas de `setState(_saving = true/false)` — voir dossier_screen.dart
+    // pour le rationale (rebuild lourd à chaque keystroke avec save à
+    // 0 ms). `SaveStatusIndicator` est de toute façon vide.
+    final primary =
+        _occupants.isNotEmpty ? _occupants.first : const Occupant();
+    final secondary =
+        _occupants.length > 1 ? _occupants[1] : const Occupant();
+    await widget.repository.updatePatient(widget.dossier.patient.id, {
         'first_name': primary.firstName,
         'last_name': primary.lastName,
         'birth_date': primary.birthDate,

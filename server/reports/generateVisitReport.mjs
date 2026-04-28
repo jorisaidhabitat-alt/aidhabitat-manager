@@ -1464,36 +1464,29 @@ export async function generateVisitReport({
   // premier) pour que la suppression d'une page n'altère pas l'index
   // des pages restantes qu'on n'a pas encore traitées.
   // ---------------------------------------------------------------
+  // ATTENTION — pdf-lib gotcha : `pdfDoc.getPages()` retourne un
+  // tableau MIS EN CACHE qui ne se met PAS à jour après removePage.
+  // `getPageCount()` et `getPage(idx)` reflètent bien la suppression
+  // mais `findPageIndexForField` (qui itère `getPages()`) retournerait
+  // un index obsolète. Pour éviter ce piège, on COLLECTE tous les
+  // index AVANT flatten et AVANT toute removePage, on fait le travail
+  // (cover, embedPage, drawPage) sur les pages encore en place, et on
+  // groupe TOUS les removePage à la fin en ordre descendant.
   const recoCount = recommendations.length;
-  // Pages partielles à blanchir APRÈS flatten (sinon les widgets
-  // aplatis recouvriraient le rectangle blanc). Chaque entrée =
-  // { pageIdx, botRect, topRect }.
-  const pendingBotCovers = [];
+  const emptyPageIndices = []; // pages reco entièrement vides à retirer
+  const pendingBotCovers = []; // { pageIdx, botRect, topRect } — partielles
   stats.recoPagesRemoved = 0;
   for (let pageOffset = 3; pageOffset >= 0; pageOffset -= 1) {
     const topRecoIdx = pageOffset * 2;
     const botRecoIdx = pageOffset * 2 + 1;
     const topUsed = topRecoIdx < recoCount;
     const botUsed = botRecoIdx < recoCount;
-    // Lookup la page réelle qui héberge le widget TOP (et BOT par
-    // construction — les 2 cases sont toujours sur la même page).
     const topField = fieldsByName.get(RECO_TEXT_FIELDS[topRecoIdx]);
     const pageIdx = findPageIndexForField(pdfDoc, topField);
-    if (pageIdx === -1) continue; // template sans cette page : skip
+    if (pageIdx === -1) continue;
     if (!topUsed && !botUsed) {
-      try {
-        pdfDoc.removePage(pageIdx);
-        stats.recoPagesRemoved += 1;
-      } catch (error) {
-        console.warn(
-          `[generateVisitReport] removePage(${pageIdx}) :`,
-          error?.message || error,
-        );
-      }
+      emptyPageIndices.push(pageIdx);
     } else if (topUsed && !botUsed) {
-      // On stocke le bbox de la case BOT (à blanchir) et le bbox de
-      // la case TOP (utilisé comme borne haute pour ne JAMAIS
-      // déborder sur la zone TOP).
       const botRect = getRecoCaseBoundingBox(fieldsByName, botRecoIdx);
       const topRect = getRecoCaseBoundingBox(fieldsByName, topRecoIdx);
       pendingBotCovers.push({ pageIdx, botRect, topRect });
@@ -1501,18 +1494,13 @@ export async function generateVisitReport({
   }
 
   // Capture de l'index de la page "Descriptif des aides
-  // prévisionnelles" AVANT flatten — après flatten, les widgets sont
-  // consommés et `widget.P()` ne renverra plus rien d'utilisable.
-  // L'index reste valide pour la suite (les removePage de la boucle
-  // ci-dessus n'affectent pas les pages d'index supérieur).
-  let descriptifPageIdxAtFlatten = -1;
+  // prévisionnelles" — pareil, AVANT toute removePage et AVANT flatten
+  // (les widgets sont consommés par flatten).
+  let descriptifPageIdx = -1;
   if (pendingBotCovers.length === 1) {
     const descriptifAnchor =
       fieldsByName.get('Caisse de retraite complémentaire');
-    descriptifPageIdxAtFlatten = findPageIndexForField(
-      pdfDoc,
-      descriptifAnchor,
-    );
+    descriptifPageIdx = findPageIndexForField(pdfDoc, descriptifAnchor);
   }
 
   // Override de l'adresse Aid'Habitat sur la couverture (texte
@@ -1587,9 +1575,9 @@ export async function generateVisitReport({
   //   4. removePage de la page descriptif d'origine pour ne pas la
   //      voir apparaître deux fois.
   // ---------------------------------------------------------------
-  if (pendingBotCovers.length === 1 && descriptifPageIdxAtFlatten !== -1) {
+  if (pendingBotCovers.length === 1 && descriptifPageIdx !== -1) {
     try {
-      const descriptifPage = pdfDoc.getPage(descriptifPageIdxAtFlatten);
+      const descriptifPage = pdfDoc.getPage(descriptifPageIdx);
       // Bbox du tableau orange sur la page descriptif (coordonnées
       // PDF, origine bas-gauche). Ajusté visuellement pour englober
       // le titre, le tableau complet et la marge intérieure du cadre.
@@ -1604,13 +1592,14 @@ export async function generateVisitReport({
       const cropHeight = cropTop - cropBottom; // 390 pt
       const { pageIdx: partialPageIdx, topRect } = pendingBotCovers[0];
       const partialPage = pdfDoc.getPage(partialPageIdx);
-      // Position : on colle le HAUT du descriptif juste sous le bord
-      // bas de la case TOP (`topRect.y`). Le cadre orange du
-      // descriptif sert ainsi de fermeture naturelle de la zone
-      // préconisations — pas besoin de redessiner un trait orange ou
-      // noir nous-mêmes (demande utilisateur).
+      // Position : on laisse une petite marge sous la case TOP avant
+      // le haut du descriptif (demande utilisateur : "redescend
+      // légèrement la coupure du cadre"). 22 pt = aération visible
+      // entre le bord bas de la case TOP et le cadre orange du
+      // descriptif, sans déborder hors de l'espace utile.
+      const TOP_GAP = 22;
       const drawY = topRect != null
-        ? Math.max(COVER_BOTTOM_Y, topRect.y - cropHeight)
+        ? Math.max(COVER_BOTTOM_Y, topRect.y - cropHeight - TOP_GAP)
         : 40;
       // Aspect ratio préservé : 555 × 390.
       partialPage.drawPage(embedded, {
@@ -1619,7 +1608,6 @@ export async function generateVisitReport({
         width: 555,
         height: cropHeight,
       });
-      pdfDoc.removePage(descriptifPageIdxAtFlatten);
       stats.descriptifMerged = true;
     } catch (error) {
       console.warn(
@@ -1628,6 +1616,31 @@ export async function generateVisitReport({
       );
     }
   }
+
+  // ---------------------------------------------------------------
+  // SUPPRESSIONS — toutes regroupées en fin de pipeline et faites en
+  // ORDRE DESCENDANT des index ORIGINAUX (les indices capturés AVANT
+  // tout removePage). pdf-lib applique chaque removePage sur l'état
+  // courant du page tree : en passant des indices originaux dans
+  // l'ordre décroissant, on s'assure de viser à chaque fois la même
+  // page logique qu'au moment de la capture.
+  // ---------------------------------------------------------------
+  const allRemovals = [...emptyPageIndices];
+  if (stats.descriptifMerged && descriptifPageIdx !== -1) {
+    allRemovals.push(descriptifPageIdx);
+  }
+  allRemovals.sort((a, b) => b - a);
+  for (const idx of allRemovals) {
+    try {
+      pdfDoc.removePage(idx);
+    } catch (error) {
+      console.warn(
+        `[generateVisitReport] removePage(${idx}) :`,
+        error?.message || error,
+      );
+    }
+  }
+  stats.recoPagesRemoved = emptyPageIndices.length;
 
   const bytes = await pdfDoc.save({
     // On garde les xref tables compactes pour sortir un PDF d'environ

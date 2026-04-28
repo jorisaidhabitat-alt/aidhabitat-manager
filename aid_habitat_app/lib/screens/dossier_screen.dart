@@ -285,31 +285,33 @@ class _DossierScreenState extends State<DossierScreen> {
 
   Future<void> _save() async {
     if (!mounted) return;
-    setState(() => _saving = true);
-    try {
-      final numberPeopleInt =
-          int.tryParse(_numberPeople.replaceAll('+', '')) ?? 1;
-      // Recompute une dernière fois juste avant le save (au cas où les
-      // barèmes viennent d'arriver entre le onChange et le save).
-      _recomputeIncomeCategory();
-      await _repository.updatePatientFields(widget.dossier.patient.id, {
-        'first_name': _firstName,
-        'last_name': _lastName,
-        'number_people': numberPeopleInt,
-        'address': _address,
-        'city': _city,
-        'zip_code': _zipCode,
-        'city_id': _cityId,
-        // RFR du foyer modifiable depuis le bloc Bénéficiaire
-        // (demande utilisateur). Stocké au niveau patient — écrase
-        // la valeur éventuellement calculée à partir des occupants.
-        'fiscal_revenue': _fiscalRevenue,
-        // Catégorie de revenu auto-dérivée des barèmes ANAH NocoDB.
-        'income_category': _incomeCategory,
-      });
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    // Pas de `setState(_saving = true/false)` : le seul consumer de
+    // `_saving` est `SaveStatusIndicator` qui retourne désormais un
+    // SizedBox.shrink() vide (demande utilisateur — aucun feedback
+    // visuel pendant la sauvegarde). Avec save à 0 ms (chaque
+    // keystroke), un setState ici aurait déclenché un rebuild lourd
+    // par caractère tapé, qui mangeait des keystrokes — exactement
+    // le bug "BAL au lieu de BALS" qu'on a passé du temps à éliminer.
+    final numberPeopleInt =
+        int.tryParse(_numberPeople.replaceAll('+', '')) ?? 1;
+    // Recompute une dernière fois juste avant le save (au cas où les
+    // barèmes viennent d'arriver entre le onChange et le save).
+    _recomputeIncomeCategory();
+    await _repository.updatePatientFields(widget.dossier.patient.id, {
+      'first_name': _firstName,
+      'last_name': _lastName,
+      'number_people': numberPeopleInt,
+      'address': _address,
+      'city': _city,
+      'zip_code': _zipCode,
+      'city_id': _cityId,
+      // RFR du foyer modifiable depuis le bloc Bénéficiaire
+      // (demande utilisateur). Stocké au niveau patient — écrase
+      // la valeur éventuellement calculée à partir des occupants.
+      'fiscal_revenue': _fiscalRevenue,
+      // Catégorie de revenu auto-dérivée des barèmes ANAH NocoDB.
+      'income_category': _incomeCategory,
+    });
   }
 
   String _formatDate(String raw) {
