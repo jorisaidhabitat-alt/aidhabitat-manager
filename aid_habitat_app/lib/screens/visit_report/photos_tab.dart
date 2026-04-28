@@ -236,41 +236,47 @@ class _PhotosTabState extends State<PhotosTab>
     await _refresh();
   }
 
+  /// Supprime une photo SANS confirmation supplémentaire — la
+  /// confirmation est posée par `_PhotoFullscreenDialog._confirmAndDelete`
+  /// avant d'appeler ce callback. Si tu rajoutes un autre point
+  /// d'entrée pour la suppression (ex. swipe-to-delete dans le grid),
+  /// ajoute la confirmation côté caller.
   Future<void> _deletePhoto(DocItem doc) async {
-    final confirm = await showSoftDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Supprimer cette photo ?'),
-        content: Text(
-          'La photo "${doc.title}" sera supprimée définitivement '
-          '(localement et sur le serveur).',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB91C1C),
-            ),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
     await _dataService.deleteDocument(doc.id);
     await _refresh();
   }
 
-  // `_reorderInCategory` retiré : le drag-to-reorder a été supprimé
-  // avec le passage au layout horizontal côte-à-côte (la `Row` ne
-  // supporte pas le ReorderableListView). La réorganisation se fait
-  // désormais via `_moveToCategory` (kebab "Déplacer vers") + l'ordre
-  // d'ajout naturel.
+  /// Réordonne deux photos d'une même catégorie : la photo d'index
+  /// [fromIndex] est insérée à la position [toIndex] (les autres se
+  /// décalent). Persisté dans `documents.category_order` via
+  /// [DataService.reorderVisitCategoryDocuments] — sera renvoyé au
+  /// serveur au prochain push de sync.
+  ///
+  /// Demande utilisateur 2026-04-28 : "drag to reorder doit resté
+  /// parfaitement fonctionnel sur toute la card". On déclenche le
+  /// reorder via un `DragTarget` posé sur chaque tile (cf.
+  /// `_buildReorderableGrid`).
+  Future<void> _reorderWithinCategory({
+    required String tag,
+    required int fromIndex,
+    required int toIndex,
+  }) async {
+    if (fromIndex == toIndex) return;
+    final current = _photosForCategory(tag);
+    if (fromIndex < 0 ||
+        fromIndex >= current.length ||
+        toIndex < 0 ||
+        toIndex >= current.length) {
+      return;
+    }
+    final next = List<DocItem>.from(current);
+    final moved = next.removeAt(fromIndex);
+    next.insert(toIndex, moved);
+    await _dataService.reorderVisitCategoryDocuments(
+      orderedDocumentIds: next.map((d) => d.id).toList(),
+    );
+    await _refresh();
+  }
 
   void _showError(String message) {
     if (!mounted) return;
@@ -553,13 +559,26 @@ class _PhotosTabState extends State<PhotosTab>
   /// "ne change jamais la taille des images, met les toujours dans
   /// un format petit comme s'il y'en avait 3".
   ///
-  /// Drag-and-drop : chaque tile est wrappée dans `LongPressDraggable`
-  /// (maintien long → drag) avec un payload `_DragPhotoPayload`. Les
-  /// `DragTarget` correspondants sont posés au niveau du container
-  /// catégorie (`_buildCategorySection`) → drop sur une autre
-  /// catégorie déclenche `_moveToCategory(doc, newTag)`. Demande
-  /// user : "en maintenant une des photos on peut la déplacer dans
-  /// sa partie ou dans une autre partie de photos".
+  /// Drag-and-drop unifié, sans chrome visible :
+  ///
+  ///   - Chaque image est `LongPressDraggable<_DragPhotoPayload>` →
+  ///     drag déclenché par n'importe quel point de la card (pas de
+  ///     poignée dédiée).
+  ///   - Chaque image est aussi `DragTarget<_DragPhotoPayload>` → drop
+  ///     sur une autre image de la MÊME catégorie réordonne (insertion
+  ///     à l'index cible, les autres se décalent), drop sur une image
+  ///     d'une AUTRE catégorie déclenche `_moveToCategory` (re-tag).
+  ///   - Le `DragTarget` au niveau du container catégorie (cf.
+  ///     `_buildCategorySection`) capture les drops dans l'espace vide
+  ///     (entête / boutons / zone sans photo) → re-tag uniquement.
+  ///
+  /// Demande utilisateur 2026-04-28 :
+  ///   1. "supprime les trois petits points et le numéro de chaque
+  ///      card, laisse uniquement l'image sans container visible"
+  ///   2. "chaque image doit être prenable pour la déplacer dans sa
+  ///      catégorie ou dans une autre catégorie"
+  ///   3. "si je souhaite la supprimer, je peux cliquer sur l'image,
+  ///      la preview apparait avec en haut à droite un poubelle…"
   Widget _buildReorderableGrid({
     required String tag,
     required List<DocItem> photos,
@@ -577,63 +596,112 @@ class _PhotosTabState extends State<PhotosTab>
             for (var i = 0; i < photos.length; i++)
               SizedBox(
                 width: tileWidth,
-                child: LongPressDraggable<_DragPhotoPayload>(
-                  data: _DragPhotoPayload(
-                    doc: photos[i],
-                    fromTag: tag,
-                  ),
-                  delay: const Duration(milliseconds: 350),
-                  // Feedback visuel pendant le drag : la même tile en
-                  // semi-transparent flotte sous le doigt. La largeur
-                  // est forcée pour matcher la cible (sinon Material
-                  // dimensionne en intrinsic et la tile devient
-                  // énorme).
-                  feedback: Material(
-                    color: Colors.transparent,
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Opacity(
-                      opacity: 0.85,
-                      child: SizedBox(
-                        width: tileWidth,
-                        child: _PhotoTile(
-                          key: ValueKey('photo_drag_${photos[i].id}'),
-                          doc: photos[i],
-                          slotNumber: i + 1,
-                          inSlot: i < maxSlots,
-                          onMoveTo: (_) {},
-                          onDelete: () {},
+                // DragTarget INTERNE : reçoit le drop sur cette tile.
+                // - même catégorie → reorder à l'index `i`
+                // - autre catégorie → re-tag via `_moveToCategory`
+                child: DragTarget<_DragPhotoPayload>(
+                  onWillAcceptWithDetails: (details) {
+                    // Refus du drop sur soi-même (même doc).
+                    return details.data.doc.id != photos[i].id;
+                  },
+                  onAcceptWithDetails: (details) async {
+                    final payload = details.data;
+                    if (payload.fromTag == tag) {
+                      // Reorder intra-catégorie. Index source via
+                      // lookup ID dans `photos` (l'index payload n'est
+                      // pas transporté pour rester robuste aux
+                      // refresh entre temps).
+                      final fromIdx = photos.indexWhere(
+                        (d) => d.id == payload.doc.id,
+                      );
+                      if (fromIdx >= 0) {
+                        await _reorderWithinCategory(
+                          tag: tag,
+                          fromIndex: fromIdx,
+                          toIndex: i,
+                        );
+                      }
+                    } else {
+                      // Cross-catégorie → re-tag (le order final dans
+                      // la nouvelle catégorie sera "à la fin", on
+                      // peut affiner plus tard si besoin).
+                      await _moveToCategory(
+                        doc: payload.doc,
+                        newTag: tag,
+                      );
+                    }
+                  },
+                  builder: (context, candidates, rejected) {
+                    final hovering = candidates.isNotEmpty;
+                    return LongPressDraggable<_DragPhotoPayload>(
+                      data: _DragPhotoPayload(
+                        doc: photos[i],
+                        fromTag: tag,
+                      ),
+                      delay: const Duration(milliseconds: 250),
+                      // Feedback visuel pendant le drag : un clone
+                      // semi-transparent de l'image flotte sous le
+                      // doigt avec une élévation prononcée.
+                      feedback: Material(
+                        color: Colors.transparent,
+                        elevation: 12,
+                        borderRadius: BorderRadius.circular(8),
+                        clipBehavior: Clip.antiAlias,
+                        child: Opacity(
+                          opacity: 0.85,
+                          child: SizedBox(
+                            width: tileWidth,
+                            child: _PhotoTile(
+                              key: ValueKey('photo_drag_${photos[i].id}'),
+                              doc: photos[i],
+                              onTap: () {},
+                              highlight: false,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  // Ghost à la place d'origine pendant le drag —
-                  // signale visuellement à l'ergo où la photo "était".
-                  childWhenDragging: Opacity(
-                    opacity: 0.3,
-                    child: _PhotoTile(
-                      key: ValueKey('photo_ghost_${photos[i].id}'),
-                      doc: photos[i],
-                      slotNumber: i + 1,
-                      inSlot: i < maxSlots,
-                      onMoveTo: (_) {},
-                      onDelete: () {},
-                    ),
-                  ),
-                  child: _PhotoTile(
-                    key: ValueKey('photo_${photos[i].id}'),
-                    doc: photos[i],
-                    slotNumber: i + 1,
-                    inSlot: i < maxSlots,
-                    onMoveTo: (newTag) =>
-                        _moveToCategory(doc: photos[i], newTag: newTag),
-                    onDelete: () => _deletePhoto(photos[i]),
-                  ),
+                      // Ghost à la place d'origine pendant le drag
+                      // (semi-transparence sans déplacement, pour
+                      // garder le slot "réservé" visuellement).
+                      childWhenDragging: Opacity(
+                        opacity: 0.3,
+                        child: _PhotoTile(
+                          key: ValueKey('photo_ghost_${photos[i].id}'),
+                          doc: photos[i],
+                          onTap: () {},
+                          highlight: false,
+                        ),
+                      ),
+                      child: _PhotoTile(
+                        key: ValueKey('photo_${photos[i].id}'),
+                        doc: photos[i],
+                        onTap: () => _openFullscreenWithDelete(photos[i]),
+                        highlight: hovering,
+                      ),
+                    );
+                  },
                 ),
               ),
           ],
         );
       },
+    );
+  }
+
+  /// Ouvre la preview plein écran pour une photo en passant le
+  /// callback de suppression — le bouton poubelle dans la dialog
+  /// déclenche la confirmation puis ferme la dialog en cas d'accord.
+  Future<void> _openFullscreenWithDelete(DocItem doc) async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      builder: (ctx) => _PhotoFullscreenDialog(
+        doc: doc,
+        onDelete: () async {
+          Navigator.of(ctx).pop();
+          await _deletePhoto(doc);
+        },
+      ),
     );
   }
 
@@ -685,195 +753,57 @@ class _DragPhotoPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Tile — une photo d'une catégorie visite, draggable + actions
+// Tile — une photo d'une catégorie visite. Image SEULE, sans badge
+// numéro ni menu kebab (demande user 2026-04-28). Tap → ouvre la
+// preview plein écran (où vit le bouton poubelle). Long-press →
+// déclenche le drag (géré par le `LongPressDraggable` parent).
 // ---------------------------------------------------------------------------
 
 class _PhotoTile extends StatelessWidget {
   final DocItem doc;
-  final int slotNumber;
-  final bool inSlot;
-  final ValueChanged<String> onMoveTo;
-  final VoidCallback onDelete;
+  final VoidCallback onTap;
+
+  /// Bordure violette quand un drag survole cette tile (DragTarget
+  /// hover) — feedback visuel pour indiquer le slot d'insertion.
+  final bool highlight;
 
   const _PhotoTile({
     super.key,
     required this.doc,
-    required this.slotNumber,
-    required this.inSlot,
-    required this.onMoveTo,
-    required this.onDelete,
+    required this.onTap,
+    required this.highlight,
   });
-
-  /// Ouvre une dialog plein écran centrée sur la photo. Permet à
-  /// l'ergo de vérifier la qualité / le cadrage avant validation,
-  /// sans devoir naviguer vers l'espace Documents.
-  Future<void> _openFullscreen(BuildContext context) async {
-    await showDialog<void>(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.85),
-      builder: (ctx) => _PhotoFullscreenDialog(doc: doc),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
-    // Layout vertical "card" — chaque tile est posée à côté des
-    // autres dans la `Row` parent (`_buildReorderableGrid`) et partage
-    // la largeur du container.
-    //
-    //   - Top row : numéro de slot (gauche) + menu kebab (droite)
-    //   - Body    : preview aspect 4:3, BoxFit.cover, cliquable → fullscreen
-    //
-    // Pas d'indicateur de drag visuel — la card est draggable via
-    // long-press partout (LongPressDraggable wrappe l'ensemble côté
-    // parent), pas besoin d'icône grip.
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: inSlot
-                ? const Color(0xFFE2E8F0)
-                : const Color(0xFFFEE2E2),
-          ),
-        ),
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    // Aucun container visible : pas de Card, pas de border, pas de
+    // background. Juste l'image clipée en coins arrondis légers (pour
+    // les bords nets sur fond blanc) + un overlay border violet
+    // optionnel quand un drag passe au-dessus.
+    return AspectRatio(
+      aspectRatio: 4 / 3,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            // Top row sur 3 zones positionnées indépendamment via
-            // Stack :
-            //   - gauche : pastille numéro (slot ou surplus)
-            //   - centre : drag handle (gripVertical) — VRAIMENT
-            //              centré horizontalement, indépendant des
-            //              autres éléments
-            //   - droite : menu kebab (3 points verticaux)
-            //
-            // Demande utilisateur : "les petits points pour déplacer
-            // doivent être centrés en haut, cependant les trois
-            // petits points en haut à droite". On utilise Stack +
-            // Align pour découpler les positions.
-            // Top row sur 2 zones :
-            //   - gauche : pastille numéro de slot (vert si slot du
-            //     PDF utilisé, rouge `+` pour les surplus)
-            //   - droite : menu kebab (3 points verticaux) — Déplacer
-            //     vers / Supprimer
-            // Aucun indicateur central : le drag se fait par long-press
-            // n'importe où sur la card via le `LongPressDraggable`
-            // parent.
-            SizedBox(
-              height: 28,
-              child: Stack(
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: inSlot
-                            ? const Color(0xFFDCFCE7)
-                            : const Color(0xFFFEE2E2),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        inSlot ? '$slotNumber' : '+',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: inSlot
-                              ? const Color(0xFF15803D)
-                              : const Color(0xFFB91C1C),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: PopupMenuButton<String>(
-                      tooltip: 'Actions',
-                      icon: const Icon(
-                        LucideIcons.moreVertical,
-                        size: 18,
-                        color: Color(0xFF94A3B8),
-                      ),
-                      padding: EdgeInsets.zero,
-                      splashRadius: 18,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      onSelected: (value) {
-                        if (value == 'delete') {
-                          onDelete();
-                        } else if (value.startsWith('move:')) {
-                          onMoveTo(value.substring('move:'.length));
-                        }
-                      },
-                      itemBuilder: (ctx) {
-                        final items = <PopupMenuEntry<String>>[];
-                        final currentTag = doc.tags.firstWhere(
-                          kVisitPhotoTags.contains,
-                          orElse: () => '',
-                        );
-                        for (final tag in kVisitPhotoTags) {
-                          if (tag == currentTag) continue;
-                          items.add(
-                            PopupMenuItem<String>(
-                              value: 'move:$tag',
-                              child: Row(
-                                children: [
-                                  const Icon(LucideIcons.arrowRight,
-                                      size: 14,
-                                      color: Color(0xFF7C6DAA)),
-                                  const SizedBox(width: 8),
-                                  Text(visitPhotoTagShortLabel(tag)),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-                        // « Retirer la catégorie » retiré (demande user
-                        // 2026-04-28 — sans utilité dans le flux ergo).
-                        items.add(const PopupMenuDivider());
-                        items.add(
-                          const PopupMenuItem<String>(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(LucideIcons.trash2,
-                                    size: 14,
-                                    color: Color(0xFFB91C1C)),
-                                SizedBox(width: 8),
-                                Text('Supprimer'),
-                              ],
-                            ),
-                          ),
-                        );
-                        return items;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Preview pleine largeur — aspect 4:3 (ratio iPad photo
-            // par défaut). Tap → ouvre la dialog plein écran avec
-            // pinch-zoom.
-            InkWell(
-              onTap: () => _openFullscreen(context),
+            ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: AspectRatio(
-                  aspectRatio: 4 / 3,
-                  child: _PhotoThumbnail(doc: doc),
+              child: _PhotoThumbnail(doc: doc),
+            ),
+            if (highlight)
+              IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFF7C6DAA),
+                      width: 2,
+                    ),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -1048,7 +978,16 @@ class _PhotoThumbnailState extends State<_PhotoThumbnail> {
 
 class _PhotoFullscreenDialog extends StatefulWidget {
   final DocItem doc;
-  const _PhotoFullscreenDialog({required this.doc});
+
+  /// Si fourni, un bouton poubelle apparaît en haut à droite (à côté
+  /// du `X` de fermeture). Le callback DOIT gérer lui-même la
+  /// fermeture de la dialog (typiquement après confirmation).
+  final Future<void> Function()? onDelete;
+
+  const _PhotoFullscreenDialog({
+    required this.doc,
+    this.onDelete,
+  });
 
   @override
   State<_PhotoFullscreenDialog> createState() =>
@@ -1073,6 +1012,41 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
     } else {
       setState(() => _failed = true);
     }
+  }
+
+  /// Affiche la confirmation puis délègue à `widget.onDelete` qui se
+  /// charge de fermer la dialog après validation. La confirmation
+  /// utilise `showSoftDialog` (transitions cohérentes avec le reste
+  /// de l'app — cf. `components/soft_transitions.dart`).
+  Future<void> _confirmAndDelete(BuildContext context) async {
+    final confirm = await showSoftDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Supprimer cette photo ?'),
+        content: Text(
+          'La photo "${widget.doc.title}" sera supprimée définitivement '
+          '(localement et sur le serveur).',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB91C1C),
+            ),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    final cb = widget.onDelete;
+    if (cb != null) await cb();
   }
 
   @override
@@ -1108,19 +1082,44 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
                           color: Colors.white,
                         ),
             ),
-            // Bouton fermer en haut à droite — toujours accessible
-            // même si l'utilisateur a zoomé/pan dans la photo.
+            // Boutons d'action en haut à droite. Toujours accessibles
+            // même après un zoom/pan via `InteractiveViewer`.
+            //   - Poubelle : ouvre la confirmation avant suppression
+            //     (uniquement si `onDelete` fourni — pas affiché dans
+            //     un contexte read-only).
+            //   - Croix : ferme la preview (équivalent au tap sur le
+            //     fond noir du `GestureDetector` parent).
             Positioned(
               top: 8,
               right: 8,
-              child: Material(
-                color: Colors.black.withValues(alpha: 0.4),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  icon: const Icon(LucideIcons.x, color: Colors.white),
-                  tooltip: 'Fermer',
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.onDelete != null) ...[
+                    Material(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: const Icon(
+                          LucideIcons.trash2,
+                          color: Color(0xFFFCA5A5),
+                        ),
+                        tooltip: 'Supprimer la photo',
+                        onPressed: () => _confirmAndDelete(context),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Material(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(LucideIcons.x, color: Colors.white),
+                      tooltip: 'Fermer',
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ],
               ),
             ),
             // Titre de la photo en bas
