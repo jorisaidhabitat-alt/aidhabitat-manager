@@ -4,30 +4,35 @@
 /// définissait sa propre valeur (100ms / 150ms / 400ms / 2000ms), ce
 /// qui créait des races offline quand 2 onglets éditaient des champs
 /// chevauchants (ex: Nom dans Bénéficiaire **et** Nom dans
-/// dossier_screen). Le « last save wins » côté NocoDB pouvait
-/// régresser silencieusement la valeur la plus récente.
+/// dossier_screen).
 ///
-/// Symptôme reporté ayant motivé ce ménage : « j'ai changé le nom
-/// pour BALS, ça s'est sauvé sur BAL puis BAI puis revenait à AB »
-/// — une combinaison de debounce trop court (150ms) + rebuild lourd
-/// + race avec un refresh remote.
+/// **Règle finale** (demande utilisateur — « le changement doit être
+/// instantané, pas d'attente ») :
+///   - Texte saisi (Nom, Prénom, Adresse, observations…) → **0 ms**.
+///     Chaque keystroke écrit immédiatement en SQLite et enqueue la
+///     sync_op. Le SyncEngine debounce déjà à 200ms en interne avant
+///     de pousser à NocoDB, donc on ne spamme pas le réseau pour
+///     autant. Le ConflictAlgorithm.replace dans
+///     `dossier_repository.updatePatient` collapse les sync_ops
+///     successives en une seule.
+///   - Toggle / pills / dropdowns → 2000 ms. Les sélections sont
+///     délibérées et espacées, on peut amortir les saves pour limiter
+///     les allers-retours réseau pendant la saisie d'une checklist.
 ///
-/// **Règle** :
-///   - Texte saisi (Nom, Prénom, Adresse, observations…) → 400 ms.
-///     Laisse les pauses naturelles entre lettres passer.
-///   - Toggle / pills / dropdowns (équipements SDB, autonomie,
-///     chauffage…) → 2000 ms. Les sélections sont délibérées et
-///     espacées, on peut amortir les saves.
-///
-/// Si tu trouves un nouveau cas qui n'entre pas dans ces 2 catégories,
-/// crée une constante explicite plutôt qu'une valeur littérale dans
-/// le code.
+/// Évolutions possibles :
+///   - Si SQLite devient lent sur iPad anciens (15+), bumper à 50 ms
+///     pour éviter les frame drops pendant une frappe rapide.
+///   - Mais 0 ms reste l'objectif — c'est le seul moyen d'avoir des
+///     vues qui sont synchrones avec ce que le user vient de taper.
 library;
 
 import 'dart:async';
 
 /// Debounce pour les champs où l'utilisateur tape du texte au clavier.
-const Duration kSaveDebounceText = Duration(milliseconds: 400);
+/// **Zero** par demande utilisateur : chaque keystroke écrit en SQLite
+/// instantanément. Le ConflictAlgorithm.replace + le debounce du
+/// SyncEngine (200ms) absorbent l'overhead réseau.
+const Duration kSaveDebounceText = Duration.zero;
 
 /// Debounce pour les onglets qui n'ont que des toggles / dropdowns.
 const Duration kSaveDebouncePills = Duration(seconds: 2);

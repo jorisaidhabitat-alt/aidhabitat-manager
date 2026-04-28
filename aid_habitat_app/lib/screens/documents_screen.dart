@@ -133,6 +133,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       _documents = docs;
       if (docs.isNotEmpty) _isLoading = false;
     });
+    // Préchauffe le cache binaire (images + PDFs) en parallèle dès
+    // l'affichage de la grille — comme ça les vignettes sont prêtes à
+    // s'afficher instantanément au moment où chaque card monte.
+    _warmDocumentBinaryCache(docs);
 
     final refreshed = await _dataService.refreshDocumentsFromRemote(_patientId);
     if (!mounted) return;
@@ -143,11 +147,57 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         _documents = remoteDocs;
         _isLoading = false;
       });
+      _warmDocumentBinaryCache(remoteDocs);
     } else {
       // Remote KO (offline ou erreur) → on relâche le spinner pour
       // que l'user voie la grille (même vide). Le polling timer (10 s)
       // retentera plus tard.
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// Pré-télécharge les bytes de TOUS les documents listés (images
+  /// + PDFs) via le cache SQLite `web_media_cache` (web) ou le cache
+  /// filesystem (native). Sans ça, chaque vignette ferait son propre
+  /// fetch en parallèle au moment du rendu de la card → flash de
+  /// placeholder visible avant que l'image / le 1er rendu PDF arrive.
+  ///
+  /// Fire-and-forget : on n'attend pas. Les fetches échouent
+  /// silencieusement individuellement. Idempotent : cache hit = no-op
+  /// sub-millisecond.
+  void _warmDocumentBinaryCache(List<DocItem> docs) {
+    if (docs.isEmpty) return;
+    final urls = <String>{};
+    for (final doc in docs) {
+      // On ne précharge que les docs dont l'image / PDF est sur NocoDB
+      // (URL publique signed) — les uploads en cours (dataUrl en local)
+      // n'ont pas besoin de fetch.
+      final url = doc.url?.trim() ?? '';
+      if (url.isEmpty) continue;
+      // Limite aux types qu'on affiche en preview (image / pdf).
+      if (doc.type != 'image' && doc.type != 'pdf') continue;
+      urls.add(url);
+    }
+    if (urls.isEmpty) return;
+    if (kIsWeb) {
+      // Sur web : `webCachedFetch` lit depuis SQLite, fetch + persiste si
+      // miss. On lance les requêtes en parallèle, sans bloquer.
+      for (final url in urls) {
+        // ignore: discarded_futures
+        MediaCacheService.instance
+            .webCachedFetch(
+              url,
+              headers: {'X-App-Session': AppConfig.appSessionToken},
+            )
+            .then((_) {}, onError: (_) {});
+      }
+    } else {
+      // Native : `prefetchAll` utilise le filesystem cache.
+      // ignore: discarded_futures
+      MediaCacheService.instance.prefetchAll(
+        urls,
+        headers: MediaCacheService.authHeaders(),
+      );
     }
   }
 
@@ -1912,12 +1962,67 @@ class _DocThumbnailState extends State<_DocThumbnail> {
         );
       }
     }
-    if (doc.type == 'pdf' &&
-        !kIsWeb &&
-        doc.localPath != null &&
-        doc.localPath!.isNotEmpty &&
-        File(doc.localPath!).existsSync()) {
-      return _PdfThumbnail(path: doc.localPath!);
+    if (doc.type == 'pdf') {
+      // Web : on a soit les bytes en mémoire (upload web → dataUrl
+      // décodé par `_primeBytes`), soit on les récupère depuis la
+      // cache MediaCacheService (`webCachedFetch`) en passant l'URL
+      // signée et le token X-App-Session. Dans les deux cas on rend
+      // la 1re page en PNG via pdfx (qui pédale sur PDF.js côté web).
+      //
+      // Native : on garde le chemin filesystem qui marche déjà via
+      // `PdfDocument.openFile`.
+      //
+      // Plus de fallback "icône PDF par défaut" sur la card : tant
+      // qu'on n'a pas confirmé l'échec du rendu, on affiche le
+      // placeholder neutre (gris-blanc + icône) — dès que les bytes
+      // arrivent on swap. Voir `_PdfThumbnailFromBytes`.
+      if (!kIsWeb &&
+          doc.localPath != null &&
+          doc.localPath!.isNotEmpty &&
+          File(doc.localPath!).existsSync()) {
+        return _PdfThumbnail(path: doc.localPath!);
+      }
+      // Bytes déjà en mémoire (upload web pas encore synced) : on
+      // les passe directement, pas de round-trip réseau.
+      if (kIsWeb && _bytes != null) {
+        final pdfBytes = _bytes!;
+        return _PdfThumbnailFromBytes(
+          docId: doc.id,
+          bytesProvider: () async => pdfBytes,
+          fallback: _iconPlaceholder('pdf'),
+        );
+      }
+      // Sinon : fetch via cache (webCachedFetch persiste en SQLite,
+      // hit instantané au prochain visit).
+      final url = doc.url?.trim() ?? '';
+      if (url.isNotEmpty) {
+        return _PdfThumbnailFromBytes(
+          docId: doc.id,
+          bytesProvider: () async {
+            if (kIsWeb) {
+              return await MediaCacheService.instance.webCachedFetch(
+                url,
+                headers: {'X-App-Session': AppConfig.appSessionToken},
+              );
+            }
+            // Native : MediaCacheService.fetch renvoie un File ; on
+            // lit ses bytes pour les passer à pdfx.openData. Permet
+            // l'aperçu sur les docs téléchargés mais pas encore
+            // ouverts (donc pas encore décodés en localPath).
+            final file = await MediaCacheService.instance.fetch(
+              url,
+              headers: MediaCacheService.authHeaders(),
+            );
+            if (file == null) return null;
+            try {
+              return await file.readAsBytes();
+            } catch (_) {
+              return null;
+            }
+          },
+          fallback: _iconPlaceholder('pdf'),
+        );
+      }
     }
     return _iconPlaceholder(doc.type);
   }
@@ -2072,6 +2177,174 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PDF thumbnail à partir de bytes en mémoire (web ou natif). Pareil que
+// `_PdfThumbnail` mais accepte un fournisseur asynchrone de bytes plutôt
+// qu'un chemin filesystem — typiquement utilisé sur web où on récupère le
+// PDF via `webCachedFetch` (cache SQLite persistant) ou via le data URL
+// déjà décodé en mémoire (upload en cours).
+//
+// Le rendu PNG de la page 1 est mémoïsé par `docId` dans une map statique
+// → après le 1er rendu pour un doc, toutes les cards qui référencent ce
+// doc s'affichent en O(1). Le cache est purgé seulement à reload de
+// l'app (durée de vie process).
+// ---------------------------------------------------------------------------
+
+class _PdfThumbnailFromBytes extends StatefulWidget {
+  /// Identifiant stable du document — clé du cache mémoire des PNG
+  /// rendus. Doit être unique par PDF.
+  final String docId;
+
+  /// Fournisseur asynchrone des bytes PDF. Appelé uniquement si le
+  /// PNG n'est pas déjà en cache pour [docId].
+  final Future<Uint8List?> Function() bytesProvider;
+
+  /// Widget affiché quand on n'a pas pu produire de preview (bytes
+  /// manquants OU pdfx en échec). Habituellement l'icône PDF rouge.
+  final Widget fallback;
+
+  const _PdfThumbnailFromBytes({
+    required this.docId,
+    required this.bytesProvider,
+    required this.fallback,
+  });
+
+  @override
+  State<_PdfThumbnailFromBytes> createState() =>
+      _PdfThumbnailFromBytesState();
+}
+
+class _PdfThumbnailFromBytesState extends State<_PdfThumbnailFromBytes> {
+  /// Cache mémoire partagé entre toutes les instances : 1 PNG rendu
+  /// par docId. Évite de re-décoder le PDF à chaque rebuild de la
+  /// grille (scroll, sélection multiple, refresh polling, …).
+  static final Map<String, Uint8List> _previewCache = {};
+
+  /// Inflight Future par docId — si plusieurs cards demandent le
+  /// preview du même doc en même temps (scroll rapide, polling),
+  /// elles partagent une seule décod/render au lieu de décoder en
+  /// parallèle.
+  static final Map<String, Future<Uint8List?>> _inflight = {};
+
+  Uint8List? _png;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PdfThumbnailFromBytes old) {
+    super.didUpdateWidget(old);
+    if (old.docId != widget.docId) {
+      _png = null;
+      _failed = false;
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    // 1. Cache mémoire — instantané.
+    final cached = _previewCache[widget.docId];
+    if (cached != null) {
+      if (!mounted) return;
+      setState(() => _png = cached);
+      return;
+    }
+
+    // 2. Inflight ? on attend l'autre instance.
+    final pending = _inflight[widget.docId];
+    if (pending != null) {
+      try {
+        final png = await pending;
+        if (!mounted) return;
+        if (png != null) {
+          setState(() => _png = png);
+        } else {
+          setState(() => _failed = true);
+        }
+      } catch (_) {
+        if (mounted) setState(() => _failed = true);
+      }
+      return;
+    }
+
+    // 3. On lance le rendu — un seul Future en vol pour ce docId.
+    final renderFuture = _renderPreview();
+    _inflight[widget.docId] = renderFuture;
+    try {
+      final png = await renderFuture;
+      if (!mounted) return;
+      if (png != null) {
+        _previewCache[widget.docId] = png;
+        setState(() => _png = png);
+      } else {
+        setState(() => _failed = true);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    } finally {
+      _inflight.remove(widget.docId);
+    }
+  }
+
+  /// Récupère les bytes du PDF (via `bytesProvider`), ouvre le doc
+  /// avec pdfx, rend la page 1 en PNG. Renvoie null si étape échoue.
+  Future<Uint8List?> _renderPreview() async {
+    final bytes = await widget.bytesProvider();
+    if (bytes == null || bytes.isEmpty) return null;
+    PdfDocument? doc;
+    PdfPage? page;
+    try {
+      doc = await PdfDocument.openData(bytes);
+      page = await doc.getPage(1);
+      final rendered = await page.render(
+        // Facteur de scale 1.5x → preview lisible mais pas obèse
+        // (la card fait ~200×260 px sur grille typique iPad).
+        width: page.width * 1.5,
+        height: page.height * 1.5,
+        format: PdfPageImageFormat.png,
+        backgroundColor: '#FFFFFF',
+      );
+      return rendered?.bytes;
+    } catch (_) {
+      return null;
+    } finally {
+      try {
+        await page?.close();
+      } catch (_) {}
+      try {
+        await doc?.close();
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) return widget.fallback;
+    if (_png == null) {
+      // Loading state : on affiche le fallback (icône PDF) plutôt
+      // qu'un spinner agressif. Au scroll, l'apparence reste stable
+      // jusqu'à ce que la preview arrive (généralement < 200 ms).
+      return widget.fallback;
+    }
+    return Container(
+      color: Colors.white,
+      alignment: Alignment.topCenter,
+      child: Image.memory(
+        _png!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => widget.fallback,
       ),
     );
   }
