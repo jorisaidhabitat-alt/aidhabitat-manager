@@ -2820,6 +2820,12 @@ class _PreviewScreenState extends State<_PreviewScreen> {
   // pages annotées en une fois (mode PDF multi-pages).
   final GlobalKey<_PdfAnnotatorWrapperState> _pdfWrapperKey =
       GlobalKey<_PdfAnnotatorWrapperState>();
+  // Clé du wrapper PDF web — symétrique de `_pdfWrapperKey` pour le
+  // path PWA. Permet à `_handleSave` d'appeler `saveAll(documentId)`
+  // qui persiste l'aplat de chaque page modifiée dans
+  // `documents.annotations_json` (sans toucher au PDF original).
+  final GlobalKey<_WebPdfAnnotatorWrapperState> _webPdfWrapperKey =
+      GlobalKey<_WebPdfAnnotatorWrapperState>();
 
   // Dernier titre effectivement sauvegardé (initialisé à celui passé en prop).
   // Nécessaire car `widget.doc` est immutable : après `onSave()`, le parent
@@ -2835,9 +2841,14 @@ class _PreviewScreenState extends State<_PreviewScreen> {
   bool get _hasUnsavedAnnotation {
     final pdfWrapper = _pdfWrapperKey.currentState;
     if (pdfWrapper != null) {
-      // Mode PDF : le wrapper agrège le dirty-state de toutes les pages
-      // (mémoire + live annotator de la page courante).
+      // Mode PDF natif : le wrapper agrège le dirty-state de toutes
+      // les pages (mémoire + live annotator de la page courante).
       return pdfWrapper.hasUnsavedChanges;
+    }
+    final webPdf = _webPdfWrapperKey.currentState;
+    if (webPdf != null) {
+      // Mode PDF web : pareil que natif, agrégat per-page côté PWA.
+      return webPdf.hasUnsavedChanges;
     }
     return _annotatorKey.currentState?.hasUnsavedChanges ?? false;
   }
@@ -2886,17 +2897,25 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       }
       if (_hasUnsavedAnnotation) {
         final pdfWrapper = _pdfWrapperKey.currentState;
+        final webPdfWrapper = _webPdfWrapperKey.currentState;
         if (pdfWrapper != null) {
-          // Flush toutes les pages PDF modifiées en une seule passe.
+          // Mode PDF NATIF : flush toutes les pages modifiées sur
+          // disque (JSON par page), puis re-upload de la page
+          // courante en PNG aplati pour que NocoDB en ait une version
+          // annotée visible.
           await pdfWrapper.saveAll();
-          // Re-upload PDF annoté (aplati en PNG multi-pages mergées) —
-          // voir note en bas : pour l'instant on aplatit uniquement la
-          // page courante afin que le serveur en ait au moins une
-          // version annotée visible.
           await _reuploadFlattenedCurrentPage();
+        } else if (webPdfWrapper != null) {
+          // Mode PDF WEB : aplatit chaque page modifiée et la stocke
+          // dans `documents.annotations_json` (Map<page, dataUrl>) —
+          // sans toucher au PDF original. Préserve la navigation
+          // multi-pages après save (demande utilisateur 2026-04-28 :
+          // "il doit toujours être possible de naviguer sur les pages
+          // du pdf même s'il y a un écrit dessus").
+          await webPdfWrapper.saveAll(documentId: widget.doc.id);
         } else {
+          // Image simple (jpg/png) : aplat unique sans notion de page.
           await _annotatorKey.currentState?.saveAnnotation();
-          // Re-upload de l'image aplatie vers NocoDB.
           await _reuploadFlattenedImage();
         }
       }
@@ -3337,6 +3356,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       return _WebPdfAnnotatorWrapper(
         doc: doc,
         annotatorKey: _annotatorKey,
+        wrapperKey: _webPdfWrapperKey,
         onChanged: () => setState(() {}),
       );
     }
@@ -3533,18 +3553,26 @@ class _TopbarButton extends StatelessWidget {
 /// `DocumentRepository.enqueueAnnotatedReuploadBytes` — déclenché depuis
 /// le bouton Save du `_PreviewScreen` via `exportFlatPng()`.
 ///
-/// Limitation : le flatten est par-page (idem natif). Annoter plusieurs
-/// pages nécessite de sauvegarder une à une.
+/// Sauvegarde par page : à chaque appel de `saveAll(documentId:)`, on
+/// aplatit chaque page modifiée (PDF page + traits) en PNG et on
+/// l'écrit dans `documents.annotations_json` (Map<page, dataUrl>) via
+/// `DocumentRepository.enqueueAnnotatedPageBytes`. Le PDF original
+/// reste intact — la preview affiche l'overlay PNG sur les pages qui
+/// ont une entrée dans la map, sinon rendu PDF brut. Conséquence :
+/// la navigation multi-pages reste fonctionnelle après save, et les
+/// annotations restent localisées à la page où elles ont été dessinées.
 class _WebPdfAnnotatorWrapper extends StatefulWidget {
   const _WebPdfAnnotatorWrapper({
     required this.doc,
     required this.annotatorKey,
     required this.onChanged,
-  });
+    this.wrapperKey,
+  }) : super(key: wrapperKey);
 
   final DocItem doc;
   final GlobalKey<_ImageAnnotatorState> annotatorKey;
   final VoidCallback onChanged;
+  final GlobalKey<_WebPdfAnnotatorWrapperState>? wrapperKey;
 
   @override
   State<_WebPdfAnnotatorWrapper> createState() =>
@@ -3559,10 +3587,57 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
   bool _loading = true;
   String? _error;
 
+  /// Map en mémoire des annotations par page : clé = numéro de page
+  /// (1-indexé), valeur = bytes PNG aplati. Hydraté au boot depuis
+  /// `widget.doc.annotationsJson` puis mis à jour quand l'ergo
+  /// change de page (capture des strokes courants en aplat). Persisté
+  /// sur disque uniquement quand `saveAll(documentId:)` est appelé.
+  final Map<int, Uint8List> _flatPagesByPage = {};
+
+  /// Pages dont l'aplat a changé depuis le dernier save — flushées
+  /// vers SQLite en bloc dans `saveAll`.
+  final Set<int> _dirtyPages = {};
+
+  /// True dès qu'une page a un dirty pending, OU si le live annotator
+  /// a des strokes non encore capturés en aplat. Lu par le parent
+  /// `_PreviewScreen` pour activer le bouton Save.
+  bool get hasUnsavedChanges {
+    if (_dirtyPages.isNotEmpty) return true;
+    final live = widget.annotatorKey.currentState;
+    return live?.hasUnsavedChanges ?? false;
+  }
+
   @override
   void initState() {
     super.initState();
+    _hydrateAnnotationsMap();
     _open();
+  }
+
+  /// Décode la map persistée dans `documents.annotations_json` pour
+  /// repeupler [_flatPagesByPage] avec les bytes des pages déjà
+  /// annotées (visibles dès le 1er affichage de la page).
+  void _hydrateAnnotationsMap() {
+    final raw = widget.doc.annotationsJson;
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      decoded.forEach((key, value) {
+        final page = int.tryParse(key.toString());
+        final dataUrl = value?.toString() ?? '';
+        if (page == null || page < 1) return;
+        if (!dataUrl.startsWith('data:')) return;
+        final comma = dataUrl.indexOf(',');
+        if (comma <= 0) return;
+        try {
+          _flatPagesByPage[page] = base64Decode(dataUrl.substring(comma + 1));
+        } catch (_) {}
+      });
+    } catch (_) {
+      // JSON corrompu — on repart d'une map vide. L'ergo perdra ses
+      // anciennes annotations mais c'était déjà cassé.
+    }
   }
 
   @override
@@ -3620,10 +3695,27 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
     }
   }
 
+  /// Rend la page courante. Si la page a une annotation déjà sauvée
+  /// dans [_flatPagesByPage], on l'utilise directement (l'utilisateur
+  /// retrouve ses traits) — sinon on rasterise le PDF brut.
   Future<void> _renderCurrent() async {
     final doc = _doc;
     if (doc == null) return;
     setState(() => _loading = true);
+
+    // 1. Si la page courante a un aplat sauvegardé → on l'affiche
+    //    directement. L'_ImageAnnotator partira d'un canvas vierge
+    //    par-dessus (les strokes ont été baked dans l'aplat).
+    final cachedFlat = _flatPagesByPage[_currentPage];
+    if (cachedFlat != null) {
+      if (!mounted) return;
+      setState(() {
+        _currentImage = cachedFlat;
+        _loading = false;
+      });
+      return;
+    }
+
     try {
       final page = await doc.getPage(_currentPage);
       // Render à 2x la taille naturelle pour un peu de netteté sur les
@@ -3648,18 +3740,66 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
     }
   }
 
-  void _goPrev() {
-    if (_currentPage <= 1) return;
-    setState(() => _currentPage -= 1);
-    // ignore: discarded_futures
-    _renderCurrent();
+  /// Capture les strokes courants en aplat PNG et les stocke en
+  /// mémoire pour la page courante. Marque la page dirty si l'aplat
+  /// a changé. Appelé avant chaque navigation et avant chaque save.
+  Future<void> _captureCurrentPageFlat() async {
+    final live = widget.annotatorKey.currentState;
+    if (live == null) return;
+    if (!live.hasUnsavedChanges) return;
+    try {
+      final flat = await live.exportFlatPng();
+      if (flat == null) return;
+      _flatPagesByPage[_currentPage] = flat;
+      _dirtyPages.add(_currentPage);
+    } catch (_) {
+      // Silent — l'ergo réessayera au save.
+    }
   }
 
-  void _goNext() {
+  /// Persiste tous les aplats de pages modifiées dans
+  /// `documents.annotations_json` via `enqueueAnnotatedPageBytes`. Ne
+  /// touche PAS au PDF original (qui reste navigable). Appelé par
+  /// `_PreviewScreen._handleSave`.
+  Future<void> saveAll({required String documentId}) async {
+    // 1. Capture la page courante depuis l'annotator live.
+    await _captureCurrentPageFlat();
+    // 2. Persiste chaque page dirty.
+    for (final page in _dirtyPages.toList()) {
+      final bytes = _flatPagesByPage[page];
+      if (bytes == null) continue;
+      try {
+        await DocumentRepository().enqueueAnnotatedPageBytes(
+          documentId: documentId,
+          pageNumber: page,
+          bytes: bytes,
+        );
+      } catch (_) {
+        // Silent — au prochain save l'ergo retentera.
+      }
+    }
+    _dirtyPages.clear();
+    // Reset le hash du live annotator pour faire disparaître le
+    // badge "Modifié" même si on reste sur la même page.
+    widget.annotatorKey.currentState?.saveAnnotation();
+    if (mounted) {
+      setState(() {});
+      widget.onChanged();
+    }
+  }
+
+  Future<void> _goPrev() async {
+    if (_currentPage <= 1) return;
+    await _captureCurrentPageFlat();
+    setState(() => _currentPage -= 1);
+    await _renderCurrent();
+  }
+
+  Future<void> _goNext() async {
     if (_currentPage >= _totalPages) return;
+    await _captureCurrentPageFlat();
     setState(() => _currentPage += 1);
-    // ignore: discarded_futures
-    _renderCurrent();
+    await _renderCurrent();
   }
 
   @override
@@ -3684,22 +3824,26 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
         Expanded(
           child: _currentImage == null
               ? const SizedBox.shrink()
-              // La page rasterisée est wrappée dans `_ImageAnnotator` mode
-              // bytes pour permettre le dessin au stylet. On lui passe la
-              // GlobalKey du parent (`widget.annotatorKey`) pour que le
-              // bouton Save du `_PreviewScreen` puisse appeler
-              // `exportFlatPng()` via `_annotatorKey.currentState` →
-              // `_reuploadFlattenedImage` (branche `kIsWeb`) → enqueue les
-              // bytes flattened pour ré-upload.
-              //
-              // Limitation : changer de page recrée le widget (la key
-              // change avec `_currentPage` via le bytes différent), donc
-              // les strokes en mémoire de la page précédente sont perdus.
-              // L'utilisateur doit sauvegarder avant de naviguer.
-              : _ImageAnnotator(
-                  key: widget.annotatorKey,
-                  imageBytes: _currentImage,
-                  onChanged: widget.onChanged,
+              // L'_ImageAnnotator utilise la GlobalKey du parent pour
+              // que `_PreviewScreen` puisse l'interroger
+              // (`hasUnsavedChanges`, `exportFlatPng`, `saveAnnotation`).
+              // On wrap la GlobalKey via une ValueKey extérieure indexée
+              // sur `_currentPage` : à chaque changement de page,
+              // Flutter détruit le sous-arbre et le recrée → les strokes
+              // de la page précédente ne suivent PAS sur la nouvelle
+              // page (demande utilisateur 2026-04-28 : "l'écrit doit
+              // rester uniquement sur la page du PDF concerné, pas sur
+              // toutes les pages"). Les strokes de la page précédente
+              // ont été capturés en aplat dans `_captureCurrentPageFlat`
+              // juste avant la navigation, donc rien n'est perdu : ils
+              // sont incrustés dans `_currentImage` au render suivant.
+              : KeyedSubtree(
+                  key: ValueKey('webpdf-page-$_currentPage'),
+                  child: _ImageAnnotator(
+                    key: widget.annotatorKey,
+                    imageBytes: _currentImage,
+                    onChanged: widget.onChanged,
+                  ),
                 ),
         ),
         if (_totalPages > 1)
