@@ -209,29 +209,54 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Header sticky : la note « Résumé des préconisations » en haut.
-        // Compact (~64 px ≈ 2 lignes) — l'expand button (haut-gauche)
-        // ouvre le modal en pleine largeur d'écran (cf.
-        // expandModalFullscreen). tabKey 'Préconisations-Résumé' →
-        // page 7 PDF.
+        // Header sticky : 2 notes côte-à-côte en haut, mêmes
+        // caractéristiques (compact ~64 px, fullscreen modal). tabKeys :
+        //   - 'Préconisations-Projet'   → page 7 PDF, « Projet ou
+        //                                  souhait de l'usager »
+        //   - 'Préconisations-Résumé'   → page 7 PDF, « Résumé des
+        //                                  préconisations »
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
           child: SizedBox(
             height: 64,
-            child: NotesWidget(
-              key: ValueKey(
-                'reco-note-resume-${widget.dossier.patient.id}',
-              ),
-              patientId: widget.dossier.patient.id,
-              tabKey: 'Préconisations-Résumé',
-              placeholder: 'Résumé des préconisations',
-              showCanvas: false,
-              embedded: true,
-              showSaveButton: false,
-              allowPagination: false,
-              allowTextModal: true,
-              expandModalFullscreen: true,
-              fillParentHeight: true,
+            child: Row(
+              children: [
+                Expanded(
+                  child: NotesWidget(
+                    key: ValueKey(
+                      'reco-note-projet-${widget.dossier.patient.id}',
+                    ),
+                    patientId: widget.dossier.patient.id,
+                    tabKey: 'Préconisations-Projet',
+                    placeholder: 'Projet de l’usager',
+                    showCanvas: false,
+                    embedded: true,
+                    showSaveButton: false,
+                    allowPagination: false,
+                    allowTextModal: true,
+                    expandModalFullscreen: true,
+                    fillParentHeight: true,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: NotesWidget(
+                    key: ValueKey(
+                      'reco-note-resume-${widget.dossier.patient.id}',
+                    ),
+                    patientId: widget.dossier.patient.id,
+                    tabKey: 'Préconisations-Résumé',
+                    placeholder: 'Résumé des préconisations',
+                    showCanvas: false,
+                    embedded: true,
+                    showSaveButton: false,
+                    allowPagination: false,
+                    allowTextModal: true,
+                    expandModalFullscreen: true,
+                    fillParentHeight: true,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
