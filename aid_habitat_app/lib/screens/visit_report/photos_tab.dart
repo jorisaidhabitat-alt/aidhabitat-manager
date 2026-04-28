@@ -816,6 +816,7 @@ class _PhotoTile extends StatelessWidget {
           ],
         ),
       ),
+        ),
     );
   }
 }
