@@ -84,6 +84,20 @@ class DashboardScreen extends StatelessWidget {
         .replaceAll(RegExp(r'\s+'), ' ');
   }
 
+  /// Adresse courte (CP + ville UPPER) pour les listes du dashboard où
+  /// la rue + numéro pollue la ligne sans apporter de valeur — l'ergo
+  /// veut juste savoir où se trouve géographiquement le bénéficiaire.
+  /// Demande utilisateur 2026-04-28 : « la petite ligne doit simplement
+  /// mettre le code postal et la ville mais pas le numéro et la rue ».
+  static String buildShortAddress(Patient p) {
+    final zip = p.zipCode.trim();
+    final city = p.city.trim();
+    return [zip, city.toUpperCase()]
+        .where((s) => s.isNotEmpty)
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
   /// Builds the last-6-months activity series from the real dossiers list.
   /// Each bar = number of dossiers whose `createdAt` falls in that month.
   List<_ActivityBar> _buildActivitySeries(
@@ -367,7 +381,9 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
   Widget build(BuildContext context) {
     final patient = widget.dossier.patient;
     final initials = _initials(patient.firstName, patient.lastName);
-    final fullAddress = DashboardScreen.buildFullAddress(patient);
+    // Ligne secondaire des tuiles « Mes rapports en cours » : uniquement
+    // CP + ville, pas la rue (cf. `buildShortAddress`).
+    final shortAddress = DashboardScreen.buildShortAddress(patient);
     final visitLabel = _formatVisitDate(widget.dossier.visitDate);
     final epci = _epciLabel();
 
@@ -436,7 +452,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
-                            fullAddress.isEmpty ? '—' : fullAddress,
+                            shortAddress.isEmpty ? '—' : shortAddress,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 12,
@@ -558,7 +574,12 @@ class _NextVisitBanner extends StatelessWidget {
               ),
               child: const Center(
                 child: Icon(
-                  LucideIcons.car,
+                  // Icône Material `directions_car` — style « filled »
+                  // visuellement plus dense que le Lucide outline qu'on
+                  // utilisait avant. Demande utilisateur 2026-04-28
+                  // (« change l'icon voiture pour un autre icon
+                  // voiture »).
+                  Icons.directions_car,
                   color: Color(0xFF7C6DAA),
                   size: 26,
                 ),
@@ -631,7 +652,10 @@ class _NextVisitBanner extends StatelessWidget {
             ),
             child: const Center(
               child: Icon(
-                LucideIcons.car,
+                // Variante « visite planifiée » du même Material
+                // `directions_car` (cf. ci-dessus), un cran plus
+                // grand pour la card hero du dashboard.
+                Icons.directions_car,
                 color: Color(0xFF7C6DAA),
                 size: 28,
               ),
