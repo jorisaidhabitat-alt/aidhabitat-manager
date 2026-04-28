@@ -1370,12 +1370,26 @@ export async function generateVisitReport({
     nudgeFieldRect({ fieldsByName, fieldName, dy: -2 });
   }
 
-  // Adresse de l'ergo (champ `adresse` page 3) : aucun nudge — la
-  // position native du template est correcte. Les itérations de nudge
-  // précédentes étaient sur le mauvais élément (page 1 a une adresse
-  // bakée en dur dans le content stream Affinity, pas un champ
-  // AcroForm — c'est cette adresse-là que l'utilisateur voulait
-  // déplacer, à traiter séparément si besoin).
+  // Bloc « Renseignements sur l'ergothérapeute » (page 3) : tous les
+  // champs (Nom et prénom / entreprise / adresse / contact) ont leur
+  // baseline un poil trop haute par rapport aux libellés Affinity de
+  // la même ligne. On descend de 2 pt pour aligner sur les libellés
+  // « Nom et prénom : », « Entreprise : », etc. Demande utilisateur :
+  // « dans renseignements sur l'ergothérapeute redescend tout les
+  //  textes légèrement pour qu'ils soient alignés aux textes
+  //  correspondants ».
+  // NB : `nudgeFieldRect` est silencieux si un champ n'existe pas —
+  // si Affinity a baké certaines valeurs en dur dans le content
+  // stream plutôt qu'en AcroForm, le nudge n'a juste pas d'effet
+  // visible sur ces lignes-là.
+  for (const fieldName of [
+    'Nom et prénom',
+    'entreprise',
+    'adresse',
+    'contact',
+  ]) {
+    nudgeFieldRect({ fieldsByName, fieldName, dy: -2 });
+  }
 
   // Section "Logement" page 5 — baseline légèrement trop haute par
   // rapport au libellé Affinity. Premier essai à -4 pt mais l'ergo a

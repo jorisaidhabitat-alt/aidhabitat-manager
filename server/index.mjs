@@ -132,6 +132,38 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '30mb' }));
 
 const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
+
+/**
+ * Multer dédié au endpoint /api/reports/visit/:dossierId. Plus tolérant
+ * en taille (ergo peut envoyer 8-10 photos × ~3 MB en HEIC/JPG haute
+ * résolution + 4 plans PNG rasterisés).
+ *
+ * Utilisation : `reportInlineUpload.any()` → tous les fichiers sont mis
+ * dans `req.files`, on les pioche par `fieldname` (`inline_doc_<id>`,
+ * `inline_plan_<id>`).
+ */
+const reportInlineUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 30 * 1024 * 1024, // par fichier
+    files: 32,                  // 8 photos + 4 plans + 8 reco-images + marge
+  },
+});
+
+/**
+ * Middleware conditionnel : applique `multer.any()` SEULEMENT si la
+ * requête est en multipart/form-data. Sinon (JSON ou body vide), on
+ * passe au handler sans rien parser. Permet aux anciens clients (POST
+ * sans body) de continuer à fonctionner sans casser leur déploiement
+ * pendant la transition.
+ */
+const conditionalReportMultipart = (req, res, next) => {
+  const contentType = String(req.headers['content-type'] || '');
+  if (contentType.toLowerCase().includes('multipart/form-data')) {
+    return reportInlineUpload.any()(req, res, next);
+  }
+  return next();
+};
 app.use('/uploads/profile-photos', express.static(PROFILE_PHOTOS_DIR_URL.pathname));
 app.use('/uploads/documents', express.static(DOCUMENTS_DIR_URL.pathname));
 app.use('/uploads/visit-plans', express.static(VISIT_PLANS_DIR_URL.pathname));
@@ -3856,11 +3888,208 @@ const fetchObservationsForDossier = async (dossierId) => {
   };
 };
 
-app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) => {
+/**
+ * Parse les assets inline (multipart) envoyés par le client Flutter
+ * avec la requête de génération PDF. Permet au client d'embarquer les
+ * bytes des images locales (photos VAD non-encore-syncées, plans PNG
+ * rasterisés) directement dans la requête, garantissant que le PDF
+ * reflète l'état SQLite local même quand la sync NocoDB est en retard
+ * ou intermittente. Cf. discussion edge case « réseau intermittent ».
+ *
+ * Convention de fieldname multipart :
+ *   - `inline_doc_<localId>` : binary blob d'une photo
+ *   - `inline_doc_<localId>_meta` : champ texte JSON `{fileName, mimeType, tags, dossierId, title}`
+ *   - `inline_plan_<localId>` : binary blob PNG d'un plan rasterisé
+ *   - `inline_plan_<localId>_meta` : JSON `{planPhase, pageNumber, scopeId}`
+ *
+ * Retourne :
+ *   { documents: Map<localId, doc>, plans: Map<localId, plan> }
+ */
+const parseInlineReportAssets = (req) => {
+  const documents = new Map();
+  const plans = new Map();
+  const files = Array.isArray(req?.files) ? req.files : [];
+  const body = req?.body || {};
+
+  for (const file of files) {
+    const fname = String(file?.fieldname || '');
+    let match = fname.match(/^inline_doc_(.+)$/);
+    if (match) {
+      const localId = match[1];
+      let meta = {};
+      const rawMeta = body[`inline_doc_${localId}_meta`];
+      if (typeof rawMeta === 'string' && rawMeta.length > 0) {
+        try { meta = JSON.parse(rawMeta); } catch { /* meta invalide, on continue */ }
+      }
+      const tags = Array.isArray(meta.tags) ? meta.tags.map(String) : [];
+      documents.set(localId, {
+        id: localId,
+        fileName: String(meta.fileName || file.originalname || `${localId}.bin`),
+        mimeType: String(meta.mimeType || file.mimetype || 'application/octet-stream'),
+        tags,
+        title: typeof meta.title === 'string' ? meta.title : '',
+        dossierId: typeof meta.dossierId === 'string' ? meta.dossierId : null,
+        buffer: file.buffer,
+      });
+      continue;
+    }
+    match = fname.match(/^inline_plan_(.+)$/);
+    if (match) {
+      const localId = match[1];
+      let meta = {};
+      const rawMeta = body[`inline_plan_${localId}_meta`];
+      if (typeof rawMeta === 'string' && rawMeta.length > 0) {
+        try { meta = JSON.parse(rawMeta); } catch { /* meta invalide */ }
+      }
+      plans.set(localId, {
+        id: localId,
+        planPhase: typeof meta.planPhase === 'string' ? meta.planPhase : null,
+        pageNumber: Number.isFinite(Number(meta.pageNumber)) ? Number(meta.pageNumber) : 0,
+        scopeId: typeof meta.scopeId === 'string' ? meta.scopeId : null,
+        mimeType: String(meta.mimeType || file.mimetype || 'image/png'),
+        buffer: file.buffer,
+      });
+    }
+  }
+
+  return { documents, plans };
+};
+
+/**
+ * Construit un wrapper de `fetchImageBytesForReport` qui privilégie le
+ * cache inline. Si le descriptor cible un document/plan que le client
+ * a embarqué dans la requête multipart, on lit les bytes directement
+ * depuis le buffer en mémoire (zéro round-trip NocoDB). Sinon fallback
+ * sur le fetcher d'origine (lecture NocoDB ou data URL ou URL HTTP).
+ *
+ * Effet : la génération PDF n'est plus sensible au délai de sync. Si
+ * l'ergo ferme un VAD au moment où une partie des photos viennent
+ * d'être uploadées et l'autre pas encore, le PDF a quand même toutes
+ * les images parce qu'elles sont dans la requête.
+ */
+const buildInlineFirstFetcher = (inlineAssets) => async (descriptor) => {
+  if (descriptor && descriptor.kind === 'document' && descriptor.id) {
+    const inline = inlineAssets.documents.get(String(descriptor.id));
+    if (inline?.buffer && inline.buffer.length > 0) {
+      return { buffer: inline.buffer, mimeType: inline.mimeType || 'image/jpeg' };
+    }
+  }
+  if (descriptor && descriptor.kind === 'dataurl' && descriptor.notePageId) {
+    const inline = inlineAssets.plans.get(String(descriptor.notePageId));
+    if (inline?.buffer && inline.buffer.length > 0) {
+      return { buffer: inline.buffer, mimeType: inline.mimeType || 'image/png' };
+    }
+  }
+  return fetchImageBytesForReport(descriptor);
+};
+
+/**
+ * Fusionne la liste de photos remontée par NocoDB avec les documents
+ * inline embarqués par le client. Les inline gagnent sur les remote en
+ * cas de doublon d'id (plus à jour côté local). Les inline absents de
+ * NocoDB sont ajoutés à la liste — c'est le cas de l'edge case réseau
+ * intermittent : photo non-encore-uploadée mais présente côté SQLite.
+ *
+ * On filtre quand même par tags VAD pour cohérence avec la sémantique
+ * de fetchVisitPhotosForPatient (page 8 = uniquement les photos taggées
+ * Visite-*).
+ */
+const mergeInlineDocuments = (remoteDocs, inlineMap) => {
+  const visitTagsNormalized = new Set([
+    'visite - logement',
+    'visite - accessibilite',
+    'visite - sanitaires',
+  ]);
+  const normalizeTag = (s) => String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const hasVisitTag = (tags) =>
+    Array.isArray(tags) && tags.some((tag) => visitTagsNormalized.has(normalizeTag(tag)));
+
+  const merged = [];
+  const seenIds = new Set();
+  // 1) inline d'abord (priorité), filtrés par tag visite
+  for (const inline of inlineMap.values()) {
+    if (!hasVisitTag(inline.tags)) continue;
+    merged.push({
+      id: inline.id,
+      title: inline.title || '',
+      fileName: inline.fileName,
+      mimeType: inline.mimeType,
+      tags: inline.tags,
+      dossierId: inline.dossierId,
+    });
+    seenIds.add(String(inline.id));
+  }
+  // 2) puis les remotes pas en doublon
+  for (const doc of Array.isArray(remoteDocs) ? remoteDocs : []) {
+    if (!doc) continue;
+    if (seenIds.has(String(doc.id))) continue;
+    merged.push(doc);
+  }
+  return merged;
+};
+
+/**
+ * Fusionne les plans NocoDB avec les plans inline. Critère d'identité :
+ * `localId` (id côté client). Si NocoDB a un plan avec un autre id mais
+ * la même phase/page, on garde les deux côte à côte ; le générateur
+ * PDF déduplique par slot s'il y a saturation (4 slots seulement).
+ */
+const mergeInlineNotePages = (remotePages, inlineMap) => {
+  const merged = [];
+  const seenIds = new Set();
+  for (const inline of inlineMap.values()) {
+    if (!inline.planPhase) continue;
+    merged.push({
+      id: inline.id,
+      planPhase: inline.planPhase,
+      pageNumber: inline.pageNumber || 0,
+      scopeId: inline.scopeId,
+      // Pas de `previewDataUrl` côté server-side ; le générateur passera
+      // par fetchImageBytes(notePageId) → cache inline → buffer direct.
+      previewDataUrl: null,
+      _inline: true,
+    });
+    seenIds.add(String(inline.id));
+  }
+  for (const page of Array.isArray(remotePages) ? remotePages : []) {
+    if (!page) continue;
+    if (seenIds.has(String(page.id))) continue;
+    merged.push(page);
+  }
+  // Tri par phase puis pageNumber pour un ordre stable.
+  return merged.sort((a, b) => {
+    if (a.planPhase !== b.planPhase) {
+      return String(a.planPhase || '').localeCompare(String(b.planPhase || ''));
+    }
+    return Number(a.pageNumber) - Number(b.pageNumber);
+  });
+};
+
+app.post(
+  '/api/reports/visit/:dossierId',
+  requireAuth,
+  conditionalReportMultipart,
+  async (req, res, next) => {
   try {
     const dossierId = String(req.params.dossierId || '').trim();
     if (!dossierId) {
       throw httpError(400, 'dossierId manquant');
+    }
+
+    // 0) Parse les assets inline (multipart). Si la requête est en JSON
+    // ou sans body, `inlineAssets.documents` et `.plans` sont vides → le
+    // comportement est strictement identique à l'ancien endpoint.
+    const inlineAssets = parseInlineReportAssets(req);
+    if (inlineAssets.documents.size > 0 || inlineAssets.plans.size > 0) {
+      console.log(
+        `[report] inline assets reçus pour ${dossierId} : ` +
+        `${inlineAssets.documents.size} doc(s) + ${inlineAssets.plans.size} plan(s)`
+      );
     }
 
     // 1) Dossier (avec scope d'accès appliqué via getDossiersForApp).
@@ -3877,8 +4106,8 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
     const [
       sanitaires,
       observations,
-      documents,
-      notePages,
+      remoteDocuments,
+      remoteNotePages,
       contexteNotes,
       recommendations,
     ] = await Promise.all([
@@ -3896,6 +4125,11 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
       fetchVisitRecommendationsForDossier(dossierId),
     ]);
 
+    // 3) Merge inline + remote. Inline gagne en cas de doublon (state
+    // local plus récent que NocoDB pendant la fenêtre intermittente).
+    const documents = mergeInlineDocuments(remoteDocuments, inlineAssets.documents);
+    const notePages = mergeInlineNotePages(remoteNotePages, inlineAssets.plans);
+
     const { bytes, stats } = await generateVisitReport({
       dossier,
       sanitaires,
@@ -3908,7 +4142,10 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
       // utilisateur).
       contexteNotes,
       recommendations,
-      fetchImageBytes: fetchImageBytesForReport,
+      // Wrapper inline-first : si le descriptor cible un asset embarqué
+      // dans la requête multipart, on lit le buffer en mémoire (zéro
+      // round-trip). Fallback sur le fetcher d'origine (NocoDB / URL).
+      fetchImageBytes: buildInlineFirstFetcher(inlineAssets),
     });
     const fileName = buildReportFileName(dossier);
 
@@ -3923,7 +4160,8 @@ app.post('/api/reports/visit/:dossierId', requireAuth, async (req, res, next) =>
   } catch (error) {
     next(error);
   }
-});
+  },
+);
 
 app.post('/api/beneficiaires', requireAuth, async (req, res, next) => {
   try {
