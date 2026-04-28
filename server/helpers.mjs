@@ -2566,8 +2566,22 @@ export const mapBeneficiaryUpdatesToFields = (updates, references) => {
     numero_securite_sociale_madame: has('occupant2SocialSecurityNumber')
       ? nullableString(updates.occupant2SocialSecurityNumber)
       : (has('numeroSecuriteSocialeMadame') ? nullableString(updates.numeroSecuriteSocialeMadame) : undefined),
-    caisses_de_retraite_id: has('caisseRetraitePrincipale') ? (caisseMatch ? Number(caisseMatch.id) : null) : undefined,
-    caisses_de_retraite_complementaires_id: has('caissesRetraiteComplementaires') ? (caisseCompMatch ? Number(caisseCompMatch.id) : null) : undefined,
+    caisses_de_retraite_id: (() => {
+      if (!has('caisseRetraitePrincipale')) return undefined;
+      const v = updates.caisseRetraitePrincipale;
+      if (v === '' || v == null) return null;
+      if (caisseMatch) return Number(caisseMatch.id);
+      console.warn(`[patient] caisseRetraitePrincipale "${v}" ne matche aucune ref → no-op`);
+      return undefined;
+    })(),
+    caisses_de_retraite_complementaires_id: (() => {
+      if (!has('caissesRetraiteComplementaires')) return undefined;
+      const v = updates.caissesRetraiteComplementaires;
+      if (v === '' || v == null) return null;
+      if (caisseCompMatch) return Number(caisseCompMatch.id);
+      console.warn(`[patient] caissesRetraiteComplementaires "${v}" ne matche aucune ref → no-op`);
+      return undefined;
+    })(),
   });
 };
 
