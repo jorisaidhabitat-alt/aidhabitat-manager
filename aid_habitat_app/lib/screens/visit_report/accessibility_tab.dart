@@ -142,6 +142,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   String _motorisationPorteGarage = 'Aucun';
   String _motorisationPortail = 'Aucun';
 
+  /// Ordre dans lequel les motorisations ont été sélectionnées dans la
+  /// session courante. Permet d'afficher la motorisation choisie en
+  /// premier en haut, la deuxième en dessous (demande utilisateur
+  /// 2026-04-28). Valeurs possibles : 'Garage' et/ou 'Portail'. Pas
+  /// persisté — au reload, ordre par défaut alphabétique
+  /// ['Garage', 'Portail'].
+  final List<String> _motorisationOrder = [];
+
   static const _heatingOptions = [
     'Électrique',
     'Gaz',
@@ -201,6 +209,25 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     if (status != 'Localisé') return '';
     if (loc.isEmpty) return _kVoletsLocalizedMarker;
     return loc;
+  }
+
+  /// Formate la liste des pièces d'un niveau en groupant les doublons
+  /// avec un exposant Unicode (² / ³) — ex.
+  /// `['SDB', 'WC', 'SDB']` → `'SDB ², WC'`. Préserve l'ordre
+  /// d'apparition de chaque pièce unique.
+  static String _formatRoomsWithCounts(List<String> rooms) {
+    final counts = <String, int>{};
+    final order = <String>[];
+    for (final r in rooms) {
+      if (!counts.containsKey(r)) order.add(r);
+      counts[r] = (counts[r] ?? 0) + 1;
+    }
+    return order.map((r) {
+      final n = counts[r]!;
+      if (n <= 1) return r;
+      final suffix = n == 2 ? '²' : (n == 3 ? '³' : '$n');
+      return '$r $suffix';
+    }).join(', ');
   }
 
   // ---------------------------------------------------------------------------
@@ -316,6 +343,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         (row?['motorisation_portail'] as String?) ?? h.motorisationPortail;
     _portail = rawPortail.isNotEmpty;
     _motorisationPortail = rawPortail.isEmpty ? 'Aucun' : rawPortail;
+
+    // Ordre par défaut au reload : Garage en premier s'il est présent,
+    // Portail en deuxième. La session courante peut ré-ordonner via
+    // la séquence de toggle (cf. `_buildMultiSelectGrid` callback).
+    _motorisationOrder.clear();
+    if (_annexes.contains('Garage')) _motorisationOrder.add('Garage');
+    if (_portail) _motorisationOrder.add('Portail');
 
     if (mounted) setState(() => _loaded = true);
   }
@@ -1077,9 +1111,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
 
     if (!isExpanded) {
       // Vue repliée (style menu déroulant) : "Sous-sol (Salle de bain,
-      // WC)" + chevron vers le bas. Pas de crayon ni de croix — la
+      // WC ²)" + chevron vers le bas. Pas de crayon ni de croix — la
       // croix n'apparaît qu'une fois la card rouverte (mode édition).
-      final displayRooms = rooms.isEmpty ? '—' : rooms.join(', ');
+      // Les doublons sont groupés avec un exposant (² ou ³) pour
+      // refléter le compteur des pills.
+      final displayRooms =
+          rooms.isEmpty ? '—' : _formatRoomsWithCounts(rooms);
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _expandedLevel = cfg.field),
@@ -1300,30 +1337,39 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
             children: allItems.map((room) {
-              final checked = rooms.contains(room);
+              // Compte les occurrences de cette pièce dans le niveau
+              // courant. Le tap cycle 0 → 1 → 2 → 3 → 0 (max 3 pour
+              // permettre 2 ou 3 SDB sur le même étage par ex.).
+              final count = rooms.where((r) => r == room).length;
+              final checked = count > 0;
               return TogglePillButton(
                 label: room,
                 active: checked,
+                countBadge: count,
                 expand: true,
                 onTap: () {
                   setState(() {
                     final next =
                         List<String>.from(_levelRooms[cfg.field] ?? []);
-                    if (checked) {
-                      next.remove(room);
+                    if (count >= 3) {
+                      // Cycle complet : on retire toutes les
+                      // occurrences (retour à 0 = pill désactivée).
+                      next.removeWhere((r) => r == room);
                     } else {
-                      if (!next.contains(room)) next.add(room);
+                      // Incrément : ajoute une occurrence (la pill
+                      // affiche ² puis ³ via TogglePillButton).
+                      next.add(room);
                     }
                     _levelRooms[cfg.field] = next;
-                    // Sync Garage annexe : coché dans un niveau →
-                    // coché dans Annexes.
+                    // Sync Garage annexe : présent dans n'importe quel
+                    // niveau → coché dans Annexes ; sinon décoché.
                     if (room == 'Garage') {
-                      if (!checked) {
+                      final stillPresent = _levelRooms.values
+                          .any((rooms) => rooms.contains('Garage'));
+                      if (stillPresent) {
                         _annexes.add('Garage');
                       } else {
-                        final stillPresent = _levelRooms.values
-                            .any((rooms) => rooms.contains('Garage'));
-                        if (!stillPresent) _annexes.remove('Garage');
+                        _annexes.remove('Garage');
                       }
                     }
                   });
@@ -1493,15 +1539,29 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 setState(() {
                   if (opt == 'Portail') {
                     _portail = !_portail;
-                    if (!_portail) _motorisationPortail = 'Aucun';
+                    if (!_portail) {
+                      _motorisationPortail = 'Aucun';
+                      _motorisationOrder.remove('Portail');
+                    } else {
+                      // Ajoute en fin d'ordre (premier sélectionné en
+                      // haut, second en dessous).
+                      if (!_motorisationOrder.contains('Portail')) {
+                        _motorisationOrder.add('Portail');
+                      }
+                    }
                   } else {
                     if (_annexes.contains(opt)) {
                       _annexes.remove(opt);
                       if (opt == 'Garage') {
                         _motorisationPorteGarage = 'Aucun';
+                        _motorisationOrder.remove('Garage');
                       }
                     } else {
                       _annexes.add(opt);
+                      if (opt == 'Garage' &&
+                          !_motorisationOrder.contains('Garage')) {
+                        _motorisationOrder.add('Garage');
+                      }
                     }
                   }
                 });
@@ -1511,49 +1571,52 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           ],
         ),
         // Motorisations conditionnelles (toujours visibles quand
-        // l'annexe associée est active, collapsed ou pas).
+        // l'annexe associée est active). Boutons (FormToggleGroup) au
+        // lieu de menu déroulant, **empilés verticalement** avec
+        // l'élément sélectionné en premier en haut (demande utilisateur
+        // 2026-04-28).
         if (showGarageMoto || showPortailMoto) ...[
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    if (showGarageMoto)
-                      Expanded(
-                        child: FormSelectDropdown<String>(
-                          label: 'Porte de garage',
-                          value: _motorisationPorteGarage,
-                          options: _motorisationOptions
-                              .map((o) =>
-                                  FormSelectOption(value: o, label: o))
-                              .toList(),
-                          onChanged: (v) {
-                            setState(() =>
-                                _motorisationPorteGarage = v ?? 'Aucun');
-                            _scheduleSave();
-                          },
-                        ),
-                      ),
-                    if (showGarageMoto && showPortailMoto)
-                      const SizedBox(width: 12),
-                    if (showPortailMoto)
-                      Expanded(
-                        child: FormSelectDropdown<String>(
-                          label: 'Portail',
-                          value: _motorisationPortail,
-                          options: _motorisationOptions
-                              .map((o) =>
-                                  FormSelectOption(value: o, label: o))
-                              .toList(),
-                          onChanged: (v) {
-                            setState(
-                                () => _motorisationPortail = v ?? 'Aucun');
-                            _scheduleSave();
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+          const SizedBox(height: 16),
+          ..._motorisationOrder
+              // Filtre défensif : on ne rend que les motorisations dont
+              // l'annexe est encore active.
+              .where((m) =>
+                  (m == 'Garage' && showGarageMoto) ||
+                  (m == 'Portail' && showPortailMoto))
+              .map((m) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildMotorisationButtons(m),
+                  )),
+        ],
       ],
+    );
+  }
+
+  /// Bloc de sélection (FormToggleGroup) pour la motorisation d'une
+  /// annexe ('Garage' ou 'Portail') — 3 boutons pleine largeur :
+  /// Aucun / Manuel / Électrique. Remplace l'ancien menu déroulant
+  /// `FormSelectDropdown` (demande utilisateur 2026-04-28).
+  Widget _buildMotorisationButtons(String which) {
+    final label = which == 'Garage' ? 'Porte de garage' : 'Portail';
+    final value = which == 'Garage'
+        ? _motorisationPorteGarage
+        : _motorisationPortail;
+    return FormToggleGroup(
+      label: label,
+      options: _motorisationOptions,
+      selected: value,
+      columns: 3,
+      expand: true,
+      onChanged: (v) {
+        setState(() {
+          if (which == 'Garage') {
+            _motorisationPorteGarage = v;
+          } else {
+            _motorisationPortail = v;
+          }
+        });
+        _scheduleSave();
+      },
     );
   }
 

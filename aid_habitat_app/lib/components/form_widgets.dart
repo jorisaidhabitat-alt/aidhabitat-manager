@@ -376,13 +376,35 @@ class TogglePillButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool expand;
 
+  /// Compteur optionnel affiché en exposant blanc à droite du label
+  /// quand > 1 (ex. ² pour 2 occurrences, ³ pour 3). Utilisé par les
+  /// pièces des niveaux Accessibilité pour permettre 2 ou 3
+  /// occurrences d'une même pièce sur le même étage (ex. 2 salles de
+  /// bain au RDC).
+  final int countBadge;
+
   const TogglePillButton({
     super.key,
     required this.label,
     required this.active,
     required this.onTap,
     this.expand = false,
+    this.countBadge = 0,
   });
+
+  /// Convertit un entier 2 ou 3 en glyphe d'exposant Unicode
+  /// (cohérent avec l'affichage typographique français — pas de
+  /// "x2" ou "(2)"). Au-delà, on retombe sur le chiffre normal.
+  static String _superscript(int n) {
+    switch (n) {
+      case 2:
+        return '²';
+      case 3:
+        return '³';
+      default:
+        return '$n';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -391,6 +413,9 @@ class TogglePillButton extends StatelessWidget {
     // le fond actif était gris clair #E2E8F0, ce qui rendait les pièces
     // sélectionnées à l'intérieur des niveaux Accessibilité peu visibles
     // (rapportées comme "cadres gris et blancs vides" par l'utilisateur).
+    final showBadge = active && countBadge > 1;
+    final displayLabel =
+        showBadge ? '$label ${_superscript(countBadge)}' : label;
     final pill = GestureDetector(
       onTap: onTap,
       child: Container(
@@ -407,7 +432,7 @@ class TogglePillButton extends StatelessWidget {
           ),
         ),
         child: Text(
-          label,
+          displayLabel,
           textAlign: TextAlign.center,
           style: TextStyle(
             color: active ? Colors.white : Colors.black87,
