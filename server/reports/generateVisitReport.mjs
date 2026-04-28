@@ -717,6 +717,67 @@ async function applyApaGirOverlay({ pdfDoc, fieldsByName, view }) {
 }
 
 /**
+ * Dessine l'adresse de l'ergo en texte libre dans le bandeau orange
+ * « Renseignements sur l'ergothérapeute », EN PARALLÈLE de la mise à
+ * vide du widget natif `adresse` du template.
+ *
+ * Pourquoi cet overlay : Affinity Publisher a pré-baké le widget
+ * `adresse` avec une apparence à coordonnées fixes ; pdf-lib ignore
+ * les changements de rect lors du `form.flatten()`, donc
+ * `nudgeFieldRect` ne déplace pas l'adresse à l'écran (testé jusqu'à
+ * dy: +50, aucun effet visible). Solution : on vide le widget pour
+ * supprimer le rendu original mal-positionné, puis on dessine la
+ * chaîne nous-mêmes via `page.drawText` à la position visuelle
+ * correcte (entre la ligne « Aid'Habitat » et le numéro de
+ * téléphone, comme demandé par l'utilisateur).
+ *
+ * Position calibrée : `widget.rect.y` du template est ~219 (pdf-lib
+ * coords, origine bas-gauche). On dessine à y = rect.y + ~30 pour
+ * remonter au-dessus du téléphone tout en restant en dessous de
+ * « Aid'Habitat ». Ajustable si l'œil exige plus ou moins.
+ */
+async function applyErgoAddressOverlay({ pdfDoc, fieldsByName, view }) {
+  const address = String(getByPath(view, 'constants.ergoAddressOneLine') || '').trim();
+  if (!address) return;
+
+  const field = fieldsByName.get('adresse');
+  if (!field) return;
+  const widgets = field.acroField.getWidgets?.() || [];
+  const widget = widgets[0];
+  if (!widget) return;
+
+  const pageRef = widget.P?.();
+  if (!pageRef) return;
+  const page = pdfDoc.getPages().find((p) => p.ref === pageRef);
+  if (!page) return;
+
+  const rect = widget.getRectangle();
+  const fontSize = 11;
+  // Décalage vertical (en pdf-lib coords : +y = vers le haut). +30
+  // place le baseline juste au-dessus de la ligne du téléphone, sous
+  // la ligne « Aid'Habitat ». Si encore mauvais : ajuster ce nombre.
+  const y = rect.y + 30;
+  // Centre légèrement à droite de la marge native du widget pour ne
+  // pas coller au bord du bandeau.
+  const x = rect.x + 4;
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  page.drawText(sanitizeForPdfFont(address), {
+    x,
+    y,
+    size: fontSize,
+    font,
+    color: rgb(1, 1, 1), // texte blanc — bandeau orange foncé
+  });
+
+  // Vide le widget natif pour éviter le double affichage de l'adresse
+  // au mauvais endroit (ancien rendu Affinity).
+  try {
+    if (typeof field.setText === 'function') field.setText('');
+  } catch (_) {}
+}
+
+/**
  * Décale verticalement le rectangle du widget [fieldName] de [dy]
  * points (positif = vers le haut, négatif = vers le bas — repère
  * PDF). Sert à corriger un mauvais alignement texte/label dans le
@@ -1303,8 +1364,12 @@ export async function generateVisitReport({
     nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
   }
 
-  // TEST diagnostic : +50 pour vérifier si le nudge marche tout court.
-  nudgeFieldRect({ fieldsByName, fieldName: 'adresse', dy: 50 });
+  // Adresse de l'ergo : `nudgeFieldRect` n'a aucun effet sur ce widget
+  // (Affinity Publisher a pré-baké l'apparence avec coordonnées fixes
+  // — pdf-lib ignore les changements de rect lors du flatten). On
+  // bypass via un overlay texte direct sur la page, à côté/sous les
+  // libellés « Aid'Habitat » et le téléphone du bandeau orange.
+  await applyErgoAddressOverlay({ pdfDoc, fieldsByName, view });
 
   // Section "Logement" page 5 — baseline légèrement trop haute par
   // rapport au libellé Affinity. Premier essai à -4 pt mais l'ergo a
