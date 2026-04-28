@@ -64,6 +64,45 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     widget.onSubSectionChanged?.call(i);
   }
 
+  /// Sous-section suivante / précédente, déclenché par un swipe LARGE
+  /// horizontal (≥ 55 % de la largeur). Boucle de 0 à 3 inclus
+  /// (Profil / Foyer / Santé / Admin) — les pills indiquent la
+  /// sous-section courante.
+  void _subSectionNext() {
+    _setSubSection((_subSectionIndex + 1) % 4);
+  }
+  void _subSectionPrev() {
+    _setSubSection((_subSectionIndex - 1 + 4) % 4);
+  }
+
+  /// Occupant suivant / précédent, déclenché par un swipe LÉGER
+  /// horizontal (< 35 % de la largeur). Disponible uniquement sur
+  /// Profil / Santé / Admin (pas Foyer) et seulement s'il y a > 1
+  /// occupant dans le foyer.
+  void _occupantNext() {
+    if (_occupants.length <= 1) return;
+    setState(() {
+      _currentOccupantIndex =
+          (_currentOccupantIndex + 1) % _occupants.length;
+    });
+  }
+  void _occupantPrev() {
+    if (_occupants.length <= 1) return;
+    setState(() {
+      _currentOccupantIndex =
+          (_currentOccupantIndex - 1 + _occupants.length) % _occupants.length;
+    });
+  }
+
+  /// La sous-section courante affiche-t-elle des champs par-occupant ?
+  /// (Profil / Santé / Admin → oui, Foyer → non)
+  bool _hasOccupantSwipeInCurrentSection() {
+    return (_subSectionIndex == 0 ||
+            _subSectionIndex == 2 ||
+            _subSectionIndex == 3) &&
+        _occupants.length > 1;
+  }
+
   /// Index de l'occupant actuellement visible dans les sous-sections
   /// "par occupant" (Profil / Santé / Admin). Partagé entre ces sections
   /// pour que l'ergo reste sur le même occupant en changeant de section.
