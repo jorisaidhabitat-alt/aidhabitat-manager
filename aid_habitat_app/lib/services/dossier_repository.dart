@@ -724,33 +724,86 @@ class DossierRepository {
   /// provided [data] is merged via UPDATE so columns not included in [data]
   /// keep their current values (important for local-only flags that the
   /// server doesn't return). Otherwise a fresh INSERT is performed.
+  /// Colonnes des `patients` dépendant d'une table de référence côté
+  /// NocoDB (`situation_proprietaire`, `statut_occupation`,
+  /// `dependances_particulieres`, `caisses_retraite`, `caisses_retraite_comp`).
+  /// Le PATCH serveur essaie de mapper l'étiquette saisie à un id de
+  /// la table de réf via `findByLabel`. Si le matching échoue (label
+  /// légèrement différent de la valeur stockée dans NocoDB), le serveur
+  /// écrit `null` dans la colonne d'id → au prochain pull workspace le
+  /// merge écrase localement notre saisie avec une valeur vide → la
+  /// case "Propriétaire / Locataire / Usufruitier" se DÉSÉLECTIONNE
+  /// toute seule quand l'utilisateur quitte puis revient sur le relevé.
+  ///
+  /// Garde-fou local : pendant le merge remote, si la nouvelle valeur
+  /// est vide MAIS qu'on a déjà une valeur non-vide en SQLite, on
+  /// préserve la valeur locale. Cas limite (user clearcase volontaire) :
+  /// `_loadFromDossier` lit juste après une saisie locale, donc la
+  /// valeur effacée sera bien re-poussée par la prochaine sync; le
+  /// merge ne reverra "vide vs non-vide" que si le serveur a perdu la
+  /// donnée — auquel cas on préfère garder le local.
+  static const _patientFieldsPreserveOnEmpty = <String>{
+    'family_situation',
+    'occupation_status',
+    'dependence_txt',
+    'caisse_retraite_principale',
+    'caisses_retraite_complementaires',
+  };
+
   Future<void> _upsertByLocalId({
     required Transaction txn,
     required String table,
     required String localId,
     required Map<String, dynamic> data,
   }) async {
+    // On ne peut plus se contenter de columns: ['local_id'] : pour la
+    // garde "preserve on empty", on a besoin des valeurs courantes des
+    // colonnes protégées.
+    final protectedColumns = (table == 'patients')
+        ? _patientFieldsPreserveOnEmpty.toList(growable: false)
+        : const <String>[];
+    final selectColumns = ['local_id', ...protectedColumns];
+
     final existing = await txn.query(
       table,
-      columns: ['local_id'],
+      columns: selectColumns,
       where: 'local_id = ?',
       whereArgs: [localId],
       limit: 1,
     );
+
     if (existing.isEmpty) {
       await txn.insert(table, data,
           conflictAlgorithm: ConflictAlgorithm.replace);
-    } else {
-      // `local_id` is the primary key — don't update it.
-      final updateFields = Map<String, dynamic>.from(data)
-        ..remove('local_id');
-      await txn.update(
-        table,
-        updateFields,
-        where: 'local_id = ?',
-        whereArgs: [localId],
-      );
+      return;
     }
+
+    final updateFields = Map<String, dynamic>.from(data)
+      ..remove('local_id');
+
+    // Garde-fou : pour chaque colonne référence-dépendante, si la
+    // valeur entrante est vide ET qu'on en avait une non-vide en
+    // local, on retombe sur la valeur locale.
+    final existingRow = existing.first;
+    for (final col in protectedColumns) {
+      final incoming = updateFields[col];
+      final isIncomingEmpty =
+          incoming == null || (incoming is String && incoming.trim().isEmpty);
+      if (!isIncomingEmpty) continue;
+      final localValue = existingRow[col];
+      final isLocalEmpty =
+          localValue == null || (localValue is String && localValue.trim().isEmpty);
+      if (isLocalEmpty) continue;
+      // Local a une valeur, remote n'en a pas → on garde la locale.
+      updateFields[col] = localValue;
+    }
+
+    await txn.update(
+      table,
+      updateFields,
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
   }
 
   /// Maps a server-returned patient JSON to a SQLite row map covering the

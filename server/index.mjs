@@ -2645,8 +2645,35 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
       : (has('occupant2BirthDate')
         ? nullableString(updates.occupant2BirthDate)
         : (has('birthDateMme') ? nullableString(updates.birthDateMme) : undefined)),
-    situation_proprietaire_id1: has('familySituation') ? (situationMatch ? Number(situationMatch.id) : null) : undefined,
-    statut_occupation_id1: has('occupationStatus') ? (occupationMatch ? Number(occupationMatch.id) : null) : undefined,
+    // Si l'utilisateur envoie une étiquette non vide mais que
+    // `findByLabel` ne matche AUCUNE entrée de la table de référence,
+    // on `undefined` (= ne touche pas la colonne NocoDB) plutôt que
+    // d'écrire `null` (= efface la sélection). Avant ce garde-fou,
+    // un label légèrement différent de la valeur stockée dans NocoDB
+    // (typo, accent, parenthèse…) provoquait l'EFFACEMENT silencieux
+    // du statut d'occupation côté serveur, qui revenait ensuite vide
+    // au prochain pull workspace. Symptôme reporté : "le statut se
+    // ré-initialise tout seul quand je quitte/reviens sur le relevé".
+    //
+    // Cas vraiment "user veut vider" : on l'attrape par `updates.X === ''`
+    // — chaîne explicitement vide → `null`. Sinon (pas matché ET non
+    // vide), on log et on no-op.
+    situation_proprietaire_id1: (() => {
+      if (!has('familySituation')) return undefined;
+      const v = updates.familySituation;
+      if (v === '' || v == null) return null;
+      if (situationMatch) return Number(situationMatch.id);
+      console.warn(`[patient] familySituation "${v}" ne matche aucune ref. statut → no-op`);
+      return undefined;
+    })(),
+    statut_occupation_id1: (() => {
+      if (!has('occupationStatus')) return undefined;
+      const v = updates.occupationStatus;
+      if (v === '' || v == null) return null;
+      if (occupationMatch) return Number(occupationMatch.id);
+      console.warn(`[patient] occupationStatus "${v}" ne matche aucune ref. statut_occupation → no-op`);
+      return undefined;
+    })(),
     nombre_personnes: has('numberPeople') ? updates.numberPeople : undefined,
     categorie_revenu_id1: has('numberPeople') ? (baremeMatch ? Number(baremeMatch.id) : null) : undefined,
     revenu_fiscal_reference: has('fiscalRevenue') ? updates.fiscalRevenue : undefined,
