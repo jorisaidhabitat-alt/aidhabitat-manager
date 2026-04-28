@@ -1111,7 +1111,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Flexible(
+                      // Nom borné par `ConstrainedBox(maxWidth: 380)`
+                      // au lieu d'un Flexible — comme ça il prend juste
+                      // sa largeur naturelle (typiquement 150-250 pt
+                      // pour un NOM Prénom standard) et n'occupe pas
+                      // 50 % de l'espace par défaut. Les noms vraiment
+                      // longs (composés, doubles…) sont coupés à
+                      // 380 pt avec une ellipsis. Ça libère le slot
+                      // de l'adresse qui peut désormais se déployer
+                      // sur tout l'espace restant via `Expanded`.
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 380),
                         child: Text(
                           '${patient.lastName.toUpperCase()} ${patient.firstName}',
                           style: const TextStyle(
@@ -1120,6 +1130,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                             color: Color(0xFF0F172A),
                           ),
                           overflow: TextOverflow.ellipsis,
+                          softWrap: false,
                         ),
                       ),
                       // Badges insérés ENTRE le nom et l'adresse — parité
@@ -1148,7 +1159,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                           color: Color(0xFF64748B),
                         ),
                         const SizedBox(width: 6),
-                        Flexible(
+                        // `Expanded` (et plus `Flexible`) : l'adresse
+                        // prend TOUT l'espace restant après le nom +
+                        // badges + icône. Sur iPad paysage cela donne
+                        // 700-900 pt qui suffisent largement pour la
+                        // plupart des adresses françaises sans
+                        // ellipsis. Demande utilisateur : "met sur
+                        // toute la longueur car il y a encore de la
+                        // place mais elle se termine par ...".
+                        Expanded(
                           child: Text(
                             addressLine,
                             style: const TextStyle(
@@ -1157,6 +1176,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                               color: Color(0xFF64748B),
                             ),
                             overflow: TextOverflow.ellipsis,
+                            softWrap: false,
                           ),
                         ),
                       ],
