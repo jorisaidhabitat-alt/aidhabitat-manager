@@ -366,17 +366,18 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       'levels': _orderedLevels.length,
       'typology': _typology,
       'heating_details_json': jsonEncode(heatingJson),
-      // Volets
+      // Volets — `_serializeVoletsLoc` gère le marqueur invisible
+      // pour préserver l'état "Localisé sans texte" au reload.
       'volets_roulants_manuels_entier': _voletsManStatus == 'Entier' ? 1 : 0,
       'volets_roulants_manuels_localisation':
-          _voletsManStatus == 'Localisé' ? _voletsManLoc : '',
+          _serializeVoletsLoc(_voletsManStatus, _voletsManLoc),
       'volets_roulants_electriques_entier':
           _voletsElecStatus == 'Entier' ? 1 : 0,
       'volets_roulants_electriques_localisation':
-          _voletsElecStatus == 'Localisé' ? _voletsElecLoc : '',
+          _serializeVoletsLoc(_voletsElecStatus, _voletsElecLoc),
       'volets_persiennes_entier': _voletsPersStatus == 'Entier' ? 1 : 0,
       'volets_persiennes_localisation':
-          _voletsPersStatus == 'Localisé' ? _voletsPersLoc : '',
+          _serializeVoletsLoc(_voletsPersStatus, _voletsPersLoc),
       // Extérieur
       'easy_access': _easyAccess ? 1 : 0,
       // Champs supprimés de l'UI — on les vide pour effacer les données obsolètes
