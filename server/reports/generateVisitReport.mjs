@@ -1794,18 +1794,18 @@ export async function generateVisitReport({
         // peu de plus).
         const orangeLineY =
             (topRect.y + descriptifFrameTop) / 2 - 8;
-        // Itérations user sur l'inset horizontal : 30 → 32 → 31 → 30 pt
-        // (demande "ajoute encore 1 de chaque côté de largeur").
-        const hLineXInset = 30;
-        // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 → 0.2 pt
-        // (demande finale "passe l'épaisseur à 0.2"). Très fin —
-        // proche de la limite minimale visible à l'écran et en
-        // impression A4.
+        // Itérations user sur l'inset horizontal : 30 → 32 → 31 → 30
+        // → 30.5 pt (demande "ça dépasse, reduis de 0.5 de chaque côté").
+        const hLineXInset = 30.5;
+        // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 → 0.2 → 0.1 pt.
+        // Limite extrême — selon le viewer (Aperçu macOS, Acrobat, Preview
+        // iOS) le rendu peut faire un sub-pixel rendering ; à l'impression
+        // A4 reste discret mais visible.
         partialPage.drawRectangle({
           x: hLineXInset,
           y: orangeLineY,
           width: partialPage.getSize().width - hLineXInset * 2,
-          height: 0.2,
+          height: 0.1,
           color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
         });
       }
