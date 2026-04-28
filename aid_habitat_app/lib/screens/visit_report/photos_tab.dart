@@ -300,36 +300,32 @@ class _PhotosTabState extends State<PhotosTab>
       return const Center(child: CircularProgressIndicator());
     }
     // Layout 3 colonnes (Logement / Accessibilité / Sanitaires) côte
-    // à côte. Demande utilisateur : sur iPad au format paysage on a
-    // largement la place pour afficher les 3 catégories sans scroll
-    // vertical → l'ergo voit d'un coup d'œil l'état de remplissage
-    // des 3 buckets pendant la VAD.
+    // à côte. Chaque colonne s'adapte à SA propre hauteur de contenu —
+    // pas de stretch pour aligner sur la plus grande des 3 (demande
+    // utilisateur : "il ne faut pas les aligner horizontalement,
+    // simplement qu'ils soient adaptés à ce qu'ils contiennent").
     //
-    // Chaque colonne a `crossAxisAlignment: CrossAxisAlignment.start`
-    // pour que les en-têtes restent alignés haut, et `IntrinsicHeight`
-    // côté parent assure que les fonds blancs aient la même hauteur
-    // (visuel propre, pas de "marche d'escalier" entre les 3
-    // sections quand l'une a 3 photos et l'autre 0).
+    // Donc `CrossAxisAlignment.start` (pas `stretch`) et pas
+    // d'`IntrinsicHeight` — chaque container fait exactement la
+    // hauteur de son contenu (en-tête + photos + boutons).
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       child: SingleChildScrollView(
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 0; i < kVisitPhotoTags.length; i++) ...[
-                if (i > 0) const SizedBox(width: 14),
-                Expanded(
-                  child: _buildCategorySection(
-                    tag: kVisitPhotoTags[i],
-                    icon: _iconForCategory(kVisitPhotoTags[i]),
-                    maxSlots:
-                        kVisitPhotoSlotCount[kVisitPhotoTags[i]] ?? 0,
-                  ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < kVisitPhotoTags.length; i++) ...[
+              if (i > 0) const SizedBox(width: 14),
+              Expanded(
+                child: _buildCategorySection(
+                  tag: kVisitPhotoTags[i],
+                  icon: _iconForCategory(kVisitPhotoTags[i]),
+                  maxSlots:
+                      kVisitPhotoSlotCount[kVisitPhotoTags[i]] ?? 0,
                 ),
-              ],
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -409,16 +405,6 @@ class _PhotosTabState extends State<PhotosTab>
               photos: photos,
               maxSlots: maxSlots,
             ),
-          // Spacer pousse les boutons d'action au bas du container.
-          // Avec `IntrinsicHeight + CrossAxisAlignment.stretch` côté
-          // parent, les 3 colonnes ont la même hauteur (= la plus
-          // grande des 3, typiquement la catégorie avec le plus de
-          // photos). Sans Spacer, dans les colonnes moins remplies
-          // les boutons « Prendre / Galerie » se trouvaient flottants
-          // au milieu du container ; maintenant ils sont collés au
-          // bas et toutes les colonnes ont leurs boutons alignés
-          // horizontalement → cohérence visuelle.
-          const Spacer(),
           const SizedBox(height: 10),
           // Boutons capture / galerie — toujours présents même si la
           // catégorie est pleine (l'ergo peut vouloir une 4e photo en
