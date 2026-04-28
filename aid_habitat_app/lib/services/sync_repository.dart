@@ -191,8 +191,21 @@ class SyncRepository {
   /// opérations qui se sont accumulées en `failed` à cause d'un hoquet
   /// serveur (notamment les ops de note_page qui ont fait planter la
   /// prod avec des 500 dans le passé).
+  ///
+  /// **Limite d'âge** : on ne réhabilite QUE les ops créées dans les
+  /// 24 dernières heures. Sinon une vieille op `failed` (genre saisie
+  /// d'il y a 3 semaines en mode offline qui n'a jamais réussi à
+  /// passer) finissait par être repêchée et écrasait NocoDB avec un
+  /// payload obsolète — symptôme « le nom revient à une version
+  /// antérieure tout seul » signalé le 2026-04-28. Au-delà de 24h, le
+  /// payload est considéré comme dépassé : l'utilisateur peut soit
+  /// vider la file via `discardFailedOperations` (UI : bouton « Vider
+  /// les échecs »), soit refaire la modif manuellement.
   Future<int> rehabilitateTransientFailures() async {
     final db = await _database.database;
+    final ageCutoff = DateTime.now()
+        .subtract(const Duration(hours: 24))
+        .toIso8601String();
     // On reset `attempt_count` à 0 en plus du status. Sinon, après un
     // épisode CORS/Vercel-SSO qui a fait échouer 5+ fois la même op,
     // le backoff (`_computeOpBackoffSeconds`) la maintient en attente
@@ -206,6 +219,7 @@ class SyncRepository {
       UPDATE sync_operations
       SET status = ?, updated_at = ?, attempt_count = 0
       WHERE status = ?
+        AND created_at > ?
         AND (
           last_error LIKE '%500%'
           OR last_error LIKE '%502%'
@@ -231,6 +245,7 @@ class SyncRepository {
         SyncOperationStatus.pending.name,
         DateTime.now().toIso8601String(),
         SyncOperationStatus.failed.name,
+        ageCutoff,
       ],
     );
     return rehabilitated;

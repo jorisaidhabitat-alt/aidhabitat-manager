@@ -630,28 +630,36 @@ class _PhotoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Layout vertical "card" (demande utilisateur 2026-04-28) :
-    //   - Top row : numéro de slot (gauche) + drag handle + menu kebab (droite)
-    //   - Body    : preview pleine largeur (aspect 4:3, BoxFit.cover) cliquable
+    //   - Top row : numéro de slot (gauche) + drag handle horizontal
+    //               (centré) + menu kebab (droite)
+    //   - Body    : preview pleine largeur (aspect 4:3, BoxFit.cover)
+    //               cliquable → fullscreen
     //
-    // Plus de titre ni de label « Slot X du rapport » — le numéro
-    // dans la pastille en haut suffit. Permet à l'ergo de voir BIEN
-    // ses photos dans la grille.
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: inSlot
-                ? const Color(0xFFE2E8F0)
-                : const Color(0xFFFEE2E2),
+    // Toute la card est wrappée par `ReorderableDelayedDragStartListener`
+    // → long-press n'importe où dessus déclenche le réordonnancement
+    // (parité comportementale avec une grille type Pinterest). Les taps
+    // courts continuent de fonctionner pour le menu kebab et le tap
+    // sur l'image — Flutter dispatche les gestes via l'arène et le
+    // long-press gagne contre le tap simple, le tap simple gagne
+    // contre l'inactivité du long-press.
+    return ReorderableDelayedDragStartListener(
+      index: dragHandleIndex,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: inSlot
+                  ? const Color(0xFFE2E8F0)
+                  : const Color(0xFFFEE2E2),
+            ),
           ),
-        ),
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // Top row sur 3 zones positionnées indépendamment via
             // Stack :
             //   - gauche : pastille numéro (slot ou surplus)
@@ -693,19 +701,18 @@ class _PhotoTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Centre : drag handle parfaitement centré.
-                  // `Align(center)` aligne l'enfant au milieu du
-                  // Stack — indépendamment de la pastille à gauche
-                  // et du kebab à droite.
-                  Align(
+                  // Centre : drag handle horizontal — purement
+                  // visuel. Le drag est en réalité capturé par le
+                  // `ReorderableDelayedDragStartListener` qui wrappe
+                  // toute la card → long-press n'importe où réordonne.
+                  // Cette icône est juste un indicateur affordance pour
+                  // l'utilisateur ("ça se déplace").
+                  const Align(
                     alignment: Alignment.center,
-                    child: ReorderableDragStartListener(
-                      index: dragHandleIndex,
-                      child: const Icon(
-                        LucideIcons.gripVertical,
-                        size: 18,
-                        color: Color(0xFF94A3B8),
-                      ),
+                    child: Icon(
+                      LucideIcons.gripHorizontal,
+                      size: 18,
+                      color: Color(0xFF94A3B8),
                     ),
                   ),
                   // Droite : menu kebab.
