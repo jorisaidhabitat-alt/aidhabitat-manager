@@ -153,11 +153,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     _scheduleSave();
   }
 
-  // Conservé pour réactivation future (drag-to-reorder sera réintroduit
-  // si on bascule sur un package de grille reorderable, ex.
-  // `reorderable_grid_view`). Le layout actuel est une grille 3 cols
-  // manuelle (Row+Expanded), incompatible avec ReorderableListView.
-  // ignore: unused_element
+  /// Déplace un item depuis [oldIndex] vers [newIndex] (insertion au
+  /// nouvel index après suppression). Utilisé par le drag-to-reorder
+  /// custom de la grille 3 colonnes (cf. `_buildRecommendationsGrid`).
   void _reorderItem(int oldIndex, int newIndex) {
     setState(() {
       final next = List<VisitRecommendationItem>.from(_items);
@@ -313,53 +311,58 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     );
   }
 
-  /// Grille 3 colonnes pour les cartes de préconisations. Chaque ligne
-  /// contient toujours 3 `Expanded` pour que les cartes aient une
-  /// largeur uniforme — les emplacements vides (dernière ligne
-  /// incomplète) sont rendus en `SizedBox.shrink`. Espacement vertical
-  /// 12 px entre lignes, horizontal 12 px entre colonnes.
+  /// Grille 3 colonnes pour les cartes de préconisations, avec
+  /// drag-to-reorder fonctionnel sur **toute la carte** via
+  /// `LongPressDraggable` + `DragTarget`.
+  ///
+  /// Comportement :
+  ///   - Long press sur n'importe quelle zone d'une carte → début du drag
+  ///   - Pendant le drag : la carte source devient semi-transparente,
+  ///     un fantôme suit le doigt (Material elevation 12 + radius 16)
+  ///   - Pendant le hover sur une autre carte : bordure violette qui
+  ///     indique le slot d'insertion
+  ///   - Drop : `_reorderItem` est appelé pour réorganiser la liste
+  ///     (la carte se retrouve insérée AVANT la carte cible)
+  ///
+  /// Le drag handle dédié (icône en haut de la carte) est masqué — la
+  /// carte entière est draggable, plus besoin d'un espace dédié
+  /// (demande utilisateur 2026-04-28).
   Widget _buildRecommendationsGrid() {
     const int columns = 3;
     const double gap = 12.0;
-    final rows = <Widget>[];
-    for (int rowStart = 0; rowStart < _items.length; rowStart += columns) {
-      final children = <Widget>[];
-      for (int col = 0; col < columns; col++) {
-        if (col > 0) {
-          children.add(const SizedBox(width: gap));
-        }
-        final idx = rowStart + col;
-        if (idx < _items.length) {
-          final item = _items[idx];
-          children.add(Expanded(
-            child: _RecommendationCard(
-              key: ValueKey(item.id),
-              item: item,
-              index: idx,
-              // Drag handle masqué : pas de reorder dans ce layout grid.
-              reorderable: false,
-              onChange: (updated) => _updateItem(idx, updated),
-              onRemove: () => _removeItem(idx),
-              onPickWiki: () => _openPicker(idx),
-            ),
-          ));
-        } else {
-          // Placeholder invisible pour préserver la largeur uniforme
-          // des cartes quand la dernière ligne n'est pas pleine.
-          children.add(const Expanded(child: SizedBox.shrink()));
-        }
-      }
-      rows.add(Padding(
-        padding: const EdgeInsets.only(bottom: gap),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: children,
-        ),
-      ));
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: rows,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final available = constraints.maxWidth;
+        final cardWidth = (available - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (int i = 0; i < _items.length; i++)
+              SizedBox(
+                width: cardWidth,
+                child: _DraggableRecoSlot(
+                  key: ValueKey('slot-${_items[i].id}'),
+                  index: i,
+                  cardWidth: cardWidth,
+                  itemsCount: _items.length,
+                  onReorder: _reorderItem,
+                  child: _RecommendationCard(
+                    key: ValueKey(_items[i].id),
+                    item: _items[i],
+                    index: i,
+                    // Drag handle dédié masqué : la carte entière est
+                    // déjà draggable via LongPressDraggable du parent.
+                    reorderable: false,
+                    onChange: (updated) => _updateItem(i, updated),
+                    onRemove: () => _removeItem(i),
+                    onPickWiki: () => _openPicker(i),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -810,6 +813,92 @@ class _InlineTitleFieldState extends State<_InlineTitleField> {
         ),
       ),
       onChanged: widget.onChanged,
+    );
+  }
+}
+
+// =============================================================================
+// Draggable wrapper around a recommendation card (grid 3 cols)
+// =============================================================================
+
+/// Slot draggable + drop target pour une carte de préconisation dans la
+/// grille 3 colonnes. Le drag est déclenché par un long press n'importe
+/// où sur la carte (pas de handle dédié — demande utilisateur 2026-04-28).
+///
+/// Visuels pendant le drag :
+///   - Carte source : opacité 0.3 (signale qu'elle "voyage")
+///   - Fantôme sous le doigt : Material elevation 12 + radius 16
+///   - Carte cible (hover) : bordure violette 2 px + radius 16
+///
+/// Au drop : `onReorder(fromIndex, toIndex)` est appelé. La carte
+/// déplacée est insérée AVANT la carte cible. Pour mettre une carte
+/// tout à la fin, l'ergo peut la déposer sur la dernière + utiliser
+/// l'ordre naturel (les cards sont 1-3-5 par ligne, pas de slot
+/// fantôme final pour le moment).
+class _DraggableRecoSlot extends StatelessWidget {
+  const _DraggableRecoSlot({
+    super.key,
+    required this.index,
+    required this.cardWidth,
+    required this.itemsCount,
+    required this.onReorder,
+    required this.child,
+  });
+
+  final int index;
+  final double cardWidth;
+  final int itemsCount;
+  final void Function(int oldIndex, int newIndex) onReorder;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<int>(
+      onWillAcceptWithDetails: (details) {
+        // On accepte tout sauf un drop sur soi-même.
+        return details.data != index;
+      },
+      onAcceptWithDetails: (details) {
+        final from = details.data;
+        // L'index "newIndex" attendu par `_reorderItem` est l'index
+        // d'INSERTION dans la liste post-removal — donc juste `index`.
+        onReorder(from, index);
+      },
+      builder: (context, candidates, rejected) {
+        final isHovered = candidates.isNotEmpty;
+        final highlight = Container(
+          decoration: isHovered
+              ? BoxDecoration(
+                  border: Border.all(
+                    color: const Color(0xFF7C6DAA),
+                    width: 2,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                )
+              : null,
+          child: child,
+        );
+        return LongPressDraggable<int>(
+          data: index,
+          // Délai court — réactivité améliorée sur tactile sans
+          // déclencher de drags accidentels lors de simples taps.
+          delay: const Duration(milliseconds: 250),
+          // Le fantôme est un clone visuel de la carte avec une
+          // élévation prononcée pour suggérer "elle flotte".
+          feedback: Material(
+            color: Colors.transparent,
+            elevation: 12,
+            borderRadius: BorderRadius.circular(16),
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(width: cardWidth, child: child),
+          ),
+          // Pendant que la carte est draggée, la version "originale"
+          // reste à sa place (pour préserver le layout de la grille)
+          // mais en semi-transparence.
+          childWhenDragging: Opacity(opacity: 0.3, child: child),
+          child: highlight,
+        );
+      },
     );
   }
 }
