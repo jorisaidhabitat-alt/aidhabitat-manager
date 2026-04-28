@@ -14,6 +14,7 @@ import '../models/types.dart';
 import '../services/data_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/references_service.dart';
+import '../services/save_debounce.dart';
 import 'conflict_resolution_screen.dart';
 import 'documents_screen.dart';
 import 'visit_report_screen.dart';
@@ -256,14 +257,9 @@ class _DossierScreenState extends State<DossierScreen> {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    // 400 ms : assez court pour que l'utilisateur sente une persistance
-    // locale réactive après une pause de frappe, mais suffisamment long
-    // pour absorber les pauses naturelles entre 2 caractères d'un même
-    // mot (≈ 300 ms en moyenne). Avant, 150 ms tirait le save mid-mot
-    // sur certains iPad — cf. symptôme "BALS save → BAL".
-    // NocoDB reçoit le push ~200 ms après le save local via le debounce
-    // du SyncEngine, soit ~600 ms depuis la dernière touche. Acceptable.
-    _saveTimer = Timer(const Duration(milliseconds: 400), _save);
+    // Debounce uniformisé sur `kSaveDebounceText` (400 ms) — voir
+    // `lib/services/save_debounce.dart` pour le rationale détaillé.
+    _saveTimer = Timer(kSaveDebounceText, _save);
   }
 
   Future<void> _save() async {

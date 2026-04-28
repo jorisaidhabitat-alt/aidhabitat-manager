@@ -5,6 +5,7 @@ import '../../models/types.dart';
 import '../../services/data_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/references_service.dart';
+import '../../services/save_debounce.dart';
 import '../../services/retirement_funds_repository.dart';
 import '../../components/commune_field_group.dart';
 import '../../components/form_widgets.dart';
@@ -310,12 +311,11 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    // 150 ms is short enough that local SQLite writes feel truly instant
-    // (the user sees other tabs update immediately after each keystroke
-    // pause), while still batching rapid successive keystrokes into a
-    // single persist cycle. NocoDB sync follows ~200 ms later via the
-    // SyncEngine debounce.
-    _saveTimer = Timer(const Duration(milliseconds: 150), _save);
+    // Debounce uniformisé sur kSaveDebounceText (400 ms) — laisse les
+    // pauses naturelles entre lettres passer sans déclencher un save
+    // mid-mot. Avant 150 ms, des frappes "BALS" ressortaient parfois
+    // en "BAL" en SQLite (fix dossier_screen Apr 2026).
+    _saveTimer = Timer(kSaveDebounceText, _save);
   }
 
   void _markChanged() {

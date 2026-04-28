@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../components/form_widgets.dart';
 import '../../models/types.dart';
 import '../../services/data_service.dart';
+import '../../services/save_debounce.dart';
 
 /// Onglet « Observations » du relevé de visite — alimente :
 ///   - Page 6 du PDF : « Observation sur les équipements et utilisation »
@@ -79,7 +80,7 @@ class _ObservationsTabState extends State<ObservationsTab>
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 400), _save);
+    _saveTimer = Timer(kSaveDebounceText, _save);
   }
 
   Future<void> _save() async {

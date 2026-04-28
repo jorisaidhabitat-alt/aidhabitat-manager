@@ -1499,6 +1499,21 @@ export async function generateVisitReport({
     }
   }
 
+  // Capture de l'index de la page "Descriptif des aides
+  // prévisionnelles" AVANT flatten — après flatten, les widgets sont
+  // consommés et `widget.P()` ne renverra plus rien d'utilisable.
+  // L'index reste valide pour la suite (les removePage de la boucle
+  // ci-dessus n'affectent pas les pages d'index supérieur).
+  let descriptifPageIdxAtFlatten = -1;
+  if (pendingBotCovers.length === 1) {
+    const descriptifAnchor =
+      fieldsByName.get('Caisse de retraite complémentaire');
+    descriptifPageIdxAtFlatten = findPageIndexForField(
+      pdfDoc,
+      descriptifAnchor,
+    );
+  }
+
   // Override de l'adresse Aid'Habitat sur la couverture (texte
   // hardcodé dans le PDF — pas un champ de formulaire).
   await applyErgoContactOverlay(pdfDoc);
@@ -1583,38 +1598,34 @@ export async function generateVisitReport({
   //   4. removePage de la page descriptif d'origine pour ne pas la
   //      voir apparaître deux fois.
   // ---------------------------------------------------------------
-  if (pendingBotCovers.length === 1) {
-    const descriptifAnchor = fieldsByName.get('Caisse de retraite complémentaire');
-    const descriptifPageIdx = findPageIndexForField(pdfDoc, descriptifAnchor);
-    if (descriptifPageIdx !== -1) {
-      try {
-        const descriptifPage = pdfDoc.getPage(descriptifPageIdx);
-        // Bbox du tableau orange sur la page descriptif (coordonnées
-        // PDF, origine bas-gauche). Ajusté visuellement pour englober
-        // le titre, le tableau complet et la marge intérieure du cadre.
-        const embedded = await pdfDoc.embedPage(descriptifPage, {
-          left: 20,
-          bottom: 435,
-          right: 575,
-          top: 825,
-        });
-        const { pageIdx: partialPageIdx } = pendingBotCovers[0];
-        const partialPage = pdfDoc.getPage(partialPageIdx);
-        // Aspect ratio préservé : 555 × 390 (= bbox crop).
-        partialPage.drawPage(embedded, {
-          x: 20,
-          y: 40,
-          width: 555,
-          height: 390,
-        });
-        pdfDoc.removePage(descriptifPageIdx);
-        stats.descriptifMerged = true;
-      } catch (error) {
-        console.warn(
-          '[generateVisitReport] descriptif merge a échoué :',
-          error?.message || error,
-        );
-      }
+  if (pendingBotCovers.length === 1 && descriptifPageIdxAtFlatten !== -1) {
+    try {
+      const descriptifPage = pdfDoc.getPage(descriptifPageIdxAtFlatten);
+      // Bbox du tableau orange sur la page descriptif (coordonnées
+      // PDF, origine bas-gauche). Ajusté visuellement pour englober
+      // le titre, le tableau complet et la marge intérieure du cadre.
+      const embedded = await pdfDoc.embedPage(descriptifPage, {
+        left: 20,
+        bottom: 435,
+        right: 575,
+        top: 825,
+      });
+      const { pageIdx: partialPageIdx } = pendingBotCovers[0];
+      const partialPage = pdfDoc.getPage(partialPageIdx);
+      // Aspect ratio préservé : 555 × 390 (= bbox crop).
+      partialPage.drawPage(embedded, {
+        x: 20,
+        y: 40,
+        width: 555,
+        height: 390,
+      });
+      pdfDoc.removePage(descriptifPageIdxAtFlatten);
+      stats.descriptifMerged = true;
+    } catch (error) {
+      console.warn(
+        '[generateVisitReport] descriptif merge a échoué :',
+        error?.message || error,
+      );
     }
   }
 
