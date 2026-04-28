@@ -1688,7 +1688,7 @@ export async function generateVisitReport({
   // "fin de préconisation" ne soit pas mangée par le blanc et qu'on
   // voie clairement la coupure de la case TOP (demande utilisateur :
   // "redescend encore légèrement le masque").
-  const COVER_TOP_DROP = 20;
+  const COVER_TOP_DROP = 35;
   for (const { pageIdx, botRect, topRect } of pendingBotCovers) {
     if (!botRect) continue;
     let page;

@@ -357,9 +357,59 @@ class DataService {
   /// [NocodbApiClient.downloadVisitReport]. Le caller est responsable
   /// de l'ouverture / sauvegarde / partage des bytes — ce service ne
   /// touche pas au filesystem.
+  ///
+  /// Avant l'envoi, on collecte les **assets locaux non-encore-syncés**
+  /// (photos VAD + plans) et on les embarque inline dans la requête
+  /// multipart. Robuste face à un sync NocoDB intermittent : si l'ergo
+  /// clique « Générer » pendant qu'une partie des photos vient juste
+  /// d'être uploadée et l'autre pas, le serveur a quand même tous les
+  /// bytes nécessaires (les inline gagnent sur la lecture NocoDB).
   Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats})>
       downloadVisitReport({required String dossierId}) async {
-    return _nocodbApiClient.downloadVisitReport(dossierId: dossierId);
+    // Résolution patientId à partir du dossierId — nécessaire pour
+    // récupérer les documents et notes scopés au patient. Si le dossier
+    // est introuvable localement, on tombe sur les listes vides → POST
+    // simple sans body (comportement v1).
+    String? patientId;
+    try {
+      final dossier = await _dossierRepository.fetchDossierById(dossierId);
+      patientId = dossier?.patient.id;
+    } catch (_) {
+      // Pas bloquant : on génère sans inline si la résolution échoue.
+    }
+
+    var inlineDocs = const <InlineDocumentBytes>[];
+    var inlinePlans = const <InlinePlanBytes>[];
+    if (patientId != null && patientId.isNotEmpty) {
+      try {
+        inlineDocs = await _documentRepository
+            .fetchVisitReportInlineBytes(patientId);
+      } catch (e) {
+        // ignore: avoid_print
+        print('[report] inline docs lookup failed: $e');
+      }
+      try {
+        inlinePlans = await _noteRepository
+            .fetchPlanReportInlineBytes(patientId, dossierId: dossierId);
+      } catch (e) {
+        // ignore: avoid_print
+        print('[report] inline plans lookup failed: $e');
+      }
+    }
+
+    if (inlineDocs.isNotEmpty || inlinePlans.isNotEmpty) {
+      // ignore: avoid_print
+      print(
+        '[report] inline assets joints à la requête : '
+        '${inlineDocs.length} doc(s) + ${inlinePlans.length} plan(s)',
+      );
+    }
+
+    return _nocodbApiClient.downloadVisitReport(
+      dossierId: dossierId,
+      inlineDocuments: inlineDocs,
+      inlinePlans: inlinePlans,
+    );
   }
 
   Future<String?> fetchNoteDrawingJson({

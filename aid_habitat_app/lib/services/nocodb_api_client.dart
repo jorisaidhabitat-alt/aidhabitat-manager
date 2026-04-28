@@ -4,9 +4,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../models/types.dart';
 import 'app_config.dart';
+import 'document_repository.dart' show InlineDocumentBytes;
+import 'note_repository.dart' show InlinePlanBytes;
 
 /// Thrown when the server returns HTTP 409, indicating the remote record was
 /// modified since the client last fetched it.
@@ -628,20 +631,46 @@ class NocodbApiClient {
   /// L'header `X-Report-Stats` contient un JSON `{applied, missingField,
   /// missingValue}` utile en debug pour diagnostiquer une dérive de
   /// mapping (champ renommé côté template par exemple).
+  ///
+  /// **inlineDocuments / inlinePlans** : assets locaux non-encore-syncés
+  /// vers NocoDB, embarqués en multipart pour que le serveur puisse
+  /// générer le PDF même quand la sync NocoDB est en retard ou
+  /// intermittente. Si vides, on retombe sur le POST sans body
+  /// (comportement v1, lecture intégrale depuis NocoDB côté serveur).
   Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats})>
-      downloadVisitReport({required String dossierId}) async {
+      downloadVisitReport({
+    required String dossierId,
+    List<InlineDocumentBytes> inlineDocuments = const [],
+    List<InlinePlanBytes> inlinePlans = const [],
+  }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
-    final response = await _runWithTransientGuard(
-      'Visit report generation',
-      () => _client
-          .post(
-            Uri.parse('$_baseUrl/api/reports/visit/$dossierId'),
-            headers: _headers,
-          )
-          .timeout(_uploadTimeout),
-    );
+
+    final hasInlineAssets =
+        inlineDocuments.isNotEmpty || inlinePlans.isNotEmpty;
+
+    final http.Response response;
+    if (hasInlineAssets) {
+      // Multipart : embarque les bytes locaux. Cf. parseInlineReportAssets
+      // côté serveur (server/index.mjs).
+      response = await _sendReportMultipart(
+        dossierId: dossierId,
+        inlineDocuments: inlineDocuments,
+        inlinePlans: inlinePlans,
+      );
+    } else {
+      // POST simple sans body — le serveur lit tout depuis NocoDB.
+      response = await _runWithTransientGuard(
+        'Visit report generation',
+        () => _client
+            .post(
+              Uri.parse('$_baseUrl/api/reports/visit/$dossierId'),
+              headers: _headers,
+            )
+            .timeout(_uploadTimeout),
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         'Génération du rapport échouée (${response.statusCode}): '
@@ -672,6 +701,99 @@ class NocodbApiClient {
       fileName: fileName,
       stats: stats,
     );
+  }
+
+  /// Construit et envoie la requête multipart pour la génération PDF
+  /// avec assets inline. Calque le pattern de `uploadDocument` (multer
+  /// memoryStorage côté serveur).
+  ///
+  /// Convention de fieldnames :
+  ///   - `inline_doc_<localId>` : binaires des photos VAD locales
+  ///   - `inline_doc_<localId>_meta` : JSON `{fileName, mimeType, tags, dossierId, title}`
+  ///   - `inline_plan_<localId>` : binaire PNG des plans locaux
+  ///   - `inline_plan_<localId>_meta` : JSON `{planPhase, pageNumber, scopeId, mimeType}`
+  Future<http.Response> _sendReportMultipart({
+    required String dossierId,
+    required List<InlineDocumentBytes> inlineDocuments,
+    required List<InlinePlanBytes> inlinePlans,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$_baseUrl/api/reports/visit/$dossierId'),
+    );
+    // Pas de Content-Type ici — multipart le définit lui-même avec
+    // boundary. Auth via X-App-Session uniquement.
+    request.headers['X-App-Session'] = AppConfig.appSessionToken;
+
+    for (final doc in inlineDocuments) {
+      MediaType contentType;
+      try {
+        contentType = MediaType.parse(doc.mimeType);
+      } catch (_) {
+        contentType = MediaType('application', 'octet-stream');
+      }
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'inline_doc_${doc.localId}',
+          doc.bytes,
+          filename: doc.fileName,
+          contentType: contentType,
+        ),
+      );
+      request.fields['inline_doc_${doc.localId}_meta'] = jsonEncode({
+        'fileName': doc.fileName,
+        'mimeType': doc.mimeType,
+        'tags': doc.tags,
+        if (doc.dossierId != null) 'dossierId': doc.dossierId,
+        'title': doc.title,
+      });
+    }
+
+    for (final plan in inlinePlans) {
+      MediaType contentType;
+      try {
+        contentType = MediaType.parse(plan.mimeType);
+      } catch (_) {
+        contentType = MediaType('image', 'png');
+      }
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'inline_plan_${plan.localId}',
+          plan.bytes,
+          filename: '${plan.localId}.png',
+          contentType: contentType,
+        ),
+      );
+      request.fields['inline_plan_${plan.localId}_meta'] = jsonEncode({
+        'planPhase': plan.planPhase,
+        'pageNumber': plan.pageNumber,
+        if (plan.scopeId != null) 'scopeId': plan.scopeId,
+        'mimeType': plan.mimeType,
+      });
+    }
+
+    // Transient guard manuel : `MultipartRequest.send` ne passe pas par
+    // `_runWithTransientGuard`. On reproduit la classification 5xx /
+    // network → TransientRemoteException pour que le sync engine puisse
+    // retry au cycle suivant au lieu de marquer définitivement failed.
+    http.StreamedResponse streamed;
+    try {
+      streamed = await _client.send(request).timeout(_uploadTimeout);
+    } catch (error) {
+      if (_isTransientNetworkError(error)) {
+        throw TransientRemoteException(
+          'Visit report network error: $error',
+        );
+      }
+      rethrow;
+    }
+    if (streamed.statusCode >= 500) {
+      throw TransientRemoteException(
+        'Visit report failed (${streamed.statusCode})',
+        statusCode: streamed.statusCode,
+      );
+    }
+    return http.Response.fromStream(streamed);
   }
 
   Future<List<Map<String, dynamic>>> fetchDocuments(String patientId) async {
