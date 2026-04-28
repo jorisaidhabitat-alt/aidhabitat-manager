@@ -177,7 +177,6 @@ const double _kDefaultPenSize = 2.0;
 const double _kDefaultHighlighterSize = 10.0;
 const double _kDefaultEraserSize = 18.0;
 const Color _kAccentColor = Color(0xFF7C6DAA);
-const Color _kAccentSoft = Color(0xFFD8D0DC);
 const Color _kActiveText = Color(0xFF554A63);
 const double _kGridCell = 24.0;
 
@@ -2272,7 +2271,16 @@ class _NotesWidgetState extends State<NotesWidget> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: isActive ? _kAccentSoft : Colors.grey.shade100,
+              // Fond actif = violet clair canonique de l'app
+              // (`_kStackedVioletSoft = 0xFFEDE8F5`), même teinte que
+              // les conteneurs « ajouter un niveau » / icônes Documents
+              // & VAD du dossier. Demande utilisateur 2026-04-28 :
+              // « la couleur de fond des outils de note quand je les
+              // selectionne doit être le meme violet clair que celui
+              // qui est présent dans toute l'application ». L'ancien
+              // `_kAccentSoft = 0xFFD8D0DC` (lavande terne) n'était
+              // utilisé qu'ici — supprimé pour éviter toute dérive.
+              color: isActive ? _kStackedVioletSoft : Colors.grey.shade100,
               shape: BoxShape.circle,
             ),
             child: Opacity(

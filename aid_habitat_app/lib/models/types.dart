@@ -1087,6 +1087,16 @@ class DocItem {
   /// l'instant — non synchronisé à NocoDB en v1.
   final int? categoryOrder;
 
+  /// Annotations par page d'un PDF — JSON sérialisé du format
+  /// `{"1": "data:image/png;base64,...", "3": "data:..."}`. La clé est
+  /// le numéro de page (1-indexed), la valeur le PNG data URL de
+  /// l'aplat (rendu PDF page + traits ergo dessinés par-dessus). Le
+  /// PDF original reste intact dans [dataUrl]/[localPath]. La preview
+  /// applique l'overlay PNG sur la page courante quand une entrée
+  /// existe dans la map ; sinon elle rend la page PDF brute. `null` si
+  /// le doc n'a aucune annotation.
+  final String? annotationsJson;
+
   DocItem({
     required this.id,
     required this.type,
@@ -1099,6 +1109,7 @@ class DocItem {
     this.tags = const [],
     this.syncState = SyncState.localOnly,
     this.categoryOrder,
+    this.annotationsJson,
   });
 }
 

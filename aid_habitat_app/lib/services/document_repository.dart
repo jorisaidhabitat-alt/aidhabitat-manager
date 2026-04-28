@@ -274,6 +274,75 @@ class DocumentRepository {
   /// via le champ `dataUrl` du payload. Le `documentLocalId` reste le
   /// même, donc côté NocoDB on remplace l'asset existant (parité avec
   /// la variante natif `enqueueAnnotatedReupload`).
+  /// Enregistre l'aplat (PDF page + traits ergo) d'UNE SEULE PAGE
+  /// d'un PDF dans la map `annotations_json` du document, sans
+  /// toucher au PDF original. Le PDF reste navigable, et la preview
+  /// affiche l'aplat PNG sur les pages qui ont une entrée dans la map.
+  ///
+  /// Format du JSON stocké : `{"1": "data:image/png;base64,...", "3": "..."}`
+  /// (clé = numéro de page 1-indexé, valeur = data URL PNG).
+  ///
+  /// Symptôme avant ce mécanisme :
+  /// `enqueueAnnotatedReuploadBytes` remplaçait le PDF entier par le
+  /// PNG d'une seule page → perte des autres pages, plus de
+  /// navigation, le `file_ext` passait à 'png' et la preview ne savait
+  /// plus distinguer un vrai PDF d'un image annotée.
+  ///
+  /// Cette méthode est utilisée pour les annotations PDF par page.
+  /// Les annotations sur images "simples" (jpg/png originaux)
+  /// continuent d'utiliser `enqueueAnnotatedReuploadBytes` qui flatten
+  /// directement le fichier source (puisqu'il n'y a qu'une "page").
+  ///
+  /// Note : le sync NocoDB n'est pas câblé pour les overlays par page
+  /// en v1 — les annotations restent local-only. Voir TODO dans le
+  /// sync engine pour pousser une op `update_annotations`.
+  Future<void> enqueueAnnotatedPageBytes({
+    required String documentId,
+    required int pageNumber,
+    required Uint8List bytes,
+  }) async {
+    if (pageNumber < 1) return;
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      columns: ['annotations_json'],
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+
+    // Lit la map existante, ajoute/écrase l'entrée de la page courante.
+    final existingJson = rows.first['annotations_json'] as String? ?? '';
+    Map<String, dynamic> map = {};
+    if (existingJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(existingJson);
+        if (decoded is Map<String, dynamic>) map = decoded;
+      } catch (_) {
+        // JSON corrompu → on repart d'une map vide. La page de l'ergo
+        // sera la 1re entrée. Les anciennes annotations sont perdues
+        // mais c'était déjà cassé.
+      }
+    }
+    final dataUrl = 'data:image/png;base64,${base64Encode(bytes)}';
+    map['$pageNumber'] = dataUrl;
+
+    final now = DateTime.now().toIso8601String();
+    await db.update(
+      'documents',
+      {
+        'annotations_json': jsonEncode(map),
+        'updated_at': now,
+        // Pas de `sync_state = pendingSync` — les annotations restent
+        // local-only en v1, pas de push NocoDB. Le doc PDF original
+        // garde son sync_state existant (synced typiquement).
+      },
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+    );
+  }
+
   Future<void> enqueueAnnotatedReuploadBytes({
     required String documentId,
     required Uint8List bytes,
@@ -962,6 +1031,7 @@ class DocumentRepository {
       tags: decodedTags,
       syncState: SyncState.values.byName(row['sync_state'] as String),
       categoryOrder: (row['category_order'] as num?)?.toInt(),
+      annotationsJson: row['annotations_json'] as String?,
     );
   }
 
