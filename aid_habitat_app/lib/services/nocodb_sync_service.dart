@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import 'app_config.dart';
 import 'connectivity_service.dart';
+import 'document_repository.dart';
 import 'local_database.dart';
 import 'nocodb_api_client.dart';
 import 'sync_repository.dart';
@@ -316,11 +317,71 @@ class NocodbSyncService {
       case 'profile_photo':
         await _processProfilePhotoOperation(operation, payload);
         return;
+      case 'report_generation':
+        await _processReportGenerationOperation(operation, payload);
+        return;
       default:
         throw Exception(
           'Type d\'operation non supporte: ${operation.entityType}',
         );
     }
+  }
+
+  /// Génération différée du rapport de visite. Enqueued par
+  /// `_generateReport` côté UI quand l'ergo clique « Générer » offline
+  /// (ou que la requête réseau échoue). Au tour de sync suivant — quand
+  /// la connexion est de retour — le sync engine appelle cette fonction
+  /// qui :
+  ///   1. Demande au serveur Express le PDF du dossier
+  ///      (`POST /api/reports/visit/:dossierId`).
+  ///   2. Insère le résultat comme document local taggé « Rapport »
+  ///      via `DocumentRepository.importDocumentBytes` — cette fonction
+  ///      enqueue à son tour un `upload_file` op qui pousse le PDF vers
+  ///      l'espace Documents NocoDB du dossier au cycle suivant.
+  ///
+  /// Idempotence : l'op est de type 'generate' avec un id unique
+  /// `report_gen_<dossierId>` (ConflictAlgorithm.replace côté
+  /// `enqueueReportGeneration`) — donc deux clics « Générer » offline
+  /// d'affilée ne produisent qu'un seul rapport.
+  ///
+  /// Retry : si la requête échoue (serveur down, 5xx), le sync engine
+  /// la marque transient et la retentera au cycle suivant. Si elle
+  /// échoue avec une 4xx définitive (dossier hors scope), elle passe
+  /// en `failed` et l'utilisateur voit l'erreur dans la pastille de
+  /// sync de la sidebar.
+  Future<void> _processReportGenerationOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    if (operation.operationType != 'generate') {
+      throw Exception(
+        'Opération report_generation non supportée: ${operation.operationType}',
+      );
+    }
+    final dossierId = payload['dossierId']?.toString() ?? '';
+    final patientId = payload['patientId']?.toString() ?? '';
+    if (dossierId.isEmpty || patientId.isEmpty) {
+      throw Exception('Payload report_generation incomplet '
+          '(dossierId="$dossierId", patientId="$patientId")');
+    }
+    // ignore: avoid_print
+    print('[sync] POST /api/reports/visit/$dossierId (generation différée)');
+    final result = await _apiClient.downloadVisitReport(dossierId: dossierId);
+    // ignore: avoid_print
+    print('[sync] PDF reçu (${result.bytes.length} bytes), import local…');
+    final fileName = result.fileName;
+    final title = fileName.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '');
+    await DocumentRepository().importDocumentBytes(
+      patientId: patientId,
+      dossierId: dossierId,
+      bytes: result.bytes,
+      fileName: fileName,
+      title: title.isEmpty ? 'Rapport de visite' : title,
+      tags: const ['Rapport'],
+    );
+    // ignore: avoid_print
+    print('[sync] document "Rapport" inséré localement, '
+        'upload_file op enqueued par DocumentRepository');
   }
 
   /// Pushes a Contexte de vie update (medical context + autonomy

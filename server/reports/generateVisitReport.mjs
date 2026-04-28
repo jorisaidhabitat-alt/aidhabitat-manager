@@ -738,45 +738,60 @@ async function applyApaGirOverlay({ pdfDoc, fieldsByName, view }) {
  */
 async function applyErgoAddressOverlay({ pdfDoc, fieldsByName, view }) {
   const address = String(getByPath(view, 'constants.ergoAddressOneLine') || '').trim();
-  if (!address) return;
+  console.log('[overlay] start, address=', JSON.stringify(address));
+  if (!address) {
+    console.log('[overlay] STOP: address vide');
+    return;
+  }
 
   const field = fieldsByName.get('adresse');
+  console.log('[overlay] field found?', !!field, field?.constructor?.name);
   if (!field) return;
   const widgets = field.acroField.getWidgets?.() || [];
+  console.log('[overlay] widgets count=', widgets.length);
   const widget = widgets[0];
   if (!widget) return;
 
   const pageRef = widget.P?.();
-  if (!pageRef) return;
-  const page = pdfDoc.getPages().find((p) => p.ref === pageRef);
+  console.log('[overlay] pageRef=', pageRef);
+  if (!pageRef) {
+    console.log('[overlay] STOP: pageRef null');
+    return;
+  }
+  const allPages = pdfDoc.getPages();
+  const page = allPages.find((p) => p.ref === pageRef);
+  const pageIndex = page ? allPages.indexOf(page) : -1;
+  console.log('[overlay] page resolved?', !!page, 'index 0-based=', pageIndex, '/ total=', allPages.length);
   if (!page) return;
 
   const rect = widget.getRectangle();
-  const fontSize = 11;
-  // Décalage vertical (en pdf-lib coords : +y = vers le haut). +30
-  // place le baseline juste au-dessus de la ligne du téléphone, sous
-  // la ligne « Aid'Habitat ». Si encore mauvais : ajuster ce nombre.
-  const y = rect.y + 30;
-  // Centre légèrement à droite de la marge native du widget pour ne
-  // pas coller au bord du bandeau.
-  const x = rect.x + 4;
+  console.log('[overlay] widget rect=', rect);
+  console.log('[overlay] page size=', page.getSize());
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  // TEST DIAGNOSTIC : on dessine en ROUGE avec un texte distinctif pour
-  // vérifier que l'overlay touche bien le PDF généré. Si tu vois
-  // « >>> OVERLAY ACTIF <<< » en rouge sur le bandeau orange → le
-  // mécanisme marche, on a juste un mauvais positionnement et/ou la
-  // couleur d'origine était invisible. Sinon → l'overlay ne s'exécute
-  // jamais (regarder les logs Vercel).
-  page.drawText('>>> OVERLAY ACTIF <<<', {
-    x,
-    y,
-    size: fontSize + 4,
-    font,
-    color: rgb(1, 0, 0),
-  });
 
-  // Vide le widget natif pour éviter le double affichage de l'adresse.
+  // TEST DIAGNOSTIC : on dessine sur TOUTES les pages pour être sûr de
+  // voir quelque chose. Si le user voit « PAGE N » en rouge sur une
+  // page, on saura quelle page est laquelle dans son lecteur.
+  for (let i = 0; i < allPages.length; i++) {
+    const p = allPages[i];
+    p.drawRectangle({
+      x: 20,
+      y: 750,
+      width: 250,
+      height: 40,
+      color: rgb(1, 0, 0),
+    });
+    p.drawText(`PAGE ${i + 1} (idx ${i})`, {
+      x: 30,
+      y: 765,
+      size: 18,
+      font,
+      color: rgb(1, 1, 1),
+    });
+  }
+
+  console.log('[overlay] drawText + drawRectangle effectués');
   try {
     if (typeof field.setText === 'function') field.setText('');
   } catch (_) {}
