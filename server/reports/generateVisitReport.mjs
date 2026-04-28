@@ -1753,7 +1753,7 @@ export async function generateVisitReport({
       // légèrement la coupure du cadre"). 22 pt = aération visible
       // entre le bord bas de la case TOP et le cadre orange du
       // descriptif, sans déborder hors de l'espace utile.
-      const TOP_GAP = 35;
+      const TOP_GAP = 50;
       const drawY = topRect != null
         ? Math.max(COVER_BOTTOM_Y, topRect.y - cropHeight - TOP_GAP)
         : 40;
