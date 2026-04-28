@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../components/account_dialog.dart';
 import '../components/soft_transitions.dart';
@@ -60,10 +62,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _feedback;
   bool _feedbackIsError = false;
 
+  // Version chargée dynamiquement depuis le bundle (CFBundleShortVersionString
+  // côté iOS, versionName Android, etc.). Vide tant que la résolution
+  // package_info_plus n'a pas répondu.
+  String _appVersion = '';
+  String _appBuildNumber = '';
+
+  // URLs externes pour l'écran "À propos". Apple App Store Review
+  // demande une politique de confidentialité accessible publiquement
+  // (Guideline 5.1.1) — la fiche App Store Connect doit aussi pointer
+  // vers la même URL.
+  static const String _privacyPolicyUrl =
+      'https://aid-habitat.fr/privacy-policy';
+  static const String _supportEmail = 'support@aid-habitat.fr';
+  static const String _websiteUrl = 'https://aid-habitat.fr';
+
   @override
   void initState() {
     super.initState();
     _loadPhoto();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _appVersion = info.version;
+        _appBuildNumber = info.buildNumber;
+      });
+    } catch (_) {
+      // Pas critique : on laisse les champs vides plutôt que crasher.
+    }
+  }
+
+  Future<void> _openExternalUrl(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        setState(() {
+          _feedback = 'Impossible d\'ouvrir le lien : $url';
+          _feedbackIsError = true;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _feedback = 'Erreur d\'ouverture : $e';
+        _feedbackIsError = true;
+      });
+    }
   }
 
   Future<void> _loadPhoto() async {

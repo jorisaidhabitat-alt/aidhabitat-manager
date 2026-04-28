@@ -1794,7 +1794,10 @@ export async function generateVisitReport({
         // peu de plus).
         const orangeLineY =
             (topRect.y + descriptifFrameTop) / 2 - 8;
-        const hLineXInset = 32;
+        // Itérations user sur l'inset horizontal : 30 → 32 → 31 pt
+        // (demande "ajoute 1 à gauche et 1 à droite" → on rallonge
+        // de 2 pt total = 1 de chaque côté).
+        const hLineXInset = 31;
         // Itérations user sur épaisseur : 0.5 → 0.4 → 0.35 pt
         // (demande "reduis l'épaisseur du trait légèrement").
         partialPage.drawRectangle({
