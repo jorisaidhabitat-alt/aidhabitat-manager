@@ -409,6 +409,16 @@ class _PhotosTabState extends State<PhotosTab>
               photos: photos,
               maxSlots: maxSlots,
             ),
+          // Spacer pousse les boutons d'action au bas du container.
+          // Avec `IntrinsicHeight + CrossAxisAlignment.stretch` côté
+          // parent, les 3 colonnes ont la même hauteur (= la plus
+          // grande des 3, typiquement la catégorie avec le plus de
+          // photos). Sans Spacer, dans les colonnes moins remplies
+          // les boutons « Prendre / Galerie » se trouvaient flottants
+          // au milieu du container ; maintenant ils sont collés au
+          // bas et toutes les colonnes ont leurs boutons alignés
+          // horizontalement → cohérence visuelle.
+          const Spacer(),
           const SizedBox(height: 10),
           // Boutons capture / galerie — toujours présents même si la
           // catégorie est pleine (l'ergo peut vouloir une 4e photo en
