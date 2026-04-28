@@ -314,10 +314,22 @@ class DocumentRepository {
     // Persiste le data URL côté SQLite local pour que la vignette du
     // doc reflète immédiatement la version annotée même avant que la
     // sync remote ne s'achève.
+    //
+    // CRITIQUE : on met aussi à jour `file_ext`, `mime_type` et
+    // `file_name` pour que le doc bascule de "pdf" à "image" côté
+    // app. Sans ça, la preview à la réouverture essayait de
+    // décoder les bytes PNG comme un PDF (`PdfDocument.openData`)
+    // → erreur dans le viewer + impossible de re-voir le rapport
+    // annoté. L'aplatissage produit un PNG (limitation actuelle :
+    // pas de lib d'écriture PDF en Flutter), donc on aligne les
+    // métadonnées sur ce qui est vraiment stocké.
     await db.update(
       'documents',
       {
         'local_file_data_url': dataUrl,
+        'file_ext': 'png',
+        'mime_type': 'image/png',
+        'file_name': flatName,
         'sync_state': SyncState.pendingSync.name,
         'updated_at': now,
       },
@@ -393,11 +405,26 @@ class DocumentRepository {
       ],
     );
 
-    // Marque le doc comme pendingSync pour que l'UI (pastille, compteur)
-    // reflète l'attente.
+    // Marque le doc comme pendingSync + bascule les métadonnées sur
+    // PNG. Sans cette bascule, le doc restait classé `pdf` côté
+    // SQLite alors que le contenu local devient un PNG (le flatten
+    // produit un PNG, limitation Flutter PDF write). À la réouverture,
+    // la preview essayait `PdfDocument.openData` sur des bytes PNG →
+    // erreur du décodeur, plus de preview visible. On aligne les
+    // métadonnées sur ce qui est réellement stocké : `file_ext='png'`,
+    // `mime_type='image/png'`, et on adopte aussi le `file_name`
+    // suffixé "-annoté.png" pour que la cohérence remontée serveur
+    // soit propre.
     await db.update(
       'documents',
-      {'sync_state': SyncState.pendingSync.name, 'updated_at': now},
+      {
+        'sync_state': SyncState.pendingSync.name,
+        'updated_at': now,
+        'local_file_path': flattenedPath,
+        'file_ext': 'png',
+        'mime_type': 'image/png',
+        'file_name': flatName,
+      },
       where: 'local_id = ?',
       whereArgs: [documentId],
     );
