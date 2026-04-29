@@ -837,6 +837,15 @@ class _ContextTabState extends State<ContextTab>
             ),
           ),
         if (homeHelpEnabled) const SizedBox(height: 12),
+        // Raccourci « Tout valider — usager autonome ». Coché : les 11
+        // items passent en ✓ d'un coup ; décoché : tous repassent à
+        // none. État dérivé de `allAutonomous`. Demande utilisateur
+        // 2026-04-29.
+        _AutonomyValidateAllRow(
+          checked: allAutonomous,
+          onTap: () => _setAllAutonomyItems(!allAutonomous),
+        ),
+        const SizedBox(height: 8),
         // Liste des 11 items avec 2 ou 3 boutons par ligne (✓ / ! / 👥).
         // Un seul état possible par ligne (mutex). Quand 👥 (aide humaine)
         // est coché pour une ligne, les boutons ✓ et ! sont désactivés.
@@ -895,6 +904,77 @@ class _ContextTabState extends State<ContextTab>
 
 // États mutuellement exclusifs possibles pour une ligne d'autonomie.
 enum _AutonomyItemState { none, autonomous, attention, humanHelp }
+
+/// Raccourci « Tout valider — usager autonome » posé au-dessus de la
+/// liste des 11 items. Tap → bascule TOUS les items entre `autonomous`
+/// et `none` d'un seul geste. Visuellement c'est une pill avec un
+/// rond ✓ à gauche, le label au centre. Coché = fond violet foncé +
+/// texte blanc ; décoché = fond violet pâle + texte violet foncé.
+class _AutonomyValidateAllRow extends StatelessWidget {
+  final bool checked;
+  final VoidCallback onTap;
+
+  const _AutonomyValidateAllRow({
+    required this.checked,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const activeColor = Color(0xFF7C6DAA);
+    const lightColor = Color(0xFFEDE8F5);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: checked ? activeColor : lightColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            // Checkbox visuelle (cercle avec ✓)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: checked ? Colors.white : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: checked ? Colors.white : activeColor,
+                  width: 1.5,
+                ),
+              ),
+              child: checked
+                  ? const Icon(
+                      Icons.check,
+                      size: 14,
+                      color: activeColor,
+                      weight: 700,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Tout valider — usager autonome',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: checked ? Colors.white : activeColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 // =============================================================================
 // Sub-widgets
