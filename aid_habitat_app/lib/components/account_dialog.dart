@@ -294,7 +294,20 @@ class _AccountDialogState extends State<AccountDialog> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    widget.currentUser.role.label,
+                    // Demande utilisateur 2026-04-29 : « au lieu de
+                    // mettre 'Ergo' met 'Ergothérapeute chez +
+                    // nom d'entreprise (Aid'habitat) ».
+                    //
+                    // L'établissement est aujourd'hui hardcodé sur
+                    // « Aid'Habitat » côté Flutter (la base NocoDB n'a
+                    // qu'un seul établissement actif). Pour rendre ça
+                    // dynamique plus tard : ajouter `establishmentLabel`
+                    // à `LocalAppUser` (le serveur l'envoie déjà via
+                    // `establishmentLabel` dans `mapErgoToMember`),
+                    // puis remplacer la chaîne ci-dessous.
+                    widget.currentUser.role == LocalUserRole.ergo
+                        ? "Ergothérapeute chez Aid'Habitat"
+                        : widget.currentUser.role.label,
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 18),
