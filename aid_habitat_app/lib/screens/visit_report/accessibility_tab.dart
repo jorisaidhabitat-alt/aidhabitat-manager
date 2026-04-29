@@ -708,11 +708,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     final available = _kLevelConfigs
         .where((c) => !_orderedLevels.contains(c.field))
         .toList();
+    // Ordre d'affichage (demande utilisateur 2026-04-29) :
+    //   1. Cartes des niveaux DÉJÀ AJOUTÉS, en haut
+    //   2. Container morphant « + Ajouter un niveau » EN DESSOUS
+    // → ergo voit immédiatement ses niveaux ajoutés, le bouton +
+    //   se "décale" vers le bas au fur et à mesure des ajouts.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (available.isNotEmpty) _buildAddLevelInline(available),
-        const SizedBox(height: 14),
         ..._orderedLevels
             .where((field) => field != _pendingLevelField)
             .map((field) {
@@ -723,6 +726,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             child: _buildLevelCard(cfg),
           );
         }),
+        if (available.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          _buildAddLevelInline(available),
+        ],
         if (available.isEmpty && _orderedLevels.isEmpty)
           // Edge case : aucune config de niveau dispo et aucun niveau
           // ajouté. En théorie impossible (kLevelConfigs n'est jamais
