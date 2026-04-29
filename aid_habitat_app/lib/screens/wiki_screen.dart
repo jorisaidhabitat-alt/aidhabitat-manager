@@ -380,7 +380,17 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 960, maxHeight: 680),
+        // `fit: StackFit.expand` (demande utilisateur 2026-04-29 :
+        // « titre, tag, description et enregistrer doivent être à la
+        // même hauteur que l'image »). Sans ce fit, le Stack se
+        // dimensionne sur la hauteur intrinsèque de son enfant Row, qui
+        // elle-même = max des hauteurs intrinsèques des deux Expanded
+        // (image vs. form). Résultat : selon le contenu, la colonne de
+        // droite était plus courte que l'image. Avec `expand`, le Stack
+        // remplit toute la maxHeight de la ConstrainedBox → Row +
+        // colonne de droite occupent les 680 pt, comme l'image.
         child: Stack(
+          fit: StackFit.expand,
           children: [
             Row(
               children: [
