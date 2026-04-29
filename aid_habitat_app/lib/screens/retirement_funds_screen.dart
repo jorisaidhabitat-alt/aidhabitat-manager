@@ -785,7 +785,11 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
 
   Widget _buildBody() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
+      // Padding symétrique haut/bas (28 pt partout) — demande utilisateur
+      // 2026-04-29 : « ajoute du padding en haut à la même distance que
+      // en bas ». Avant : top=20, bottom=28 → la 1ère section collait
+      // visuellement au header.
+      padding: const EdgeInsets.all(28),
       child: LayoutBuilder(
         builder: (ctx, constraints) {
           final twoColumns = constraints.maxWidth > 680;
