@@ -14,7 +14,16 @@ import {
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
-import { putObject, statObject, getJson, putJson } from './storage.mjs';
+import {
+  putObject,
+  statObject,
+  getJson,
+  putJson,
+  putChunk,
+  reassembleChunks,
+  deleteChunks,
+  listChunks,
+} from './storage.mjs';
 import {
   generateVisitReport,
   buildReportFileName,
@@ -5113,6 +5122,190 @@ app.post('/api/documents', requireAuth, documentUpload.single('file'), async (re
     next(error);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Chunked upload — contourne le timeout 10s de Vercel Hobby pour les gros
+// fichiers (PDF rapport, photos haute définition…).
+//
+// Pourquoi : sur Hobby, une fonction Vercel a 10s pour répondre. Pour un
+// fichier de 5MB qui doit être base64-encodé puis poussé via NocoDB MCP
+// (api request + ingestion DB), on dépasse facilement → 504 Gateway
+// Timeout → l'app web voit "CORS missing header" car Vercel ne passe pas
+// par notre middleware en cas de timeout.
+//
+// Solution : le client splitte le fichier en chunks de ~1MB, chaque
+// chunk fait son propre POST (< 2s), puis un dernier appel `finalize`
+// reassemble côté serveur et insère en NocoDB.
+//
+// Demande utilisateur 2026-04-29 : « ajoute un mécanisme de chunked
+// upload pour contourner les timeouts ».
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/documents/upload/chunk — uploade UN chunk d'un fichier.
+ * Le client envoie multipart avec :
+ *   - chunk      : binaire du chunk
+ *   - uploadId   : ID unique de la session d'upload (généré client-side)
+ *   - chunkIndex : 0..totalChunks-1
+ *   - totalChunks: nombre total attendu
+ *
+ * Le chunk est stocké dans Vercel Blob sous `_chunks/<uploadId>/<idx>.bin`.
+ * Réponse 202 + `{uploadId, received, total}` pour permettre au client
+ * d'afficher la progression.
+ */
+app.post(
+  '/api/documents/upload/chunk',
+  requireAuth,
+  documentUpload.single('chunk'),
+  async (req, res, next) => {
+    try {
+      const uploadId = stringValue(req.body?.uploadId).trim();
+      const chunkIndex = Number(req.body?.chunkIndex);
+      const totalChunks = Number(req.body?.totalChunks);
+      if (!uploadId) throw httpError(400, 'uploadId manquant');
+      if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+        throw httpError(400, 'chunkIndex invalide');
+      }
+      if (!Number.isInteger(totalChunks) || totalChunks <= 0) {
+        throw httpError(400, 'totalChunks invalide');
+      }
+      if (!req.file?.buffer || req.file.buffer.length === 0) {
+        throw httpError(400, 'Chunk vide');
+      }
+      // Limite de taille par chunk pour rester < 10s côté Vercel — un
+      // chunk > 4MB en upload peut prendre > 5s sur 4G médiocre + le
+      // round-trip Vercel→Blob ajoute encore. On limite à 2MB pour
+      // garder de la marge.
+      if (req.file.buffer.length > 2 * 1024 * 1024) {
+        throw httpError(
+          413,
+          'Chunk trop volumineux (max 2 MB) — réduire la taille de chunk côté client',
+        );
+      }
+      await putChunk({
+        uploadId,
+        chunkIndex,
+        buffer: req.file.buffer,
+      });
+      // On ne compte pas les chunks reçus en base — le client connaît
+      // le total et envoie séquentiellement. Si tu veux supporter le
+      // resume après crash, ajoute ici un appel `listChunks(uploadId)`
+      // pour retourner `received: existingChunks.length`.
+      res.status(202).json({
+        success: true,
+        error: null,
+        data: { uploadId, chunkIndex, totalChunks },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/**
+ * POST /api/documents/upload/finalize — assemble les chunks d'un upload
+ * en un fichier complet et le persiste comme un document normal
+ * (équivalent du POST /api/documents classique mais avec le contenu
+ * pris depuis Blob plutôt que multipart). Body JSON :
+ *   - uploadId
+ *   - patientId, dossierId, documentLocalId, title, fileName,
+ *     mimeType, tags  (mêmes champs que /api/documents)
+ *
+ * Cleanup : les chunks sont supprimés de Blob APRÈS l'insertion
+ * NocoDB réussie. En cas d'erreur, ils restent (purge cron).
+ */
+app.post(
+  '/api/documents/upload/finalize',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const uploadId = stringValue(req.body?.uploadId).trim();
+      const patientId = stringValue(req.body?.patientId).trim();
+      const documentLocalId = stringValue(req.body?.documentLocalId).trim();
+      const title = stringValue(req.body?.title).trim() || 'Document';
+      const requestedFileName = stringValue(req.body?.fileName).trim();
+      const requestedDossierId = stringValue(req.body?.dossierId).trim();
+      const rawTags = req.body?.tags;
+      const parsedTags = typeof rawTags === 'string'
+        ? (() => {
+            try {
+              const p = JSON.parse(rawTags);
+              return Array.isArray(p) ? p : [rawTags];
+            } catch {
+              return [rawTags];
+            }
+          })()
+        : rawTags;
+      const tags = asArray(parsedTags).map((t) => String(t).trim()).filter(Boolean);
+
+      if (!uploadId) throw httpError(400, 'uploadId manquant');
+      if (!patientId) throw httpError(400, 'patientId manquant');
+
+      // Reassemble — fail-fast si chunks manquants ou non contigus.
+      const buffer = await reassembleChunks(uploadId);
+      const contentBase64 = buffer.toString('base64');
+
+      const access = await resolveBeneficiaryAccess(req.appUser, patientId);
+      const documentContext = buildBeneficiaryDocumentContext({
+        beneficiaryRecord: access.beneficiaryRecord,
+        dossierRecord: access.dossierRecord,
+        patientId,
+      });
+      const document = await mobileSyncStore.upsertDocument({
+        patientId,
+        dossierId:
+            requestedDossierId
+            || field(access.dossierRecord, 'uuid_source')
+            || null,
+        documentLocalId,
+        title,
+        fileName: requestedFileName || `${title}.bin`,
+        mimeType: stringValue(req.body?.mimeType).trim()
+            || 'application/octet-stream',
+        tags,
+        contentBase64,
+        ...documentContext,
+      });
+
+      // Cleanup. Best-effort — un chunk orphelin n'est pas critique.
+      await deleteChunks(uploadId);
+
+      res.status(201).json({
+        success: true,
+        error: null,
+        data: { document: mapStoredDocument(document) },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/**
+ * GET /api/documents/upload/:uploadId/status — utilisé par le client
+ * pour reprendre un upload après un crash (liste les chunks déjà reçus).
+ */
+app.get(
+  '/api/documents/upload/:uploadId/status',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const uploadId = stringValue(req.params.uploadId).trim();
+      if (!uploadId) throw httpError(400, 'uploadId manquant');
+      const chunks = await listChunks(uploadId);
+      res.json({
+        success: true,
+        error: null,
+        data: {
+          uploadId,
+          receivedChunks: chunks.map((c) => c.index),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.patch('/api/documents/:documentId', requireAuth, async (req, res, next) => {
   try {
