@@ -6,7 +6,6 @@ import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
-import '../../components/two_threshold_swipe.dart';
 
 /// Accessibilité tab — refonte :
 ///   Général : type logement · années · surface · chauffage · niveaux
@@ -474,18 +473,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          // Swipe LARGE horizontal → bascule entre Général / Niveaux et
-          // pièces / Équipements / Extérieur. Pas de swipe léger câblé :
-          // pas d'occupants dans cet onglet. Demande utilisateur
-          // 2026-04-28 (swipe) + 2026-04-29 (4ème section ajoutée).
-          child: TwoThresholdSwipe(
-            onWideSwipeLeft: () {
-              setState(() => _subSection = (_subSection + 1) % 4);
-            },
-            onWideSwipeRight: () {
-              setState(() => _subSection = (_subSection - 1 + 4) % 4);
-            },
-            child: SoftSwitcher(
+          // Swipe SECTIONS désactivé (demande utilisateur 2026-04-29) :
+          // bascule entre Général / Niveaux / Équipements / Extérieur
+          // uniquement via le QuickNav (tap). Pas d'occupants dans cet
+          // onglet → plus aucun swipe horizontal câblé ici.
+          child: SoftSwitcher(
               // Légère animation entre les 4 sous-sections — fade +
               // apparition vers le haut, mêmes sensations qu'un
               // changement de vue principale (sidebar).
@@ -516,9 +508,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               ),
             ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
   }
 
   // ---------------------------------------------------------------------------

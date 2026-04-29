@@ -5,7 +5,6 @@ import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
-import '../../components/two_threshold_swipe.dart';
 import 'bathroom_tab.dart' show buildSanitaryLevelSelections;
 
 /// WC tab — parité 1:1 avec `WCForm` React.
@@ -182,44 +181,30 @@ class _WcTabState extends State<WcTab>
     if (!_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Swipe LARGE horizontal → bascule entre les niveaux (WC RDC,
-    // WC étage, …) quand il y en a plusieurs. Pas de swipe léger :
-    // pas d'occupants dans cet onglet. Demande utilisateur 2026-04-28
-    // (« y compris salle de bain et wc s'il y'a plusieurs niveaux »).
-    final hasMultipleLevels = _instances.length > 1;
-    return TwoThresholdSwipe(
-      onWideSwipeLeft: !hasMultipleLevels ? null : () {
-        setState(() {
-          _activeLevelIndex = (_activeLevelIndex + 1) % _instances.length;
-        });
-      },
-      onWideSwipeRight: !hasMultipleLevels ? null : () {
-        setState(() {
-          _activeLevelIndex =
-              (_activeLevelIndex - 1 + _instances.length) % _instances.length;
-        });
-      },
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Align(
-              alignment: Alignment.topRight,
-              child: SaveStatusIndicator(saving: _saving),
-            ),
-            const SizedBox(height: 4),
-            _buildLevelPills(),
-            if (_instances.isEmpty)
-              _buildEmptyState()
-            else ...[
-              const SizedBox(height: 16),
-              _buildMain(),
-              const SizedBox(height: 16),
-              _buildDoor(),
-            ],
+    // Swipe SECTIONS désactivé (demande utilisateur 2026-04-29) :
+    // bascule entre les niveaux (WC RDC / étage / …) uniquement via
+    // les pills `_buildLevelPills()` (tap). Pas d'occupants dans cet
+    // onglet → plus aucun swipe horizontal câblé.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Align(
+            alignment: Alignment.topRight,
+            child: SaveStatusIndicator(saving: _saving),
+          ),
+          const SizedBox(height: 4),
+          _buildLevelPills(),
+          if (_instances.isEmpty)
+            _buildEmptyState()
+          else ...[
+            const SizedBox(height: 16),
+            _buildMain(),
+            const SizedBox(height: 16),
+            _buildDoor(),
           ],
-        ),
+        ],
       ),
     );
   }

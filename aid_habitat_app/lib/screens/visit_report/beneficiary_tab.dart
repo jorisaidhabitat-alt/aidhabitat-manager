@@ -68,9 +68,16 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// horizontal (≥ 55 % de la largeur). Boucle de 0 à 3 inclus
   /// (Profil / Foyer / Santé / Admin) — les pills indiquent la
   /// sous-section courante.
+  ///
+  /// **Le swipe sous-section a été désactivé en avril 2026** (demande
+  /// utilisateur — slide réservé aux occupants). Les helpers restent
+  /// présents au cas où on voudrait les réactiver, mais ils ne sont
+  /// plus appelés. Le QuickNav (tap pills) gère la nav sous-section.
+  // ignore: unused_element
   void _subSectionNext() {
     _setSubSection((_subSectionIndex + 1) % 4);
   }
+  // ignore: unused_element
   void _subSectionPrev() {
     _setSubSection((_subSectionIndex - 1 + 4) % 4);
   }
@@ -488,12 +495,14 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         // et centré pour switch entre les occupants, mais sur toute la
         // majeur partie de la largeur d'une sous partie ça change de
         // sous partie ».
+        // Swipe SECTIONS désactivé (demande utilisateur 2026-04-29) :
+        // les sous-sections changent uniquement via le QuickNav (tap).
+        // Seul le swipe LÉGER (occupant) reste actif quand le foyer a
+        // plusieurs personnes — équivaut à « slide entre occupants ».
         Expanded(
           child: TwoThresholdSwipe(
             onLightSwipeLeft: hasOccupantSwipe ? _occupantNext : null,
             onLightSwipeRight: hasOccupantSwipe ? _occupantPrev : null,
-            onWideSwipeLeft: _subSectionNext,
-            onWideSwipeRight: _subSectionPrev,
             child: _buildActiveSection(),
           ),
         ),
