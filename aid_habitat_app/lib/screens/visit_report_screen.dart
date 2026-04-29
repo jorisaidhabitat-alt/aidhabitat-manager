@@ -596,18 +596,31 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             child: TabBar(
               controller: _tabController,
               isScrollable: true,
-              // Fond de l'onglet actif : violet pâle F6EDFB — même teinte
-              // que le bandeau sous-menu du relevé (Profil / Foyer / …)
-              // pour une cohérence visuelle.
-              indicator: BoxDecoration(
-                color: const Color(0xFFEDE8F5),
-                borderRadius: BorderRadius.circular(50),
+              // Indicateur d'onglet actif : SIMPLE TRAIT VIOLET FONCÉ en
+              // bas, qui s'étend sur TOUTE la largeur cliquable du
+              // bouton (label + labelPadding inclus).
+              //
+              // Demande utilisateur 2026-04-28 :
+              //   - « supprime le violet clair des boutons quand ils
+              //    sont selectionnés » → plus de pill BoxDecoration
+              //    violet pâle (#EDE8F5).
+              //   - « agrandis la ligne sous les textes pour qu'il
+              //    prenne toute la largeur de la partie cliquable du
+              //    bouton » → UnderlineTabIndicator + TabBarIndicatorSize.tab
+              //    qui couvre exactement la zone cliquable de chaque
+              //    onglet, contrairement à .label qui n'aurait couvert
+              //    que la largeur du mot.
+              indicator: const UnderlineTabIndicator(
+                borderSide: BorderSide(
+                  color: Color(0xFF7C6DAA), // violet foncé
+                  width: 1.5,
+                ),
+                insets: EdgeInsets.zero,
               ),
-              indicatorSize: TabBarIndicatorSize.label,
-              indicatorPadding:
-                  const EdgeInsets.symmetric(horizontal: -12, vertical: 6),
-              // Onglet actif : fond violet pâle + texte + trait dark violet
-              // (#7C6DAA). Onglet inactif : texte slate gris foncé.
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicatorPadding: EdgeInsets.zero,
+              // Couleur du label : violet foncé pour l'actif, slate
+              // gris pour les inactifs (inchangé).
               labelColor: const Color(0xFF554A63),
               unselectedLabelColor: const Color(0xFF334155),
               labelStyle: const TextStyle(fontWeight: FontWeight.w700),
@@ -616,42 +629,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               labelPadding: const EdgeInsets.symmetric(horizontal: 16),
               tabs: List.generate(_tabs.length, (i) {
                 final label = _tabs[i];
+                // Plus de Container underline manuel : le trait est
+                // dessiné par UnderlineTabIndicator côté TabBar
+                // (mécanique native Flutter), avec la bonne largeur
+                // « tab clickable » automatiquement.
                 return Tab(
-                  // `SoftTapScale.passThrough` observe le pointer event sans
-                  // réclamer le tap → le TabBar reste fonctionnel et on ajoute
-                  // l'effet zoom/dezoom au-dessus, comme demandé (mêmes
-                  // sensations que les boutons de la sidebar).
                   child: SoftTapScale.passThrough(
-                    child: AnimatedBuilder(
-                      animation: _tabController,
-                      builder: (context, _) {
-                        final isActive = _tabController.index == i;
-                        // Underline strictly smaller than the text and centered
-                        // (CrossAxisAlignment.center — défaut). Ratio ~50 % de
-                        // la largeur estimée du texte (au lieu de ~100 %).
-                        final underlineWidth =
-                            (label.length * 3.2).clamp(18.0, 60.0);
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Text(label),
-                            const SizedBox(height: 3),
-                            Container(
-                              height: 1.5,
-                              width: underlineWidth,
-                              decoration: BoxDecoration(
-                                color: isActive
-                                    ? const Color(0xFF7C6DAA) // violet foncé
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                    child: Text(label),
                   ),
                 );
               }),
