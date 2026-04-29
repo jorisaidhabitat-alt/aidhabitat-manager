@@ -4072,6 +4072,30 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
         .join('\n\n');
       return merged.trim() ? merged : null;
     })();
+    // Diagnostic verbose (à retirer une fois le bug "obs vide" tracé)
+    // — montre combien de pages NocoDB ont été remontées par tabKey,
+    // et si le scopeId filter rejette quelque chose. Affiché dans les
+    // Vercel Functions Logs côté backend.
+    // eslint-disable-next-line no-console
+    console.log('[fetchVadOverlayNotes] patient=%s dossier=%s | ' +
+      'projet=%d resume=%d accNotes=%d accGen=%d accExt=%d accLegEq=%d ' +
+      'sanUnified=%d sdbLegacy=%d wcLegacy=%d | ' +
+      'extracted lengths : projet=%d resume=%d accessibilite=%d sanitaires=%d',
+      patientId, dossierId,
+      asArray(projetPages).length,
+      asArray(resumePages).length,
+      asArray(accSharedPages).length,
+      asArray(accGeneralPages).length,
+      asArray(accExterieurPages).length,
+      asArray(legacyEquipPages).length,
+      asArray(sanitairesUnifiedPages).length,
+      asArray(sdbPages).length,
+      asArray(wcPages).length,
+      (joinPages(projetPages) || '').length,
+      (joinPages(resumePages) || '').length,
+      (accessibilite || '').length,
+      (sanitaires || '').length,
+    );
     return {
       projet: joinPages(projetPages),
       resume: joinPages(resumePages),
@@ -4481,9 +4505,24 @@ app.post(
         // + WC (cf. fetchVadOverlayNotesForReport.sanitaires).
         // Fallback : observation legacy de `observations_synthese` pour
         // les dossiers historiques.
-        observationEquipements:
-          (vadOverlayNotes.sanitaires && vadOverlayNotes.sanitaires.trim()) ||
-          base.observationEquipements,
+        observationEquipements: (() => {
+          const fromNotes =
+            (vadOverlayNotes.sanitaires &&
+              vadOverlayNotes.sanitaires.trim()) || '';
+          const fromLegacy = String(base.observationEquipements || '').trim();
+          const final = fromNotes || fromLegacy;
+          // Diagnostic verbose pour le bug "obs vide" reporté
+          // 2026-04-29. À retirer une fois le bug confirmé fixé.
+          // eslint-disable-next-line no-console
+          console.log(
+            '[observations.merge] dossier=%s | sanitairesNotes=%d legacyObs=%d → final=%d',
+            dossierId,
+            fromNotes.length,
+            fromLegacy.length,
+            final.length,
+          );
+          return final;
+        })(),
         accessibiliteObservation:
           (vadOverlayNotes.accessibilite &&
               vadOverlayNotes.accessibilite.trim()) ||
