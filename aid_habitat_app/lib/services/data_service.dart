@@ -349,6 +349,30 @@ class DataService {
     );
   }
 
+  /// Insère un doc déjà sauvegardé côté serveur — skip la queue
+  /// upload (évite le 413 Vercel sur les PDFs > 4.5 MB).
+  Future<DocItem> importDocumentRemoteOnly({
+    required String patientId,
+    required List<int> bytes,
+    required String fileName,
+    required String remoteUuid,
+    List<String> tags = const ['Autre'],
+    String? title,
+    int? categoryOrder,
+    String? dossierId,
+  }) async {
+    return _documentRepository.importDocumentRemoteOnly(
+      patientId: patientId,
+      bytes: bytes,
+      fileName: fileName,
+      remoteUuid: remoteUuid,
+      tags: tags,
+      title: title,
+      categoryOrder: categoryOrder,
+      dossierId: dossierId,
+    );
+  }
+
   /// Met à jour les tags + l'ordre dans la catégorie visite d'un
   /// document (Logement / Accessibilité / Sanitaires / À classer).
   /// Utilisé par l'onglet Photos pour déplacer une photo entre

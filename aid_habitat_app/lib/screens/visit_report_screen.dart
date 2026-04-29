@@ -996,7 +996,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   }
 
   void _showReportSuccess(
-    ({Uint8List bytes, String fileName, Map<String, dynamic>? stats}) result,
+    ({
+      Uint8List bytes,
+      String fileName,
+      Map<String, dynamic>? stats,
+      String? savedDocUuid,
+    }) result,
     {int? totalDocs}
   ) {
     if (!mounted) return;
