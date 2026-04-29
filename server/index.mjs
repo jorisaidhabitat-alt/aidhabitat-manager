@@ -254,7 +254,7 @@ const FIELD_SETS = {
   ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'mot_de_passe'],
   communes: ['nom', 'code_postal', 'epci_id1', 'epci'],
   baremesAnah: ['libelle', 'nombre_personnes', 'annee_plafond'],
-  caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire'],
+  caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire', 'a_une_aide_specifique'],
   wikiTags: ['uuid_source', 'tags'],
   wiki: ['uuid_source', 'titre', 'photos', 'contenu', 'wiki_tags_id', 'wiki_tags'],
 };
@@ -3710,12 +3710,22 @@ const fetchSanitairesForDossier = async (dossierId) => {
  * (demande utilisateur 2026-04-29) :
  *
  *   - Si le patient n'a pas de caisse complémentaire renseignée → `'/'`.
- *   - Sinon, on lit le champ `aide_complementaire` de la table de
- *     référence `caisses_retraite_complementaires` :
- *       • Vide ou `/` → `'/'` (la caisse n'a pas d'aide spécifique)
- *       • Sinon → `'<nom de la caisse> sous conditions*'`
+ *   - Sinon, on lit la case à cocher `a_une_aide_specifique` de la
+ *     table `caisses_retraite_complementaires` :
+ *       • cochée → `'<nom de la caisse> sous conditions*'`
  *         (l'astérisque renvoie à la note de bas de page du template
  *         « * sous conditions de ressources »).
+ *       • décochée → `'/'` (la caisse est juste un repère métier,
+ *         pas une aide spécifique).
+ *
+ * Pourquoi un drapeau dédié et pas un parsing du champ libre
+ * `aide_complementaire` : ce dernier sert de NOTE INFORMATIVE pour
+ * l'écran « Caisses de retraite » de l'app (procédure, contacts,
+ * détails). Son contenu est libre — utiliser sa présence/valeur
+ * comme drapeau métier produit des faux positifs (ex. « Repère pour
+ * les pharmaciens » ne désigne pas une aide). On garde donc les deux
+ * champs séparés : `aide_complementaire` = note libre,
+ * `a_une_aide_specifique` = drapeau pour le PDF.
  *
  * Le matching du nom de caisse réutilise `findByLabel` qui est
  * tolérant aux variations d'accents / casse / ponctuation (la valeur
@@ -3736,8 +3746,14 @@ const resolveCaisseComplementaireLabel = async (caisseName) => {
       // `'/'` plutôt que d'écrire un nom qui ne correspond à rien.
       return '/';
     }
-    const aideRaw = String(field(match, 'aide_complementaire') || '').trim();
-    if (!aideRaw || aideRaw === '/') return '/';
+    // NocoDB renvoie les Checkbox comme booléens natifs (true/false)
+    // mais on tolère aussi les variantes string ('1', 'true', 'yes')
+    // qu'on rencontre via certaines surfaces (REST sans cast).
+    const flag = field(match, 'a_une_aide_specifique');
+    const hasAide = flag === true
+      || flag === 1
+      || /^(1|true|yes|oui|on)$/i.test(String(flag || '').trim());
+    if (!hasAide) return '/';
     return `${trimmed} sous conditions*`;
   } catch (error) {
     console.warn(
