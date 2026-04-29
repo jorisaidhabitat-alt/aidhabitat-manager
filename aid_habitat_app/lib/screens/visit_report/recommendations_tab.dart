@@ -477,59 +477,70 @@ class _RecommendationCard extends StatelessWidget {
                   ),
                 ),
               ),
-              // Bouton supprimer flottant en haut-droite de l'image.
+              // 2 boutons flottants en haut-droite de l'image, côte à
+              // côte : « modifier la fiche wiki » (↔) à gauche, et
+              // « supprimer la carte » (✕) à droite. Demande utilisateur
+              // 2026-04-28 — le bouton « Choisir/Changer fiche wiki »
+              // texte sous le titre est désormais cet icon button par
+              // dessus l'image (gain de place dans la grille 3 cols).
               Positioned(
                 top: 6,
                 right: 6,
-                child: Material(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    onTap: onRemove,
-                    customBorder: const CircleBorder(),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.close,
-                        size: 16,
-                        color: Color(0xFF94A3B8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Material(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        onTap: onPickWiki,
+                        customBorder: const CircleBorder(),
+                        child: Padding(
+                          padding: const EdgeInsets.all(5),
+                          child: Icon(
+                            Icons.swap_horiz,
+                            size: 16,
+                            color: const Color(0xFF7C6DAA),
+                            semanticLabel: hasWiki
+                                ? 'Changer la fiche wiki'
+                                : 'Choisir une fiche wiki',
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    Material(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        onTap: onRemove,
+                        customBorder: const CircleBorder(),
+                        child: const Padding(
+                          padding: EdgeInsets.all(5),
+                          child: Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Color(0xFF94A3B8),
+                            semanticLabel: 'Supprimer',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          // ----------------------------------------------------------
-          // Titre éditable + bouton « Choisir/Changer fiche wiki » +
-          // note libre — empilés verticalement sous l'image (demande
-          // utilisateur 2026-04-28 : « passe le texte, la description
-          // et le bouton de changement en dessous de l'image »).
-          // ----------------------------------------------------------
+          // Titre éditable + note libre, empilés verticalement sous
+          // l'image. Le bouton « modifier la fiche wiki » est maintenant
+          // un icône flottant sur l'image (cf. plus haut).
           _InlineTitleField(
             value: item.customTitle,
             hint: title.isNotEmpty ? title : 'Titre…',
             onChanged: (v) => onChange(item.copyWith(customTitle: v)),
           ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: onPickWiki,
-              icon: const Icon(Icons.swap_horiz, size: 14),
-              label: Text(hasWiki
-                  ? 'Changer la fiche wiki'
-                  : 'Choisir une fiche wiki'),
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF7C6DAA),
-                padding: EdgeInsets.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                minimumSize: Size.zero,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           FormTextField(
             label: '',
             value: item.note,
