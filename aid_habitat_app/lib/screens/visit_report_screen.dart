@@ -165,6 +165,42 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     return '$activeTab-$section';
   }
 
+  /// Placeholder à afficher dans le `NotesWidget` du panneau de droite,
+  /// aligné sur le LIBELLÉ EXACT de la section correspondante dans le
+  /// rapport PDF. Demande utilisateur 2026-04-30 : « pour toutes les
+  /// notes ecrites qui sont dans le rapport PDF, le placeholder doit
+  /// correspondre à l'espace qu'ils concernent dans le PDF ».
+  ///
+  /// Utile à l'ergo : avant de saisir, il sait à quoi sa note va
+  /// servir dans le rapport final, sans avoir à mémoriser le mapping.
+  ///
+  /// Mapping (cf. `server/templates/visitReport.mapping.json` et
+  /// `server/reports/generateVisitReport.mjs`) :
+  ///
+  ///   tabKey                       → champ PDF
+  ///   ──────────────────────────────────────────────────────────
+  ///   Contexte de vie-Médical      → Environnement (page 4)
+  ///   Contexte de vie-Autonomie    → Habitudes de vie (page 4)
+  ///   Accessibilité-Notes          → Observations sur l'accessibilité
+  ///                                  (page 5, champ `Observations1`)
+  ///   Sanitaires-Notes             → Observations sur les équipements
+  ///                                  et utilisation (page 6, champ `obs`)
+  ///   autre                        → null (pas de section PDF dédiée)
+  static String? _resolvePlaceholderForTabKey(String tabKey) {
+    switch (tabKey) {
+      case 'Contexte de vie-Médical':
+        return 'Environnement';
+      case 'Contexte de vie-Autonomie':
+        return 'Habitudes de vie';
+      case _kSharedAccessibiliteNotesTabKey:
+        return "Observations sur l'accessibilité";
+      case _kSharedSanitairesNotesTabKey:
+        return 'Observations sur les équipements et utilisation';
+      default:
+        return null;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -553,6 +589,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               final liveKey = '${_dossier.patient.id}::$tabKey';
               final isMedical = tabKey == 'Contexte de vie-Médical';
               final isActive = i == safeIdx;
+              final pdfPlaceholder = _resolvePlaceholderForTabKey(tabKey);
               return _NotesPanelLayer(
                 isActive: isActive,
                 child: NotesWidget(
@@ -560,6 +597,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   patientId: _dossier.patient.id,
                   tabKey: tabKey,
                   title: section,
+                  // Placeholder = libellé exact de la section PDF (cf.
+                  // `_resolvePlaceholderForTabKey`). Si la note ne sert
+                  // pas un champ PDF (ex. sous-sections Bénéficiaire),
+                  // on retombe sur le label de la sous-section.
+                  placeholder: pdfPlaceholder ?? section,
                   liveText: _liveText[liveKey],
                   onDraftChange: (draft) =>
                       _pushDraftToOpenWindow(tabKey, draft.text),
