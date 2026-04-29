@@ -71,6 +71,10 @@ class _MainScreenState extends State<MainScreen>
   @override
   void initState() {
     super.initState();
+    // Observer du cycle de vie de l'app — utilisé par le SyncEngine
+    // pour adapter l'intervalle de pull (foreground actif 5s / idle
+    // 30s / background 5min). Cf. SyncEngine.setAppLifecycleState.
+    WidgetsBinding.instance.addObserver(this);
     _syncEngine = SyncEngine();
     final connectivity = ConnectivityService();
     connectivity.bindSyncEngine(_syncEngine);
@@ -106,11 +110,24 @@ class _MainScreenState extends State<MainScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _syncSubscription?.cancel();
     _connectivitySubscription?.cancel();
     // SyncEngine is a process-lifetime singleton — do not dispose it with the
     // screen, or later screens will lose the stream and the engine.
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Notifie le SyncEngine pour qu'il adapte son intervalle de pull :
+    //   - resumed (foreground) → 5s actif / 30s idle
+    //   - inactive / paused / hidden / detached → 5min
+    // Au retour foreground après un détour background, un pull immédiat
+    // est aussi déclenché côté SyncEngine pour rattraper d'éventuelles
+    // modifs distantes manquées (cf. setAppLifecycleState).
+    _syncEngine.setAppLifecycleState(state);
   }
 
   void _onSyncStateChanged(SyncEngineState state) {
