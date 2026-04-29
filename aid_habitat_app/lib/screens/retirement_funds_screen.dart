@@ -639,12 +639,12 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
           colors: [Color(0xFFF8F4FB), Color(0xFFFDFCFE)],
         ),
       ),
-      // Padding minimal (demande utilisateur 2026-04-29 : popup encore
-      // coupée en haut sur iPad → on raccourcit le header au max +
-      // on fusionne la ligne d'actions DANS la même Row que le logo).
-      // Économie ~70 pt par rapport à la version précédente (action
-      // row séparée + SizedBox(height:8)).
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
+      // Padding du header (demande utilisateur 2026-04-29 : « ajoute
+      // du padding entre le contenu et le bord du haut » → top relevé
+      // de 10 → 20 pt pour décoller le logo/texte du bord supérieur de
+      // la popup). Bottom 12 conservé : pas de gap avec le body
+      // (le body a son propre padding de 28 pt).
+      padding: const EdgeInsets.fromLTRB(16, 20, 12, 12),
       // UNE SEULE Row : logo + nom/date + boutons d'action — tous
       // alignés au centre vertical de la rangée pour respecter la
       // demande « met les boutons editer et croix à la même hauteur
