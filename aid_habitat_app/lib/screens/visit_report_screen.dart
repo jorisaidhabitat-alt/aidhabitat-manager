@@ -865,8 +865,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
       // 3. Génération online : on télécharge le PDF synchroneously
       // pour pouvoir l'afficher tout de suite dans Documents.
-      final ({Uint8List bytes, String fileName, Map<String, dynamic>? stats})
-          result;
+      final ({
+        Uint8List bytes,
+        String fileName,
+        Map<String, dynamic>? stats,
+        String? savedDocUuid,
+      }) result;
       try {
         result = await _dataService.downloadVisitReport(
           dossierId: _dossier.id,
@@ -884,24 +888,49 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         return;
       }
 
-      // Insertion dans l'espace Documents du dossier. L'op
-      // `upload_file` queued par `importDocumentBytes` est ensuite
-      // poussée à NocoDB par la sync engine (debounced 200 ms) —
-      // pas besoin d'attendre ici, le doc apparaît déjà localement.
-      // Le tag « Rapport » est filtré par DocumentsScreen pour
-      // organiser le dossier (cf. `_kAvailableTags`).
+      // Insertion dans l'espace Documents du dossier.
+      //
+      // ⚠️ DEUX CHEMINS selon que le serveur a sauvegardé le PDF
+      // directement dans NocoDB (header `X-Saved-Doc-Uuid` non vide)
+      // ou non :
+      //
+      //   - SI savedDocUuid présent : on insère localement comme
+      //     `synced` (no upload queued). Évite le 413 Vercel sur le
+      //     re-upload du PDF (limite ~4.5 MB Hobby) qui faisait que
+      //     le rapport restait stuck local-only forever. Le doc est
+      //     déjà côté serveur, on partage juste la même vérité.
+      //
+      //   - SINON (compat) : ancien chemin `importDocumentBytes` qui
+      //     queue un upload. Sert si le serveur n'a pas pu sauvegarder
+      //     (rare — limite 5 MB interne, erreur réseau NocoDB).
       final patientId = _dossier.patient.id;
-      // ignore: avoid_print
-      print('[report] importDocumentBytes patientId="$patientId" '
-          'fileName="${result.fileName}" bytes=${result.bytes.length}');
-      final inserted = await _dataService.importDocumentBytes(
-        patientId: patientId,
-        dossierId: _dossier.id,
-        bytes: result.bytes,
-        fileName: result.fileName,
-        title: result.fileName.replaceAll(RegExp(r'\.pdf$'), ''),
-        tags: const ['Rapport'],
-      );
+      final DocItem inserted;
+      if (result.savedDocUuid != null && result.savedDocUuid!.isNotEmpty) {
+        // ignore: avoid_print
+        print('[report] doc déjà en NocoDB (uuid=${result.savedDocUuid}) '
+            '→ insert local-only synced (no upload queue)');
+        inserted = await _dataService.importDocumentRemoteOnly(
+          patientId: patientId,
+          dossierId: _dossier.id,
+          bytes: result.bytes,
+          fileName: result.fileName,
+          title: result.fileName.replaceAll(RegExp(r'\.pdf$'), ''),
+          tags: const ['Rapport'],
+          remoteUuid: result.savedDocUuid!,
+        );
+      } else {
+        // ignore: avoid_print
+        print('[report] importDocumentBytes patientId="$patientId" '
+            'fileName="${result.fileName}" bytes=${result.bytes.length}');
+        inserted = await _dataService.importDocumentBytes(
+          patientId: patientId,
+          dossierId: _dossier.id,
+          bytes: result.bytes,
+          fileName: result.fileName,
+          title: result.fileName.replaceAll(RegExp(r'\.pdf$'), ''),
+          tags: const ['Rapport'],
+        );
+      }
       // ignore: avoid_print
       print('[report] document local_id=${inserted.id} créé '
           '(sync_state=${inserted.syncState.name})');

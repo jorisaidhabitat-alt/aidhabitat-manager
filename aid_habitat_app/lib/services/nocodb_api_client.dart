@@ -692,7 +692,7 @@ class NocodbApiClient {
   /// générer le PDF même quand la sync NocoDB est en retard ou
   /// intermittente. Si vides, on retombe sur le POST sans body
   /// (comportement v1, lecture intégrale depuis NocoDB côté serveur).
-  Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats})>
+  Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats, String? savedDocUuid})>
       downloadVisitReport({
     required String dossierId,
     List<InlineDocumentBytes> inlineDocuments = const [],
@@ -751,10 +751,20 @@ class NocodbApiClient {
         stats = jsonDecode(statsHeader) as Map<String, dynamic>;
       } catch (_) {}
     }
+    // Si le serveur a sauvegardé le PDF directement dans NocoDB
+    // (header `X-Saved-Doc-Uuid`), on récupère son UUID. Permet à
+    // `_generateReport` de skipper l'upload (qui ferait 413) et
+    // d'insérer le doc en `synced` immédiatement. Cf. server fix
+    // 2026-04-29 dans /api/reports/visit/:dossierId.
+    final savedDocUuid = response.headers['x-saved-doc-uuid'];
     return (
       bytes: response.bodyBytes,
       fileName: fileName,
       stats: stats,
+      savedDocUuid:
+          savedDocUuid != null && savedDocUuid.isNotEmpty
+              ? savedDocUuid
+              : null,
     );
   }
 

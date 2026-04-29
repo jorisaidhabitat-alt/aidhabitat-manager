@@ -6,6 +6,7 @@ import '../components/soft_transitions.dart';
 import 'anah_screen.dart';
 import 'create_beneficiary_screen.dart';
 import 'dashboard_screen.dart';
+import 'documents_screen.dart';
 import 'dossiers_list_screen.dart';
 import 'dossier_screen.dart';
 import 'retirement_funds_screen.dart';
@@ -368,11 +369,14 @@ class _MainScreenState extends State<MainScreen> {
         children: [
           Sidebar(
             currentUser: widget.currentUser,
-            // "dossier_detail" et "visit_report" remappent à l'entrée
-            // Dossiers du menu latéral pour que la mise en surbrillance reste
-            // cohérente — le menu est visible pendant ces deux écrans.
+            // "dossier_detail", "visit_report" et "documents" remappent
+            // à l'entrée Dossiers du menu latéral pour que la mise en
+            // surbrillance reste cohérente — la sidebar est visible
+            // pendant ces 3 écrans (cf. demande utilisateur 2026-04-29
+            // qui voulait voir la sidebar sur Documents aussi).
             currentView: (_activeView == 'dossier_detail' ||
-                    _activeView == 'visit_report')
+                    _activeView == 'visit_report' ||
+                    _activeView == 'documents')
                 ? 'dossiers'
                 : _activeView,
             onNavigate: _handleViewChange,
@@ -510,7 +514,9 @@ class _MainScreenState extends State<MainScreen> {
   /// l'animation (sinon AnimatedSwitcher réutiliserait le même widget).
   String _contentKey() {
     final base = _activeView;
-    if ((_activeView == 'dossier_detail' || _activeView == 'visit_report') &&
+    if ((_activeView == 'dossier_detail' ||
+            _activeView == 'visit_report' ||
+            _activeView == 'documents') &&
         _selectedDossier != null) {
       return '$base:${_selectedDossier!.id}';
     }
@@ -547,6 +553,43 @@ class _MainScreenState extends State<MainScreen> {
             }
             _activeView = 'visit_report';
           });
+        },
+        // Idem pour Documents (demande utilisateur 2026-04-29 :
+        // « y'a toujours pas le menu vertical à gauche ») — on
+        // route en interne pour rester dans le shell `MainScreen`
+        // qui dessine la sidebar gauche, plutôt que faire un
+        // `Navigator.push` qui empilerait Documents par-dessus la
+        // sidebar et la masquerait. Refresh dossier identique au
+        // VAD pour ne pas afficher des données stale.
+        onOpenDocuments: () async {
+          final fresh =
+              await _dataService.fetchDossierById(_selectedDossier!.id);
+          if (!mounted) return;
+          _pushHistory();
+          setState(() {
+            if (fresh != null) {
+              _selectedDossier = fresh;
+            }
+            _activeView = 'documents';
+          });
+        },
+      );
+    }
+    if (_activeView == 'documents' && _selectedDossier != null) {
+      return DocumentsScreen(
+        dossier: _selectedDossier!,
+        onBack: () async {
+          // Re-fetch le dossier au retour pour que dossier_detail
+          // voie les éventuelles modifs (rares — Documents écrit peu
+          // de champs patient, mais ça reste cohérent avec VAD).
+          final fresh =
+              await _dataService.fetchDossierById(_selectedDossier!.id);
+          if (!mounted) return;
+          if (fresh != null) {
+            setState(() => _selectedDossier = fresh);
+          }
+          _goBack();
+          _refreshDossiers();
         },
       );
     }

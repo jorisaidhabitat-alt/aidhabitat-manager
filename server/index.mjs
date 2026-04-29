@@ -114,7 +114,7 @@ app.use((req, res, next) => {
   // du mapping AcroForm côté Flutter.
   res.header(
     'Access-Control-Expose-Headers',
-    'Content-Disposition, X-Report-Stats',
+    'Content-Disposition, X-Report-Stats, X-Saved-Doc-Uuid',
   );
   // The Flutter PWA runs in a crossOriginIsolated context
   // (COEP: credentialless + COOP: same-origin) so SharedArrayBuffer —
@@ -4498,12 +4498,78 @@ app.post(
     });
     const fileName = buildReportFileName(dossier);
 
+    // Sauvegarde IMMÉDIATE du PDF dans NocoDB côté serveur.
+    //
+    // Pourquoi : Vercel Hobby a une limite de body de ~4.5 MB qui faisait
+    // échouer en 413 le re-upload Flutter→serveur du PDF rapport.
+    // Symptôme reporté 2026-04-29 : « Rapport - DENA Paul » apparaît en
+    // local sur les 2 devices mais jamais en NocoDB → divergence entre
+    // macOS web et iPad PWA. En sauvant directement ici (no HTTP body
+    // limit, on est dans la même fonction serverless qui a déjà chargé
+    // le PDF en mémoire), on contourne complètement le 413.
+    //
+    // L'UUID du doc créé est retourné via le header `X-Saved-Doc-Uuid`
+    // pour que Flutter puisse l'insérer directement comme `synced`
+    // localement (sans queuer un upload qui ferait 413).
+    //
+    // Best-effort : si la sauvegarde NocoDB échoue (rare — cf. limite
+    // 5 MB interne ou erreur réseau NocoDB), on log un warning mais on
+    // retourne quand même les bytes au Flutter qui retombera sur son
+    // ancien chemin (upload via /api/documents → fail 413 → marqué
+    // failed, l'utilisateur regénère).
+    let savedDocUuid = '';
+    try {
+      const patientId = stringValue(dossier?.patient?.id);
+      if (patientId && bytes && bytes.length > 0) {
+        const contentBase64 = Buffer.from(bytes).toString('base64');
+        const documentLocalId = `doc_report_${dossierId}_${Date.now()}`;
+        const titleNoExt = fileName.replace(/\.pdf$/i, '');
+        const savedDoc = await mobileSyncStore.upsertDocument({
+          patientId,
+          dossierId,
+          documentLocalId,
+          title: titleNoExt,
+          fileName,
+          mimeType: 'application/pdf',
+          tags: ['Rapport'],
+          contentBase64,
+          patientFirstName: dossier?.patient?.firstName || '',
+          patientLastName: dossier?.patient?.lastName || '',
+          patientDisplayName:
+            [dossier?.patient?.firstName, dossier?.patient?.lastName]
+              .filter(Boolean)
+              .join(' ')
+              .trim(),
+          dossierLabel:
+            [dossier?.patient?.firstName, dossier?.patient?.lastName]
+              .filter(Boolean)
+              .join(' ')
+              .trim(),
+        });
+        savedDocUuid = stringValue(savedDoc?.id || savedDoc?.uuid_source);
+        console.log(
+          `[report] PDF sauvegardé directement dans NocoDB ` +
+          `(dossier=${dossierId}, uuid=${savedDocUuid.slice(0, 8)}…, ` +
+          `${bytes.length} bytes)`,
+        );
+      }
+    } catch (saveErr) {
+      console.warn(
+        `[report] échec sauvegarde directe NocoDB (dossier=${dossierId}) :`,
+        saveErr?.message || saveErr,
+      );
+      // Fallback silencieux : Flutter retombera sur l'upload classique.
+    }
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(fileName)}"`,
     );
     res.setHeader('X-Report-Stats', JSON.stringify(stats));
+    if (savedDocUuid) {
+      res.setHeader('X-Saved-Doc-Uuid', savedDocUuid);
+    }
     // Bytes Uint8Array → Buffer pour Express.
     res.send(Buffer.from(bytes));
   } catch (error) {

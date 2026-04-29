@@ -41,12 +41,21 @@ class DossierScreen extends StatefulWidget {
   /// the central content).
   final VoidCallback? onOpenVisitReport;
 
+  /// Idem pour l'écran Documents : si le parent (`MainScreen`) câble
+  /// ce callback, on l'utilise pour rester dans le shell avec la
+  /// sidebar visible. Demande utilisateur 2026-04-29 : « y'a toujours
+  /// pas le menu vertical à gauche » sur Documents — avant cette
+  /// option, on faisait un `Navigator.push` qui empilait la page sur
+  /// la sidebar et la masquait.
+  final VoidCallback? onOpenDocuments;
+
   const DossierScreen({
     super.key,
     required this.dossier,
     required this.onBack,
     this.repository,
     this.onOpenVisitReport,
+    this.onOpenDocuments,
   });
 
   @override
@@ -515,24 +524,32 @@ class _DossierScreenState extends State<DossierScreen> {
             icon: LucideIcons.fileText,
             label: 'Documents',
             subLabel: 'Photos, scans, plans...',
-            onTap: () {
+            onTap: () async {
               // Flush avant navigation : même rationale que pour le
               // bouton VAD — éviter qu'un dossier modifié localement
               // (mais pas encore sauvé à 400 ms près) ne soit lu en
               // version stale dans Documents.
-              () async {
-                await _flushPendingSave();
-                if (!mounted) return;
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => DocumentsScreen(
-                      dossier: widget.dossier,
-                      onBack: () => Navigator.pop(context),
-                    ),
+              await _flushPendingSave();
+              if (!mounted) return;
+              // Préférer le callback in-shell (`onOpenDocuments`) pour
+              // rester dans `MainScreen` avec la sidebar gauche
+              // visible (demande utilisateur 2026-04-29). Fallback sur
+              // `Navigator.push` uniquement si le parent ne câble pas
+              // le handler — utile en tests isolés.
+              if (widget.onOpenDocuments != null) {
+                widget.onOpenDocuments!();
+                return;
+              }
+              if (!mounted) return;
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DocumentsScreen(
+                    dossier: widget.dossier,
+                    onBack: () => Navigator.pop(context),
                   ),
-                );
-              }();
+                ),
+              );
             },
           ),
         ),

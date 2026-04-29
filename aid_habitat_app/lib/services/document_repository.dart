@@ -123,6 +123,71 @@ class DocumentRepository {
   /// [File]) since PWAs don't have a filesystem. The bytes are stored as
   /// a `data:<mime>;base64,…` URL in `documents.local_file_data_url` and
   /// the sync processor decodes them when pushing to NocoDB.
+  /// Insert un document SANS queuer d'upload — pour le cas où le
+  /// serveur a déjà sauvegardé le PDF en NocoDB (cf. génération de
+  /// rapport, demande utilisateur 2026-04-29). Le doc local est
+  /// directement marqué `synced` avec son `remote_file_path` pointant
+  /// sur l'UUID NocoDB, donc le polling `mergeRemoteDocuments` le
+  /// reconnaît au prochain refresh sans créer de doublon.
+  ///
+  /// Évite la boucle 413 Content Too Large quand le PDF dépasse la
+  /// limite ~4.5 MB de Vercel Hobby.
+  Future<DocItem> importDocumentRemoteOnly({
+    required String patientId,
+    required List<int> bytes,
+    required String fileName,
+    required String remoteUuid,
+    List<String> tags = const ['Autre'],
+    String? title,
+    int? categoryOrder,
+    String? dossierId,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now();
+    final extension = p
+        .extension(fileName)
+        .replaceFirst('.', '')
+        .toLowerCase();
+    final resolvedTitle = (title != null && title.trim().isNotEmpty)
+        ? title.trim()
+        : p.basenameWithoutExtension(fileName);
+    final localId = remoteUuid; // Use the remote UUID as local_id
+    final mimeType = _mimeTypeFor(extension);
+    final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
+
+    final row = {
+      'local_id': localId,
+      'patient_local_id': patientId,
+      'dossier_local_id': dossierId,
+      'title': resolvedTitle,
+      'file_name': fileName,
+      'file_ext': extension,
+      'mime_type': mimeType,
+      'local_file_path': null,
+      // Bytes en local pour vignette immédiate, sans avoir à pull
+      // depuis NocoDB le binaire (qui passerait par /api/mobile-documents/.../content).
+      'local_file_data_url': dataUrl,
+      // remote_file_path = UUID NocoDB → permet à mergeRemoteDocuments
+      // de matcher au prochain pull sans dupliquer.
+      'remote_file_path': remoteUuid,
+      'remote_public_url': null,
+      'tags_json': jsonEncode(tags),
+      'category_order': categoryOrder,
+      'created_at': now.toIso8601String(),
+      'updated_at': now.toIso8601String(),
+      'sync_state': SyncState.synced.name,
+      'pending_delete': 0,
+    };
+
+    await db.insert(
+      'documents',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    // PAS de sync_operations — le doc est déjà côté serveur.
+    return _mapRow(row);
+  }
+
   Future<DocItem> importDocumentBytes({
     required String patientId,
     required List<int> bytes,

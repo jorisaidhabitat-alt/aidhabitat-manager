@@ -411,7 +411,7 @@ class DataService {
   /// clique « Générer » pendant qu'une partie des photos vient juste
   /// d'être uploadée et l'autre pas, le serveur a quand même tous les
   /// bytes nécessaires (les inline gagnent sur la lecture NocoDB).
-  Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats})>
+  Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats, String? savedDocUuid})>
       downloadVisitReport({required String dossierId}) async {
     // Résolution patientId à partir du dossierId — nécessaire pour
     // récupérer les documents et notes scopés au patient. Si le dossier
