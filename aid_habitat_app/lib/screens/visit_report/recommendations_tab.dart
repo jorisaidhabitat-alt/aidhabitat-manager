@@ -438,120 +438,104 @@ class _RecommendationCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Contenu principal de la carte. Le drag handle est superposé
-          // en Align.topCenter (voir plus bas) pour être CENTRÉ
-          // horizontalement dans la carte — indépendamment des largeurs
-          // relatives titre/image.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          // ----------------------------------------------------------
+          // Image en haut, pleine largeur de la carte (carrée), avec
+          // le bouton de suppression flottant dans le coin haut-droit.
+          // Cliquer sur l'image ouvre le wiki picker (= idem bouton
+          // « Choisir / Changer une fiche wiki » plus bas).
+          // ----------------------------------------------------------
+          Stack(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _InlineTitleField(
-                      value: item.customTitle,
-                      hint: title.isNotEmpty ? title : 'Titre…',
-                      onChanged: (v) =>
-                          onChange(item.copyWith(customTitle: v)),
+              GestureDetector(
+                onTap: onPickWiki,
+                child: AspectRatio(
+                  aspectRatio: 1.0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7F7FA),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    const SizedBox(height: 6),
-                    TextButton.icon(
-                      onPressed: onPickWiki,
-                      icon: const Icon(Icons.swap_horiz, size: 14),
-                      label: Text(hasWiki
-                          ? 'Changer la fiche wiki'
-                          : 'Choisir une fiche wiki'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF7C6DAA),
-                        padding: EdgeInsets.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        minimumSize: Size.zero,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    FormTextField(
-                      label: '',
-                      value: item.note,
-                      maxLines: 3,
-                      onChanged: (v) => onChange(item.copyWith(note: v)),
-                    ),
-                  ],
+                    alignment: Alignment.center,
+                    clipBehavior: Clip.antiAlias,
+                    child: hasWiki && item.wikiImageUrl.isNotEmpty
+                        ? Image.network(
+                            resolveMediaUrl(item.wikiImageUrl),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.image_outlined,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.add_photo_alternate_outlined,
+                            color: Color(0xFF7C6DAA),
+                            size: 48,
+                          ),
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
-              // Bloc droit : grande image.
-          GestureDetector(
-            onTap: onPickWiki,
-            child: Container(
-              width: 180,
-              height: 180,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7F7FA),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              alignment: Alignment.center,
-              clipBehavior: Clip.antiAlias,
-              child: hasWiki && item.wikiImageUrl.isNotEmpty
-                  ? Image.network(
-                      resolveMediaUrl(item.wikiImageUrl),
-                      fit: BoxFit.cover,
-                      width: 180,
-                      height: 180,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.image_outlined,
-                        color: Color(0xFF94A3B8),
-                      ),
-                    )
-                  : const Icon(
-                      Icons.add_photo_alternate_outlined,
-                      color: Color(0xFF7C6DAA),
-                      size: 40,
-                    ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          // Bouton supprimer, collé à droite de l'image.
-          IconButton(
-            onPressed: onRemove,
-            icon: const Icon(Icons.close, size: 18),
-            color: const Color(0xFF94A3B8),
-            tooltip: 'Supprimer',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(
-              minWidth: 28,
-              minHeight: 28,
-            ),
-          ),
-            ],
-          ),
-          // Drag handle absolu centré horizontalement en haut — superposé
-          // au-dessus du contenu (pas dans la Row) pour être sur l'axe
-          // vertical central de la carte.
-          if (reorderable)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: ReorderableDragStartListener(
-                  index: index,
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.grab,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
+              // Bouton supprimer flottant en haut-droite de l'image.
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Material(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    onTap: onRemove,
+                    customBorder: const CircleBorder(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
                       child: Icon(
-                        Icons.drag_handle,
-                        size: 22,
-                        color: const Color(0xFF94A3B8),
+                        Icons.close,
+                        size: 16,
+                        color: Color(0xFF94A3B8),
                       ),
                     ),
                   ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // ----------------------------------------------------------
+          // Titre éditable + bouton « Choisir/Changer fiche wiki » +
+          // note libre — empilés verticalement sous l'image (demande
+          // utilisateur 2026-04-28 : « passe le texte, la description
+          // et le bouton de changement en dessous de l'image »).
+          // ----------------------------------------------------------
+          _InlineTitleField(
+            value: item.customTitle,
+            hint: title.isNotEmpty ? title : 'Titre…',
+            onChanged: (v) => onChange(item.copyWith(customTitle: v)),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: onPickWiki,
+              icon: const Icon(Icons.swap_horiz, size: 14),
+              label: Text(hasWiki
+                  ? 'Changer la fiche wiki'
+                  : 'Choisir une fiche wiki'),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF7C6DAA),
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: Size.zero,
+              ),
             ),
+          ),
+          const SizedBox(height: 12),
+          FormTextField(
+            label: '',
+            value: item.note,
+            maxLines: 3,
+            onChanged: (v) => onChange(item.copyWith(note: v)),
+          ),
         ],
       ),
     );
