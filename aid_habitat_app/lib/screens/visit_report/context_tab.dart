@@ -570,11 +570,10 @@ class _ContextTabState extends State<ContextTab>
 
   Widget _buildQuickNav() {
     return Container(
-      // Padding horizontal retiré : chaque zone cliquable s'étend
-      // bord à bord (demande utilisateur — 50 % Médical / 50 % Autonomie
-      // sans marge intermédiaire).
+      // Fond transparent (demande utilisateur 2026-04-28 : « retire le
+      // fond rose clair »). Padding vertical seulement.
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: const Color(0xFFEDE8F5),
+      color: Colors.transparent,
       child: Row(
         children: [
           Expanded(
@@ -619,24 +618,31 @@ class _ContextTabState extends State<ContextTab>
               color: active ? activeColor : inactiveColor,
             ),
             const SizedBox(height: 2),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: active ? activeColor : inactiveColor,
-              ),
-            ),
-            // Trait fin centré sous le texte, visible uniquement pour la
-            // sous-section active.
-            const SizedBox(height: 6),
-            Container(
-              height: 1.5,
-              width: 28,
-              decoration: BoxDecoration(
-                color: active ? activeColor : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
+            // Trait actif = LARGEUR EXACTE DU MOT (demande utilisateur
+            // 2026-04-28). IntrinsicWidth calque la largeur sur celle
+            // du Text, stretch fait grimper le trait à cette largeur.
+            IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: active ? activeColor : inactiveColor,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 1.5,
+                    decoration: BoxDecoration(
+                      color: active ? activeColor : Colors.transparent,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

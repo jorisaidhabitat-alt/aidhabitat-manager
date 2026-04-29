@@ -119,6 +119,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// Les onglets absents de cette map (Mesures, Photos, Plans,
   /// Préconisations) sont en pleine largeur et n'ont pas de panneau
   /// notes latéral.
+  ///
+  /// Cas particulier (demande utilisateur 2026-04-29) : « Salle de bain »
+  /// et « WC » partagent désormais une note unique stockée sous le
+  /// tabKey [_kSharedSanitairesNotesTabKey], peu importe la sous-section
+  /// active. Saisir / supprimer dans l'un est immédiatement répliqué
+  /// dans l'autre. Voir [_resolveNotesTabKey] pour la logique de
+  /// résolution.
   static const Map<String, List<String>> _tabSubsections = {
     'Bénéficiaire': ['Profil', 'Foyer', 'Santé', 'Admin'],
     'Contexte de vie': ['Médical', 'Autonomie'],
@@ -126,6 +133,24 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     'Salle de bain': ['Équipements'],
     'WC': ['Config. & équipements'],
   };
+
+  /// TabKey unique pour la note partagée entre les onglets « Salle de
+  /// bain » et « WC ». Persistée dans `note_pages.tab_key`. Si tu
+  /// renommes ce tabKey, les dossiers existants perdront leur note —
+  /// pense à une migration côté `note_repository` (lecture des deux
+  /// clés possibles, écriture sur la nouvelle).
+  static const String _kSharedSanitairesNotesTabKey = 'Sanitaires-Notes';
+
+  /// Calcule le tabKey à utiliser pour le panneau notes. Pour la
+  /// majorité des onglets c'est `'$tab-$section'`. Cas spécial des
+  /// onglets sanitaires (Salle de bain / WC) qui partagent la même
+  /// note via [_kSharedSanitairesNotesTabKey].
+  static String _resolveNotesTabKey(String activeTab, String section) {
+    if (activeTab == 'Salle de bain' || activeTab == 'WC') {
+      return _kSharedSanitairesNotesTabKey;
+    }
+    return '$activeTab-$section';
+  }
 
   @override
   void initState() {
@@ -495,7 +520,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             fit: StackFit.expand,
             children: List.generate(subsections.length, (i) {
               final section = subsections[i];
-              final tabKey = '$activeTab-$section';
+              final tabKey = _resolveNotesTabKey(activeTab, section);
               final liveKey = '${_dossier.patient.id}::$tabKey';
               final isMedical = tabKey == 'Contexte de vie-Médical';
               final isActive = i == safeIdx;
