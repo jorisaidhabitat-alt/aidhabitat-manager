@@ -188,6 +188,11 @@ const TABLES = {
   observations: 'mbkuomk0aazes1c',
   diagnosticSanitaires: 'mdukulxcd18ae3o',
   mesuresAnthropometriques: 'mbaj91z97utreco',
+  // Photos visite — table dédiée (séparée de mobile_documents).
+  // Demande utilisateur 2026-04-30 : « les photos de l'espace photos
+  // ne doivent pas être mélangées avec les documents ». Les rows
+  // existantes ont été migrées depuis mobile_documents le 2026-04-30.
+  visitPhotos: 'mfeu4lijbge4opz',
   communes: 'mtwhx481kcfn19h',
   epci: 'mntevbq41mk4y6h',
   situationProprietaire: 'mqwqqzsfopejd5q',
@@ -3820,22 +3825,85 @@ const resolveCaisseComplementaireLabel = async (caisseName) => {
 };
 
 /**
- * Liste les photos visite d'un patient — filtre les documents par
- * tags `Visite - Logement / Accessibilité / Sanitaires`. Retourne
- * uniquement les images, triées par updatedAt DESC. Le `categoryOrder`
- * ne remonte pas du serveur (local-only en v1) — l'ordre se fait
- * client-side ; ici on a juste le récent → ancien.
+ * Mapping `categorie` (colonne NocoDB de mobile_visit_photos) → tag
+ * canonique attendu par le générateur PDF (`generateVisitReport.mjs`
+ * branche les photos par tag pour les slots de la page 8 et 9-10).
+ *
+ * Inverse de `TAG_TO_CAT` du script de migration. Doit rester aligné
+ * avec `kVisitPhotoTags` côté Flutter (`models/visit_report_categories.dart`).
+ */
+const VISIT_PHOTO_CAT_TO_TAG = {
+  logement: 'Visite - Logement',
+  accessibilite: 'Visite - Accessibilité',
+  sanitaires: 'Visite - Sanitaires',
+  plan_avant: 'Visite - Plan avant',
+  plan_apres: 'Visite - Plan après',
+  autres: 'Visite - Autres',
+};
+
+/**
+ * Liste les photos visite d'un patient. Source primaire :
+ * `mobile_visit_photos` (table dédiée depuis 2026-04-30). Fallback
+ * legacy : `mobile_documents` filtré par tags `Visite - *` pour les
+ * dossiers ayant encore des photos avant migration complète côté
+ * Flutter (transition).
+ *
+ * Format de retour uniforme — chaque entry a `id`, `tags`, `mimeType`,
+ * + un champ `_source` ('visit_photo' | 'document') consommé par
+ * `fetchImageBytesForReport` pour router vers la bonne table.
  */
 const fetchVisitPhotosForPatient = async (patientId) => {
+  const photos = [];
+
+  // 1) Nouvelle source : mobile_visit_photos
+  try {
+    const records = await queryAll(TABLES.visitPhotos, {
+      fields: [
+        'uuid_source',
+        'beneficiaire_id',
+        'client_document_id',
+        'titre',
+        'nom_fichier',
+        'mime_type',
+        'categorie',
+        'category_order',
+        'created_at1',
+        'updated_at1',
+      ],
+    });
+    const matching = records.filter(
+      (r) => String(field(r, 'beneficiaire_id') || '') === String(patientId),
+    );
+    for (const r of matching) {
+      const cat = String(field(r, 'categorie') || '').trim().toLowerCase();
+      const tag = VISIT_PHOTO_CAT_TO_TAG[cat] || 'Visite - Autres';
+      photos.push({
+        id: field(r, 'uuid_source') || String(r.id),
+        clientDocumentId: field(r, 'client_document_id') || '',
+        title: field(r, 'titre') || '',
+        fileName: field(r, 'nom_fichier') || '',
+        mimeType: field(r, 'mime_type') || 'image/jpeg',
+        tags: [tag],
+        categoryOrder: Number(field(r, 'category_order') || 0),
+        updatedAt:
+            field(r, 'updated_at1') || field(r, 'UpdatedAt') || null,
+        // Marqueur consommé par fetchImageBytesForReport pour router
+        // vers la table mobile_visit_photos (au lieu de mobile_documents).
+        _source: 'visit_photo',
+      });
+    }
+  } catch (error) {
+    console.warn(
+      '[report] échec query mobile_visit_photos :',
+      error?.message || error,
+    );
+  }
+
+  // 2) Fallback legacy : mobile_documents filtré par tag visite (pour
+  //    les rows pas encore migrées — le client Flutter peut encore
+  //    poster ici tant que le refactor Flutter n'est pas fini).
   try {
     const docs = await mobileSyncStore.listDocumentsByPatient(patientId, {});
-    // Normalisation robuste pour la comparaison : on retire les
-    // accents, on lowercase, on collapse les espaces. Comme ça, un
-    // tag stocké en NocoDB sous une forme légèrement différente de
-    // la constante Flutter (ex. NFC vs NFD pour le `é` de
-    // "Accessibilité", espace insécable au lieu de simple, …) matche
-    // quand même. Symptôme reporté : photos Logement + Accessibilité
-    // absentes du PDF alors qu'elles existaient bien dans l'app.
     const normalizeTag = (s) => String(s || '')
       .toLowerCase()
       .normalize('NFD')
@@ -3846,25 +3914,35 @@ const fetchVisitPhotosForPatient = async (patientId) => {
       'visite - logement',
       'visite - accessibilite',
       'visite - sanitaires',
-      // 3 catégories ajoutées 2026-04-28 — buckets d'organisation pour
-      // l'ergo (pas de slot PDF dédié pour l'instant, mais il faut
-      // les filtrer ici pour qu'elles soient bien fetchées et
-      // re-routables depuis l'onglet Photos / le menu Déplacer).
       'visite - plan avant',
       'visite - plan apres',
       'visite - autres',
     ]);
-    return asArray(docs).filter((doc) => {
+    for (const doc of asArray(docs)) {
       const mime = String(doc?.mimeType || '');
-      if (!mime.startsWith('image/')) return false;
-      return asArray(doc?.tags).some((tag) =>
+      if (!mime.startsWith('image/')) continue;
+      const hasVisitTag = asArray(doc?.tags).some((tag) =>
         visitTagsNormalized.has(normalizeTag(tag)),
       );
-    });
+      if (!hasVisitTag) continue;
+      // Évite le doublon si un row legacy a la même `client_document_id`
+      // qu'un row déjà migré dans mobile_visit_photos (les ids cross-table
+      // doivent rester uniques après migration, mais on est défensif).
+      const cid = String(doc?.clientDocumentId || '');
+      if (cid && photos.some((p) => p.clientDocumentId === cid)) continue;
+      photos.push({
+        ...doc,
+        _source: 'document',
+      });
+    }
   } catch (error) {
-    console.warn('[report] échec listDocumentsByPatient :', error?.message || error);
-    return [];
+    console.warn(
+      '[report] échec listDocumentsByPatient (fallback) :',
+      error?.message || error,
+    );
   }
+
+  return photos;
 };
 
 /**
@@ -4211,9 +4289,42 @@ const fetchImageBytesForReport = async (descriptor) => {
     // appelé — mais par sûreté on no-op.
     if (descriptor.kind === 'inline_resolved') return null;
     if (descriptor.kind === 'document' && descriptor.id) {
+      // 1) Cas legacy : doc dans mobile_documents — go through the
+      //    standard mobileSyncStore.getDocumentContent path.
       const content = await mobileSyncStore.getDocumentContent(descriptor.id);
-      if (!content?.buffer || content.buffer.length === 0) return null;
-      return { buffer: content.buffer, mimeType: content.mimeType || 'image/jpeg' };
+      if (content?.buffer && content.buffer.length > 0) {
+        return {
+          buffer: content.buffer,
+          mimeType: content.mimeType || 'image/jpeg',
+        };
+      }
+      // 2) Cas nouveau : photo visite dans mobile_visit_photos (id =
+      //    `uuid_source`). On lit directement le row + sa colonne
+      //    `contenu_base64`. Ce path se déclenche pour les photos que
+      //    `fetchVisitPhotosForPatient` a marquées `_source: 'visit_photo'`.
+      try {
+        const records = await queryAll(TABLES.visitPhotos, {
+          fields: ['uuid_source', 'mime_type', 'contenu_base64'],
+        });
+        const match = records.find(
+          (r) => String(field(r, 'uuid_source') || '') === String(descriptor.id),
+        );
+        if (match) {
+          const base64 = String(field(match, 'contenu_base64') || '').trim();
+          if (base64) {
+            return {
+              buffer: Buffer.from(base64, 'base64'),
+              mimeType: field(match, 'mime_type') || 'image/jpeg',
+            };
+          }
+        }
+      } catch (error) {
+        console.warn(
+          '[report] échec query mobile_visit_photos :',
+          error?.message || error,
+        );
+      }
+      return null;
     }
     if (descriptor.kind === 'dataurl' && descriptor.dataUrl) {
       const m = String(descriptor.dataUrl).match(/^data:([^;]+);base64,(.+)$/);
