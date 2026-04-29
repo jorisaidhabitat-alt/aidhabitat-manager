@@ -498,11 +498,11 @@ class _RecommendationCard extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.all(5),
                           child: Icon(
-                            Icons.swap_horiz,
+                            Icons.edit_outlined,
                             size: 16,
                             color: const Color(0xFF7C6DAA),
                             semanticLabel: hasWiki
-                                ? 'Changer la fiche wiki'
+                                ? 'Modifier la fiche wiki'
                                 : 'Choisir une fiche wiki',
                           ),
                         ),

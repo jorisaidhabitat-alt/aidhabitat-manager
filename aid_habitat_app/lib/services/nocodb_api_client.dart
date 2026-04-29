@@ -203,6 +203,13 @@ class NocodbApiClient {
   /// local_id). Payload uses camelCase keys (firstName, lastName,
   /// trustedPerson: {name, phone, email}, etc.); the server maps them to
   /// NocoDB column names.
+  ///
+  /// Sur 409 (conflit d'optimistic concurrency : la version distante a
+  /// été modifiée depuis le dernier fetch local) on lève
+  /// [ConflictException] plutôt qu'une [Exception] générique, pour que
+  /// `nocodb_sync_service` route l'op vers `markConflict` au lieu de
+  /// `markFailed`. Cohérence avec `updateDossier` / `updateMesures` /
+  /// `updateObservations` qui font déjà ça.
   Future<void> updateBeneficiary({
     required String patientId,
     required Map<String, dynamic> updates,
@@ -217,6 +224,16 @@ class NocodbApiClient {
           body: jsonEncode(updates),
         )
         .timeout(_defaultTimeout);
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? remoteData;
+      try {
+        remoteData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+      throw ConflictException(
+        'Conflit de modification sur le bénéficiaire $patientId',
+        remoteData: remoteData,
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         'Remote beneficiary update failed (${response.statusCode}): ${response.body}',
@@ -226,6 +243,9 @@ class NocodbApiClient {
 
   /// PATCH /api/logements/by-beneficiary/:beneficiaryId — updates a housing
   /// record linked to the given beneficiary.
+  ///
+  /// Idem [updateBeneficiary] : sur 409 on lève [ConflictException]
+  /// pour que la sync engine route vers `markConflict`.
   Future<void> updateLogement({
     required String beneficiaryId,
     required Map<String, dynamic> updates,
@@ -241,6 +261,16 @@ class NocodbApiClient {
           body: jsonEncode(updates),
         )
         .timeout(_defaultTimeout);
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? remoteData;
+      try {
+        remoteData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+      throw ConflictException(
+        'Conflit de modification sur le logement du bénéficiaire $beneficiaryId',
+        remoteData: remoteData,
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         'Remote logement update failed (${response.statusCode}): ${response.body}',
@@ -383,6 +413,10 @@ class NocodbApiClient {
   /// PUT /api/diagnostic-sanitaires/:dossierId — persists bathroom + WC
   /// instances (arrays) for the given dossier. The server normalises each
   /// instance into the `diagnostic_sanitaires` NocoDB table.
+  ///
+  /// Idem [updateBeneficiary] : sur 409 on lève [ConflictException] (le
+  /// serveur appelle `sendConflictIfStale` côté `app.put('/api/
+  /// diagnostic-sanitaires/...)`).
   Future<void> updateDiagnosticSanitaires({
     required String dossierId,
     required List<Map<String, dynamic>> sdbInstances,
@@ -401,6 +435,16 @@ class NocodbApiClient {
           }),
         )
         .timeout(_defaultTimeout);
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? remoteData;
+      try {
+        remoteData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+      throw ConflictException(
+        'Conflit diagnostic sanitaires pour le dossier $dossierId',
+        remoteData: remoteData,
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         'Remote diagnostic sanitaires update failed (${response.statusCode}): ${response.body}',
@@ -411,6 +455,8 @@ class NocodbApiClient {
   /// PUT /api/visit-recommendations/:dossierId — replaces the full list of
   /// recommendations for the dossier. Each item must reference a valid
   /// wiki library entry (server-side validation).
+  ///
+  /// Idem [updateBeneficiary] : sur 409 on lève [ConflictException].
   Future<void> updateVisitRecommendations({
     required String dossierId,
     required List<Map<String, dynamic>> items,
@@ -425,6 +471,16 @@ class NocodbApiClient {
           body: jsonEncode({'items': items}),
         )
         .timeout(_defaultTimeout);
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? remoteData;
+      try {
+        remoteData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+      throw ConflictException(
+        'Conflit préconisations pour le dossier $dossierId',
+        remoteData: remoteData,
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         'Remote visit recommendations update failed (${response.statusCode}): ${response.body}',
