@@ -3936,6 +3936,7 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
       accGeneralPages,
       accExterieurPages,
       legacyEquipPages,
+      sanitairesUnifiedPages,
       sdbPages,
       wcPages,
     ] = await Promise.all([
@@ -3962,11 +3963,20 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Accessibilité-Équipements',
       }),
-      // NOUVEAU (2026-04-29) : notes panneau Salle de bain + WC →
-      // alimentent le champ `obs` page 6 PDF (« Observations sur les
-      // équipements et utilisation »). Demande utilisateur :
-      // « observation sur les équipements et utilisation … doit être
-      // conecté à la note ecrite de Salle de bain et wc ».
+      // NOUVEAU (2026-04-29 v2) : note unifiée SDB+WC sous le tabKey
+      // partagé `Sanitaires-Notes`. Avant : 2 tabKeys séparés (`Salle
+      // de bain-Équipements` + `WC-Config. & équipements`) — purgés
+      // depuis (cf. `purgeLegacySanitairesNotes`). Désormais SDB et
+      // WC partagent la même note dans l'app, qui alimente le champ
+      // `obs` page 6 PDF (« Observations sur les équipements et
+      // utilisation »).
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Sanitaires-Notes',
+      }),
+      // Fallback legacy : pour les rares dossiers où l'admin n'aurait
+      // pas encore re-saisi la note sous le nouveau tabKey unifié,
+      // on lit aussi les anciens — au cas où une ligne aurait été
+      // restaurée depuis un backup. Inoffensif si vide.
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Salle de bain-Équipements',
       }),
@@ -4045,14 +4055,23 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
       return mergedLegacy.trim() ? mergedLegacy : null;
     })();
     // `sanitaires` du PDF (page 6 / champ `obs` = « Observations sur
-    // les équipements et utilisation ») : concat des notes panneau
-    // Salle de bain + WC. Ordre : SDB d'abord, WC ensuite (lecture
-    // naturelle).
+    // les équipements et utilisation ») : priorité au tabKey unifié
+    // `Sanitaires-Notes` (note partagée SDB+WC depuis 2026-04-29).
+    // Fallback : concat des anciens tabKeys séparés au cas où un
+    // dossier historique aurait encore des lignes legacy après le
+    // déploiement de la migration.
+    const sanitairesUnifiedText = joinPages(sanitairesUnifiedPages);
     const sdbText = joinPages(sdbPages);
     const wcText = joinPages(wcPages);
-    const sanitaires = [sdbText, wcText]
-      .filter((s) => typeof s === 'string' && s.trim())
-      .join('\n\n') || null;
+    const sanitaires = (() => {
+      if (sanitairesUnifiedText && sanitairesUnifiedText.trim()) {
+        return sanitairesUnifiedText;
+      }
+      const merged = [sdbText, wcText]
+        .filter((s) => typeof s === 'string' && s.trim())
+        .join('\n\n');
+      return merged.trim() ? merged : null;
+    })();
     return {
       projet: joinPages(projetPages),
       resume: joinPages(resumePages),

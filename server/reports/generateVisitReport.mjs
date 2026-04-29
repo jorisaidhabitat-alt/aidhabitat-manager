@@ -554,14 +554,16 @@ function buildViewModel({
   const homeHelp = Boolean(patient.homeHelp);
   const homeHelpDisplay = homeHelp ? 'Oui' : 'Non';
 
-  // Reconnaissance MDPH : on privilégie le texte (qui contient
-  // typiquement le %) mais on retombe sur "Oui" si la case est cochée
-  // sans détail. Vide sinon — on n'écrit pas "Non" car le PDF n'a
-  // pas vraiment de UI Non explicite à côté du champ.
+  // Reconnaissance MDPH (demande utilisateur 2026-04-29) :
+  //   - case cochée + texte (ex. « 80 % »)        → texte tel quel
+  //   - case cochée sans détail                    → 'Oui'
+  //   - case décochée                              → 'Non' (avant on
+  //     laissait vide, mais l'ergo veut une valeur explicite pour ne
+  //     pas laisser le champ blanc dans le PDF).
   const invalidityTxt = String(patient.invalidityTxt || '').trim();
   const invalidity = Boolean(patient.invalidity);
-  const invalidityDisplay =
-    invalidityTxt || (invalidity ? 'Oui' : '');
+  const invalidityDisplay = invalidityTxt
+      || (invalidity ? 'Oui' : 'Non');
 
   // Dates de naissance : on utilise les variantes Mr/Mme dédiées
   // (mapPatient les expose déjà). `patient.birthDate` fallback sur
@@ -754,9 +756,27 @@ function buildViewModel({
       // pour la dropdown, et on rend le GIR séparément via un overlay
       // texte (cf. `applyApaGirOverlay`) à côté du dropdown — sinon
       // pdf-lib refuse les chaînes hors-options.
+      //
+      // `apaGir` est stocké PAR OCCUPANT dans `occupants_json` (pas de
+      // colonne dédiée sur le patient). On lit donc l'occupant 0 qui
+      // est le bénéficiaire principal. Demande utilisateur 2026-04-29 :
+      // « bénéficiaire APA c'est marqué oui mais sans le gir alors que
+      // je l'ai sélectionné » — avant ce fix, on lisait `patient.apaGir`
+      // qui n'existe pas → toujours vide → l'overlay était skippé.
       apaLabel: patient.apa ? 'Oui' : 'Non',
       apaGirRaw: patient.apa
-        ? String(patient.apaGir || '').trim()
+        ? (() => {
+            const occupants = Array.isArray(patient.occupants)
+              ? patient.occupants
+              : [];
+            const primary = occupants[0] || {};
+            return String(
+              patient.apaGir
+                || primary.apaGir
+                || primary.gir
+                || '',
+            ).trim();
+          })()
         : '',
       invalidityDisplay,
       homeHelpDisplay,
