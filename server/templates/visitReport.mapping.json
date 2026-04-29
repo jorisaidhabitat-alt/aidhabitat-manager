@@ -121,5 +121,11 @@
 
   "$page7": "--- Projet usager + Résumé préconisations ---",
   "Projet ou souhait de lusager": { "source": "observations.projetSouhaitUsage", "type": "text" },
-  "Résumé des préconisations": { "source": "observations.resumePreconisations", "type": "text" }
+  "Résumé des préconisations": { "source": "observations.resumePreconisations", "type": "text" },
+
+  "$descriptifAides": "--- Descriptif des aides prévisionnelles (page recolocée dynamiquement) ---",
+  "$amo": "Aide à l'accompagnement AMO. Calculée selon dossier.natureAccompagnement : 'ergo'→600 €, 'complet'→800 €, sinon '/'. Cf. buildViewModel#dossier.amoLabel.",
+  "AMO": { "source": "dossier.amoLabel", "type": "text" },
+  "$caisseComp": "Caisse de retraite complémentaire — pré-résolue côté index.mjs (lookup `aide_complementaire` dans la table caisses_retraite_complementaires). Vaut '/' ou '<nom> sous conditions*'.",
+  "Caisse de retraite complémentaire": { "source": "patient.caisseComplementaireLabel", "type": "text" }
 }

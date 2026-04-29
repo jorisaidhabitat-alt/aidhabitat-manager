@@ -3705,6 +3705,50 @@ const fetchSanitairesForDossier = async (dossierId) => {
 };
 
 /**
+ * Résout le libellé à afficher dans le champ PDF
+ * « Caisse de retraite complémentaire » selon la règle métier
+ * (demande utilisateur 2026-04-29) :
+ *
+ *   - Si le patient n'a pas de caisse complémentaire renseignée → `'/'`.
+ *   - Sinon, on lit le champ `aide_complementaire` de la table de
+ *     référence `caisses_retraite_complementaires` :
+ *       • Vide ou `/` → `'/'` (la caisse n'a pas d'aide spécifique)
+ *       • Sinon → `'<nom de la caisse> sous conditions*'`
+ *         (l'astérisque renvoie à la note de bas de page du template
+ *         « * sous conditions de ressources »).
+ *
+ * Le matching du nom de caisse réutilise `findByLabel` qui est
+ * tolérant aux variations d'accents / casse / ponctuation (la valeur
+ * stockée côté patient peut différer un poil du libellé canonique
+ * de la table de référence).
+ */
+const resolveCaisseComplementaireLabel = async (caisseName) => {
+  const trimmed = String(caisseName || '').trim();
+  if (!trimmed) return '/';
+  try {
+    const records = await queryAll(TABLES.caissesRetraiteComplementaires, {
+      fields: FIELD_SETS.caissesRetraiteComplementaires,
+    });
+    const match = findByLabel(records, trimmed);
+    if (!match) {
+      // Caisse libellée côté patient mais absente de la table de
+      // référence (donnée historique ou typo) → on préfère renvoyer
+      // `'/'` plutôt que d'écrire un nom qui ne correspond à rien.
+      return '/';
+    }
+    const aideRaw = String(field(match, 'aide_complementaire') || '').trim();
+    if (!aideRaw || aideRaw === '/') return '/';
+    return `${trimmed} sous conditions*`;
+  } catch (error) {
+    console.warn(
+      `[report] échec résolution caisse complémentaire "${trimmed}":`,
+      error?.message || error,
+    );
+    return '/';
+  }
+};
+
+/**
  * Liste les photos visite d'un patient — filtre les documents par
  * tags `Visite - Logement / Accessibilité / Sanitaires`. Retourne
  * uniquement les images, triées par updatedAt DESC. Le `categoryOrder`
@@ -4253,6 +4297,7 @@ app.post(
       contexteNotes,
       recommendations,
       vadOverlayNotes,
+      caisseComplementaireResolved,
     ] = await Promise.all([
       fetchSanitairesForDossier(dossierId).catch((err) => {
         console.warn(`[report] échec fetch sanitaires pour ${dossierId}:`, err?.message || err);
@@ -4275,6 +4320,12 @@ app.post(
       patientId
         ? fetchVadOverlayNotesForReport(patientId, dossierId)
         : Promise.resolve({ projet: null, resume: null, observation: null }),
+      // NEW (2026-04-29) : résolution de la caisse de retraite
+      // complémentaire en `'/'` ou `'<caisse> sous conditions*'`.
+      // Voir `resolveCaisseComplementaireLabel` pour la règle complète.
+      resolveCaisseComplementaireLabel(
+        dossier?.patient?.caissesRetraiteComplementaires,
+      ),
     ]);
 
     // 3) Merge inline + remote. Inline gagne en cas de doublon (state
@@ -4318,6 +4369,13 @@ app.post(
       // utilisateur).
       contexteNotes,
       recommendations,
+      // Libellé pré-résolu pour la cellule « Caisse de retraite
+      // complémentaire » de la page descriptif des aides
+      // prévisionnelles. La règle métier (lookup
+      // `aide_complementaire`) vit dans `resolveCaisseComplementaireLabel`
+      // côté `index.mjs` car le générateur n'accède pas directement à
+      // NocoDB.
+      caisseComplementaireResolved,
       // Wrapper inline-first : si le descriptor cible un asset embarqué
       // dans la requête multipart, on lit le buffer en mémoire (zéro
       // round-trip). Fallback sur le fetcher d'origine (NocoDB / URL).

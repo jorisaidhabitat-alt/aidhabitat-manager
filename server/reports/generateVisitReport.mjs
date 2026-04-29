@@ -461,6 +461,7 @@ function buildViewModel({
   sanitaires,
   observations,
   contexteNotes = [],
+  caisseComplementaireResolved = null,
 }) {
   const patient = dossier?.patient || {};
   const housing = dossier?.housing || {};
@@ -640,10 +641,33 @@ function buildViewModel({
       // connues, fallback sur le 1er segment avant virgule/point si
       // aucune correspondance.
       dependenceTxt: normalizeDependenceForReport(patient.dependenceTxt),
+      // Cellule « Caisse de retraite complémentaire » de la page
+      // « Descriptif des aides prévisionnelles » — pré-résolu côté
+      // `index.mjs` (cf. `resolveCaisseComplementaireLabel`). Vaut
+      // soit `'/'` soit `'<nom de caisse> sous conditions*'`.
+      // Demande utilisateur 2026-04-29.
+      caisseComplementaireLabel: caisseComplementaireResolved == null
+        ? ''
+        : String(caisseComplementaireResolved),
     },
     dossier: {
       personnesPresentesVisite: String(dossier?.personnesPresentesVisite || '').trim(),
       visitDateFr: formatFrenchDate(dossier?.visitDate),
+      // Cellule « AMO » de la page « Descriptif des aides
+      // prévisionnelles » — montant fonction de la nature
+      // d'accompagnement (demande utilisateur 2026-04-29) :
+      //   • 'ergo'       → 600 €
+      //   • 'complet'    → 800 €
+      //   • 'diagnostic' → '/' (pas d'AMO sur un dossier diagnostic seul)
+      //   • autre/vide   → '/' (sécurité — on n'invente pas un montant)
+      amoLabel: (() => {
+        const nat = String(dossier?.natureAccompagnement || '')
+          .trim()
+          .toLowerCase();
+        if (nat === 'complet') return '800 €';
+        if (nat === 'ergo') return '600 €';
+        return '/';
+      })(),
     },
     contexte: (() => {
       // Source primaire : les NOTES écrites par l'ergo dans
@@ -1378,6 +1402,7 @@ export async function generateVisitReport({
   notePages = [],
   contexteNotes = [],
   recommendations = [],
+  caisseComplementaireResolved = null,
   fetchImageBytes,
   flatten = true,
 }) {
@@ -1387,6 +1412,7 @@ export async function generateVisitReport({
     sanitaires,
     observations,
     contexteNotes,
+    caisseComplementaireResolved,
   });
 
   // pdf-lib ne supporte pas un updateFieldAppearances "léger" sur un
