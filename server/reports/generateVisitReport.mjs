@@ -767,9 +767,19 @@ function buildViewModel({
   };
 
   // --- Page 7 : Projet + Résumé ---
+  // + champ `observationEquipements` exposé pour le mapping `obs`
+  // page 6 (« Observations sur les équipements et utilisation »).
+  // Bug 2026-04-29 : le mapping pointait vers `observations.observationEquipements`
+  // mais cette clé n'existait PAS dans le view model — `obs` restait
+  // toujours vide quoique l'app envoie. Source priorisée : la note
+  // panneau Sanitaires (déjà mergée côté `index.mjs` dans `observations`)
+  // → fallback sur le legacy `wc.observationEquipementsUtilisation`.
   const observationsView = {
     projetSouhaitUsage: String(observations?.projetSouhaitUsage || '').trim(),
     resumePreconisations: String(observations?.resumePreconisations || '').trim(),
+    observationEquipements: String(
+      observations?.observationEquipements || wc.observationEquipementsUtilisation || '',
+    ).trim(),
   };
 
   return {
