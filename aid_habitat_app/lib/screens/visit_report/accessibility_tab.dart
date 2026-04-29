@@ -87,9 +87,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   @override
   bool get wantKeepAlive => true;
 
-  /// Index de la sous-section active : 0 = Général, 1 = Équipements,
-  /// 2 = Extérieur. Équipements regroupe chauffage + volets (sortis de
-  /// Général sur demande utilisateur, pour aérer le formulaire).
+  /// Index de la sous-section active :
+  ///   0 = Général             (type, années, surface)
+  ///   1 = Niveaux et pièces   (ajout des niveaux + cartes pièces) ← demande
+  ///                            utilisateur 2026-04-29 : sortir cette logique
+  ///                            de Général pour avoir une page dédiée.
+  ///   2 = Équipements         (chauffage + volets)
+  ///   3 = Extérieur           (accès rue + annexes/motorisations)
   int _subSection = 0;
   bool _saving = false;
   bool _loaded = false;
@@ -470,30 +474,30 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          // Swipe LARGE horizontal → bascule entre Général /
-          // Équipements / Extérieur. Pas de swipe léger câblé : pas
-          // d'occupants dans cet onglet. Demande utilisateur
-          // 2026-04-28.
+          // Swipe LARGE horizontal → bascule entre Général / Niveaux et
+          // pièces / Équipements / Extérieur. Pas de swipe léger câblé :
+          // pas d'occupants dans cet onglet. Demande utilisateur
+          // 2026-04-28 (swipe) + 2026-04-29 (4ème section ajoutée).
           child: TwoThresholdSwipe(
             onWideSwipeLeft: () {
-              setState(() => _subSection = (_subSection + 1) % 3);
+              setState(() => _subSection = (_subSection + 1) % 4);
             },
             onWideSwipeRight: () {
-              setState(() => _subSection = (_subSection - 1 + 3) % 3);
+              setState(() => _subSection = (_subSection - 1 + 4) % 4);
             },
             child: SoftSwitcher(
-              // Légère animation entre Général ↔ Équipements ↔ Extérieur —
-              // fade + apparition vers le haut, mêmes sensations qu'un
+              // Légère animation entre les 4 sous-sections — fade +
+              // apparition vers le haut, mêmes sensations qu'un
               // changement de vue principale (sidebar).
               child: KeyedSubtree(
                 key: ValueKey<int>(_subSection),
                 child: SingleChildScrollView(
-                  // Le controller n'est utile qu'en sous-section Général
-                  // (auto-scroll après ajout d'un niveau). On le branche
-                  // partout pour simplicité — pas d'effet de bord, juste
-                  // une référence vers la position du viewport courant.
+                  // Le controller n'est utile qu'en sous-section
+                  // « Niveaux et pièces » (auto-scroll après ajout d'un
+                  // niveau). On le branche uniquement là — pas d'effet
+                  // de bord sur les autres sections.
                   controller:
-                      _subSection == 0 ? _scrollController : null,
+                      _subSection == 1 ? _scrollController : null,
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -501,6 +505,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                       if (_subSection == 0)
                         _buildGeneral()
                       else if (_subSection == 1)
+                        _buildLevelsAndRooms()
+                      else if (_subSection == 2)
                         _buildEquipements()
                       else
                         _buildExterior(),
@@ -516,12 +522,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   }
 
   // ---------------------------------------------------------------------------
-  // Quick nav (Général / Extérieur)
+  // Quick nav (Général / Niveaux et pièces / Équipements / Extérieur)
   // ---------------------------------------------------------------------------
 
   Widget _buildQuickNav() {
     const items = [
       _QuickNavItem(icon: Icons.home_outlined, label: 'Général'),
+      _QuickNavItem(icon: Icons.layers_outlined, label: 'Niveaux et pièces'),
       _QuickNavItem(icon: Icons.tune, label: 'Équipements'),
       _QuickNavItem(icon: Icons.place_outlined, label: 'Extérieur'),
     ];
@@ -600,10 +607,6 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildGeneral() {
-    final available = _kLevelConfigs
-        .where((c) => !_orderedLevels.contains(c.field))
-        .toList();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -683,16 +686,38 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             _markChanged();
           },
         ),
-        const SizedBox(height: 14),
-        // 4. Ajouter un niveau (remonté au-dessus du chauffage) + liste
-        // de pills des niveaux encore disponibles quand _addLevelMode.
+        // (Niveaux + pièces déplacés vers la sous-section dédiée
+        // « Niveaux et pièces ». Cf. `_buildLevelsAndRooms`. Demande
+        // utilisateur 2026-04-29.)
+        // (Chauffage + volets dans la sous-section « Équipements ».)
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Niveaux et pièces
+  // ---------------------------------------------------------------------------
+
+  /// Sous-section dédiée à la gestion des niveaux du logement (sortie
+  /// de Général sur demande utilisateur 2026-04-29). Contient :
+  ///   1. Le container morphant « + Ajouter un niveau » avec ses 3 états
+  ///      (bouton / picker / éditeur) — cf. `_buildAddLevelInline`.
+  ///   2. La liste des niveaux déjà ajoutés sous forme de cartes
+  ///      pliantes (`_buildLevelCard`). Une seule carte ouverte à la
+  ///      fois — les autres affichent « Label (pièces cochées) » +
+  ///      crayon pour ré-éditer.
+  ///   3. Le niveau actuellement en édition INLINE dans le container
+  ///      morphant (`_pendingLevelField`) est SKIPPÉ ici pour éviter
+  ///      le double rendu.
+  Widget _buildLevelsAndRooms() {
+    final available = _kLevelConfigs
+        .where((c) => !_orderedLevels.contains(c.field))
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         if (available.isNotEmpty) _buildAddLevelInline(available),
         const SizedBox(height: 14),
-        // 5. Niveaux (cartes), un seul développé à la fois — les autres
-        // s'affichent sous forme "Label (pièces cochées) + crayon".
-        // On SKIP le niveau actuellement édité dans le container
-        // morphant (`_pendingLevelField`) : il est rendu là-haut, pas
-        // ici, sinon il s'afficherait deux fois.
         ..._orderedLevels
             .where((field) => field != _pendingLevelField)
             .map((field) {
@@ -703,8 +728,19 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             child: _buildLevelCard(cfg),
           );
         }),
-        // (Chauffage + volets ont été déplacés vers la sous-section
-        // "Équipements" pour aérer Général — demande utilisateur.)
+        if (available.isEmpty && _orderedLevels.isEmpty)
+          // Edge case : aucune config de niveau dispo et aucun niveau
+          // ajouté. En théorie impossible (kLevelConfigs n'est jamais
+          // vide), mais on évite l'écran totalement blanc.
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                'Aucun niveau disponible.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
+            ),
+          ),
       ],
     );
   }
