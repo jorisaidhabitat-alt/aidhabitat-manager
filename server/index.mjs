@@ -3908,7 +3908,12 @@ const fetchContexteNotePagesForPatient = async (patientId, dossierId) => {
  */
 const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
   if (!patientId) {
-    return { projet: null, resume: null, accessibilite: null };
+    return {
+      projet: null,
+      resume: null,
+      accessibilite: null,
+      sanitaires: null,
+    };
   }
   try {
     const [
@@ -3918,6 +3923,8 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
       accGeneralPages,
       accExterieurPages,
       legacyEquipPages,
+      sdbPages,
+      wcPages,
     ] = await Promise.all([
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Préconisations-Projet',
@@ -3941,6 +3948,17 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
       }),
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Accessibilité-Équipements',
+      }),
+      // NOUVEAU (2026-04-29) : notes panneau Salle de bain + WC →
+      // alimentent le champ `obs` page 6 PDF (« Observations sur les
+      // équipements et utilisation »). Demande utilisateur :
+      // « observation sur les équipements et utilisation … doit être
+      // conecté à la note ecrite de Salle de bain et wc ».
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Salle de bain-Équipements',
+      }),
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'WC-Config. & équipements',
       }),
     ]);
     // Le texte saisi par l'ergo dans NotesWidget est bundle DANS
@@ -3999,14 +4017,29 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
         .join('\n\n');
       return mergedLegacy.trim() ? mergedLegacy : null;
     })();
+    // `sanitaires` du PDF (page 6 / champ `obs` = « Observations sur
+    // les équipements et utilisation ») : concat des notes panneau
+    // Salle de bain + WC. Ordre : SDB d'abord, WC ensuite (lecture
+    // naturelle).
+    const sdbText = joinPages(sdbPages);
+    const wcText = joinPages(wcPages);
+    const sanitaires = [sdbText, wcText]
+      .filter((s) => typeof s === 'string' && s.trim())
+      .join('\n\n') || null;
     return {
       projet: joinPages(projetPages),
       resume: joinPages(resumePages),
       accessibilite,
+      sanitaires,
     };
   } catch (error) {
     console.warn('[report] échec fetchVadOverlayNotes :', error?.message || error);
-    return { projet: null, resume: null, accessibilite: null };
+    return {
+      projet: null,
+      resume: null,
+      accessibilite: null,
+      sanitaires: null,
+    };
   }
 };
 
@@ -4396,14 +4429,15 @@ app.post(
         resumePreconisations:
           (vadOverlayNotes.resume && vadOverlayNotes.resume.trim()) ||
           base.resumePreconisations,
-        // Plus d'override depuis vadOverlayNotes.observation : la note
-        // Accessibilité va maintenant directement vers
-        // `accessibiliteObservation` (page 5), pas vers
-        // `observationEquipements` (page 6 sanitaires) qui de toute
-        // façon n'était pas branché côté PDF mapping
-        // (`obs` lit `sanitaires.observationsEquipements`, pas
-        // `observations.observationEquipements`).
-        observationEquipements: base.observationEquipements,
+        // `observationEquipements` alimente `obs` page 6 PDF
+        // (« Observations sur les équipements et utilisation »).
+        // Source 2026-04-29 : concat des notes panneau Salle de bain
+        // + WC (cf. fetchVadOverlayNotesForReport.sanitaires).
+        // Fallback : observation legacy de `observations_synthese` pour
+        // les dossiers historiques.
+        observationEquipements:
+          (vadOverlayNotes.sanitaires && vadOverlayNotes.sanitaires.trim()) ||
+          base.observationEquipements,
         accessibiliteObservation:
           (vadOverlayNotes.accessibilite &&
               vadOverlayNotes.accessibilite.trim()) ||

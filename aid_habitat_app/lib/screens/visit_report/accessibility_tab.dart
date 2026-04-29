@@ -446,6 +446,20 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     for (final cfg in _kLevelConfigs) {
       map[cfg.field] = _orderedLevels.contains(cfg.field) ? 1 : 0;
       map[cfg.roomsField] = jsonEncode(_levelRooms[cfg.field] ?? []);
+      // Auto-remplit la description du niveau avec la liste des pièces
+      // séparées par des virgules (avec exposants ² ³ pour les
+      // doublons). Cf. `_formatRoomsWithCounts`. Alimente les champs
+      // `Sous sol` / `rdc` / `etage` page 5 du PDF — demande
+      // utilisateur 2026-04-29 : « après les deux petits points
+      // marqué les pièces concernées (ici salle de bain et wc) à la
+      // ligne séparée par une virgule ».
+      //
+      // Note : seuls basement / rdc / floor ont une colonne NocoDB
+      // dédiée (description_sous_sol, description_rdc, description_etage).
+      // Pour second_floor / third_floor on stocke quand même côté local
+      // (au cas où une colonne serait ajoutée plus tard).
+      map['${cfg.field}_desc'] =
+          _formatRoomsWithCounts(_levelRooms[cfg.field] ?? []);
     }
 
     await widget.repository.updateHousing(widget.dossier.id, map);
