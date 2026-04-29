@@ -293,27 +293,20 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     );
   }
 
-  /// Shared web import flow: prompts the user for a title + tag, then
-  /// persists the bytes locally via [DocumentRepository.importDocumentBytes].
-  /// Used by camera picker (image_picker XFile) and gallery / file pickers
-  /// (raw DOM `<input>` bytes).
+  /// Shared web import flow : sauvegarde directe sans demander de tag
+  /// (demande utilisateur 2026-04-29 — système de tags supprimé).
+  /// Le titre est dérivé automatiquement du nom de fichier (avant
+  /// l'extension). Aucun tag n'est appliqué — les docs importés depuis
+  /// l'espace Documents sont neutres.
   Future<void> _openUploadModalFromBytes({
     required List<int> bytes,
     required String fileName,
     required String defaultTag,
   }) async {
     if (!mounted) return;
-    final defaultTitle = fileName.isNotEmpty
+    final autoTitle = fileName.isNotEmpty
         ? fileName.split('.').first
         : 'Document';
-    final result = await showSoftDialog<_UploadResult>(
-      context: context,
-      builder: (ctx) => _UploadModal(
-        defaultTitle: defaultTitle,
-        defaultTag: defaultTag,
-      ),
-    );
-    if (result == null || !mounted) return;
 
     setState(() => _isImporting = true);
     try {
@@ -321,8 +314,8 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         patientId: _patientId,
         bytes: bytes,
         fileName: fileName,
-        tags: [result.tag],
-        title: result.title,
+        tags: const [],
+        title: autoTitle,
       );
       await _loadDocuments(silent: true);
       if (!mounted) return;
@@ -403,25 +396,18 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         _showError('Lecture du fichier impossible (aucune donnée).');
         return;
       }
-      final defaultTitle = (picked.name.isNotEmpty)
+      final autoTitle = (picked.name.isNotEmpty)
           ? picked.name.split('.').first
           : 'Document';
-      final result = await showSoftDialog<_UploadResult>(
-        context: context,
-        builder: (ctx) => _UploadModal(
-          defaultTitle: defaultTitle,
-          defaultTag: defaultTag,
-        ),
-      );
-      if (result == null || !mounted) return;
+      // Plus de modale de choix de tag (demande utilisateur 2026-04-29).
       setState(() => _isImporting = true);
       try {
         await _documentRepository.importDocumentBytes(
           patientId: _patientId,
           bytes: bytes,
           fileName: picked.name,
-          tags: [result.tag],
-          title: result.title,
+          tags: const [],
+          title: autoTitle,
         );
         await _loadDocuments(silent: true);
         if (!mounted) return;
@@ -442,25 +428,20 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     await _openUploadModal(File(path), defaultTag: defaultTag);
   }
 
+  /// Native import flow : sauvegarde directe sans demander de tag
+  /// (demande utilisateur 2026-04-29 — système de tags supprimé).
+  /// Titre auto-déduit du nom de fichier.
   Future<void> _openUploadModal(File file, {required String defaultTag}) async {
     if (!mounted) return;
-    final defaultTitle = file.path.split('/').last.split('.').first;
-    final result = await showSoftDialog<_UploadResult>(
-      context: context,
-      builder: (ctx) => _UploadModal(
-        defaultTitle: defaultTitle,
-        defaultTag: defaultTag,
-      ),
-    );
-    if (result == null || !mounted) return;
+    final autoTitle = file.path.split('/').last.split('.').first;
 
     setState(() => _isImporting = true);
     try {
       await _documentRepository.importDocument(
         patientId: _patientId,
         sourceFile: file,
-        tags: [result.tag],
-        title: result.title,
+        tags: const [],
+        title: autoTitle,
       );
       await _loadDocuments(silent: true);
       if (!mounted) return;
@@ -1780,30 +1761,10 @@ class _DocCardState extends State<_DocCard> {
                         ),
                       ),
                     ),
-                  // Tag overlay (top-left, caché si la checkbox prend la place)
-                  if (doc.tags.isNotEmpty && !showCheckbox)
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(50),
-                        ),
-                        child: Text(
-                          doc.tags.first,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
+                  // Tag overlay supprimé (demande utilisateur
+                  // 2026-04-29) — le système de tags a été retiré côté
+                  // import (plus de modale de choix de type) et côté
+                  // affichage (pas de badge noir en haut-gauche).
                   // Checkbox de sélection (top-left). Apparaît au survol
                   // souris, quand la card est sélectionnée, ou pendant le
                   // mode sélection. Carré à coins arrondis, sans contour
