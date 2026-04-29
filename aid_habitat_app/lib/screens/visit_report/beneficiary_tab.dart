@@ -495,14 +495,15 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         // et centré pour switch entre les occupants, mais sur toute la
         // majeur partie de la largeur d'une sous partie ça change de
         // sous partie ».
-        // Swipe SECTIONS désactivé (demande utilisateur 2026-04-29) :
-        // les sous-sections changent uniquement via le QuickNav (tap).
-        // Seul le swipe LÉGER (occupant) reste actif quand le foyer a
-        // plusieurs personnes — équivaut à « slide entre occupants ».
+        // Swipe horizontal → toujours change d'occupant (peu importe
+        // l'amplitude, léger ou large). Sous-sections via tap QuickNav
+        // exclusivement (demande utilisateur 2026-04-29).
         Expanded(
           child: TwoThresholdSwipe(
             onLightSwipeLeft: hasOccupantSwipe ? _occupantNext : null,
             onLightSwipeRight: hasOccupantSwipe ? _occupantPrev : null,
+            onWideSwipeLeft: hasOccupantSwipe ? _occupantNext : null,
+            onWideSwipeRight: hasOccupantSwipe ? _occupantPrev : null,
             child: _buildActiveSection(),
           ),
         ),

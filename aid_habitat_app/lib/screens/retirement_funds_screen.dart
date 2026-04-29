@@ -621,7 +621,11 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
           colors: [Color(0xFFF8F4FB), Color(0xFFFDFCFE)],
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(28, 20, 14, 24),
+      // Padding réduit (était 28/20/14/24 → maintenant 20/12/14/14) pour
+      // gagner ~18 pt de hauteur. Demande utilisateur 2026-04-29 : la
+      // popup débordait en haut sur les iPads — on optimise la zone
+      // logo/nom/date pour rentrer dans le viewport.
+      padding: const EdgeInsets.fromLTRB(20, 12, 14, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -653,93 +657,113 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          // Hero logo (centered, larger)
-          Center(
-            child: Container(
-              height: 96,
-              constraints: const BoxConstraints(maxWidth: 220),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: _FundLogoImage(fund: _currentFund),
-            ),
-          ),
-          const SizedBox(height: 18),
-          // Name — editable only when in edit mode, otherwise plain text
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: _isEditing
-                  ? TextField(
-                      controller: _nameController,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                        letterSpacing: -0.4,
-                      ),
-                      decoration: const InputDecoration(
-                        isCollapsed: true,
-                        border: InputBorder.none,
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide:
-                              BorderSide(color: Color(0xFF7C6DAA), width: 2),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.transparent),
-                        ),
-                      ),
-                    )
-                  : Text(
-                      _currentFund.name,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                        letterSpacing: -0.4,
-                      ),
-                    ),
-            ),
-          ),
           const SizedBox(height: 8),
-          // Last edited chip — centered
-          Center(
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(50),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(LucideIcons.clock3,
-                      size: 11, color: Colors.grey.shade500),
-                  const SizedBox(width: 5),
-                  Text(
-                    _formatLastEditedAtHeader(_currentFund.lastEditedAt),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.grey.shade600,
+          // Logo + nom + date sur UNE seule rangée horizontale (au lieu
+          // de 3 blocs verticaux empilés). Économie ~130 pt de hauteur
+          // sur le header. Demande utilisateur 2026-04-29.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Logo carré 64×96 pt (était 96×220 centré). Réduit mais
+              // toujours bien lisible — c'est le format mini-card des
+              // logos de marque dans la sidebar bumpé un peu.
+              Container(
+                height: 64,
+                width: 96,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+                child: _FundLogoImage(fund: _currentFund),
               ),
-            ),
+              const SizedBox(width: 14),
+              // Bloc texte : nom au-dessus, date en dessous.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Nom — fontSize 28 → 22 pour s'aligner avec la
+                    // hauteur du logo et permettre 1-2 lignes sans
+                    // déborder. TextField conservé en mode édition.
+                    _isEditing
+                        ? TextField(
+                            controller: _nameController,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.3,
+                            ),
+                            decoration: const InputDecoration(
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              focusedBorder: UnderlineInputBorder(
+                                borderSide: BorderSide(
+                                    color: Color(0xFF7C6DAA), width: 2),
+                              ),
+                              enabledBorder: UnderlineInputBorder(
+                                borderSide:
+                                    BorderSide(color: Colors.transparent),
+                              ),
+                            ),
+                          )
+                        : Text(
+                            _currentFund.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                    const SizedBox(height: 6),
+                    // Last edited chip — aligné à gauche maintenant
+                    // (au lieu de centré).
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(50),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.clock3,
+                              size: 11, color: Colors.grey.shade500),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              _formatLastEditedAtHeader(
+                                  _currentFund.lastEditedAt),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

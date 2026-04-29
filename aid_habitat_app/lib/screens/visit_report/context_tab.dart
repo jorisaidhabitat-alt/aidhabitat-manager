@@ -417,10 +417,10 @@ class _ContextTabState extends State<ContextTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          // Swipe SECTIONS désactivé (demande utilisateur 2026-04-29) :
-          // bascule Médical ↔ Autonomie uniquement via le QuickNav (tap).
-          // Seul le swipe LÉGER (occupant) reste actif quand le foyer
-          // a plusieurs personnes.
+          // Swipe horizontal → toujours change d'occupant (peu importe
+          // l'amplitude, léger ou large). Bascule Médical ↔ Autonomie
+          // uniquement via le QuickNav (tap) (demande utilisateur
+          // 2026-04-29).
           child: TwoThresholdSwipe(
             onLightSwipeLeft: !hasMultiple ? null : () {
               setState(() {
@@ -429,6 +429,19 @@ class _ContextTabState extends State<ContextTab>
               });
             },
             onLightSwipeRight: !hasMultiple ? null : () {
+              setState(() {
+                _activeOccupantIndex = (idx - 1 +
+                        _contextOccupants.length) %
+                    _contextOccupants.length;
+              });
+            },
+            onWideSwipeLeft: !hasMultiple ? null : () {
+              setState(() {
+                _activeOccupantIndex =
+                    (idx + 1) % _contextOccupants.length;
+              });
+            },
+            onWideSwipeRight: !hasMultiple ? null : () {
               setState(() {
                 _activeOccupantIndex = (idx - 1 +
                         _contextOccupants.length) %
