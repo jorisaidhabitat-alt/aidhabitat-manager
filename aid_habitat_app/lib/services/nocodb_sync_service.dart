@@ -152,15 +152,19 @@ class NocodbSyncService {
         );
         pushed += 1;
       } on ConflictException catch (e) {
-        // Server returned 409 — mark as conflict, do not retry automatically.
-        await _syncRepository.markConflict(
-          operationId: operation.id,
-          entityType: operation.entityType,
-          entityLocalId: operation.entityLocalId,
-          error: e.message,
-        );
-        conflicts += 1;
-        failures.add('${operation.entityType}:conflit');
+        // Auto-résolution « remote always wins » (demande utilisateur
+        // 2026-04-30 : « il ne faut aucun bouton ni intervention tout
+        // doit se faire tout seul en backend »). Sur 409 NocoDB, on
+        // ABANDONNE la modif locale au profit de la version serveur.
+        // Trade-off : un éventuel edit fait offline qui conflicte avec
+        // un edit récent sur un autre device sera silencieusement
+        // perdu. C'est le compromis assumé pour ne plus jamais avoir
+        // de données stales sur un device qui aurait raté un push.
+        await _autoResolveConflictTakingRemote(operation, e);
+        // Compté comme `pushed` (du point de vue UI : l'op est
+        // résolue, plus rien à signaler) pour ne pas afficher le
+        // bandeau rouge.
+        pushed += 1;
       } on TransientRemoteException catch (e) {
         // 5xx / timeout / déconnexion : l'op reste en pending pour être
         // rejouée silencieusement au prochain cycle. On ne remonte rien
@@ -219,20 +223,12 @@ class NocodbSyncService {
         );
         pushed += 1;
       } on ConflictException catch (e) {
-        // 409 serveur (optimistic concurrency) — l'op et l'entity row
-        // sont marquées `conflict`. Pas de retry : c'est l'écran de
-        // résolution qui prendra la main quand l'utilisateur ré-ouvre
-        // le dossier.
-        await _syncRepository.markConflict(
-          operationId: operation.id,
-          entityType: operation.entityType,
-          entityLocalId: operation.entityLocalId,
-          error: e.message,
-        );
-        failures.add('${operation.entityType}:conflit');
-        // Stop le groupe : pas la peine de continuer à pousser des
-        // ops sur la même entity quand on sait qu'il y a divergence.
-        break;
+        // Auto-résolution « remote wins » (cf. commentaire identique
+        // dans le for-loop principal). On résout puis on continue à
+        // pousser les ops suivantes du groupe — utile si l'op
+        // suivante est sur un champ différent qui ne conflictera pas.
+        await _autoResolveConflictTakingRemote(operation, e);
+        pushed += 1;
       } on TransientRemoteException catch (e) {
         // ignore: avoid_print
         print('[sync] transient ${operation.entityType}:'
@@ -269,6 +265,67 @@ class NocodbSyncService {
     }
 
     return _GroupResult(pushed: pushed, failed: failed, failures: failures);
+  }
+
+  /// Résout automatiquement un conflit 409 en abandonnant la modif
+  /// locale et en faisant gagner la version serveur. Étapes :
+  ///
+  ///   1. Marque l'op courante comme `completed` (sort de la queue).
+  ///   2. Purge TOUTES les ops `pending`/`failed` pour cette entité —
+  ///      sans ce wipe, une 2e op du même genre re-tenterait le push
+  ///      au cycle suivant et re-déclencherait un 409 → boucle.
+  ///   3. Reset le `sync_state` de l'entité à `synced` pour que le
+  ///      `mergeRemoteDossierPayloads` du prochain pull NocoDB ne
+  ///      skip plus cette ligne (le merge guard `sync_state != synced`
+  ///      sautait ces lignes pour ne pas écraser des saisies en
+  ///      cours — mais ici on a JUSTEMENT décidé d'abandonner les
+  ///      saisies en cours).
+  ///   4. Déclenche un pull workspace immédiat (`refreshWorkspaceFromRemote`)
+  ///      pour appliquer la version serveur SANS attendre le prochain
+  ///      tick périodique du SyncEngine. Best-effort : si le pull
+  ///      échoue (offline transitoire), le tick suivant rattrapera.
+  ///
+  /// Demande utilisateur 2026-04-30 : « il ne faut aucun bouton ni
+  /// intervention tout doit se faire tout seul en backend ».
+  Future<void> _autoResolveConflictTakingRemote(
+    SyncOperation operation,
+    ConflictException exception,
+  ) async {
+    // ignore: avoid_print
+    print(
+      '[sync] auto-resolve conflict ${operation.entityType}:'
+      '${operation.entityLocalId} → take remote (op="${operation.id}", '
+      'err="${exception.message}")',
+    );
+    // 1) L'op courante est résolue de notre point de vue
+    await _syncRepository.markCompleted(
+      operationId: operation.id,
+      entityType: operation.entityType,
+      entityLocalId: operation.entityLocalId,
+    );
+    // 2) Purge des autres ops pour la même entité (évite la boucle
+    //    de re-conflict).
+    await _syncRepository
+        .clearPendingOperationsForEntity(operation.entityLocalId);
+    // 3) Reset sync_state pour que le pull suivant fasse son merge
+    //    sans skipper l'entité.
+    await _syncRepository.setEntitySyncState(
+      entityType: operation.entityType,
+      entityLocalId: operation.entityLocalId,
+      syncState: SyncState.synced,
+    );
+    // 4) Pull immédiat. Best-effort, errors swallowed inside.
+    //    On utilise le DataService singleton plutôt qu'un import direct
+    //    pour éviter le cycle d'imports (DataService importe déjà ce
+    //    service). Cf. le `_runPullSafe` du SyncEngine pour la même
+    //    pattern.
+    try {
+      // ignore: avoid_print
+      print('[sync] auto-resolve : déclenche refreshWorkspaceFromRemote');
+      await DataService().refreshWorkspaceFromRemote();
+    } catch (_) {
+      // Le pull suivant rattrapera.
+    }
   }
 
   Future<void> _processOperation(SyncOperation operation) async {
