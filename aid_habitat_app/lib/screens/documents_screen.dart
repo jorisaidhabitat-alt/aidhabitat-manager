@@ -21,7 +21,6 @@ import 'package:http/http.dart' as http;
 import '../components/beneficiary_badges.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
-import '../models/visit_report_categories.dart';
 import '../services/web_file_picker.dart';
 import '../services/web_file_saver.dart';
 import '../services/app_config.dart';
@@ -950,41 +949,24 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   List<DocItem> get _filteredDocuments {
-    // Décorrélation avec l'onglet Photos du relevé de visite : les 6
-    // tags visite (Logement, Accessibilité, Sanitaires, Plan avant,
-    // Plan après, Autres) sont gérés exclusivement dans VAD > Photos
-    // et NE DOIVENT PAS apparaître dans la grille générale Documents.
+    // Demande utilisateur 2026-04-30 : « je n'ai pas la visibilité sur
+    // tout les documents, ils sont peut etre sur nocodb mais sans
+    // connexion a d'autres pages ». Avant cette version, on filtrait
+    // les 6 tags visite (Logement, Accessibilité, Sanitaires, Plan
+    // avant, Plan après, Autres) parce qu'ils sont aussi visibles
+    // dans VAD > Photos — du coup les docs d'origine VAD étaient
+    // INVISIBLES depuis l'espace Documents, créant l'impression de
+    // « docs orphelins en NocoDB ». On lève ce filtre : tout doc du
+    // patient apparaît dans la grille, son tag (« Visite - … »,
+    // « Rapport », « Photo », « Plan »…) servant d'indicateur de
+    // provenance via le badge sur la card.
     //
-    // Matching robuste : on lowercase + retire les diacritiques pour
-    // attraper les variations historiques d'encoding (NFC/NFD) ou de
-    // casse qui pourraient s'être glissées en base. Sans ça, une
-    // photo taggée 'visite - accessibilite' (sans accent) passerait à
-    // travers le filtre et s'afficherait des deux côtés.
-    String norm(String s) => s
-        .toLowerCase()
-        .replaceAll('é', 'e')
-        .replaceAll('è', 'e')
-        .replaceAll('ê', 'e')
-        .replaceAll('à', 'a')
-        .replaceAll('â', 'a')
-        .replaceAll('ô', 'o')
-        .replaceAll('î', 'i')
-        .replaceAll('û', 'u')
-        .replaceAll('ç', 'c')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    final visitTagsNormalized =
-        kVisitPhotoTags.map(norm).toSet();
-    // Filet supplémentaire : tout tag qui commence par "visite - " est
-    // considéré comme une photo VAD, même si le suffixe ne matche pas
-    // un des 6 tags officiels (variation libre ou typo historique).
-    bool isVisitTag(String tag) {
-      final n = norm(tag);
-      if (visitTagsNormalized.contains(n)) return true;
-      return n.startsWith('visite - ') || n.startsWith('visite-');
-    }
-    Iterable<DocItem> docs =
-        _documents.where((doc) => !doc.tags.any(isVisitTag));
+    // Conséquence acceptée : une photo de l'onglet VAD > Photos
+    // apparaît aussi dans Documents. C'est un changement de modèle
+    // « grille filtrée » → « grille complète + tags pour
+    // catégoriser ». Si on veut redonner un mode filtré plus tard,
+    // ajouter un toggle UI ici.
+    Iterable<DocItem> docs = _documents;
 
     final query = _searchTerm.trim().toLowerCase();
     if (query.isNotEmpty) {

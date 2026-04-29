@@ -592,18 +592,31 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Layout 2026-04-29 :
+    //  • `maxHeight` réduit (820 → 680) pour tenir sur iPad paysage
+    //    (~736 pt utilisable après insetPadding) sans être coupée en haut.
+    //  • `insetPadding` symétrique vertical (24 pt) → la popup respire et
+    //    reste centrée verticalement à coup sûr.
+    //  • `mainAxisSize: MainAxisSize.min` + `Flexible(loose)` (au lieu de
+    //    `Expanded`) → la Column se rétrécit à la hauteur intrinsèque de
+    //    son contenu. Avant, Expanded forçait le SingleChildScrollView à
+    //    remplir toute la hauteur disponible, d'où le grand espace blanc
+    //    sous les boutons quand le contenu était plus court que 820 pt.
+    //    Si le contenu dépasse `maxHeight`, le SingleChildScrollView
+    //    scrolle normalement (clamp implicite par la ConstrainedBox).
     return Dialog(
-      insetPadding: const EdgeInsets.all(16),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       backgroundColor: Colors.white,
       shape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 960, maxHeight: 820),
+        constraints: const BoxConstraints(maxWidth: 960, maxHeight: 680),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildHeader(),
-            Expanded(child: _buildBody()),
+            Flexible(child: _buildBody()),
           ],
         ),
       ),
