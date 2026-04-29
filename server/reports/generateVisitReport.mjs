@@ -76,22 +76,37 @@ function normalizeErgoKey(raw) {
 
 /**
  * Résout le PDF template à utiliser pour un dossier donné, en se
- * basant sur le prénom de l'ergothérapeute (`dossier.ergo.firstName`
- * ou alias). Fallback sur `DEFAULT_TEMPLATE_PATH` si :
- *   - dossier.ergo absent
- *   - prénom non mappé dans `ERGO_TEMPLATE_MAP`
+ * basant sur le prénom de l'ergothérapeute. Sources de candidats
+ * essayées dans l'ordre :
+ *   1. `dossier.ergo.firstName` / `prenom` / `name` / `label` (objet
+ *      ergo embarqué — pas toujours présent dans la payload).
+ *   2. `dossier.ergoId` — string label défini côté NocoDB
+ *      (`dossiers.ergo_id`), souvent égal au prénom de l'ergo
+ *      (« Coralie », « Christelle », …). C'est ce que renvoie
+ *      `getDossiersForApp` aujourd'hui pour la VAD.
+ *   3. `dossier.assignedErgoLabel` (alias historique).
+ *
+ * Sans cette extension #2, un dossier avec `ergoId='Coralie'` mais
+ * sans objet `ergo` populé tombait sur `DEFAULT_TEMPLATE_PATH`
+ * (Christelle) — bug reporté 2026-04-29 : « j'ai généré un rapport
+ * depuis le compte de Coralie et ça m'a quand meme mis les
+ * coodonnées de Christelle sur le rapport ».
+ *
+ * Fallback sur `DEFAULT_TEMPLATE_PATH` si aucun candidat ne matche
+ * une entrée d'`ERGO_TEMPLATE_MAP` (ergo non encore configuré).
  *
  * Cette résolution se fait à chaque appel (pas cachée par dossier)
  * pour rester réactive aux changements d'attribution d'ergo.
  */
 function resolveTemplatePath(dossier) {
   const ergo = dossier?.ergo;
-  if (!ergo) return DEFAULT_TEMPLATE_PATH;
   const candidates = [
-    ergo.firstName,
-    ergo.prenom,
-    ergo.name,
-    ergo.label,
+    ergo?.firstName,
+    ergo?.prenom,
+    ergo?.name,
+    ergo?.label,
+    dossier?.ergoId,
+    dossier?.assignedErgoLabel,
   ];
   for (const candidate of candidates) {
     const key = normalizeErgoKey(candidate);
