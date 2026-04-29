@@ -158,6 +158,17 @@ class DataService {
     return dataUrl;
   }
 
+  /// Variante cross-platform : prend un data URL pré-encodé (Web-safe)
+  /// et le persiste localement + enqueue le sync. Utilisée par
+  /// `account_dialog._pickAndUploadPhoto` qui lit les bytes via
+  /// `XFile.readAsBytes()` (fonctionne sur web où `dart:io.File` ne
+  /// peut pas ouvrir un blob URL).
+  Future<String> uploadProfilePhotoBytes(String dataUrl) async {
+    await _authService.persistPendingProfilePhoto(dataUrl);
+    SyncEngine().notify();
+    return dataUrl;
+  }
+
   Future<Map<String, dynamic>> fetchAnahStatus() async {
     return _nocodbApiClient.fetchAnahStatus();
   }

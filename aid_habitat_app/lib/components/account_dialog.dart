@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -57,13 +57,32 @@ class _AccountDialogState extends State<AccountDialog> {
         return;
       }
 
-      // Offline-first: [uploadProfilePhoto] stores the data URL locally
-      // (`app_users.pending_photo_data_url`) and enqueues a `profile_photo`
-      // sync op — no network call is made here. The returned value is the
-      // freshly-built base64 data URL, which we use to paint the avatar
-      // immediately.
+      // Lecture des bytes via XFile.readAsBytes — fonctionne uniformément
+      // sur web (où `picked.path` est un blob URL non utilisable par
+      // `dart:io.File`), iOS/Android et desktop. Avant ce fix, le
+      // `File(picked.path).readAsBytes()` échouait silencieusement sur
+      // web → l'utilisateur voyait juste un spinner indéfini ou une
+      // erreur cryptique.
+      final bytes = await picked.readAsBytes();
+      final extension =
+          picked.name.split('.').last.toLowerCase();
+      final mimeType = switch (extension) {
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        'gif' => 'image/gif',
+        _ => 'image/jpeg',
+      };
+      final dataUrl =
+          'data:$mimeType;base64,${base64Encode(bytes)}';
+
+      // Offline-first : `uploadProfilePhotoBytes` stocke le data URL
+      // localement (`app_users.pending_photo_data_url`) et enqueue un
+      // sync op `profile_photo`. Renvoie le data URL pour repaint
+      // immédiat. Le sync engine pousse vers `/api/profile/photo` qui
+      // sauvegarde dans Vercel Blob + dans NocoDB ergotherapeutes.
       final photoDataUrl =
-          await _dataService.uploadProfilePhoto(File(picked.path));
+          await _dataService.uploadProfilePhotoBytes(dataUrl);
       if (!mounted) return;
       setState(() {
         _photoUrl = photoDataUrl;

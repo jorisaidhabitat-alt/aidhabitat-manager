@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/widgets.dart' show AppLifecycleState;
+
+import 'connectivity_service.dart';
+import 'data_service.dart';
 import 'nocodb_sync_service.dart';
 import 'sync_repository.dart';
 
@@ -50,6 +54,32 @@ class SyncEngine {
   static const Duration _periodicInterval = Duration(seconds: 60);
 
   // ---------------------------------------------------------------------------
+  // Adaptive pull (cross-device sync) — demande utilisateur 2026-04-29
+  // « tout ce que je fais sur macOS s'actualise sur iPad et inversement
+  // en moins de 5 secondes » (Option B : polling adaptatif).
+  // ---------------------------------------------------------------------------
+
+  /// Délai entre 2 pulls quand l'utilisateur est ACTIF (a sauvegardé
+  /// quelque chose dans la dernière minute). Cible la sensation
+  /// « instant » sur le device qui regarde — l'autre device pousse à
+  /// NocoDB en ~500ms, le poll de 5s récupère à 5500ms max.
+  static const Duration _pullIntervalActive = Duration(seconds: 5);
+
+  /// Délai entre 2 pulls quand l'utilisateur est IDLE (pas de save
+  /// depuis ≥ 1 minute). Économise la bande passante quand personne ne
+  /// modifie côté autre device — l'app reste à jour sans spammer.
+  static const Duration _pullIntervalIdle = Duration(seconds: 30);
+
+  /// Délai entre 2 pulls quand l'app est en arrière-plan. Préserve la
+  /// batterie + le quota cellulaire — au retour foreground on
+  /// déclenche un pull immédiat dans `setAppLifecycleState`.
+  static const Duration _pullIntervalBackground = Duration(minutes: 5);
+
+  /// Seuil au-delà duquel on bascule de "active" à "idle" (mesuré
+  /// depuis la dernière mutation `notify()`).
+  static const Duration _idleThreshold = Duration(minutes: 1);
+
+  // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
 
@@ -67,6 +97,12 @@ class SyncEngine {
   bool _rerunRequested = false;
   int _consecutiveFailures = 0;
 
+  // Pull adaptatif (cross-device).
+  Timer? _pullTimer;
+  bool _pullRunning = false;
+  DateTime _lastInteractionAt = DateTime.now();
+  AppLifecycleState _appLifecycle = AppLifecycleState.resumed;
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -79,6 +115,8 @@ class SyncEngine {
     });
     // Kick off immediately.
     requestSync();
+    // Lance le pull adaptatif (cross-device sync).
+    _schedulePull();
   }
 
   void dispose() {
@@ -86,6 +124,7 @@ class SyncEngine {
     _retryTimer?.cancel();
     _periodicTimer?.cancel();
     _debounceTimer?.cancel();
+    _pullTimer?.cancel();
     _stateController.close();
   }
 
@@ -105,10 +144,72 @@ class SyncEngine {
   /// fires exactly one sync cycle shortly after a flurry of edits.
   void notify() {
     if (_disposed) return;
+    // Marque l'utilisateur comme "actif" — utilisé par le pull adaptatif
+    // pour passer en intervalle 5s (au lieu de 30s idle).
+    _lastInteractionAt = DateTime.now();
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_notifyDebounce, () {
       _scheduleImmediate();
     });
+  }
+
+  /// À appeler par l'app (`WidgetsBindingObserver.didChangeAppLifecycleState`)
+  /// pour informer le SyncEngine de l'état foreground / background. Au
+  /// retour en foreground on force un pull immédiat (le device a peut-être
+  /// raté plusieurs minutes de modifs côté autre client).
+  void setAppLifecycleState(AppLifecycleState state) {
+    if (_disposed) return;
+    final wasBackground = _appLifecycle != AppLifecycleState.resumed;
+    _appLifecycle = state;
+    final isResumed = state == AppLifecycleState.resumed;
+    if (wasBackground && isResumed) {
+      // Reprend l'app après une mise en arrière-plan → pull immédiat
+      // pour rattraper d'éventuelles modifs distantes.
+      _runPullSafe();
+    }
+    // Dans tous les cas, re-planifie le prochain pull avec le bon
+    // intervalle (active 5s / idle 30s / background 5min).
+    _schedulePull();
+  }
+
+  /// Calcule l'intervalle entre 2 pulls en fonction de l'état courant :
+  ///   - background → 5min
+  ///   - foreground actif (save < 1min) → 5s
+  ///   - foreground idle → 30s
+  Duration _currentPullInterval() {
+    if (_appLifecycle != AppLifecycleState.resumed) {
+      return _pullIntervalBackground;
+    }
+    final idle = DateTime.now().difference(_lastInteractionAt);
+    if (idle < _idleThreshold) return _pullIntervalActive;
+    return _pullIntervalIdle;
+  }
+
+  /// (Re)planifie le prochain pull. Pattern récursif (pas Timer.periodic)
+  /// pour pouvoir adapter l'intervalle à chaque tick selon l'état actif/idle.
+  void _schedulePull() {
+    if (_disposed) return;
+    _pullTimer?.cancel();
+    _pullTimer = Timer(_currentPullInterval(), () async {
+      await _runPullSafe();
+      _schedulePull();
+    });
+  }
+
+  /// Exécute un pull workspace si online + non disposé + pas déjà en cours.
+  /// Toutes les erreurs sont avalées (le pull est best-effort, ne doit
+  /// jamais bloquer l'utilisateur).
+  Future<void> _runPullSafe() async {
+    if (_disposed || _pullRunning) return;
+    if (!ConnectivityService().isOnline) return;
+    _pullRunning = true;
+    try {
+      await DataService().refreshWorkspaceFromRemote();
+    } catch (_) {
+      // Best-effort — un échec ne bloque pas, on retente au prochain tick.
+    } finally {
+      _pullRunning = false;
+    }
   }
 
   /// Renvoie un résumé de la première opération en échec (pour UI).
