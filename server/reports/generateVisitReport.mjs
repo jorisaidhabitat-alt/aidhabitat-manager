@@ -571,6 +571,8 @@ function buildViewModel({
     basement: Boolean(housing.basement),
     rdc: Boolean(housing.rdc),
     floor: Boolean(housing.floor),
+    secondFloor: Boolean(housing.secondFloor),
+    thirdFloor: Boolean(housing.thirdFloor),
     basementDesc: String(housing.basementDesc || '').trim(),
     rdcDesc: String(housing.rdcDesc || '').trim(),
     floorDesc: String(housing.floorDesc || '').trim(),
@@ -1455,6 +1457,143 @@ function applyLogementFontSizeTweak(form) {
   }
 }
 
+/**
+ * Coordonnées du bloc « Étage » dans le template (page 5) — utilisées
+ * par `applyMultiEtageOverlay` pour rendre dynamiquement Étage 1 / 2
+ * / 3 quand l'ergo a sélectionné plusieurs niveaux d'étage. Lues une
+ * fois via `tools/inspect-page5-fields.mjs`.
+ *
+ * Layout existant (template Affinity) :
+ *   - Sous-sol (y=623), RDC (y=595), Étage (y=566) — pas vertical 28-29 pt
+ *   - Annexes commencent à y=505 → 61 pt d'espace entre Étage et Annexes
+ * Pour 2 lignes étage supplémentaires, on utilise un pas serré de 22 pt
+ * → Étage 1 (564), Étage 2 (542), Étage 3 (520) — ne touche pas les
+ * annexes (y=505) et n'oblige pas à rétrécir Observations1.
+ */
+const ETAGE_LAYOUT = {
+  pageIndex: 4, // page 5 (0-indexée)
+  // 1ère ligne Étage = position du champ original.
+  line1: { checkboxY: 566, descY: 564 },
+  checkboxX: 96,
+  checkboxSize: 11,
+  descX: 125,
+  descY: 564,
+  descWidth: 428,
+  descHeight: 18,
+  fontSize: 11,
+  // Espacement entre lignes étage en mode multi.
+  lineGap: 22,
+  // Couleur du label "Étage N" et du check (parité avec le reste).
+  textColor: rgb(0, 0, 0),
+};
+
+/**
+ * Si l'ergo a sélectionné plusieurs niveaux d'étage (1er, 2e, 3e),
+ * masque l'étiquette "Étage" du template et la remplace par une
+ * étiquette "Étage 1 / 2 / 3" devant la case existante, puis
+ * dessine 1 ou 2 lignes supplémentaires en dessous (checkbox + label
+ * + zone de description).
+ *
+ * Demande utilisateur 2026-04-29 : « s'il y'a plusieurs etage tu
+ * dupliques la ligne étage pour une ligne étage + numéro ». Pas de
+ * shrink de Observations1 : on tient dans les 61 pt disponibles entre
+ * la ligne Étage du template et la rangée des annexes (y=505) avec un
+ * pas serré de 22 pt.
+ *
+ * Si un seul étage est sélectionné (ou aucun), on ne fait rien — la
+ * ligne "Étage" du template reste affichée telle quelle. Si plusieurs,
+ * on relabelle "Étage" → "Étage 1" pour clarté.
+ */
+function applyMultiEtageOverlay({ pdfDoc, view }) {
+  const housing = view.housing || {};
+  // Construit la liste des étages actifs dans l'ordre 1er → 2e → 3e.
+  const flags = [
+    Boolean(housing.floor),
+    Boolean(housing.secondFloor),
+    Boolean(housing.thirdFloor),
+  ];
+  const activeCount = flags.filter(Boolean).length;
+  if (activeCount <= 1) return; // un seul étage → pas d'overlay
+
+  const pages = pdfDoc.getPages();
+  const page = pages[ETAGE_LAYOUT.pageIndex];
+  if (!page) return;
+
+  // Pour chaque étage qui doit recevoir un label numéroté, on dessine :
+  //   1. (étage 2/3 seulement) un rectangle de masque blanc à la
+  //      position où la nouvelle ligne va apparaître, sinon les
+  //      éléments du template (s'il y en a) pourraient leak à travers
+  //   2. une checkbox dessinée (rectangle + ✓ si actif)
+  //   3. le label "Étage N" à droite du checkbox (avant la zone desc)
+  //
+  // Note : pour la ligne 1 (qui correspond au champ AcroForm "Étage"
+  // existant), on relabelle juste avec "Étage 1" en superposition au
+  // mot "Étage" du template (le template n'écrit pas "Étage" comme
+  // texte en dur — c'est juste le widget/label PDF, qui est
+  // re-dessinable). On utilise un masque blanc pour cacher le label
+  // original.
+  for (let i = 0; i < 3; i++) {
+    const isActive = flags[i];
+    // L'index visuel (1, 2 ou 3) est 1-based.
+    const visualNumber = i + 1;
+
+    // Position Y de la ligne (Y descendant : étage 1 en haut, 3 en bas).
+    const lineCenterY = ETAGE_LAYOUT.line1.checkboxY - i * ETAGE_LAYOUT.lineGap;
+    const descBaselineY = ETAGE_LAYOUT.line1.descY - i * ETAGE_LAYOUT.lineGap;
+
+    // Pour les lignes 2 et 3 (i ≥ 1), on dessine la nouvelle case +
+    // le label. Pour la ligne 1, on garde la case AcroForm existante
+    // (déjà cochée par le mapping `Étage`) — on ajoute juste un label
+    // " 1" à côté pour la cohérence visuelle.
+    if (i === 0) {
+      // Ligne 1 : ajout du suffixe " 1" derrière le label "Étage" du
+      // template, en superposition. Coordonnée du début du texte :
+      // immédiatement après "Étage" (~6 caractères × 6.5 px ≈ 39 px).
+      // Approximé visuellement, à affiner si nécessaire.
+      page.drawText(`1`, {
+        x: ETAGE_LAYOUT.checkboxX + 50, // après le mot "Étage" du template
+        y: descBaselineY + 4,
+        size: ETAGE_LAYOUT.fontSize,
+        color: ETAGE_LAYOUT.textColor,
+      });
+      continue;
+    }
+
+    // Lignes 2 et 3 : ajout complet (checkbox + label + ligne de
+    // description vide).
+    // Checkbox : carré 11×11 avec border noir, et ✓ si actif.
+    const cbX = ETAGE_LAYOUT.checkboxX;
+    const cbY = lineCenterY;
+    const cbSize = ETAGE_LAYOUT.checkboxSize;
+    page.drawRectangle({
+      x: cbX,
+      y: cbY,
+      width: cbSize,
+      height: cbSize,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 0.5,
+      color: rgb(1, 1, 1),
+    });
+    if (isActive) {
+      // Croix simple — 2 lignes en X. pdf-lib n'a pas de drawLine
+      // natif, on utilise drawText avec "X" centré.
+      page.drawText('X', {
+        x: cbX + 1.5,
+        y: cbY + 1,
+        size: 10,
+        color: rgb(0, 0, 0),
+      });
+    }
+    // Label "Étage N" + ligne de séparation (description vide).
+    page.drawText(`Étage ${visualNumber}`, {
+      x: ETAGE_LAYOUT.descX,
+      y: descBaselineY + 4,
+      size: ETAGE_LAYOUT.fontSize,
+      color: ETAGE_LAYOUT.textColor,
+    });
+  }
+}
+
 export async function generateVisitReport({
   dossier,
   sanitaires,
@@ -1811,6 +1950,13 @@ export async function generateVisitReport({
   // Et bump de la taille de police du bloc « Le Logement » (page 5)
   // de ~10 pt à 12 pt pour s'aligner sur le reste du rapport.
   applyLogementFontSizeTweak(form);
+
+  // Multi-étages page 5 : si l'ergo a sélectionné 2 ou 3 niveaux
+  // d'étage (1er + 2e + 3e), on duplique la ligne « Étage » du
+  // template en « Étage 1 / 2 / 3 ». Cf. `applyMultiEtageOverlay`.
+  // S'exécute AVANT le flatten pour superposer aux widgets AcroForm
+  // déjà rendus.
+  applyMultiEtageOverlay({ pdfDoc, view });
 
   // Aplatissement final : convertit chaque champ en contenu fixe (le
   // texte/cocheur devient un objet graphique inerte). Le résultat n'est

@@ -76,9 +76,13 @@ const baseDossier = {
     accessibilityNotes: '',
     basement: false, basementDesc: '',
     rdc: true, rdcDesc: 'Cuisine, salon, salle à manger, WC, SDB, chambre',
+    // 3 étages activés pour tester le rendu multi-étages page 5
+    // (demande utilisateur 2026-04-29). Avec floor + secondFloor +
+    // thirdFloor true, le PDF doit afficher 3 lignes « Étage 1/2/3 »
+    // entre la ligne RDC et les annexes.
     floor: true, floorDesc: '2 chambres + 1 SDB',
-    secondFloor: false, secondFloorDesc: '',
-    thirdFloor: false, thirdFloorDesc: '',
+    secondFloor: true, secondFloorDesc: '',
+    thirdFloor: true, thirdFloorDesc: '',
     garage: true, veranda: false, balcon: false, terrasse: true, jardin: true,
   },
   // Pas de medicalContext / autonomy — les notes de Contexte de vie

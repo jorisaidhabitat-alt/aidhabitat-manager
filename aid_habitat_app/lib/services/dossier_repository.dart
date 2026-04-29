@@ -1767,6 +1767,17 @@ class DossierRepository {
       'cheminement_quelques_marches': 'cheminementQuelquesMarches',
       'cheminement_par_arriere': 'cheminementParArriere',
       'cheminement_seuil_porte': 'cheminementSeuilPorte',
+      // Niveaux multiples : `basement`, `rdc`, `floor` sont déjà
+      // camelCase-équivalents (envoyés tels quels). `second_floor` et
+      // `third_floor` doivent être convertis en `secondFloor` /
+      // `thirdFloor` pour matcher la signature serveur
+      // (`updates.secondFloor` côté server/index.mjs). Ces deux clés
+      // alimentent les colonnes NocoDB `second_etage` et `third_etage`,
+      // utilisées par le générateur PDF pour dupliquer la ligne
+      // « Étage » en « Étage 1 / 2 / 3 » page 5 (demande utilisateur
+      // 2026-04-29).
+      'second_floor': 'secondFloor',
+      'third_floor': 'thirdFloor',
     };
     final out = <String, dynamic>{};
     fields.forEach((key, value) {
