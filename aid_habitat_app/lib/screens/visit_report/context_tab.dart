@@ -576,10 +576,12 @@ class _ContextTabState extends State<ContextTab>
 
   Widget _buildQuickNav() {
     return Container(
-      // Fond transparent (demande utilisateur 2026-04-28 : « retire le
-      // fond rose clair »). Padding vertical seulement.
+      // Fond violet pâle restauré (demande utilisateur 2026-04-29 :
+      // les changements « pas de fond + trait pleine largeur » ne
+      // concernent QUE la barre de navigation principale du relevé,
+      // pas les sous-sections internes des onglets).
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: Colors.transparent,
+      color: const Color(0xFFEDE8F5),
       child: Row(
         children: [
           Expanded(
@@ -624,31 +626,26 @@ class _ContextTabState extends State<ContextTab>
               color: active ? activeColor : inactiveColor,
             ),
             const SizedBox(height: 2),
-            // Trait actif = LARGEUR EXACTE DU MOT (demande utilisateur
-            // 2026-04-28). IntrinsicWidth calque la largeur sur celle
-            // du Text, stretch fait grimper le trait à cette largeur.
-            IntrinsicWidth(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: active ? activeColor : inactiveColor,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    height: 1.5,
-                    decoration: BoxDecoration(
-                      color: active ? activeColor : Colors.transparent,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ],
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: active ? activeColor : inactiveColor,
+              ),
+            ),
+            // Trait fin centré sous le texte, visible uniquement pour la
+            // sous-section active. Largeur fixe 28 px (revert demande
+            // utilisateur 2026-04-29 : le trait pleine largeur est
+            // réservé à la barre de navigation principale).
+            const SizedBox(height: 6),
+            Container(
+              height: 1.5,
+              width: 28,
+              decoration: BoxDecoration(
+                color: active ? activeColor : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
           ],

@@ -524,10 +524,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       _QuickNavItem(icon: Icons.place_outlined, label: 'Extérieur'),
     ];
     return Container(
-      // Fond transparent (demande utilisateur 2026-04-28 : « retire le
-      // fond rose clair »).
+      // Fond violet pâle restauré (demande utilisateur 2026-04-29 :
+      // les changements « pas de fond + trait pleine largeur » ne
+      // concernent QUE la barre de navigation principale du relevé,
+      // pas les sous-sections internes des onglets).
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: Colors.transparent,
+      color: const Color(0xFFEDE8F5),
       child: Row(
         children: [
           ...List.generate(items.length, (i) {
@@ -550,31 +552,19 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                           size: 20,
                           color: active ? activeColor : inactiveColor),
                       const SizedBox(height: 2),
-                      // Trait actif = LARGEUR EXACTE DU MOT (demande
-                      // utilisateur 2026-04-28).
-                      IntrinsicWidth(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(items[i].label,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: active
-                                      ? activeColor
-                                      : inactiveColor,
-                                )),
-                            const SizedBox(height: 6),
-                            Container(
-                              height: 1.5,
-                              decoration: BoxDecoration(
-                                color: active
-                                    ? activeColor
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                            ),
-                          ],
+                      Text(items[i].label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: active ? activeColor : inactiveColor,
+                          )),
+                      const SizedBox(height: 6),
+                      Container(
+                        height: 1.5,
+                        width: 28,
+                        decoration: BoxDecoration(
+                          color: active ? activeColor : Colors.transparent,
+                          borderRadius: BorderRadius.circular(999),
                         ),
                       ),
                     ],

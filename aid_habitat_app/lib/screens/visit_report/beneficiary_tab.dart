@@ -518,17 +518,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       _QuickNavItem(icon: Icons.favorite_outline, label: 'Santé'),
       _QuickNavItem(icon: Icons.folder_open_outlined, label: 'Admin'),
     ];
-    // Bandeau full-width sans fond ni border-radius (demande utilisateur
-    // 2026-04-28 : « retire le fond rose clair »). Padding vertical
-    // uniquement — la zone cliquable de chaque pill s'étend toujours
-    // bord à bord via l'Expanded.
+    // Bandeau full-width violet pâle restauré (demande utilisateur
+    // 2026-04-29 : les changements « pas de fond + trait pleine
+    // largeur » ne concernent QUE la barre de navigation principale du
+    // relevé, pas les sous-sections internes des onglets).
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: Colors.transparent,
+      color: const Color(0xFFEDE8F5),
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;
-          // Sans fond : icon/texte/trait actifs en violet foncé
+          // Sur fond violet clair : icon/texte/trait en violet foncé
           // (#7C6DAA). Inactif : pastel lilas.
           const activeColor = Color(0xFF7C6DAA);
           const inactiveColor = Color(0xFFAE9DB3);
@@ -549,35 +549,26 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                       color: active ? activeColor : inactiveColor,
                     ),
                     const SizedBox(height: 2),
-                    // Trait actif = LARGEUR EXACTE DU MOT (demande
-                    // utilisateur 2026-04-28). On wrap Text + trait
-                    // dans un IntrinsicWidth qui calque sa largeur
-                    // sur celle du Text, puis crossAxisAlignment.stretch
-                    // étire le trait pour combler cette largeur.
-                    IntrinsicWidth(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            items[i].label,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color:
-                                  active ? activeColor : inactiveColor,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            height: 1.5,
-                            decoration: BoxDecoration(
-                              color: active
-                                  ? activeColor
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                          ),
-                        ],
+                    Text(
+                      items[i].label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: active ? activeColor : inactiveColor,
+                      ),
+                    ),
+                    // Trait fin centré sous le texte, plus étroit que le
+                    // label, visible uniquement pour l'item actif.
+                    // Largeur dynamique calée sur la longueur du label.
+                    const SizedBox(height: 6),
+                    Container(
+                      height: 1.5,
+                      width: (items[i].label.length * 3.2)
+                          .clamp(18.0, 50.0),
+                      decoration: BoxDecoration(
+                        color:
+                            active ? activeColor : Colors.transparent,
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
                   ],
