@@ -488,9 +488,27 @@ class NocodbApiClient {
     }
   }
 
+  /// Seuil au-delà duquel on bascule sur l'upload chunked (pour
+  /// contourner le timeout 10 s de Vercel Hobby). En dessous, le POST
+  /// classique multipart est plus simple et plus rapide. 1.5 MB est un
+  /// bon compromis : couvre la plupart des photos compressées (<1 MB)
+  /// en 1 round-trip, bascule en chunked pour les PDF rapport (~3 MB)
+  /// et les photos haute déf.
+  static const int _kChunkedUploadThresholdBytes = 1500 * 1024;
+
+  /// Taille des chunks pour l'upload chunked. 1 MB → chunk POST < 2s
+  /// sur 4G médiocre, et 5 chunks max pour un PDF rapport de 5 MB.
+  /// Doit rester < 2 MB (limite serveur côté `/api/documents/upload/chunk`).
+  static const int _kChunkSizeBytes = 1024 * 1024;
+
   /// Uploads a document to NocoDB. Callers pass **either** a [file] (native
   /// platforms where `dart:io` works) **or** raw [bytes] (web PWA where
   /// there's no filesystem and the picked file lives in memory only).
+  ///
+  /// Stratégie automatique :
+  ///   - Petit fichier (<1.5 MB) → POST multipart classique en 1 appel
+  ///   - Gros fichier (≥1.5 MB)  → upload chunked (1 MB par chunk +
+  ///     finalize), pour rester sous le timeout 10s de Vercel Hobby.
   Future<Map<String, dynamic>> uploadDocument({
     required String patientId,
     required String documentLocalId,
@@ -508,6 +526,25 @@ class NocodbApiClient {
       throw Exception('uploadDocument: provide either `file` or `bytes`');
     }
 
+    // Pour décider s'il faut chunker, on a besoin de la taille. On lit
+    // les bytes une seule fois (file → bytes) pour éviter un double IO.
+    final List<int> resolvedBytes = file != null
+        ? await file.readAsBytes()
+        : bytes!;
+
+    if (resolvedBytes.length >= _kChunkedUploadThresholdBytes) {
+      return _uploadDocumentChunked(
+        patientId: patientId,
+        documentLocalId: documentLocalId,
+        title: title,
+        fileName: fileName,
+        mimeType: mimeType,
+        tags: tags,
+        bytes: resolvedBytes,
+      );
+    }
+
+    // Path legacy — POST multipart classique pour les petits fichiers.
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('$_baseUrl/api/documents'),
@@ -519,19 +556,9 @@ class NocodbApiClient {
     request.fields['fileName'] = fileName;
     request.fields['mimeType'] = mimeType;
     request.fields['tags'] = jsonEncode(tags);
-    if (file != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'file',
-          file.path,
-          filename: fileName,
-        ),
-      );
-    } else {
-      request.files.add(
-        http.MultipartFile.fromBytes('file', bytes!, filename: fileName),
-      );
-    }
+    request.files.add(
+      http.MultipartFile.fromBytes('file', resolvedBytes, filename: fileName),
+    );
 
     // Transient guard manuel : `MultipartRequest.send` ne passe pas par
     // `_runWithTransientGuard` (qui attend une `Future<http.Response>`),
@@ -572,6 +599,129 @@ class NocodbApiClient {
     final document = (data['document'] as Map?)?.cast<String, dynamic>();
     if (document == null) {
       throw Exception('Unexpected document payload');
+    }
+    return document;
+  }
+
+  /// Upload chunked d'un document — pour les fichiers ≥ 1.5 MB. Splitte
+  /// les bytes en chunks de 1 MB et POST chaque chunk séparément sur
+  /// `/api/documents/upload/chunk`, puis termine par un appel à
+  /// `/api/documents/upload/finalize` qui assemble côté serveur et
+  /// pousse vers NocoDB.
+  ///
+  /// Pourquoi : le POST monolithique de fichiers > 2-3 MB peut dépasser
+  /// le timeout 10s de Vercel Hobby (encodage base64 + push NocoDB MCP),
+  /// résultant en 504 Gateway Timeout sans header CORS → l'app voit
+  /// « CORS missing header » alors que c'est juste un timeout.
+  /// Demande utilisateur 2026-04-29.
+  Future<Map<String, dynamic>> _uploadDocumentChunked({
+    required String patientId,
+    required String documentLocalId,
+    required String title,
+    required String fileName,
+    required String mimeType,
+    required List<String> tags,
+    required List<int> bytes,
+  }) async {
+    // uploadId unique = local doc id + timestamp pour éviter les
+    // collisions entre 2 sessions parallèles du même doc (rare mais
+    // possible si l'utilisateur retry après un échec).
+    final uploadId =
+        '${documentLocalId}_${DateTime.now().millisecondsSinceEpoch}';
+
+    final totalChunks = (bytes.length + _kChunkSizeBytes - 1) ~/ _kChunkSizeBytes;
+
+    // 1) Upload séquentiel des chunks. Séquentiel (pas parallèle) pour
+    //    rester gentil avec le serveur Vercel et éviter de surcharger
+    //    NocoDB Blob storage. Pour ~5 chunks de 1MB, c'est ~5×1.5s = 7.5s
+    //    total — tolérable.
+    for (var i = 0; i < totalChunks; i += 1) {
+      final start = i * _kChunkSizeBytes;
+      final end = (start + _kChunkSizeBytes < bytes.length)
+          ? start + _kChunkSizeBytes
+          : bytes.length;
+      final chunkBytes = bytes.sublist(start, end);
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_baseUrl/api/documents/upload/chunk'),
+      );
+      request.headers['X-App-Session'] = AppConfig.appSessionToken;
+      request.fields['uploadId'] = uploadId;
+      request.fields['chunkIndex'] = '$i';
+      request.fields['totalChunks'] = '$totalChunks';
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'chunk',
+          chunkBytes,
+          filename: 'chunk_$i.bin',
+        ),
+      );
+
+      http.StreamedResponse streamed;
+      String responseBody;
+      try {
+        streamed = await _client.send(request).timeout(_uploadTimeout);
+        responseBody = await streamed.stream
+            .bytesToString()
+            .timeout(_uploadTimeout);
+      } catch (error) {
+        if (_isTransientNetworkError(error)) {
+          throw TransientRemoteException(
+            'Chunk $i/$totalChunks upload network error: $error',
+          );
+        }
+        rethrow;
+      }
+      if (streamed.statusCode >= 500) {
+        throw TransientRemoteException(
+          'Chunk $i/$totalChunks upload failed (${streamed.statusCode})',
+          statusCode: streamed.statusCode,
+        );
+      }
+      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+        throw Exception(
+          'Chunk $i/$totalChunks upload failed (${streamed.statusCode}): $responseBody',
+        );
+      }
+    }
+
+    // 2) Finalize — assemble + push NocoDB. C'est CETTE requête qui
+    //    peut être longue (pousse les ~5 MB en NocoDB), mais comme on
+    //    a évité le multipart upload de 5 MB en plus, on a plus de
+    //    marge dans le budget 10s.
+    final finalizeResponse = await _runWithTransientGuard(
+      'Document finalize',
+      () => _client
+          .post(
+            Uri.parse('$_baseUrl/api/documents/upload/finalize'),
+            headers: _headers,
+            body: jsonEncode({
+              'uploadId': uploadId,
+              'patientId': patientId,
+              'documentLocalId': documentLocalId,
+              'title': title,
+              'fileName': fileName,
+              'mimeType': mimeType,
+              'tags': tags,
+            }),
+          )
+          .timeout(_uploadTimeout),
+    );
+
+    if (finalizeResponse.statusCode < 200
+        || finalizeResponse.statusCode >= 300) {
+      throw Exception(
+        'Document finalize failed (${finalizeResponse.statusCode}): ${finalizeResponse.body}',
+      );
+    }
+
+    final payload =
+        jsonDecode(finalizeResponse.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final document = (data['document'] as Map?)?.cast<String, dynamic>();
+    if (document == null) {
+      throw Exception('Unexpected finalize payload');
     }
     return document;
   }
