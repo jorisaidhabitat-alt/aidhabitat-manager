@@ -739,8 +739,14 @@ class _PhotoTile extends StatelessWidget {
     // background. Juste l'image clipée en coins arrondis légers (pour
     // les bords nets sur fond blanc) + un overlay border violet
     // optionnel quand un drag passe au-dessus.
+    //
+    // Aspect ratio = 1:1 pour matcher les cadres `_buildEmptySlot`
+    // (qui sont carrés). Demande utilisateur 2026-04-29 : « les
+    // images doivent être de la même taille que les cadres drag and
+    // drop ». Le BoxFit.cover de `_PhotoThumbnail` rogne le surplus
+    // pour remplir le carré sans déformer.
     return AspectRatio(
-      aspectRatio: 4 / 3,
+      aspectRatio: 1,
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
