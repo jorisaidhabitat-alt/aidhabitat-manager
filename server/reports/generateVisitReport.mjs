@@ -569,16 +569,30 @@ function buildViewModel({
   const homeHelp = Boolean(patient.homeHelp);
   const homeHelpDisplay = homeHelp ? 'Oui' : 'Non';
 
-  // Reconnaissance MDPH (demande utilisateur 2026-04-29) :
+  // Reconnaissance MDPH (demande utilisateur 2026-04-29 v2) :
   //   - case cochée + texte (ex. « 80 % »)        → texte tel quel
   //   - case cochée sans détail                    → 'Oui'
-  //   - case décochée                              → 'Non' (avant on
-  //     laissait vide, mais l'ergo veut une valeur explicite pour ne
-  //     pas laisser le champ blanc dans le PDF).
+  //   - case décochée                              → 'Non' systématique
+  //
+  // V1 du fix : `invalidityTxt || (invalidity ? 'Oui' : 'Non')` —
+  // problème quand le user a coché puis décoché : `invalidityTxt`
+  // gardait l'ancienne valeur en NocoDB (le côté Flutter ne le wipe
+  // pas toujours), donc on lisait « Inférieur à 50 % » alors que
+  // `invalidity = false`. Maintenant on regarde D'ABORD `invalidity`
+  // et on n'utilise `invalidityTxt` QUE si la case est cochée — le
+  // champ texte legacy ne peut plus polluer un statut « non MDPH ».
   const invalidityTxt = String(patient.invalidityTxt || '').trim();
-  const invalidity = Boolean(patient.invalidity);
-  const invalidityDisplay = invalidityTxt
-      || (invalidity ? 'Oui' : 'Non');
+  // `Boolean()` gère true/1/"true" comme truthy. Si NocoDB stocke
+  // "false" en string, `Boolean('false')` est true (piège classique
+  // JS), donc on ajoute un check explicite — symptôme précédemment
+  // observé sur d'autres champs bool stockés en string par NocoDB.
+  const invalidity = patient.invalidity === true
+      || patient.invalidity === 1
+      || patient.invalidity === '1'
+      || patient.invalidity === 'true';
+  const invalidityDisplay = invalidity
+      ? (invalidityTxt || 'Oui')
+      : 'Non';
 
   // Dates de naissance : on utilise les variantes Mr/Mme dédiées
   // (mapPatient les expose déjà). `patient.birthDate` fallback sur
@@ -738,8 +752,18 @@ function buildViewModel({
     porteWcDimensionFr: formatWidthCm(wc.porteWcDimension),
     porteWcSensInterieur: Boolean(wc.porteWcSensAdapte),
     porteWcSensExterieur: !wc.porteWcSensAdapte && (wc.porteWcDimension != null),
-    // Observations
-    observationsEquipements: String(wc.observationEquipementsUtilisation || '').trim(),
+    // Observations sur les équipements et utilisation (champ `obs`
+    // page 6 PDF). Source 2026-04-29 : la NOTE PARTAGÉE SDB+WC saisie
+    // dans le panneau de droite de l'app (tabKey `Sanitaires-Notes`),
+    // synthétisée par `fetchVadOverlayNotesForReport.sanitaires` puis
+    // injectée dans `observations.observationEquipements`. Avant ce
+    // fix, on lisait uniquement `wc.observationEquipementsUtilisation`
+    // — un ancien champ texte par-instance WC qui n'était plus
+    // alimenté par l'UI depuis l'unification des notes Sanitaires.
+    // Fallback : le champ legacy si la note partagée est absente.
+    observationsEquipements: String(
+      observations?.observationEquipements || wc.observationEquipementsUtilisation || '',
+    ).trim(),
   };
 
   // --- Page 7 : Projet + Résumé ---
