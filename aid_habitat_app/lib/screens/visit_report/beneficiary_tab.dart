@@ -906,11 +906,36 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             },
           ),
           const SizedBox(height: 14),
+          // Occupation : layout 2+1 demandé par l'utilisateur
+          // (2026-04-29). Propriétaire / Locataire côte à côte
+          // (2 colonnes, mêmes dimensions que les pills de
+          // « Situation familiale »), Usufruitier en dessous,
+          // pleine largeur. On utilise 2 FormToggleGroups :
+          //   1. Le premier porte le label « Occupation » + les 2
+          //      options principales (`expand: true` → Row+Expanded
+          //      → 50/50 % width comme les buttons de Situation
+          //      familiale en 2 colonnes).
+          //   2. Le second n'a pas de label (`label: ''`), juste
+          //      l'option Usufruitier seule qui s'étend en pleine
+          //      largeur grâce à `expand: true`.
+          // Les deux groupes partagent `_occupationStatus` donc le
+          // toggle est mutuellement exclusif entre les 3 options.
           FormToggleGroup(
             label: 'Occupation',
-            options: _occupationOptions,
+            options: const ['Propriétaire', 'Locataire'],
             selected: _occupationStatus,
-            columns: 1,
+            expand: true,
+            onChanged: (v) {
+              _occupationStatus = v;
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 8),
+          FormToggleGroup(
+            label: '',
+            options: const ['Usufruitier'],
+            selected: _occupationStatus,
+            expand: true,
             onChanged: (v) {
               _occupationStatus = v;
               _markChanged();

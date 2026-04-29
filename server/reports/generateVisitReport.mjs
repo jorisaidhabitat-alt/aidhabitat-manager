@@ -581,7 +581,19 @@ function buildViewModel({
     balcon: Boolean(housing.balcon),
     terrasse: Boolean(housing.terrasse),
     jardin: Boolean(housing.jardin),
-    heatingMain: Boolean(housing.heatingMain),
+    // `heatingMain` (case « Existe-t-il une installation de chauffage »
+    // page 5 PDF) — auto-dérivé : si AU MOINS UN type est sélectionné
+    // (radiateurs élec, gaz, fioul, PAC, collectif, bois, granulés,
+    // autre), alors heatingMain=true. Évite que l'ergo doive cocher
+    // 2 cases (existence + type) dans l'app — la 1ère est redondante
+    // dès qu'il pick un type. Demande utilisateur 2026-04-29 :
+    // « si un chauffage est coché tu mets forcément oui à existe
+    //  t-il une installation de chauffage ».
+    heatingMain: Boolean(
+      heat.electric || heat.gas || heat.oil || heat.heatPump ||
+      heat.collective || heat.wood || heat.pellet || heat.other ||
+      housing.heatingMain,
+    ),
     heating: {
       electric: Boolean(heat.electric),
       gas: Boolean(heat.gas),
