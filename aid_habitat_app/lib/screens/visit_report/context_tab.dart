@@ -683,7 +683,7 @@ class _ContextTabState extends State<ContextTab>
     // SoftTapScale → zoom/dezoom à l'appui, même effet que les boutons
     // de la sidebar et des tabs du relevé de visite.
     return SoftTapScale(
-      onTap: () => setState(() => _subSection = index),
+      onTap: () => _setSubSection(index),
       child: Container(
         // Fond transparent garanti sur toute la largeur de l'Expanded
         // pour que la zone de tap reste identique au GestureDetector

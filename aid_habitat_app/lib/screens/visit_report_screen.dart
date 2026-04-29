@@ -1108,6 +1108,16 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // pousse ces flags via `onMedicalFlagsChanged` à chaque
             // changement/chargement de page.
             currentMedicalFlags: _medicalFlagNumbers,
+            // Sync de la sous-section interne (Médical / Autonomie)
+            // avec le panneau notes de droite. Sans ça, le panneau
+            // restait coincé sur la note Médical même si l'ergo
+            // basculait sur Autonomie en interne — et le PDF
+            // « Habitudes de vie » paraissait vide alors que la note
+            // Autonomie existait. Demande utilisateur 2026-04-30.
+            initialSubSection:
+                _activeSubsectionByTab['Contexte de vie'] ?? 0,
+            onSubSectionChanged: (i) => setState(
+                () => _activeSubsectionByTab['Contexte de vie'] = i),
           ),
         ),
         _wrapTabWithNotes(
