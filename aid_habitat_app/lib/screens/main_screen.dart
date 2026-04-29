@@ -522,9 +522,31 @@ class _MainScreenState extends State<MainScreen> {
       return DossierScreen(
         dossier: _selectedDossier!,
         onBack: _goBack,
-        onOpenVisitReport: () {
+        // IMPORTANT (demande utilisateur 2026-04-29) : on RE-FETCH le
+        // dossier depuis SQLite AVANT de basculer vers le relevé de
+        // visite. Pourquoi : `DossierScreen._flushPendingSave()` est
+        // appelé par le bouton VAD juste avant `onOpenVisitReport()`,
+        // donc SQLite a la version fraîche du nom/prénom/adresse, mais
+        // `_selectedDossier` (cet objet en mémoire) reste sur le
+        // snapshot d'origine. Sans ce refresh, `VisitReportScreen` se
+        // monte avec une `widget.dossier` STALE → la `BeneficiaryTab`
+        // hydrate `_occupants` avec l'ancien nom → la 1ère save
+        // déclenchée depuis le relevé (ex. changement de situation
+        // familiale) ré-écrit le nom à sa valeur initiale. Symptôme
+        // reporté : « si je change le nom prénom avant d'aller dans le
+        // relevé de visite, que je change situation familiale, ça
+        // rechange direct le nom à celui initial ».
+        onOpenVisitReport: () async {
+          final fresh =
+              await _dataService.fetchDossierById(_selectedDossier!.id);
+          if (!mounted) return;
           _pushHistory();
-          setState(() => _activeView = 'visit_report');
+          setState(() {
+            if (fresh != null) {
+              _selectedDossier = fresh;
+            }
+            _activeView = 'visit_report';
+          });
         },
       );
     }
