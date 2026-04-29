@@ -148,12 +148,21 @@ class _SidebarState extends State<Sidebar> {
                     // circulaire par-dessus l'AnimatedContainer.
                     //   • Actif   : fond violet clair #EDE8F5 + icône
                     //     violet foncé #7C6DAA.
-                    //   • Inactif : aucun fond (transparent), icône
-                    //     gris bleuté #8D94A3 directement sur la
-                    //     sidebar blanche. Demande utilisateur
-                    //     2026-04-29 — retrait de l'ancien fond gris
-                    //     #DDE1E8 qui faisait apparaître chaque page
-                    //     comme une « pastille » même quand inactive.
+                    //   • Inactif : violet clair en alpha 0 (= invisible
+                    //     visuellement, identique au fond blanc).
+                    //
+                    // Subtilité (demande utilisateur 2026-04-29) : on
+                    // utilise `Color(0x00EDE8F5)` (alpha=0 du violet
+                    // actif) plutôt que `Colors.transparent` parce que
+                    // ce dernier est en réalité un NOIR transparent
+                    // (#00000000). Pendant l'animation
+                    // `AnimatedContainer` qui interpole entre les deux
+                    // états, le passage noir-transparent → violet-opaque
+                    // traverse des gris foncés visibles à l'œil — d'où
+                    // le « flash gris rapide » remonté par l'ergo. En
+                    // partant du même hue (violet) avec juste une
+                    // variation d'alpha, l'interpolation reste violet
+                    // tout au long → pas de flash.
                     child: AnimatedContainer(
                       duration: kSoftMedium,
                       curve: kSoftCurve,
@@ -168,7 +177,7 @@ class _SidebarState extends State<Sidebar> {
                             ? Colors.white
                             : (isActive
                                 ? const Color(0xFFEDE8F5)
-                                : Colors.transparent),
+                                : const Color(0x00EDE8F5)),
                         shape: BoxShape.circle,
                         // Léger contour gris quand l'item logo n'est
                         // pas actif, sinon le rond blanc disparaît dans
@@ -188,12 +197,25 @@ class _SidebarState extends State<Sidebar> {
                       // (pas de teinte) pour que la charte de l'Anah
                       // reste reconnaissable. Disponible offline (asset
                       // empaqueté dans le bundle).
+                      //
+                      // Netteté : le PNG source est en 1190×1024 mais
+                      // l'emplacement final fait ~32 px (48 - 2×8 px de
+                      // padding). Sans hint, Flutter applique un
+                      // resampling « low quality » → effet pixelisé. On
+                      // force `FilterQuality.high` (bicubique) +
+                      // `cacheWidth: 96` (≈ 32 × 3 pour les écrans HiDPI
+                      // type Retina) pour que le décodage donne une
+                      // vignette pré-resamplée propre, sans pomper la
+                      // RAM avec le 1190×1024 plein.
                       child: item['assetLogo'] != null
                           ? Padding(
                               padding: const EdgeInsets.all(8),
                               child: Image.asset(
                                 item['assetLogo'] as String,
                                 fit: BoxFit.contain,
+                                filterQuality: FilterQuality.high,
+                                cacheWidth: 96,
+                                isAntiAlias: true,
                                 errorBuilder: (_, __, ___) => Icon(
                                   item['icon'],
                                   size: 22,

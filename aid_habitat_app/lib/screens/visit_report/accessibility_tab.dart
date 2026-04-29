@@ -528,7 +528,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   Widget _buildQuickNav() {
     const items = [
       _QuickNavItem(icon: Icons.home_outlined, label: 'Général'),
-      _QuickNavItem(icon: Icons.layers_outlined, label: 'Niveaux et pièces'),
+      _QuickNavItem(icon: Icons.layers_outlined, label: 'Niveaux'),
       _QuickNavItem(icon: Icons.tune, label: 'Équipements'),
       _QuickNavItem(icon: Icons.place_outlined, label: 'Extérieur'),
     ];
