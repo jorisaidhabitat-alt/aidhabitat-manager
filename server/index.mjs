@@ -410,6 +410,10 @@ const parseOccupantsJson = (rawValue) => {
         lastName: stringValue(entry.lastName).trim(),
         birthDate: stringValue(entry.birthDate).trim(),
         apa: Boolean(entry.apa),
+        // GIR (Groupe Iso-Ressources) — sélectionné dans l'onglet
+        // bénéficiaire quand `apa` est true. Doit être préservé sinon le
+        // PDF affiche « Oui » sans le numéro de GIR (bug 2026-04-29).
+        apaGir: stringValue(entry.apaGir).trim(),
         invalidity: Boolean(entry.invalidity),
         invalidityTxt: stringValue(entry.invalidityTxt).trim(),
         homeHelp: Boolean(entry.homeHelp),
@@ -2654,6 +2658,11 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
         lastName: stringValue(entry.lastName).trim(),
         birthDate: stringValue(entry.birthDate).trim(),
         apa: Boolean(entry.apa),
+        // GIR (Groupe Iso-Ressources) — préservé pour le rapport PDF.
+        // Sans cette ligne, le serveur dépouille `apaGir` lors du
+        // round-trip Flutter→NocoDB et la valeur n'arrive jamais au
+        // générateur (bug 2026-04-29).
+        apaGir: stringValue(entry.apaGir).trim(),
         invalidity: Boolean(entry.invalidity),
         invalidityTxt: stringValue(entry.invalidityTxt).trim(),
         homeHelp: Boolean(entry.homeHelp),
