@@ -38,17 +38,41 @@ class DataService {
 
   Future<void> initialize() async {
     await _dossierRepository.initialize();
+    // Câble le callback que `NocodbSyncService` invoque après chaque
+    // auto-résolution de conflit 409 (« remote wins ») pour rafraîchir
+    // tout de suite les données locales avec la version serveur, sans
+    // attendre le prochain tick périodique du SyncEngine. Évite que
+    // l'ergo génère un PDF / regarde une page juste après le conflit
+    // et voie encore l'ancienne valeur locale écrasée à la milliseconde
+    // suivante.
+    _nocodbSyncService.onConflictAutoResolved = refreshWorkspaceFromRemote;
   }
 
   /// One-shot cleanup run at app boot: drops sync operations that are
   /// almost certainly obsolete (failed retries or very old pending ops
-  /// captured by a previous app version). Prevents stale payloads from
-  /// overwriting fresh remote data on startup. Errors are swallowed so
-  /// a corrupted sync_operations table never blocks the app from
-  /// launching.
+  /// captured by a previous app version) AND débloque les entités
+  /// historiquement bloquées en `conflict` state (avant la mise en
+  /// place de l'auto-résolution « remote wins »). Prevents stale
+  /// payloads from overwriting fresh remote data on startup. Errors
+  /// are swallowed so a corrupted sync_operations table never blocks
+  /// the app from launching.
   Future<void> purgeStaleSyncOperations() async {
     try {
       await _syncRepository.purgeStalePendingOperations();
+      // Récupération boot pour les conflits stuck depuis l'ancien
+      // monde (où on marquait `conflict` et on attendait l'action
+      // utilisateur). On reset ces entités à `synced` et on clear
+      // leurs ops pending — le prochain pull workspace appliquera la
+      // vérité serveur. Demande utilisateur 2026-04-30 : « tout doit
+      // se faire tout seul en backend ».
+      final unstuckCount = await _syncRepository.unstickConflictedEntities();
+      if (unstuckCount > 0) {
+        // ignore: avoid_print
+        print(
+          '[boot] $unstuckCount entité(s) en conflict débloquée(s) → '
+          'le prochain pull les rafraîchira avec la version serveur',
+        );
+      }
     } catch (_) {
       // ignore — cleanup is best-effort
     }

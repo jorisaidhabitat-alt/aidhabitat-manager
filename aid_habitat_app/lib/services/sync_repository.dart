@@ -594,6 +594,53 @@ class SyncRepository {
     );
   }
 
+  /// Débloque les entités historiquement marquées `conflict` dans les
+  /// tables `dossiers` / `patients` / `housings` / `documents` /
+  /// `note_pages`. Pour chacune :
+  ///   1. Reset son `sync_state` à `synced` (le prochain pull NocoDB
+  ///      pourra alors appliquer le merge sans skipper la ligne).
+  ///   2. Purge les ops `sync_operations` pending/failed/conflict qui
+  ///      la concernent.
+  ///
+  /// Renvoie le nombre TOTAL de lignes débloquées (somme des updates
+  /// sur les 5 tables — utile pour le log de boot).
+  ///
+  /// Demande utilisateur 2026-04-30 : « il ne faut aucun bouton ni
+  /// intervention tout doit se faire tout seul en backend » →
+  /// l'écran de résolution de conflit n'est plus nécessaire, on
+  /// applique systématiquement la version serveur.
+  Future<int> unstickConflictedEntities() async {
+    final db = await _database.database;
+    var total = 0;
+    const tables = [
+      'dossiers',
+      'patients',
+      'housings',
+      'documents',
+      'note_pages',
+    ];
+    for (final table in tables) {
+      final updated = await db.update(
+        table,
+        {'sync_state': SyncState.synced.name},
+        where: 'sync_state = ?',
+        whereArgs: [SyncState.conflict.name],
+      );
+      total += updated;
+    }
+    // Purge des ops `conflict` (le `purgeStalePendingOperations` ne
+    // touche que les `failed` / `running` ; les `conflict` restaient
+    // en queue pour toujours). Au passage on prend aussi les `failed`
+    // au cas où — `discardFailedOperations` existe mais purge tout
+    // sans cibler les entités unstuck-ées, ce qu'on veut justement.
+    await db.delete(
+      'sync_operations',
+      where: 'status = ?',
+      whereArgs: ['conflict'],
+    );
+    return total;
+  }
+
   /// Met à jour le statut d'une `sync_operation`. Si [expectedStatus] est
   /// fourni, la transition n'a lieu QUE si le row est actuellement dans
   /// cet état — sinon `0` est renvoyé (no-op). Crucial pour le verrou
