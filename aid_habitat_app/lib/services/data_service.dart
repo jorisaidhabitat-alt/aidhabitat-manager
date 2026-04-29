@@ -443,6 +443,13 @@ class DataService {
     );
   }
 
+  /// Pass-through pour la migration des anciennes notes SDB/WC vers le
+  /// tabKey partagé `Sanitaires-Notes`. Voir
+  /// [NoteRepository.purgeLegacySanitairesNotes].
+  Future<int> purgeLegacySanitairesNotes(String patientId) {
+    return _noteRepository.purgeLegacySanitairesNotes(patientId);
+  }
+
   Future<bool> refreshNotePageFromRemote({
     required String patientId,
     required String tabKey,

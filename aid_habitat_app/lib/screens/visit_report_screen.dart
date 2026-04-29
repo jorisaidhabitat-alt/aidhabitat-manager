@@ -167,6 +167,22 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     _tabController.addListener(_handleTabChange);
     _refreshDossier();
 
+    // Migration ponctuelle (demande utilisateur 2026-04-29) : on purge
+    // les notes saisies sous les anciens tabKeys « Salle de
+    // bain-Équipements » et « WC-Config. & équipements ». Désormais
+    // SDB et WC partagent une note unique sous `Sanitaires-Notes` (cf.
+    // `_resolveNotesTabKey`). Idempotent : DELETE no-op après la 1ère
+    // ouverture du dossier post-déploiement. Fire-and-forget, on ne
+    // bloque pas le rendu sur ce nettoyage SQLite local.
+    _dataService
+        .purgeLegacySanitairesNotes(_dossier.patient.id)
+        .then((removed) {
+      if (removed > 0) {
+        // ignore: avoid_print
+        print('[visit_report] purge notes SDB/WC legacy : $removed lignes');
+      }
+    });
+
     // Register an IPC handler so detached note OS windows can persist
     // their edits through the main window (they cannot touch SQLite
     // themselves because sqflite is not registered in secondary engines).

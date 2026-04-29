@@ -435,4 +435,36 @@ class NoteRepository {
 
     return true;
   }
+
+  /// Migration locale (demande utilisateur 2026-04-29, option « 3 ») :
+  /// supprime les notes saisies sous les anciens tabKeys « Salle de
+  /// bain-Équipements » et « WC-Config. & équipements ». La nouvelle
+  /// note unique partagée vit désormais sous le tabKey
+  /// `Sanitaires-Notes` (cf. `_kSharedSanitairesNotesTabKey` dans
+  /// `visit_report_screen.dart`).
+  ///
+  /// Idempotent : appelé une fois à chaque ouverture de dossier — la
+  /// requête DELETE est un no-op après la 1ère exécution. Coût
+  /// négligeable (~µs) donc pas besoin de gate via flag persistant.
+  ///
+  /// Limite connue : ne touche QUE le SQLite local. Les anciennes
+  /// lignes restent dans NocoDB (le note repository n'expose pas
+  /// d'opération de delete server-side). C'est OK puisque l'app ne
+  /// requête plus jamais ces tabKeys → les orphelins serveurs sont
+  /// invisibles. Si un nettoyage NocoDB est souhaité, faire passer
+  /// un script admin.
+  ///
+  /// Renvoie le nombre de lignes supprimées (utile pour log debug).
+  Future<int> purgeLegacySanitairesNotes(String patientId) async {
+    final db = await _database.database;
+    return db.delete(
+      'note_pages',
+      where: 'patient_local_id = ? AND tab_key IN (?, ?)',
+      whereArgs: [
+        patientId,
+        'Salle de bain-Équipements',
+        'WC-Config. & équipements',
+      ],
+    );
+  }
 }
