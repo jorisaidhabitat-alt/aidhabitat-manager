@@ -3866,7 +3866,20 @@ const fetchContexteNotePagesForPatient = async (patientId, dossierId) => {
     return allTabs
       .flat()
       .filter((pg) => !!pg)
-      .filter((pg) => !dossierId || !pg?.scopeId || String(pg.scopeId) === String(dossierId))
+      // Filtre scope tolérant : dossierId match OU patientId match OU
+      // scopeId vide (cf. fetchVadOverlayNotesForReport pour le rationale).
+      // Sans ce relâchement, les notes Contexte de vie étaient
+      // rejetées car `saveDrawingJson` ne push pas de dossierId, donc
+      // le sync_service fallback `scopeId = patientId` ≠ dossierId.
+      .filter((pg) => {
+        if (!dossierId) return true;
+        const scopeId = pg?.scopeId;
+        if (!scopeId) return true;
+        const s = String(scopeId);
+        if (s === String(dossierId)) return true;
+        if (patientId && s === String(patientId)) return true;
+        return false;
+      })
       .sort((a, b) => Number(a.pageNumber) - Number(b.pageNumber));
   } catch (error) {
     console.warn('[report] échec contexte notes :', error?.message || error);
@@ -3982,9 +3995,23 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
     const joinPages = (pages) => {
       const filtered = asArray(pages)
         .filter((pg) => !!pg)
-        // Si dossierId fourni, on restreint au scope du dossier (cas
-        // multi-dossiers même patient — rare).
-        .filter((pg) => !dossierId || !pg?.scopeId || String(pg.scopeId) === String(dossierId))
+        // Filtre scope : on accepte les notes dont le scopeId est :
+        //  • absent (note legacy ou patient-level)
+        //  • égal au dossierId (note vraiment scoped au dossier)
+        //  • égal au patientId (cas réel : Flutter `saveDrawingJson` ne
+        //    push PAS de dossierId dans le payload, donc le sync_service
+        //    fallback `scopeId = patientId`. Sans ce 3ème cas, TOUTES
+        //    les notes Préconisations / Contexte / SDB / WC se voyaient
+        //    rejetées et le PDF restait vide — bug reporté 2026-04-29).
+        .filter((pg) => {
+          if (!dossierId) return true;
+          const scopeId = pg?.scopeId;
+          if (!scopeId) return true;
+          const s = String(scopeId);
+          if (s === String(dossierId)) return true;
+          if (patientId && s === String(patientId)) return true;
+          return false;
+        })
         .sort((a, b) => Number(a.pageNumber) - Number(b.pageNumber));
       const text = filtered
         .map((pg) => {
