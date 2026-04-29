@@ -533,8 +533,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   Widget _buildTabBar() {
     return Container(
       height: 60,
+      // Fond blanc retiré (demande utilisateur 2026-04-28 : « pour la
+      // barre de navigation dans le relevé de visite, retire le fond
+      // blanc »). On garde le borderRadius pour l'indicateur d'onglet
+      // actif (qui lui reste en violet pâle) — pas d'effet visuel
+      // quand la couleur est transparente.
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(50),
       ),
       // Le pill blanc de la barre de navigation contient désormais à

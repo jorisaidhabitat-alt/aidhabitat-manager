@@ -508,20 +508,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       _QuickNavItem(icon: Icons.favorite_outline, label: 'Santé'),
       _QuickNavItem(icon: Icons.folder_open_outlined, label: 'Admin'),
     ];
-    // Bandeau full-width sans border-radius : la couleur court de bord
-    // à bord de la card (le clip antiAlias du formPanel parent donne
-    // l'arrondi supérieur). Padding horizontal pour l'espacement
-    // interne des pills.
+    // Bandeau full-width sans fond ni border-radius (demande utilisateur
+    // 2026-04-28 : « retire le fond rose clair »). Padding vertical
+    // uniquement — la zone cliquable de chaque pill s'étend toujours
+    // bord à bord via l'Expanded.
     return Container(
-      // Padding horizontal retiré : chaque zone cliquable doit s'étendre
-      // bord à bord (demande utilisateur — 50 % gauche clique section 1,
-      // 50 % droite clique section 2, sans marge intermédiaire).
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: const Color(0xFFEDE8F5),
+      color: Colors.transparent,
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;
-          // Sur fond violet clair : icon/texte/trait en violet foncé
+          // Sans fond : icon/texte/trait actifs en violet foncé
           // (#7C6DAA). Inactif : pastel lilas.
           const activeColor = Color(0xFF7C6DAA);
           const inactiveColor = Color(0xFFAE9DB3);
@@ -542,25 +539,35 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                       color: active ? activeColor : inactiveColor,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      items[i].label,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: active ? activeColor : inactiveColor,
-                      ),
-                    ),
-                    // Trait fin centré sous le texte, plus étroit que le
-                    // label, visible uniquement pour l'item actif.
-                    const SizedBox(height: 6),
-                    Container(
-                      height: 1.5,
-                      width: (items[i].label.length * 3.2)
-                          .clamp(18.0, 50.0),
-                      decoration: BoxDecoration(
-                        color:
-                            active ? activeColor : Colors.transparent,
-                        borderRadius: BorderRadius.circular(999),
+                    // Trait actif = LARGEUR EXACTE DU MOT (demande
+                    // utilisateur 2026-04-28). On wrap Text + trait
+                    // dans un IntrinsicWidth qui calque sa largeur
+                    // sur celle du Text, puis crossAxisAlignment.stretch
+                    // étire le trait pour combler cette largeur.
+                    IntrinsicWidth(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            items[i].label,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color:
+                                  active ? activeColor : inactiveColor,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            height: 1.5,
+                            decoration: BoxDecoration(
+                              color: active
+                                  ? activeColor
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
