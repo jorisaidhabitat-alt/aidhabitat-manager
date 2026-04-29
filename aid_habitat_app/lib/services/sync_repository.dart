@@ -201,6 +201,54 @@ class SyncRepository {
   /// payload est considéré comme dépassé : l'utilisateur peut soit
   /// vider la file via `discardFailedOperations` (UI : bouton « Vider
   /// les échecs »), soit refaire la modif manuellement.
+  /// Réhabilite les `upload_file` ops `failed` — AGGRESSIVELY (même
+  /// pour des erreurs non-transient). Pourquoi ce traitement spécial :
+  /// le serveur déduplique les uploads via `documentLocalId` (cf.
+  /// `/api/documents` POST côté server/index.mjs), donc un retry est
+  /// idempotent — au pire on perd 1 round-trip réseau, jamais de
+  /// double-création.
+  ///
+  /// Cas couverts par ce rehab (vs `rehabilitateTransientFailures`
+  /// qui ne match que les patterns d'erreur transient) :
+  ///   - 4xx persistants (ex. session expirée, CORS, etc.)
+  ///   - SyntaxError, RangeError, parse errors (la 1ère tentative a pu
+  ///     se faire avant un fix de schéma)
+  ///   - Erreurs non-classifiées
+  ///
+  /// Limite d'âge : 7 jours (vs 24 h pour le rehab générique). Les
+  /// uploads sont du contenu user (photos, rapports) qu'on ne veut
+  /// surtout pas perdre par "oubli de retry".
+  ///
+  /// Appelé automatiquement à chaque ouverture de l'écran Documents
+  /// (cf. `data_service.refreshDocumentsFromRemote`) → l'utilisateur
+  /// n'a plus jamais à clear le cache pour débloquer un upload bloqué.
+  Future<int> rehabFailedDocumentUploads() async {
+    final db = await _database.database;
+    final ageCutoff = DateTime.now()
+        .subtract(const Duration(days: 7))
+        .toIso8601String();
+    final n = await db.rawUpdate(
+      '''
+      UPDATE sync_operations
+      SET status = ?, updated_at = ?, attempt_count = 0, last_error = NULL
+      WHERE status = ?
+        AND operation_type = 'upload_file'
+        AND created_at > ?
+      ''',
+      [
+        SyncOperationStatus.pending.name,
+        DateTime.now().toIso8601String(),
+        SyncOperationStatus.failed.name,
+        ageCutoff,
+      ],
+    );
+    if (n > 0) {
+      // ignore: avoid_print
+      print('[sync] rehabFailedDocumentUploads : $n op(s) repassée(s) en pending');
+    }
+    return n;
+  }
+
   Future<int> rehabilitateTransientFailures() async {
     final db = await _database.database;
     final ageCutoff = DateTime.now()

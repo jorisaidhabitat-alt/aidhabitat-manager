@@ -269,9 +269,37 @@ class DataService {
   }
 
   Future<bool> refreshDocumentsFromRemote(String patientId) async {
+    // 1. Auto-débloquage : avant tout fetch, on réhabilite les
+    //    `upload_file` ops bloquées en `failed` → le SyncEngine va
+    //    les retenter au prochain cycle. Idempotent côté serveur (dédup
+    //    par `documentLocalId`), donc retry safe.
+    //
+    //    Demande utilisateur 2026-04-29 : « je ne dois pas avoir à
+    //    faire ces reload à chaque fois. Tu dois pouvoir anticiper
+    //    cela ». Sans ce hook, un upload échoué une fois avec une
+    //    erreur non-transient (4xx, parse, etc.) restait stuck à vie
+    //    en local — l'utilisateur voyait son doc localement mais pas
+    //    sur les autres devices.
+    try {
+      final rehabbed = await _syncRepository.rehabFailedDocumentUploads();
+      if (rehabbed > 0) {
+        // Notifie le SyncEngine pour qu'il pousse sans attendre les
+        // 60 s du timer périodique → le doc apparaît côté serveur
+        // dans les secondes qui suivent.
+        SyncEngine().notify();
+      }
+    } catch (_) {
+      // Best-effort : un échec de rehab ne doit pas bloquer le fetch.
+    }
+
+    // 2. Fetch remote.
     try {
       final remoteDocuments = await _nocodbApiClient.fetchDocuments(patientId);
-      if (remoteDocuments.isEmpty) return false;
+      // BUG fix 2026-04-29 : avant, `if (remoteDocuments.isEmpty) return false;`
+      // empêchait le merge même quand l'API renvoyait correctement une
+      // liste vide. Conséquence : le local cache stale n'était jamais
+      // purgé. Maintenant on merge TOUJOURS, l'empty list est un état
+      // valide qui doit purger les docs locaux `synced` orphelins.
       await _documentRepository.mergeRemoteDocuments(
         patientId,
         remoteDocuments,
