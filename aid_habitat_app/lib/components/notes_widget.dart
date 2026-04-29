@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../services/data_service.dart';
+import '../services/save_debounce.dart';
 
 // =============================================================================
 // Enums & constantes — équivalents directs du composant React NotesCanvas.tsx
@@ -786,8 +787,14 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   void _scheduleAutoSave() {
     _autoSaveDebounce?.cancel();
-    _autoSaveDebounce =
-        Timer(const Duration(milliseconds: 500), _autoSavePersist);
+    // Debounce 0 ms (kSaveDebounceText) — chaque keystroke déclenche
+    // immédiatement l'écriture SQLite + enqueue sync_op. Avant : 500 ms,
+    // qui pouvait laisser un trou si l'ergo cliquait « Générer le
+    // rapport » dans la milliseconde après avoir tapé → la note n'était
+    // pas encore en SQLite, donc pas vue par runSync(). Demande
+    // utilisateur 2026-04-29 : « il faut que ce soit instantané comme
+    // les autres notes pas de délais ».
+    _autoSaveDebounce = Timer(kSaveDebounceText, _autoSavePersist);
   }
 
   Future<void> _autoSavePersist() async {
