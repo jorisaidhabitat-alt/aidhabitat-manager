@@ -421,8 +421,7 @@ class _RecommendationCard extends StatelessWidget {
         ? item.customTitle.trim()
         : item.wikiTitle.trim();
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -442,47 +441,41 @@ class _RecommendationCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ----------------------------------------------------------
-          // Image en haut, pleine largeur de la carte (carrée), avec
-          // le bouton de suppression flottant dans le coin haut-droit.
-          // Cliquer sur l'image ouvre le wiki picker (= idem bouton
-          // « Choisir / Changer une fiche wiki » plus bas).
+          // Image en haut, pleine largeur de la carte, sans fond gris
+          // de remplissage (l'image elle-même couvre tout). Aspect
+          // ratio 1.5 = compact, gain de hauteur vs carrée.
+          // 2 boutons flottants violet clair en haut-droite : modifier
+          // la fiche wiki (↻) + supprimer (✕).
           // ----------------------------------------------------------
           Stack(
             children: [
               GestureDetector(
                 onTap: onPickWiki,
                 child: AspectRatio(
-                  aspectRatio: 1.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7F7FA),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    alignment: Alignment.center,
-                    clipBehavior: Clip.antiAlias,
+                  aspectRatio: 1.5,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
                     child: hasWiki && item.wikiImageUrl.isNotEmpty
                         ? Image.network(
                             resolveMediaUrl(item.wikiImageUrl),
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.image_outlined,
-                              color: Color(0xFF94A3B8),
+                            errorBuilder: (_, __, ___) => const Center(
+                              child: Icon(
+                                Icons.image_outlined,
+                                color: Color(0xFF94A3B8),
+                              ),
                             ),
                           )
-                        : const Icon(
-                            Icons.add_photo_alternate_outlined,
-                            color: Color(0xFF7C6DAA),
-                            size: 48,
+                        : const Center(
+                            child: Icon(
+                              Icons.add_photo_alternate_outlined,
+                              color: Color(0xFF7C6DAA),
+                              size: 40,
+                            ),
                           ),
                   ),
                 ),
               ),
-              // 2 boutons flottants en haut-droite de l'image, côte à
-              // côte : « modifier la fiche wiki » (↔) à gauche, et
-              // « supprimer la carte » (✕) à droite. Demande utilisateur
-              // 2026-04-28 — le bouton « Choisir/Changer fiche wiki »
-              // texte sous le titre est désormais cet icon button par
-              // dessus l'image (gain de place dans la grille 3 cols).
               Positioned(
                 top: 6,
                 right: 6,
@@ -490,16 +483,16 @@ class _RecommendationCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Material(
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: const Color(0xFFEDE8F5),
                       shape: const CircleBorder(),
                       child: InkWell(
                         onTap: onPickWiki,
                         customBorder: const CircleBorder(),
                         child: Padding(
-                          padding: const EdgeInsets.all(5),
+                          padding: const EdgeInsets.all(8),
                           child: Icon(
                             Icons.cached,
-                            size: 16,
+                            size: 20,
                             color: const Color(0xFF7C6DAA),
                             semanticLabel: hasWiki
                                 ? 'Changer la fiche wiki'
@@ -510,17 +503,17 @@ class _RecommendationCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Material(
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: const Color(0xFFEDE8F5),
                       shape: const CircleBorder(),
                       child: InkWell(
                         onTap: onRemove,
                         customBorder: const CircleBorder(),
                         child: const Padding(
-                          padding: EdgeInsets.all(5),
+                          padding: EdgeInsets.all(8),
                           child: Icon(
                             Icons.close,
-                            size: 16,
-                            color: Color(0xFF94A3B8),
+                            size: 20,
+                            color: Color(0xFF7C6DAA),
                             semanticLabel: 'Supprimer',
                           ),
                         ),
@@ -531,20 +524,24 @@ class _RecommendationCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // Titre éditable + note libre, empilés verticalement sous
-          // l'image. Le bouton « modifier la fiche wiki » est maintenant
-          // un icône flottant sur l'image (cf. plus haut).
+          const SizedBox(height: 8),
+          // Titre éditable. Marge réduite avec la description (4 px)
+          // pour resserrer le bloc texte (demande utilisateur).
           _InlineTitleField(
             value: item.customTitle,
             hint: title.isNotEmpty ? title : 'Titre…',
             onChanged: (v) => onChange(item.copyWith(customTitle: v)),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
+          // Description : fontSize 14 (vs 12 par défaut), 2 lignes max
+          // pour garder la card compacte et permettre au bouton
+          // « Ajouter une préconisation » de rester visible sous la
+          // grille sans scroll (demande utilisateur 2026-04-28).
           FormTextField(
             label: '',
             value: item.note,
-            maxLines: 3,
+            maxLines: 2,
+            valueSize: 14,
             onChanged: (v) => onChange(item.copyWith(note: v)),
           ),
         ],
