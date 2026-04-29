@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
+import '../services/auth_service.dart';
 import 'account_dialog.dart';
 import 'cached_remote_image.dart';
 import 'soft_transitions.dart';
@@ -31,6 +32,29 @@ class Sidebar extends StatefulWidget {
 }
 
 class _SidebarState extends State<Sidebar> {
+  /// Override local du user — utilisé après que l'`AccountDialog` ait
+  /// modifié la photo de profil, pour refresh l'avatar sans attendre
+  /// que le parent re-propage un nouveau `currentUser`. Reset à null
+  /// quand le parent envoie un user différent (cf. `didUpdateWidget`).
+  LocalAppUser? _userOverride;
+
+  /// User effectif à afficher : override si présent, sinon le user
+  /// du widget parent.
+  LocalAppUser get _effectiveUser => _userOverride ?? widget.currentUser;
+
+  @override
+  void didUpdateWidget(covariant Sidebar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Si le parent push un user fraîchement chargé qui contient déjà
+    // les nouveaux champs photo, on jette l'override pour revenir à
+    // la source de vérité du parent.
+    if (_userOverride != null &&
+        oldWidget.currentUser != widget.currentUser) {
+      // Parent a poussé une nouvelle instance → trust it.
+      _userOverride = null;
+    }
+  }
+
   List<Map<String, dynamic>> get _menuItems => [
     {
       'id': 'dashboard',
@@ -258,15 +282,21 @@ class _SidebarState extends State<Sidebar> {
                 onTap: _openAccountDialog,
                 customBorder: const CircleBorder(),
                 child: Builder(builder: (_) {
+                  // Source vérité avatar : `_effectiveUser` (override
+                  // post-dialog → fallback widget.currentUser). Permet
+                  // au rond de refléter immédiatement une nouvelle
+                  // photo après l'AccountDialog sans attendre que le
+                  // parent re-propage le user.
+                  final user = _effectiveUser;
                   // ── Diagnostic profile photo (retirer plus tard) ──
                   // Log l'URL reçue du serveur à chaque rebuild du sidebar
                   // → visible dans la console navigateur (DevTools)
                   // pour confirmer si l'app reçoit bien une URL non-vide.
                   // ignore: avoid_print
                   print(
-                    '[sidebar] profilePhotoUrl="${widget.currentUser.profilePhotoUrl}" '
-                    'pending="${widget.currentUser.pendingProfilePhotoDataUrl.isEmpty ? "" : "<pending-dataurl>"}" '
-                    'email=${widget.currentUser.email}',
+                    '[sidebar] profilePhotoUrl="${user.profilePhotoUrl}" '
+                    'pending="${user.pendingProfilePhotoDataUrl.isEmpty ? "" : "<pending-dataurl>"}" '
+                    'email=${user.email}',
                   );
                   return Container(
                   width: 48,
@@ -283,19 +313,18 @@ class _SidebarState extends State<Sidebar> {
                     ],
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: (widget.currentUser.profilePhotoUrl.isNotEmpty ||
-                          widget.currentUser
-                              .pendingProfilePhotoDataUrl.isNotEmpty)
+                  child: (user.profilePhotoUrl.isNotEmpty ||
+                          user.pendingProfilePhotoDataUrl.isNotEmpty)
                       ? CachedRemoteImage(
-                          url: widget.currentUser.profilePhotoUrl,
-                          pendingDataUrl: widget
-                              .currentUser.pendingProfilePhotoDataUrl,
+                          url: user.profilePhotoUrl,
+                          pendingDataUrl:
+                              user.pendingProfilePhotoDataUrl,
                           fit: BoxFit.cover,
                           width: 48,
                           height: 48,
                           errorWidget: Center(
                             child: Text(
-                              _initials(widget.currentUser.displayName),
+                              _initials(user.displayName),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -305,7 +334,7 @@ class _SidebarState extends State<Sidebar> {
                         )
                       : Center(
                           child: Text(
-                            _initials(widget.currentUser.displayName),
+                            _initials(user.displayName),
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -331,12 +360,27 @@ class _SidebarState extends State<Sidebar> {
     await showSoftDialog<bool>(
       context: context,
       builder: (_) => AccountDialog(
-        currentUser: widget.currentUser,
+        currentUser: _effectiveUser,
         onLogout: widget.onLogout,
         // `onOpenAdmin` retiré avec la page Admin — la gestion des accès
         // est désormais pilotée uniquement depuis NocoDB.
       ),
     );
+    // Après fermeture du dialog, on refresh le user depuis la SQLite
+    // locale (qui a déjà la nouvelle photo via
+    // `app_users.pending_photo_data_url`). Sans ça, le rond avatar
+    // de la sidebar conservait l'ancienne valeur — l'utilisateur
+    // voyait sa nouvelle photo dans le dialog mais pas dans le rond
+    // après fermeture (signalé 2026-04-29).
+    if (!mounted) return;
+    try {
+      final fresh = await AuthService().getCurrentUser();
+      if (!mounted || fresh == null) return;
+      setState(() => _userOverride = fresh);
+    } catch (_) {
+      // Best-effort : si la lecture SQLite échoue, on garde
+      // l'ancien avatar — pas de crash.
+    }
   }
 
   String _initials(String value) {
