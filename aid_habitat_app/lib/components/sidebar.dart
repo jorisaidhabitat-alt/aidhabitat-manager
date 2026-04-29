@@ -148,8 +148,12 @@ class _SidebarState extends State<Sidebar> {
                     // circulaire par-dessus l'AnimatedContainer.
                     //   • Actif   : fond violet clair #EDE8F5 + icône
                     //     violet foncé #7C6DAA.
-                    //   • Inactif : fond gris #DDE1E8 + icône gris
-                    //     bleuté #8D94A3.
+                    //   • Inactif : aucun fond (transparent), icône
+                    //     gris bleuté #8D94A3 directement sur la
+                    //     sidebar blanche. Demande utilisateur
+                    //     2026-04-29 — retrait de l'ancien fond gris
+                    //     #DDE1E8 qui faisait apparaître chaque page
+                    //     comme une « pastille » même quand inactive.
                     child: AnimatedContainer(
                       duration: kSoftMedium,
                       curve: kSoftCurve,
@@ -164,7 +168,7 @@ class _SidebarState extends State<Sidebar> {
                             ? Colors.white
                             : (isActive
                                 ? const Color(0xFFEDE8F5)
-                                : const Color(0xFFDDE1E8)),
+                                : Colors.transparent),
                         shape: BoxShape.circle,
                         // Léger contour gris quand l'item logo n'est
                         // pas actif, sinon le rond blanc disparaît dans
