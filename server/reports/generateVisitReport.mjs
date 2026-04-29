@@ -480,8 +480,34 @@ function normalizeOccupationStatus(raw) {
  * vides en tête/fin de section dans le PDF.
  */
 function joinNotePagesText(pages) {
+  // Extraction du texte depuis le `drawing_json` (NotesWidget bundle
+  // text + strokes en `{"text":"…","strokes":[...]}`). Fallback sur
+  // `textContent` si le JSON est invalide ou si la page legacy
+  // utilisait directement la colonne text. Sans ce parsing, la lecture
+  // brute de `textContent` retournait toujours vide → bug reporté
+  // 2026-04-29 (« Habitudes de vie et environnement dans le PDF ne
+  // sont pas connectés à un espace de l'application »).
+  const extractText = (pg) => {
+    const drawingRaw = String(pg?.drawingJson || '');
+    if (drawingRaw) {
+      try {
+        const decoded = JSON.parse(drawingRaw);
+        if (
+          decoded &&
+          typeof decoded === 'object' &&
+          typeof decoded.text === 'string' &&
+          decoded.text.trim()
+        ) {
+          return decoded.text.trim();
+        }
+      } catch {
+        // drawing_json non-JSON → on tombe sur le fallback textContent
+      }
+    }
+    return String(pg?.textContent || '').trim();
+  };
   return pages
-    .map((pg) => String(pg?.textContent || '').trim())
+    .map(extractText)
     .filter((s) => s.length > 0)
     .join('\n\n')
     .trim();
