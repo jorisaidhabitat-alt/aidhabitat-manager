@@ -922,7 +922,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           // toggle est mutuellement exclusif entre les 3 options.
           FormToggleGroup(
             label: 'Occupation',
-            options: const ['Propriétaire', 'Locataire'],
+            options: _occupationOptions.sublist(0, 2),
             selected: _occupationStatus,
             expand: true,
             onChanged: (v) {
@@ -933,7 +933,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           const SizedBox(height: 8),
           FormToggleGroup(
             label: '',
-            options: const ['Usufruitier'],
+            options: _occupationOptions.sublist(2),
             selected: _occupationStatus,
             expand: true,
             onChanged: (v) {

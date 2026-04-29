@@ -4592,6 +4592,44 @@ app.patch('/api/beneficiaires/:patientId', requireAuth, async (req, res, next) =
         dossierLabel: refreshedDossier.label || [refreshedDossier.patient.firstName, refreshedDossier.patient.lastName].filter(Boolean).join(' ').trim(),
         dossierId: refreshedDossier.id,
       });
+
+      // Resync des champs dénormalisés (`beneficiaire_prenom`,
+      // `beneficiaire_nom`, `beneficiaire_nom_complet`, `dossier_libelle`)
+      // dans les 4 tables `mobile_*` qui les snapshot à l'écriture
+      // (mobile_documents, mobile_document_chunks, mobile_note_pages,
+      // mobile_visit_recommendations). Sans ce hook, un renommage de
+      // bénéficiaire laissait des libellés legacy stale dans NocoDB
+      // (cf. checkup 2026-04-29 : « Paul SAKA » devenu Paul DENA, etc.).
+      //
+      // Idempotent — ne PATCHe que les lignes effectivement stale.
+      // Best-effort : un échec ici ne fait pas échouer le PATCH du
+      // bénéficiaire (qui a déjà réussi).
+      try {
+        const stats = await resyncBeneficiaireDenormalizedNames({
+          beneficiaireUuid: patientId,
+          prenom: refreshedDossier.patient.firstName,
+          nom: refreshedDossier.patient.lastName,
+          dossierLabel:
+            refreshedDossier.label ||
+            [refreshedDossier.patient.firstName, refreshedDossier.patient.lastName]
+              .filter(Boolean)
+              .join(' ')
+              .trim(),
+          apiUrl: process.env.NOCODB_API_URL?.replace(/\/$/, ''),
+          baseId: process.env.NOCODB_BASE_ID,
+          token: process.env.NOCODB_API_TOKEN,
+        });
+        if (stats.total > 0) {
+          console.log(
+            `[resync-legacy-names] beneficiaire ${patientId} : ${stats.total} ligne(s) re-synchronisée(s)`,
+          );
+        }
+      } catch (resyncErr) {
+        console.warn(
+          `[resync-legacy-names] échec pour ${patientId} :`,
+          resyncErr?.message || resyncErr,
+        );
+      }
     }
     res.json({
       success: true,
