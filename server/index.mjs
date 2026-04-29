@@ -2152,6 +2152,17 @@ const buildLocalAuthUserPayload = (member) => ({
   ergoLabel: member.ergoLabel || '',
   isActive: true,
   scopes: buildLocalAccessScopes(member),
+  // `profilePhotoUrl` exposé pour que `mergeRemoteUsers` côté Flutter
+  // (auth_service.dart) puisse persister la photo de chaque membre dans
+  // le SQLite local. Sans ça, un device qui n'a JAMAIS uploadé la
+  // photo de l'utilisateur courant (typiquement : on s'est inscrit
+  // sur l'iPad puis on se connecte sur macOS web) restait avec un
+  // `profile_photo_url` vide en local, et l'avatar du sidebar
+  // affichait les initiales au lieu de la photo. Bug signalé
+  // 2026-04-29 : « la photo de profil que j'ai mis à Coralie sur Ipad
+  // marche bien mais sur la version macOs même si je me login de
+  // nouveau la photo de profil n'apparait pas ».
+  profilePhotoUrl: member.profilePhotoUrl || '',
 });
 
 const resolveRequestedErgoLabel = async (appUser, requestedErgoLabel) => {
