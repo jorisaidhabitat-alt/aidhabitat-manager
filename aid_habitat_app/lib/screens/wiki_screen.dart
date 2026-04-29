@@ -380,17 +380,15 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 960, maxHeight: 680),
-        // `fit: StackFit.expand` (demande utilisateur 2026-04-29 :
-        // « titre, tag, description et enregistrer doivent être à la
-        // même hauteur que l'image »). Sans ce fit, le Stack se
-        // dimensionne sur la hauteur intrinsèque de son enfant Row, qui
-        // elle-même = max des hauteurs intrinsèques des deux Expanded
-        // (image vs. form). Résultat : selon le contenu, la colonne de
-        // droite était plus courte que l'image. Avec `expand`, le Stack
-        // remplit toute la maxHeight de la ConstrainedBox → Row +
-        // colonne de droite occupent les 680 pt, comme l'image.
+        // Pas de `StackFit.expand` (demande utilisateur 2026-04-29 v2 :
+        // « c'est la hauteur de la partie de droite qui doit réduire »
+        // — pas l'inverse). Sans ce fit, le Stack se dimensionne sur la
+        // hauteur intrinsèque de son enfant Row → la Row prend la
+        // hauteur naturelle du formulaire de droite (Column avec
+        // mainAxisSize.min ci-dessous), et l'image (Expanded gauche)
+        // s'aligne sur cette même hauteur côté Row. Résultat : popup
+        // compacte sans espace vide vertical.
         child: Stack(
-          fit: StackFit.expand,
           children: [
             Row(
               children: [
@@ -399,12 +397,21 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                   flex: 2,
                   child: Container(
                     color: const Color(0xFFF1F5F9),
+                    // BoxFit.cover (au lieu de contain) — demande
+                    // utilisateur 2026-04-29 : « aligne bien la hauteur
+                    // à l'image sans prendre en compte le blanc autour
+                    // (haut et bas de l'image) ». Avec contain, on
+                    // gardait des bandes slate-100 au-dessus/dessous
+                    // quand le ratio de l'image différait du conteneur.
+                    // Avec cover, l'image remplit toute la moitié
+                    // gauche → la hauteur visible = la hauteur du
+                    // formulaire de droite, sans blanc parasite.
                     child: (widget.item.imageUrl.isNotEmpty ||
                             widget.item.pendingImageDataUrl.isNotEmpty)
                         ? CachedRemoteImage(
                             url: resolveMediaUrl(widget.item.imageUrl),
                             pendingDataUrl: widget.item.pendingImageDataUrl,
-                            fit: BoxFit.contain,
+                            fit: BoxFit.cover,
                             errorWidget: const Center(
                               child: Icon(
                                 LucideIcons.image,
@@ -428,7 +435,15 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                   child: Container(
                     color: Colors.white,
                     padding: const EdgeInsets.all(28),
+                    // `mainAxisSize.min` → la Column shrink-wrap à la
+                    // hauteur naturelle de ses enfants, ce qui devient
+                    // la hauteur de la popup. L'Expanded sur le
+                    // TextField description est remplacé par une
+                    // hauteur fixe (180 pt) pour que la Column ait bien
+                    // une hauteur intrinsèque finie (sinon Expanded
+                    // dans une Column non-bornée → erreur layout).
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _FormLabel(text: 'Titre'),
@@ -485,7 +500,14 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                         const SizedBox(height: 20),
                         _FormLabel(text: 'Description'),
                         const SizedBox(height: 8),
-                        Expanded(
+                        // Hauteur fixe (au lieu d'Expanded) pour que la
+                        // Column ait une hauteur intrinsèque finie et
+                        // dicte la taille de la popup (cf. parent
+                        // Stack sans StackFit.expand). 180 pt = ~9
+                        // lignes de texte à 14/1.5, suffisant pour la
+                        // plupart des descriptions wiki.
+                        SizedBox(
+                          height: 180,
                           child: TextField(
                             controller: _descriptionController,
                             maxLines: null,
