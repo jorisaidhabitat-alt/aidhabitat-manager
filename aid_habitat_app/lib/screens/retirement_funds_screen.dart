@@ -609,6 +609,11 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
       backgroundColor: Colors.white,
       shape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      // Sans clipBehavior, le dégradé du header (Container plein) déborde
+      // en rectangle par-dessus les coins arrondis en haut. `antiAlias`
+      // applique la `shape` à TOUS les enfants → le header reprend la
+      // courbure des coins du bas (demande utilisateur 2026-04-29).
+      clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 960, maxHeight: 680),
         child: Column(
