@@ -436,45 +436,189 @@ class _PhotosTabState extends State<PhotosTab>
             ],
           ),
           const SizedBox(height: 12),
-          if (photos.isEmpty)
-            _buildEmptyState(tag)
-          else
-            _buildReorderableGrid(
-              tag: tag,
-              photos: photos,
-              maxSlots: maxSlots,
-            ),
-          const SizedBox(height: 10),
-          // Boutons capture / galerie — toujours présents même si la
-          // catégorie est pleine (l'ergo peut vouloir une 4e photo en
-          // surplus, marquée comme « non utilisée »).
-          Row(
-            children: [
-              Expanded(
-                child: _buildAddButton(
-                  icon: LucideIcons.camera,
-                  label: 'Prendre',
-                  onTap: () => _captureFromSource(
-                    categoryTag: tag,
-                    source: ImageSource.camera,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildAddButton(
-                  icon: LucideIcons.image,
-                  label: 'Galerie',
-                  onTap: () => _captureFromSource(
-                    categoryTag: tag,
-                    source: ImageSource.gallery,
-                  ),
-                ),
-              ),
-            ],
+          // Grille unifiée : photos existantes + emplacements gris
+          // vides jusqu'à maxSlots (capacité PDF). Chaque emplacement
+          // vide est un DragTarget (drop d'une photo d'une autre
+          // catégorie pour la re-tagger ici) ET tappable (ouvre la
+          // galerie pour ajouter une photo). Plus de boutons
+          // « Prendre / Galerie » dédiés — demande utilisateur
+          // 2026-04-28.
+          _buildSlotsGrid(
+            tag: tag,
+            photos: photos,
+            maxSlots: maxSlots,
           ),
         ],
       ),
+        );
+      },
+    );
+  }
+
+  /// Construit la grille des emplacements pour une catégorie : photos
+  /// existantes + slots gris vides (jusqu'à maxSlots). Le tap sur un
+  /// slot vide ouvre la galerie ; le drop sur un slot vide importe ou
+  /// re-tagge la photo dragguée.
+  Widget _buildSlotsGrid({
+    required String tag,
+    required List<DocItem> photos,
+    required int maxSlots,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 6.0;
+        final tileWidth = (constraints.maxWidth - 2 * spacing) / 3;
+        // Nombre total d'emplacements visibles : au moins maxSlots, et
+        // au moins le nombre de photos existantes (au cas où l'ergo a
+        // dépassé la capacité — mode « surplus »).
+        final totalSlots =
+            photos.length > maxSlots ? photos.length : maxSlots;
+        final children = <Widget>[];
+        for (var i = 0; i < totalSlots; i++) {
+          if (i < photos.length) {
+            // Slot occupé — tile photo existante.
+            children.add(SizedBox(
+              width: tileWidth,
+              child: _buildOccupiedSlot(
+                tag: tag,
+                photos: photos,
+                index: i,
+              ),
+            ));
+          } else {
+            // Slot vide — gris, tappable + DragTarget.
+            children.add(SizedBox(
+              width: tileWidth,
+              child: AspectRatio(
+                aspectRatio: 1.0,
+                child: _buildEmptySlot(tag: tag),
+              ),
+            ));
+          }
+        }
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: children,
+        );
+      },
+    );
+  }
+
+  /// Tile pour une photo existante — drag (LongPressDraggable) + drop
+  /// (DragTarget) côté tile. Reorder intra-catégorie ou re-tag inter.
+  /// Extrait depuis l'ancien `_buildReorderableGrid` (refactor pour
+  /// permettre l'affichage des slots vides à côté).
+  Widget _buildOccupiedSlot({
+    required String tag,
+    required List<DocItem> photos,
+    required int index,
+  }) {
+    final i = index;
+    return LayoutBuilder(builder: (context, constraints) {
+      final tileWidth = constraints.maxWidth;
+      return DragTarget<_DragPhotoPayload>(
+        onWillAcceptWithDetails: (details) {
+          return details.data.doc.id != photos[i].id;
+        },
+        onAcceptWithDetails: (details) async {
+          final payload = details.data;
+          if (payload.fromTag == tag) {
+            final fromIdx =
+                photos.indexWhere((d) => d.id == payload.doc.id);
+            if (fromIdx >= 0) {
+              await _reorderWithinCategory(
+                tag: tag,
+                fromIndex: fromIdx,
+                toIndex: i,
+              );
+            }
+          } else {
+            await _moveToCategory(
+              doc: payload.doc,
+              newTag: tag,
+            );
+          }
+        },
+        builder: (context, candidates, rejected) {
+          final hovering = candidates.isNotEmpty;
+          return LongPressDraggable<_DragPhotoPayload>(
+            data: _DragPhotoPayload(doc: photos[i], fromTag: tag),
+            delay: const Duration(milliseconds: 250),
+            feedback: Material(
+              color: Colors.transparent,
+              elevation: 12,
+              borderRadius: BorderRadius.circular(8),
+              clipBehavior: Clip.antiAlias,
+              child: Opacity(
+                opacity: 0.85,
+                child: SizedBox(
+                  width: tileWidth,
+                  child: _PhotoTile(
+                    key: ValueKey('photo_drag_${photos[i].id}'),
+                    doc: photos[i],
+                    onTap: () {},
+                    highlight: false,
+                  ),
+                ),
+              ),
+            ),
+            childWhenDragging: Opacity(
+              opacity: 0.3,
+              child: _PhotoTile(
+                key: ValueKey('photo_ghost_${photos[i].id}'),
+                doc: photos[i],
+                onTap: () {},
+                highlight: false,
+              ),
+            ),
+            child: _PhotoTile(
+              key: ValueKey('photo_${photos[i].id}'),
+              doc: photos[i],
+              onTap: () => _openFullscreenWithDelete(photos[i]),
+              highlight: hovering,
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  /// Slot vide : gris clair avec icône `+`. Tap → galerie. Drop → re-tag.
+  Widget _buildEmptySlot({required String tag}) {
+    return DragTarget<_DragPhotoPayload>(
+      onWillAcceptWithDetails: (details) => details.data.fromTag != tag,
+      onAcceptWithDetails: (details) async {
+        await _moveToCategory(doc: details.data.doc, newTag: tag);
+      },
+      builder: (context, candidates, rejected) {
+        final hovering = candidates.isNotEmpty;
+        return GestureDetector(
+          onTap: () => _captureFromSource(
+            categoryTag: tag,
+            source: ImageSource.gallery,
+          ),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            decoration: BoxDecoration(
+              color: hovering
+                  ? const Color(0xFFEDE8F5)
+                  : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: hovering
+                    ? _kPurple
+                    : const Color(0xFFCBD5E1),
+                width: hovering ? 2 : 1,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              LucideIcons.imagePlus,
+              size: 22,
+              color: hovering ? _kPurple : Colors.grey.shade400,
+            ),
+          ),
         );
       },
     );
@@ -523,170 +667,14 @@ class _PhotosTabState extends State<PhotosTab>
     );
   }
 
-  Widget _buildEmptyState(String tag) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-          style: BorderStyle.solid,
-        ),
-      ),
-      child: Column(
-        children: [
-          Icon(LucideIcons.imagePlus, size: 22, color: Colors.grey.shade400),
-          const SizedBox(height: 6),
-          Text(
-            'Aucune photo dans cette catégorie',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // _buildEmptyState supprimé : remplacé par les slots gris vides
+  // de _buildSlotsGrid (chaque slot tappable + DragTarget). Demande
+  // utilisateur 2026-04-28.
 
-  /// Layout horizontal des photos d'une catégorie. Chaque photo a une
-  /// taille FIXE = 1/3 de la largeur du container (peu importe le
-  /// nombre de photos affichées) : avec 1 photo elle occupe ~1/3, le
-  /// reste est vide ; avec 3 photos elles remplissent ; avec 4+ on
-  /// passe à la ligne suivante via Wrap. Demande user 2026-04-28 :
-  /// "ne change jamais la taille des images, met les toujours dans
-  /// un format petit comme s'il y'en avait 3".
-  ///
-  /// Drag-and-drop unifié, sans chrome visible :
-  ///
-  ///   - Chaque image est `LongPressDraggable<_DragPhotoPayload>` →
-  ///     drag déclenché par n'importe quel point de la card (pas de
-  ///     poignée dédiée).
-  ///   - Chaque image est aussi `DragTarget<_DragPhotoPayload>` → drop
-  ///     sur une autre image de la MÊME catégorie réordonne (insertion
-  ///     à l'index cible, les autres se décalent), drop sur une image
-  ///     d'une AUTRE catégorie déclenche `_moveToCategory` (re-tag).
-  ///   - Le `DragTarget` au niveau du container catégorie (cf.
-  ///     `_buildCategorySection`) capture les drops dans l'espace vide
-  ///     (entête / boutons / zone sans photo) → re-tag uniquement.
-  ///
-  /// Demande utilisateur 2026-04-28 :
-  ///   1. "supprime les trois petits points et le numéro de chaque
-  ///      card, laisse uniquement l'image sans container visible"
-  ///   2. "chaque image doit être prenable pour la déplacer dans sa
-  ///      catégorie ou dans une autre catégorie"
-  ///   3. "si je souhaite la supprimer, je peux cliquer sur l'image,
-  ///      la preview apparait avec en haut à droite un poubelle…"
-  Widget _buildReorderableGrid({
-    required String tag,
-    required List<DocItem> photos,
-    required int maxSlots,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 6.0;
-        // 3 tiles + 2 gaps = constraints.maxWidth → tile = (w - 2*gap) / 3.
-        final tileWidth = (constraints.maxWidth - 2 * spacing) / 3;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (var i = 0; i < photos.length; i++)
-              SizedBox(
-                width: tileWidth,
-                // DragTarget INTERNE : reçoit le drop sur cette tile.
-                // - même catégorie → reorder à l'index `i`
-                // - autre catégorie → re-tag via `_moveToCategory`
-                child: DragTarget<_DragPhotoPayload>(
-                  onWillAcceptWithDetails: (details) {
-                    // Refus du drop sur soi-même (même doc).
-                    return details.data.doc.id != photos[i].id;
-                  },
-                  onAcceptWithDetails: (details) async {
-                    final payload = details.data;
-                    if (payload.fromTag == tag) {
-                      // Reorder intra-catégorie. Index source via
-                      // lookup ID dans `photos` (l'index payload n'est
-                      // pas transporté pour rester robuste aux
-                      // refresh entre temps).
-                      final fromIdx = photos.indexWhere(
-                        (d) => d.id == payload.doc.id,
-                      );
-                      if (fromIdx >= 0) {
-                        await _reorderWithinCategory(
-                          tag: tag,
-                          fromIndex: fromIdx,
-                          toIndex: i,
-                        );
-                      }
-                    } else {
-                      // Cross-catégorie → re-tag (le order final dans
-                      // la nouvelle catégorie sera "à la fin", on
-                      // peut affiner plus tard si besoin).
-                      await _moveToCategory(
-                        doc: payload.doc,
-                        newTag: tag,
-                      );
-                    }
-                  },
-                  builder: (context, candidates, rejected) {
-                    final hovering = candidates.isNotEmpty;
-                    return LongPressDraggable<_DragPhotoPayload>(
-                      data: _DragPhotoPayload(
-                        doc: photos[i],
-                        fromTag: tag,
-                      ),
-                      delay: const Duration(milliseconds: 250),
-                      // Feedback visuel pendant le drag : un clone
-                      // semi-transparent de l'image flotte sous le
-                      // doigt avec une élévation prononcée.
-                      feedback: Material(
-                        color: Colors.transparent,
-                        elevation: 12,
-                        borderRadius: BorderRadius.circular(8),
-                        clipBehavior: Clip.antiAlias,
-                        child: Opacity(
-                          opacity: 0.85,
-                          child: SizedBox(
-                            width: tileWidth,
-                            child: _PhotoTile(
-                              key: ValueKey('photo_drag_${photos[i].id}'),
-                              doc: photos[i],
-                              onTap: () {},
-                              highlight: false,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Ghost à la place d'origine pendant le drag
-                      // (semi-transparence sans déplacement, pour
-                      // garder le slot "réservé" visuellement).
-                      childWhenDragging: Opacity(
-                        opacity: 0.3,
-                        child: _PhotoTile(
-                          key: ValueKey('photo_ghost_${photos[i].id}'),
-                          doc: photos[i],
-                          onTap: () {},
-                          highlight: false,
-                        ),
-                      ),
-                      child: _PhotoTile(
-                        key: ValueKey('photo_${photos[i].id}'),
-                        doc: photos[i],
-                        onTap: () => _openFullscreenWithDelete(photos[i]),
-                        highlight: hovering,
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
+  // _buildReorderableGrid retiré : la grille unifiée
+  // `_buildSlotsGrid` (photos + slots vides) le remplace. La logique
+  // par-tile a été extraite dans `_buildOccupiedSlot`. Demande
+  // utilisateur 2026-04-28.
 
   /// Ouvre la preview plein écran pour une photo en passant le
   /// callback de suppression — le bouton poubelle dans la dialog
@@ -705,38 +693,9 @@ class _PhotosTabState extends State<PhotosTab>
     );
   }
 
-  Widget _buildAddButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: _isImporting ? null : onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
-        decoration: BoxDecoration(
-          color: _isImporting ? const Color(0xFFF1F5F9) : _kPurpleLight,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: _kPurple),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: _kPurple,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // _buildAddButton retiré : les boutons « Prendre / Galerie » ont
+  // été supprimés au profit du tap sur les slots vides gris (cf.
+  // `_buildEmptySlot`). Demande utilisateur 2026-04-28.
 }
 
 // ---------------------------------------------------------------------------
