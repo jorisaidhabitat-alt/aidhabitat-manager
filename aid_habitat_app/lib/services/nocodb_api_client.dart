@@ -631,11 +631,23 @@ class NocodbApiClient {
 
     final totalChunks = (bytes.length + _kChunkSizeBytes - 1) ~/ _kChunkSizeBytes;
 
-    // 1) Upload séquentiel des chunks. Séquentiel (pas parallèle) pour
-    //    rester gentil avec le serveur Vercel et éviter de surcharger
-    //    NocoDB Blob storage. Pour ~5 chunks de 1MB, c'est ~5×1.5s = 7.5s
-    //    total — tolérable.
-    for (var i = 0; i < totalChunks; i += 1) {
+    // 1) Upload PARALLÈLE des chunks. Chaque chunk est une requête
+    //    indépendante côté serveur (juste un blob put), donc on peut
+    //    les firer ensemble pour ramener le temps total à ~1 latence
+    //    réseau (vs N latences en séquentiel).
+    //
+    //    Avant : `for` séquentiel → ~5 × 1.5s = 7.5s pour un PDF de 5 MB,
+    //    voire 30s+ pour des photos visite multi-MB. Combiné avec le
+    //    finalize (qui pousse les 5 MB vers NocoDB) on dépassait les
+    //    60s du Vercel Hobby → timeout → retry → 3 min totales.
+    //    Demande utilisateur 2026-04-29 : « la génération de mon document
+    //    met plus de 3 minutes, c'est normal ? ».
+    //
+    //    Limit de concurrence : on laisse tout en parallèle sans cap.
+    //    Pour un PDF de 10 MB → 5 requêtes simultanées, dans les marges
+    //    de Vercel. Si on observe des 429 plus tard, on bornera avec
+    //    un Pool/Semaphore.
+    Future<void> uploadChunk(int i) async {
       final start = i * _kChunkSizeBytes;
       final end = (start + _kChunkSizeBytes < bytes.length)
           ? start + _kChunkSizeBytes
@@ -685,6 +697,10 @@ class NocodbApiClient {
         );
       }
     }
+
+    await Future.wait(
+      [for (var i = 0; i < totalChunks; i += 1) uploadChunk(i)],
+    );
 
     // 2) Finalize — assemble + push NocoDB. C'est CETTE requête qui
     //    peut être longue (pousse les ~5 MB en NocoDB), mais comme on

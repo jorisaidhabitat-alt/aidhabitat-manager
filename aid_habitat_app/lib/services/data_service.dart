@@ -303,6 +303,22 @@ class DataService {
     return _documentRepository.fetchDocuments(patientId);
   }
 
+  /// Réhabilite les `upload_file` ops `failed` (cf. doc dans
+  /// `SyncRepository.rehabFailedDocumentUploads`). Exposé publiquement
+  /// pour permettre à `_generateReport` d'auto-débloquer une vieille
+  /// op échouée AVANT le runSync — sans ça la nouvelle génération
+  /// retombait en `_enqueueReportForLater` à cause d'une vieille op
+  /// stuck (typiquement le 403 finalize transient signalé 2026-04-29).
+  Future<int> rehabFailedDocumentUploads() async {
+    try {
+      final n = await _syncRepository.rehabFailedDocumentUploads();
+      if (n > 0) SyncEngine().notify();
+      return n;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<bool> refreshDocumentsFromRemote(String patientId) async {
     // 1. Auto-débloquage : avant tout fetch, on réhabilite les
     //    `upload_file` ops bloquées en `failed` → le SyncEngine va

@@ -2221,6 +2221,27 @@ const resolveBeneficiaryAccess = async (appUser, patientId) => {
 
   const dossierRecord = latestByFieldValue(dossiers, 'beneficiaires_id', beneficiaryRecord.id);
   if (dossierRecord && !canAccessDossierRecord(appUser, dossierRecord)) {
+    // Avant de rejeter en 403, on retente avec un refresh FORCÉ du
+    // memberRegistry. Le cache (TTL ~30s) peut avoir une version stale
+    // du `ergoLabel` quelques secondes après un login ou un changement
+    // de rôle côté NocoDB → 1er finalize en 403, retry réussit.
+    // Demande utilisateur 2026-04-29 : « la génération de mon document
+    // met plus de 3 minutes, j'ai eu ce problème puis la generation a
+    // été validée » — ce ré-essai côté serveur évite le dialog
+    // "Opération en échec" cosmétique.
+    try {
+      const { members } = await loadMemberRegistry({ forceRefresh: true });
+      const refreshed = members.find((m) => m.email === appUser?.email);
+      if (refreshed) {
+        const refreshedAppUser = { ...appUser, ergoLabel: refreshed.ergoLabel };
+        if (canAccessDossierRecord(refreshedAppUser, dossierRecord)) {
+          // Refresh du cache a résolu le mismatch — on laisse passer.
+          return { beneficiaryRecord, dossierRecord };
+        }
+      }
+    } catch (_) {
+      // Refresh échoué : on tombe sur le 403 d'origine.
+    }
     throw httpError(403, 'Accès interdit à ce bénéficiaire');
   }
 
