@@ -18,6 +18,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:http/http.dart' as http;
 
+import '../components/beneficiary_badges.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
@@ -1036,47 +1037,22 @@ class _DocumentsScreenState extends State<DocumentsScreen>
           }
         },
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          // Marges alignées sur le relevé de visite (`all(24)`) au lieu
+          // de `fromLTRB(24, 16, 24, 24)`. Demande utilisateur 2026-04-29 :
+          // l'écran Documents doit avoir le même cadre / la même entête
+          // que la VAD pour garder la sensation d'être dans le même
+          // dossier en passant de l'un à l'autre.
+          padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Bandeau : hauteur fixe égale à celle de la toolbar violette
-              // (48 px) — comme ça la grille ne bouge pas d'un pixel quand
-              // on entre/quitte le mode sélection.
-              SizedBox(
-                height: 48,
-                child: Row(
-                  children: [
-                    InkWell(
-                      onTap: widget.onBack,
-                      borderRadius: BorderRadius.circular(50),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Icon(
-                          LucideIcons.arrowLeft,
-                          size: 20,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      "${widget.dossier.patient.lastName.toUpperCase()} ${widget.dossier.patient.firstName}",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (_isSelectionMode) ...[
-                      const SizedBox(width: 16),
-                      Expanded(child: _buildSelectionToolbar()),
-                    ] else
-                      const Spacer(),
-                  ],
-                ),
-              ),
+              // Header bénéficiaire — pattern repris de
+              // `VisitReportScreen` : back button rond + NOM Prénom +
+              // badges (type d'accompagnement, catégorie de revenu) +
+              // pin localisation + adresse complète. Quand on bascule
+              // en mode sélection, on remplace badges+pin+adresse par
+              // la toolbar (le slot back+nom reste).
+              _buildPatientHeader(),
               const SizedBox(height: 16),
               Expanded(
                 child: _isLoading
@@ -1086,6 +1062,128 @@ class _DocumentsScreenState extends State<DocumentsScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Bouton retour rond — copie du `_buildBackButton` du
+  /// `VisitReportScreen` pour que l'aspect visuel soit identique
+  /// (cercle blanc 48 px, icône arrowLeft).
+  Widget _buildBackButton() {
+    return InkWell(
+      onTap: widget.onBack,
+      borderRadius: BorderRadius.circular(50),
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          LucideIcons.arrowLeft,
+          color: Colors.black87,
+        ),
+      ),
+    );
+  }
+
+  /// Entête bénéficiaire — pattern aligné sur `VisitReportScreen`
+  /// (demande utilisateur 2026-04-29 : « Pour la page documents fait
+  /// pareil que pour la VAD »). Affiche :
+  ///
+  ///   [retour]  NOM Prénom  [type accompagnement]  [revenu]  📍 adresse
+  ///
+  /// Quand on entre en mode sélection, badges + pin + adresse sont
+  /// remplacés par la toolbar (téléchargement / suppression / etc.).
+  /// Le slot back + nom reste pour ne pas désorienter l'ergo.
+  Widget _buildPatientHeader() {
+    final patient = widget.dossier.patient;
+    // Adresse complète sur 1 ligne — mêmes règles de formatage que
+    // VisitReportScreen pour la cohérence visuelle entre les 2 écrans.
+    final addressLine = [
+      patient.address.trim(),
+      [patient.zipCode.trim(), patient.city.trim()]
+          .where((s) => s.isNotEmpty)
+          .join(' '),
+    ].where((s) => s.isNotEmpty).join(' · ');
+    final accompanimentLabel =
+        formatAccompanimentType(widget.dossier.natureAccompagnement).trim();
+    final incomeLabel = patient.incomeCategory.trim();
+
+    return SizedBox(
+      // Hauteur fixe = 48 px (taille de la toolbar de sélection) pour
+      // que la grille en dessous ne bouge pas d'un pixel quand on
+      // entre/quitte le mode sélection.
+      height: 48,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _buildBackButton(),
+          const SizedBox(width: 16),
+          // Bloc nom + (badges + adresse) ou (toolbar de sélection).
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 380),
+                  child: Text(
+                    '${patient.lastName.toUpperCase()} ${patient.firstName}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                  ),
+                ),
+                if (_isSelectionMode) ...[
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildSelectionToolbar()),
+                ] else ...[
+                  if (accompanimentLabel.isNotEmpty) ...[
+                    const SizedBox(width: 10),
+                    AccompanimentBadge(
+                      value: accompanimentLabel,
+                      large: true,
+                    ),
+                  ],
+                  if (incomeLabel.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    IncomeCategoryBadge(
+                      value: incomeLabel,
+                      large: true,
+                    ),
+                  ],
+                  if (addressLine.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    const Icon(
+                      LucideIcons.mapPin,
+                      size: 18,
+                      color: Color(0xFF64748B),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        addressLine,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                      ),
+                    ),
+                  ] else
+                    const Spacer(),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

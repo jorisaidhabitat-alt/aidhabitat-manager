@@ -77,9 +77,13 @@ for (const d of sorted) {
   const name = sv(d.nom_fichier) || sv(d.titre) || '(sans nom)';
   console.log(
     `  • ${name.padEnd(50)} ` +
-    `${sv(d.mime_type).padEnd(28)} ` +
+    `tags=${sv(d.tags_json).padEnd(40)} ` +
+    `mime=${sv(d.mime_type).padEnd(20)} ` +
     `${sv(d.updated_at).slice(0, 19)} ` +
     `uuid=${sv(d.uuid_source).slice(0, 13)}…`,
+  );
+  console.log(
+    `    titre="${sv(d.titre)}"  client_id=${sv(d.client_document_id).slice(0, 13)}`,
   );
 }
 
