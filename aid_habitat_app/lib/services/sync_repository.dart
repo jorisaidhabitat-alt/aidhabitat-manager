@@ -13,8 +13,29 @@ class SyncRepository {
     final db = await _database.database;
     // Exclude 'conflict' and 'completed' operations — conflicts require manual
     // resolution and completed operations are done.
+    //
+    // ⚠️ On EXCLUT `payload_json` du SELECT initial pour éviter les
+    // OOM (out-of-memory) sur iPad. Quand l'utilisateur a accumulé
+    // plusieurs ops `upload_file` stuck (chacune avec un dataUrl base64
+    // de plusieurs MB dans payload_json), un SELECT * chargeait tout
+    // en RAM → SqliteException(7) : out of memory. Reporté
+    // 2026-04-29 : « SqfliteFfiException(sqlite_error: 7, out of
+    // memory) … SELECT * FROM sync_operations WHERE status IN (?, ?) ».
+    // payload_json est lu lazily PAR OP via `fetchPayloadJson` quand
+    // `_processOperation` le réclame.
     final rows = await db.query(
       'sync_operations',
+      columns: const [
+        'id',
+        'entity_type',
+        'entity_local_id',
+        'operation_type',
+        'status',
+        'attempt_count',
+        'last_error',
+        'created_at',
+        'updated_at',
+      ],
       where: 'status IN (?, ?)',
       whereArgs: [
         SyncOperationStatus.pending.name,
@@ -24,7 +45,7 @@ class SyncRepository {
     );
 
     final now = DateTime.now();
-    final out = <SyncOperation>[];
+    final eligibleRows = <Map<String, Object?>>[];
     for (final row in rows) {
       final attempts = row['attempt_count'] as int? ?? 0;
       final updatedAt = DateTime.tryParse(row['updated_at'] as String? ?? '');
@@ -38,14 +59,32 @@ class SyncRepository {
           continue;
         }
       }
+      eligibleRows.add(row);
+    }
+
+    // Lit le `payload_json` UN PAR UN pour les ops éligibles → max 1
+    // payload en RAM à la fois côté ce loader (le sync engine va de
+    // toute façon les itérer en série après).
+    final out = <SyncOperation>[];
+    for (final row in eligibleRows) {
+      final id = row['id'] as String;
+      final payloadRows = await db.query(
+        'sync_operations',
+        columns: const ['payload_json'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (payloadRows.isEmpty) continue;
       out.add(SyncOperation(
-        id: row['id'] as String,
+        id: id,
         entityType: row['entity_type'] as String,
         entityLocalId: row['entity_local_id'] as String,
         operationType: row['operation_type'] as String,
-        payloadJson: row['payload_json'] as String,
-        status: SyncOperationStatus.values.byName(row['status'] as String),
-        attemptCount: attempts,
+        payloadJson: payloadRows.first['payload_json'] as String,
+        status:
+            SyncOperationStatus.values.byName(row['status'] as String),
+        attemptCount: row['attempt_count'] as int? ?? 0,
         lastError: row['last_error'] as String?,
         createdAt: DateTime.parse(row['created_at'] as String),
         updatedAt: DateTime.parse(row['updated_at'] as String),
@@ -509,7 +548,7 @@ class SyncRepository {
   }) async {
     final db = await _database.database;
     final cutoff = DateTime.now().subtract(maxRunningAge).toIso8601String();
-    return db.delete(
+    final n1 = await db.delete(
       'sync_operations',
       where: '''
         status = ?
@@ -521,6 +560,38 @@ class SyncRepository {
         cutoff,
       ],
     );
+
+    // Purge d'URGENCE des ops dont le `payload_json` est énorme (>500KB,
+    // typiquement un dataUrl base64 d'un fichier de plusieurs MB) ET
+    // qui ont déjà raté ≥ 3 fois. Ces ops sont la cause des OOM
+    // (out-of-memory) sur SQLite reportés 2026-04-29 :
+    //   « SqfliteFfiException(sqlite_error: 7, out of memory)
+    //    while selecting from sync_operations ».
+    //
+    // Une op bloated qui a échoué 3+ fois est presque certainement
+    // doomed (limite serveur, erreur permanente). On la drop pour
+    // libérer la RAM. L'utilisateur peut re-uploader si besoin via l'UI.
+    //
+    // Note : les ops avec petit payload_json restent en place quelle
+    // que soit leur attempt_count (le rehab les retentera).
+    final n2 = await db.rawDelete(
+      'DELETE FROM sync_operations WHERE '
+      'status IN (?, ?) AND '
+      'attempt_count >= 3 AND '
+      'length(payload_json) > 500000',
+      [
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.failed.name,
+      ],
+    );
+    if (n2 > 0) {
+      // ignore: avoid_print
+      print(
+        '[sync] purge URGENCE OOM : $n2 op(s) avec payload >500KB et '
+        'attempt_count ≥ 3 supprimée(s) → libère la RAM',
+      );
+    }
+    return n1 + n2;
   }
 
   Future<void> setEntitySyncState({
