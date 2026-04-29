@@ -34,7 +34,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const TEMPLATE_PATH = path.resolve(
+const DEFAULT_TEMPLATE_PATH = path.resolve(
   __dirname,
   '../templates/visitReport.template.pdf',
 );
@@ -42,6 +42,65 @@ const MAPPING_PATH = path.resolve(
   __dirname,
   '../templates/visitReport.mapping.json',
 );
+
+/**
+ * Mapping ergothérapeute → chemin du PDF template dédié. La clé est
+ * normalisée (lowercase + sans diacritiques) sur le prénom de l'ergo
+ * dans NocoDB. Les ergos sans entrée explicite tombent sur
+ * `DEFAULT_TEMPLATE_PATH` (Christelle = template historique).
+ *
+ * Convention de nommage : `visitReport.<prénom>.pdf` dans
+ * `server/templates/`. Pour ajouter un ergo, drop le fichier + ajouter
+ * une ligne ici.
+ */
+const ERGO_TEMPLATE_MAP = {
+  // 'christelle' utilise le template par défaut (pas besoin d'entrée)
+  coralie: path.resolve(
+    __dirname,
+    '../templates/visitReport.coralie.pdf',
+  ),
+};
+
+/**
+ * Normalise une chaîne pour le lookup `ERGO_TEMPLATE_MAP` : lowercase,
+ * retire les diacritiques (accents), trim. Tolère les variantes
+ * d'encoding NFC/NFD et les casses incohérentes côté NocoDB.
+ */
+function normalizeErgoKey(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim();
+}
+
+/**
+ * Résout le PDF template à utiliser pour un dossier donné, en se
+ * basant sur le prénom de l'ergothérapeute (`dossier.ergo.firstName`
+ * ou alias). Fallback sur `DEFAULT_TEMPLATE_PATH` si :
+ *   - dossier.ergo absent
+ *   - prénom non mappé dans `ERGO_TEMPLATE_MAP`
+ *
+ * Cette résolution se fait à chaque appel (pas cachée par dossier)
+ * pour rester réactive aux changements d'attribution d'ergo.
+ */
+function resolveTemplatePath(dossier) {
+  const ergo = dossier?.ergo;
+  if (!ergo) return DEFAULT_TEMPLATE_PATH;
+  const candidates = [
+    ergo.firstName,
+    ergo.prenom,
+    ergo.name,
+    ergo.label,
+  ];
+  for (const candidate of candidates) {
+    const key = normalizeErgoKey(candidate);
+    if (key && ERGO_TEMPLATE_MAP[key]) {
+      return ERGO_TEMPLATE_MAP[key];
+    }
+  }
+  return DEFAULT_TEMPLATE_PATH;
+}
 
 // ---------------------------------------------------------------------------
 // Adresse Aid'Habitat — utilisée à 2 endroits dans le rapport :
@@ -60,51 +119,43 @@ const MAPPING_PATH = path.resolve(
 // `mask.y` si la mise en page bouge à un futur ré-export Affinity.
 // ---------------------------------------------------------------------------
 
+/// Coordonnées de l'ergothérapeute injectées dans les champs AcroForm
+/// du template (page 3, champ `adresse` notamment). `page3OneLine`
+/// reste exposé via `view.constants.ergoAddressOneLine` pour le mapping
+/// JSON.
+///
+/// Note : le bloc page 1 (overlay peach + redessin du texte adresse)
+/// a été supprimé en avril 2026 — l'adresse est désormais correcte
+/// directement dans le PDF source Affinity Publisher (les 2 templates
+/// Christelle + Coralie partagent la même adresse Aid'Habitat). Plus
+/// besoin de patch côté pdf-lib.
 const ERGO_CONTACT = {
   page3OneLine: '16 rue Léo Lagrange, 35131 Chartres-de-Bretagne',
-  page1: {
-    addressLine1: '16 rue Léo Lagrange',
-    addressLine2: '35131 Chartres-de-Bretagne',
-    // Police Affinity du bloc = SegoeUI 12pt noir (lu via la DA des
-    // champs voisins). pdf-lib fallback sur Helvetica 12pt sans
-    // fontkit — la différence de rendu reste minime à cette taille.
-    fontSize: 12,
-    color: rgb(0, 0, 0), // noir, demande utilisateur
-    // Baselines : itérations user → 100/80 (trop bas), 115/95, 110/90,
-    // 105/85 (toujours trop hauts). À +2pt → y=102/82.
-    line1: { x: 47, y: 102 },
-    line2: { x: 47, y: 82 },
-    // Rectangle de masquage — strictement dimensionné autour des 2
-    // lignes de texte (Helvetica 12pt : baseline + ~8pt en haut +
-    // ~3pt descender en bas). Un masque trop grand débordait sur la
-    // ligne « Aid'Habitat » au-dessus ou sur le téléphone en dessous
-    // (demande utilisateur). Calcul :
-    //   - bottom : line2.y - 4 = 78
-    //   - top    : line1.y + 9 = 111
-    //   - height : 33
-    mask: { x: 44, y: 78, width: 184, height: 33 },
-    maskColor: rgb(244 / 255, 219 / 255, 196 / 255), // #F4DBC4
-  },
 };
 
-let cachedTemplate = null;
+/// Cache mémoire des bytes de PDF templates, keyed par chemin absolu.
+/// Chaque template fait ~2,7 Mo — on évite la relecture disque à chaque
+/// génération. Cache invalidé au redémarrage du process Node (=
+/// nouveau deploy Vercel), donc pas besoin de TTL explicite.
+const templateBytesCache = new Map();
 let cachedMapping = null;
 
 /**
- * Charge le template PDF + le mapping JSON une seule fois (cache mémoire).
- * Le template fait ~2,7 Mo, on évite de le relire du disque à chaque génération.
+ * Charge le template PDF (par chemin) + le mapping JSON. Le mapping
+ * est partagé entre tous les templates (même structure AcroForm).
  */
-async function loadTemplate() {
-  if (cachedTemplate && cachedMapping) {
-    return { templateBytes: cachedTemplate, mapping: cachedMapping };
+async function loadTemplate(templatePath = DEFAULT_TEMPLATE_PATH) {
+  if (!templateBytesCache.has(templatePath)) {
+    templateBytesCache.set(templatePath, await fs.readFile(templatePath));
   }
-  const [templateBytes, mappingRaw] = await Promise.all([
-    fs.readFile(TEMPLATE_PATH),
-    fs.readFile(MAPPING_PATH, 'utf8'),
-  ]);
-  cachedTemplate = templateBytes;
-  cachedMapping = JSON.parse(mappingRaw);
-  return { templateBytes: cachedTemplate, mapping: cachedMapping };
+  if (!cachedMapping) {
+    const mappingRaw = await fs.readFile(MAPPING_PATH, 'utf8');
+    cachedMapping = JSON.parse(mappingRaw);
+  }
+  return {
+    templateBytes: templateBytesCache.get(templatePath),
+    mapping: cachedMapping,
+  };
 }
 
 /**
@@ -1288,40 +1339,10 @@ function findPageIndexForField(pdfDoc, field) {
  * Echec gracieux : si la page 1 manque ou si le redraw échoue,
  * on log et on continue — le PDF aura juste l'ancienne adresse.
  */
-async function applyErgoContactOverlay(pdfDoc) {
-  try {
-    const page = pdfDoc.getPage(0);
-    const cfg = ERGO_CONTACT.page1;
-    // 1) Masquage : rectangle de la couleur du bandeau (pêche) pour
-    // que la zone se fonde dans le fond Affinity sans liseré blanc
-    // visible.
-    page.drawRectangle({
-      x: cfg.mask.x,
-      y: cfg.mask.y,
-      width: cfg.mask.width,
-      height: cfg.mask.height,
-      color: cfg.maskColor,
-    });
-    // 2) Redraw : 2 lignes de texte avec Helvetica embedded.
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    page.drawText(sanitizeForPdfFont(cfg.addressLine1), {
-      x: cfg.line1.x,
-      y: cfg.line1.y,
-      size: cfg.fontSize,
-      font,
-      color: cfg.color,
-    });
-    page.drawText(sanitizeForPdfFont(cfg.addressLine2), {
-      x: cfg.line2.x,
-      y: cfg.line2.y,
-      size: cfg.fontSize,
-      font,
-      color: cfg.color,
-    });
-  } catch (error) {
-    console.warn('[generateVisitReport] applyErgoContactOverlay :', error?.message || error);
-  }
-}
+// applyErgoContactOverlay supprimé en avril 2026 : l'adresse page 1
+// est désormais baked directement dans le PDF source Affinity (au lieu
+// d'être patchée par-dessus avec un rectangle peach + redraw texte).
+// Cf. commentaire sur ERGO_CONTACT plus haut.
 
 /**
  * Aligne la couleur du champ AcroForm `adresse` (page 3) sur celle
@@ -1406,7 +1427,11 @@ export async function generateVisitReport({
   fetchImageBytes,
   flatten = true,
 }) {
-  const { templateBytes, mapping } = await loadTemplate();
+  // Résolution du template PDF en fonction de l'ergothérapeute du
+  // dossier (cf. ERGO_TEMPLATE_MAP). Les ergos sans entrée explicite
+  // tombent sur DEFAULT_TEMPLATE_PATH (Christelle).
+  const templatePath = resolveTemplatePath(dossier);
+  const { templateBytes, mapping } = await loadTemplate(templatePath);
   const view = buildViewModel({
     dossier,
     sanitaires,
@@ -1738,11 +1763,10 @@ export async function generateVisitReport({
     descriptifPageIdx = findPageIndexForField(pdfDoc, descriptifAnchor);
   }
 
-  // Override de l'adresse Aid'Habitat sur la couverture (texte
-  // hardcodé dans le PDF — pas un champ de formulaire).
-  await applyErgoContactOverlay(pdfDoc);
-  // Et alignement de la couleur du champ adresse page 3 sur les
-  // champs voisins (compensation Helvetica vs SegoeUI).
+  // (Plus d'overlay page 1 — l'adresse est désormais correcte dans
+  // le PDF source Affinity directement, plus besoin de patcher.)
+  // Alignement de la couleur du champ adresse page 3 sur les champs
+  // voisins (compensation Helvetica vs SegoeUI).
   applyAdresseFieldColorTweak(form);
   // Et bump de la taille de police du bloc « Le Logement » (page 5)
   // de ~10 pt à 12 pt pour s'aligner sur le reste du rapport.
