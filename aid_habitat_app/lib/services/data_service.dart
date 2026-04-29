@@ -172,12 +172,31 @@ class DataService {
     return _retirementFundsRepository.fetchAllFunds();
   }
 
-  /// Returns the list of retirement-fund names to populate the beneficiary
-  /// tab picker. Derived from the local `retirement_funds` cache so it
-  /// works offline — upstream, the server exposes the same table under
-  /// `/api/retirement-funds-principal`, so there is no divergence.
+  /// Liste des noms de **caisses principales** pour le dropdown
+  /// « Caisse princ. » de l'onglet Bénéficiaire > Admin.
+  ///
+  /// Source NocoDB : table `caisses_de_retraite` (principales),
+  /// distincte de `caisses_de_retraite_complementaires`. On passe par
+  /// l'endpoint serveur `/api/retirement-funds-principal` qui lit la
+  /// bonne table — pas le repository local `retirement_funds` qui ne
+  /// cache QUE les complémentaires (cf. `/api/retirement-funds`).
+  ///
+  /// Bug avant 2026-04-28 : ce getter renvoyait
+  /// `_retirementFundsRepository.fetchAllNames()`, soit la liste des
+  /// **complémentaires** par méprise — du coup le dropdown « Caisse
+  /// princ. » et le dropdown « Caisse complém. » proposaient les
+  /// mêmes options.
+  ///
+  /// Pas de cache local pour l'instant (pas de table SQLite dédiée
+  /// aux principales). Si l'app est offline, on retombe sur une
+  /// liste vide — l'ergo verra le dropdown « Sélectionner... » sans
+  /// choix tant que le réseau ne revient pas.
   Future<List<String>> fetchPrincipalRetirementFundNames() async {
-    return _retirementFundsRepository.fetchAllNames();
+    try {
+      return await _nocodbApiClient.fetchPrincipalRetirementFundNames();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<bool> refreshRetirementFundsFromRemote() async {
