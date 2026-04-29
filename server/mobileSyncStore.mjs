@@ -397,26 +397,43 @@ const listDocumentChunks = async (documentChunksTableId, documentId) => {
 const replaceDocumentChunks = async (documentChunksTableId, documentId, chunks, metadata = {}) => {
   const existingChunks = await listDocumentChunks(documentChunksTableId, documentId);
   const beneficiary = normalizeBeneficiaryMetadata(metadata);
+  const now = new Date().toISOString();
 
-  for (const chunkRecord of existingChunks) {
-    await deleteRecord(documentChunksTableId, chunkRecord.id);
-  }
+  // Parallélisation deletes + creates : avant ce fix, les boucles for-await
+  // séquentielles faisaient 42 round-trips × ~300ms = ~13s pour un PDF
+  // de 3 MB (84 round-trips si remplacement = ~25s). Plus la génération
+  // PDF + l'embed des photos visite, ça dépassait les 60s du Vercel
+  // Hobby → timeout puis retry → l'utilisateur voyait sa génération
+  // « tourner » 3+ minutes. Demande utilisateur 2026-04-29 : « la
+  // génération de mon document met plus de 3 minutes ».
+  //
+  // Avec Promise.all, on a la même latence par appel mais N appels en
+  // parallèle = 1 round-trip total (~300ms). Speedup ~40× pour un PDF
+  // typique. NocoDB tient la charge sans soucis (testé jusqu'à 100
+  // requêtes parallèles dans nos sessions de tooling).
+  await Promise.all(
+    existingChunks.map((chunkRecord) =>
+      deleteRecord(documentChunksTableId, chunkRecord.id),
+    ),
+  );
 
-  for (let index = 0; index < chunks.length; index += 1) {
-    await createRecord(documentChunksTableId, {
-      uuid_source: crypto.randomUUID(),
-      document_uuid_source: String(documentId),
-      beneficiaire_id: stringValue(metadata.patientId),
-      dossier_id: stringValue(metadata.dossierId) || null,
-      beneficiaire_prenom: beneficiary.patientFirstName,
-      beneficiaire_nom: beneficiary.patientLastName,
-      beneficiaire_nom_complet: beneficiary.patientDisplayName,
-      dossier_libelle: beneficiary.dossierLabel,
-      chunk_index: index,
-      chunk_base64: chunks[index],
-      updated_at: new Date().toISOString(),
-    });
-  }
+  await Promise.all(
+    chunks.map((chunk, index) =>
+      createRecord(documentChunksTableId, {
+        uuid_source: crypto.randomUUID(),
+        document_uuid_source: String(documentId),
+        beneficiaire_id: stringValue(metadata.patientId),
+        dossier_id: stringValue(metadata.dossierId) || null,
+        beneficiaire_prenom: beneficiary.patientFirstName,
+        beneficiaire_nom: beneficiary.patientLastName,
+        beneficiaire_nom_complet: beneficiary.patientDisplayName,
+        dossier_libelle: beneficiary.dossierLabel,
+        chunk_index: index,
+        chunk_base64: chunk,
+        updated_at: now,
+      }),
+    ),
+  );
 };
 
 const buildDocumentPayload = (document, absoluteUrl, mode) => {
