@@ -40,6 +40,13 @@ class TwoThresholdSwipe extends StatefulWidget {
   /// Doit être > [lightMaxRatio] pour laisser une zone morte.
   final double wideMinRatio;
 
+  /// Vitesse minimale (px/s) au-delà de laquelle un swipe est traité
+  /// comme « large » même s'il n'a pas atteint [wideMinRatio] en
+  /// distance. Permet de déclencher un changement de sous-section
+  /// d'un flick rapide sans devoir traîner le doigt sur 30 % de la
+  /// largeur. ~600 px/s = un coup de pouce franc mais pas violent.
+  final double wideVelocityFallback;
+
   const TwoThresholdSwipe({
     super.key,
     required this.child,
@@ -47,9 +54,17 @@ class TwoThresholdSwipe extends StatefulWidget {
     this.onLightSwipeRight,
     this.onWideSwipeLeft,
     this.onWideSwipeRight,
+    // Seuils assouplis 2026-04-28 (« le slide entre les sous sections
+    // demande trop d'effort ») :
+    //   - Swipe léger : 5 → 18 % de la largeur (occupant)
+    //   - Zone morte  : 18 → 30 %
+    //   - Swipe large : ≥ 30 % de la largeur OU ≥ 600 px/s en vélocité
+    //     (sous-section / niveau)
+    // Avant : light max 35 %, wide min 55 % → trop demandant.
     this.lightMinRatio = 0.05,
-    this.lightMaxRatio = 0.35,
-    this.wideMinRatio = 0.55,
+    this.lightMaxRatio = 0.18,
+    this.wideMinRatio = 0.30,
+    this.wideVelocityFallback = 600,
   })  : assert(lightMinRatio < lightMaxRatio),
         assert(lightMaxRatio < wideMinRatio);
 
@@ -99,9 +114,19 @@ class _TwoThresholdSwipeState extends State<TwoThresholdSwipe> {
             if (ratio < widget.lightMinRatio) return;
 
             final goingLeft = delta < 0;
+            final velocity = (details.primaryVelocity ?? 0).abs();
+            final velocityQualifiesAsWide =
+                velocity >= widget.wideVelocityFallback;
 
-            // Swipe LARGE prioritaire si activé.
-            if (_hasWide && ratio >= widget.wideMinRatio) {
+            // Swipe LARGE prioritaire si activé. Trigger sur :
+            //   - distance ≥ wideMinRatio (30 %), OU
+            //   - flick rapide (vélocité ≥ wideVelocityFallback) ET
+            //     distance déjà ≥ lightMaxRatio (sinon un simple tap
+            //     glissé pourrait passer la barre).
+            if (_hasWide &&
+                (ratio >= widget.wideMinRatio ||
+                    (velocityQualifiesAsWide &&
+                        ratio >= widget.lightMaxRatio))) {
               if (goingLeft) {
                 widget.onWideSwipeLeft?.call();
               } else {
