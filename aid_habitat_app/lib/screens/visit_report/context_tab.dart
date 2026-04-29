@@ -349,6 +349,53 @@ class _ContextTabState extends State<ContextTab>
     );
   }
 
+  /// Coche / décoche TOUS les items d'autonomie d'un seul geste
+  /// (demande utilisateur 2026-04-29 : « il doit être possible d'avoir
+  /// une coche au dessus de la liste qui permet de tout valider direct
+  /// si la personne est autonome »).
+  ///
+  /// - `setAll == true`  → chaque ligne passe à `autonomous` (✓), les
+  ///   autres états (attention, aide humaine) sont écrasés. C'est la
+  ///   raison d'être du raccourci : 1 tap = 11 items validés.
+  /// - `setAll == false` → chaque ligne repasse à `none` (rien coché).
+  ///   La case se décoche aussi visuellement (l'utilisateur peut
+  ///   reprendre item par item ensuite).
+  ///
+  /// `autonomyDone` est dérivé automatiquement (true uniquement quand
+  /// tous les items sont en `autonomous`).
+  void _setAllAutonomyItems(bool setAll) {
+    final occ = _active;
+    final total = kAutonomyItemNames.length;
+    final auto = List<AutonomyItem>.generate(
+      total,
+      (i) => AutonomyItem(
+        name: i < occ.autonomy.length ? occ.autonomy[i].name : kAutonomyItemNames[i],
+        checked: setAll,
+      ),
+    );
+    final att = List<AutonomyItem>.generate(
+      total,
+      (i) => AutonomyItem(
+        name: i < occ.attention.length ? occ.attention[i].name : kAutonomyItemNames[i],
+        checked: false,
+      ),
+    );
+    final help = List<AutonomyItem>.generate(
+      total,
+      (i) => AutonomyItem(
+        name: i < occ.humanHelp.length ? occ.humanHelp[i].name : kAutonomyItemNames[i],
+        checked: false,
+      ),
+    );
+    _updateActive(OccupantAutonomy(
+      medical: occ.medical,
+      autonomyDone: setAll,
+      autonomy: auto,
+      humanHelp: help,
+      attention: att,
+    ));
+  }
+
   // ---------------------------------------------------------------------------
   // Save (debounced)
   // ---------------------------------------------------------------------------
