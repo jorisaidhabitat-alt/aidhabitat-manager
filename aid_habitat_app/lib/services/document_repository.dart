@@ -196,6 +196,15 @@ class DocumentRepository {
     String? title,
     int? categoryOrder,
     String? dossierId,
+    /// Optionnel : id déterministe pour permettre la dédup. Quand
+    /// fourni et qu'une ligne existe déjà, on REPLACE (ConflictAlgorithm.
+    /// replace). Cas d'usage : le rapport PDF d'un dossier (« Rapport »
+    /// tag) qui doit toujours être 1 doc unique par dossier — sans ça,
+    /// chaque retry de la sync_op `report_generation` créait un nouveau
+    /// doc avec un id timestamp, finissant par 15 copies dans NocoDB
+    /// (bug reporté 2026-04-30). Quand non fourni (cas normal), on
+    /// génère un id timestamp pour un nouveau doc.
+    String? localId,
   }) async {
     final db = await _database.database;
     final now = DateTime.now();
@@ -206,12 +215,36 @@ class DocumentRepository {
     final resolvedTitle = (title != null && title.trim().isNotEmpty)
         ? title.trim()
         : p.basenameWithoutExtension(fileName);
-    final localId = 'doc_${now.microsecondsSinceEpoch}';
+    final resolvedLocalId = localId ?? 'doc_${now.microsecondsSinceEpoch}';
     final mimeType = _mimeTypeFor(extension);
     final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
 
+    // Si on REPLACE un doc déterministe (ex. le rapport PDF), on
+    // préserve les éventuelles annotations existantes (l'ergo a peut-
+    // être dessiné/écrit sur l'ancien rapport — re-générer ne doit
+    // pas wiper son travail).
+    Map<String, Object?>? preservedFields;
+    if (localId != null) {
+      final existing = await db.query(
+        'documents',
+        columns: ['annotations_json', 'created_at'],
+        where: 'local_id = ?',
+        whereArgs: [resolvedLocalId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        preservedFields = {
+          'annotations_json': existing.first['annotations_json'],
+          // On préserve le `created_at` initial pour que le doc reste
+          // à sa place dans la liste triée par création (sinon il
+          // remonte en haut à chaque regénération).
+          'created_at': existing.first['created_at'],
+        };
+      }
+    }
+
     final row = {
-      'local_id': localId,
+      'local_id': resolvedLocalId,
       'patient_local_id': patientId,
       // Optionnel mais conseillé : permet le scoping par dossier dans
       // les futures requêtes (ex. liste docs d'une visite spécifique).
@@ -227,33 +260,56 @@ class DocumentRepository {
       'remote_public_url': null,
       'tags_json': jsonEncode(tags),
       'category_order': categoryOrder,
-      'created_at': now.toIso8601String(),
+      'created_at': preservedFields?['created_at'] ?? now.toIso8601String(),
       'updated_at': now.toIso8601String(),
       'sync_state': SyncState.pendingSync.name,
       'pending_delete': 0,
+      if (preservedFields?['annotations_json'] != null)
+        'annotations_json': preservedFields!['annotations_json'],
     };
 
-    await db.insert('documents', row);
-    await db.insert('sync_operations', {
-      'id': 'sync_$localId',
-      'entity_type': 'document',
-      'entity_local_id': localId,
-      'operation_type': 'upload_file',
-      'payload_json': jsonEncode({
-        'patientLocalId': patientId,
-        'documentLocalId': localId,
-        'dataUrl': dataUrl,
-        'title': resolvedTitle,
-        'fileName': fileName,
-        'mimeType': mimeType,
-        'tags': tags,
-      }),
-      'status': SyncOperationStatus.pending.name,
-      'attempt_count': 0,
-      'last_error': null,
-      'created_at': now.toIso8601String(),
-      'updated_at': now.toIso8601String(),
-    });
+    // ConflictAlgorithm.replace pour le path déterministe (regénération
+    // de rapport) ; insert simple sinon (nouveau doc).
+    await db.insert(
+      'documents',
+      row,
+      conflictAlgorithm: localId != null
+          ? ConflictAlgorithm.replace
+          : ConflictAlgorithm.abort,
+    );
+    await db.insert(
+      'sync_operations',
+      {
+        'id': 'sync_$resolvedLocalId',
+        'entity_type': 'document',
+        'entity_local_id': resolvedLocalId,
+        'operation_type': 'upload_file',
+        'payload_json': jsonEncode({
+          'patientLocalId': patientId,
+          // IMPORTANT : on envoie `resolvedLocalId` (et pas `localId`)
+          // pour que le serveur dedupe correctement via
+          // `client_document_id`. Sans ça, un retry de regénération
+          // de rapport créait une 2e ligne NocoDB malgré le replace
+          // local — bug reporté 2026-04-30 (« 15 documents dans le
+          // dossier alors que j'en vois seulement un »).
+          'documentLocalId': resolvedLocalId,
+          'dataUrl': dataUrl,
+          'title': resolvedTitle,
+          'fileName': fileName,
+          'mimeType': mimeType,
+          'tags': tags,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now.toIso8601String(),
+        'updated_at': now.toIso8601String(),
+      },
+      // Replace si on retry une regénération avec le même localId
+      // (sinon UNIQUE constraint sur 'id'='sync_<localId>' fait
+      // échouer le 2ème appel).
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
 
     SyncEngine().notify();
     return _mapRow(row);

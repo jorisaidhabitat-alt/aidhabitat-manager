@@ -372,6 +372,9 @@ class DataService {
     String? title,
     int? categoryOrder,
     String? dossierId,
+    /// Voir [DocumentRepository.importDocumentBytes] : id déterministe
+    /// pour la dédup (cas typique : rapport PDF d'un dossier).
+    String? localId,
   }) async {
     return _documentRepository.importDocumentBytes(
       patientId: patientId,
@@ -381,6 +384,7 @@ class DataService {
       title: title,
       categoryOrder: categoryOrder,
       dossierId: dossierId,
+      localId: localId,
     );
   }
 

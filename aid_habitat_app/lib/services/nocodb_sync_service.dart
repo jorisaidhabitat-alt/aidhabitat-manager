@@ -437,6 +437,12 @@ class NocodbSyncService {
     print('[sync] PDF reçu (${result.bytes.length} bytes), import local…');
     final fileName = result.fileName;
     final title = fileName.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '');
+    // localId déterministe par dossier → REPLACE plutôt que créer un
+    // nouveau doc à chaque retry de l'op `report_generation`. Sans
+    // ça, un retry créait une nouvelle ligne `documents` à chaque
+    // fois (15 documents observés pour 1 click — bug reporté
+    // 2026-04-30). Cf. `importDocumentBytes` qui gère le replace +
+    // la préservation des annotations.
     await DocumentRepository().importDocumentBytes(
       patientId: patientId,
       dossierId: dossierId,
@@ -444,9 +450,10 @@ class NocodbSyncService {
       fileName: fileName,
       title: title.isEmpty ? 'Rapport de visite' : title,
       tags: const ['Rapport'],
+      localId: 'doc_report_$dossierId',
     );
     // ignore: avoid_print
-    print('[sync] document "Rapport" inséré localement, '
+    print('[sync] document "Rapport" inséré localement (id=doc_report_$dossierId), '
         'upload_file op enqueued par DocumentRepository');
   }
 

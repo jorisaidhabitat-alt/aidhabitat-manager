@@ -964,6 +964,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         // ignore: avoid_print
         print('[report] importDocumentBytes patientId="$patientId" '
             'fileName="${result.fileName}" bytes=${result.bytes.length}');
+        // localId déterministe par dossier → 1 seul doc « Rapport »
+        // par dossier, regénération = REPLACE (avec préservation des
+        // annotations). Sans ça, chaque clic « Générer » créait un
+        // nouveau doc → 15 docs dans NocoDB pour 1 click si retries
+        // (bug reporté 2026-04-30).
         inserted = await _dataService.importDocumentBytes(
           patientId: patientId,
           dossierId: _dossier.id,
@@ -971,6 +976,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           fileName: result.fileName,
           title: result.fileName.replaceAll(RegExp(r'\.pdf$'), ''),
           tags: const ['Rapport'],
+          localId: 'doc_report_${_dossier.id}',
         );
       }
       // ignore: avoid_print
