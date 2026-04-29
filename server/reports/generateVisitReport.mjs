@@ -608,14 +608,45 @@ function buildViewModel({
   };
 
   // --- Page 6 : Sanitaires ---
-  // On consolide en une "vue 1ère SDB / 1er WC". Si l'ergo a
-  // plusieurs instances, les autres seront servies via pages bonus
-  // (chunk 4.2c). Pour l'instant on remplit juste la première.
-  const sdb = (Array.isArray(sanitaires?.sdbInstances) && sanitaires.sdbInstances[0]) || {};
-  const wc = (Array.isArray(sanitaires?.wcInstances) && sanitaires.wcInstances[0]) || {};
+  // On consolide en une "vue 1ère SDB / 1er WC" pour les ÉQUIPEMENTS
+  // (baignoire, hauteurs, porte…). Si l'ergo a plusieurs instances,
+  // les autres seront servies via pages bonus (chunk 4.2c).
+  //
+  // EXCEPTION pour les checkboxes de NIVEAU (demande utilisateur
+  // 2026-04-29) : on agrège sur TOUTES les instances pour répondre
+  // à la sémantique métier :
+  //   • SDB « située au niveau pièces de vie » = Oui si AU MOINS une
+  //     SDB est au RDC, Non si elles sont uniquement à l'étage ou
+  //     au sous-sol.
+  //   • WC « à niveau (RDC) » = au moins un WC au RDC.
+  //   • WC « à l'étage (autre) » = au moins un WC ailleurs qu'au RDC
+  //     (étage, 2e étage, sous-sol…).
+  // Les deux cases WC peuvent donc être cochées simultanément si
+  // l'ergo a renseigné un WC à chaque niveau.
+  const sdbInstancesArr = Array.isArray(sanitaires?.sdbInstances)
+    ? sanitaires.sdbInstances
+    : [];
+  const wcInstancesArr = Array.isArray(sanitaires?.wcInstances)
+    ? sanitaires.wcInstances
+    : [];
+  const sdb = sdbInstancesArr[0] || {};
+  const wc = wcInstancesArr[0] || {};
+  // Helpers : matching robuste sur `levelField`. RDC = 'rdc' ou
+  // 'pieces_de_vie' (variantes historiques côté client). Tout le
+  // reste est considéré « non-RDC » dès que la valeur est non vide.
+  const isRdc = (lvl) => /(^|_)(rdc|pieces_de_vie)(_|$)/i.test(
+    String(lvl || ''),
+  );
+  const sdbAtRdc = sdbInstancesArr.some((s) => isRdc(s?.levelField));
+  const wcAtRdc = wcInstancesArr.some((w) => isRdc(w?.levelField));
+  const wcAtEtage = wcInstancesArr.some(
+    (w) => Boolean(w?.levelField) && !isRdc(w?.levelField),
+  );
   const sanitairesView = {
-    // SDB située au niveau pièces de vie ?
-    sdbAuNiveauPieceVie: Boolean(sdb.sdbNiveauPiecesVie),
+    // SDB située au niveau pièces de vie : Oui si au moins une SDB
+    // est au RDC. Fallback sur le legacy `sdbNiveauPiecesVie` (booléen
+    // sur l'instance) pour les dossiers historiques sans `levelField`.
+    sdbAuNiveauPieceVie: sdbAtRdc || Boolean(sdb.sdbNiveauPiecesVie),
     // Équipements
     sdbBaignoire: Boolean(sdb.sdbBaignoire),
     sdbBaignoireHauteurFr: formatHeightCm(sdb.sdbBaignoireHauteur),
@@ -638,9 +669,11 @@ function buildViewModel({
     wcCuvetteTropBasse: Boolean(wc.wcCuvetteTropBasse),
     wcCuvetteHauteurFr: formatHeightCm(wc.wcCuvetteHauteur),
     wcBarreRelevement: Boolean(wc.wcBarreRelevement),
-    // Niveau WC : levelField peut être 'rdc' / 'etage' / 'sous_sol'
-    wcAuNiveau: /(rdc|niveau|pieces_de_vie)/i.test(String(wc.levelField || '')),
-    wcEtage: /etage|floor/i.test(String(wc.levelField || '')),
+    // Niveau WC — agrégé sur TOUTES les instances WC (cf. comment
+    // au-dessus). Les deux cases peuvent être cochées en parallèle
+    // si l'ergo a un WC RDC ET un WC étage.
+    wcAuNiveau: wcAtRdc,
+    wcEtage: wcAtEtage,
     // Porte WC
     porteWcLargeurSuffisante: Boolean(wc.porteWcLargeurSuffisante),
     porteWcDimensionFr: formatWidthCm(wc.porteWcDimension),

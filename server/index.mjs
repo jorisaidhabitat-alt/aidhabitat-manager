@@ -3877,31 +3877,39 @@ const fetchContexteNotePagesForPatient = async (patientId, dossierId) => {
  *                                   de l'usager »
  *   - `Préconisations-Résumé`     → page 7 PDF, champ « Résumé des
  *                                   préconisations »
- *   - `Accessibilité-Général` + `Accessibilité-Extérieur` (concaténés)
- *                                 → page 6 PDF, champ `obs`. Le bloc
- *                                   embedded `Accessibilité-Équipements`
- *                                   a été supprimé du form (demande
- *                                   utilisateur 2026-04-28 — « rien à
- *                                   ajouter, simplement une connexion
- *                                   à établir »). On lit donc les notes
- *                                   du panneau latéral (haut-droite du
- *                                   formulaire) qui sont indexées par
- *                                   sous-section. `Accessibilité-Équipements`
- *                                   reste lu en fallback pour les
- *                                   dossiers historiques.
+ *   - `Accessibilité-Notes`       → page 5 PDF, champ `Observations1`
+ *                                   (« Observations sur l'accessibilité »).
+ *                                   Note unique partagée entre TOUTES les
+ *                                   sous-sections de l'onglet Accessibilité
+ *                                   (Général / Niveaux / Équipements /
+ *                                   Extérieur), comme la note Sanitaires
+ *                                   est partagée entre SDB et WC.
+ *                                   Demande utilisateur 2026-04-29 :
+ *                                   « la note ecrite (comme sanitaire avec
+ *                                    wc et salle de bain) doit être associé
+ *                                    entre chaque page de accessibilité ».
+ *                                   Fallback legacy sur les anciens tabKeys
+ *                                   par sous-section pour les dossiers déjà
+ *                                   saisis avant cette unification.
  *
  * Concatène les `textContent` de toutes les pages d'un même tabKey
  * (séparateur double-newline) si l'ergo a fait défiler plusieurs
- * pages dans le NotesWidget. Renvoie un objet plat `{ projet, resume,
- * observation }`. Si aucune note n'existe pour un tabKey, le champ
- * correspondant est `null` → fallback en aval sur observations_synthese.
+ * pages dans le NotesWidget. Renvoie un objet plat avec :
+ *   - `projet` : page 7 PDF
+ *   - `resume` : page 7 PDF
+ *   - `accessibilite` : page 5 PDF (Observations1)
+ * Si aucune note n'existe pour un tabKey, le champ correspondant
+ * est `null`.
  */
 const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
-  if (!patientId) return { projet: null, resume: null, observation: null };
+  if (!patientId) {
+    return { projet: null, resume: null, accessibilite: null };
+  }
   try {
     const [
       projetPages,
       resumePages,
+      accSharedPages,
       accGeneralPages,
       accExterieurPages,
       legacyEquipPages,
@@ -3912,6 +3920,14 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Préconisations-Résumé',
       }),
+      // NOUVEAU (2026-04-29) : tabKey unique partagé entre toutes les
+      // sous-sections Accessibilité. Cf. visit_report_screen
+      // _kSharedAccessibiliteNotesTabKey.
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Accessibilité-Notes',
+      }),
+      // Legacy : anciennes notes par sous-section, conservées pour
+      // les dossiers saisis avant l'unification.
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Accessibilité-Général',
       }),
@@ -3960,31 +3976,32 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
         .join('\n\n');
       return text || null;
     };
-    // `observation` du PDF (page 6 / champ `obs`) : on assemble les
-    // deux sous-sections du panneau latéral Accessibilité (Général +
-    // Extérieur). Si l'une est vide on n'en met qu'une, si les deux
-    // ont du contenu on les sépare par un double-newline. En dernier
-    // recours, fallback sur l'ancien tabKey `Accessibilité-Équipements`
-    // (bloc embedded supprimé en avril 2026 mais toujours lu pour les
-    // dossiers historiques).
+    // `accessibilite` du PDF (page 5 / champ `Observations1` =
+    // « Observations sur l'accessibilité ») : priorité au tabKey
+    // unifié `Accessibilité-Notes` (note partagée entre toutes les
+    // sous-sections). Fallback : on assemble les anciens tabKeys par
+    // sous-section pour les dossiers historiques (Général + Extérieur
+    // + Équipements). Une fois le déploiement passé, la note unifiée
+    // gagne automatiquement.
+    const accSharedText = joinPages(accSharedPages);
     const accGeneralText = joinPages(accGeneralPages);
     const accExterieurText = joinPages(accExterieurPages);
     const legacyEquipText = joinPages(legacyEquipPages);
-    const observation = (() => {
-      const merged = [accGeneralText, accExterieurText]
+    const accessibilite = (() => {
+      if (accSharedText && accSharedText.trim()) return accSharedText;
+      const mergedLegacy = [accGeneralText, accExterieurText, legacyEquipText]
         .filter((s) => typeof s === 'string' && s.trim())
         .join('\n\n');
-      if (merged.trim()) return merged;
-      return legacyEquipText;
+      return mergedLegacy.trim() ? mergedLegacy : null;
     })();
     return {
       projet: joinPages(projetPages),
       resume: joinPages(resumePages),
-      observation,
+      accessibilite,
     };
   } catch (error) {
     console.warn('[report] échec fetchVadOverlayNotes :', error?.message || error);
-    return { projet: null, resume: null, observation: null };
+    return { projet: null, resume: null, accessibilite: null };
   }
 };
 

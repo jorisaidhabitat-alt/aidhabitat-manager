@@ -117,7 +117,8 @@
   "Text9": { "source": "sanitaires.porteSdbDimensionFr", "type": "text" },
   "Text10": { "source": "sanitaires.porteWcDimensionFr", "type": "text" },
 
-  "obs": { "source": "sanitaires.observationsEquipements", "type": "text" },
+  "$obsSource": "Champ `obs` page 6 = notes du panneau latéral Accessibilité (sous-sections Général + Extérieur concaténées côté serveur via `fetchVadOverlayNotesForReport`). Fallback sur `observations_synthese.observation_equipements` (legacy NocoDB) pour les dossiers historiques. L'ancienne source `sanitaires.observationsEquipements` (= wc[0].observation_equipements_utilisation legacy) n'est plus alimentée par l'UI moderne, donc retirée du mapping (2026-04-29).",
+  "obs": { "source": "observations.observationEquipements", "type": "text" },
 
   "$page7": "--- Projet usager + Résumé préconisations ---",
   "Projet ou souhait de lusager": { "source": "observations.projetSouhaitUsage", "type": "text" },

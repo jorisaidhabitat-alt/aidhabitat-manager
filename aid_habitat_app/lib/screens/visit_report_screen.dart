@@ -141,13 +141,26 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// clés possibles, écriture sur la nouvelle).
   static const String _kSharedSanitairesNotesTabKey = 'Sanitaires-Notes';
 
+  /// TabKey unique pour la note partagée entre les sous-sections de
+  /// l'onglet « Accessibilité » (Général / Niveaux / Équipements /
+  /// Extérieur). Demande utilisateur 2026-04-29 : « la note ecrite
+  /// (comme sanitaire avec wc et salle de bain) doit être associé
+  /// entre chaque page de accessibilité ». Le contenu de cette note
+  /// alimente le champ « Observations sur l'accessibilité »
+  /// (`Observations1`) page 5 du PDF (cf. `fetchVadOverlayNotesForReport`
+  /// côté serveur).
+  static const String _kSharedAccessibiliteNotesTabKey = 'Accessibilité-Notes';
+
   /// Calcule le tabKey à utiliser pour le panneau notes. Pour la
-  /// majorité des onglets c'est `'$tab-$section'`. Cas spécial des
-  /// onglets sanitaires (Salle de bain / WC) qui partagent la même
-  /// note via [_kSharedSanitairesNotesTabKey].
+  /// majorité des onglets c'est `'$tab-$section'`. Cas spéciaux :
+  ///   - Sanitaires (Salle de bain / WC) → [_kSharedSanitairesNotesTabKey]
+  ///   - Accessibilité (toutes sous-sections) → [_kSharedAccessibiliteNotesTabKey]
   static String _resolveNotesTabKey(String activeTab, String section) {
     if (activeTab == 'Salle de bain' || activeTab == 'WC') {
       return _kSharedSanitairesNotesTabKey;
+    }
+    if (activeTab == 'Accessibilité') {
+      return _kSharedAccessibiliteNotesTabKey;
     }
     return '$activeTab-$section';
   }
