@@ -590,21 +590,28 @@ function buildViewModel({
       pellet: Boolean(heat.pellet),
       other: Boolean(heat.other),
     },
-    // Champ `Observations1` page 5 — récap textuel des données
-    // accessibilité « extras » qui n'ont pas leur propre case dans le
-    // template (volets manuels/élec/persiennes, motorisations garage/
-    // portail, accès depuis la rue). Sans ça, ces saisies utilisateur
-    // étaient écrites en NocoDB mais jamais visibles dans le rapport
-    // PDF (mapping orphelin sur `housing.accessObservation` qui est
-    // wipé en permanence côté Flutter — accessibility_tab `_save`).
+    // Champ `Observations1` page 5 — « Observations sur l'accessibilité ».
     //
-    // Format : une ligne par valeur non-vide, ordre stable. Cf.
-    // `buildAccessExtrasText` plus haut. Concatène en plus
-    // `housing.comments` (commentaire libre legacy) si présent.
-    accessObservation: joinNonEmpty([
-      buildAccessExtrasText(housing),
-      housing.comments,
-    ], '\n'),
+    // Source PRIMAIRE (2026-04-29) : la note partagée saisie par l'ergo
+    // dans le panneau latéral de l'onglet Accessibilité (toutes
+    // sous-sections : Général / Niveaux / Équipements / Extérieur).
+    // Cette note est récupérée côté serveur dans `fetchVadOverlayNotesForReport`
+    // et passée ici via `observations.accessibiliteObservation`.
+    // Demande utilisateur : « Pour observations sur l'accessibilité tu
+    // reprend la note ecrite ».
+    //
+    // Fallback (dossiers historiques sans note ergo) : récap automatique
+    // des « extras » accessibilité (volets, motorisations, accès rue)
+    // + `housing.comments` legacy. Évite que les anciens dossiers
+    // n'affichent un Observations1 vide.
+    accessObservation: (() => {
+      const ergoNote = String(observations?.accessibiliteObservation || '').trim();
+      if (ergoNote) return ergoNote;
+      return joinNonEmpty([
+        buildAccessExtrasText(housing),
+        housing.comments,
+      ], '\n');
+    })(),
   };
 
   // --- Page 6 : Sanitaires ---

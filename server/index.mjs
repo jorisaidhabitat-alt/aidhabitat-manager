@@ -4368,6 +4368,13 @@ app.post(
 
     // 3b) Merge VAD overlay notes (nouvelle source) avec
     // `observations_synthese` (ancienne source). Notes gagnent.
+    //
+    // Champ `accessibiliteObservation` ajouté en avril 2026 — alimente
+    // « Observations sur l'accessibilité » page 5 du PDF
+    // (`Observations1`) à partir de la note PARTAGÉE entre toutes les
+    // sous-sections de l'onglet Accessibilité (cf.
+    // `_kSharedAccessibiliteNotesTabKey` côté Flutter et
+    // `fetchVadOverlayNotesForReport.accessibilite` côté serveur).
     const observations = (() => {
       const base = legacyObservations || {
         id: null,
@@ -4384,9 +4391,18 @@ app.post(
         resumePreconisations:
           (vadOverlayNotes.resume && vadOverlayNotes.resume.trim()) ||
           base.resumePreconisations,
-        observationEquipements:
-          (vadOverlayNotes.observation && vadOverlayNotes.observation.trim()) ||
-          base.observationEquipements,
+        // Plus d'override depuis vadOverlayNotes.observation : la note
+        // Accessibilité va maintenant directement vers
+        // `accessibiliteObservation` (page 5), pas vers
+        // `observationEquipements` (page 6 sanitaires) qui de toute
+        // façon n'était pas branché côté PDF mapping
+        // (`obs` lit `sanitaires.observationsEquipements`, pas
+        // `observations.observationEquipements`).
+        observationEquipements: base.observationEquipements,
+        accessibiliteObservation:
+          (vadOverlayNotes.accessibilite &&
+              vadOverlayNotes.accessibilite.trim()) ||
+          null,
       };
     })();
 
