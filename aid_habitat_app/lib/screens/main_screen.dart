@@ -34,7 +34,8 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen>
+    with WidgetsBindingObserver {
   final DataService _dataService = DataService();
   final AuthService _authService = AuthService();
   late final SyncEngine _syncEngine;

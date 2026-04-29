@@ -201,7 +201,7 @@ class SyncEngine {
   /// jamais bloquer l'utilisateur).
   Future<void> _runPullSafe() async {
     if (_disposed || _pullRunning) return;
-    if (!ConnectivityService().isOnline) return;
+    if (ConnectivityService().isOffline) return;
     _pullRunning = true;
     try {
       await DataService().refreshWorkspaceFromRemote();
