@@ -621,149 +621,142 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
           colors: [Color(0xFFF8F4FB), Color(0xFFFDFCFE)],
         ),
       ),
-      // Padding réduit (était 28/20/14/24 → maintenant 20/12/14/14) pour
-      // gagner ~18 pt de hauteur. Demande utilisateur 2026-04-29 : la
-      // popup débordait en haut sur les iPads — on optimise la zone
-      // logo/nom/date pour rentrer dans le viewport.
-      padding: const EdgeInsets.fromLTRB(20, 12, 14, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Padding minimal (demande utilisateur 2026-04-29 : popup encore
+      // coupée en haut sur iPad → on raccourcit le header au max +
+      // on fusionne la ligne d'actions DANS la même Row que le logo).
+      // Économie ~70 pt par rapport à la version précédente (action
+      // row séparée + SizedBox(height:8)).
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
+      // UNE SEULE Row : logo + nom/date + boutons d'action — tous
+      // alignés au centre vertical de la rangée pour respecter la
+      // demande « met les boutons editer et croix à la même hauteur
+      // que les autres éléments de la partie haute ».
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Top action row — edit (view) / save+cancel (edit) + close
-          Row(
-            children: [
-              const Spacer(),
-              if (_isEditing) ...[
-                _IconCircleButton(
-                  icon: LucideIcons.undo2,
-                  onPressed:
-                      _saveState == _SaveState.saving ? null : _cancelEdit,
-                  tooltip: 'Annuler',
+          // Logo carré 56×84 pt (60 plus tôt → encore -8 pt pour
+          // raccourcir la rangée). Toujours lisible — l'image
+          // intérieure a son propre BoxFit.contain qui s'adapte.
+          Container(
+            height: 56,
+            width: 84,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-                const SizedBox(width: 8),
-                _SaveStateIndicator(state: _saveState, onSave: _save),
-              ] else
-                _IconCircleButton(
-                  icon: LucideIcons.pencil,
-                  onPressed: () => setState(() => _isEditing = true),
-                  tooltip: 'Modifier',
-                  filled: true,
-                ),
-              const SizedBox(width: 8),
-              _IconCircleButton(
-                icon: LucideIcons.x,
-                onPressed: () => Navigator.of(context).pop(),
-                tooltip: 'Fermer',
-              ),
-            ],
+              ],
+            ),
+            child: _FundLogoImage(fund: _currentFund),
           ),
-          const SizedBox(height: 8),
-          // Logo + nom + date sur UNE seule rangée horizontale (au lieu
-          // de 3 blocs verticaux empilés). Économie ~130 pt de hauteur
-          // sur le header. Demande utilisateur 2026-04-29.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Logo carré 64×96 pt (était 96×220 centré). Réduit mais
-              // toujours bien lisible — c'est le format mini-card des
-              // logos de marque dans la sidebar bumpé un peu.
-              Container(
-                height: 64,
-                width: 96,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: _FundLogoImage(fund: _currentFund),
-              ),
-              const SizedBox(width: 14),
-              // Bloc texte : nom au-dessus, date en dessous.
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Nom — fontSize 28 → 22 pour s'aligner avec la
-                    // hauteur du logo et permettre 1-2 lignes sans
-                    // déborder. TextField conservé en mode édition.
-                    _isEditing
-                        ? TextField(
-                            controller: _nameController,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                              letterSpacing: -0.3,
-                            ),
-                            decoration: const InputDecoration(
-                              isCollapsed: true,
-                              border: InputBorder.none,
-                              focusedBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(
-                                    color: Color(0xFF7C6DAA), width: 2),
-                              ),
-                              enabledBorder: UnderlineInputBorder(
-                                borderSide:
-                                    BorderSide(color: Colors.transparent),
-                              ),
-                            ),
-                          )
-                        : Text(
-                            _currentFund.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                              letterSpacing: -0.3,
-                            ),
+          const SizedBox(width: 12),
+          // Bloc texte : nom au-dessus, date en dessous.
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Nom — fontSize 22 (lisible, 1-2 lignes possibles).
+                // TextField conservé en mode édition.
+                _isEditing
+                    ? TextField(
+                        controller: _nameController,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.3,
+                        ),
+                        decoration: const InputDecoration(
+                          isCollapsed: true,
+                          border: InputBorder.none,
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(
+                                color: Color(0xFF7C6DAA), width: 2),
                           ),
-                    const SizedBox(height: 6),
-                    // Last edited chip — aligné à gauche maintenant
-                    // (au lieu de centré).
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(50),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(LucideIcons.clock3,
-                              size: 11, color: Colors.grey.shade500),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              _formatLastEditedAtHeader(
-                                  _currentFund.lastEditedAt),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
+                          enabledBorder: UnderlineInputBorder(
+                            borderSide:
+                                BorderSide(color: Colors.transparent),
                           ),
-                        ],
+                        ),
+                      )
+                    : Text(
+                        _currentFund.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.3,
+                        ),
                       ),
-                    ),
-                  ],
+                const SizedBox(height: 4),
+                // Last edited chip — aligné à gauche.
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(50),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.clock3,
+                          size: 11, color: Colors.grey.shade500),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          _formatLastEditedAtHeader(
+                              _currentFund.lastEditedAt),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Boutons d'action — fusionnés dans la même Row que le logo
+          // et le texte, vertically centered (demande utilisateur
+          // 2026-04-29). En vue lecture : crayon. En édition : annuler
+          // + sauvegarder. Toujours suivis du bouton fermer.
+          if (_isEditing) ...[
+            _IconCircleButton(
+              icon: LucideIcons.undo2,
+              onPressed:
+                  _saveState == _SaveState.saving ? null : _cancelEdit,
+              tooltip: 'Annuler',
+            ),
+            const SizedBox(width: 6),
+            _SaveStateIndicator(state: _saveState, onSave: _save),
+          ] else
+            _IconCircleButton(
+              icon: LucideIcons.pencil,
+              onPressed: () => setState(() => _isEditing = true),
+              tooltip: 'Modifier',
+              filled: true,
+            ),
+          const SizedBox(width: 6),
+          _IconCircleButton(
+            icon: LucideIcons.x,
+            onPressed: () => Navigator.of(context).pop(),
+            tooltip: 'Fermer',
           ),
         ],
       ),

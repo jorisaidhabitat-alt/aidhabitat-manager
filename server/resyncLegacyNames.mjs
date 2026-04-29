@@ -137,13 +137,14 @@ export async function resyncBeneficiaireDenormalizedNames({
       continue;
     }
     // Lit toutes les lignes de la table où le bénéficiaire match.
-    // Filtre côté client après lecture (le where NocoDB est limité aux
-    // string-equals, ce qui est OK pour notre besoin) :
+    // ⚠️ NE PAS quoter l'UUID avec JSON.stringify : NocoDB v2 traite les
+    // doubles guillemets COMME PARTIE DE LA VALEUR et ne match plus rien.
+    // Les UUIDs ne contiennent que [0-9a-f-] donc pas besoin d'échappement.
     const records = await queryAll({
       apiUrl,
       tableId,
       token,
-      where: `(beneficiaire_id,eq,${JSON.stringify(beneficiaireUuid)})`,
+      where: `(beneficiaire_id,eq,${beneficiaireUuid})`,
     });
 
     // Ne PATCHe QUE les lignes dont au moins un des 3 (4 pour les

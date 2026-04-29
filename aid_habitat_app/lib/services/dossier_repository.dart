@@ -1778,6 +1778,17 @@ class DossierRepository {
       // 2026-04-29).
       'second_floor': 'secondFloor',
       'third_floor': 'thirdFloor',
+      // Descriptions des niveaux — alimentées en Flutter à partir
+      // des `*_rooms_json` (cf. accessibility_tab._save). Mappées vers
+      // les colonnes NocoDB `description_sous_sol` / `description_rdc`
+      // / `description_etage` (cf. PATCH /api/logements server-side).
+      'basement_desc': 'basementDesc',
+      'rdc_desc': 'rdcDesc',
+      'floor_desc': 'floorDesc',
+      // second_floor_desc et third_floor_desc : pas de colonne NocoDB
+      // dédiée pour le moment, on les ignore au mapping API (le `else`
+      // les passerait en snake_case et le serveur les ignorerait
+      // silencieusement, mais autant être explicite).
     };
     final out = <String, dynamic>{};
     fields.forEach((key, value) {
