@@ -550,7 +550,7 @@ class DossierRepository {
             }
           }
 
-          // Garde de troisième niveau : fenêtre anti-flicker (10 s)
+          // Garde de troisième niveau : fenêtre anti-flicker (30 s)
           // après une sync_op récemment `completed`. Le sync_state
           // local repasse à `synced` dès que markCompleted s'exécute,
           // mais NocoDB peut encore renvoyer l'ancienne valeur côté
@@ -560,11 +560,17 @@ class DossierRepository {
           // voit le nom revenir à une version antérieure (« Yanis
           // Foyer » → « Yanis test » signalé le 2026-04-28).
           //
+          // 2026-04-30 : fenêtre passée de 10 s à 30 s. Symptôme
+          // reporté : « pendant plusieurs secondes le patient n'avait
+          // plus de nom de famille avant que celui que j'ai mis
+          // revienne ». 10 s ne suffisaient pas à couvrir la latence
+          // d'eventual consistency NocoDB sur certains réseaux.
+          //
           // On regarde aussi les ops non-terminées (pending/running/
           // failed) pour cette entité : si elles existent c'est qu'il
           // y a du travail en cours, surtout pas d'écraser le local.
           final cutoff = DateTime.now()
-              .subtract(const Duration(seconds: 10))
+              .subtract(const Duration(seconds: 30))
               .toIso8601String();
           final recentPatientOps = patientLocalIdExisting == null
               ? const <Map<String, Object?>>[]
@@ -601,6 +607,39 @@ class DossierRepository {
                 );
           if (recentHousingOps.isNotEmpty) {
             continue;
+          }
+
+          // Garde de quatrième niveau : si le payload distant n'est
+          // pas STRICTEMENT plus récent que ce qu'on a déjà en local
+          // (`remote_updated_at`), on skip. Couvre le cas où NocoDB
+          // sert un read-replica avec du retard et nous renvoie une
+          // version PRÉ-PATCH alors qu'on vient d'écrire en local —
+          // sans cette garde, le merge écraserait la valeur fraîche
+          // par la valeur stale du serveur. Combiné avec la fenêtre
+          // de 30 s, c'est la protection ceinture+bretelles contre le
+          // bug « le nom disparaît pendant plusieurs secondes ».
+          final remoteUpdatedAtIncoming = _extractRemoteUpdatedAt(raw);
+          if (remoteUpdatedAtIncoming != null && existingDossier.isNotEmpty) {
+            final localRemoteUpdatedRows = await txn.query(
+              'dossiers',
+              columns: ['remote_updated_at'],
+              where: 'local_id = ?',
+              whereArgs: [dossierId],
+              limit: 1,
+            );
+            if (localRemoteUpdatedRows.isNotEmpty) {
+              final localRemoteUpdatedAt =
+                  localRemoteUpdatedRows.first['remote_updated_at']
+                      as String?;
+              if (localRemoteUpdatedAt != null &&
+                  localRemoteUpdatedAt.isNotEmpty &&
+                  remoteUpdatedAtIncoming.compareTo(localRemoteUpdatedAt) <= 0) {
+                // Payload distant pas plus récent → on a déjà cette
+                // version (ou une plus récente). Skip pour éviter un
+                // replay inutile qui pourrait créer du flicker.
+                continue;
+              }
+            }
           }
         }
 
