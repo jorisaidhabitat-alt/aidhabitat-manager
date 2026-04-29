@@ -301,13 +301,34 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final merged = <Occupant>[];
     final targetLen = count < 1 ? 1 : count;
     for (var i = 0; i < targetLen; i++) {
+      Occupant occ;
       if (i < existing.length) {
-        merged.add(existing[i]);
+        occ = existing[i];
       } else if (i < fallbacks.length) {
-        merged.add(fallbacks[i]);
+        occ = fallbacks[i];
       } else {
-        merged.add(const Occupant());
+        occ = const Occupant();
       }
+      // Override firstName/lastName depuis les champs TOP-LEVEL du
+      // patient pour les 2 premiers occupants. Source de vérité :
+      //   - occupant 0 → `p.firstName` / `p.lastName`
+      //   - occupant 1 → `p.secondFirstName` / `p.secondLastName`
+      // Sans cet override, quand l'ergo change le nom dans
+      // `dossier_screen`, le header occupant restait sur l'ancienne
+      // valeur stockée dans `p.occupants[0]` (qui n'est sync'é qu'au
+      // save différé) — bug signalé 2026-04-29 : « quand je change le
+      // nom, le changement n'est pas instantané pour le nom de
+      // l'occupant s'il y'en a plusieurs ».
+      if (i == 0) {
+        occ = occ.copyWith(firstName: p.firstName, lastName: p.lastName);
+      } else if (i == 1 &&
+          (p.secondFirstName.isNotEmpty || p.secondLastName.isNotEmpty)) {
+        occ = occ.copyWith(
+          firstName: p.secondFirstName,
+          lastName: p.secondLastName,
+        );
+      }
+      merged.add(occ);
     }
     return merged;
   }
