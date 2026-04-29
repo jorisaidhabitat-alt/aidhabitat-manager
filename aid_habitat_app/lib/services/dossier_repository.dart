@@ -251,6 +251,8 @@ class DossierRepository {
         d.nature_accompagnement AS dossier_nature_accompagnement,
         d.envoi_rapport AS dossier_envoi_rapport,
         d.personnes_presentes_visite AS dossier_personnes_presentes,
+        p.sync_state AS patient_sync_state,
+        h.sync_state AS housing_sync_state,
         p.local_id AS patient_local_id,
         p.remote_patient_id AS patient_remote_id,
         p.first_name AS patient_first_name,
@@ -1504,8 +1506,37 @@ class DossierRepository {
         'PF3': FinancialPlan(id: 'PF3'),
       },
       createdAt: row['dossier_created_at'] as String,
-      syncState: SyncState.values.byName(row['dossier_sync_state'] as String),
+      // Aggregate sync_state across dossier + patient + housing.
+      // Without this, un patient en `conflict` mais dont la ligne
+      // `dossiers` est `synced` ne déclenchait pas le bouton « Résoudre
+      // le conflit » de DossierScreen → l'ergo restait coincé sur des
+      // données stale (ex. macOS qui montre encore « Joris SAH » alors
+      // que NocoDB a « Joris SIM »). Demande utilisateur 2026-04-30.
+      // Priorité : conflict > failed > pendingSync > localOnly > synced.
+      syncState: _aggregateSyncStates([
+        SyncState.values.byName(row['dossier_sync_state'] as String),
+        SyncState.values.byName(
+            row['patient_sync_state'] as String? ?? SyncState.synced.name),
+        SyncState.values.byName(
+            row['housing_sync_state'] as String? ?? SyncState.synced.name),
+      ]),
     );
+  }
+
+  /// Aggregate plusieurs sync_state en un seul, en priorisant l'état le
+  /// plus « urgent » à remonter à l'utilisateur :
+  ///   conflict > syncError > pendingSync > syncing > localOnly > synced
+  ///
+  /// Permet à `DossierScreen` de surfacer le bouton « Résoudre le
+  /// conflit » même quand seul le sous-record (patient ou housing) est
+  /// en conflit, pas le dossier lui-même.
+  static SyncState _aggregateSyncStates(List<SyncState> states) {
+    if (states.contains(SyncState.conflict)) return SyncState.conflict;
+    if (states.contains(SyncState.syncError)) return SyncState.syncError;
+    if (states.contains(SyncState.pendingSync)) return SyncState.pendingSync;
+    if (states.contains(SyncState.syncing)) return SyncState.syncing;
+    if (states.contains(SyncState.localOnly)) return SyncState.localOnly;
+    return SyncState.synced;
   }
 
   List<String> _decodeRoomsJson(String? raw) {
