@@ -370,13 +370,16 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
   Widget build(BuildContext context) {
     final selectedTag = _selectedTags.isNotEmpty ? _selectedTags.first : '';
 
+    // Taille alignée sur la popup Caisses de retraite (demande
+    // utilisateur 2026-04-29 : « fait la même taille de pop up pour la
+    // bibliothèque »). Avant : 1040 × 720 + insetPadding all(24).
     return Dialog(
       backgroundColor: Colors.white,
-      insetPadding: const EdgeInsets.all(24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1040, maxHeight: 720),
+        constraints: const BoxConstraints(maxWidth: 960, maxHeight: 680),
         child: Stack(
           children: [
             Row(
