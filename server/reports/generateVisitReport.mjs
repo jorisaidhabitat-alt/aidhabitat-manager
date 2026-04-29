@@ -1001,12 +1001,13 @@ function forceUncheckField(field) {
 }
 
 /**
- * Dessine « GIR n » en texte libre juste à droite du dropdown
- * « Dropdown5 » (APA Oui/Non/En cours). Sans ça, le GIR saisi par
- * l'ergo ne pouvait s'afficher nulle part — la dropdown du template
- * ne propose que les 3 options figées et n'a pas de slot dédié au
- * GIR. On localise le widget du dropdown pour récupérer sa page +
- * ses coordonnées, puis on pose le texte juste à côté.
+ * Dessine « (GIR n) » en texte libre juste après le mot « Oui » à
+ * l'intérieur du dropdown « Dropdown5 » (APA Oui/Non/En cours). Sans
+ * ça, le GIR saisi par l'ergo ne pouvait s'afficher nulle part — la
+ * dropdown du template ne propose que les 3 options figées et n'a pas
+ * de slot dédié au GIR. On localise le widget du dropdown pour
+ * récupérer sa page + ses coordonnées, puis on pose le texte
+ * directement à côté du « Oui » (pas en bout de pill).
  *
  * Idempotent : s'exécute toujours, mais ne dessine rien si l'APA
  * est à 'Non' / vide ou si le GIR n'est pas renseigné.
@@ -1034,16 +1035,21 @@ async function applyApaGirOverlay({ pdfDoc, fieldsByName, view }) {
   if (!page) return;
 
   const rect = widget.getRectangle();
-  // Baseline aligné avec le centre vertical du dropdown : y = bottom +
-  // (height - fontSize) / 2 ≈ bottom + 5 pour un texte de 11 pt dans
-  // une box de 21 pt. Décalage horizontal : 8 pt après le bord droit
-  // de la pill.
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // On veut « Oui (GIR n) » : le « Oui » est rendu par le widget
+  // dropdown lui-même (left-aligned avec un padding interne ≈ 4 pt),
+  // donc on calcule x = bord gauche + padding + largeur de « Oui » +
+  // espace, ce qui place « (GIR n) » juste après le « Oui ». L'ancien
+  // calcul (`rect.x + rect.width + 8`) plaçait le texte tout au bout
+  // de la pill, créant un grand vide visuel.
   const fontSize = 11;
-  const x = rect.x + rect.width + 8;
+  const widgetPadding = 4;
+  const ouiWidth = helvetica.widthOfTextAtSize('Oui', fontSize);
+  const x = rect.x + widgetPadding + ouiWidth + 4;
   const y = rect.y + (rect.height - fontSize) / 2 + 1;
 
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  page.drawText(`GIR ${apaGir}`, {
+  page.drawText(`(GIR ${apaGir})`, {
     x,
     y,
     size: fontSize,
