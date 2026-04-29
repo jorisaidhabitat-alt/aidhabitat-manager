@@ -34,12 +34,30 @@ class ContextTab extends StatefulWidget {
   /// le parent à chaque changement de page dans NotesWidget.
   final Set<int>? currentMedicalFlags;
 
+  /// Callback invoqué quand l'ergo bascule entre les sous-sections
+  /// internes (0 = Médical, 1 = Autonomie). Utilisé par
+  /// `VisitReportScreen` pour resynchroniser le panneau notes de
+  /// droite avec la sous-section active — sans ça, le panneau
+  /// affichait toujours la note Médicale même après avoir cliqué sur
+  /// Autonomie (bug reporté 2026-04-29 : « Habitudes de vie est vide
+  /// alors que la note de Autonomie n'est pas vide »). Demande
+  /// utilisateur 2026-04-30 : "celle de habitudes de vie doit être
+  /// celle de autonomie".
+  final ValueChanged<int>? onSubSectionChanged;
+
+  /// Sous-section initiale (0 = Médical, 1 = Autonomie). Permet au
+  /// parent de restaurer la dernière section visitée quand l'ergo
+  /// revient sur cet onglet.
+  final int initialSubSection;
+
   const ContextTab({
     super.key,
     required this.dossier,
     required this.repository,
     this.onMedicalFlagToggled,
     this.currentMedicalFlags,
+    this.onSubSectionChanged,
+    this.initialSubSection = 0,
   });
 
   @override
@@ -62,7 +80,16 @@ class _ContextTabState extends State<ContextTab>
   @override
   void initState() {
     super.initState();
+    _subSection = widget.initialSubSection.clamp(0, 1);
     _load();
+  }
+
+  /// Change la sous-section active ET notifie le parent (qui resync
+  /// le panneau notes à droite via `_activeSubsectionByTab`).
+  void _setSubSection(int i) {
+    if (i == _subSection) return;
+    setState(() => _subSection = i);
+    widget.onSubSectionChanged?.call(i);
   }
 
   @override

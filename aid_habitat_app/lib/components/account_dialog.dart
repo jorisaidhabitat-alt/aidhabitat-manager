@@ -171,6 +171,12 @@ class _AccountDialogState extends State<AccountDialog> {
                     child: Column(
                       children: [
                         Stack(
+                          // Le badge appareil photo (Positioned right=-4,
+                          // bottom=-4) déborde du Stack pour donner
+                          // l'effet « pastille collée au bord ». Sans
+                          // `Clip.none`, le badge était coupé en bas et
+                          // à droite (signalé 2026-04-29).
+                          clipBehavior: Clip.none,
                           children: [
                             Container(
                               width: 88,
