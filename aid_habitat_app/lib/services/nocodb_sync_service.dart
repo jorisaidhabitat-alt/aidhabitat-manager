@@ -314,19 +314,28 @@ class NocodbSyncService {
       entityLocalId: operation.entityLocalId,
       syncState: SyncState.synced,
     );
-    // 4) Pull immédiat. Best-effort, errors swallowed inside.
-    //    On utilise le DataService singleton plutôt qu'un import direct
-    //    pour éviter le cycle d'imports (DataService importe déjà ce
-    //    service). Cf. le `_runPullSafe` du SyncEngine pour la même
-    //    pattern.
-    try {
-      // ignore: avoid_print
-      print('[sync] auto-resolve : déclenche refreshWorkspaceFromRemote');
-      await DataService().refreshWorkspaceFromRemote();
-    } catch (_) {
-      // Le pull suivant rattrapera.
+    // 4) Pull immédiat via le callback injecté par DataService au
+    //    démarrage. Évite le cycle d'imports (DataService importe ce
+    //    service → on ne peut pas l'importer dans l'autre sens). Si
+    //    le callback n'est pas câblé (tests isolés), on tombe sur le
+    //    pull périodique du SyncEngine — ~5-30s plus tard.
+    final pull = onConflictAutoResolved;
+    if (pull != null) {
+      try {
+        // ignore: avoid_print
+        print('[sync] auto-resolve : déclenche pull workspace immédiat');
+        await pull();
+      } catch (_) {
+        // Best-effort — le pull périodique rattrapera.
+      }
     }
   }
+
+  /// Callback optionnel câblé par `DataService` au boot pour que ce
+  /// service puisse déclencher un pull workspace après une
+  /// auto-résolution de conflit, SANS importer DataService directement
+  /// (ce qui créerait un cycle d'imports). Cf. `DataService.initialize`.
+  Future<void> Function()? onConflictAutoResolved;
 
   Future<void> _processOperation(SyncOperation operation) async {
     final payload = jsonDecode(operation.payloadJson) as Map<String, dynamic>;
