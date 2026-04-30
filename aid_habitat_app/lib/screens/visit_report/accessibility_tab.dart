@@ -123,7 +123,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   String _yearConstruction = '';
   String _yearHabitation = '';
   double? _surface;
-  String _typology = 'Maison';
+  // '' = jamais répondu (aucun pill highlight UI). L'ergo doit cliquer
+  // explicitement Maison ou Appartement pour passer la validation
+  // pré-génération (cf. _checkAccessibilite > Général).
+  String _typology = '';
   Set<String> _heatingTypes = {};
 
   // Niveaux (ordre d'ajout par l'utilisateur)
