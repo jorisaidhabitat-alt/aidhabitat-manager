@@ -1057,6 +1057,27 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     }
   }
 
+  /// True si la note (NotesWidget) sous le `tabKey` donné contient du
+  /// texte non-vide. Le texte est encodé dans `drawing_json.text` (cf.
+  /// `notes_widget.dart#_currentDrawingJson`). Si le JSON n'a pas de
+  /// champ `text`, on retombe sur false (pas de note utilisable).
+  Future<bool> _hasNoteText(String tabKey) async {
+    try {
+      final raw = await _dataService.fetchNoteDrawingJson(
+        patientId: _dossier.patient.id,
+        tabKey: tabKey,
+      );
+      if (raw == null || raw.isEmpty) return false;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map && decoded['text'] is String) {
+        return (decoded['text'] as String).trim().isNotEmpty;
+      }
+    } catch (_) {
+      // JSON invalide ou erreur fetch → considère le champ vide.
+    }
+    return false;
+  }
+
   /// Vérifie que les champs critiques pour un PDF sont remplis. Renvoie
   /// la liste des champs manquants (vide si tout est OK).
   ///
@@ -1102,6 +1123,27 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         label: 'Type de logement (Maison / Appartement)',
         tabIndex: _tabs.indexOf('Accessibilité'),
         subSectionIndex: 0, // Général (interne à AccessibilityTab)
+      ));
+    }
+
+    // Contexte de vie — note Médical (alimente le champ « Environnement »
+    // page 4 du PDF) et note Autonomie (alimente « Habitudes de vie »
+    // page 4). Les 2 sont saisies dans le panneau de droite des
+    // sous-sections internes du ContextTab. Demande utilisateur
+    // 2026-04-30 : « les deux parties contexte de vie doivent
+    // également être remplies (médicale et autonomie) ».
+    if (!await _hasNoteText('Contexte de vie-Médical')) {
+      missing.add(_MissingField(
+        label: 'Contexte de vie — Médical (note de droite)',
+        tabIndex: _tabs.indexOf('Contexte de vie'),
+        subSectionIndex: 0, // Médical
+      ));
+    }
+    if (!await _hasNoteText('Contexte de vie-Autonomie')) {
+      missing.add(_MissingField(
+        label: 'Contexte de vie — Autonomie (note de droite)',
+        tabIndex: _tabs.indexOf('Contexte de vie'),
+        subSectionIndex: 1, // Autonomie
       ));
     }
 
