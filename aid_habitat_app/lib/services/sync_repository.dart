@@ -640,6 +640,30 @@ class SyncRepository {
     };
   }
 
+  /// Re-met TOUTES les opérations en `failed` à `pending` (avec
+  /// `attempt_count = 0` et `last_error = null`) → débloque la queue
+  /// pour un retry immédiat sans attendre le prochain tick. Utilisé
+  /// par le bouton « Réessayer maintenant » du dialog d'erreur sync,
+  /// quand l'utilisateur juge que l'erreur (typiquement « fetch failed »
+  /// transitoire) ne se reproduira pas.
+  ///
+  /// Renvoie le nombre d'ops re-queue.
+  Future<int> resetFailedToPending() async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    return db.update(
+      'sync_operations',
+      {
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'updated_at': now,
+      },
+      where: 'status = ?',
+      whereArgs: [SyncOperationStatus.failed.name],
+    );
+  }
+
   /// Supprime TOUTES les opérations en `failed` — permet à l'utilisateur de
   /// débloquer le bandeau rouge quand une modification ne pourra jamais
   /// aboutir (ex: ressource supprimée côté serveur).

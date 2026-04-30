@@ -288,7 +288,14 @@ class _MainScreenState extends State<MainScreen>
       );
       return;
     }
-    final discard = await showSoftDialog<bool>(
+    // Le dialog renvoie une string-clé d'action :
+    //  • 'retry'   → relance la sync immédiatement (ne ferme pas l'op,
+    //               la requeue pour un essai instantané, utile sur
+    //               glitch réseau transitoire)
+    //  • 'discard' → ignore définitivement la modif locale
+    //  • null/autre → fermeture sans action (l'op reste en queue et
+    //                  retentera au prochain cycle 5s)
+    final action = await showSoftDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Opération en échec'),
@@ -312,27 +319,55 @@ class _MainScreenState extends State<MainScreen>
                 style: const TextStyle(fontSize: 12),
               ),
             ),
+            const SizedBox(height: 12),
+            // Hint UX : la plupart des "fetch failed" sont des glitches
+            // réseau transitoires. On invite à réessayer avant de
+            // proposer d'ignorer définitivement.
+            const Text(
+              'Astuce : si l\'erreur ressemble à un problème réseau '
+              '("fetch failed", "timeout"…), réessaie maintenant. La '
+              'modif est encore en queue, n\'ignore que si tu sais '
+              'qu\'elle ne pourra jamais aboutir.',
+              style: TextStyle(fontSize: 11, color: Colors.black54),
+            ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(ctx, 'close'),
             child: const Text('Fermer'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(ctx, 'retry'),
+            child: const Text('Réessayer maintenant'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(ctx, 'discard'),
             child: const Text('Ignorer cette modification'),
           ),
         ],
       ),
     );
-    if (!mounted || discard != true) return;
-    final removed = await _syncEngine.discardFailedOperations();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$removed opération(s) ignorée(s)')),
-    );
+    if (action == 'retry') {
+      // Reset attempt_count + lastError de l'op fautive, puis kick le
+      // sync engine pour un retry immédiat (sans attendre le tick).
+      await _syncEngine.retryFailedOperations();
+      _syncEngine.requestSync();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Synchronisation relancée…')),
+      );
+      return;
+    }
+    if (action == 'discard') {
+      final removed = await _syncEngine.discardFailedOperations();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$removed opération(s) ignorée(s)')),
+      );
+    }
   }
 
   Widget _kv(String k, String v) => Padding(

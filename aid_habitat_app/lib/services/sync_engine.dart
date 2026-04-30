@@ -216,6 +216,25 @@ class SyncEngine {
   Future<Map<String, String?>?> inspectTopFailure() =>
       _syncRepository.fetchTopFailingOperation();
 
+  /// Re-queue toutes les opérations en `failed` (passe à `pending`,
+  /// reset attempt_count) → utilisé par le bouton « Réessayer
+  /// maintenant » du dialog d'erreur sync. Le caller appelle
+  /// généralement `requestSync()` juste après pour kick le retry sans
+  /// attendre le prochain tick.
+  Future<int> retryFailedOperations() async {
+    final reset = await _syncRepository.resetFailedToPending();
+    _consecutiveFailures = 0;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    final pending = await _refreshPendingCount();
+    _emitState(
+      pendingCount: pending,
+      clearError: true,
+      nextRetryAt: null,
+    );
+    return reset;
+  }
+
   /// Supprime toutes les opérations en `failed` et réinitialise le compteur
   /// de retries → débloque le bandeau rouge quand une modif ne pourra jamais
   /// aboutir (ex: doc déjà supprimé côté serveur).
