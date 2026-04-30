@@ -389,6 +389,14 @@ const toBool = (value) => {
   if (value == null) return false;
   return ['true', '1', 'yes', 'oui', 'x'].includes(String(value).trim().toLowerCase());
 };
+// Variante nullable : renvoie null si la valeur NocoDB est null/'' (= non
+// renseigné), sinon le bool normal. Utilisé pour les champs où l'ergo
+// doit pouvoir laisser « non répondu » (cf. acces_facile_rue côté
+// accessibility_tab Flutter et le validateur de pré-génération PDF).
+const toBoolOrNull = (value) => {
+  if (value == null || value === '') return null;
+  return toBool(value);
+};
 const boolText = (value) => String(Boolean(value));
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const latestRecord = (records) => {
@@ -1576,7 +1584,7 @@ const mapHousing = (housingRecord) => {
         pellet: false,
         other: false,
       },
-      easyAccess: false,
+      easyAccess: null,
     };
   }
 
@@ -1629,7 +1637,11 @@ const mapHousing = (housingRecord) => {
     portailId: field(housingRecord, 'portail')?.id ? String(field(housingRecord, 'portail').id) : '',
     motorisationPorteGarage: refLabel(field(housingRecord, 'porte_de_garage')),
     motorisationPortail: refLabel(field(housingRecord, 'portail')),
-    easyAccess: toBool(field(housingRecord, 'acces_facile_rue')),
+    // Nullable : l'ergo doit pouvoir laisser le champ vide (le validateur
+    // pré-génération signale alors « accès depuis la rue non renseigné »).
+    // Sans toBoolOrNull, NocoDB null → false côté serveur → Flutter
+    // interprétait comme « À revoir » et la pill restait pré-sélectionnée.
+    easyAccess: toBoolOrNull(field(housingRecord, 'acces_facile_rue')),
     comments: stringValue(field(housingRecord, 'commentaire')),
     accessObservation: stringValue(field(housingRecord, 'observation_accessibilite')),
   };

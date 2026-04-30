@@ -264,6 +264,13 @@ export const toBool = (value) => {
   if (value == null) return false;
   return ['true', '1', 'yes', 'oui', 'x'].includes(String(value).trim().toLowerCase());
 };
+// Variante nullable : renvoie null pour NocoDB null/'' (= non renseigné).
+// Utilisé pour les champs où Flutter doit pouvoir distinguer « pas de
+// réponse » d'une réponse explicite « Non/false » (cf. acces_facile_rue).
+export const toBoolOrNull = (value) => {
+  if (value == null || value === '') return null;
+  return toBool(value);
+};
 export const boolText = (value) => String(Boolean(value));
 export const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 export const latestRecord = (records) => {
@@ -1412,7 +1419,7 @@ export const mapHousing = (housingRecord) => {
         pellet: false,
         other: false,
       },
-      easyAccess: false,
+      easyAccess: null,
     };
   }
 
@@ -1463,7 +1470,10 @@ export const mapHousing = (housingRecord) => {
     portailId: field(housingRecord, 'portail')?.id ? String(field(housingRecord, 'portail').id) : '',
     motorisationPorteGarage: refLabel(field(housingRecord, 'porte_de_garage')),
     motorisationPortail: refLabel(field(housingRecord, 'portail')),
-    easyAccess: toBool(field(housingRecord, 'acces_facile_rue')),
+    // Nullable : preserve « non renseigné » côté Flutter pour la pill UI
+    // et le validateur pré-génération (sinon NocoDB null → false → pill
+    // « À revoir » pré-sélectionnée).
+    easyAccess: toBoolOrNull(field(housingRecord, 'acces_facile_rue')),
     comments: stringValue(field(housingRecord, 'commentaire')),
     accessObservation: stringValue(field(housingRecord, 'observation_accessibilite')),
   };

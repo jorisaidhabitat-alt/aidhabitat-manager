@@ -1002,7 +1002,12 @@ class DossierRepository {
       'year_construction': raw['yearConstruction']?.toString() ?? '',
       'year_habitation': raw['yearHabitation']?.toString() ?? '',
       'levels': _asInt(raw['levels']),
-      'typology': raw['typology']?.toString() ?? 'Maison',
+      // Avant 2026-04-30 : défaut 'Maison' → la pill « Maison »
+      // apparaissait pré-sélectionnée à l'ouverture du relevé même quand
+      // l'ergo n'avait jamais cliqué dessus, et le validateur de pré-
+      // génération ne pouvait pas signaler le champ comme manquant.
+      // Maintenant : '' (vide) si pas de valeur côté serveur.
+      'typology': raw['typology']?.toString() ?? '',
       'basement': _asBoolInt(raw['basement']),
       'basement_desc': raw['basementDesc']?.toString() ?? '',
       'rdc': _asBoolInt(raw['rdc']),
@@ -1495,7 +1500,9 @@ class DossierRepository {
             row['housing_year_construction'] as String? ?? '',
         yearHabitation: row['housing_year_habitation'] as String? ?? '',
         levels: row['housing_levels'] as int?,
-        typology: row['housing_typology'] as String? ?? 'Maison',
+        // Défaut '' (et pas 'Maison') pour préserver l'état « non
+        // renseigné » au reload — voir _buildHousingPayload.
+        typology: row['housing_typology'] as String? ?? '',
         basement: (row['housing_basement'] as int? ?? 0) == 1,
         basementDescription:
             row['housing_basement_desc'] as String? ?? '',

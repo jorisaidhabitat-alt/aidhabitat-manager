@@ -865,7 +865,10 @@ class LocalDatabase {
         'year_construction': '',
         'year_habitation': '',
         'levels': null,
-        'typology': 'Maison',
+        // '' (et non 'Maison') : l'ergo doit cliquer explicitement
+        // Maison ou Appartement — sinon le validateur de pré-génération
+        // signale le champ comme manquant.
+        'typology': '',
         'basement': 0,
         'basement_desc': '',
         'rdc': 0,

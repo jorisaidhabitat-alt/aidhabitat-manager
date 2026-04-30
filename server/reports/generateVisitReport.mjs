@@ -288,8 +288,13 @@ function formatVoletLine(label, entier, rawLoc) {
  */
 function buildAccessExtrasText(housing) {
   const lines = [];
-  // Accès depuis la rue — toujours rendu (binaire bool, sens utile dans les 2 cas).
-  lines.push(`Accès depuis la rue : ${housing.easyAccess ? 'Facile' : 'À revoir'}`);
+  // Accès depuis la rue — true=Facile, false=À revoir, null=non renseigné
+  // (saute la ligne plutôt que d'afficher « À revoir » par défaut).
+  if (housing.easyAccess === true) {
+    lines.push('Accès depuis la rue : Facile');
+  } else if (housing.easyAccess === false) {
+    lines.push('Accès depuis la rue : À revoir');
+  }
   // Volets — 3 types, on saute si Aucun.
   const v1 = formatVoletLine(
     'Volets roulants manuels',
