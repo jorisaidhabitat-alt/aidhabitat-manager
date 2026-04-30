@@ -101,15 +101,32 @@ class DataService {
 
   /// Create a new beneficiary + dossier locally (works offline).
   /// A sync operation is automatically enqueued.
+  ///
+  /// Tous les champs admin (`natureAccompagnement`, `numberPeople`,
+  /// `fiscalRevenue`, adresse) sont demandés à la création depuis 2026-04-30
+  /// pour que le dossier ait dès le départ assez de données pour le
+  /// rapport PDF.
   Future<Dossier> createDossierOffline({
     required String firstName,
     required String lastName,
     String ergoId = '',
+    String natureAccompagnement = '',
+    int numberPeople = 1,
+    double? fiscalRevenue,
+    String address = '',
+    String city = '',
+    String zipCode = '',
   }) async {
     return _dossierRepository.createDossierOffline(
       firstName: firstName,
       lastName: lastName,
       ergoId: ergoId,
+      natureAccompagnement: natureAccompagnement,
+      numberPeople: numberPeople,
+      fiscalRevenue: fiscalRevenue,
+      address: address,
+      city: city,
+      zipCode: zipCode,
     );
   }
 

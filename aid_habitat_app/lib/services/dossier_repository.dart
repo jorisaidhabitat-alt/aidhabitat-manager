@@ -25,10 +25,23 @@ class DossierRepository {
   /// for each so they are pushed to the server when connectivity is available.
   ///
   /// Returns the newly created [Dossier] immediately — no network required.
+  ///
+  /// Les champs admin du bloc bénéficiaire sont demandés dès la création
+  /// (cf. `CreateBeneficiaryScreen`) pour que le dossier ait tout de
+  /// suite assez de données pour le rapport PDF — d'où les params
+  /// `natureAccompagnement` / `numberPeople` / `fiscalRevenue` / adresse.
+  /// Tous restent optionnels au niveau du repo (avec defaults vides) pour
+  /// ne pas casser d'éventuels appelants futurs.
   Future<Dossier> createDossierOffline({
     required String firstName,
     required String lastName,
     String ergoId = '',
+    String natureAccompagnement = '',
+    int numberPeople = 1,
+    double? fiscalRevenue,
+    String address = '',
+    String city = '',
+    String zipCode = '',
   }) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
@@ -43,11 +56,13 @@ class DossierRepository {
       birthDate: '',
       phone: '',
       email: '',
-      address: '',
-      city: '',
-      zipCode: '',
+      address: address,
+      city: city,
+      zipCode: zipCode,
       familySituation: '',
       incomeCategory: '',
+      numberPeople: numberPeople,
+      fiscalRevenue: fiscalRevenue,
       trustedPerson: TrustedPerson(name: '', phone: '', email: ''),
     );
 
@@ -66,12 +81,14 @@ class DossierRepository {
         'birth_date': '',
         'phone': '',
         'email': '',
-        'address': '',
-        'city': '',
-        'zip_code': '',
+        'address': address,
+        'city': city,
+        'zip_code': zipCode,
         'family_situation': '',
         'occupation_status': '',
         'income_category': '',
+        'number_people': numberPeople,
+        'fiscal_revenue': fiscalRevenue,
         'trusted_person_json': jsonEncode({
           'name': '',
           'phone': '',
@@ -105,6 +122,7 @@ class DossierRepository {
         'ergo_id': ergoId,
         'visit_date': null,
         'autonomy_notes': '',
+        'nature_accompagnement': natureAccompagnement,
         'plans_json': jsonEncode(['PF1', 'PF2', 'PF3']),
         'created_at': now,
         'updated_at': now,
@@ -113,7 +131,9 @@ class DossierRepository {
       });
 
       // Enqueue a sync operation to create the full dossier on the server
-      // when connectivity is available.
+      // when connectivity is available. Le serveur lit ces champs dans
+      // POST /api/beneficiaires (cf. mapBeneficiaryUpdatesToFields +
+      // bloc nature_accompagnement spécifique au dossier).
       await txn.insert('sync_operations', {
         'id': 'create_$dossierLocalId',
         'entity_type': 'dossier',
@@ -126,6 +146,12 @@ class DossierRepository {
           'firstName': firstName,
           'lastName': lastName,
           'ergoId': ergoId,
+          'natureAccompagnement': natureAccompagnement,
+          'numberPeople': numberPeople,
+          if (fiscalRevenue != null) 'fiscalRevenue': fiscalRevenue,
+          'address': address,
+          'city': city,
+          'zipCode': zipCode,
         }),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
@@ -144,6 +170,7 @@ class DossierRepository {
       ergoId: ergoId,
       housing: housing,
       autonomyNotes: '',
+      natureAccompagnement: natureAccompagnement,
       plans: const {
         'PF1': FinancialPlan(id: 'PF1'),
         'PF2': FinancialPlan(id: 'PF2'),

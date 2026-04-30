@@ -834,6 +834,23 @@ class NocodbSyncService {
         }
       }
 
+      // Champs admin demandés à la création (CreateBeneficiaryScreen
+      // depuis 2026-04-30). Tous optionnels pour rester compat avec
+      // les sync_operations héritées d'avant cette date — qui ont
+      // juste firstName/lastName/ergoId.
+      final natureAccompagnement = payload['natureAccompagnement']?.toString() ?? '';
+      final numberPeopleRaw = payload['numberPeople'];
+      final numberPeople = numberPeopleRaw is num
+          ? numberPeopleRaw.toInt()
+          : (numberPeopleRaw is String ? int.tryParse(numberPeopleRaw) : null);
+      final fiscalRevenueRaw = payload['fiscalRevenue'];
+      final fiscalRevenue = fiscalRevenueRaw is num
+          ? fiscalRevenueRaw.toDouble()
+          : (fiscalRevenueRaw is String ? double.tryParse(fiscalRevenueRaw) : null);
+      final address = payload['address']?.toString() ?? '';
+      final city = payload['city']?.toString() ?? '';
+      final zipCode = payload['zipCode']?.toString() ?? '';
+
       final result = await _apiClient.createBeneficiary(fields: {
         'firstName': firstName,
         'lastName': lastName,
@@ -843,6 +860,14 @@ class NocodbSyncService {
         // associé dans `server/index.mjs`). Sans cette clé, le serveur
         // n'a aucun moyen de distinguer un retry d'un vrai nouveau dossier.
         if (patientLocalId.isNotEmpty) 'clientLocalId': patientLocalId,
+        if (natureAccompagnement.isNotEmpty)
+          'natureAccompagnement': natureAccompagnement,
+        if (numberPeople != null && numberPeople > 0)
+          'numberPeople': numberPeople,
+        if (fiscalRevenue != null) 'fiscalRevenue': fiscalRevenue,
+        if (address.isNotEmpty) 'address': address,
+        if (city.isNotEmpty) 'city': city,
+        if (zipCode.isNotEmpty) 'zipCode': zipCode,
       });
 
       // Store the remote IDs locally so future updates reference them.

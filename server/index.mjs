@@ -4949,6 +4949,16 @@ app.post('/api/beneficiaires', requireAuth, async (req, res, next) => {
     if (Object.keys(relationFields).length > 0) {
       await updateRecord(TABLES.beneficiaires, created.id, relationFields);
     }
+    // `natureAccompagnement` : envoyé depuis le formulaire de création
+    // côté Flutter (CreateBeneficiaryScreen). Champ dossier, pas
+    // bénéficiaire — donc géré ici en direct, pas dans
+    // `mapBeneficiaryUpdatesToFields`. Whitelist sur les 3 valeurs
+    // attendues (`ergo` / `complet` / `diagnostic`) — toute autre valeur
+    // tombe sur `''` pour éviter d'écrire de la donnée corrompue.
+    const rawNature = String(updates.natureAccompagnement || '').trim().toLowerCase();
+    const natureAccompagnement = ['ergo', 'complet', 'diagnostic'].includes(rawNature)
+      ? rawNature
+      : '';
     const createdDossier = await createRecord(TABLES.dossiers, {
       // `uuid_source` : si le client a fourni `clientLocalId`, on
       // l'utilise tel quel (clé d'idempotence). Sinon fallback sur
@@ -4958,6 +4968,9 @@ app.post('/api/beneficiaires', requireAuth, async (req, res, next) => {
       beneficiaires_id: Number(created.id),
       ergo_id: assignedErgoLabel,
       status: 'À visiter',
+      // Type d'accompagnement saisi à la création (peut rester vide
+      // pour les ergos qui ne le décident qu'à la première visite).
+      ...(natureAccompagnement ? { nature_accompagnement: natureAccompagnement } : {}),
       created_at: new Date().toISOString(),
     });
     res.status(201).json({

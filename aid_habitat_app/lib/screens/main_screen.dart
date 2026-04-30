@@ -392,14 +392,19 @@ class _MainScreenState extends State<MainScreen>
   }
 
   Future<void> _handleBeneficiaryCreated(
-    String firstName,
-    String lastName,
+    BeneficiaryDraft draft,
   ) async {
     final ergoId = widget.currentUser.ergoLabel ?? '';
     final dossier = await _dataService.createDossierOffline(
-      firstName: firstName,
-      lastName: lastName,
+      firstName: draft.firstName,
+      lastName: draft.lastName,
       ergoId: ergoId,
+      natureAccompagnement: draft.natureAccompagnement,
+      numberPeople: draft.numberPeople,
+      fiscalRevenue: draft.fiscalRevenue,
+      address: draft.address,
+      city: draft.city,
+      zipCode: draft.zipCode,
     );
 
     // Refresh the dossier list and navigate to the new dossier.
