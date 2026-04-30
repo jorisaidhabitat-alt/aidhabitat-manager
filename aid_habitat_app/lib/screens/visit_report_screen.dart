@@ -1529,70 +1529,114 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     if (!mounted) return null;
     return showSoftDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => Dialog(
+        // Layout custom pour pouvoir contraindre la largeur (l'AlertDialog
+        // par défaut prend ~85 % du viewport sur iPad — trop large pour
+        // une simple liste de champs manquants). Demande utilisateur
+        // 2026-04-30 : « pop up plus centrée et moins large ».
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        title: const Text('Champs manquants'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Certaines informations importantes ne sont pas '
-                'remplies. Tu peux générer le rapport quand même '
-                '(les champs vides seront laissés blancs dans le PDF) '
-                'ou compléter d\'abord :',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              ...missing.map(
-                (m) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4, right: 8),
-                        child: Icon(
-                          LucideIcons.alertCircle,
-                          size: 14,
-                          color: Color(0xFFB45309),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          m.label,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
+        // insetPadding par défaut serait étroit — on lui force une marge
+        // confortable + maxWidth pour que sur grand écran (iPad/macOS)
+        // la popup reste centrée et compacte plutôt que de s'étirer.
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: 40,
+          vertical: 24,
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Champs manquants',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                const Text(
+                  'Certaines informations importantes ne sont pas '
+                  'remplies. Tu peux générer le rapport quand même '
+                  '(les champs vides seront laissés blancs dans le PDF) '
+                  'ou compléter d\'abord :',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  // Scroll si la liste est très longue — sans Flexible
+                  // la dialog déborderait verticalement le viewport.
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: missing
+                          .map(
+                            (m) => Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  const Padding(
+                                    padding:
+                                        EdgeInsets.only(top: 4, right: 8),
+                                    child: Icon(
+                                      LucideIcons.alertCircle,
+                                      size: 14,
+                                      color: Color(0xFFB45309),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      m.label,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx, false);
+                        _navigateToMissingField(missing.first);
+                      },
+                      child: const Text('Remplir les champs'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF7C6DAA),
+                      ),
+                      child: const Text('Valider'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx, false);
-              _navigateToMissingField(missing.first);
-            },
-            child: const Text('Remplir les champs'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF7C6DAA),
-            ),
-            child: const Text('Valider'),
-          ),
-        ],
       ),
     );
   }
