@@ -1078,104 +1078,445 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     return false;
   }
 
-  /// Vérifie que les champs critiques pour un PDF sont remplis. Renvoie
-  /// la liste des champs manquants (vide si tout est OK).
+  /// Vérifie que TOUS les champs critiques pour un PDF complet sont
+  /// remplis. Renvoie la liste des champs manquants (vide si tout est OK).
   ///
-  /// Liste évolutive — étends-la quand tu identifies un champ qui sort
-  /// vide trop souvent. Chaque entrée définit son label + l'onglet (et
-  /// éventuellement la sous-section) où l'ergo doit aller pour le
-  /// remplir.
+  /// Spec utilisateur 2026-04-30 :
+  ///   - Bénéficiaire (Profil / Foyer / Santé / Admin) : tout rempli
+  ///   - Mesures : pas important, on skip
+  ///   - Accessibilité Général / Équipements / Extérieur : tout rempli
+  ///   - Accessibilité Niveaux : ≥ 1 niveau ajouté avec SDB ET WC
+  ///   - SDB : ≥ 1 (douche OU baignoire) + hauteur + porte (largeur,
+  ///     dimensions, sens). Équipements complémentaires optionnels.
+  ///   - WC : tout rempli (cuvette, hauteur, porte…)
+  ///   - Photos : ≥ 1 par catégorie SAUF « Autres »
+  ///   - Préconisations : ≥ 1 reco + note Projet + note Résumé
+  ///   - Notes écrites : Contexte (Médical/Autonomie), Accessibilité,
+  ///     Sanitaires, Préconisations (Projet/Résumé)
+  ///   - « Cochée mais pas de précision » : Santé (APA→GIR, MDPH→%,
+  ///     aide à domicile→texte) ; Volets roulants Localisé→localisation
   Future<List<_MissingField>> _collectMissingFields() async {
     final missing = <_MissingField>[];
-    final p = _dossier.patient;
+    await _checkBeneficiaryProfil(missing);
+    await _checkBeneficiaryFoyer(missing);
+    await _checkBeneficiarySante(missing);
+    await _checkBeneficiaryAdmin(missing);
+    await _checkAccessibilite(missing);
+    await _checkSalleDeBain(missing);
+    await _checkWc(missing);
+    await _checkPhotos(missing);
+    await _checkRecommendations(missing);
+    await _checkNotesEcrites(missing);
+    return missing;
+  }
 
-    // Bénéficiaire / Profil — identité minimale
+  // -----------------------------------------------------------------
+  // Sub-checkers — chacun pousse ses propres `_MissingField` dans la
+  // liste passée. Découpés pour rester lisibles à l'inspection.
+  // -----------------------------------------------------------------
+
+  Future<void> _checkBeneficiaryProfil(List<_MissingField> missing) async {
+    final p = _dossier.patient;
+    final tab = _tabs.indexOf('Bénéficiaire');
     if (p.firstName.trim().isEmpty || p.lastName.trim().isEmpty) {
       missing.add(_MissingField(
-        label: 'Nom et prénom du bénéficiaire',
-        tabIndex: _tabs.indexOf('Bénéficiaire'),
-        subSectionIndex: 0, // Profil
+        label: 'Profil — nom et prénom',
+        tabIndex: tab,
+        subSectionIndex: 0,
       ));
     }
+    if (p.birthDate.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Profil — date de naissance',
+        tabIndex: tab,
+        subSectionIndex: 0,
+      ));
+    }
+    if (p.phone.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Profil — téléphone',
+        tabIndex: tab,
+        subSectionIndex: 0,
+      ));
+    }
+    if (p.trustedPerson.name.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Profil — personne de confiance',
+        tabIndex: tab,
+        subSectionIndex: 0,
+      ));
+    }
+  }
 
-    // Bénéficiaire / Foyer — adresse
+  Future<void> _checkBeneficiaryFoyer(List<_MissingField> missing) async {
+    final p = _dossier.patient;
+    final tab = _tabs.indexOf('Bénéficiaire');
     if (p.address.trim().isEmpty || p.city.trim().isEmpty) {
       missing.add(_MissingField(
-        label: 'Adresse du logement',
-        tabIndex: _tabs.indexOf('Bénéficiaire'),
-        subSectionIndex: 1, // Foyer
+        label: 'Foyer — adresse complète',
+        tabIndex: tab,
+        subSectionIndex: 1,
       ));
     }
-
-    // Bénéficiaire / Foyer — situation familiale
     if (p.familySituation.trim().isEmpty) {
       missing.add(_MissingField(
-        label: 'Situation familiale',
-        tabIndex: _tabs.indexOf('Bénéficiaire'),
-        subSectionIndex: 1, // Foyer
+        label: 'Foyer — situation familiale',
+        tabIndex: tab,
+        subSectionIndex: 1,
+      ));
+    }
+    if (p.occupationStatus.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Foyer — statut d\'occupation (Propriétaire/Locataire/Usufruitier)',
+        tabIndex: tab,
+        subSectionIndex: 1,
+      ));
+    }
+    if ((p.numberPeople ?? 0) <= 0) {
+      missing.add(_MissingField(
+        label: 'Foyer — nombre de personnes',
+        tabIndex: tab,
+        subSectionIndex: 1,
+      ));
+    }
+    if (p.fiscalRevenue == null || p.fiscalRevenue! <= 0) {
+      missing.add(_MissingField(
+        label: 'Foyer — revenu fiscal de référence',
+        tabIndex: tab,
+        subSectionIndex: 1,
+      ));
+    }
+  }
+
+  Future<void> _checkBeneficiarySante(List<_MissingField> missing) async {
+    // Demande utilisateur : « si un élément est coché mais pas de
+    // précision, il faut le mentionner ». APA→GIR, MDPH→%, aide à
+    // domicile→précision texte.
+    final p = _dossier.patient;
+    final tab = _tabs.indexOf('Bénéficiaire');
+    final occupants = p.occupants;
+    final primary = occupants.isNotEmpty ? occupants.first : null;
+    final apa = primary?.apa ?? false;
+    final apaGir = primary?.apaGir.trim() ?? '';
+    if (apa && apaGir.isEmpty) {
+      missing.add(_MissingField(
+        label: 'Santé — APA cochée mais GIR non renseigné',
+        tabIndex: tab,
+        subSectionIndex: 2,
+      ));
+    }
+    if (p.invalidity && p.invalidityTxt.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Santé — Reconnaissance MDPH cochée mais % non renseigné',
+        tabIndex: tab,
+        subSectionIndex: 2,
+      ));
+    }
+    if (p.homeHelp && p.homeHelpTxt.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Santé — Aide à domicile cochée mais détails non renseignés',
+        tabIndex: tab,
+        subSectionIndex: 2,
+      ));
+    }
+    if (p.dependenceTxt.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Santé — dépendance particulière',
+        tabIndex: tab,
+        subSectionIndex: 2,
+      ));
+    }
+  }
+
+  Future<void> _checkBeneficiaryAdmin(List<_MissingField> missing) async {
+    final p = _dossier.patient;
+    final tab = _tabs.indexOf('Bénéficiaire');
+    if (p.caisseRetraitePrincipale.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Admin — caisse de retraite principale',
+        tabIndex: tab,
+        subSectionIndex: 3,
+      ));
+    }
+    if (_dossier.compteAnah.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Admin — compte ANAH',
+        tabIndex: tab,
+        subSectionIndex: 3,
+      ));
+    }
+    if (_dossier.envoiRapport.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Admin — modalité d\'envoi du rapport',
+        tabIndex: tab,
+        subSectionIndex: 3,
+      ));
+    }
+  }
+
+  Future<void> _checkAccessibilite(List<_MissingField> missing) async {
+    final h = _dossier.housing;
+    final tab = _tabs.indexOf('Accessibilité');
+    // — Général (subSection 0)
+    if (h.typology.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Accessibilité Général — type de logement (Maison/Appartement)',
+        tabIndex: tab,
+        subSectionIndex: 0,
+      ));
+    }
+    if (h.yearConstruction.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Accessibilité Général — année de construction',
+        tabIndex: tab,
+        subSectionIndex: 0,
+      ));
+    }
+    if (h.surface == null || h.surface! <= 0) {
+      missing.add(_MissingField(
+        label: 'Accessibilité Général — surface habitable',
+        tabIndex: tab,
+        subSectionIndex: 0,
       ));
     }
 
-    // Accessibilité / Général — type de logement
-    final typology = _dossier.housing.typology.trim();
-    if (typology.isEmpty) {
+    // — Niveaux et pièces (subSection 1) : ≥ 1 niveau ayant à la fois
+    //   « Salle de bain » ET « WC » dans ses pièces.
+    final levels = <List<String>>[
+      if (h.basement) h.basementRooms,
+      if (h.rdc) h.rdcRooms,
+      if (h.floor) h.floorRooms,
+      if (h.secondFloor) h.secondFloorRooms,
+      if (h.thirdFloor) h.thirdFloorRooms,
+    ];
+    bool hasBoth = levels.any((rooms) {
+      final norm = rooms.map((r) => r.toLowerCase().trim()).toSet();
+      final hasSdb = norm.any((r) => r.contains('salle de bain'));
+      final hasWc = norm.any((r) => r.contains('wc'));
+      return hasSdb && hasWc;
+    });
+    if (!hasBoth) {
       missing.add(_MissingField(
-        label: 'Type de logement (Maison / Appartement)',
-        tabIndex: _tabs.indexOf('Accessibilité'),
-        subSectionIndex: 0, // Général (interne à AccessibilityTab)
+        label: 'Niveaux et pièces — au moins 1 niveau avec « Salle de bain » et « WC »',
+        tabIndex: tab,
+        subSectionIndex: 1,
       ));
     }
 
-    // Contexte de vie — note Médical (alimente le champ « Environnement »
-    // page 4 du PDF) et note Autonomie (alimente « Habitudes de vie »
-    // page 4). Les 2 sont saisies dans le panneau de droite des
-    // sous-sections internes du ContextTab. Demande utilisateur
-    // 2026-04-30 : « les deux parties contexte de vie doivent
-    // également être remplies (médicale et autonomie) ».
-    if (!await _hasNoteText('Contexte de vie-Médical')) {
+    // — Équipements (subSection 2) : chauffage choisi + volets validés
+    final hasHeating = h.heatingDetails.values.any((v) => v == true);
+    if (!hasHeating) {
       missing.add(_MissingField(
-        label: 'Contexte de vie — Médical (note de droite)',
-        tabIndex: _tabs.indexOf('Contexte de vie'),
-        subSectionIndex: 0, // Médical
+        label: 'Équipements — chauffage (au moins 1 type sélectionné)',
+        tabIndex: tab,
+        subSectionIndex: 2,
       ));
     }
-    if (!await _hasNoteText('Contexte de vie-Autonomie')) {
-      missing.add(_MissingField(
-        label: 'Contexte de vie — Autonomie (note de droite)',
-        tabIndex: _tabs.indexOf('Contexte de vie'),
-        subSectionIndex: 1, // Autonomie
-      ));
+    // Volets : si statut = Localisé sans précision texte → flag
+    void checkVolets(String label, bool entier, String rawLoc) {
+      // Marker zero-width space utilisé par accessibility_tab pour
+      // différencier « Aucun » (loc='') de « Localisé sans texte »
+      // (loc='​'). cf. `_kVoletsLocalizedMarker`.
+      const marker = '​';
+      final cleaned = rawLoc.replaceAll(marker, '').trim();
+      final isLocalise = !entier && rawLoc.isNotEmpty;
+      if (isLocalise && cleaned.isEmpty) {
+        missing.add(_MissingField(
+          label: 'Équipements — $label : Localisé mais localisation non précisée',
+          tabIndex: tab,
+          subSectionIndex: 2,
+        ));
+      }
     }
+    checkVolets(
+      'volets roulants manuels',
+      h.voletsRoulantsManuelsEntier,
+      h.voletsRoulantsManuelsLocalisation,
+    );
+    checkVolets(
+      'volets roulants électriques',
+      h.voletsRoulantsElectriquesEntier,
+      h.voletsRoulantsElectriquesLocalisation,
+    );
+    checkVolets(
+      'persiennes',
+      h.voletsPersiennesEntier,
+      h.voletsPersiennesLocalisation,
+    );
 
-    // Photos / Logement — au moins 1 photo
+    // — Extérieur (subSection 3) : au moins une caractéristique d'accès
+    //   ou d'annexe pour montrer que la section a été visitée. On ne
+    //   peut pas dériver « non rempli » d'un toggle binaire facilement,
+    //   donc on se contente de vérifier qu'au moins 1 annexe ou
+    //   cheminement est cochée. Si l'ergo n'a vraiment rien de spécial
+    //   à signaler, il peut cocher Valider pour continuer.
+    final anyExterieur = h.garage || h.veranda || h.balcon || h.terrasse
+        || h.jardin || h.cheminementMarches || h.cheminementRampe;
+    if (!anyExterieur) {
+      missing.add(_MissingField(
+        label: 'Extérieur — au moins une annexe ou caractéristique d\'accès',
+        tabIndex: tab,
+        subSectionIndex: 3,
+      ));
+    }
+  }
+
+  Future<void> _checkSalleDeBain(List<_MissingField> missing) async {
+    final tab = _tabs.indexOf('Salle de bain');
+    final diag = await _repository.fetchDiagnosticSanitaire(_dossier.id);
+    final sdbInstances = diag?.sdbInstances ?? const [];
+    if (sdbInstances.isEmpty) {
+      // Cas fréquent : aucun niveau n'a coché « Salle de bain » →
+      // déjà signalé par _checkAccessibilite. Pas la peine de
+      // doubler ici.
+      return;
+    }
+    for (var i = 0; i < sdbInstances.length; i++) {
+      final s = sdbInstances[i];
+      final lvl = s.levelLabel.isNotEmpty ? ' (${s.levelLabel})' : '';
+      // Au moins douche OU baignoire
+      if (!s.sdbBaignoire && !s.sdbBacDouche) {
+        missing.add(_MissingField(
+          label: 'Salle de bain$lvl — sélectionner douche ou baignoire',
+          tabIndex: tab,
+        ));
+      } else {
+        if (s.sdbBaignoire
+            && (s.sdbBaignoireHauteur == null || s.sdbBaignoireHauteur! <= 0)) {
+          missing.add(_MissingField(
+            label: 'Salle de bain$lvl — hauteur baignoire',
+            tabIndex: tab,
+          ));
+        }
+        if (s.sdbBacDouche
+            && (s.sdbBacDoucheHauteur == null || s.sdbBacDoucheHauteur! <= 0)) {
+          missing.add(_MissingField(
+            label: 'Salle de bain$lvl — hauteur bac à douche',
+            tabIndex: tab,
+          ));
+        }
+      }
+      // Porte : dimension chiffrée (les toggles ont des valeurs par
+      // défaut, on ne peut pas les valider proprement).
+      if (s.porteSdbDimension == null || s.porteSdbDimension! <= 0) {
+        missing.add(_MissingField(
+          label: 'Salle de bain$lvl — dimension de la porte',
+          tabIndex: tab,
+        ));
+      }
+    }
+  }
+
+  Future<void> _checkWc(List<_MissingField> missing) async {
+    final tab = _tabs.indexOf('WC');
+    final diag = await _repository.fetchDiagnosticSanitaire(_dossier.id);
+    final wcInstances = diag?.wcInstances ?? const [];
+    if (wcInstances.isEmpty) return;
+    for (var i = 0; i < wcInstances.length; i++) {
+      final w = wcInstances[i];
+      final lvl = w.levelLabel.isNotEmpty ? ' (${w.levelLabel})' : '';
+      // « Tout remplir » : hauteur cuvette + dimension porte. Toggles
+      // (cuvette bonne hauteur/trop basse, barre, sens, largeur)
+      // ont des défauts donc on ne peut pas les valider.
+      if (w.wcCuvetteHauteur == null || w.wcCuvetteHauteur! <= 0) {
+        missing.add(_MissingField(
+          label: 'WC$lvl — hauteur de cuvette',
+          tabIndex: tab,
+        ));
+      }
+      if (w.porteWcDimension == null || w.porteWcDimension! <= 0) {
+        missing.add(_MissingField(
+          label: 'WC$lvl — dimension de la porte',
+          tabIndex: tab,
+        ));
+      }
+    }
+  }
+
+  Future<void> _checkPhotos(List<_MissingField> missing) async {
+    final tab = _tabs.indexOf('Photos');
     try {
-      final docs = await _dataService.fetchDocuments(p.id);
-      bool hasPhotoTagged(String tag) =>
-          docs.any((d) => d.tags.contains(tag));
-      if (!hasPhotoTagged(kPhotoTagLogement)) {
-        missing.add(_MissingField(
-          label: 'Photo du logement (au moins 1)',
-          tabIndex: _tabs.indexOf('Photos'),
-        ));
-      }
-      if (!hasPhotoTagged(kPhotoTagAccessibilite)) {
-        missing.add(_MissingField(
-          label: 'Photo accessibilité (au moins 1)',
-          tabIndex: _tabs.indexOf('Photos'),
-        ));
-      }
-      if (!hasPhotoTagged(kPhotoTagSanitaires)) {
-        missing.add(_MissingField(
-          label: 'Photo sanitaires (au moins 1)',
-          tabIndex: _tabs.indexOf('Photos'),
-        ));
+      final docs = await _dataService.fetchDocuments(_dossier.patient.id);
+      bool has(String tag) => docs.any((d) => d.tags.contains(tag));
+      // « ≥ 1 photo par partie sauf Autres » → 5 catégories obligatoires.
+      const requiredCats = <(String, String)>[
+        (kPhotoTagLogement, 'Logement'),
+        (kPhotoTagAccessibilite, 'Accessibilité'),
+        (kPhotoTagSanitaires, 'Sanitaires'),
+        (kPhotoTagPlanAvant, 'Plan avant travaux'),
+        (kPhotoTagPlanApres, 'Plan travaux préconisés'),
+      ];
+      for (final (tag, label) in requiredCats) {
+        if (!has(tag)) {
+          missing.add(_MissingField(
+            label: 'Photos — $label (au moins 1)',
+            tabIndex: tab,
+          ));
+        }
       }
     } catch (_) {
-      // Si le fetch échoue (rare), on ne bloque pas la validation —
-      // juste on ne peut pas vérifier les photos.
+      // Fetch fail → on skip. Pas bloquant.
     }
+  }
 
-    return missing;
+  Future<void> _checkRecommendations(List<_MissingField> missing) async {
+    final tab = _tabs.indexOf('Préconisations');
+    final recos =
+        await _repository.fetchVisitRecommendations(_dossier.id);
+    if (recos.isEmpty) {
+      missing.add(_MissingField(
+        label: 'Préconisations — au moins 1 préconisation',
+        tabIndex: tab,
+      ));
+    }
+  }
+
+  Future<void> _checkNotesEcrites(List<_MissingField> missing) async {
+    // 1) Contexte de vie — Médical (subSection 0) → PDF Environnement
+    if (!await _hasNoteText('Contexte de vie-Médical')) {
+      missing.add(_MissingField(
+        label: 'Note Contexte de vie — Médical',
+        tabIndex: _tabs.indexOf('Contexte de vie'),
+        subSectionIndex: 0,
+      ));
+    }
+    // 2) Contexte de vie — Autonomie (subSection 1) → PDF Habitudes
+    if (!await _hasNoteText('Contexte de vie-Autonomie')) {
+      missing.add(_MissingField(
+        label: 'Note Contexte de vie — Autonomie',
+        tabIndex: _tabs.indexOf('Contexte de vie'),
+        subSectionIndex: 1,
+      ));
+    }
+    // 3) Accessibilité (note partagée toutes sous-sections)
+    if (!await _hasNoteText('Accessibilité-Notes')) {
+      missing.add(_MissingField(
+        label: 'Note Accessibilité (panneau de droite)',
+        tabIndex: _tabs.indexOf('Accessibilité'),
+      ));
+    }
+    // 4) Sanitaires (note partagée SDB+WC) — 1 seule note alimente
+    //    le PDF « Observations sur les équipements et utilisation »
+    if (!await _hasNoteText('Sanitaires-Notes')) {
+      missing.add(_MissingField(
+        label: 'Note Sanitaires (panneau de droite SDB ou WC)',
+        tabIndex: _tabs.indexOf('Salle de bain'),
+      ));
+    }
+    // 5) Préconisations — Projet de l'usager
+    if (!await _hasNoteText('Préconisations-Projet')) {
+      missing.add(_MissingField(
+        label: 'Préconisations — Projet de l\'usager',
+        tabIndex: _tabs.indexOf('Préconisations'),
+      ));
+    }
+    // 6) Préconisations — Résumé des préconisations
+    if (!await _hasNoteText('Préconisations-Résumé')) {
+      missing.add(_MissingField(
+        label: 'Préconisations — Résumé des préconisations',
+        tabIndex: _tabs.indexOf('Préconisations'),
+      ));
+    }
   }
 
   /// Affiche la popup « Champs manquants ». Renvoie :
