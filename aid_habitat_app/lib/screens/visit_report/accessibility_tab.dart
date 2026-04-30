@@ -1615,7 +1615,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               expand: true,
               onChanged: (v) {
                 setState(() {
-                  _easyAccess = v == 'Facile';
+                  // v == '' → désélection (l'ergo a re-cliqué la pill
+                  // sélectionnée). On repasse en « non renseigné ».
+                  if (v.isEmpty) {
+                    _easyAccess = null;
+                  } else {
+                    _easyAccess = v == 'Facile';
+                  }
                 });
                 _scheduleSave();
               },

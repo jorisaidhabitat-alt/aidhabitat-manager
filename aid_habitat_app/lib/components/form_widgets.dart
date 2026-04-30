@@ -526,6 +526,13 @@ class FormToggleGroup extends StatelessWidget {
   /// "Situation familiale" (5 options sur 2 colonnes), 3 pour "Occupation".
   final int? columns;
 
+  /// Quand true (défaut), un tap sur la pill déjà sélectionnée la
+  /// désélectionne (`onChanged('')`) — permet à l'ergo de repasser le
+  /// champ à « non renseigné » s'il a cliqué par erreur. Demande
+  /// utilisateur 2026-04-30. Mettre à false uniquement si le champ doit
+  /// imposer une valeur non-vide après le premier clic.
+  final bool allowDeselect;
+
   const FormToggleGroup({
     super.key,
     required this.label,
@@ -534,6 +541,7 @@ class FormToggleGroup extends StatelessWidget {
     this.onChanged,
     this.expand = false,
     this.columns,
+    this.allowDeselect = true,
   });
 
   @override
@@ -541,7 +549,15 @@ class FormToggleGroup extends StatelessWidget {
     Widget buildPill(String opt) {
       final isSelected = opt == selected;
       return GestureDetector(
-        onTap: () => onChanged?.call(opt),
+        onTap: () {
+          // Tap sur la pill déjà sélectionnée → désélection (retour à
+          // l'état « non renseigné »). Sinon → sélection normale.
+          if (isSelected && allowDeselect) {
+            onChanged?.call('');
+          } else {
+            onChanged?.call(opt);
+          }
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           alignment: Alignment.center,
