@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 15;
+  static const _dbVersion = 16;
 
   Database? _database;
 
@@ -79,6 +79,36 @@ class LocalDatabase {
     if (oldVersion < 15) {
       await _migrateV14ToV15(db);
     }
+    if (oldVersion < 16) {
+      await _migrateV15ToV16(db);
+    }
+  }
+
+  /// v15 → v16 : flag `easy_access_set` sur `housings` pour distinguer
+  /// « accès depuis la rue non renseigné » de « explicitement à revoir »
+  /// (demande utilisateur 2026-04-29). Avant cette colonne, le champ
+  /// `easy_access INTEGER NOT NULL DEFAULT 0` mélangeait les deux états :
+  /// la valeur 0 par défaut affichait toujours la pill « À revoir »
+  /// même si l'ergo n'avait jamais cliqué dessus, et le validateur de
+  /// pré-génération ne pouvait pas signaler le champ comme manquant.
+  ///
+  /// Sémantique :
+  ///   - `easy_access_set = 0` → l'ergo n'a pas répondu (pas de pill UI).
+  ///   - `easy_access_set = 1` → l'ergo a explicitement choisi
+  ///     « Facile » (`easy_access=1`) ou « À revoir » (`easy_access=0`).
+  ///
+  /// Toutes les rows existantes héritent de `easy_access_set=0` au moment
+  /// de la migration : on considère que les valeurs 0/1 historiques
+  /// n'étaient pas fiables (mélange de pré-sélection + saisies réelles).
+  /// L'ergo devra re-cliquer Facile/À revoir au prochain reload des
+  /// dossiers concernés. Idempotent grâce à `_addColumnIfMissing`.
+  Future<void> _migrateV15ToV16(Database db) async {
+    await _addColumnIfMissing(
+      db,
+      'housings',
+      'easy_access_set',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
   }
 
   /// v14 → v15 : reset global des niveaux + pièces dans `housings`
@@ -654,6 +684,7 @@ class LocalDatabase {
         motorisation_porte_garage TEXT NOT NULL DEFAULT '',
         motorisation_portail TEXT NOT NULL DEFAULT '',
         easy_access INTEGER NOT NULL DEFAULT 0,
+        easy_access_set INTEGER NOT NULL DEFAULT 0,
         comments TEXT NOT NULL DEFAULT '',
         access_observation TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL,
@@ -865,6 +896,7 @@ class LocalDatabase {
         'motorisation_porte_garage': '',
         'motorisation_portail': '',
         'easy_access': 0,
+        'easy_access_set': 0,
         'comments': '',
         'access_observation': '',
         'updated_at': timestamp,

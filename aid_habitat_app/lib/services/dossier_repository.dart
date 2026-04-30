@@ -1044,6 +1044,16 @@ class DossierRepository {
       'motorisation_portail':
           raw['motorisationPortail']?.toString() ?? '',
       'easy_access': _asBoolInt(raw['easyAccess']),
+      // `easy_access_set` : 1 si NocoDB renvoie une valeur explicitement
+      // posée (true/false/0/1/'oui'/'non'), 0 si la clé est absente ou
+      // null. Évite la pré-sélection « À revoir » au reload depuis le
+      // serveur sur un dossier où l'ergo n'a jamais cliqué (cf. migration
+      // v15→v16). NB : NocoDB renvoie `false` par défaut quand la
+      // colonne booléenne est nullable et non saisie — ici on traite ce
+      // cas comme « non renseigné », même si la valeur arrive en `false`.
+      // Si plus tard on a besoin de distinguer false explicite vs absent,
+      // il faudra une colonne dédiée côté NocoDB.
+      'easy_access_set': raw['easyAccess'] == null ? 0 : 1,
       'comments': raw['comments']?.toString() ?? '',
       'access_observation': raw['accessObservation']?.toString() ?? '',
       'updated_at': now,
@@ -1863,6 +1873,12 @@ class DossierRepository {
     final out = <String, dynamic>{};
     fields.forEach((key, value) {
       if (key == 'updated_at' || key == 'sync_state') return;
+      // `easy_access_set` est local-only (migration v15→v16). NocoDB n'a
+      // pas de colonne dédiée — on garde la sémantique « non renseigné »
+      // côté Flutter uniquement. Si plus tard on veut propager la
+      // distinction, ajouter une colonne `easy_access_set` (Checkbox)
+      // côté serveur et mettre à jour ce mapping.
+      if (key == 'easy_access_set') return;
 
       // Cas spécial : `heating_details_json` est un JSON encodé
       // (Map<String label, bool>). On le décode et on le convertit

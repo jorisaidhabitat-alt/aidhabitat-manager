@@ -131,16 +131,21 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   final Map<String, List<String>> _levelRooms = {};
   final Map<String, TextEditingController> _customRoomCtrls = {};
 
-  // Volets : 'Aucun' | 'Entier' | 'Localisé'
-  String _voletsManStatus = 'Aucun';
+  // Volets : '' | 'Aucun' | 'Entier' | 'Localisé'.
+  // '' = jamais répondu (aucun pill highlight UI). L'ergo doit cliquer
+  // explicitement Aucun/Entier/Localisé pour passer la validation
+  // pré-génération (cf. _checkAccessibilite > checkVolets).
+  String _voletsManStatus = '';
   String _voletsManLoc = '';
-  String _voletsElecStatus = 'Aucun';
+  String _voletsElecStatus = '';
   String _voletsElecLoc = '';
-  String _voletsPersStatus = 'Aucun';
+  String _voletsPersStatus = '';
   String _voletsPersLoc = '';
 
-  // Extérieur
-  bool _easyAccess = true;
+  // Extérieur — `_easyAccess` nullable pour permettre l'état « non
+  // renseigné » (UI sans pré-sélection). Demande utilisateur
+  // 2026-04-30. true=Facile, false=À revoir, null=non renseigné.
+  bool? _easyAccess;
   final Set<String> _annexes = {};
   bool _portail = false;
   String _motorisationPorteGarage = 'Aucun';
@@ -187,15 +192,23 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   /// au clavier et invisible dans NocoDB UI / le rapport PDF.
   static const String _kVoletsLocalizedMarker = '​';
 
-  /// Infère le statut volets ('Aucun' / 'Entier' / 'Localisé') depuis
-  /// les 2 champs persistés (`entier`, `localisation`). Si la
-  /// localisation contient le marqueur invisible OU n'est pas vide,
-  /// le statut est 'Localisé' — l'ancien comportement (loc empty →
-  /// 'Aucun') est préservé pour les anciens dossiers.
+  /// Infère le statut volets ('' / 'Aucun' / 'Entier' / 'Localisé') depuis
+  /// les 2 champs persistés (`entier`, `localisation`).
+  ///
+  /// Demande utilisateur 2026-04-30 : pas de pré-sélection 'Aucun' par
+  /// défaut. Quand entier=false ET rawLoc='' on retourne '' (= non
+  /// renseigné) au lieu de 'Aucun'. L'ergo doit cliquer explicitement
+  /// 'Aucun' ou 'Entier' ou 'Localisé' pour valider.
+  ///
+  /// Trade-off : la persistance ne distingue pas « Aucun » explicite
+  /// de « rien renseigné » (les 2 stockent entier=false, loc=''). Au
+  /// reload d'un dossier qui avait 'Aucun' explicitement, l'ergo
+  /// devra re-cliquer. Acceptable vu la rareté du cas et le bénéfice
+  /// pour la validation.
   static String _inferVoletsStatus(bool entier, String rawLoc) {
     if (entier) return 'Entier';
-    if (rawLoc.isEmpty) return 'Aucun';
-    return 'Localisé';
+    if (rawLoc.isNotEmpty) return 'Localisé';
+    return '';
   }
 
   /// Nettoie la localisation pour l'affichage : retire le marqueur
@@ -267,8 +280,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     _yearHabitation =
         (row?['year_habitation'] ?? h.yearHabitation) as String? ?? '';
     _surface = (row?['surface'] as num?)?.toDouble() ?? h.surface;
+    // Demande utilisateur 2026-04-30 : pas de pré-sélection 'Maison'
+    // par défaut — l'ergo doit cliquer explicitement Maison ou
+    // Appartement, sinon le validateur le flag comme manquant.
     _typology = (row?['typology'] as String?) ??
-        (h.typology.isNotEmpty ? h.typology : 'Maison');
+        (h.typology.isNotEmpty ? h.typology : '');
 
     // Niveaux
     for (final cfg in _kLevelConfigs) {
@@ -324,9 +340,21 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     _voletsPersStatus = _inferVoletsStatus(persEntier, persRawLoc);
     _voletsPersLoc = _cleanVoletsLoc(persRawLoc);
 
-    // Extérieur
-    _easyAccess =
-        ((row?['easy_access'] as int?) ?? (h.easyAccess ? 1 : 0)) == 1;
+    // Extérieur — `easy_access_set` (migration v15→v16) tracke si
+    // l'ergo a explicitement cliqué Facile/À revoir. Sans ce flag, le
+    // défaut SQLite `easy_access=0 NOT NULL` faisait apparaître la pill
+    // « À revoir » comme pré-sélectionnée à la première ouverture du
+    // dossier — le validateur de pré-génération ne pouvait pas signaler
+    // le champ comme manquant.
+    //   set=0 → _easyAccess=null (aucune pill highlight)
+    //   set=1 + easy_access=1 → _easyAccess=true (Facile)
+    //   set=1 + easy_access=0 → _easyAccess=false (À revoir)
+    final easyAccessSet = (row?['easy_access_set'] as int? ?? 0) == 1;
+    if (easyAccessSet) {
+      _easyAccess = (row?['easy_access'] as int? ?? 0) == 1;
+    } else {
+      _easyAccess = null;
+    }
     _annexes.clear();
     if ((row?['garage'] as int? ?? 0) == 1) _annexes.add('Garage');
     if ((row?['veranda'] as int? ?? 0) == 1) _annexes.add('Véranda');
@@ -417,7 +445,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       'volets_persiennes_localisation':
           _serializeVoletsLoc(_voletsPersStatus, _voletsPersLoc),
       // Extérieur
-      'easy_access': _easyAccess ? 1 : 0,
+      // `_easyAccess` peut être null (= non renseigné). On ne peut PAS
+      // écrire null dans `easy_access` (NOT NULL) — on utilise plutôt
+      // `easy_access_set` (migration v15→v16) pour tracer la réponse
+      // explicite. Si jamais répondu : easy_access=0 + easy_access_set=0
+      // (load le restituera comme null, sans pill highlight).
+      'easy_access': _easyAccess == true ? 1 : 0,
+      'easy_access_set': _easyAccess == null ? 0 : 1,
       // Champs supprimés de l'UI — on les vide pour effacer les données obsolètes
       'access_observation': '',
       'cheminement_plat': 0,
@@ -1548,7 +1582,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   Widget _buildExterior() {
     final showGarageMoto = _annexes.contains('Garage');
     final showPortailMoto = _portail;
-    final accessValue = _easyAccess ? 'Facile' : 'À revoir';
+    // `_easyAccess` nullable : '' si non renseigné → aucun pill highlight.
+    final accessValue = _easyAccess == null
+        ? ''
+        : (_easyAccess! ? 'Facile' : 'À revoir');
     final annexItems = <String>[..._annexeOptions, 'Portail'];
     final selectedAnnexes = <String>{
       ..._annexes,

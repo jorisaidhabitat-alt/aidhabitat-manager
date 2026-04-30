@@ -1075,11 +1075,16 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final value = occ.dependenceTxt.trim();
     // Plus de "de <Prénom>" dans le label — l'occupant courant est déjà
     // identifié par l'en-tête du cadre et la navigation par swipe.
+    // Demande utilisateur 2026-04-30 : ne PAS pré-sélectionner « Aucune »
+    // par défaut. L'ergo doit explicitement cliquer sur une des
+    // options (y compris « Aucune ») pour acter sa réponse. Quand
+    // « Aucune » est cliquée, on stocke '' (convention historique
+    // partagée avec NocoDB).
     return FormToggleGroup(
       label: 'Dépendance',
       options: _dependenceOptions,
       columns: 2,
-      selected: value.isEmpty ? 'Aucune' : value,
+      selected: value,
       onChanged: (v) {
         _updateOccupant(
           index,

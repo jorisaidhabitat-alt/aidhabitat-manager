@@ -1310,17 +1310,24 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         subSectionIndex: 2,
       ));
     }
-    // Volets : si statut = Localisé sans précision texte → flag
+    // Volets : 2 cas de manquant
+    //   1. Statut = Localisé mais localisation non précisée (texte vide)
+    //   2. Statut non renseigné (entier=false ET rawLoc='') — depuis
+    //      2026-04-30, le défaut UI n'est plus « Aucun » présélectionné.
+    //      L'ergo doit cliquer explicitement Aucun/Entier/Localisé.
     void checkVolets(String label, bool entier, String rawLoc) {
-      // Marker zero-width space utilisé par accessibility_tab pour
-      // différencier « Aucun » (loc='') de « Localisé sans texte »
-      // (loc='​'). cf. `_kVoletsLocalizedMarker`.
       const marker = '​';
       final cleaned = rawLoc.replaceAll(marker, '').trim();
       final isLocalise = !entier && rawLoc.isNotEmpty;
       if (isLocalise && cleaned.isEmpty) {
         missing.add(_MissingField(
           label: 'Équipements — $label : Localisé mais localisation non précisée',
+          tabIndex: tab,
+          subSectionIndex: 2,
+        ));
+      } else if (!entier && rawLoc.isEmpty) {
+        missing.add(_MissingField(
+          label: 'Équipements — $label : statut non renseigné (Aucun/Entier/Localisé)',
           tabIndex: tab,
           subSectionIndex: 2,
         ));
@@ -1342,12 +1349,24 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       h.voletsPersiennesLocalisation,
     );
 
-    // — Extérieur (subSection 3) : au moins une caractéristique d'accès
-    //   ou d'annexe pour montrer que la section a été visitée. On ne
-    //   peut pas dériver « non rempli » d'un toggle binaire facilement,
-    //   donc on se contente de vérifier qu'au moins 1 annexe ou
-    //   cheminement est cochée. Si l'ergo n'a vraiment rien de spécial
-    //   à signaler, il peut cocher Valider pour continuer.
+    // — Extérieur (subSection 3) : « Accès depuis la rue » doit être
+    //   explicitement répondu (Facile / À revoir). On lit la colonne
+    //   `easy_access_set` (migration v15→v16) directement plutôt que
+    //   `housing.easyAccess`, qui est non-nullable et vaut false par
+    //   défaut quand l'ergo n'a jamais cliqué.
+    final housingRaw = await _repository.fetchHousingRaw(_dossier.id);
+    final easyAccessSet =
+        (housingRaw?['easy_access_set'] as int? ?? 0) == 1;
+    if (!easyAccessSet) {
+      missing.add(_MissingField(
+        label: 'Extérieur — accès depuis la rue (Facile / À revoir)',
+        tabIndex: tab,
+        subSectionIndex: 3,
+      ));
+    }
+    // En plus : au moins une caractéristique d'accès ou d'annexe pour
+    // montrer que la section a été visitée. Si l'ergo n'a vraiment rien
+    // de spécial à signaler, il peut cocher Valider pour continuer.
     final anyExterieur = h.garage || h.veranda || h.balcon || h.terrasse
         || h.jardin || h.cheminementMarches || h.cheminementRampe;
     if (!anyExterieur) {
