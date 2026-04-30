@@ -239,28 +239,35 @@ function joinNonEmpty(lines, separator = '\n') {
 }
 
 /**
- * Marqueur zero-width space utilisé côté Flutter (accessibility_tab) pour
- * préserver l'état "Localisé sans texte" dans `volets_*_localisation`.
- * Côté PDF on l'enlève avant affichage (sinon vide visuel suffit).
+ * Marqueurs invisibles utilisés côté Flutter (accessibility_tab) pour
+ * encoder le statut volets dans `volets_*_localisation` :
+ *   - ZWSP (U+200B) → "Localisé sans texte"
+ *   - ZWNJ (U+200C) → "Aucun" explicite (depuis 2026-04-30)
+ * Côté PDF on les enlève avant affichage.
  */
-const VOLETS_LOCALIZED_MARKER = '​';
+const VOLETS_LOCALIZED_MARKER = '​'; // ZWSP
+const VOLETS_AUCUN_MARKER = '‌';     // ZWNJ
 
 /**
  * Format ligne unique pour un type de volet — entrée :
- *   - status : 'Aucun' (entier=false, loc=='') / 'Entier' (entier=true)
- *             / 'Localisé' (entier=false, loc!='')
- *   - loc    : description fournie par l'ergo (ou marqueur ZWSP si vide)
- * Renvoie '' si "Aucun" (on saute la ligne dans le récap), sinon
- *   "Entier" ou "Localisé : <texte>" / "Localisé" si pas de précision.
+ *   - status : 'Aucun' (entier=false, loc=='' OU loc=ZWNJ) / 'Entier'
+ *             (entier=true) / 'Localisé' (entier=false, loc=ZWSP|texte)
+ *             / non renseigné (entier=false, loc=='')
+ *   - loc    : description fournie par l'ergo (ou marqueur invisible)
+ * Renvoie '' si "Aucun" ou non renseigné (on saute la ligne dans le
+ * récap), sinon "Entier" ou "Localisé : <texte>" / "Localisé" si pas
+ * de précision.
  */
 function formatVoletLine(label, entier, rawLoc) {
-  const loc = String(rawLoc || '').replace(VOLETS_LOCALIZED_MARKER, '').trim();
   if (entier) return `${label} : Entier`;
+  // Aucun explicite (ZWNJ) → saute la ligne
+  if (rawLoc === VOLETS_AUCUN_MARKER) return '';
+  const loc = String(rawLoc || '').replace(VOLETS_LOCALIZED_MARKER, '').trim();
   if (loc) return `${label} : Localisé (${loc})`;
   // Localisé sans précision — on l'affiche pour signaler la présence,
   // mais sans valeur si l'ergo n'a pas rempli le détail.
   if (rawLoc && rawLoc.length > 0) return `${label} : Localisé`;
-  return ''; // Aucun → on saute
+  return ''; // Non renseigné → on saute (même rendu que Aucun)
 }
 
 /**

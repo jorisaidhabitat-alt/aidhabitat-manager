@@ -193,39 +193,51 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   ///
   /// Aucun risque de collision : zero-width space n'est pas saisissable
   /// au clavier et invisible dans NocoDB UI / le rapport PDF.
+  /// ZWSP (U+200B) — marque « Localisé sans texte ». Persiste dans
+  /// `volets_*_localisation` pour distinguer ce cas d'un champ vide.
   static const String _kVoletsLocalizedMarker = '​';
+
+  /// ZWNJ (U+200C) — marque « Aucun explicite » (l'ergo a cliqué Aucun).
+  /// Persiste dans `volets_*_localisation` pour distinguer ce cas du
+  /// statut « non renseigné » (loc='', entier=false). Sans ce marqueur,
+  /// le validateur de pré-génération ne pouvait pas dire si l'ergo
+  /// avait répondu « Aucun » ou pas répondu du tout — il flagait à tort
+  /// les volets « Aucun » comme manquants.
+  static const String _kVoletsAucunMarker = '‌';
 
   /// Infère le statut volets ('' / 'Aucun' / 'Entier' / 'Localisé') depuis
   /// les 2 champs persistés (`entier`, `localisation`).
   ///
-  /// Demande utilisateur 2026-04-30 : pas de pré-sélection 'Aucun' par
-  /// défaut. Quand entier=false ET rawLoc='' on retourne '' (= non
-  /// renseigné) au lieu de 'Aucun'. L'ergo doit cliquer explicitement
-  /// 'Aucun' ou 'Entier' ou 'Localisé' pour valider.
-  ///
-  /// Trade-off : la persistance ne distingue pas « Aucun » explicite
-  /// de « rien renseigné » (les 2 stockent entier=false, loc=''). Au
-  /// reload d'un dossier qui avait 'Aucun' explicitement, l'ergo
-  /// devra re-cliquer. Acceptable vu la rareté du cas et le bénéfice
-  /// pour la validation.
+  ///   '' (vide)              → non renseigné (pas de pill)
+  ///   '‌' (ZWNJ)        → Aucun explicite
+  ///   '​' (ZWSP)        → Localisé sans texte
+  ///   '​' + texte / autre → Localisé avec texte
+  ///   entier=true            → Entier (loc ignorée)
   static String _inferVoletsStatus(bool entier, String rawLoc) {
     if (entier) return 'Entier';
+    if (rawLoc == _kVoletsAucunMarker) return 'Aucun';
     if (rawLoc.isNotEmpty) return 'Localisé';
     return '';
   }
 
-  /// Nettoie la localisation pour l'affichage : retire le marqueur
-  /// invisible si présent (l'ergo doit voir un champ vide, pas un
-  /// caractère bizarre).
+  /// Nettoie la localisation pour l'affichage : retire les marqueurs
+  /// invisibles (ZWSP « Localisé sans texte » et ZWNJ « Aucun »).
+  /// L'ergo doit voir un champ vide, pas un caractère bizarre.
   static String _cleanVoletsLoc(String rawLoc) {
     if (rawLoc == _kVoletsLocalizedMarker) return '';
+    if (rawLoc == _kVoletsAucunMarker) return '';
     return rawLoc;
   }
 
-  /// Sérialise la localisation pour la save : si l'ergo est en
-  /// "Localisé" avec un champ texte vide, on stocke le marqueur
-  /// invisible pour préserver l'intention au reload.
+  /// Sérialise la localisation pour la save :
+  ///   - status='Aucun'    → ZWNJ (marqueur invisible)
+  ///   - status='Entier'   → '' (loc inutile, le bool entier=1 suffit)
+  ///   - status='Localisé' + texte vide → ZWSP (préserve « Localisé sans
+  ///     précision »)
+  ///   - status='Localisé' + texte → texte tel quel
+  ///   - status='' (non renseigné) → ''
   static String _serializeVoletsLoc(String status, String loc) {
+    if (status == 'Aucun') return _kVoletsAucunMarker;
     if (status != 'Localisé') return '';
     if (loc.isEmpty) return _kVoletsLocalizedMarker;
     return loc;

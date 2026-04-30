@@ -821,6 +821,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     //   - « Remplir les champs » → bascule sur l'onglet du 1er champ
     //     manquant et abort la génération.
     // Demande utilisateur 2026-04-30.
+    //
+    // IMPORTANT : on rafraîchit `_dossier` AVANT le check, sinon les
+    // saves récents (chauffage, volets, typology, surface…) faits dans
+    // les onglets ne sont pas visibles via `_dossier.housing` (qui est
+    // un snapshot pris à l'ouverture de l'écran). Sans ce refresh, des
+    // champs effectivement remplis apparaissent comme manquants dans la
+    // popup. Seul l'onglet Bénéficiaire déclenche `onPatientChanged →
+    // _refreshDossier` après save ; les autres onglets persistent
+    // directement en SQLite via leur propre `_save()`. On force ici un
+    // re-fetch pour aligner le modèle in-memory avec le disque.
+    await _refreshDossier();
     final missing = await _collectMissingFields();
     if (missing.isNotEmpty) {
       final shouldContinue = await _showMissingFieldsDialog(missing);
@@ -1312,20 +1323,31 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     }
     // Volets : 2 cas de manquant
     //   1. Statut = Localisé mais localisation non précisée (texte vide)
-    //   2. Statut non renseigné (entier=false ET rawLoc='') — depuis
-    //      2026-04-30, le défaut UI n'est plus « Aucun » présélectionné.
-    //      L'ergo doit cliquer explicitement Aucun/Entier/Localisé.
+    //   2. Statut non renseigné (entier=false ET rawLoc='' SANS marqueur
+    //      Aucun) — depuis 2026-04-30, le défaut UI n'est plus « Aucun »
+    //      présélectionné. L'ergo doit cliquer explicitement
+    //      Aucun/Entier/Localisé.
+    //
+    // Marqueurs invisibles persistés dans `localisation` (cf.
+    // accessibility_tab._serializeVoletsLoc) :
+    //   '​' (ZWSP, U+200B) → Localisé sans texte
+    //   '‌' (ZWNJ, U+200C) → Aucun explicite
     void checkVolets(String label, bool entier, String rawLoc) {
-      const marker = '​';
-      final cleaned = rawLoc.replaceAll(marker, '').trim();
-      final isLocalise = !entier && rawLoc.isNotEmpty;
-      if (isLocalise && cleaned.isEmpty) {
+      if (entier) return; // Entier — pas de check
+      const localizedMarker = '​';   // ZWSP
+      const aucunMarker = '‌';       // ZWNJ
+      if (rawLoc == aucunMarker) return; // Aucun explicite — OK
+      // Localisé : extraire le texte (sans le marqueur ZWSP)
+      final cleaned = rawLoc.replaceAll(localizedMarker, '').trim();
+      if (rawLoc.isNotEmpty && cleaned.isEmpty) {
+        // Localisé sans précision (uniquement le marqueur ZWSP)
         missing.add(_MissingField(
           label: 'Équipements — $label : Localisé mais localisation non précisée',
           tabIndex: tab,
           subSectionIndex: 2,
         ));
-      } else if (!entier && rawLoc.isEmpty) {
+      } else if (rawLoc.isEmpty) {
+        // Aucun marqueur, aucun texte → l'ergo n'a pas répondu
         missing.add(_MissingField(
           label: 'Équipements — $label : statut non renseigné (Aucun/Entier/Localisé)',
           tabIndex: tab,
