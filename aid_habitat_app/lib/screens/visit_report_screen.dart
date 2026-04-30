@@ -814,6 +814,23 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// téléchargement / suppression.
   Future<void> _generateReport() async {
     if (_isGeneratingReport) return;
+
+    // Validation amont : vérifie que les champs critiques sont remplis.
+    // Si certains manquent, ouvre une popup avec la liste + 2 actions :
+    //   - « Valider » → continue la génération malgré tout
+    //   - « Remplir les champs » → bascule sur l'onglet du 1er champ
+    //     manquant et abort la génération.
+    // Demande utilisateur 2026-04-30.
+    final missing = await _collectMissingFields();
+    if (missing.isNotEmpty) {
+      final shouldContinue = await _showMissingFieldsDialog(missing);
+      if (shouldContinue != true) {
+        // L'utilisateur a choisi « Remplir les champs » (ou fermé la
+        // popup) → on a déjà navigué vers le 1er champ manquant.
+        return;
+      }
+    }
+
     setState(() => _isGeneratingReport = true);
 
     // Détection offline en amont : si la connectivité est perdue, on
@@ -1040,6 +1057,177 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     }
   }
 
+  /// Vérifie que les champs critiques pour un PDF sont remplis. Renvoie
+  /// la liste des champs manquants (vide si tout est OK).
+  ///
+  /// Liste évolutive — étends-la quand tu identifies un champ qui sort
+  /// vide trop souvent. Chaque entrée définit son label + l'onglet (et
+  /// éventuellement la sous-section) où l'ergo doit aller pour le
+  /// remplir.
+  Future<List<_MissingField>> _collectMissingFields() async {
+    final missing = <_MissingField>[];
+    final p = _dossier.patient;
+
+    // Bénéficiaire / Profil — identité minimale
+    if (p.firstName.trim().isEmpty || p.lastName.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Nom et prénom du bénéficiaire',
+        tabIndex: _tabs.indexOf('Bénéficiaire'),
+        subSectionIndex: 0, // Profil
+      ));
+    }
+
+    // Bénéficiaire / Foyer — adresse
+    if (p.address.trim().isEmpty || p.city.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Adresse du logement',
+        tabIndex: _tabs.indexOf('Bénéficiaire'),
+        subSectionIndex: 1, // Foyer
+      ));
+    }
+
+    // Bénéficiaire / Foyer — situation familiale
+    if (p.familySituation.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Situation familiale',
+        tabIndex: _tabs.indexOf('Bénéficiaire'),
+        subSectionIndex: 1, // Foyer
+      ));
+    }
+
+    // Accessibilité / Général — type de logement
+    final typology = _dossier.housing.typology.trim();
+    if (typology.isEmpty) {
+      missing.add(_MissingField(
+        label: 'Type de logement (Maison / Appartement)',
+        tabIndex: _tabs.indexOf('Accessibilité'),
+        subSectionIndex: 0, // Général (interne à AccessibilityTab)
+      ));
+    }
+
+    // Photos / Logement — au moins 1 photo
+    try {
+      final docs = await _dataService.fetchDocuments(p.id);
+      bool hasPhotoTagged(String tag) =>
+          docs.any((d) => d.tags.contains(tag));
+      if (!hasPhotoTagged(kPhotoTagLogement)) {
+        missing.add(_MissingField(
+          label: 'Photo du logement (au moins 1)',
+          tabIndex: _tabs.indexOf('Photos'),
+        ));
+      }
+      if (!hasPhotoTagged(kPhotoTagAccessibilite)) {
+        missing.add(_MissingField(
+          label: 'Photo accessibilité (au moins 1)',
+          tabIndex: _tabs.indexOf('Photos'),
+        ));
+      }
+      if (!hasPhotoTagged(kPhotoTagSanitaires)) {
+        missing.add(_MissingField(
+          label: 'Photo sanitaires (au moins 1)',
+          tabIndex: _tabs.indexOf('Photos'),
+        ));
+      }
+    } catch (_) {
+      // Si le fetch échoue (rare), on ne bloque pas la validation —
+      // juste on ne peut pas vérifier les photos.
+    }
+
+    return missing;
+  }
+
+  /// Affiche la popup « Champs manquants ». Renvoie :
+  ///   - `true` si l'ergo clique « Valider » → continuer la génération
+  ///   - `false` si « Remplir les champs » → on a navigué vers le 1er
+  ///     champ manquant, abort la génération
+  ///   - `null` si l'ergo ferme la popup (= équivalent annuler, pas
+  ///     de génération)
+  Future<bool?> _showMissingFieldsDialog(List<_MissingField> missing) async {
+    if (!mounted) return null;
+    return showSoftDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text('Champs manquants'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Certaines informations importantes ne sont pas '
+                'remplies. Tu peux générer le rapport quand même '
+                '(les champs vides seront laissés blancs dans le PDF) '
+                'ou compléter d\'abord :',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              ...missing.map(
+                (m) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4, right: 8),
+                        child: Icon(
+                          LucideIcons.alertCircle,
+                          size: 14,
+                          color: Color(0xFFB45309),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          m.label,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx, false);
+              _navigateToMissingField(missing.first);
+            },
+            child: const Text('Remplir les champs'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF7C6DAA),
+            ),
+            child: const Text('Valider'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Navigue vers l'onglet (et la sous-section quand applicable) du
+  /// champ manquant pour permettre à l'ergo de le remplir directement
+  /// sans chercher.
+  void _navigateToMissingField(_MissingField missing) {
+    if (missing.tabIndex < 0 || missing.tabIndex >= _tabs.length) return;
+    _tabController.animateTo(missing.tabIndex);
+    if (missing.subSectionIndex != null) {
+      final tabName = _tabs[missing.tabIndex];
+      setState(() {
+        _activeSubsectionByTab[tabName] = missing.subSectionIndex!;
+      });
+    }
+  }
+
   /// Met en file d'attente la génération du rapport pour traitement
   /// par le `SyncEngine` dès la prochaine reprise de connectivité.
   /// Affiche un toast clair pour rassurer l'ergo (« sera généré
@@ -1080,23 +1268,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     {int? totalDocs}
   ) {
     if (!mounted) return;
-    final stats = result.stats;
-    final applied = stats?['applied'];
-    final missingValue = stats?['missingValue'];
-    final extra = (applied != null && missingValue != null)
-        ? ' ($applied champs remplis, $missingValue à compléter)'
-        : '';
-    // Demande utilisateur 2026-04-30 : afficher uniquement le nombre
-    // de documents VISIBLES DANS L'ESPACE DOCUMENTS (= total - photos
-    // visite). Le caller a déjà filtré et nous passe le bon compteur
-    // dans `totalDocs`. Libellé « Disponible dans l'espace document ».
+    // Demande utilisateur 2026-04-30 : retirer les stats détaillées
+    // (« 45 champs remplis, 12 à compléter ») — l'ergo n'en a pas
+    // besoin. On garde juste le nom de fichier + le nombre de docs
+    // disponibles dans l'espace Documents.
     final docCountSuffix = totalDocs != null
         ? '\n→ $totalDocs document${totalDocs > 1 ? 's' : ''} disponible${totalDocs > 1 ? 's' : ''} dans l\'espace document'
         : '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Rapport ajouté dans les Documents : ${result.fileName}$extra'
+          'Rapport ajouté dans les Documents : ${result.fileName}'
           '$docCountSuffix',
         ),
         backgroundColor: const Color(0xFF166534),
@@ -1497,4 +1679,26 @@ class _FlagMarker extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Décrit un champ critique non rempli. Utilisé par
+/// `_collectMissingFields` + `_showMissingFieldsDialog` (popup
+/// pré-génération qui propose à l'ergo de naviguer directement vers
+/// le champ pour le remplir).
+class _MissingField {
+  /// Libellé affiché à l'ergo dans la liste de la popup.
+  final String label;
+
+  /// Index dans `_tabs` (0 = Bénéficiaire, 1 = Contexte de vie, …).
+  final int tabIndex;
+
+  /// Index de sous-section dans `_activeSubsectionByTab` (optionnel —
+  /// pas toutes les tabs ont des sous-sections, ex. Photos).
+  final int? subSectionIndex;
+
+  const _MissingField({
+    required this.label,
+    required this.tabIndex,
+    this.subSectionIndex,
+  });
 }
