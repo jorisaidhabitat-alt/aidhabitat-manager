@@ -1064,32 +1064,31 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     );
   }
 
-  /// Dépendance : liste de pills par défaut (avec "Aucune" comme état
-  /// neutre vide). Une fois une option non-vide sélectionnée, la liste
-  /// se replie et la valeur choisie apparaît entre parenthèses à côté
-  /// du label ("Dépendance de Sophie (Canne)"). Toucher la zone label
-  /// en état replié rouvre la liste pour modifier. Sélectionner
-  /// "Aucune" remet à l'état buttons vide.
+  /// Dépendance : liste de pills toutes égales (Aucune incluse). On
+  /// stocke directement le libellé cliqué dans `dependenceTxt`. Le tap
+  /// sur la pill déjà sélectionnée la désélectionne (cf. FormToggleGroup
+  /// `allowDeselect=true`) → retour à `''` = non renseigné.
+  ///
+  /// NB : avant 2026-04-30, l'historique stockait `''` quand l'ergo
+  /// cliquait « Aucune » (convention partagée avec NocoDB) — résultat :
+  /// la pill « Aucune » ne pouvait jamais être visiblement highlighted,
+  /// et un tap dessus était un no-op visible. Maintenant on stocke le
+  /// libellé tel quel ("Aucune"). Côté NocoDB, `dependance_particuliere`
+  /// (link) ne matchera pas "Aucune" (pas dans le ref list) et le
+  /// fallback `dependance_particuliere_txt` recevra simplement "Aucune"
+  /// comme texte — ce qui est sémantiquement correct.
   Widget _buildDependenceSelector(int index) {
     final occ = _occupants[index];
     final value = occ.dependenceTxt.trim();
-    // Plus de "de <Prénom>" dans le label — l'occupant courant est déjà
-    // identifié par l'en-tête du cadre et la navigation par swipe.
-    // Demande utilisateur 2026-04-30 : ne PAS pré-sélectionner « Aucune »
-    // par défaut. L'ergo doit explicitement cliquer sur une des
-    // options (y compris « Aucune ») pour acter sa réponse. Quand
-    // « Aucune » est cliquée, on stocke '' (convention historique
-    // partagée avec NocoDB).
     return FormToggleGroup(
       label: 'Dépendance',
       options: _dependenceOptions,
       columns: 2,
       selected: value,
       onChanged: (v) {
-        _updateOccupant(
-          index,
-          occ.copyWith(dependenceTxt: v == 'Aucune' ? '' : v),
-        );
+        // v peut être '' (désélection via FormToggleGroup.allowDeselect)
+        // ou une des options (y compris « Aucune »). On stocke tel quel.
+        _updateOccupant(index, occ.copyWith(dependenceTxt: v));
       },
     );
   }
