@@ -3765,63 +3765,119 @@ const fetchSanitairesForDossier = async (dossierId) => {
 };
 
 /**
- * Résout le libellé à afficher dans le champ PDF
- * « Caisse de retraite complémentaire » selon la règle métier
- * (demande utilisateur 2026-04-29) :
+ * Vérifie si une caisse complémentaire donnée ouvre droit à une aide
+ * (drapeau `a_une_aide_specifique` coché dans la table de référence).
+ * Renvoie le libellé canonique de la caisse en cas de match, sinon
+ * `null`. Sépare la lecture du drapeau de la mise en forme finale du
+ * label, pour pouvoir agréger plusieurs occupants côté
+ * `resolveCaisseComplementaireLabel`.
  *
- *   - Si le patient n'a pas de caisse complémentaire renseignée → `'/'`.
- *   - Sinon, on lit la case à cocher `a_une_aide_specifique` de la
- *     table `caisses_retraite_complementaires` :
- *       • cochée → `'<nom de la caisse> sous conditions*'`
- *         (l'astérisque renvoie à la note de bas de page du template
- *         « * sous conditions de ressources »).
- *       • décochée → `'/'` (la caisse est juste un repère métier,
- *         pas une aide spécifique).
+ * @param {string} caisseName  Nom saisi côté patient (peut différer un
+ *   poil du libellé canonique — `findByLabel` tolère accents/casse).
+ * @param {Array}  records     Records pré-chargés de la table de
+ *   référence pour éviter un round-trip par occupant.
+ * @returns {string|null}      Nom canonique si aide active, sinon null.
+ */
+const resolveCaisseAideName = (caisseName, records) => {
+  const trimmed = String(caisseName || '').trim();
+  if (!trimmed) return null;
+  const match = findByLabel(records, trimmed);
+  if (!match) {
+    // Caisse libellée côté patient mais absente de la table de
+    // référence (donnée historique ou typo) → on préfère ignorer
+    // plutôt que d'écrire un nom qui ne correspond à rien.
+    return null;
+  }
+  // NocoDB renvoie les Checkbox comme booléens natifs (true/false)
+  // mais on tolère aussi les variantes string ('1', 'true', 'yes')
+  // qu'on rencontre via certaines surfaces (REST sans cast).
+  const flag = field(match, 'a_une_aide_specifique');
+  const hasAide = flag === true
+    || flag === 1
+    || /^(1|true|yes|oui|on)$/i.test(String(flag || '').trim());
+  if (!hasAide) return null;
+  // On retourne le libellé tel que saisi (`trimmed`) pour rester fidèle
+  // à la donnée patient ; les libellés canoniques de la table NocoDB
+  // sont normalement identiques au caractère près.
+  return trimmed;
+};
+
+/**
+ * Joint une liste de noms de caisses à la française :
+ *   - 1 nom        → "Nom"
+ *   - 2 noms       → "Nom1 et Nom2"
+ *   - 3 noms et +  → "Nom1, Nom2 et Nom3" (virgules + dernier `et`,
+ *                    pas de virgule d'Oxford).
+ */
+const joinCaisseNames = (names) => {
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} et ${names[1]}`;
+  const last = names[names.length - 1];
+  const head = names.slice(0, -1).join(', ');
+  return `${head} et ${last}`;
+};
+
+/**
+ * Résout le libellé à afficher dans le champ PDF
+ * « Caisse de retraite complémentaire » selon la règle métier (demande
+ * utilisateur 2026-04-29 / 2026-04-30).
+ *
+ * Accepte soit un nom unique (string) — compat avec les anciens
+ * appelants — soit un tableau de noms quand le dossier a plusieurs
+ * occupants. Règles :
+ *
+ *   - Toutes les caisses résolvent à `null` (aucune aide / vide /
+ *     hors-table) → `'/'`.
+ *   - Au moins une caisse ouvre droit à une aide :
+ *       • 1 nom unique          → `'<Nom> sous conditions*'`
+ *       • 2 noms uniques        → `'<Nom1> et <Nom2> sous conditions*'`
+ *       • 3+ noms uniques       → `'<Nom1>, <Nom2> et <Nom3> sous conditions*'`
+ *     (les caisses qui ne donnent pas droit à une aide sont
+ *     silencieusement filtrées — cas mixte : choix utilisateur 2026-04-30,
+ *     option A : on ignore les occupants qui n'ouvrent pas de droit).
  *
  * Pourquoi un drapeau dédié et pas un parsing du champ libre
  * `aide_complementaire` : ce dernier sert de NOTE INFORMATIVE pour
- * l'écran « Caisses de retraite » de l'app (procédure, contacts,
- * détails). Son contenu est libre — utiliser sa présence/valeur
- * comme drapeau métier produit des faux positifs (ex. « Repère pour
- * les pharmaciens » ne désigne pas une aide). On garde donc les deux
+ * l'écran « Caisses de retraite » de l'app. On garde donc les deux
  * champs séparés : `aide_complementaire` = note libre,
  * `a_une_aide_specifique` = drapeau pour le PDF.
- *
- * Le matching du nom de caisse réutilise `findByLabel` qui est
- * tolérant aux variations d'accents / casse / ponctuation (la valeur
- * stockée côté patient peut différer un poil du libellé canonique
- * de la table de référence).
  */
-const resolveCaisseComplementaireLabel = async (caisseName) => {
-  const trimmed = String(caisseName || '').trim();
-  if (!trimmed) return '/';
+const resolveCaisseComplementaireLabel = async (caisseInput) => {
+  // Normalise l'entrée en tableau de noms.
+  const list = Array.isArray(caisseInput) ? caisseInput : [caisseInput];
+  const trimmedList = list
+    .map((name) => String(name || '').trim())
+    .filter((name) => name.length > 0);
+  if (trimmedList.length === 0) return '/';
+
+  let records;
   try {
-    const records = await queryAll(TABLES.caissesRetraiteComplementaires, {
+    records = await queryAll(TABLES.caissesRetraiteComplementaires, {
       fields: FIELD_SETS.caissesRetraiteComplementaires,
     });
-    const match = findByLabel(records, trimmed);
-    if (!match) {
-      // Caisse libellée côté patient mais absente de la table de
-      // référence (donnée historique ou typo) → on préfère renvoyer
-      // `'/'` plutôt que d'écrire un nom qui ne correspond à rien.
-      return '/';
-    }
-    // NocoDB renvoie les Checkbox comme booléens natifs (true/false)
-    // mais on tolère aussi les variantes string ('1', 'true', 'yes')
-    // qu'on rencontre via certaines surfaces (REST sans cast).
-    const flag = field(match, 'a_une_aide_specifique');
-    const hasAide = flag === true
-      || flag === 1
-      || /^(1|true|yes|oui|on)$/i.test(String(flag || '').trim());
-    if (!hasAide) return '/';
-    return `${trimmed} sous conditions*`;
   } catch (error) {
     console.warn(
-      `[report] échec résolution caisse complémentaire "${trimmed}":`,
+      '[report] échec chargement table caisses_retraite_complementaires :',
       error?.message || error,
     );
     return '/';
   }
+
+  // Dédup tout en préservant l'ordre d'apparition (occupant 0 d'abord).
+  const seen = new Set();
+  const aides = [];
+  for (const name of trimmedList) {
+    const canonical = resolveCaisseAideName(name, records);
+    if (!canonical) continue;
+    const key = canonical.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    aides.push(canonical);
+  }
+
+  if (aides.length === 0) return '/';
+  return `${joinCaisseNames(aides)} sous conditions*`;
 };
 
 /**
@@ -4622,11 +4678,21 @@ app.post(
       patientId
         ? fetchVadOverlayNotesForReport(patientId, dossierId)
         : Promise.resolve({ projet: null, resume: null, observation: null }),
-      // NEW (2026-04-29) : résolution de la caisse de retraite
-      // complémentaire en `'/'` ou `'<caisse> sous conditions*'`.
-      // Voir `resolveCaisseComplementaireLabel` pour la règle complète.
+      // NEW (2026-04-29 / mis à jour 2026-04-30) : résolution de la
+      // caisse de retraite complémentaire en `'/'` ou
+      // `'<caisse> sous conditions*'`. Quand le dossier a plusieurs
+      // occupants, on agrège leurs caisses respectives — voir la
+      // règle complète dans `resolveCaisseComplementaireLabel`.
+      // On lit `caissesRetraiteComplementaires` de chaque occupant ;
+      // le top-level `patient.caissesRetraiteComplementaires` reste un
+      // fallback pour les dossiers historiques sans `occupants_json`.
       resolveCaisseComplementaireLabel(
-        dossier?.patient?.caissesRetraiteComplementaires,
+        Array.isArray(dossier?.patient?.occupants)
+          && dossier.patient.occupants.length > 0
+          ? dossier.patient.occupants.map(
+              (occ) => occ?.caissesRetraiteComplementaires || '',
+            )
+          : [dossier?.patient?.caissesRetraiteComplementaires || ''],
       ),
     ]);
 
