@@ -10,6 +10,7 @@ import '../services/multi_window_stub.dart'
     if (dart.library.io) 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
+import '../models/visit_report_categories.dart';
 import '../services/connectivity_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/data_service.dart';
@@ -1001,7 +1002,33 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         return;
       }
 
-      _showReportSuccess(result, totalDocs: docs.length);
+      // Compte UNIQUEMENT les docs visibles dans l'espace Documents :
+      // on retire les photos visite (tags `Visite - *`) qui vivent
+      // dans VAD > Photos. Demande utilisateur 2026-04-30 : la
+      // bannière doit refléter ce qui est « disponible dans l'espace
+      // document » et non le nombre total de docs en base.
+      String norm(String s) => s
+          .toLowerCase()
+          .replaceAll('é', 'e')
+          .replaceAll('è', 'e')
+          .replaceAll('ê', 'e')
+          .replaceAll('à', 'a')
+          .replaceAll('â', 'a')
+          .replaceAll('ô', 'o')
+          .replaceAll('î', 'i')
+          .replaceAll('û', 'u')
+          .replaceAll('ç', 'c')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      final visitTagsNormalized = kVisitPhotoTags.map(norm).toSet();
+      bool isVisitTag(String tag) {
+        final n = norm(tag);
+        if (visitTagsNormalized.contains(n)) return true;
+        return n.startsWith('visite - ') || n.startsWith('visite-');
+      }
+      final docsInDocumentsSpace =
+          docs.where((d) => !d.tags.any(isVisitTag)).length;
+      _showReportSuccess(result, totalDocs: docsInDocumentsSpace);
     } catch (error) {
       // Filet de sécurité : toute autre exception non capturée → queue
       // différée plutôt qu'une erreur sèche.
@@ -1059,8 +1086,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final extra = (applied != null && missingValue != null)
         ? ' ($applied champs remplis, $missingValue à compléter)'
         : '';
+    // Demande utilisateur 2026-04-30 : afficher uniquement le nombre
+    // de documents VISIBLES DANS L'ESPACE DOCUMENTS (= total - photos
+    // visite). Le caller a déjà filtré et nous passe le bon compteur
+    // dans `totalDocs`. Libellé « Disponible dans l'espace document ».
     final docCountSuffix = totalDocs != null
-        ? '\n→ $totalDocs document${totalDocs > 1 ? 's' : ''} dans le dossier'
+        ? '\n→ $totalDocs document${totalDocs > 1 ? 's' : ''} disponible${totalDocs > 1 ? 's' : ''} dans l\'espace document'
         : '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
