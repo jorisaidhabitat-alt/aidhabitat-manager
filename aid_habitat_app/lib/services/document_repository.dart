@@ -155,6 +155,39 @@ class DocumentRepository {
     final mimeType = _mimeTypeFor(extension);
     final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
 
+    // Native (macOS/iOS/iPad) : on persiste les bytes sur disque pour
+    // que le PDF annotator puisse les ouvrir. Sans ça, `localPath`
+    // restait null → la condition de preview au l.3482 du
+    // documents_screen tombait sur `_unsupportedPanel` (« Prévisualisation
+    // non disponible pour ce format ») — bug reporté 2026-04-30 sur
+    // les rapports générés.
+    //
+    // Web : pas de fichier (path_provider indispo), on garde
+    // uniquement le data URL.
+    String? localFilePath;
+    if (!kIsWeb) {
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final docsDir = Directory(
+          p.join(appDir.path, 'offline_documents', patientId),
+        );
+        await docsDir.create(recursive: true);
+        // Nom déterministe basé sur le remoteUuid → idempotent : un
+        // 2ème appel pour le même rapport overwrite le fichier sans
+        // créer de doublon. Préserve l'extension d'origine pour
+        // qu'`OpenFilex.open` ouvre dans la bonne app native.
+        final storedPath = p.join(docsDir.path, '$remoteUuid.$extension');
+        await File(storedPath).writeAsBytes(bytes, flush: true);
+        localFilePath = storedPath;
+      } catch (_) {
+        // Si la persistance disque échoue (permissions, disque plein),
+        // on retombe sur le data URL — la preview ne marchera pas mais
+        // le doc reste utilisable (download via "Ouvrir dans une autre
+        // app", upload, etc).
+        localFilePath = null;
+      }
+    }
+
     final row = {
       'local_id': localId,
       'patient_local_id': patientId,
@@ -163,7 +196,7 @@ class DocumentRepository {
       'file_name': fileName,
       'file_ext': extension,
       'mime_type': mimeType,
-      'local_file_path': null,
+      'local_file_path': localFilePath,
       // Bytes en local pour vignette immédiate, sans avoir à pull
       // depuis NocoDB le binaire (qui passerait par /api/mobile-documents/.../content).
       'local_file_data_url': dataUrl,
@@ -219,6 +252,25 @@ class DocumentRepository {
     final mimeType = _mimeTypeFor(extension);
     final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
 
+    // Native : persiste les bytes sur disque pour que le PDF annotator
+    // puisse les ouvrir (cf. importDocumentRemoteOnly pour le rationale
+    // détaillé — bug « Prévisualisation non disponible » 2026-04-30).
+    String? localFilePath;
+    if (!kIsWeb) {
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final docsDir = Directory(
+          p.join(appDir.path, 'offline_documents', patientId),
+        );
+        await docsDir.create(recursive: true);
+        final storedPath = p.join(docsDir.path, '$resolvedLocalId.$extension');
+        await File(storedPath).writeAsBytes(bytes, flush: true);
+        localFilePath = storedPath;
+      } catch (_) {
+        localFilePath = null;
+      }
+    }
+
     // Si on REPLACE un doc déterministe (ex. le rapport PDF), on
     // préserve les éventuelles annotations existantes (l'ergo a peut-
     // être dessiné/écrit sur l'ancien rapport — re-générer ne doit
@@ -254,7 +306,7 @@ class DocumentRepository {
       'file_name': fileName,
       'file_ext': extension,
       'mime_type': mimeType,
-      'local_file_path': null,
+      'local_file_path': localFilePath,
       'local_file_data_url': dataUrl,
       'remote_file_path': null,
       'remote_public_url': null,
