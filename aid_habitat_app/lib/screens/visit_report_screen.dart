@@ -1219,13 +1219,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         subSectionIndex: 2,
       ));
     }
-    if (p.dependenceTxt.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Santé — dépendance particulière',
-        tabIndex: tab,
-        subSectionIndex: 2,
-      ));
-    }
+    // Dépendance particulière : skip volontaire (demande utilisateur
+    // 2026-04-30). Si l'ergo n'a rien coché, ça vaut implicitement
+    // « Aucune » → pas la peine de signaler. Si l'option « Aucune »
+    // est explicitement cochée, idem. Donc on ne flag JAMAIS ce
+    // champ — il reste optionnel.
   }
 
   Future<void> _checkBeneficiaryAdmin(List<_MissingField> missing) async {
