@@ -529,23 +529,31 @@ function joinNotePagesText(pages) {
 }
 
 /**
- * Pour le champ "Dépendance" du PDF, l'ergo saisit souvent du texte
- * libre du genre "Canne, marche difficilement". Le rapport ne garde
- * que le mot-clé (Aucune / Canne / Déambulateur / Fauteuil roulant)
- * — match d'abord contre les options connues, sinon fallback sur la
- * 1ère portion avant virgule ou point.
+ * Pour le champ "Dépendance" du PDF, on n'affiche que l'un des 4
+ * mots-clés : « Aucune » / « Canne » / « Déambulateur » /
+ * « Fauteuil roulant ». Tout ce qui n'est pas l'un de ces 3 derniers
+ * (vide, "Non" legacy NocoDB, texte libre non-classifiable…) ⇒
+ * « Aucune ».
+ *
+ * Pourquoi : côté Flutter, sélectionner « Aucune » dans la pill list
+ * stocke `dependenceTxt = ''` (cf. beneficiary_tab.dart). Et certaines
+ * lignes NocoDB historiques gardent « Non » dans
+ * `dependance_particuliere_txt`. Avant ce fix, ces deux cas
+ * affichaient soit du vide, soit littéralement « Non » dans le PDF —
+ * confusant car « Aucune » est l'option par défaut visible dans l'app.
  */
 function normalizeDependenceForReport(raw) {
   const text = String(raw || '').trim();
-  if (!text) return '';
-  const known = ['Aucune', 'Canne', 'Déambulateur', 'Fauteuil roulant'];
-  const lc = text.toLowerCase();
-  for (const opt of known) {
-    if (lc.includes(opt.toLowerCase())) return opt;
+  const positives = ['Canne', 'Déambulateur', 'Fauteuil roulant'];
+  if (text) {
+    const lc = text.toLowerCase();
+    for (const opt of positives) {
+      if (lc.includes(opt.toLowerCase())) return opt;
+    }
   }
-  // Fallback : 1er segment avant virgule/point.
-  const first = text.split(/[,.;]/)[0]?.trim() || text;
-  return first;
+  // Vide, "Aucune", "Non", ou texte non-classifiable → on affiche
+  // « Aucune » (canonique, équivalent à la pill par défaut Flutter).
+  return 'Aucune';
 }
 
 function buildViewModel({
