@@ -23,6 +23,28 @@ class AppDelegate: FlutterAppDelegate {
         with: flutterViewController.registrar(forPlugin: "WindowFramePlugin"),
         viewController: flutterViewController
       )
+      // macOS automatic window tabbing : par défaut le système peut
+      // fusionner deux NSWindow d'une même app en onglets dans une
+      // seule fenêtre (selon le réglage Préférences Système → Général
+      // → "Préférer les onglets…"). Pour la note détachée, l'ergo
+      // veut une VRAIE fenêtre indépendante (≈ deux fenêtres Chrome
+      // séparées, pas deux tabs) — demande utilisateur 2026-05-04.
+      //
+      // Fix : on force `tabbingMode = .disallowed` sur la NSWindow
+      // créée par desktop_multi_window dès qu'elle existe. Le set est
+      // déféré à `DispatchQueue.main.async` car au moment du callback
+      // `viewController.view.window` peut être nil (la NSWindow est
+      // attachée au runloop suivant).
+      DispatchQueue.main.async {
+        if let window = flutterViewController.view.window {
+          window.tabbingMode = .disallowed
+          // En plus, si l'utilisateur a "Préférer les onglets" coché,
+          // une fenêtre déjà tabbed pourrait happer la nouvelle. On
+          // détache préventivement la nouvelle fenêtre de toute tab
+          // group existante.
+          window.tab.group?.removeWindow(window)
+        }
+      }
     }
     super.applicationDidFinishLaunching(notification)
   }
