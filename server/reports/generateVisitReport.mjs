@@ -1314,6 +1314,96 @@ function drawImageWithCoverFit(pdfDoc, field, pdfImage) {
 }
 
 /**
+ * Tag magique miroir de `kPhotoTagPdfNoLabel` côté Flutter. Quand
+ * présent sur une photo visite, le générateur PDF n'affiche PAS
+ * l'overlay de titre en haut de l'image. Demande utilisateur
+ * 2026-05-04 : possibilité de masquer le nom au cas par cas.
+ */
+const PHOTO_TAG_PDF_NO_LABEL = '__pdf_no_label';
+
+/**
+ * Dessine un bandeau noir semi-transparent en haut du widget d'un
+ * slot photo et place le texte du label en blanc dedans. Demande
+ * utilisateur 2026-05-04 : « le texte passe par dessus de l'image en
+ * haut avec un fond noir et une opacité légère du fond pour voir à
+ * travers et une couleur de texte blanche. Comme ça ça reste dans le
+ * meme cadre que la photo et ça n'empiete pas sur le reste du PDF ».
+ *
+ * Implémentation :
+ *   - récupère le widget rect du field (même méthode que
+ *     `drawImageWithCoverFit` — `widget.P()` → match `page.ref`).
+ *   - dessine un rectangle noir alpha 0.55 sur les ~15 premiers pt
+ *     du haut du slot.
+ *   - drawText blanc Helvetica 9pt avec padding 5pt à gauche.
+ *   - tronque + ellipse `…` si le label dépasse la largeur du slot.
+ *
+ * Appelé APRÈS `setImageInField` (sinon le `drawImage` repasserait
+ * par-dessus). Pas de pushGraphicsState nécessaire : `opacity` est un
+ * paramètre direct de drawRectangle dans pdf-lib.
+ */
+async function drawPhotoLabelOverlay(pdfDoc, form, fieldName, label) {
+  const safeLabel = sanitizeForPdfFont(String(label || '')).trim();
+  if (!safeLabel) return;
+  let field;
+  try {
+    field = form.getField(fieldName);
+  } catch (_) {
+    return;
+  }
+  if (!field) return;
+  const widgets = field.acroField?.getWidgets?.() || [];
+  if (widgets.length === 0) return;
+  const widget = widgets[0];
+  const rect = widget.getRectangle();
+  if (!rect || rect.width <= 0 || rect.height <= 0) return;
+  const pageRef = widget.P?.();
+  if (!pageRef) return;
+  const page = pdfDoc.getPages().find((p) => p.ref === pageRef);
+  if (!page) return;
+
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontSize = 9;
+  const padX = 5;
+  const bandH = fontSize + 6; // ≈ 15pt
+  const bandY = rect.y + rect.height - bandH;
+  const maxWidth = rect.width - padX * 2;
+
+  // Tronque le texte avec ellipse si nécessaire pour éviter que le
+  // label déborde du slot photo (slots Accessibilité/Sanitaires =
+  // 153pt de large, peu de marge).
+  let displayed = safeLabel;
+  if (helvetica.widthOfTextAtSize(displayed, fontSize) > maxWidth) {
+    while (
+      displayed.length > 1 &&
+      helvetica.widthOfTextAtSize(`${displayed}…`, fontSize) > maxWidth
+    ) {
+      displayed = displayed.slice(0, -1);
+    }
+    displayed = `${displayed}…`;
+  }
+
+  // Bande noire semi-transparente — `opacity: 0.55` donne un voile
+  // assez sombre pour que le texte blanc reste lisible sur n'importe
+  // quelle photo, mais on voit toujours l'image en transparence.
+  page.drawRectangle({
+    x: rect.x,
+    y: bandY,
+    width: rect.width,
+    height: bandH,
+    color: rgb(0, 0, 0),
+    opacity: 0.55,
+  });
+
+  page.drawText(displayed, {
+    x: rect.x + padX,
+    y: bandY + (bandH - fontSize) / 2 + 1,
+    size: fontSize,
+    color: rgb(1, 1, 1),
+    font: helvetica,
+  });
+}
+
+/**
  * Filtre + trie les photos d'une catégorie visite donnée. Le serveur
  * ne synchronise pas `categoryOrder` (local-only en v1) — on retombe
  * sur l'ordre date DESC fourni par `listDocumentsByPatient`.
@@ -1926,6 +2016,13 @@ export async function generateVisitReport({
         fetchImageBytes,
         stats,
       );
+      // Overlay du titre en haut du slot — sauf si la photo porte le
+      // tag magique `__pdf_no_label` (toggle utilisateur dans le
+      // dialog plein écran de l'onglet Photos).
+      const tags = Array.isArray(photo.tags) ? photo.tags : [];
+      if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+        await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
+      }
     }
   }
 
@@ -1964,6 +2061,11 @@ export async function generateVisitReport({
         // l'image entière sans cropper, fond blanc autour si le ratio
         // diffère du slot.
       );
+      // Même overlay titre que page 8 (cf. boucle précédente).
+      const tags = Array.isArray(photo.tags) ? photo.tags : [];
+      if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+        await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
+      }
     }
   }
 

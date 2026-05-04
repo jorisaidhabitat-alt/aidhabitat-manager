@@ -1124,6 +1124,26 @@ class _PhotosTabState extends State<PhotosTab>
           Navigator.of(ctx).pop();
           await _deletePhoto(doc);
         },
+        onMetadataChanged: ({
+          required String newTitle,
+          required bool hideLabelOnPdf,
+        }) async {
+          // Préserve les autres tags (catégorie visite, classification),
+          // toggle le tag magique `__pdf_no_label`. Aucune mutation de
+          // tags catégorie ici — le rename ne déplace jamais la photo.
+          final preserved =
+              doc.tags.where((t) => t != kPhotoTagPdfNoLabel).toList();
+          final nextTags = <String>[
+            ...preserved,
+            if (hideLabelOnPdf) kPhotoTagPdfNoLabel,
+          ];
+          await _dataService.updateDocumentMetadata(
+            documentId: doc.id,
+            title: newTitle,
+            tags: nextTags,
+          );
+          await _refresh();
+        },
       ),
     );
   }
@@ -1455,9 +1475,18 @@ class _PhotoFullscreenDialog extends StatefulWidget {
   /// fermeture de la dialog (typiquement après confirmation).
   final Future<void> Function()? onDelete;
 
+  /// Appelé après un rename ou un toggle du switch « Afficher dans le
+  /// PDF ». Le callback persiste dans SQLite + déclenche le sync, et
+  /// le parent rafraîchit la liste des photos.
+  final Future<void> Function({
+    required String newTitle,
+    required bool hideLabelOnPdf,
+  })? onMetadataChanged;
+
   const _PhotoFullscreenDialog({
     required this.doc,
     this.onDelete,
+    this.onMetadataChanged,
   });
 
   @override
@@ -1469,9 +1498,24 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
   Uint8List? _bytes;
   bool _failed = false;
 
+  /// Titre courant affiché dans la barre du bas — peut différer de
+  /// `widget.doc.title` après un rename (la nouvelle valeur est
+  /// reflétée localement avant que le parent ne rafraîchisse via
+  /// `onMetadataChanged`).
+  late String _currentTitle;
+
+  /// État du switch « Afficher le nom dans le PDF ». Vrai par défaut
+  /// (= label visible). Initialisé à partir de la présence du tag
+  /// magique `kPhotoTagPdfNoLabel` sur le doc.
+  late bool _showLabelOnPdf;
+
+  bool _isSaving = false;
+
   @override
   void initState() {
     super.initState();
+    _currentTitle = widget.doc.title;
+    _showLabelOnPdf = !widget.doc.tags.contains(kPhotoTagPdfNoLabel);
     _load();
   }
 
@@ -1482,6 +1526,67 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
       setState(() => _bytes = bytes);
     } else {
       setState(() => _failed = true);
+    }
+  }
+
+  /// Ouvre une mini-dialog avec un TextField pour renommer la photo.
+  /// Retourne le nouveau titre en cas de validation, null si annulé.
+  Future<void> _openRenameDialog(BuildContext ctx) async {
+    final controller = TextEditingController(text: _currentTitle);
+    final newName = await showDialog<String>(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Renommer la photo'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nom',
+            hintText: 'ex. Salle de bain',
+          ),
+          onSubmitted: (v) => Navigator.pop(dialogCtx, v.trim()),
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx, controller.text.trim()),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (newName == null || newName.isEmpty) return;
+    if (newName == _currentTitle) return;
+    final cb = widget.onMetadataChanged;
+    if (cb == null) return;
+    setState(() => _isSaving = true);
+    try {
+      await cb(newTitle: newName, hideLabelOnPdf: !_showLabelOnPdf);
+      if (mounted) setState(() => _currentTitle = newName);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// Toggle le switch « Afficher le nom dans le PDF ». Persiste
+  /// immédiatement via le callback.
+  Future<void> _toggleShowLabel(bool next) async {
+    final cb = widget.onMetadataChanged;
+    if (cb == null) return;
+    setState(() {
+      _showLabelOnPdf = next;
+      _isSaving = true;
+    });
+    try {
+      await cb(newTitle: _currentTitle, hideLabelOnPdf: !next);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -1593,26 +1698,89 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
                 ],
               ),
             ),
-            // Titre de la photo en bas
+            // Bandeau bas : titre + crayon (rename) + switch (afficher
+            // le nom sur le PDF). GestureDetector arrête la propagation
+            // du tap vers le parent (qui ferme la dialog au tap fond).
             Positioned(
               left: 16,
-              right: 56,
+              right: 16,
               bottom: 16,
-              child: Text(
-                widget.doc.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  shadows: [
-                    Shadow(
-                      offset: Offset(0, 1),
-                      blurRadius: 3,
-                      color: Colors.black54,
-                    ),
-                  ],
+              child: GestureDetector(
+                onTap: () {}, // Absorbe les taps sur le bandeau
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _currentTitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (widget.onMetadataChanged != null) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: _isSaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white70,
+                                  ),
+                                )
+                              : const Icon(
+                                  LucideIcons.pencil,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                          tooltip: 'Renommer',
+                          onPressed: _isSaving
+                              ? null
+                              : () => _openRenameDialog(context),
+                        ),
+                        const SizedBox(width: 4),
+                        // Switch + label compact « PDF »
+                        Tooltip(
+                          message: _showLabelOnPdf
+                              ? 'Le nom apparaît sur le PDF'
+                              : 'Le nom est masqué sur le PDF',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'PDF',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Switch.adaptive(
+                                value: _showLabelOnPdf,
+                                onChanged:
+                                    _isSaving ? null : _toggleShowLabel,
+                                activeThumbColor: const Color(0xFF7C6DAA),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
