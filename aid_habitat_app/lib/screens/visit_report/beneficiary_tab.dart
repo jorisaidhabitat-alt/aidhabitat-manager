@@ -808,7 +808,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             const SizedBox(height: 10),
             FormToggleGroup(
               label: 'Mandat fait par',
-              options: const ['Nous', 'Autre'],
+              // « Nous » remplacé par « Aid'habitat » (demande
+              // utilisateur 2026-05-04). Les valeurs persistées en
+              // SQLite/NocoDB sont aussi mises à jour — pas de migration
+              // automatique, les anciens dossiers avec `mandatPar=Nous`
+              // restent OK (ne matchent juste plus l'option active dans
+              // le toggle, l'ergo doit re-sélectionner).
+              options: const ["Aid'habitat", 'Autre'],
               selected: anah['mandatPar'] ?? '',
               expand: true,
               onChanged: (v) {
@@ -1436,7 +1442,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   ///   "status":      "A faire" | "A vérifier" | "Déjà fait" | "",
   ///   "mail":        "Oui" | "Non" | "",
   ///   "mandat":      "Oui" | "Non" | "",
-  ///   "mandatPar":   "Nous" | "Autre" | "",
+  ///   "mandatPar":   "Aid'habitat" | "Autre" | "",
   ///   "mandatAutre": "<texte libre quand mandatPar=Autre>"
   /// }
   /// ```

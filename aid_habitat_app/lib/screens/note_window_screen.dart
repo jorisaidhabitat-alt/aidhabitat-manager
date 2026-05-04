@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel;
-// Desktop-only. Sur web/mobile, un stub no-op fait passer la compilation
-// — cet écran n'est de toute façon jamais instancié hors desktop.
+// Desktop-only. Sur web/mobile, un stub no-op fait passer la compilation.
 import '../services/multi_window_stub.dart'
     if (dart.library.io) 'package:desktop_multi_window/desktop_multi_window.dart';
+// Web-only : BroadcastChannel IPC + persistance frame en localStorage.
+import '../services/note_window_web_stub.dart'
+    if (dart.library.html) '../services/note_window_web.dart' as note_window_web;
 
 /// Dedicated MaterialApp shown in a SECONDARY OS window (launched via
 /// `DesktopMultiWindow.createWindow`). Hosts a single full-screen note

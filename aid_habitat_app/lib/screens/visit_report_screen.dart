@@ -8,6 +8,10 @@ import 'package:flutter/material.dart';
 // importé — les appels sont shuntés par un garde `kIsWeb` avant exécution.
 import '../services/multi_window_stub.dart'
     if (dart.library.io) 'package:desktop_multi_window/desktop_multi_window.dart';
+// Web-only : window.open + BroadcastChannel pour ouvrir une vraie
+// fenêtre browser détachée sur Mac (avec les pastilles natives).
+import '../services/note_window_web_stub.dart'
+    if (dart.library.html) '../services/note_window_web.dart' as note_window_web;
 import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
@@ -250,32 +254,26 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // their edits through the main window (they cannot touch SQLite
     // themselves because sqflite is not registered in secondary engines).
     //
-    // Sur web (PWA) le navigateur ne peut pas ouvrir de vraies fenêtres
-    // OS secondaires, donc on ne monte pas de handler.
-    if (kIsWeb) return;
-    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
-      final args = Map<String, dynamic>.from(call.arguments as Map);
-      switch (call.method) {
+    // Sur web : on écoute le BroadcastChannel partagé (cf.
+    // `note_window_web.dart`) — la 2ème fenêtre browser y poste les
+    // mêmes méthodes (`liveNote`, `reportNoteFrame`) que sur natif.
+    // Sur natif desktop : on monte le handler via DesktopMultiWindow.
+    void handleIpc(String method, Map<String, dynamic> args) {
+      switch (method) {
         case 'liveNote':
-          final patientId = args['patientId'] as String;
-          final tabKey = args['tabKey'] as String;
-          final text = args['text'] as String? ?? '';
+          final patientId = args['patientId']?.toString() ?? '';
+          final tabKey = args['tabKey']?.toString() ?? '';
+          final text = args['text']?.toString() ?? '';
           final flush = args['flush'] == true;
-          // 1) INSTANT UI mirror — bump `_liveText` + rebuild so the
-          //    in-app NotesWidget shows the same text this frame.
           if (mounted) {
             setState(() {
               _liveText['${patientId}::$tabKey'] = text;
             });
           }
-          // 2) DEBOUNCED PERSIST — schedule a SQLite write +
-          //    sync_operation. A burst of keystrokes collapses into
-          //    exactly one NocoDB push. `flush=true` (popup closing /
-          //    disposing) writes immediately.
           final key = '${patientId}::$tabKey';
           _saveDebounce[key]?.cancel();
           if (flush) {
-            await _persistNoteText(patientId, tabKey, text);
+            _persistNoteText(patientId, tabKey, text);
           } else {
             _saveDebounce[key] = Timer(
               const Duration(milliseconds: 400),
@@ -303,8 +301,21 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           }
           break;
       }
+    }
+
+    if (kIsWeb) {
+      _ipcSubscription = note_window_web.listenNoteIpc(handleIpc);
+      return;
+    }
+    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+      final args = Map<String, dynamic>.from(call.arguments as Map);
+      handleIpc(call.method, args);
     });
   }
+
+  /// Subscription au BroadcastChannel web — annulée au dispose pour
+  /// éviter de leak un listener si l'écran est navigué hors stack.
+  StreamSubscription<dynamic>? _ipcSubscription;
 
   /// Merges the new text into the existing `drawing_json` (preserving
   /// strokes) and persists it via DataService, which also enqueues a
@@ -472,13 +483,26 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   /// Forwards an in-app note draft to the detached OS window (if open)
   /// so typing in the sidebar is mirrored in real time in the popup.
+  ///
+  /// Sur web : broadcast à toutes les fenêtres du même origin via le
+  /// canal `aidhabitat-note-ipc`. La fenêtre détachée se filtre elle-
+  /// même par patientId+tabKey (cf. note_window_screen.dart).
+  ///
+  /// Sur natif : DesktopMultiWindow.invokeMethod ciblé par windowId.
   void _pushDraftToOpenWindow(String tabKey, String text) {
-    if (kIsWeb) return; // Pas de fenêtre détachée possible sur web.
-    final key = '${_dossier.patient.id}::$tabKey';
+    final patientId = _dossier.patient.id;
+    if (kIsWeb) {
+      note_window_web.sendNoteIpc(
+        method: 'pushNote',
+        args: {'patientId': patientId, 'tabKey': tabKey, 'text': text},
+      );
+      return;
+    }
+    final key = '$patientId::$tabKey';
     final windowId = _openNoteWindows[key];
     if (windowId == null) return;
     DesktopMultiWindow.invokeMethod(windowId, 'pushNote', {
-      'patientId': _dossier.patient.id,
+      'patientId': patientId,
       'tabKey': tabKey,
       'text': text,
     }).catchError((_) {
@@ -494,6 +518,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       t.cancel();
     }
     _saveDebounce.clear();
+    _ipcSubscription?.cancel();
+    _ipcSubscription = null;
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     super.dispose();
@@ -528,37 +554,53 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// Text is persisted to the shared SQLite file so both windows stay in
   /// sync via the 1-second polling in [NoteWindowScreen].
   Future<void> _openNoteInSeparateWindow(String sourceTab) async {
-    // Sur web : pas de vraie fenêtre OS séparée possible. On ouvre un
-    // modal plein écran à la place (le `NotesWidget` reste synchronisé
-    // via son propre state — inutile de passer par IPC).
-    if (kIsWeb) {
-      _openNoteModalFallback(sourceTab);
-      return;
-    }
-    // Pre-fetch the existing note text in the MAIN engine (which has
-    // sqflite) and pass it inline in the launch payload so the secondary
-    // window can render immediately without a DB call.
+    final patientId = _dossier.patient.id;
     final existingJson = await _dataService.fetchNoteDrawingJson(
-      patientId: _dossier.patient.id,
+      patientId: patientId,
       tabKey: sourceTab,
       pageNumber: 0,
     );
     final initialText = _extractTextFromDrawingJson(existingJson);
+
+    // Sur web : on tente d'ouvrir une VRAIE fenêtre browser détachée
+    // (popup window avec les pastilles macOS rouge/jaune/vert). Marche
+    // sur Chrome/Safari desktop. Sur iPad PWA, `tryOpenNoteWindow`
+    // retourne false (touchscreen détecté) → on retombe sur le modal
+    // in-app, plus adapté au format tactile.
+    if (kIsWeb) {
+      final size = _VisitReportStateCache.lastNoteWindowSize;
+      final opened = note_window_web.tryOpenNoteWindow(
+        patientId: patientId,
+        tabKey: sourceTab,
+        title: 'Note — $sourceTab',
+        initialText: initialText,
+        defaultWidth: size.width,
+        defaultHeight: size.height,
+      );
+      if (!opened) {
+        _openNoteModalFallback(sourceTab);
+        return;
+      }
+      // Seed live text dans le state local pour que la fenêtre
+      // principale affiche immédiatement le contenu (mirroir de la
+      // fenêtre détachée). L'IPC BroadcastChannel prendra le relais
+      // dès que la fenêtre détachée est prête.
+      _liveText['${patientId}::$sourceTab'] = initialText;
+      return;
+    }
+
+    // Native (Flutter desktop) : passe par le plugin
+    // `desktop_multi_window` qui spawn un 2ème engine Flutter dans une
+    // NSWindow secondaire.
     final payload = jsonEncode({
-      'patientId': _dossier.patient.id,
+      'patientId': patientId,
       'tabKey': sourceTab,
       'title': 'Note — $sourceTab',
       'initialText': initialText,
     });
     final window = await DesktopMultiWindow.createWindow(payload);
-    _openNoteWindows['${_dossier.patient.id}::$sourceTab'] = window.windowId;
-    // Seed live text with what's in the DB so the in-app NotesWidget
-    // already shows it as "live" (mirrors the popup's initial content).
-    _liveText['${_dossier.patient.id}::$sourceTab'] = initialText;
-    // Ouvre à la dernière position ET taille connues. La popup reporte
-    // sa frame toutes les secondes via IPC (`reportNoteFrame`) donc
-    // "position + format" sont conservés entre ouvertures, même si
-    // l'utilisateur drague la fenêtre manuellement.
+    _openNoteWindows['${patientId}::$sourceTab'] = window.windowId;
+    _liveText['${patientId}::$sourceTab'] = initialText;
     final origin = _VisitReportStateCache.lastNoteWindowOrigin
         ?? const Offset(200, 200);
     window
