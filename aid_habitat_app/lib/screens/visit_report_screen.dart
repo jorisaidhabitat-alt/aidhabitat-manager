@@ -1275,11 +1275,31 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         subSectionIndex: 3,
       ));
     }
-    if (_dossier.compteAnah.trim().isEmpty) {
+    // ANAH (déplacé dans Profil depuis 2026-05-04). Le champ
+    // `compte_anah` peut être en JSON ({status, mail, mandat,
+    // mandatPar, mandatAutre}) ou en plain string legacy. On flag
+    // si le statut est vide (= aucune réponse à « Création compte
+    // ANAH »). Les autres sous-questions (mail/mandat) restent
+    // optionnelles : pas de flag tant que le statut principal est
+    // renseigné.
+    String anahStatusForCheck = '';
+    final anahRawForCheck = _dossier.compteAnah.trim();
+    if (anahRawForCheck.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(anahRawForCheck);
+        if (decoded is Map) {
+          anahStatusForCheck = (decoded['status']?.toString() ?? '').trim();
+        }
+      } catch (_) {/* JSON invalide → considéré vide */}
+    } else if (anahRawForCheck != 'Mandat') {
+      // Plain string legacy (pas « Mandat » qui n'est plus un statut)
+      anahStatusForCheck = anahRawForCheck;
+    }
+    if (anahStatusForCheck.isEmpty) {
       missing.add(_MissingField(
-        label: 'Admin — compte ANAH',
+        label: 'Profil — création compte ANAH (à faire / à vérifier / déjà fait)',
         tabIndex: tab,
-        subSectionIndex: 3,
+        subSectionIndex: 0,
       ));
     }
     if (_dossier.envoiRapport.trim().isEmpty) {
@@ -1935,6 +1955,27 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final accompanimentLabel =
         formatAccompanimentType(_dossier.natureAccompagnement).trim();
     final incomeLabel = patient.incomeCategory.trim();
+    // Statut compte ANAH — extrait du JSON `compte_anah` (cf.
+    // beneficiary_tab._parseAnahData). Format historique « plain string »
+    // toléré : si la valeur n'est pas du JSON, on l'utilise telle quelle.
+    String anahStatus = '';
+    final anahRaw = _dossier.compteAnah.trim();
+    if (anahRaw.isNotEmpty) {
+      if (anahRaw.startsWith('{')) {
+        try {
+          final decoded = jsonDecode(anahRaw);
+          if (decoded is Map) {
+            anahStatus = (decoded['status']?.toString() ?? '').trim();
+          }
+        } catch (_) {/* ignore — laisse vide */}
+      } else if (anahRaw == 'Mandat') {
+        // Legacy : l'entrée historique « Mandat » n'a plus de statut
+        // associé après la migration 2026-05-04 → pas de pastille.
+        anahStatus = '';
+      } else {
+        anahStatus = anahRaw;
+      }
+    }
 
     return Scaffold(
       body: Padding(
@@ -2025,6 +2066,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     ],
                   ),
                 ),
+                // Pastille « État du compte ANAH » épinglée à droite
+                // (demande utilisateur 2026-05-04). N'apparaît que si
+                // l'ergo a renseigné le statut (sinon vide → caché).
+                if (anahStatus.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  AnahStatusBadge(status: anahStatus, large: true),
+                ],
                 // Le bouton « Générer le rapport » est désormais
                 // intégré comme dernière entrée de la barre de
                 // navigation des onglets (cf. `_buildTabBar`) — plus

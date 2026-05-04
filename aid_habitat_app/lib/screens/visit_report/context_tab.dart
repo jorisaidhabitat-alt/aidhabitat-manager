@@ -289,52 +289,64 @@ class _ContextTabState extends State<ContextTab>
   // en état ✓ (`allAutonomous` dans _buildAutonomy), et le champ
   // OccupantAutonomy.autonomyDone est mis à jour par _setAutonomyItemState.
 
-  /// Détermine l'état courant d'un item d'autonomie (mutuellement
-  /// exclusif entre les 3 listes : autonomous / attention / humanHelp).
+  /// État composite d'un item d'autonomie. Modèle 2026-05-04 :
+  /// `humanHelp` est indépendant des deux autres (peut coexister avec
+  /// `autonomous` OU `attention`). `autonomous` et `attention` restent
+  /// mutuellement exclusifs entre eux. Demande utilisateur :
+  /// « même s'il y a une aide humaine sélectionnée, possibilité de
+  /// cocher une autre case sur la même ligne aussi ».
   _AutonomyItemState _itemState(int index) {
     final occ = _active;
-    if (index < occ.autonomy.length && occ.autonomy[index].checked) {
-      return _AutonomyItemState.autonomous;
-    }
-    if (index < occ.attention.length && occ.attention[index].checked) {
-      return _AutonomyItemState.attention;
-    }
-    if (index < occ.humanHelp.length && occ.humanHelp[index].checked) {
-      return _AutonomyItemState.humanHelp;
-    }
-    return _AutonomyItemState.none;
+    final autonomous =
+        index < occ.autonomy.length && occ.autonomy[index].checked;
+    final attention =
+        index < occ.attention.length && occ.attention[index].checked;
+    final humanHelp =
+        index < occ.humanHelp.length && occ.humanHelp[index].checked;
+    return _AutonomyItemState(
+      autonomous: autonomous,
+      attention: attention,
+      humanHelp: humanHelp,
+    );
   }
 
-  /// Pose un état pour l'item `index` en garantissant la mutex : les
-  /// deux autres listes sont forcées à `checked=false` à cet index.
-  /// Met aussi à jour `autonomyDone` automatiquement : true ssi tous
-  /// les items sont marqués `autonomous` (✓).
+  /// Met à jour l'item `index` en respectant la mutex `autonomous` ↔
+  /// `attention` (un seul des deux à la fois) et en laissant
+  /// `humanHelp` indépendant. Recalcule `autonomyDone` (vrai ssi tous
+  /// les items sont en `autonomous`, peu importe la coche aide humaine).
   void _setAutonomyItemState(int index, _AutonomyItemState state) {
     final occ = _active;
     final auto = List<AutonomyItem>.from(occ.autonomy);
     final help = List<AutonomyItem>.from(occ.humanHelp);
     final att = List<AutonomyItem>.from(occ.attention);
+    // Mutex entre autonomous et attention — si l'appelant demande les
+    // deux à true, on garde le dernier toggle (priorité aux passages
+    // de none → autonomous/attention plutôt que l'inverse).
+    var newAutonomous = state.autonomous;
+    var newAttention = state.attention;
+    if (newAutonomous && newAttention) {
+      // Sécurité : ne devrait pas arriver via les togglers, mais on
+      // garde un comportement déterministe (priorité à autonomous).
+      newAttention = false;
+    }
     if (index < auto.length) {
       auto[index] = AutonomyItem(
         name: auto[index].name,
-        checked: state == _AutonomyItemState.autonomous,
+        checked: newAutonomous,
       );
     }
     if (index < att.length) {
       att[index] = AutonomyItem(
         name: att[index].name,
-        checked: state == _AutonomyItemState.attention,
+        checked: newAttention,
       );
     }
     if (index < help.length) {
       help[index] = AutonomyItem(
         name: help[index].name,
-        checked: state == _AutonomyItemState.humanHelp,
+        checked: state.humanHelp,
       );
     }
-    // Autonomy "done" dérivé : vrai uniquement quand TOUS les items
-    // sont marqués `autonomous` (le texte "profil considéré comme
-    // autonome" apparaîtra dans le résumé en bas de section).
     final allAutonomous =
         auto.length == kAutonomyItemNames.length && auto.every((i) => i.checked);
     _updateActive(OccupantAutonomy(
@@ -350,9 +362,13 @@ class _ContextTabState extends State<ContextTab>
     final current = _itemState(index);
     _setAutonomyItemState(
       index,
-      current == _AutonomyItemState.autonomous
-          ? _AutonomyItemState.none
-          : _AutonomyItemState.autonomous,
+      _AutonomyItemState(
+        autonomous: !current.autonomous,
+        // Mutex : si on active autonomous, on désactive attention.
+        // Si on désactive autonomous, attention reste comme tel.
+        attention: !current.autonomous ? false : current.attention,
+        humanHelp: current.humanHelp,
+      ),
     );
   }
 
@@ -360,9 +376,11 @@ class _ContextTabState extends State<ContextTab>
     final current = _itemState(index);
     _setAutonomyItemState(
       index,
-      current == _AutonomyItemState.attention
-          ? _AutonomyItemState.none
-          : _AutonomyItemState.attention,
+      _AutonomyItemState(
+        autonomous: !current.attention ? false : current.autonomous,
+        attention: !current.attention,
+        humanHelp: current.humanHelp,
+      ),
     );
   }
 
@@ -370,9 +388,11 @@ class _ContextTabState extends State<ContextTab>
     final current = _itemState(index);
     _setAutonomyItemState(
       index,
-      current == _AutonomyItemState.humanHelp
-          ? _AutonomyItemState.none
-          : _AutonomyItemState.humanHelp,
+      _AutonomyItemState(
+        autonomous: current.autonomous,
+        attention: current.attention,
+        humanHelp: !current.humanHelp,
+      ),
     );
   }
 
@@ -826,12 +846,17 @@ class _ContextTabState extends State<ContextTab>
     var allAutonomous = allFilled;
     for (var i = 0; i < total; i++) {
       final state = _itemState(i);
-      if (state == _AutonomyItemState.none) {
+      // Une ligne est considérée « remplie » dès qu'au moins une des
+      // trois coches est posée (autonomous, attention, ou humanHelp).
+      if (state.isEmpty) {
         allFilled = false;
         allAutonomous = false;
         break;
       }
-      if (state != _AutonomyItemState.autonomous) {
+      // Le profil reste « considéré comme autonome » uniquement quand
+      // chaque ligne est en `autonomous` — `humanHelp` seule ne suffit
+      // pas, et `attention` (à revoir) le casse.
+      if (!state.autonomous) {
         allAutonomous = false;
       }
     }
@@ -839,31 +864,10 @@ class _ContextTabState extends State<ContextTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Pills occupants retirées — navigation désormais via le
-        // header + les points de pagination en bas du cadre.
-        // Badge "Aide humaine" conservé comme indicateur de statut.
-        if (homeHelpEnabled)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: const Text(
-                'Aide humaine',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFFB45309),
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-          ),
-        if (homeHelpEnabled) const SizedBox(height: 12),
+        // Bundle « Aide humaine » jaune retiré (demande utilisateur
+        // 2026-05-04). Plus aucun indicateur global de statut au-dessus
+        // de la liste — l'info reste visible item par item via le
+        // bouton 👥 sur chaque ligne quand `homeHelpEnabled`.
         // Raccourci « Tout valider — usager autonome ». Coché : les 11
         // items passent en ✓ d'un coup ; décoché : tous repassent à
         // none. État dérivé de `allAutonomous`. Demande utilisateur
@@ -929,8 +933,27 @@ class _ContextTabState extends State<ContextTab>
   }
 }
 
-// États mutuellement exclusifs possibles pour une ligne d'autonomie.
-enum _AutonomyItemState { none, autonomous, attention, humanHelp }
+/// État composite d'une ligne d'autonomie (modèle 2026-05-04).
+/// `autonomous` et `attention` sont mutuellement exclusifs entre eux
+/// (un seul des deux à la fois). `humanHelp` est indépendant et peut
+/// coexister avec n'importe quel autre état.
+///
+/// `none` = `autonomous: false, attention: false, humanHelp: false`.
+class _AutonomyItemState {
+  final bool autonomous;
+  final bool attention;
+  final bool humanHelp;
+
+  const _AutonomyItemState({
+    this.autonomous = false,
+    this.attention = false,
+    this.humanHelp = false,
+  });
+
+  /// Vrai si aucune des trois coches n'est posée — utile pour
+  /// `allFilled` dans `_buildAutonomy`.
+  bool get isEmpty => !autonomous && !attention && !humanHelp;
+}
 
 /// Raccourci « Tout valider — usager autonome » posé au-dessus de la
 /// liste des 11 items. Tap → bascule TOUS les items entre `autonomous`
@@ -1102,15 +1125,20 @@ class _MedicalFlagRow extends StatelessWidget {
   }
 }
 
-/// Ligne d'autonomie — numéro + libellé + 2 ou 3 boutons d'action
-/// mutuellement exclusifs (✓ autonome, ! à revoir, 👥 aide humaine).
+/// Ligne d'autonomie — numéro + libellé + 2 ou 3 boutons d'action.
 ///
-/// Règles :
-///   • Un seul bouton peut être coché par ligne (mutex).
+/// Règles 2026-05-04 :
+///   • `autonomous` (✓) et `attention` (!) sont mutuellement exclusifs
+///     entre eux — un seul des deux à la fois.
+///   • `humanHelp` (👥) est indépendant — peut être coché en plus
+///     de `autonomous` ou `attention` sur la même ligne (demande
+///     utilisateur : « même s'il y a une aide humaine sélectionnée,
+///     possibilité de cocher une autre case sur la même ligne aussi »).
 ///   • Le bouton 👥 n'apparaît que si `showHumanHelp=true` (lié à
 ///     "Aide à domicile" dans Bénéficiaire > Santé).
-///   • Quand l'état est `humanHelp`, les boutons ✓ et ! sont affichés
-///     désactivés (non cliquables).
+///
+/// Plus aucun bouton n'est désactivé : les 3 sont toujours cliquables
+/// quand visibles.
 class _NumberedCheckRow extends StatelessWidget {
   final int index;
   final String label;
@@ -1132,11 +1160,6 @@ class _NumberedCheckRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isAutonomous = state == _AutonomyItemState.autonomous;
-    final isAttention = state == _AutonomyItemState.attention;
-    final isHumanHelp = state == _AutonomyItemState.humanHelp;
-    final lockedByHumanHelp = isHumanHelp;
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
       child: Row(
@@ -1174,16 +1197,16 @@ class _NumberedCheckRow extends StatelessWidget {
           // Bouton ✓ "autonome".
           _ActionButton(
             kind: _ActionButtonKind.autonomous,
-            active: isAutonomous,
-            disabled: lockedByHumanHelp,
+            active: state.autonomous,
+            disabled: false,
             onTap: onToggleAutonomous,
           ),
           const SizedBox(width: 6),
           // Bouton ! "à revoir".
           _ActionButton(
             kind: _ActionButtonKind.attention,
-            active: isAttention,
-            disabled: lockedByHumanHelp,
+            active: state.attention,
+            disabled: false,
             onTap: onToggleAttention,
           ),
           // Bouton 👥 "aide humaine" — visible uniquement quand "Aide
@@ -1192,7 +1215,7 @@ class _NumberedCheckRow extends StatelessWidget {
             const SizedBox(width: 6),
             _ActionButton(
               kind: _ActionButtonKind.humanHelp,
-              active: isHumanHelp,
+              active: state.humanHelp,
               disabled: false,
               onTap: onToggleHumanHelp,
             ),

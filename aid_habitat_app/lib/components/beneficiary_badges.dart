@@ -140,3 +140,68 @@ class IncomeCategoryBadge extends StatelessWidget {
     );
   }
 }
+
+/// Pastille « État du compte ANAH » — affichée dans le header du relevé
+/// de visite (top-right). Demande utilisateur 2026-05-04 : permettre à
+/// l'ergo de voir d'un coup d'œil l'avancement du dossier ANAH sans
+/// devoir ouvrir l'onglet Bénéficiaire.
+///
+/// Couleurs en accord avec la sémantique :
+///   • « Déjà fait »  → vert  (terminé, action OK)
+///   • « A vérifier » → ambre (action en attente)
+///   • « A faire »    → rouge (action requise)
+///   • autre / vide   → ne s'affiche pas (caller filtre via isEmpty)
+class AnahStatusBadge extends StatelessWidget {
+  final String status;
+  final bool large;
+
+  const AnahStatusBadge({
+    super.key,
+    required this.status,
+    this.large = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final v = status.trim().toLowerCase();
+    Color bg;
+    Color fg;
+    String label;
+    if (v == 'déjà fait' || v == 'deja fait') {
+      bg = const Color(0xFFD1F4DC); // vert clair
+      fg = const Color(0xFF137333); // vert foncé
+      label = 'ANAH : déjà fait';
+    } else if (v == 'a vérifier' || v == 'a verifier') {
+      bg = const Color(0xFFFEF3C7); // ambre clair
+      fg = const Color(0xFFB45309); // ambre foncé
+      label = 'ANAH : à vérifier';
+    } else if (v == 'a faire') {
+      bg = const Color(0xFFFEE2E2); // rouge clair
+      fg = const Color(0xFFB91C1C); // rouge foncé
+      label = 'ANAH : à faire';
+    } else {
+      // Statut inconnu — affichage neutre (rare, mais on évite un
+      // crash silencieux si la donnée est corrompue).
+      bg = const Color(0xFFF1F5F9);
+      fg = const Color(0xFF334155);
+      label = 'ANAH : ${status.trim()}';
+    }
+    return Container(
+      padding: large
+          ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: large ? 14 : 12,
+          fontWeight: FontWeight.w700,
+          color: fg,
+        ),
+      ),
+    );
+  }
+}

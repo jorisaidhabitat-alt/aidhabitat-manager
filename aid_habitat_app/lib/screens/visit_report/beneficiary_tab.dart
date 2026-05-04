@@ -152,12 +152,14 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   List<String> _retirementFundNames = const [];
   List<String> _principalFundNames = const [];
 
-  // ANAH options (parity with React ANAH_ACCOUNT_OPTIONS)
-  static const List<FormSelectOption<String>> _anahOptions = [
-    FormSelectOption(value: 'Déjà fait', label: 'Déjà fait'),
-    FormSelectOption(value: 'A vérifier', label: 'A vérifier'),
-    FormSelectOption(value: 'A faire', label: 'A faire'),
-    FormSelectOption(value: 'Mandat', label: 'Mandat'),
+  // ANAH options — version 2026-05-04 : 3 statuts seulement, le
+  // « Mandat » historique est désormais une question séparée
+  // (création mandat Oui/Non + Nous/Autre) gérée plus bas dans le
+  // bloc Profil → Compte ANAH.
+  static const List<String> _anahStatusOptions = [
+    'A faire',
+    'A vérifier',
+    'Déjà fait',
   ];
 
   // Family situation presets
@@ -695,6 +697,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final emailInvalid = !isValidEmail(_email);
     final idx =
         _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    final anah = _parseAnahData(_compteAnah);
     return _buildOccupantSwipeContainer(
       perOccupantContent: _buildBirthDateRow(idx),
       sharedContent: Column(
@@ -725,6 +728,90 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               _markChanged();
             },
           ),
+          const SizedBox(height: 24),
+
+          // --- Bloc "Compte ANAH" — déplacé depuis Admin (demande
+          // utilisateur 2026-05-04). 3 sous-questions :
+          //   1. Création compte (3 statuts)
+          //   2. Création mail (Oui/Non)
+          //   3. Création mandat (Oui/Non) → Nous/Autre → champ texte
+          // Toutes les valeurs sont sérialisées en JSON dans la colonne
+          // `compte_anah` (cf. _parseAnahData / _serializeAnahData).
+          FormToggleGroup(
+            label: 'Création compte ANAH',
+            options: _anahStatusOptions,
+            selected: anah['status'] ?? '',
+            columns: 3,
+            onChanged: (v) {
+              final next = Map<String, String>.from(anah);
+              next['status'] = v;
+              _compteAnah = _serializeAnahData(next);
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 14),
+          FormToggleGroup(
+            label: 'Création mail',
+            options: const ['Oui', 'Non'],
+            selected: anah['mail'] ?? '',
+            expand: true,
+            onChanged: (v) {
+              final next = Map<String, String>.from(anah);
+              next['mail'] = v;
+              _compteAnah = _serializeAnahData(next);
+              _markChanged();
+            },
+          ),
+          const SizedBox(height: 14),
+          FormToggleGroup(
+            label: 'Création mandat',
+            options: const ['Oui', 'Non'],
+            selected: anah['mandat'] ?? '',
+            expand: true,
+            onChanged: (v) {
+              final next = Map<String, String>.from(anah);
+              next['mandat'] = v;
+              // Si on désélectionne ou répond Non, on purge la
+              // sous-question « par qui » pour éviter une donnée
+              // orpheline (et la pill « Nous/Autre » réapparaîtrait
+              // au prochain Oui sinon).
+              if (v != 'Oui') {
+                next.remove('mandatPar');
+                next.remove('mandatAutre');
+              }
+              _compteAnah = _serializeAnahData(next);
+              _markChanged();
+            },
+          ),
+          if ((anah['mandat'] ?? '') == 'Oui') ...[
+            const SizedBox(height: 10),
+            FormToggleGroup(
+              label: 'Mandat fait par',
+              options: const ['Nous', 'Autre'],
+              selected: anah['mandatPar'] ?? '',
+              expand: true,
+              onChanged: (v) {
+                final next = Map<String, String>.from(anah);
+                next['mandatPar'] = v;
+                if (v != 'Autre') next.remove('mandatAutre');
+                _compteAnah = _serializeAnahData(next);
+                _markChanged();
+              },
+            ),
+            if ((anah['mandatPar'] ?? '') == 'Autre') ...[
+              const SizedBox(height: 10),
+              FormTextField(
+                label: 'Précisez qui',
+                value: anah['mandatAutre'] ?? '',
+                onChanged: (v) {
+                  final next = Map<String, String>.from(anah);
+                  next['mandatAutre'] = v;
+                  _compteAnah = _serializeAnahData(next);
+                  _markChanged();
+                },
+              ),
+            ],
+          ],
           const SizedBox(height: 24),
         ],
       ),
@@ -1307,22 +1394,63 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               _markChanged();
             },
           ),
-          const SizedBox(height: 24),
-
-          // --- Bloc "Informations Administratives" — partagé (compte
-          // Anah est un seul dossier au niveau ménage).
-          FormSelectDropdown<String>(
-            label: 'Création compte Anah',
-            value: _compteAnah.isEmpty ? null : _compteAnah,
-            options: _anahOptions,
-            onChanged: (v) {
-              _compteAnah = v ?? '';
-              _markChanged();
-            },
-          ),
+          // NB : le bloc « Création compte ANAH » a été déplacé dans la
+          // section Profil (demande utilisateur 2026-05-04). Voir
+          // _buildProfilSection > Bloc Compte ANAH.
         ],
       ),
     );
+  }
+
+  /// `compte_anah` stockait historiquement un simple statut texte
+  /// ("A faire", "A vérifier", "Déjà fait", "Mandat"). Depuis 2026-05-04,
+  /// la fiche bénéficiaire demande 3 sous-questions distinctes (statut
+  /// du compte + création mail + création mandat avec sous-question
+  /// « par qui »). Pour éviter une migration de schéma NocoDB, on stocke
+  /// l'objet en JSON dans la même colonne `compte_anah`.
+  ///
+  /// Format JSON :
+  /// ```json
+  /// {
+  ///   "status":      "A faire" | "A vérifier" | "Déjà fait" | "",
+  ///   "mail":        "Oui" | "Non" | "",
+  ///   "mandat":      "Oui" | "Non" | "",
+  ///   "mandatPar":   "Nous" | "Autre" | "",
+  ///   "mandatAutre": "<texte libre quand mandatPar=Autre>"
+  /// }
+  /// ```
+  ///
+  /// Rétrocompat : si la valeur stockée est une chaîne brute (cas
+  /// historique), on la traite comme `{status: <chaîne>}`. La valeur
+  /// historique « Mandat » est migrée vers `{mandat: "Oui"}` (le statut
+  /// reste vide, à recompléter par l'ergo).
+  Map<String, String> _parseAnahData(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return <String, String>{};
+    if (trimmed.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is Map) {
+          return decoded.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+        }
+      } catch (_) {/* fall through au plain string */}
+    }
+    // Plain string legacy
+    if (trimmed == 'Mandat') {
+      return <String, String>{'status': '', 'mandat': 'Oui'};
+    }
+    return <String, String>{'status': trimmed};
+  }
+
+  String _serializeAnahData(Map<String, String> data) {
+    // On ne stocke que les clés non-vides — JSON plus compact, et
+    // évite les PATCH inutiles sur NocoDB.
+    final clean = <String, String>{};
+    for (final entry in data.entries) {
+      if (entry.value.trim().isNotEmpty) clean[entry.key] = entry.value;
+    }
+    if (clean.isEmpty) return '';
+    return jsonEncode(clean);
   }
 
   /// `envoi_rapport` est désormais multi-valeur : on stocke les choix
