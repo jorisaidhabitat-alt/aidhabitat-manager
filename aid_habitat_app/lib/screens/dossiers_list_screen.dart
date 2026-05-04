@@ -102,24 +102,86 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       return haystack.contains(term);
     }).toList();
 
-    if (_sortOrder == 'asc') {
-      filtered.sort((a, b) => a.patient.lastName.compareTo(b.patient.lastName));
-    } else if (_sortOrder == 'desc') {
-      filtered.sort((a, b) => b.patient.lastName.compareTo(a.patient.lastName));
+    // Comparators par colonne. On capture les valeurs dans une closure
+    // qui retourne -1/0/+1 (Comparator<Dossier>). Le sens (`asc`/`desc`)
+    // est appliqué EN APRÈS via un `* (asc ? 1 : -1)` — évite de
+    // dupliquer la logique de comparaison.
+    int Function(Dossier, Dossier) cmp;
+    switch (_sortColumn) {
+      case 'commune':
+        cmp = (a, b) =>
+            a.patient.city.toLowerCase().compareTo(b.patient.city.toLowerCase());
+        break;
+      case 'revenus':
+        // Tri numérique sur le RFR si dispo, sinon alphabétique sur la
+        // catégorie ANAH (Très modeste / Modeste / Intermédiaire / Haut).
+        cmp = (a, b) {
+          final ar = a.patient.fiscalRevenue ?? 0;
+          final br = b.patient.fiscalRevenue ?? 0;
+          if (ar != 0 && br != 0) return ar.compareTo(br);
+          if (ar != 0) return -1;
+          if (br != 0) return 1;
+          return a.patient.incomeCategory
+              .toLowerCase()
+              .compareTo(b.patient.incomeCategory.toLowerCase());
+        };
+        break;
+      case 'epci':
+        cmp = (a, b) =>
+            _epciFor(a).toLowerCase().compareTo(_epciFor(b).toLowerCase());
+        break;
+      case 'date':
+        // Date de visite : ergo veut "récent → ancien" par défaut, donc
+        // ascending=false signifie ici tri du plus récent au plus
+        // ancien. Les dossiers sans date sont relégués à la fin.
+        cmp = (a, b) {
+          final ad = a.visitDate;
+          final bd = b.visitDate;
+          if (ad == null && bd == null) return 0;
+          if (ad == null) return 1;
+          if (bd == null) return -1;
+          return DateTime.parse(ad).compareTo(DateTime.parse(bd));
+        };
+        break;
+      case 'name':
+      default:
+        cmp = (a, b) => a.patient.lastName
+            .toLowerCase()
+            .compareTo(b.patient.lastName.toLowerCase());
     }
+    final direction = _sortAscending ? 1 : -1;
+    filtered.sort((a, b) => cmp(a, b) * direction);
 
     return filtered;
   }
 
+  /// Tap sur un header : si même colonne, on inverse la direction.
+  /// Si nouvelle colonne, on attaque en ascendant pour les colonnes
+  /// texte (A→Z, plus pauvre→plus riche) et en DESCENDANT pour la date
+  /// (le plus récent en premier — convention visite à domicile).
+  void _onHeaderTap(String column) {
+    setState(() {
+      if (_sortColumn == column) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortColumn = column;
+        _sortAscending = column != 'date'; // date démarre desc (récent → ancien)
+      }
+    });
+  }
+
   String get _sortLabel {
-    switch (_sortOrder) {
-      case 'asc':
-        return 'de A à Z';
-      case 'desc':
-        return 'de Z à A';
-      default:
-        return 'de A à Z';
-    }
+    // Labels génériques pour le pill « Tri » du toolbar : décrit la
+    // colonne ET la direction courantes.
+    final colLabel = switch (_sortColumn) {
+      'commune' => 'Commune',
+      'revenus' => 'Revenus',
+      'epci' => 'Communauté',
+      'date' => 'Date',
+      _ => 'Nom',
+    };
+    final dirLabel = _sortAscending ? '↑' : '↓';
+    return '$colLabel $dirLabel';
   }
 
   /// Returns the FULL list of EPCIs ("communautés de commune") from the
@@ -418,9 +480,20 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   }
 
   Widget _buildSortPill() {
+    // Pill « Tri » : permet de sélectionner ALL la colonne ET la
+    // direction depuis un menu unique. Ergonomie alternative aux taps
+    // directs sur les en-têtes de colonnes — utile sur écran étroit où
+    // tout l'en-tête n'est pas visible.
     return PopupMenuButton<String>(
       tooltip: '',
-      onSelected: (value) => setState(() => _sortOrder = value),
+      onSelected: (value) {
+        setState(() {
+          // value = "<column>:<asc|desc>"
+          final parts = value.split(':');
+          _sortColumn = parts[0];
+          _sortAscending = parts[1] == 'asc';
+        });
+      },
       color: Colors.white,
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -444,8 +517,16 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         ),
       ),
       itemBuilder: (context) => const [
-        PopupMenuItem(value: 'asc', child: Text('de A à Z')),
-        PopupMenuItem(value: 'desc', child: Text('de Z à A')),
+        PopupMenuItem(value: 'name:asc', child: Text('Nom — de A à Z')),
+        PopupMenuItem(value: 'name:desc', child: Text('Nom — de Z à A')),
+        PopupMenuItem(value: 'commune:asc', child: Text('Commune — A à Z')),
+        PopupMenuItem(value: 'commune:desc', child: Text('Commune — Z à A')),
+        PopupMenuItem(value: 'revenus:asc', child: Text('Revenus — croissant')),
+        PopupMenuItem(value: 'revenus:desc', child: Text('Revenus — décroissant')),
+        PopupMenuItem(value: 'epci:asc', child: Text('Communauté — A à Z')),
+        PopupMenuItem(value: 'epci:desc', child: Text('Communauté — Z à A')),
+        PopupMenuItem(value: 'date:desc', child: Text('Date — du plus récent')),
+        PopupMenuItem(value: 'date:asc', child: Text('Date — du plus ancien')),
       ],
     );
   }
@@ -512,19 +593,27 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       child: Row(
         children: [
           // BÉNÉFICIAIRE inclut l'avatar rond — prévoir la même
-          // réserve que dans la rangée (48 + 16 = 64 px).
-          SizedBox(width: 64, child: _headerCell('')),
-          Expanded(flex: _flexBeneficiary, child: _headerCell('BÉNÉFICIAIRE')),
-          Expanded(flex: _flexCommune, child: _headerCell('COMMUNE')),
-          Expanded(flex: _flexRevenus, child: _headerCell('REVENUS')),
+          // réserve que dans la rangée (48 + 16 = 64 px). Cellule sans
+          // tri (juste l'avatar).
+          SizedBox(width: 64, child: _headerCell('', column: null)),
+          Expanded(
+              flex: _flexBeneficiary,
+              child: _headerCell('BÉNÉFICIAIRE', column: 'name')),
+          Expanded(
+              flex: _flexCommune,
+              child: _headerCell('COMMUNE', column: 'commune')),
+          Expanded(
+              flex: _flexRevenus,
+              child: _headerCell('REVENUS', column: 'revenus')),
           Expanded(
             flex: _flexEpci,
-            child: _headerCell('COMMUNAUTÉ DE COMMUNE'),
+            child: _headerCell('COMMUNAUTÉ DE COMMUNE', column: 'epci'),
           ),
           // Date alignée à droite (parité avec la cellule de la rangée).
           Expanded(
             flex: _flexDate,
-            child: _headerCell('DATE DE VISITE', alignRight: true),
+            child: _headerCell('DATE DE VISITE',
+                column: 'date', alignRight: true),
           ),
           const SizedBox(width: 32), // espace pour le chevron des rangées
         ],
@@ -532,17 +621,57 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     );
   }
 
-  Widget _headerCell(String text, {bool alignRight = false}) {
-    return Text(
+  /// Cellule d'en-tête de colonne. Si [column] est non-null, le tap
+  /// déclenche `_onHeaderTap(column)` (1er clic = trie ascendant ;
+  /// 2e clic sur la même colonne = inverse). Une flèche ▲ / ▼
+  /// apparaît à côté du titre quand cette colonne est active, pour
+  /// que l'ergo voie immédiatement le sens de tri courant.
+  Widget _headerCell(String text, {String? column, bool alignRight = false}) {
+    final isActive = column != null && _sortColumn == column;
+    final indicator = isActive
+        ? Icon(
+            _sortAscending ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+            size: 18,
+            color: const Color(0xFF7C6DAA),
+          )
+        : null;
+
+    final textWidget = Text(
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       textAlign: alignRight ? TextAlign.right : TextAlign.left,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.6,
-        color: Color(0xFF94A3B8),
+        // Active : violet (cohérent avec la flèche). Inactif : gris.
+        color: isActive ? const Color(0xFF7C6DAA) : const Color(0xFF94A3B8),
+      ),
+    );
+
+    // Cellule muette (avatar) → simple texte vide.
+    if (column == null) return textWidget;
+
+    final content = Row(
+      mainAxisAlignment:
+          alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Quand alignée à droite, la flèche est À GAUCHE du texte (sinon
+        // elle déborderait dans l'espace réservé au chevron de rangée).
+        if (alignRight && indicator != null) indicator,
+        Flexible(child: textWidget),
+        if (!alignRight && indicator != null) indicator,
+      ],
+    );
+
+    return InkWell(
+      onTap: () => _onHeaderTap(column),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: content,
       ),
     );
   }
