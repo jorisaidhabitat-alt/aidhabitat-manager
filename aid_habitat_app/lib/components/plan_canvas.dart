@@ -160,7 +160,13 @@ class PlanCanvas extends StatefulWidget {
   final int? totalPages;
   final VoidCallback? onPrevPage;
   final VoidCallback? onNextPage;
+  /// Ajoute une nouvelle page VIERGE après la page courante.
   final VoidCallback? onAddPage;
+  /// Duplique la page courante (clone des strokes + symboles) — demande
+  /// utilisateur 2026-05-04 : « possibilité d'ajouter une page (vierge)
+  /// ou de dupliquer la page actuelle ». Si null, l'option n'apparaît
+  /// pas dans le menu trois points.
+  final VoidCallback? onDuplicatePage;
   final VoidCallback? onDeletePage;
 
   const PlanCanvas({
@@ -173,6 +179,7 @@ class PlanCanvas extends StatefulWidget {
     this.onPrevPage,
     this.onNextPage,
     this.onAddPage,
+    this.onDuplicatePage,
     this.onDeletePage,
   });
 
@@ -650,9 +657,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final center = Offset(canvasSize.width / 2, canvasSize.height / 2);
     final defaultSize = _defaultSymbolSize[tool] ?? const Size(100, 100);
     final corner = Offset(defaultSize.width / 2, defaultSize.height / 2);
+    // Couleur du symbole = couleur active du crayon (demande utilisateur
+    // 2026-05-04 : « le changement de couleur doit également changer la
+    // couleur de l'élément ajouté »). Avant : `0xFF0F172A` hardcodé →
+    // les fenêtres/portes/WC restaient toujours en gris foncé même
+    // après changement de couleur.
     final stroke = _PlanStroke(
       tool: tool,
-      color: 0xFF0F172A,
+      color: _penColor,
       size: 2,
       points: [center, center + corner],
       rotation: 0,
@@ -1037,6 +1049,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
           case 'addPage':
             widget.onAddPage?.call();
             break;
+          case 'duplicatePage':
+            widget.onDuplicatePage?.call();
+            break;
           case 'deletePage':
             widget.onDeletePage?.call();
             break;
@@ -1055,9 +1070,18 @@ class _PlanCanvasState extends State<PlanCanvas> {
           const PopupMenuItem(
             value: 'addPage',
             child: Row(children: [
-              Icon(LucideIcons.plus, size: 16, color: Color(0xFF334155)),
+              Icon(LucideIcons.filePlus, size: 16, color: Color(0xFF334155)),
               SizedBox(width: 10),
-              Text('Ajouter une page'),
+              Text('Ajouter une page vierge'),
+            ]),
+          ),
+        if (widget.onDuplicatePage != null)
+          const PopupMenuItem(
+            value: 'duplicatePage',
+            child: Row(children: [
+              Icon(LucideIcons.copy, size: 16, color: Color(0xFF334155)),
+              SizedBox(width: 10),
+              Text('Dupliquer la page actuelle'),
             ]),
           ),
         if (widget.onDeletePage != null &&
@@ -2284,69 +2308,42 @@ class _DrawPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// Fenêtre : deux vantaux côte à côte (comme deux petites portes)
-  /// avec leurs arcs d'ouverture vers l'intérieur. Le mur est
-  /// représenté par la ligne bas. Flip H/V inversent les charnières
-  /// et le sens d'ouverture (porte gauche/droite, ouverture
-  /// intérieure/extérieure) — utile pour signifier une fenêtre
-  /// entrebâillée ou fermée.
+  /// Fenêtre : simple battant (comme la porte) entouré d'un encadré
+  /// matérialisant le dormant. Demande utilisateur 2026-05-04 :
+  /// « fenêtre à mettre en simple battant mais pas en double comme la
+  /// porte mais avec un encadré ».
+  ///
+  /// Composition :
+  ///   - Mur (ligne bas du bounds) — porte/fenêtre se posent dessus
+  ///   - Encadré (rectangle fin) délimitant le dormant de la fenêtre
+  ///   - Vantail simple (charnière bas-gauche, battant vertical)
+  ///   - Arc d'ouverture 90° vers l'intérieur (dashed)
   static void _paintWindowLocal(Canvas canvas, Rect r, Paint stroke) {
-    // Mur en bas (épaisseur visuelle).
+    // Mur en bas (épaisseur visuelle, identique à la porte).
     canvas.drawLine(r.bottomLeft, r.bottomRight, stroke);
+
+    // Encadré (dormant) : rectangle fin sur tout `r`, trait gris léger
+    // pour différencier la menuiserie du battant et de l'arc.
+    final framePaint = Paint()
+      ..color = stroke.color.withValues(alpha: 0.55)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(r, framePaint);
+
+    // Vantail unique — charnière bas-gauche, battant fermé vertical
+    // vers le haut, ouverture CW vers la droite (mêmes conventions
+    // que `_paintDoorLocal` pour cohérence visuelle).
+    final hinge = r.bottomLeft;
+    final closedEnd = Offset(r.left, r.top);
+    canvas.drawLine(hinge, closedEnd, stroke);
+
     final dashed = Paint()
       ..color = stroke.color.withValues(alpha: 0.6)
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
-
-    final midX = r.center.dx;
-    // Rayon des arcs = hauteur du vantail = hauteur de la fenêtre.
-    final radius = r.height;
-
-    // --- Vantail gauche : charnière bas-gauche, battant fermé
-    //     vertical vers le haut, ouverture CW vers le centre. ---
-    final leftHinge = r.bottomLeft;
-    canvas.drawLine(leftHinge, Offset(r.left, r.top), stroke);
-    canvas.drawArc(
-      Rect.fromCircle(center: leftHinge, radius: radius),
-      -math.pi / 2, // pointe vers le haut
-      math.pi / 2,  // 90° CW → vers la droite
-      false,
-      dashed,
-    );
-    // Petit battant ouvert symbolique (ligne du haut vers centre-haut).
-    canvas.drawLine(
-      Offset(r.left, r.top),
-      Offset(midX, r.top),
-      dashed,
-    );
-
-    // --- Vantail droit : charnière bas-droit, battant fermé
-    //     vertical vers le haut, ouverture CCW vers le centre. ---
-    final rightHinge = r.bottomRight;
-    canvas.drawLine(rightHinge, Offset(r.right, r.top), stroke);
-    canvas.drawArc(
-      Rect.fromCircle(center: rightHinge, radius: radius),
-      -math.pi / 2,  // pointe vers le haut
-      -math.pi / 2,  // 90° CCW → vers la gauche
-      false,
-      dashed,
-    );
-    canvas.drawLine(
-      Offset(r.right, r.top),
-      Offset(midX, r.top),
-      dashed,
-    );
-
-    // Montant central (séparation des deux vantaux) — fin trait gris.
-    final center = Paint()
-      ..color = stroke.color.withValues(alpha: 0.4)
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
-    canvas.drawLine(
-      Offset(midX, r.top),
-      Offset(midX, r.bottom),
-      center,
-    );
+    final arcRect = Rect.fromCircle(center: hinge, radius: r.height);
+    // Arc de -90° (vers le haut) à 0° (vers la droite).
+    canvas.drawArc(arcRect, -math.pi / 2, math.pi / 2, false, dashed);
   }
 
   /// Porte : segment fixe du côté gauche + arc 90° indiquant l'ouverture.

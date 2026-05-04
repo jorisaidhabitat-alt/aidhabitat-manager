@@ -792,8 +792,14 @@ class WcInstance {
   final String id;
   final String levelField;
   final String levelLabel;
+  // Trois états mutuellement exclusifs pour la hauteur de la cuvette :
+  // bonne / trop basse / trop haute. Les 3 booléens sont maintenus
+  // exclusifs côté UI (cf. `wc_tab.dart` _buildMain). `wcCuvetteTropHaute`
+  // ajouté le 2026-05-04 (demande utilisateur — seuls « bonne » et
+  // « trop basse » existaient avant).
   final bool wcCuvetteBonneHauteur;
   final bool wcCuvetteTropBasse;
+  final bool wcCuvetteTropHaute;
   final double? wcCuvetteHauteur;
   final bool wcBarreRelevement;
   final bool porteWcLargeurSuffisante;
@@ -807,6 +813,7 @@ class WcInstance {
     this.levelLabel = '',
     this.wcCuvetteBonneHauteur = true,
     this.wcCuvetteTropBasse = false,
+    this.wcCuvetteTropHaute = false,
     this.wcCuvetteHauteur,
     this.wcBarreRelevement = false,
     this.porteWcLargeurSuffisante = true,
@@ -821,6 +828,7 @@ class WcInstance {
     levelLabel: json['levelLabel'] as String? ?? '',
     wcCuvetteBonneHauteur: json['wcCuvetteBonneHauteur'] as bool? ?? true,
     wcCuvetteTropBasse: json['wcCuvetteTropBasse'] as bool? ?? false,
+    wcCuvetteTropHaute: json['wcCuvetteTropHaute'] as bool? ?? false,
     wcCuvetteHauteur: (json['wcCuvetteHauteur'] as num?)?.toDouble(),
     wcBarreRelevement: json['wcBarreRelevement'] as bool? ?? false,
     porteWcLargeurSuffisante: json['porteWcLargeurSuffisante'] as bool? ?? true,
@@ -832,6 +840,7 @@ class WcInstance {
   Map<String, dynamic> toJson() => {
     'id': id, 'levelField': levelField, 'levelLabel': levelLabel,
     'wcCuvetteBonneHauteur': wcCuvetteBonneHauteur, 'wcCuvetteTropBasse': wcCuvetteTropBasse,
+    'wcCuvetteTropHaute': wcCuvetteTropHaute,
     'wcCuvetteHauteur': wcCuvetteHauteur, 'wcBarreRelevement': wcBarreRelevement,
     'porteWcLargeurSuffisante': porteWcLargeurSuffisante, 'porteWcDimension': porteWcDimension,
     'porteWcSensAdapte': porteWcSensAdapte,

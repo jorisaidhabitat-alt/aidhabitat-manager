@@ -94,6 +94,55 @@ class _PlansTabState extends State<PlansTab> {
     setState(() => _currentPhase = null);
   }
 
+  /// Duplique la page courante : crée une nouvelle page après la
+  /// dernière, avec exactement le même `drawingJson` (strokes +
+  /// symboles + texte) et la même phase. Demande utilisateur
+  /// 2026-05-04 : « possibilité d'ajouter une page (vierge) ou de
+  /// dupliquer la page actuelle ». Le clone est immédiat (lecture +
+  /// écriture SQLite) puis on bascule l'utilisateur dessus.
+  Future<void> _duplicatePage() async {
+    final sourcePage = _currentPage;
+    // Lit le contenu de la page courante AVANT d'augmenter le compteur.
+    final sourceJson = await _dataService.fetchNoteDrawingJson(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: sourcePage,
+    );
+    final sourcePhase = _phaseCache[sourcePage];
+    if (!mounted) return;
+    final newIndex = _totalPages; // page index 0-based de la nouvelle page
+    setState(() {
+      _totalPages += 1;
+      _currentPage = newIndex;
+    });
+    // Persiste le clone du drawingJson sur la nouvelle page (vide si la
+    // source était vide — pas d'erreur, juste une page vierge).
+    if (sourceJson != null && sourceJson.isNotEmpty) {
+      await _dataService.saveNoteDrawingJson(
+        patientId: widget.dossier.patient.id,
+        tabKey: _kTabKey,
+        pageNumber: newIndex,
+        drawingJson: sourceJson,
+      );
+    }
+    // Reproduit la phase si elle était posée (avant/après travaux) —
+    // l'ergo qui duplique « avant » pour préparer un « après » devra
+    // basculer manuellement, mais par défaut on garde la phase pour
+    // que les pages clonées sans modification ne perdent pas leur
+    // classification.
+    if (sourcePhase != null) {
+      _phaseCache[newIndex] = sourcePhase;
+      await _dataService.setNotePlanPhase(
+        patientId: widget.dossier.patient.id,
+        tabKey: _kTabKey,
+        pageNumber: newIndex,
+        phase: sourcePhase,
+      );
+    }
+    if (!mounted) return;
+    setState(() => _currentPhase = sourcePhase);
+  }
+
   /// Charge la phase de la page courante depuis le cache (instantané)
   /// ou SQLite (1 lecture). Met à jour `_currentPhase` côté UI dès que
   /// disponible — le pill se rafraîchit automatiquement.
@@ -210,6 +259,7 @@ class _PlansTabState extends State<PlansTab> {
             onPrevPage: () => _goToPage(_currentPage - 1),
             onNextPage: () => _goToPage(_currentPage + 1),
             onAddPage: _addPage,
+            onDuplicatePage: _duplicatePage,
             onDeletePage: _deleteCurrentPage,
           ),
         ),

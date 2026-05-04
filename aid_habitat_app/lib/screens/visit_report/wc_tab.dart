@@ -95,6 +95,7 @@ class _WcTabState extends State<WcTab>
           levelLabel: lvl.label,
           wcCuvetteBonneHauteur: existing.first.wcCuvetteBonneHauteur,
           wcCuvetteTropBasse: existing.first.wcCuvetteTropBasse,
+          wcCuvetteTropHaute: existing.first.wcCuvetteTropHaute,
           wcCuvetteHauteur: existing.first.wcCuvetteHauteur,
           wcBarreRelevement: existing.first.wcBarreRelevement,
           porteWcLargeurSuffisante: existing.first.porteWcLargeurSuffisante,
@@ -281,18 +282,14 @@ class _WcTabState extends State<WcTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _collapsibleToggle(
-          instanceId: a.id,
-          fieldName: 'wcCuvette',
-          label: 'Cuvette',
-          options: const ['Bonne hauteur', 'Trop basse'],
-          selected: a.wcCuvetteTropBasse ? 'Trop basse' : 'Bonne hauteur',
-          onChanged: (v) {
-            final isLow = v == 'Trop basse';
-            _updateActive(_copy(a,
-                wcCuvetteBonneHauteur: !isLow, wcCuvetteTropBasse: isLow));
-          },
-        ),
+        // Cuvette : 3 états mutuellement exclusifs sur 2 lignes —
+        // demande utilisateur 2026-05-04. Layout :
+        //   ligne 1 : [Trop basse] [Trop haute]
+        //   ligne 2 : [    Bonne hauteur     ]  (full width)
+        // L'option sélectionnée est en violet plein, les deux autres
+        // grisées. Tap = mutuellement exclusif (toujours exactement
+        // une option active, par défaut « Bonne hauteur »).
+        _buildCuvetteToggle(a),
         const SizedBox(height: 14),
         FormNumberField(
           label: 'Hauteur cuvette',
@@ -375,11 +372,81 @@ class _WcTabState extends State<WcTab>
     );
   }
 
+  /// Toggle 3-états pour la hauteur de cuvette (Trop basse / Trop haute /
+  /// Bonne hauteur) — layout demandé par l'utilisateur :
+  ///   ligne 1 : 2 chips moitié-largeur côte à côte
+  ///   ligne 2 : 1 chip pleine largeur en dessous
+  /// Mutuellement exclusif : un tap définit l'état actif et désactive
+  /// les deux autres.
+  Widget _buildCuvetteToggle(WcInstance a) {
+    String selected;
+    if (a.wcCuvetteTropBasse) {
+      selected = 'Trop basse';
+    } else if (a.wcCuvetteTropHaute) {
+      selected = 'Trop haute';
+    } else {
+      selected = 'Bonne hauteur';
+    }
+
+    void selectState(String label) {
+      _updateActive(_copy(a,
+          wcCuvetteTropBasse: label == 'Trop basse',
+          wcCuvetteTropHaute: label == 'Trop haute',
+          wcCuvetteBonneHauteur: label == 'Bonne hauteur'));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8.0),
+          child: Text(
+            'Cuvette',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF334155),
+            ),
+          ),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: _CuvettePill(
+                label: 'Trop basse',
+                active: selected == 'Trop basse',
+                onTap: () => selectState('Trop basse'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _CuvettePill(
+                label: 'Trop haute',
+                active: selected == 'Trop haute',
+                onTap: () => selectState('Trop haute'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: _CuvettePill(
+            label: 'Bonne hauteur',
+            active: selected == 'Bonne hauteur',
+            onTap: () => selectState('Bonne hauteur'),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Lightweight copyWith for WcInstance (which doesn't expose one).
   WcInstance _copy(
     WcInstance i, {
     bool? wcCuvetteBonneHauteur,
     bool? wcCuvetteTropBasse,
+    bool? wcCuvetteTropHaute,
     double? wcCuvetteHauteur,
     bool wcCuvetteHauteurNull = false,
     bool? wcBarreRelevement,
@@ -396,6 +463,7 @@ class _WcTabState extends State<WcTab>
       wcCuvetteBonneHauteur:
           wcCuvetteBonneHauteur ?? i.wcCuvetteBonneHauteur,
       wcCuvetteTropBasse: wcCuvetteTropBasse ?? i.wcCuvetteTropBasse,
+      wcCuvetteTropHaute: wcCuvetteTropHaute ?? i.wcCuvetteTropHaute,
       wcCuvetteHauteur: wcCuvetteHauteurNull
           ? null
           : (wcCuvetteHauteur ?? i.wcCuvetteHauteur),
@@ -408,6 +476,46 @@ class _WcTabState extends State<WcTab>
       porteWcSensAdapte: porteWcSensAdapte ?? i.porteWcSensAdapte,
       observationEquipementsUtilisation: observationEquipementsUtilisation ??
           i.observationEquipementsUtilisation,
+    );
+  }
+}
+
+/// Bouton pill réutilisé pour les 3 états de la cuvette. Style
+/// cohérent avec les autres pills du relevé (violet plein quand actif,
+/// fond gris clair quand inactif).
+class _CuvettePill extends StatelessWidget {
+  const _CuvettePill({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF7C6DAA) : const Color(0xFFF1F1F4),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : const Color(0xFF334155),
+          ),
+        ),
+      ),
     );
   }
 }
