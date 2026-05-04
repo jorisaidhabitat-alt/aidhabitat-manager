@@ -14,6 +14,8 @@ bool tryOpenNoteWindow({
   required String initialText,
   required double defaultWidth,
   required double defaultHeight,
+  required String apiBaseUrl,
+  required String appSessionToken,
   String mode = 'text',
 }) =>
     false;
@@ -35,3 +37,5 @@ StreamSubscription<dynamic> listenNoteIpc(
 }
 
 Map<String, String> readUrlNoteParams() => const {};
+
+({String apiBaseUrl, String appSessionToken})? consumePopupBootstrap() => null;

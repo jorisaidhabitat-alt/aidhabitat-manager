@@ -655,6 +655,13 @@ const parseChecklistDone = (contextRecord) => {
               name,
               checked: Boolean(entry?.autonomy?.[index]?.checked),
             })),
+            // Pull du 3e état autonomie « ! » (cf. push dans
+            // upsertContexte). Permet à Flutter de relire la coche
+            // attention au prochain hydrate du dossier.
+            attention: AUTONOMY_ITEMS.map((name, index) => ({
+              name,
+              checked: Boolean(entry?.attention?.[index]?.checked),
+            })),
             humanHelp: AUTONOMY_ITEMS.map((name, index) => ({
               name,
               checked: Boolean(entry?.humanHelp?.[index]?.checked),
@@ -2591,6 +2598,17 @@ const upsertContexte = async (
         autonomy: AUTONOMY_ITEMS.map((name, index) => ({
           name,
           checked: Boolean(entry?.autonomy?.[index]?.checked),
+        })),
+        // 3e état autonomie « ! » (attention/vigilance) — ajouté
+        // 2026-05-04 (audit sync) : auparavant ce champ était saisi
+        // côté Flutter (`OccupantAutonomy.attention`) et envoyé dans
+        // le payload API mais silencieusement perdu ici lors du push
+        // vers NocoDB (puis relu vide au pull → effacement). Le 3e
+        // état coexiste avec `autonomy` et `humanHelp` (cf. context_tab
+        // qui les rend indépendants).
+        attention: AUTONOMY_ITEMS.map((name, index) => ({
+          name,
+          checked: Boolean(entry?.attention?.[index]?.checked),
         })),
         humanHelp: AUTONOMY_ITEMS.map((name, index) => ({
           name,

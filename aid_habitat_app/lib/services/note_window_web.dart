@@ -31,6 +31,18 @@ import 'dart:html' as html;
 const _kIpcChannelName = 'aidhabitat-note-ipc';
 const _kFrameStoragePrefix = 'aidhabitat-note-frame';
 
+/// Clé localStorage utilisée par la fenêtre parent pour transmettre
+/// `apiBaseUrl` + `appSessionToken` à la popup AVANT son boot.
+/// Chrome / Firefox / Safari macOS partagent localStorage entre
+/// fenêtres de même origine, donc la popup peut lire ces valeurs au
+/// premier `main()` puis les effacer (one-shot, valeur jetable).
+///
+/// Demande audit 2026-05-04 : avant ce mécanisme, la popup mode
+/// `drawing` bootait avec un AppConfig vide → tout appel API échouait
+/// en 401 silencieux. URL params auraient exposé le token dans
+/// l'history du browser, donc localStorage est plus propre.
+const String kPopupBootstrapStorageKey = 'aidhabitat-popup-bootstrap';
+
 /// Détecte si on est dans un navigateur desktop (Mac/PC) ET PAS dans
 /// une PWA iPad (qui spoofe l'user-agent Mac mais a `maxTouchPoints > 1`).
 /// Sur tablette/téléphone tactile, on retombe sur le modal in-app
@@ -63,6 +75,13 @@ bool tryOpenNoteWindow({
   required String initialText,
   required double defaultWidth,
   required double defaultHeight,
+  /// Base URL de l'API (`AppConfig.apiBaseUrl`) — transmis à la popup
+  /// pour qu'elle puisse appeler le backend en mode `drawing`.
+  required String apiBaseUrl,
+  /// Session token de l'utilisateur (`AppConfig.appSessionToken`) —
+  /// idem, transmis via localStorage one-shot. Chaîne vide acceptée
+  /// (mode anonyme, ne pas appeler l'API).
+  required String appSessionToken,
   /// Mode d'édition de la fenêtre détachée :
   ///   - 'text' (défaut) → TextField simple, sync via IPC sur chaque
   ///     keystroke. La fenêtre principale écrit en SQLite.
@@ -74,6 +93,20 @@ bool tryOpenNoteWindow({
   String mode = 'text',
 }) {
   if (!isDesktopBrowser()) return false;
+
+  // Dépose le bootstrap (apiBaseUrl + token) AVANT d'ouvrir la popup.
+  // La popup `main.dart` (branche `kIsWeb && note_window=1`) lira ces
+  // valeurs au boot puis effacera la clé. Si plusieurs popups
+  // s'ouvrent en parallèle, la dernière écriture gagne — pas critique
+  // car les valeurs sont les mêmes (apiBaseUrl + token de l'utilisateur
+  // courant).
+  try {
+    html.window.localStorage[kPopupBootstrapStorageKey] = jsonEncode({
+      'apiBaseUrl': apiBaseUrl,
+      'appSessionToken': appSessionToken,
+      'createdAt': DateTime.now().millisecondsSinceEpoch,
+    });
+  } catch (_) {/* localStorage indisponible : la popup utilisera l'IndexedDB partagé en fallback */}
 
   // Restitue la dernière taille/position connue (clés par tabKey pour
   // que les notes Médical / Autonomie / Accessibilité gardent chacune
@@ -241,5 +274,29 @@ Map<String, String> readUrlNoteParams() {
     return Map<String, String>.from(Uri.base.queryParameters);
   } catch (_) {
     return const {};
+  }
+}
+
+/// Lit le bootstrap déposé par la fenêtre parent juste avant
+/// `window.open` (cf. `tryOpenNoteWindow`). Renvoie `(apiBaseUrl,
+/// appSessionToken)` ou `null` si pas de bootstrap (cas standalone
+/// ou popup ouverte hors flow ergo).
+///
+/// La clé est EFFACÉE après lecture — bootstrap one-shot pour ne pas
+/// laisser un token dormant dans localStorage si l'utilisateur ferme
+/// l'onglet sans utiliser la popup. Si une nouvelle popup s'ouvre,
+/// le parent dépose un nouveau bootstrap.
+({String apiBaseUrl, String appSessionToken})? consumePopupBootstrap() {
+  try {
+    final raw = html.window.localStorage[kPopupBootstrapStorageKey];
+    if (raw == null || raw.isEmpty) return null;
+    html.window.localStorage.remove(kPopupBootstrapStorageKey);
+    final m = jsonDecode(raw) as Map<String, dynamic>;
+    return (
+      apiBaseUrl: (m['apiBaseUrl'] as String?) ?? '',
+      appSessionToken: (m['appSessionToken'] as String?) ?? '',
+    );
+  } catch (_) {
+    return null;
   }
 }

@@ -12,6 +12,7 @@ import 'models/types.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
 import 'screens/note_window_screen.dart';
+import 'services/app_config.dart';
 import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
@@ -93,6 +94,21 @@ Future<void> main(List<String> args) async {
       //     principale s'occupe du push NocoDB au switch d'onglet).
       if (mode == 'drawing') {
         databaseFactory = databaseFactoryFfiWebNoWebWorker;
+      }
+      // Bootstrap auth déposé par la fenêtre parent (one-shot
+      // localStorage) — fix audit 2026-05-04 : sans ça, la popup
+      // mode `drawing` bootait avec AppConfig vide et tout call API
+      // échouait en 401 silencieux (Safari iPad PWA isole parfois
+      // IndexedDB entre fenêtres, donc on ne peut pas se reposer
+      // dessus). La clé est consommée (effacée) à la lecture.
+      final bootstrap = note_window_web.consumePopupBootstrap();
+      if (bootstrap != null) {
+        if (bootstrap.apiBaseUrl.isNotEmpty) {
+          AppConfig.setApiBaseUrl(bootstrap.apiBaseUrl);
+        }
+        if (bootstrap.appSessionToken.isNotEmpty) {
+          AppConfig.setAppSessionToken(bootstrap.appSessionToken);
+        }
       }
       await initializeDateFormatting('fr_FR', null);
       runApp(NoteWindowApp(

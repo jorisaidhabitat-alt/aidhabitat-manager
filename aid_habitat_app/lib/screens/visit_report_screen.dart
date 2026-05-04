@@ -15,6 +15,7 @@ import '../services/note_window_web_stub.dart'
 import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
+import '../services/app_config.dart';
 import '../services/connectivity_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/data_service.dart';
@@ -580,6 +581,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         initialText: initialText,
         defaultWidth: size.width,
         defaultHeight: size.height,
+        // Bootstrap auth pour la popup — sans ça, mode `drawing`
+        // démarrait avec AppConfig vide → 401 sur tous les calls API.
+        apiBaseUrl: AppConfig.apiBaseUrl,
+        appSessionToken: AppConfig.appSessionToken,
       );
       if (!opened) {
         _openNoteModalFallback(sourceTab);
@@ -641,6 +646,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         defaultWidth: size.width,
         defaultHeight: size.height,
         mode: 'drawing',
+        // Bootstrap auth — critique en mode drawing car la popup
+        // appelle DataService.fetch/saveNoteDrawingJson directement
+        // (et donc le backend si SQLite remote sync est nécessaire).
+        apiBaseUrl: AppConfig.apiBaseUrl,
+        appSessionToken: AppConfig.appSessionToken,
       );
       if (!opened) {
         // Pas de fallback modal pour le moment : le mode drawing en
