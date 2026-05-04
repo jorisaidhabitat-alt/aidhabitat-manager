@@ -30,6 +30,7 @@ import 'visit_report/wc_tab.dart';
 import 'visit_report/photos_tab.dart';
 import 'visit_report/recommendations_tab.dart';
 import 'visit_report/plans_tab.dart';
+import 'visit_report/summary_tab.dart';
 
 /// In-memory cache of the last active tab index per dossier, so navigating
 /// away from the visit report and back returns the user to the same tab
@@ -120,15 +121,18 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // aux préconisations.
     'Plans',
     // Onglet « Photos » : flow d'observation (SDB/WC) → dessin (Plans)
-    // → capture (Photos) → analyse (Préconisations). Alimente la
-    // page 8 du rapport PDF (« Photos du logement »).
+    // → capture (Photos) → analyse (Résumé) → action (Préconisations).
+    // Alimente la page 8 du rapport PDF (« Photos du logement »).
     'Photos',
-    // L'onglet « Préconisations » a fusionné l'ancien onglet
-    // « Observations » (cf. demande utilisateur 2026-04-28) : le projet
-    // usager + le résumé des préconisations sont maintenant 2 NotesWidget
-    // en haut de Préconisations, et l'observation équipements est
-    // descendue dans la sous-section Équipements de l'onglet
-    // Accessibilité. Alimente toujours les pages 6 et 7 du PDF.
+    // « Résumé » créé 2026-05-04 par split de l'ancien onglet
+    // Préconisations (demande utilisateur). Contient les 2 cadres
+    // « Projet de l'usager » + « Résumé des préconisations » en haut
+    // (tabKeys historiques préservés → page 7 PDF) + canvas pleine
+    // page de prise de notes au stylet (tabKey 'Résumé').
+    'Résumé',
+    // « Préconisations » : ne contient plus que la grille de cartes
+    // (les 2 cadres notes ont déménagé dans Résumé). Alimente la
+    // page 6 du PDF (« Préconisations »).
     'Préconisations',
   ];
 
@@ -1635,18 +1639,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         tabIndex: _tabs.indexOf('Salle de bain'),
       ));
     }
-    // 5) Préconisations — Projet de l'usager
+    // 5) Résumé — Projet de l'usager (déménagé de Préconisations vers
+    //    le nouvel onglet Résumé en 2026-05-04 ; le tabKey reste
+    //    'Préconisations-Projet' pour préserver la donnée historique).
     if (!await _hasNoteText('Préconisations-Projet')) {
       missing.add(_MissingField(
-        label: 'Préconisations — Projet de l\'usager',
-        tabIndex: _tabs.indexOf('Préconisations'),
+        label: 'Résumé — Projet de l\'usager',
+        tabIndex: _tabs.indexOf('Résumé'),
       ));
     }
-    // 6) Préconisations — Résumé des préconisations
+    // 6) Résumé — Résumé des préconisations (idem)
     if (!await _hasNoteText('Préconisations-Résumé')) {
       missing.add(_MissingField(
-        label: 'Préconisations — Résumé des préconisations',
-        tabIndex: _tabs.indexOf('Préconisations'),
+        label: 'Résumé — Résumé des préconisations',
+        tabIndex: _tabs.indexOf('Résumé'),
       ));
     }
   }
@@ -1979,6 +1985,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         _wrapTabWithNotes(
           'Photos',
           PhotosTab(dossier: _dossier),
+        ),
+        // Onglet Résumé — split de l'ancien Préconisations (2026-05-04).
+        // Cadres Projet/Résumé en haut + canvas pleine page (style
+        // Mesures, sans image de fond) en dessous.
+        _wrapTabWithNotes(
+          'Résumé',
+          SummaryTab(dossier: _dossier),
         ),
         _wrapTabWithNotes(
           'Préconisations',

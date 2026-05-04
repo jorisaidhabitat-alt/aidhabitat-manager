@@ -7,7 +7,6 @@ import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
 import '../../components/cached_remote_image.dart';
 import '../../components/form_widgets.dart';
-import '../../components/notes_widget.dart';
 import '../../components/soft_transitions.dart';
 
 /// Préconisations tab — parité 1:1 avec `PreconisationsForm` React.
@@ -233,66 +232,16 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     if (!_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Layout : header sticky en haut (note « Résumé des préconisations »)
-    // + zone scrollable en dessous (liste des préconisations + bouton).
-    // L'header n'est PAS dans le SingleChildScrollView, donc le scroll
-    // gesture du TextField interne ne capture pas les gestes verticaux
-    // destinés à la page (résout le bug "je scroll dans la note au lieu
-    // de la page" — demande utilisateur 2026-04-28).
+    // Layout — depuis 2026-05-04, l'onglet a été allégé : les 2 cadres
+    // notes (Projet de l'usager + Résumé des préconisations) ont
+    // déménagé dans le nouvel onglet « Résumé » (cf. summary_tab.dart).
+    // Cet onglet ne contient plus que la grille de préconisations + le
+    // bouton d'ajout. Les tabKeys 'Préconisations-Projet' et
+    // 'Préconisations-Résumé' restent intacts et continuent d'alimenter
+    // les pages 7 du PDF — ils sont juste affichés ailleurs maintenant.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Header sticky : 2 notes côte-à-côte en haut, mêmes
-        // caractéristiques (compact ~64 px, fullscreen modal). tabKeys :
-        //   - 'Préconisations-Projet'   → page 7 PDF, « Projet ou
-        //                                  souhait de l'usager »
-        //   - 'Préconisations-Résumé'   → page 7 PDF, « Résumé des
-        //                                  préconisations »
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-          child: SizedBox(
-            height: 84,
-            child: Row(
-              children: [
-                Expanded(
-                  child: NotesWidget(
-                    key: ValueKey(
-                      'reco-note-projet-${widget.dossier.patient.id}',
-                    ),
-                    patientId: widget.dossier.patient.id,
-                    tabKey: 'Préconisations-Projet',
-                    placeholder: 'Projet de l’usager',
-                    showCanvas: false,
-                    embedded: true,
-                    showSaveButton: false,
-                    allowPagination: false,
-                    allowTextModal: true,
-                    expandModalFullscreen: true,
-                    fillParentHeight: true,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: NotesWidget(
-                    key: ValueKey(
-                      'reco-note-resume-${widget.dossier.patient.id}',
-                    ),
-                    patientId: widget.dossier.patient.id,
-                    tabKey: 'Préconisations-Résumé',
-                    placeholder: 'Résumé des préconisations',
-                    showCanvas: false,
-                    embedded: true,
-                    showSaveButton: false,
-                    allowPagination: false,
-                    allowTextModal: true,
-                    expandModalFullscreen: true,
-                    fillParentHeight: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
         // Zone scrollable : liste des préconisations + bouton d'ajout.
         Expanded(
           child: SingleChildScrollView(
