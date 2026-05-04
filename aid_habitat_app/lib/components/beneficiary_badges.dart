@@ -160,10 +160,15 @@ class AccompanimentBadge extends StatelessWidget {
 
 /// Palette unique par catégorie de revenu utilisée partout dans
 /// l'app (dossier, relevé de visite, liste des dossiers). La couleur
-/// de fond ET la couleur de typo dépendent de la catégorie :
-///   • Très modeste → fond bleu clair, typo bleu
-///   • Modeste      → fond jaune clair, typo orange
-///   • autres       → fond violet doux, typo violet foncé (neutre)
+/// de fond ET la couleur de typo dépendent de la catégorie. Mise à
+/// jour 2026-05-04 : 4 catégories ANAH désormais explicitement
+/// couleur-codées (avant : Intermédiaire et Supérieur tombaient sur
+/// le fallback violet).
+///   • Très modeste → fond bleu clair,   typo bleu acier
+///   • Modeste      → fond jaune clair,  typo orange brûlé
+///   • Intermédiaire→ fond violet pastel,typo violet graphite (charte)
+///   • Supérieur    → fond rouge pastel, typo rouge bordeaux #8B181A
+///   • inconnue     → fallback violet pastel (≈ Intermédiaire)
 class IncomeCategoryPalette {
   final Color bg;
   final Color fg;
@@ -172,6 +177,9 @@ class IncomeCategoryPalette {
 
 IncomeCategoryPalette incomePaletteFor(String value) {
   final v = value.trim().toLowerCase();
+  // Ordre important : "très modeste" doit être testé AVANT "modeste"
+  // (sinon `contains('modeste')` capture les deux). Idem "supérieur"
+  // avant le fallback.
   if (v.contains('très modeste') || v.contains('tres modeste')) {
     return const IncomeCategoryPalette(
       bg: Color(0xFFCFE3F0),
@@ -184,7 +192,24 @@ IncomeCategoryPalette incomePaletteFor(String value) {
       fg: Color(0xFFC2660C),
     );
   }
-  // Neutre pour Intermédiaire, Supérieur ou toute catégorie inconnue.
+  if (v.contains('supérieur') || v.contains('superieur')) {
+    // Bordeaux pastel : version éclaircie de `#8B181A` (HSL L décalé
+    // ~32 % → ~86 %). Le fond reste discret tout en signalant un
+    // foyer hors plafonds ANAH ; le texte conserve la teinte
+    // d'origine pour bien lire et garder le sens « rouge » fort.
+    return const IncomeCategoryPalette(
+      bg: Color(0xFFF5D6D6),
+      fg: Color(0xFF8B181A),
+    );
+  }
+  if (v.contains('intermédiaire') || v.contains('intermediaire')) {
+    return const IncomeCategoryPalette(
+      bg: Color(0xFFEDE8F5),
+      fg: Color(0xFF554A63),
+    );
+  }
+  // Fallback neutre : catégorie inconnue → violet doux (identique à
+  // Intermédiaire, n'attire pas l'œil).
   return const IncomeCategoryPalette(
     bg: Color(0xFFEDE8F5),
     fg: Color(0xFF554A63),
