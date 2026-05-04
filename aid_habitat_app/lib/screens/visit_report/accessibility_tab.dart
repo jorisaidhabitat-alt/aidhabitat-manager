@@ -244,9 +244,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   }
 
   /// Formate la liste des pièces d'un niveau en groupant les doublons
-  /// avec un exposant Unicode (² / ³) — ex.
+  /// avec un exposant Unicode (² / ³ / ⁴) — ex.
   /// `['SDB', 'WC', 'SDB']` → `'SDB ², WC'`. Préserve l'ordre
-  /// d'apparition de chaque pièce unique.
+  /// d'apparition de chaque pièce unique. Le max actuel est 4 (cf.
+  /// `_buildLevelCard` qui clamp le compteur à 4 — demande utilisateur
+  /// 2026-05-04 : jusqu'à 4 chambres / niveau).
   static String _formatRoomsWithCounts(List<String> rooms) {
     final counts = <String, int>{};
     final order = <String>[];
@@ -257,7 +259,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return order.map((r) {
       final n = counts[r]!;
       if (n <= 1) return r;
-      final suffix = n == 2 ? '²' : (n == 3 ? '³' : '$n');
+      final suffix = n == 2 ? '²' : (n == 3 ? '³' : (n == 4 ? '⁴' : '$n'));
       return '$r $suffix';
     }).join(', ');
   }
@@ -1449,8 +1451,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             crossAxisSpacing: 10,
             children: allItems.map((room) {
               // Compte les occurrences de cette pièce dans le niveau
-              // courant. Le tap cycle 0 → 1 → 2 → 3 → 0 (max 3 pour
-              // permettre 2 ou 3 SDB sur le même étage par ex.).
+              // courant. Le tap cycle 0 → 1 → 2 → 3 → 4 → 0 (max 4
+              // pour couvrir les maisons familiales avec jusqu'à
+              // 4 chambres sur un même étage — demande utilisateur
+              // 2026-05-04). Bump global à toutes les pièces, pas
+              // juste « Chambre » : permet aussi 4 SDB / 4 WC sur le
+              // même niveau si besoin (rare mais cohérent).
               final count = rooms.where((r) => r == room).length;
               final checked = count > 0;
               return TogglePillButton(
@@ -1462,13 +1468,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   setState(() {
                     final next =
                         List<String>.from(_levelRooms[cfg.field] ?? []);
-                    if (count >= 3) {
+                    if (count >= 4) {
                       // Cycle complet : on retire toutes les
                       // occurrences (retour à 0 = pill désactivée).
                       next.removeWhere((r) => r == room);
                     } else {
                       // Incrément : ajoute une occurrence (la pill
-                      // affiche ² puis ³ via TogglePillButton).
+                      // affiche ² ³ ⁴ via TogglePillButton).
                       next.add(room);
                     }
                     _levelRooms[cfg.field] = next;
