@@ -1294,13 +1294,16 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           const SizedBox(height: 24),
 
           // --- Bloc "Renseignements sur la visite" — partagé.
-          FormToggleGroup(
+          // Multi-select : l'ergo peut cocher Mail ET Courrier (demande
+          // utilisateur 2026-05-04). Stocké en CSV "Mail, Courrier" dans
+          // la colonne `envoi_rapport` (texte libre côté NocoDB).
+          FormMultiToggleGroup(
             label: 'Envoi du rapport',
             options: const ['Mail', 'Courrier'],
-            selected: _envoiRapport,
+            selected: _parseEnvoiRapport(_envoiRapport),
             columns: 2,
-            onChanged: (v) {
-              _envoiRapport = v;
+            onChanged: (next) {
+              _envoiRapport = _serializeEnvoiRapport(next);
               _markChanged();
             },
           ),
@@ -1320,6 +1323,36 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         ],
       ),
     );
+  }
+
+  /// `envoi_rapport` est désormais multi-valeur : on stocke les choix
+  /// de l'ergo en CSV ("Mail", "Courrier", "Mail, Courrier") dans la
+  /// colonne texte côté NocoDB. Ces helpers normalisent les
+  /// allers-retours entre la chaîne stockée et le `Set<String>` utilisé
+  /// par `FormMultiToggleGroup`. Tolère les anciens dossiers où la
+  /// valeur était une chaîne simple ("Mail" / "Courrier") — pas de
+  /// migration nécessaire.
+  Set<String> _parseEnvoiRapport(String raw) {
+    if (raw.trim().isEmpty) return <String>{};
+    return raw
+        .split(RegExp(r'[,;]'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+  }
+
+  String _serializeEnvoiRapport(Set<String> values) {
+    if (values.isEmpty) return '';
+    // Ordre stable Mail puis Courrier pour une chaîne déterministe au save
+    // (évite des PATCH inutiles sur NocoDB et garde la lecture cohérente
+    // côté serveur / PDF).
+    const order = ['Mail', 'Courrier'];
+    final sorted = order.where(values.contains).toList();
+    // Si l'ergo a entré une valeur custom (cas legacy), on l'append.
+    for (final v in values) {
+      if (!order.contains(v)) sorted.add(v);
+    }
+    return sorted.join(', ');
   }
 
   Set<String> _parseComplementaryFunds(String raw) {

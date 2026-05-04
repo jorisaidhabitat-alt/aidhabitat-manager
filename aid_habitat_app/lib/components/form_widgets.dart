@@ -655,6 +655,107 @@ class FormToggleGroup extends StatelessWidget {
   }
 }
 
+/// Variante multi-select de [FormToggleGroup] : pills cliquables où
+/// chaque option peut être cochée indépendamment des autres. Utilise
+/// le même look (couleur #7C6DAA, padding, font) que FormToggleGroup
+/// pour cohérence visuelle.
+///
+/// Demande utilisateur 2026-05-04 : permettre « Mail ET Courrier » sur
+/// le champ Envoi du rapport (Bénéficiaire-Foyer) — auparavant
+/// FormToggleGroup imposait une exclusivité mutuelle entre les deux.
+class FormMultiToggleGroup extends StatelessWidget {
+  final String label;
+  final List<String> options;
+  final Set<String> selected;
+  final ValueChanged<Set<String>>? onChanged;
+  final int? columns;
+
+  const FormMultiToggleGroup({
+    super.key,
+    required this.label,
+    required this.options,
+    required this.selected,
+    this.onChanged,
+    this.columns,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget buildPill(String opt) {
+      final isSelected = selected.contains(opt);
+      return GestureDetector(
+        onTap: () {
+          final next = Set<String>.from(selected);
+          if (isSelected) {
+            next.remove(opt);
+          } else {
+            next.add(opt);
+          }
+          onChanged?.call(next);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF7C6DAA) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF7C6DAA)
+                  : Colors.grey.shade300,
+            ),
+          ),
+          child: Text(
+            opt,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.black87,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final cols = columns ?? options.length;
+    final rows = <Widget>[];
+    for (var r = 0; r < options.length; r += cols) {
+      final rowChildren = <Widget>[];
+      for (var c = 0; c < cols; c++) {
+        if (c > 0) rowChildren.add(const SizedBox(width: 8));
+        final idx = r + c;
+        rowChildren.add(
+          Expanded(
+            child: idx < options.length
+                ? buildPill(options[idx])
+                : const SizedBox.shrink(),
+          ),
+        );
+      }
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: 8));
+      rows.add(Row(children: rowChildren));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (label.isNotEmpty) ...[
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        ...rows,
+      ],
+    );
+  }
+}
+
 /// Checkbox with label
 class FormCheckbox extends StatelessWidget {
   final String label;
