@@ -392,15 +392,19 @@ class TogglePillButton extends StatelessWidget {
     this.countBadge = 0,
   });
 
-  /// Convertit un entier 2 ou 3 en glyphe d'exposant Unicode
+  /// Convertit un entier 2..4 en glyphe d'exposant Unicode
   /// (cohérent avec l'affichage typographique français — pas de
   /// "x2" ou "(2)"). Au-delà, on retombe sur le chiffre normal.
+  /// Bumpé à 4 le 2026-05-04 pour couvrir les niveaux d'accessibilité
+  /// avec jusqu'à 4 chambres (cf. accessibility_tab.dart).
   static String _superscript(int n) {
     switch (n) {
       case 2:
         return '²';
       case 3:
         return '³';
+      case 4:
+        return '⁴';
       default:
         return '$n';
     }
