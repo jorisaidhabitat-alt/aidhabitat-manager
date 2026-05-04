@@ -18,9 +18,26 @@ import '../../components/notes_widget.dart';
 /// (`Préconisations-Projet`, `Préconisations-Résumé`) → les notes
 /// existantes sont préservées sans migration. Le canvas pleine page
 /// utilise un nouveau `tabKey = 'Résumé'`.
+///
+/// Spécificité 2026-05-04 (demande utilisateur) : c'est la SEULE note
+/// au format dessin du VAD qui peut être agrandie dans une nouvelle
+/// fenêtre browser (comme les notes textuelles). Le callback
+/// [onExpandToTab] est fourni par le parent visit_report_screen et
+/// déclenche `tryOpenNoteWindow(mode: 'drawing')`.
 class SummaryTab extends StatefulWidget {
   final Dossier dossier;
-  const SummaryTab({super.key, required this.dossier});
+
+  /// Optionnel — appelé quand l'ergo tape sur le bouton « agrandir »
+  /// du NotesWidget canvas. Le parent (visit_report_screen) ouvre alors
+  /// la fenêtre détachée en mode drawing. Si null → bouton agrandir
+  /// caché.
+  final VoidCallback? onExpandToTab;
+
+  const SummaryTab({
+    super.key,
+    required this.dossier,
+    this.onExpandToTab,
+  });
 
   @override
   State<SummaryTab> createState() => _SummaryTabState();
@@ -88,6 +105,15 @@ class _SummaryTabState extends State<SummaryTab>
         // advanced, freeform, fillParentHeight) MAIS sans
         // backgroundContent (fond blanc, pas de silhouettes / images).
         // tabKey = 'Résumé' → indépendant des cadres notes du haut.
+        //
+        // - allowPagination: true → l'ergo peut ajouter / naviguer /
+        //   supprimer des pages (jusqu'à `maxPages = 20` par défaut).
+        // - onExpandToTab: pris du parent → ouvre la fenêtre browser
+        //   détachée en mode drawing (cf. note_window_screen.dart
+        //   branche `mode == 'drawing'`).
+        // - allowTextModal: true → expose le bouton « agrandir » même
+        //   en mode dessin pur (showText=false). Le tap déclenche
+        //   onExpandToTab si fourni, sinon ouvre la modale fallback.
         Expanded(
           child: NotesWidget(
             key: ValueKey('summary-canvas-$patientId'),
@@ -97,8 +123,10 @@ class _SummaryTabState extends State<SummaryTab>
             subtitle: 'Notes libres pour préparer les préconisations.',
             toolset: NoteToolset.advanced,
             mode: NoteCanvasMode.freeform,
-            allowPagination: false,
+            allowPagination: true,
             showText: false,
+            allowTextModal: true,
+            onExpandToTab: widget.onExpandToTab,
             showSaveButton: false,
             fillParentHeight: true,
             embedded: false,

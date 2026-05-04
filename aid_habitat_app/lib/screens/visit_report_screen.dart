@@ -827,56 +827,46 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// lui-même dans le contexte de la barre de nav). Pendant
   /// l'appel : un spinner blanc remplace le label et le tap est
   /// neutralisé pour éviter les double-clics.
+  /// Bouton compact (icône seule) pour générer le rapport. Demande
+  /// utilisateur 2026-05-04 : « change le texte génerer dans le
+  /// bouton pour un icon téléchargement ». État loading : spinner
+  /// blanc à la place de l'icône, le tap est neutralisé.
   Widget _buildGenerateReportButton() {
-    return InkWell(
-      onTap: _isGeneratingReport ? null : _generateReport,
-      borderRadius: BorderRadius.circular(999),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        // Hauteur 44 px = pill du tab bar (60 px) - 8 px de padding
-        // vertical → l'action s'aligne pile avec la zone cliquable
-        // des onglets.
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        decoration: BoxDecoration(
-          color: _isGeneratingReport
-              ? const Color(0xFF9888B5)
-              : const Color(0xFF7C6DAA),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_isGeneratingReport) ...[
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              const SizedBox(width: 9),
-              const Text(
-                'Génération…',
-                style: TextStyle(
+    return Tooltip(
+      message: _isGeneratingReport
+          ? 'Génération en cours…'
+          : 'Générer le rapport',
+      child: InkWell(
+        onTap: _isGeneratingReport ? null : _generateReport,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          // Carré ~44×44 (= hauteur de l'ancienne pill) pour rester
+          // tactile-friendly sur iPad. Centre l'icône dans la pastille
+          // ronde violette.
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _isGeneratingReport
+                ? const Color(0xFF9888B5)
+                : const Color(0xFF7C6DAA),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          alignment: Alignment.center,
+          child: _isGeneratingReport
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : const Icon(
+                  LucideIcons.download,
+                  size: 20,
                   color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
                 ),
-              ),
-            ] else
-              const Text(
-                'Générer',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
-                ),
-              ),
-          ],
         ),
       ),
     );
