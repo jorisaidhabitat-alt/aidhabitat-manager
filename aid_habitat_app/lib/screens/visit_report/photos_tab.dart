@@ -398,6 +398,19 @@ class _PhotosTabState extends State<PhotosTab>
       // Sections supplémentaires (index >= 1).
       ..._extraSections,
     ];
+    // Numérotation « du projet N » pour les sections « Plan travaux
+    // préconisés » uniquement quand il y en a plusieurs (demande
+    // utilisateur 2026-05-04). La base devient projet 1, les extras
+    // suivent dans l'ordre. Si une seule section existe, on garde le
+    // libellé court par défaut.
+    final planApresProjectNumbers = <_ExtraSection, int>{};
+    final planApresSections =
+        allSections.where((s) => s.baseTag == kPhotoTagPlanApres).toList();
+    if (planApresSections.length > 1) {
+      for (var i = 0; i < planApresSections.length; i++) {
+        planApresProjectNumbers[planApresSections[i]] = i + 1;
+      }
+    }
     // Ajout d'un widget "bouton Ajouter une partie" en dernier élément
     // de la liste à layouter. Layout : grille manuelle de 3 cellules
     // par ligne avec `IntrinsicHeight` → toutes les cellules d'une
@@ -412,10 +425,13 @@ class _PhotosTabState extends State<PhotosTab>
           tag: _tagForSection(section),
           icon: _iconForCategory(section.baseTag),
           maxSlots: kVisitPhotoSlotCount[section.baseTag] ?? 0,
-          titleOverride: section.index == 0
-              ? null
-              : '${visitPhotoTagShortLabel(section.baseTag)} '
-                  '#${section.index + 1}',
+          titleOverride: planApresProjectNumbers.containsKey(section)
+              ? 'Travaux préconisés du projet '
+                  '${planApresProjectNumbers[section]}'
+              : (section.index == 0
+                  ? null
+                  : '${visitPhotoTagShortLabel(section.baseTag)} '
+                      '#${section.index + 1}'),
           onRemove: section.index == 0
               ? null
               : () => _removeExtraSection(section),
