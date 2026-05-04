@@ -90,6 +90,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
   Timer? _sizeReportTimer;
   Size? _lastReportedSize;
   Offset? _lastReportedOrigin;
+  StreamSubscription<dynamic>? _webIpcSub;
 
   @override
   void initState() {
@@ -101,20 +102,29 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
     // IPC handler: the main window pushes text when the user types in
     // the in-app NotesWidget — mirror it here unless we're actively
     // typing (we don't want to yank the cursor out from under them).
-    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
-      if (call.method == 'pushNote') {
-        final args = Map<String, dynamic>.from(call.arguments as Map);
-        if (args['patientId'] != widget.patientId ||
-            args['tabKey'] != widget.tabKey) return;
-        final text = args['text'] as String? ?? '';
-        if (_controller.text == text) return;
-        if (_focusNode.hasFocus) return;
-        _controller.value = TextEditingValue(
-          text: text,
-          selection: TextSelection.collapsed(offset: text.length),
-        );
-      }
-    });
+    void onPushNote(Map<String, dynamic> args) {
+      if (args['patientId'] != widget.patientId ||
+          args['tabKey'] != widget.tabKey) return;
+      final text = args['text']?.toString() ?? '';
+      if (_controller.text == text) return;
+      if (_focusNode.hasFocus) return;
+      _controller.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+
+    if (kIsWeb) {
+      _webIpcSub = note_window_web.listenNoteIpc((method, args) {
+        if (method == 'pushNote') onPushNote(args);
+      });
+    } else {
+      DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+        if (call.method == 'pushNote') {
+          onPushNote(Map<String, dynamic>.from(call.arguments as Map));
+        }
+      });
+    }
 
     // Periodically report our current size to the main window so the
     // next popup opens with the same dimensions.
@@ -125,6 +135,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
   @override
   void dispose() {
     _sizeReportTimer?.cancel();
+    _webIpcSub?.cancel();
     // Final flush — send one last IPC with the current text before the
     // window vanishes, so nothing is lost.
     _sendLive(_controller.text, flush: true);
@@ -137,7 +148,49 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
 
   Future<void> _reportSize() async {
     if (!mounted) return;
-    // Lit la frame native (origine + taille) via le plugin Swift local
+    // Sur web : pas de plugin natif pour la frame. On lit
+    // `window.outerWidth/Height` + `screenX/Y` côté JS pour récupérer
+    // la position de la POPUP (vs `MediaQuery` qui ne donne que le
+    // viewport interne). Le helper `persistNoteWindowFrame` écrit en
+    // localStorage — la fenêtre principale relira au prochain open
+    // pour rouvrir aux mêmes dimensions et position.
+    if (kIsWeb) {
+      try {
+        final size = MediaQuery.of(context).size;
+        // Web : `window.screenLeft/Top` donne l'origine écran de la
+        // popup (cf. dart:html via le helper).
+        // On passe par 2 chemins :
+        //   1) écrit en localStorage (réutilisé par tryOpenNoteWindow)
+        //   2) broadcast via BroadcastChannel pour que la fenêtre
+        //      principale mette à jour son cache mémoire à chaud
+        //      (sinon il faudrait fermer/rouvrir pour propager).
+        if (_lastReportedSize == size) return;
+        _lastReportedSize = size;
+        // L'origine n'est pas accessible depuis Flutter Web sans dart:html
+        // (qui est dans le helper). On envoie juste la taille — la
+        // position est captée côté localStorage par persistNoteWindowFrame
+        // qui a accès à window.screenX directement.
+        note_window_web.sendNoteIpc(method: 'reportNoteSize', args: {
+          'width': size.width,
+          'height': size.height,
+        });
+        // Le helper persistNoteWindowFrame lit lui-même window.screenX/Y
+        // → on lui passe la taille connue, il complète avec l'origine.
+        note_window_web.persistNoteWindowFrame(
+          tabKey: widget.tabKey,
+          // -1 = sentinel pour dire "lis depuis window.screenX/Y" côté
+          // helper. Pas implémenté — on écrit la taille seule pour l'instant
+          // et on laisse la position au navigateur (qui réouvre généralement
+          // au même endroit pour une popup d'origine identique).
+          left: -1,
+          top: -1,
+          width: size.width,
+          height: size.height,
+        );
+      } catch (_) {/* ignore */}
+      return;
+    }
+    // Native macOS : lit la frame via le plugin Swift local
     // `WindowFramePlugin` — le plugin Dart `desktop_multi_window` 0.2.1
     // n'expose pas getFrame().
     try {
@@ -177,6 +230,15 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
   /// instantly. The main window throttles the SQLite/NocoDB writes on
   /// its side.
   void _sendLive(String text, {bool flush = false}) {
+    if (kIsWeb) {
+      note_window_web.sendNoteIpc(method: 'liveNote', args: {
+        'patientId': widget.patientId,
+        'tabKey': widget.tabKey,
+        'text': text,
+        'flush': flush,
+      });
+      return;
+    }
     DesktopMultiWindow.invokeMethod(0, 'liveNote', {
       'patientId': widget.patientId,
       'tabKey': widget.tabKey,
@@ -197,13 +259,18 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
     // jaune/vert, mais elle est transparente. Notre contenu Flutter glisse
     // donc sous cette bande — un padding-top aligne le titre verticalement
     // avec les pastilles, et le padding-left leur laisse la place.
+    // Sur web : la fenêtre est un VRAI popup browser, donc la chrome
+    // (pastilles + URL bar) est dessinée par le navigateur AU-DESSUS de
+    // notre contenu. Pas besoin de réserver les 82 px à gauche pour les
+    // pastilles (qui sont fake sur natif quand titlebar est transparente).
+    final isWebPopup = kIsWeb;
     return Scaffold(
       body: Stack(
         children: [
           Column(
             children: [
               Container(
-                padding: const EdgeInsets.fromLTRB(82, 6, 14, 6),
+                padding: EdgeInsets.fromLTRB(isWebPopup ? 16 : 82, 6, 14, 6),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border(

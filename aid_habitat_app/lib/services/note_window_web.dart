@@ -23,7 +23,7 @@
 // elles voient la même base. Le polling toutes les 1 s côté
 // NoteWindowScreen suffit à propager les écritures.
 
-// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
+// ignore_for_file: avoid_web_libraries_in_flutter
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
@@ -106,11 +106,13 @@ bool tryOpenNoteWindow({
       'top=${top.round()},'
       'noopener,noreferrer';
 
+  // ignore: deprecated_member_use
   final win = html.window.open(url, '_blank', features);
-  // `WindowBase` n'est pas null si l'open a réussi — Safari peut
-  // toutefois renvoyer un objet "fermé" en cas de popup blocker.
-  // Heuristique : on vérifie `closed` (true = bloqué).
-  // ignore: deprecated_member_use, unnecessary_null_comparison
+  // `WindowBase` n'est jamais null en pratique — Safari peut toutefois
+  // renvoyer un objet "fermé" en cas de popup blocker. On considère que
+  // l'ouverture a tenté ; si elle est bloquée, l'utilisateur verra
+  // l'icône anti-popup dans la barre du navigateur et débloquera.
+  // ignore: unnecessary_null_comparison
   return win != null;
 }
 

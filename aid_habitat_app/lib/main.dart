@@ -17,11 +17,6 @@ import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
 import 'services/references_service.dart';
 import 'services/sync_engine.dart';
-// Desktop-only : charge `desktop_multi_window` uniquement sur une
-// plateforme qui le supporte. Sur web, un stub vide est importé à la
-// place pour que la compilation passe.
-import 'services/multi_window_stub.dart'
-    if (dart.library.io) 'package:desktop_multi_window/desktop_multi_window.dart';
 // Web-only helpers pour la fenêtre détachée des notes (cf.
 // `note_window_web.dart` pour le rationale). Sur natif, le stub fait
 // passer la compilation.
@@ -79,16 +74,18 @@ Future<void> main(List<String> args) async {
   if (kIsWeb) {
     final params = note_window_web.readUrlNoteParams();
     if (params['note_window'] == '1') {
-      databaseFactory = databaseFactoryFfiWebNoWebWorker;
+      // Boot ULTRA léger pour la fenêtre détachée :
+      //   - PAS de DataService.initialize (sync engine, refresh remote…)
+      //     qui ferait tourner un 2ème worker sync en parallèle de la
+      //     fenêtre principale → ops dupliquées contre NocoDB.
+      //   - PAS de databaseFactory : on n'écrit pas en SQLite ici. La
+      //     persistance passe par IPC BroadcastChannel → la fenêtre
+      //     principale fait le SQLite write + l'enqueue NocoDB
+      //     (cf. `_persistNoteText` côté visit_report_screen.dart).
+      // Le note_window est volontairement « stupide » : un éditeur de
+      // texte qui broadcast chaque keystroke et reçoit des updates
+      // depuis la fenêtre principale — rien d'autre.
       await initializeDateFormatting('fr_FR', null);
-      // Boot léger : seul DataService est requis (pour fetch/write les
-      // notes). AuthService et sync engine restent dans la fenêtre
-      // principale ; la fenêtre détachée n'écrit qu'en SQLite local et
-      // laisse la propagation NocoDB à la fenêtre principale (qui voit
-      // les changements via le polling 1 s du `NoteWindowScreen`).
-      try {
-        await DataService().initialize();
-      } catch (_) {/* best effort */}
       runApp(NoteWindowApp(
         // windowId : 0 sur web — on n'utilise pas DesktopMultiWindow.
         // L'IPC passe par BroadcastChannel, sans besoin d'identifiant.
