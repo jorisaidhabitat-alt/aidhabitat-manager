@@ -95,6 +95,16 @@ class _ContextTabState extends State<ContextTab>
   @override
   void didUpdateWidget(covariant ContextTab oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Sync de la sous-section quand le parent change
+    // `initialSubSection` programmatiquement — ex. navigation depuis
+    // la popup « Champs manquants » du flow de génération PDF.
+    if (oldWidget.initialSubSection != widget.initialSubSection) {
+      final next = widget.initialSubSection.clamp(0, 1);
+      if (next != _subSection) {
+        setState(() => _subSection = next);
+        widget.onSubSectionChanged?.call(next);
+      }
+    }
     // When the parent pushes a refreshed dossier (e.g. after the user
     // changed a name in the Bénéficiaire tab), re-derive the context
     // occupants so the pills and names shown here track the new values.

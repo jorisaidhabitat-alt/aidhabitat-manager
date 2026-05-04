@@ -338,6 +338,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   @override
   void didUpdateWidget(covariant BeneficiaryTab oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Quand le parent change `initialSubSection` (ex. navigation
+    // depuis la popup « Champs manquants »), bascule la sous-section
+    // courante. Doit fonctionner même si l'onglet a déjà été visité,
+    // donc on ne peut pas se contenter de l'init dans `initState`.
+    if (oldWidget.initialSubSection != widget.initialSubSection) {
+      final next = widget.initialSubSection.clamp(0, 3);
+      if (next != _subSectionIndex) {
+        setState(() => _subSectionIndex = next);
+        widget.onSubSectionChanged?.call(next);
+      }
+    }
     // If the parent pushes a fresh dossier (e.g. after an external edit) AND
     // there is no pending local edit to preserve, re-hydrate so the form
     // mirrors the latest patient/housing data from SQLite.
