@@ -376,11 +376,14 @@ class TogglePillButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool expand;
 
-  /// Compteur optionnel affiché en exposant blanc à droite du label
-  /// quand > 1 (ex. ² pour 2 occurrences, ³ pour 3). Utilisé par les
-  /// pièces des niveaux Accessibilité pour permettre 2 ou 3
-  /// occurrences d'une même pièce sur le même étage (ex. 2 salles de
-  /// bain au RDC).
+  /// Compteur optionnel affiché dans une pastille blanche en haut à
+  /// droite du bouton quand > 1 (demande utilisateur 2026-05-04 :
+  /// « le numéro qui apparait doit être en haut à droite dans le coin
+  /// du bouton »). Avant, le compteur s'affichait en exposant Unicode
+  /// (² ³ ⁴) après le label — moins lisible et collé au texte. Utilisé
+  /// par les pièces des niveaux Accessibilité pour permettre 2 à 4
+  /// occurrences d'une même pièce sur le même étage (ex. 4 chambres
+  /// au 1er).
   final int countBadge;
 
   const TogglePillButton({
@@ -392,58 +395,80 @@ class TogglePillButton extends StatelessWidget {
     this.countBadge = 0,
   });
 
-  /// Convertit un entier 2..4 en glyphe d'exposant Unicode
-  /// (cohérent avec l'affichage typographique français — pas de
-  /// "x2" ou "(2)"). Au-delà, on retombe sur le chiffre normal.
-  /// Bumpé à 4 le 2026-05-04 pour couvrir les niveaux d'accessibilité
-  /// avec jusqu'à 4 chambres (cf. accessibility_tab.dart).
-  static String _superscript(int n) {
-    switch (n) {
-      case 2:
-        return '²';
-      case 3:
-        return '³';
-      case 4:
-        return '⁴';
-      default:
-        return '$n';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Violet #907CA1 quand actif (cohérence avec les autres pills du
+    // Violet #7C6DAA quand actif (cohérence avec les autres pills du
     // relevé de visite — FormToggleGroup, _Pill, _buildPill). Auparavant
     // le fond actif était gris clair #E2E8F0, ce qui rendait les pièces
     // sélectionnées à l'intérieur des niveaux Accessibilité peu visibles
     // (rapportées comme "cadres gris et blancs vides" par l'utilisateur).
     final showBadge = active && countBadge > 1;
-    final displayLabel =
-        showBadge ? '$label ${_superscript(countBadge)}' : label;
     final pill = GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFF7C6DAA) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: active
-                ? const Color(0xFF7C6DAA)
-                : Colors.grey.shade300,
-            width: 1.2,
+      // Stack pour permettre la pastille badge en top-right qui
+      // chevauche le coin du bouton sans pousser le label.
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF7C6DAA) : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: active
+                    ? const Color(0xFF7C6DAA)
+                    : Colors.grey.shade300,
+                width: 1.2,
+              ),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: active ? Colors.white : Colors.black87,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-        ),
-        child: Text(
-          displayLabel,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: active ? Colors.white : Colors.black87,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+          if (showBadge)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Container(
+                width: 18,
+                height: 18,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF7C6DAA),
+                    width: 1.4,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  '$countBadge',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF7C6DAA),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
     return expand ? SizedBox(width: double.infinity, child: pill) : pill;

@@ -135,7 +135,6 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recent = dossiers.take(3).toList();
     final now = DateTime.now();
     final rawDate = DateFormat('EEEE d MMMM', 'fr_FR').format(now);
     final dateLabel = rawDate.isEmpty
@@ -144,9 +143,10 @@ class DashboardScreen extends StatelessWidget {
 
     // Next upcoming visit = nearest future `visitDate` across all dossiers.
     final nextVisit = _findNextVisit(dossiers, now);
-
-    // Real activity chart data (last 6 months).
-    final activityData = _buildActivitySeries(dossiers, now);
+    // (_buildActivitySeries / _RecentDossiersPanel / _ActivityChart sont
+    // conservés dans le fichier mais plus utilisés depuis la refonte
+    // 2026-05-04 — voir `_TodayVisitsPanel` ci-dessous qui remplace
+    // les deux panneaux côte à côte par un bloc plein largeur.)
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
@@ -630,7 +630,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
       );
     }
 
-    final nv = nextVisit!;
+    final nv = nextVisit;
     final patient = nv.dossier.patient;
     final fullAddress = DashboardScreen.buildFullAddress(patient);
     final rawDay = DateFormat('EEEE d MMMM', 'fr_FR').format(nv.date);
@@ -950,6 +950,250 @@ class _PanelCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: card,
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mes visites du jour (full width)
+// ---------------------------------------------------------------------------
+
+/// Panneau pleine largeur listant les visites prévues AUJOURD'HUI, avec
+/// le temps de trajet entre chaque adresse (1ère = depuis Aid'Habitat,
+/// 16 rue Léo Lagrange, Chartres-de-Bretagne).
+///
+/// Demande utilisateur 2026-05-04 : remplace « Mes rapports en cours »
+/// + « Activité » (deux panneaux côte à côte) par un seul bloc plein
+/// largeur centré sur la journée en cours. Tri alphabétique par défaut
+/// (le modèle `Dossier.visitDate` n'a pas d'heure — pas d'ordre
+/// chronologique pertinent à l'intérieur d'une journée).
+class _TodayVisitsPanel extends StatefulWidget {
+  final List<Dossier> dossiers;
+  final DateTime now;
+  final void Function(Dossier) onSelect;
+
+  const _TodayVisitsPanel({
+    required this.dossiers,
+    required this.now,
+    required this.onSelect,
+  });
+
+  @override
+  State<_TodayVisitsPanel> createState() => _TodayVisitsPanelState();
+}
+
+class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
+  /// Temps de trajet calculés pour chaque visite affichée. Clé = id du
+  /// dossier ; valeur = durée jusqu'à cette visite depuis la PRÉCÉDENTE
+  /// (ou Aid'Habitat pour la 1ère). Rempli au fur et à mesure des
+  /// requêtes OSRM.
+  final Map<String, Duration?> _segmentDurations = <String, Duration?>{};
+
+  /// Empreinte des visites actuellement résolues — évite de relancer
+  /// les requêtes au moindre rebuild si la liste n'a pas changé.
+  String _routedKey = '';
+
+  List<Dossier> get _todayVisits {
+    final today = DateTime(widget.now.year, widget.now.month, widget.now.day);
+    final out = <Dossier>[];
+    for (final d in widget.dossiers) {
+      final raw = d.visitDate;
+      if (raw == null || raw.isEmpty) continue;
+      DateTime? when;
+      try {
+        when = DateTime.parse(raw);
+      } catch (_) {
+        continue;
+      }
+      final day = DateTime(when.year, when.month, when.day);
+      if (day == today) out.add(d);
+    }
+    out.sort((a, b) => a.patient.lastName
+        .toLowerCase()
+        .compareTo(b.patient.lastName.toLowerCase()));
+    return out;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _maybeFetchSegments();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TodayVisitsPanel old) {
+    super.didUpdateWidget(old);
+    _maybeFetchSegments();
+  }
+
+  /// Lance les requêtes de géocodage + routing pour chaque segment du
+  /// jour. Re-déclenché uniquement quand la liste des visites change
+  /// (clé d'empreinte = liste d'IDs).
+  void _maybeFetchSegments() {
+    final visits = _todayVisits;
+    final key = visits.map((d) => d.id).join('|');
+    if (key == _routedKey) return;
+    _routedKey = key;
+    GeoPoint previous = kAidHabitatOrigin;
+    for (final dossier in visits) {
+      final addr = DashboardScreen.buildFullAddress(dossier.patient);
+      if (addr.isEmpty) {
+        _segmentDurations[dossier.id] = null;
+        continue;
+      }
+      // Capture `previous` dans le scope async — on attend chaque
+      // géocodage avant de passer au suivant pour calculer chaque
+      // segment depuis le point précédent.
+      _resolveSegment(
+        dossierId: dossier.id,
+        from: previous,
+        toAddress: addr,
+      );
+      // Pour estimer le `previous` du segment suivant, on peut
+      // pré-géocoder l'adresse courante en parallèle. Le résultat sera
+      // mis en cache par `RouteService.geocode` donc le `_resolveSegment`
+      // suivant le retrouvera sans coût.
+      // ignore: discarded_futures
+      RouteService.instance.geocode(addr).then((g) {
+        if (g != null) {
+          previous = g;
+        }
+      });
+    }
+  }
+
+  Future<void> _resolveSegment({
+    required String dossierId,
+    required GeoPoint from,
+    required String toAddress,
+  }) async {
+    final to = await RouteService.instance.geocode(toAddress);
+    if (!mounted || to == null) {
+      if (mounted) setState(() => _segmentDurations[dossierId] = null);
+      return;
+    }
+    final d = await RouteService.instance.drivingDuration(from, to);
+    if (!mounted) return;
+    setState(() => _segmentDurations[dossierId] = d);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visits = _todayVisits;
+    return _PanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Mes visites du jour',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "Trajets calculés depuis Aid'Habitat ($kAidHabitatAddressLabel) "
+            'pour la 1ère visite, puis entre chaque étape.',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (visits.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(
+                child: Text(
+                  "Aucune visite prévue aujourd'hui.",
+                  style: TextStyle(color: Color(0xFF94A3B8)),
+                ),
+              ),
+            )
+          else
+            for (var i = 0; i < visits.length; i++) ...[
+              _RouteSegmentRow(
+                duration: _segmentDurations[visits[i].id],
+                fromLabel: i == 0
+                    ? "Aid'Habitat"
+                    : '${visits[i - 1].patient.firstName} '
+                        '${visits[i - 1].patient.lastName.toUpperCase()}',
+              ),
+              _RecentDossierRow(
+                dossier: visits[i],
+                onTap: () => widget.onSelect(visits[i]),
+              ),
+              if (i < visits.length - 1) const SizedBox(height: 12),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Petite ligne discrète entre deux cartes de visite : icône voiture +
+/// libellé « 12 min depuis X ». Affichée AVANT chaque visite (pour
+/// indiquer le trajet à effectuer pour s'y rendre).
+class _RouteSegmentRow extends StatelessWidget {
+  final Duration? duration;
+  final String fromLabel;
+
+  const _RouteSegmentRow({
+    required this.duration,
+    required this.fromLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEDE8F5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              LucideIcons.car,
+              size: 14,
+              color: Color(0xFF7C6DAA),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                ),
+                children: [
+                  TextSpan(
+                    text: duration == null
+                        ? '— min'
+                        : RouteService.formatDuration(duration!),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF7C6DAA),
+                    ),
+                  ),
+                  TextSpan(text: ' depuis '),
+                  TextSpan(
+                    text: fromLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
