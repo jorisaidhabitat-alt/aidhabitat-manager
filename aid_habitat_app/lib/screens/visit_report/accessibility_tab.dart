@@ -648,7 +648,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             return Expanded(
               child: SoftTapScale(
                 // Zoom/dezoom au tap — mêmes sensations que la sidebar.
-                onTap: () => setState(() => _subSection = i),
+                onTap: () {
+                  setState(() => _subSection = i);
+                  widget.onSubSectionChanged?.call(i);
+                },
                 child: Container(
                   color: Colors.transparent,
                   padding: const EdgeInsets.symmetric(vertical: 10),

@@ -2010,6 +2010,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             dossier: _dossier,
             repository: _repository,
             onHousingChanged: _notifyHousingChanged,
+            // Sync de la sous-section interne (Général / Niveaux /
+            // Équipements / Extérieur) avec _activeSubsectionByTab —
+            // permet à _navigateToMissingField (popup « Remplir les
+            // champs ») de pointer directement sur la bonne sous-
+            // section (bug rapporté 2026-05-04 : on arrivait sur
+            // l'onglet Accessibilité mais pas sur la sous-section
+            // contenant le champ vide).
+            initialSubSection:
+                _activeSubsectionByTab['Accessibilité'] ?? 0,
+            onSubSectionChanged: (i) => setState(
+                () => _activeSubsectionByTab['Accessibilité'] = i),
           ),
         ),
         _wrapTabWithNotes(
