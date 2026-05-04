@@ -333,9 +333,9 @@ class _DossierScreenState extends State<DossierScreen> {
   }
 
   /// Mirrors React's `formatAccompanimentType()`:
-  ///  - `diagnostic` → "Diagnostic ergo"
-  ///  - `ergo` → "Ergo"
-  ///  - `complet` → "Complet"
+  ///  - `diagnostic` → "Diag ergo"
+  ///  - `ergo`       → "MPA ergo"
+  ///  - `complet`    → "MPA complet"
   ///  - anything else → the raw value (or empty placeholder)
   /// Household RFR: sum of every occupant's RFR, or the legacy patient-level
   /// value when no per-occupant data exists (pre-migration records).

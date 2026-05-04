@@ -537,14 +537,16 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
     );
   }
 
-  /// 3 chips Diagnostic / Ergo / Complet — mutuellement exclusives.
-  /// Les libellés stockés correspondent aux valeurs attendues côté
-  /// serveur (`mapBeneficiaryUpdatesToFields` + bloc dossier).
+  /// 3 chips Diag ergo / MPA ergo / MPA complet — mutuellement
+  /// exclusives. Les CLÉS stockées (`diagnostic` / `ergo` / `complet`)
+  /// correspondent aux valeurs attendues côté serveur
+  /// (`mapBeneficiaryUpdatesToFields` + bloc dossier) — seuls les
+  /// libellés affichés ont changé (rename 2026-05-04).
   Widget _buildAccompagnementChips() {
     const options = [
-      ('diagnostic', 'Diagnostic'),
-      ('ergo', 'Ergo'),
-      ('complet', 'Complet'),
+      ('diagnostic', 'Diag ergo'),
+      ('ergo', 'MPA ergo'),
+      ('complet', 'MPA complet'),
     ];
     return Wrap(
       spacing: 10,

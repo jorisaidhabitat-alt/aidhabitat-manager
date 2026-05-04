@@ -104,15 +104,17 @@ class AccompanimentBadge extends StatelessWidget {
   });
 
   /// Si l'appelant ne fournit pas le rawType, on inverse le mapping
-  /// du `formatAccompanimentType` : "Diagnostic ergo" → 'diagnostic',
-  /// "Ergo" → 'ergo', "Complet" → 'complet'. Tolère les variantes de
-  /// casse.
+  /// du `formatAccompanimentType` : "Diag ergo" / "Diagnostic ergo"
+  /// → 'diagnostic', "MPA ergo" / "Ergo" → 'ergo', "MPA complet" /
+  /// "Complet" → 'complet'. Tolère les anciens libellés (avant le
+  /// rename MPA / Diag du 2026-05-04) ainsi que les variantes de
+  /// casse, pour rester compatible avec d'éventuels textes legacy.
   String _resolveRawType() {
     if (rawType != null && rawType!.isNotEmpty) return rawType!.toLowerCase();
     final v = value.trim().toLowerCase();
-    if (v.startsWith('diagnostic')) return 'diagnostic';
-    if (v == 'ergo') return 'ergo';
-    if (v == 'complet') return 'complet';
+    if (v.contains('diag')) return 'diagnostic';
+    if (v.contains('complet')) return 'complet';
+    if (v.contains('ergo')) return 'ergo';
     return v;
   }
 

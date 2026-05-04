@@ -697,29 +697,45 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
-            // Avatar — couleur pastel déterministe (mint/pêche/ciel)
-            // dérivée des initiales du bénéficiaire (demande utilisateur :
-            // varier les cercles entre #B8DDCC, #F4D5C4, #CFE3F0). Même
-            // patient → même couleur à chaque affichage.
+            // Avatar — couleur dérivée du TYPE D'ACCOMPAGNEMENT du
+            // dossier (rose pour Diag ergo, vert pour MPA ergo, violet
+            // pour MPA complet, gris pour vide). Demande utilisateur
+            // 2026-05-04 : "la même couleur sur la photo de profil que
+            // le type d'accompagnement". Permet à l'ergo de reconnaître
+            // la nature d'un dossier d'un seul coup d'œil dans la liste,
+            // sans avoir à le scanner colonne par colonne.
+            //
+            // Si l'avatar a une vraie photo de profil un jour, ce
+            // Container sert de bordure/halo coloré autour de la photo
+            // (à câbler quand le champ photo de bénéficiaire existera —
+            // pour l'instant, fallback initiales).
+            //
+            // Avant : couleur dérivée des initiales (mint/pêche/ciel)
+            // qui ne portait aucune info métier, juste de la variété
+            // visuelle.
             SizedBox(
               width: 64,
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: beneficiaryAvatarBgFor(_initials(p)),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  _initials(p),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF554a63),
-                    fontSize: 16,
+              child: Builder(builder: (_) {
+                final palette =
+                    accompanimentPaletteFor(dossier.natureAccompagnement);
+                return Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: palette.bg,
+                    shape: BoxShape.circle,
                   ),
-                ),
-              ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _initials(p),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: palette.fg,
+                      fontSize: 16,
+                    ),
+                  ),
+                );
+              }),
             ),
             // BÉNÉFICIAIRE (nom + âge/GIR)
             Expanded(
