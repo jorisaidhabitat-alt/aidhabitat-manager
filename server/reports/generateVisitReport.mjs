@@ -1821,7 +1821,10 @@ async function drawVisitPhotosWithFlow({
     return VGAP_INTRA;
   };
 
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  // Helvetica regular (pas Bold) — demande utilisateur 2026-05-04 :
+  // « réduis légèrement l'épaisseur des titres ». Couleur conservée
+  // sombre pour garder la présence visuelle.
+  const helveticaTitle = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   // 5) Dessin en flow avec pagination + titres custom
   let currentPage = page8;
@@ -1852,7 +1855,7 @@ async function drawVisitPhotosWithFlow({
         y: cursorY - TITLE_FONT_SIZE - 2,
         size: TITLE_FONT_SIZE,
         color: rgb(0.18, 0.18, 0.18),
-        font: helveticaBold,
+        font: helveticaTitle,
       });
       cursorY -= TITLE_HEIGHT;
     }
