@@ -346,24 +346,52 @@ class _WikiItemDialog extends StatefulWidget {
 
 class _WikiItemDialogState extends State<_WikiItemDialog> {
   late final TextEditingController _titleController;
-  late final TextEditingController _descriptionController;
+  /// Une description = un controller. La fiche peut en contenir plusieurs
+  /// (demande utilisateur 2026-05-04) — l'ergo peut alors cocher
+  /// celle(s) qui s'appliquent à la préconisation au moment de
+  /// l'ajouter dans le relevé de visite. Stockage : JSON array dans
+  /// la colonne `description` (cf. WikiItem.serializeDescriptions).
+  late List<TextEditingController> _descCtrls;
   late List<String> _selectedTags;
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.item.title);
-    _descriptionController = TextEditingController(
-      text: widget.item.description,
-    );
+    final initial = widget.item.descriptionsList;
+    // Toujours au moins 1 champ visible (sinon l'ergo ne sait pas
+    // qu'il peut renseigner une description).
+    _descCtrls = (initial.isEmpty ? <String>[''] : initial)
+        .map((s) => TextEditingController(text: s))
+        .toList();
     _selectedTags = [...widget.item.tags];
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _descriptionController.dispose();
+    for (final c in _descCtrls) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  void _addDescription() {
+    setState(() => _descCtrls.add(TextEditingController()));
+  }
+
+  void _removeDescription(int index) {
+    if (index < 0 || index >= _descCtrls.length) return;
+    if (_descCtrls.length == 1) {
+      // Au lieu de supprimer le dernier, on le vide → garde au moins
+      // un champ visible (cf. initState).
+      _descCtrls[0].clear();
+      setState(() {});
+      return;
+    }
+    setState(() {
+      _descCtrls.removeAt(index).dispose();
+    });
   }
 
   @override
@@ -498,27 +526,76 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        _FormLabel(text: 'Description'),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(child: _FormLabel(text: 'Descriptions')),
+                            // Bouton « + » discret pour ajouter une
+                            // description supplémentaire (l'ergo pourra
+                            // ensuite cocher celles qui s'appliquent
+                            // depuis l'écran préconisations).
+                            Material(
+                              color: const Color(0xFFEDE8F5),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                onTap: _addDescription,
+                                customBorder: const CircleBorder(),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 18,
+                                    color: Color(0xFF7C6DAA),
+                                    semanticLabel: 'Ajouter une description',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 8),
-                        // Hauteur fixe (au lieu d'Expanded) pour que la
-                        // Column ait une hauteur intrinsèque finie et
-                        // dicte la taille de la popup (cf. parent
-                        // Stack sans StackFit.expand). 180 pt = ~9
-                        // lignes de texte à 14/1.5, suffisant pour la
-                        // plupart des descriptions wiki.
+                        // Liste des descriptions — hauteur globale fixe
+                        // (180 pt) en scroll vertical pour pouvoir héberger
+                        // 1 à N champs sans déformer la popup.
                         SizedBox(
                           height: 180,
-                          child: TextField(
-                            controller: _descriptionController,
-                            maxLines: null,
-                            expands: true,
-                            textAlignVertical: TextAlignVertical.top,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF475569),
-                              height: 1.5,
-                            ),
-                            decoration: _inputDecoration(),
+                          child: ListView.separated(
+                            itemCount: _descCtrls.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, i) {
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _descCtrls[i],
+                                      maxLines: 3,
+                                      minLines: 2,
+                                      textAlignVertical: TextAlignVertical.top,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Color(0xFF475569),
+                                        height: 1.5,
+                                      ),
+                                      decoration: _inputDecoration(),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  IconButton(
+                                    onPressed: () => _removeDescription(i),
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      size: 18,
+                                      color: Color(0xFF94A3B8),
+                                    ),
+                                    tooltip: 'Supprimer cette description',
+                                    visualDensity: VisualDensity.compact,
+                                    splashRadius: 18,
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -526,11 +603,15 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                           width: double.infinity,
                           child: FilledButton(
                             onPressed: () {
+                              final descriptions = _descCtrls
+                                  .map((c) => c.text.trim())
+                                  .where((s) => s.isNotEmpty)
+                                  .toList();
                               Navigator.of(context).pop(
                                 widget.item.copyWith(
                                   title: _titleController.text.trim(),
                                   description:
-                                      _descriptionController.text.trim(),
+                                      WikiItem.serializeDescriptions(descriptions),
                                   tags: _selectedTags,
                                 ),
                               );

@@ -1,3 +1,5 @@
+import 'dart:convert' show jsonDecode, jsonEncode;
+
 enum DossierStatus {
   TO_VISIT,
   VISITED,
@@ -181,12 +183,53 @@ class RetirementFund {
 class WikiItem {
   final String id;
   final String title;
+  /// Soit une chaîne brute (legacy : 1 seule description), soit un JSON
+  /// array `["desc1","desc2",…]` (nouveau format 2026-05-04 : plusieurs
+  /// descriptions cochables au moment d'ajouter la fiche dans une
+  /// préconisation). Utiliser le getter [descriptionsList] pour
+  /// récupérer la liste de manière transparente — il gère les deux
+  /// formats. Le setter `description` est conservé pour la rétrocompat
+  /// ; pour stocker plusieurs descriptions, sérialiser via
+  /// [WikiItem.serializeDescriptions].
   final String description;
   final String imageUrl;
   final List<String> tags;
   final String category;
   final String createdAt;
   final String updatedAt;
+
+  /// Renvoie la liste effective de descriptions, en gérant les 2
+  /// formats de stockage. Une chaîne plain est renvoyée comme une
+  /// liste à 1 élément. Un JSON array est décodé. Les éléments vides
+  /// sont filtrés. Un champ totalement vide → liste vide.
+  List<String> get descriptionsList {
+    final trimmed = description.trim();
+    if (trimmed.isEmpty) return const [];
+    if (trimmed.startsWith('[')) {
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is List) {
+          return decoded
+              .map((e) => e?.toString().trim() ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList();
+        }
+      } catch (_) {/* fall through plain string */}
+    }
+    return [trimmed];
+  }
+
+  /// Sérialise une liste de descriptions vers le format de stockage :
+  ///   - 0 élément  → ''
+  ///   - 1 élément  → la chaîne brute (rétrocompat avec consommateurs
+  ///                  legacy qui ignorent le JSON)
+  ///   - 2+ éléments → JSON array
+  static String serializeDescriptions(List<String> values) {
+    final clean = values.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    if (clean.isEmpty) return '';
+    if (clean.length == 1) return clean.first;
+    return jsonEncode(clean);
+  }
 
   /// Base64 data URL of an image captured offline and not yet uploaded.
   /// Always empty for items coming back from the server.

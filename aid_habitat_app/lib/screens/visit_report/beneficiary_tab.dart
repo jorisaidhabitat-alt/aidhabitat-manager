@@ -761,23 +761,22 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             },
           ),
           const SizedBox(height: 14),
-          // Création mail + Création mandat côte à côte (demande
-          // utilisateur 2026-05-04) — même pattern que Téléphone+Email.
-          // La sous-question conditionnelle « Mandat fait par » + le
-          // champ texte « Précisez qui » apparaissent sous la rangée,
-          // pleine largeur (cf. bloc `if (mandat == 'Oui')` ci-dessous).
+          // Création mail + Création mandat en CASES À COCHER côte à
+          // côte (demande utilisateur 2026-05-04 : « doivent être à
+          // coché (facilement sur tablette) pas avec un oui/non car
+          // cela prend trop de place »). Tap sur toute la ligne →
+          // bascule. Coché = "Oui", décoché = "Non".
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: FormToggleGroup(
+                child: _RoundCheckRow(
                   label: 'Création mail',
-                  options: const ['Oui', 'Non'],
-                  selected: anah['mail'] ?? '',
-                  expand: true,
-                  onChanged: (v) {
+                  checked: (anah['mail'] ?? '') == 'Oui',
+                  onTap: () {
                     final next = Map<String, String>.from(anah);
-                    next['mail'] = v;
+                    final wasChecked = (anah['mail'] ?? '') == 'Oui';
+                    next['mail'] = wasChecked ? 'Non' : 'Oui';
                     _compteAnah = _serializeAnahData(next);
                     _markChanged();
                   },
@@ -785,19 +784,16 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FormToggleGroup(
+                child: _RoundCheckRow(
                   label: 'Création mandat',
-                  options: const ['Oui', 'Non'],
-                  selected: anah['mandat'] ?? '',
-                  expand: true,
-                  onChanged: (v) {
+                  checked: (anah['mandat'] ?? '') == 'Oui',
+                  onTap: () {
                     final next = Map<String, String>.from(anah);
-                    next['mandat'] = v;
-                    // Si on désélectionne ou répond Non, on purge la
-                    // sous-question « par qui » pour éviter une donnée
-                    // orpheline (et la pill « Nous/Autre » réapparaîtrait
-                    // au prochain Oui sinon).
-                    if (v != 'Oui') {
+                    final wasChecked = (anah['mandat'] ?? '') == 'Oui';
+                    next['mandat'] = wasChecked ? 'Non' : 'Oui';
+                    // Si on décoche, on purge la sous-question « par
+                    // qui » pour éviter une donnée orpheline.
+                    if (wasChecked) {
                       next.remove('mandatPar');
                       next.remove('mandatAutre');
                     }

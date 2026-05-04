@@ -5,6 +5,7 @@ import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
+import '../../components/cached_remote_image.dart';
 import '../../components/form_widgets.dart';
 import '../../components/notes_widget.dart';
 import '../../components/soft_transitions.dart';
@@ -175,6 +176,35 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     );
     if (picked == null) return;
     final current = _items[index];
+
+    // Si la fiche wiki a plusieurs descriptions (demande utilisateur
+    // 2026-05-04), ouvrir une 2e popup avec checkboxes pour permettre
+    // à l'ergo de choisir celles qui s'appliquent. Une seule
+    // description → comportement historique (pré-remplissage direct).
+    final descriptions = picked.descriptionsList;
+    String prefillNote = '';
+    if (descriptions.length <= 1) {
+      prefillNote = descriptions.isEmpty ? '' : descriptions.first;
+    } else {
+      if (!mounted) return;
+      final selected = await showSoftDialog<List<String>>(
+        context: context,
+        builder: (_) => _DescriptionsPickerDialog(
+          title: picked.title,
+          descriptions: descriptions,
+        ),
+      );
+      // Annulation → on garde la fiche choisie mais sans pré-remplir
+      // la note (l'ergo pourra la rééditer). Si selected est vide
+      // (toutes décochées), idem note vide.
+      if (selected != null && selected.isNotEmpty) {
+        // Format : 1 description par ligne, séparées par une ligne
+        // vide pour respirer (le TextField multi-lignes du card les
+        // affichera l'une sous l'autre, modifiables).
+        prefillNote = selected.join('\n\n');
+      }
+    }
+
     _updateItem(
       index,
       current.copyWith(
@@ -188,7 +218,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
         customTitle:
             current.customTitle.isNotEmpty ? current.customTitle : picked.title,
         // Only pre-fill note if empty (don't overwrite user input).
-        note: current.note.isNotEmpty ? current.note : picked.description,
+        note: current.note.isNotEmpty ? current.note : prefillNote,
       ),
     );
   }
@@ -455,11 +485,20 @@ class _RecommendationCard extends StatelessWidget {
                   aspectRatio: 1.5,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
+                    // Avant 2026-05-04 : Image.network direct → ne gérait
+                    // pas correctement le cache local des médias ni les
+                    // URLs `data:`. Symptôme rapporté : « les images
+                    // s'affichent dans la bibliothèque mais pas dans la
+                    // VAD partie préconisations ». CachedRemoteImage est
+                    // le même composant que la bibliothèque (cf.
+                    // _WikiItemDialogState image side), garantit la parité
+                    // de rendu entre les deux écrans + survit au mode
+                    // offline grâce au cache MediaCacheService.
                     child: hasWiki && item.wikiImageUrl.isNotEmpty
-                        ? Image.network(
-                            resolveMediaUrl(item.wikiImageUrl),
+                        ? CachedRemoteImage(
+                            url: resolveMediaUrl(item.wikiImageUrl),
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Center(
+                            errorWidget: const Center(
                               child: Icon(
                                 Icons.image_outlined,
                                 color: Color(0xFF94A3B8),
@@ -533,14 +572,15 @@ class _RecommendationCard extends StatelessWidget {
             onChanged: (v) => onChange(item.copyWith(customTitle: v)),
           ),
           const SizedBox(height: 4),
-          // Description : fontSize 14 (vs 12 par défaut), 2 lignes max
-          // pour garder la card compacte et permettre au bouton
-          // « Ajouter une préconisation » de rester visible sous la
-          // grille sans scroll (demande utilisateur 2026-04-28).
+          // Description : fontSize 14 (vs 12 par défaut). 4 lignes max
+          // (relevé 2026-05-04 : permet d'afficher 2-3 descriptions
+          // sélectionnées depuis une fiche multi-descriptions sans
+          // troncature visuelle, tout en gardant la grille compacte).
+          // Le contenu reste scroll dans le champ si plus de 4 lignes.
           FormTextField(
             label: '',
             value: item.note,
-            maxLines: 2,
+            maxLines: 4,
             valueSize: 14,
             onChanged: (v) => onChange(item.copyWith(note: v)),
           ),
@@ -694,10 +734,10 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                 width: double.infinity,
                 color: const Color(0xFFF1F5F9),
                 child: it.imageUrl.isNotEmpty
-                    ? Image.network(
-                        resolveMediaUrl(it.imageUrl),
+                    ? CachedRemoteImage(
+                        url: resolveMediaUrl(it.imageUrl),
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Center(
+                        errorWidget: const Center(
                           child: Icon(Icons.image_outlined,
                               color: Color(0xFF94A3B8)),
                         ),
@@ -891,6 +931,194 @@ class _DraggableRecoSlot extends StatelessWidget {
           child: highlight,
         );
       },
+    );
+  }
+}
+
+// =============================================================================
+// Descriptions picker dialog — apparaît APRÈS le wiki picker quand la
+// fiche choisie contient plusieurs descriptions (cf.
+// WikiItem.descriptionsList). L'ergo coche celle(s) qu'il veut voir
+// pré-remplies dans la note de la préconisation. Toutes cochées par
+// défaut. Les descriptions sélectionnées sont jointes par un saut de
+// ligne double avant d'alimenter le champ note (modifiable ensuite
+// depuis la card).
+// =============================================================================
+
+class _DescriptionsPickerDialog extends StatefulWidget {
+  final String title;
+  final List<String> descriptions;
+  const _DescriptionsPickerDialog({
+    required this.title,
+    required this.descriptions,
+  });
+
+  @override
+  State<_DescriptionsPickerDialog> createState() =>
+      _DescriptionsPickerDialogState();
+}
+
+class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
+  late Set<int> _selectedIndexes;
+
+  @override
+  void initState() {
+    super.initState();
+    // Toutes cochées par défaut — l'ergo décoche celles qui ne
+    // s'appliquent pas plutôt que de tout cocher manuellement.
+    _selectedIndexes = Set<int>.from(
+      List<int>.generate(widget.descriptions.length, (i) => i),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Choisir les descriptions',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: widget.descriptions.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, i) {
+                    final selected = _selectedIndexes.contains(i);
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () {
+                        setState(() {
+                          if (selected) {
+                            _selectedIndexes.remove(i);
+                          } else {
+                            _selectedIndexes.add(i);
+                          }
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? const Color(0xFFF5F0FA)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFF7C6DAA)
+                                : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 20,
+                              height: 20,
+                              margin: const EdgeInsets.only(top: 1),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? const Color(0xFF7C6DAA)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: selected
+                                      ? const Color(0xFF7C6DAA)
+                                      : Colors.grey.shade400,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: selected
+                                  ? const Icon(Icons.check,
+                                      size: 14, color: Colors.white)
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                widget.descriptions[i],
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF334155),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Annuler'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF7C6DAA),
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () {
+                      // On renvoie les descriptions sélectionnées
+                      // dans l'ordre original (pas l'ordre de clic).
+                      final selected = <String>[];
+                      for (var i = 0; i < widget.descriptions.length; i++) {
+                        if (_selectedIndexes.contains(i)) {
+                          selected.add(widget.descriptions[i]);
+                        }
+                      }
+                      Navigator.pop(context, selected);
+                    },
+                    child: const Text('Valider'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
