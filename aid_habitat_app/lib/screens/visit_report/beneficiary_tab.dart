@@ -704,29 +704,40 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // --- Bloc "Coordonnées" — partagé pour tout le foyer (téléphone
-          // et email ne changent pas d'un occupant à l'autre).
-          FormTextFieldWithWarning(
-            label: 'Téléphone',
-            value: _phone,
-            keyboardType: TextInputType.phone,
-            showWarning: phoneInvalid,
-            warningText: 'Numéro français invalide',
-            onChanged: (v) {
-              _phone = v;
-              _markChanged();
-            },
-          ),
-          const SizedBox(height: 14),
-          FormTextFieldWithWarning(
-            label: 'Email',
-            value: _email,
-            keyboardType: TextInputType.emailAddress,
-            showWarning: emailInvalid,
-            warningText: 'Adresse mail invalide',
-            onChanged: (v) {
-              _email = v;
-              _markChanged();
-            },
+          // et email ne changent pas d'un occupant à l'autre). Disposés
+          // côte à côte sur la même ligne (demande utilisateur 2026-05-04)
+          // pour gagner de la place verticale dans la sous-section Profil.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: FormTextFieldWithWarning(
+                  label: 'Téléphone',
+                  value: _phone,
+                  keyboardType: TextInputType.phone,
+                  showWarning: phoneInvalid,
+                  warningText: 'Numéro français invalide',
+                  onChanged: (v) {
+                    _phone = v;
+                    _markChanged();
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FormTextFieldWithWarning(
+                  label: 'Email',
+                  value: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  showWarning: emailInvalid,
+                  warningText: 'Adresse mail invalide',
+                  onChanged: (v) {
+                    _email = v;
+                    _markChanged();
+                  },
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 24),
 

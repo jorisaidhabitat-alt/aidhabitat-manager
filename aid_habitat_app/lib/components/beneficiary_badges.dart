@@ -170,21 +170,21 @@ class AnahStatusBadge extends StatelessWidget {
     if (v == 'déjà fait' || v == 'deja fait') {
       bg = const Color(0xFFD1F4DC); // vert clair
       fg = const Color(0xFF137333); // vert foncé
-      label = 'ANAH : déjà fait';
+      label = 'ANAH déjà fait';
     } else if (v == 'a vérifier' || v == 'a verifier') {
       bg = const Color(0xFFFEF3C7); // ambre clair
       fg = const Color(0xFFB45309); // ambre foncé
-      label = 'ANAH : à vérifier';
+      label = 'ANAH à vérifier';
     } else if (v == 'a faire') {
       bg = const Color(0xFFFEE2E2); // rouge clair
       fg = const Color(0xFFB91C1C); // rouge foncé
-      label = 'ANAH : à faire';
+      label = 'ANAH à faire';
     } else {
       // Statut inconnu — affichage neutre (rare, mais on évite un
       // crash silencieux si la donnée est corrompue).
       bg = const Color(0xFFF1F5F9);
       fg = const Color(0xFF334155);
-      label = 'ANAH : ${status.trim()}';
+      label = 'ANAH ${status.trim()}';
     }
     return Container(
       padding: large
