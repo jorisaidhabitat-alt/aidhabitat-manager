@@ -398,45 +398,62 @@ class _PhotosTabState extends State<PhotosTab>
       // Sections supplémentaires (index >= 1).
       ..._extraSections,
     ];
+    // Ajout d'un widget "bouton Ajouter une partie" en dernier élément
+    // de la liste à layouter. Layout : grille manuelle de 3 cellules
+    // par ligne avec `IntrinsicHeight` → toutes les cellules d'une
+    // même ligne s'alignent sur la hauteur de la plus grande
+    // (demande utilisateur 2026-05-04 : « le cadre Ajouter une partie
+    // doit être de la même taille que les autres cards »). Avant :
+    // Wrap → chaque cellule gardait sa hauteur intrinsèque, le bouton
+    // était plus court.
+    final allCells = <Widget>[
+      for (final section in allSections)
+        _buildCategorySection(
+          tag: _tagForSection(section),
+          icon: _iconForCategory(section.baseTag),
+          maxSlots: kVisitPhotoSlotCount[section.baseTag] ?? 0,
+          titleOverride: section.index == 0
+              ? null
+              : '${visitPhotoTagShortLabel(section.baseTag)} '
+                  '#${section.index + 1}',
+          onRemove: section.index == 0
+              ? null
+              : () => _removeExtraSection(section),
+        ),
+      _buildAddSectionButton(),
+    ];
+    const spacing = 14.0;
+    final rows = <Widget>[];
+    for (var i = 0; i < allCells.length; i += 3) {
+      final rowCells = allCells.sublist(
+        i,
+        i + 3 > allCells.length ? allCells.length : i + 3,
+      );
+      // Pad la dernière ligne avec des Expanded vides pour garder
+      // les cellules à 1/3 de la largeur (sinon elles s'étirent).
+      while (rowCells.length < 3) {
+        rowCells.add(const SizedBox.shrink());
+      }
+      if (i > 0) rows.add(const SizedBox(height: spacing));
+      rows.add(IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: rowCells[0]),
+            const SizedBox(width: spacing),
+            Expanded(child: rowCells[1]),
+            const SizedBox(width: spacing),
+            Expanded(child: rowCells[2]),
+          ],
+        ),
+      ));
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       child: SingleChildScrollView(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            const spacing = 14.0;
-            final cellWidth =
-                (constraints.maxWidth - 2 * spacing) / 3;
-            return Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: [
-                for (final section in allSections)
-                  SizedBox(
-                    width: cellWidth,
-                    child: _buildCategorySection(
-                      tag: _tagForSection(section),
-                      icon: _iconForCategory(section.baseTag),
-                      maxSlots: kVisitPhotoSlotCount[section.baseTag] ?? 0,
-                      // Suffixe « #N » dans le titre pour les extras.
-                      titleOverride: section.index == 0
-                          ? null
-                          : '${visitPhotoTagShortLabel(section.baseTag)} '
-                              '#${section.index + 1}',
-                      // Bouton X de fermeture pour les extras seulement
-                      // (les bases ne sont pas supprimables).
-                      onRemove: section.index == 0
-                          ? null
-                          : () => _removeExtraSection(section),
-                    ),
-                  ),
-                // Bouton « Ajouter une partie » — toujours en bout.
-                SizedBox(
-                  width: cellWidth,
-                  child: _buildAddSectionButton(),
-                ),
-              ],
-            );
-          },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rows,
         ),
       ),
     );
@@ -488,54 +505,70 @@ class _PhotosTabState extends State<PhotosTab>
     await _refresh();
   }
 
-  /// Bouton compact pour ajouter une nouvelle section photo. Tap →
-  /// menu de choix entre les 5 catégories (Logement, Accessibilité,
-  /// Sanitaires, Plan avant, Plan après). La catégorie sélectionnée
-  /// est marquée comme « explicitement ajoutée » et apparaît
-  /// immédiatement dans la grille (vide), prête à recevoir une photo
-  /// via tap sur un slot ou drag-drop.
+  /// Bouton « Ajouter une partie » — même style visuel que la zone
+  /// « Déposer un fichier » de l'écran Documents (demande utilisateur
+  /// 2026-05-04 : « sur fond violet clair comme le cadre déposer un
+  /// fichier de documents »). Fond violet pâle, bordure pointillée
+  /// violette, cercle plus + label centré.
+  ///
+  /// Le `Container` ne fixe PAS de hauteur — c'est le parent
+  /// `IntrinsicHeight` (cf. build) qui aligne sa hauteur sur celle
+  /// de la card sœur la plus grande de la même ligne.
   Widget _buildAddSectionButton() {
     return Builder(
-      builder: (ctx) => GestureDetector(
-        onTap: () => _showAddSectionMenu(ctx),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 22, 16, 22),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: const Color(0xFFCBD5E1),
-              width: 1,
+      builder: (ctx) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => _showAddSectionMenu(ctx),
+          child: Container(
+            decoration: BoxDecoration(
+              color: _kPurple.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(16),
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: _kPurpleLight,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  LucideIcons.plus,
-                  size: 22,
-                  color: _kPurple,
+            child: CustomPaint(
+              painter: _PhotoDashedBorderPainter(
+                color: _kPurple.withValues(alpha: 0.8),
+                strokeWidth: 2,
+                radius: 16,
+                dashLength: 8,
+                dashGap: 5,
+              ),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: _kPurple.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          LucideIcons.plus,
+                          size: 26,
+                          color: _kPurple,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Ajouter une partie',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                          color: _kPurple,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'Ajouter une partie',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: _kSlate,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1075,6 +1108,58 @@ class _ExtraSection {
 
   @override
   int get hashCode => Object.hash(baseTag, index);
+}
+
+/// Bordure pointillée autour d'un rectangle arrondi — utilisée par le
+/// bouton « Ajouter une partie » pour matcher la zone « Déposer un
+/// fichier » de DocumentsScreen. Copie locale du painter (pas extrait
+/// dans un composant partagé pour limiter la portée du change).
+class _PhotoDashedBorderPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double radius;
+  final double dashLength;
+  final double dashGap;
+
+  _PhotoDashedBorderPainter({
+    required this.color,
+    required this.strokeWidth,
+    required this.radius,
+    required this.dashLength,
+    required this.dashGap,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+    final rect =
+        Rect.fromLTWH(0, 0, size.width, size.height).deflate(strokeWidth / 2);
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+    final metrics = path.computeMetrics().toList();
+    for (final metric in metrics) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dashLength;
+        canvas.drawPath(
+          metric.extractPath(distance, next.clamp(0, metric.length)),
+          paint,
+        );
+        distance = next + dashGap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PhotoDashedBorderPainter old) =>
+      old.color != color ||
+      old.strokeWidth != strokeWidth ||
+      old.radius != radius ||
+      old.dashLength != dashLength ||
+      old.dashGap != dashGap;
 }
 
 // ---------------------------------------------------------------------------
