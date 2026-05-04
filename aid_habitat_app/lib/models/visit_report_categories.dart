@@ -49,6 +49,15 @@ const String kPhotoTagPlanApres = 'Visite - Plan après';
 /// l'onglet Photos.
 const String kPhotoTagAutres = 'Visite - Autres';
 
+/// Tag MAGIQUE (commence par `__`) — quand présent sur une photo
+/// visite, le générateur PDF n'affiche PAS l'overlay de titre en
+/// haut de la photo dans le rapport (page 8 / pages 9-10). Permet
+/// à l'ergo de masquer ponctuellement le label sur certains clichés
+/// (ex. photo « pure » sans légende voulue) sans perdre le `title`
+/// éditable côté app. Ne pas afficher dans les UIs qui listent les
+/// tags humains (filtré par préfixe `__`).
+const String kPhotoTagPdfNoLabel = '__pdf_no_label';
+
 /// Tous les tags photos visite réunis pour faciliter le filtrage
 /// dans DocumentsScreen et l'onglet Photos. Ordre = ordre des
 /// catégories proposées au choix dans le menu « Ajouter une partie » :

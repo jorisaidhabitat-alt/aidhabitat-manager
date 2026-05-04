@@ -382,12 +382,14 @@ class DataService {
     required String patientId,
     required String filePath,
     List<String> tags = const ['Autre'],
+    String? title,
     int? categoryOrder,
   }) async {
     return _documentRepository.importDocument(
       patientId: patientId,
       sourceFile: File(filePath),
       tags: tags,
+      title: title,
       categoryOrder: categoryOrder,
     );
   }
@@ -442,6 +444,23 @@ class DataService {
       title: title,
       categoryOrder: categoryOrder,
       dossierId: dossierId,
+    );
+  }
+
+  /// Renomme un document et/ou met à jour ses tags. Utilisé par
+  /// l'onglet Photos (dialog plein écran) pour permettre à l'ergo de
+  /// renommer une photo et de toggle le tag `__pdf_no_label` qui
+  /// contrôle l'affichage du label-overlay dans le rapport PDF.
+  /// Synchronisé à NocoDB via le sync engine.
+  Future<void> updateDocumentMetadata({
+    required String documentId,
+    required String title,
+    required List<String> tags,
+  }) async {
+    await _documentRepository.updateDocumentMetadata(
+      documentId: documentId,
+      title: title,
+      tags: tags,
     );
   }
 

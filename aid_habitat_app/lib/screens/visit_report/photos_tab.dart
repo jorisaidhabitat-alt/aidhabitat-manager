@@ -246,13 +246,15 @@ class _PhotosTabState extends State<PhotosTab>
 
   Future<void> _persistPicked(XFile xfile, String categoryTag) async {
     final order = _nextOrderInCategory(categoryTag);
-    final fileName = _buildPhotoFileName(categoryTag, xfile.name);
+    final simpleTitle = _buildSimplePhotoTitle(categoryTag, order);
+    final fileName = _buildPhotoFileName(categoryTag, xfile.name, simpleTitle);
     if (kIsWeb) {
       final bytes = await xfile.readAsBytes();
       final inserted = await _dataService.importDocumentBytes(
         patientId: widget.dossier.patient.id,
         bytes: bytes,
         fileName: fileName,
+        title: simpleTitle,
         tags: [categoryTag],
         categoryOrder: order,
       );
@@ -264,6 +266,7 @@ class _PhotosTabState extends State<PhotosTab>
       final inserted = await _dataService.importDocument(
         patientId: widget.dossier.patient.id,
         filePath: xfile.path,
+        title: simpleTitle,
         tags: [categoryTag],
         categoryOrder: order,
       );
@@ -281,23 +284,44 @@ class _PhotosTabState extends State<PhotosTab>
     await _refresh();
   }
 
-  /// Nom de fichier propre du type
-  /// `visite_logement_20260427_HHMMSS.jpg` — facilite la
-  /// reconnaissance dans NocoDB et Google Drive.
-  String _buildPhotoFileName(String categoryTag, String originalName) {
-    final shortCategory = visitPhotoTagShortLabel(categoryTag)
+  /// Titre humain simple par défaut, type « Logement 1 », « Sanitaires 2 ».
+  /// Demande utilisateur 2026-05-04 : « le nom de base doit être plus
+  /// simple que actuellement ». L'index est dérivé de l'ordre dans la
+  /// catégorie (`order` 0-indexé → affiché 1-indexé). Si la photo est
+  /// déposée dans une section extra (ex. `Visite - Logement (#2)`),
+  /// on utilise le baseTag pour le label — la distinction des
+  /// sections multiples se fait via le titre de section, pas via le
+  /// nom de chaque cliché.
+  String _buildSimplePhotoTitle(String categoryTag, int order) {
+    final base = _parseSectionTag(categoryTag)?.baseTag ?? categoryTag;
+    return '${visitPhotoTagShortLabel(base)} ${order + 1}';
+  }
+
+  /// Nom de fichier propre dérivé du titre humain simple — type
+  /// `Logement 1.jpg`. Facilite la reconnaissance dans NocoDB et
+  /// Google Drive ; les caractères non sûrs (espaces, accents) sont
+  /// remplacés par `_`. L'extension reprend l'original (jpg/png/heic).
+  String _buildPhotoFileName(
+    String categoryTag,
+    String originalName,
+    String simpleTitle,
+  ) {
+    final safe = simpleTitle
         .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]'), '_');
-    final now = DateTime.now();
-    String two(int n) => n.toString().padLeft(2, '0');
-    final stamp =
-        '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
+        // Strip diacritics (é→e, è→e, à→a…) avant le filtre alphanum.
+        .replaceAll(RegExp(r'[àâä]'), 'a')
+        .replaceAll(RegExp(r'[éèêë]'), 'e')
+        .replaceAll(RegExp(r'[îï]'), 'i')
+        .replaceAll(RegExp(r'[ôö]'), 'o')
+        .replaceAll(RegExp(r'[ùûü]'), 'u')
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
     final ext = (() {
       final dot = originalName.lastIndexOf('.');
       if (dot < 0) return 'jpg';
       return originalName.substring(dot + 1).toLowerCase();
     })();
-    return 'visite_${shortCategory}_$stamp.$ext';
+    return '$safe.$ext';
   }
 
   /// Retire les éventuels tags visite et applique [newTag]. Si
