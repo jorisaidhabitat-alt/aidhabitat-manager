@@ -761,38 +761,52 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             },
           ),
           const SizedBox(height: 14),
-          FormToggleGroup(
-            label: 'Création mail',
-            options: const ['Oui', 'Non'],
-            selected: anah['mail'] ?? '',
-            expand: true,
-            onChanged: (v) {
-              final next = Map<String, String>.from(anah);
-              next['mail'] = v;
-              _compteAnah = _serializeAnahData(next);
-              _markChanged();
-            },
-          ),
-          const SizedBox(height: 14),
-          FormToggleGroup(
-            label: 'Création mandat',
-            options: const ['Oui', 'Non'],
-            selected: anah['mandat'] ?? '',
-            expand: true,
-            onChanged: (v) {
-              final next = Map<String, String>.from(anah);
-              next['mandat'] = v;
-              // Si on désélectionne ou répond Non, on purge la
-              // sous-question « par qui » pour éviter une donnée
-              // orpheline (et la pill « Nous/Autre » réapparaîtrait
-              // au prochain Oui sinon).
-              if (v != 'Oui') {
-                next.remove('mandatPar');
-                next.remove('mandatAutre');
-              }
-              _compteAnah = _serializeAnahData(next);
-              _markChanged();
-            },
+          // Création mail + Création mandat côte à côte (demande
+          // utilisateur 2026-05-04) — même pattern que Téléphone+Email.
+          // La sous-question conditionnelle « Mandat fait par » + le
+          // champ texte « Précisez qui » apparaissent sous la rangée,
+          // pleine largeur (cf. bloc `if (mandat == 'Oui')` ci-dessous).
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: FormToggleGroup(
+                  label: 'Création mail',
+                  options: const ['Oui', 'Non'],
+                  selected: anah['mail'] ?? '',
+                  expand: true,
+                  onChanged: (v) {
+                    final next = Map<String, String>.from(anah);
+                    next['mail'] = v;
+                    _compteAnah = _serializeAnahData(next);
+                    _markChanged();
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FormToggleGroup(
+                  label: 'Création mandat',
+                  options: const ['Oui', 'Non'],
+                  selected: anah['mandat'] ?? '',
+                  expand: true,
+                  onChanged: (v) {
+                    final next = Map<String, String>.from(anah);
+                    next['mandat'] = v;
+                    // Si on désélectionne ou répond Non, on purge la
+                    // sous-question « par qui » pour éviter une donnée
+                    // orpheline (et la pill « Nous/Autre » réapparaîtrait
+                    // au prochain Oui sinon).
+                    if (v != 'Oui') {
+                      next.remove('mandatPar');
+                      next.remove('mandatAutre');
+                    }
+                    _compteAnah = _serializeAnahData(next);
+                    _markChanged();
+                  },
+                ),
+              ),
+            ],
           ),
           if ((anah['mandat'] ?? '') == 'Oui') ...[
             const SizedBox(height: 10),
