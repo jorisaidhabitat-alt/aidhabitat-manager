@@ -67,9 +67,21 @@ AccompanimentPalette accompanimentPaletteFor(String raw) {
     );
   }
   if (v == 'complet') {
+    // Teal pastel — sortie du violet `#EDE8F5` historique (demande
+    // utilisateur 2026-05-04 : « pas de violet clair comme le reste de
+    // l'application »). Le violet était partagé avec le fallback
+    // neutre du badge revenu et le fond des avatars sidebar → plus
+    // possible de distinguer un MPA complet du reste de l'UI au
+    // premier coup d'œil. Le teal reste cool/professionnel sans
+    // entrer en collision avec :
+    //   - Diagnostic (rose poudré)
+    //   - Ergo       (vert sauge)
+    //   - ANAH déjà fait (vert pomme)  — saturation différente, vert
+    //                                    moins pastel
+    //   - Income Très modeste (bleu acier) — bleu vs teal distincts
     return const AccompanimentPalette(
-      bg: Color(0xFFEDE8F5),
-      fg: Color(0xFF554A63),
+      bg: Color(0xFFCCEFE8),
+      fg: Color(0xFF1F6F66),
     );
   }
   // Fallback neutre quand le dossier n'a pas (encore) de type

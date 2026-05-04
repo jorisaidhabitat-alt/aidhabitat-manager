@@ -482,7 +482,13 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Titre de section + chevron animé. Tap = toggle expanded.
-          InkWell(
+          // Pas d'effet ripple gris (Material default) qui débordait en
+          // rectangle sans radius par-dessus le coin arrondi de la
+          // section au survol — demande utilisateur 2026-05-04.
+          // `GestureDetector` à la place d'`InkWell` : le tap reste
+          // détecté, mais Flutter ne dessine plus de feedback visuel.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => state.expanded = !state.expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(
