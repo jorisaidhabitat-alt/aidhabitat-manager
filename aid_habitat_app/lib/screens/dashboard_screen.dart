@@ -770,20 +770,30 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
             ),
           ),
           const SizedBox(width: 20),
-          // Bloc date + heure à droite. Heure = pill violette plein
-          // (cohérence avec le panneau "Mes visites du jour"). Affichée
-          // uniquement si la visit_date contient une heure non triviale.
+          // Bloc date à droite — l'horaire est désormais intégré dans
+          // le libellé de la date (« Lundi 4 mai à 14:30 ») au lieu
+          // d'un pill violette séparé en dessous (demande utilisateur
+          // 2026-05-04 : « l'horaire doit être intégré dans la date de
+          // visite pas deux bundles différents »). Si la visit_date
+          // n'a pas d'heure non-triviale, on affiche juste la date.
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                dayLabel,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
-                ),
+              Builder(
+                builder: (_) {
+                  final time = _visitTimeLabel(nv);
+                  final label =
+                      time != null ? '$dayLabel à $time' : dayLabel;
+                  return Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 4),
               Text(
@@ -794,37 +804,6 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                   color: Color(0xFF7C6DAA),
                 ),
               ),
-              if (_visitTimeLabel(nv) != null) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF7C6DAA),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        LucideIcons.clock3,
-                        size: 11,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        _visitTimeLabel(nv)!,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
         ],
