@@ -8,6 +8,7 @@ import '../components/beneficiary_palettes.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
+import '../services/route_service.dart';
 
 /// Dashboard screen aligned with the React web `Dashboard.tsx` layout:
 ///   - Welcome header with user name + today's date
@@ -193,6 +194,8 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 24),
 
           // ---------- Prochaine visite banner (full width) ----------
+          // Avec temps de route depuis Aid'Habitat (16 rue Léo Lagrange,
+          // Chartres-de-Bretagne) — calculé async via OSRM.
           _NextVisitBanner(
             nextVisit: nextVisit,
             onTap: nextVisit == null
@@ -201,46 +204,15 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // ---------- Main grid: recent dossiers + activity chart ----------
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Recent dossiers — matches React `minmax(0, 1.6fr)`.
-                Expanded(
-                  flex: 16,
-                  child: _RecentDossiersPanel(
-                    recent: recent,
-                    onSelect: onSelectDossier,
-                    onSeeAll: onNavigateToDossiers,
-                  ),
-                ),
-                const SizedBox(width: 20),
-                // Activity chart — matches React `minmax(280px, 0.9fr)`.
-                Expanded(
-                  flex: 9,
-                  child: _PanelCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Activité",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Expanded(
-                          child: _ActivityChart(data: activityData),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          // ---------- Mes visites du jour (full width) ----------
+          // Demande utilisateur 2026-05-04 : remplace « Mes rapports en
+          // cours » + « Activité » par une seule section pleine largeur
+          // listant les visites prévues aujourd'hui, avec temps de
+          // trajet entre chaque adresse (1ère = depuis Aid'Habitat).
+          _TodayVisitsPanel(
+            dossiers: dossiers,
+            now: now,
+            onSelect: onSelectDossier,
           ),
         ],
       ),
@@ -551,14 +523,55 @@ class _NextVisit {
   const _NextVisit({required this.dossier, required this.date});
 }
 
-class _NextVisitBanner extends StatelessWidget {
+class _NextVisitBanner extends StatefulWidget {
   final _NextVisit? nextVisit;
   final VoidCallback? onTap;
 
   const _NextVisitBanner({required this.nextVisit, required this.onTap});
 
   @override
+  State<_NextVisitBanner> createState() => _NextVisitBannerState();
+}
+
+class _NextVisitBannerState extends State<_NextVisitBanner> {
+  Duration? _driveTime;
+  String? _routedAddressKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeFetchRoute();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NextVisitBanner old) {
+    super.didUpdateWidget(old);
+    _maybeFetchRoute();
+  }
+
+  void _maybeFetchRoute() {
+    final nv = widget.nextVisit;
+    if (nv == null) return;
+    final addr = DashboardScreen.buildFullAddress(nv.dossier.patient);
+    if (addr.isEmpty) return;
+    if (_routedAddressKey == addr) return;
+    _routedAddressKey = addr;
+    // ignore: discarded_futures
+    RouteService.instance
+        .drivingDurationByAddress(
+          from: kAidHabitatOrigin,
+          toAddress: addr,
+        )
+        .then((d) {
+      if (!mounted) return;
+      setState(() => _driveTime = d);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final nextVisit = widget.nextVisit;
+    final onTap = widget.onTap;
     // Placeholder quand aucune visite n'est planifiée.
     if (nextVisit == null) {
       return _PanelCard(
@@ -712,6 +725,30 @@ class _NextVisitBanner extends StatelessWidget {
                       ),
                     ],
                   ),
+                // Temps de route depuis Aid'Habitat (16 rue Léo Lagrange,
+                // Chartres-de-Bretagne) — demande utilisateur 2026-05-04.
+                if (_driveTime != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.car,
+                        size: 14,
+                        color: Color(0xFF7C6DAA),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${RouteService.formatDuration(_driveTime!)} '
+                        "depuis Aid'Habitat",
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF7C6DAA),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

@@ -9,6 +9,53 @@ import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
 
+/// Catégories pour les 3 menus déroulants de la page « Mes dossiers »
+/// (demande utilisateur 2026-05-04). Chaque dossier tombe dans
+/// exactement une catégorie selon son `status`.
+enum _DossierBucket { visiteAFaire, rapportAFaire, rapportEnvoye }
+
+/// État par section : tri courant + drapeau replié/déroulé. Mutable
+/// (les setState côté écran modifient les champs directement).
+class _BucketState {
+  String sortColumn;
+  bool sortAscending;
+  bool expanded;
+  _BucketState({
+    this.sortColumn = 'name',
+    this.sortAscending = true,
+    this.expanded = true,
+  });
+}
+
+/// Mapping bucket → libellé affiché en titre de section.
+String _bucketTitle(_DossierBucket b) {
+  switch (b) {
+    case _DossierBucket.visiteAFaire:
+      return 'Visite à faire';
+    case _DossierBucket.rapportAFaire:
+      return 'Rapport à faire';
+    case _DossierBucket.rapportEnvoye:
+      return 'Rapport envoyé';
+  }
+}
+
+/// Détermine si le dossier appartient à la section donnée :
+///   • TO_VISIT             → Visite à faire
+///   • VISITED              → Rapport à faire (visite réalisée mais
+///                            rapport pas encore envoyé)
+///   • IN_PROGRESS et au-delà → Rapport envoyé (rapport diffusé,
+///                              dossier dans le pipeline ANAH)
+bool _matchesBucket(Dossier d, _DossierBucket b) {
+  switch (b) {
+    case _DossierBucket.visiteAFaire:
+      return d.status == DossierStatus.TO_VISIT;
+    case _DossierBucket.rapportAFaire:
+      return d.status == DossierStatus.VISITED;
+    case _DossierBucket.rapportEnvoye:
+      return d.status.index >= DossierStatus.IN_PROGRESS.index;
+  }
+}
+
 class DossiersListScreen extends StatefulWidget {
   final List<Dossier> dossiers;
   final Function(Dossier) onSelectDossier;
@@ -30,16 +77,24 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   StreamSubscription<ReferencesPayload>? _refsSub;
 
   String _searchTerm = '';
-  // Tri : `_sortColumn` est l'identifiant de colonne (name, commune,
-  // revenus, epci, date) et `_sortAscending` la direction. Demande
-  // utilisateur 2026-05-04 : chaque entête de colonne est cliquable —
-  // 1er clic = tri ascendant (descendant pour la date qui se lit
-  // "récent → ancien"), 2e clic = inverse. Default = name asc, comme
-  // avant le ré-aménagement.
-  String _sortColumn = 'name';
-  bool _sortAscending = true;
   String? _selectedEpciId; // null = no filter
   String _selectedEpciLabel = 'Communauté de commune';
+
+  // Trois sections collapsibles avec chacune leur propre tri (colonne +
+  // direction) et leur propre état déroulé/replié. Demande utilisateur
+  // 2026-05-04 : « 3 menus déroulants avec chacun ces propres titres
+  // qui font l'ordre ». Catégorisation par status :
+  //   • Visite à faire   = TO_VISIT
+  //   • Rapport à faire  = VISITED (visite réalisée, rapport pas encore
+  //                        envoyé / pas encore passé en IN_PROGRESS)
+  //   • Rapport envoyé   = IN_PROGRESS et au-delà (En cours, Attente
+  //                        devis, Subvention validée, Travaux, Clôturé,
+  //                        Archivé). Tous les statuts post-rapport.
+  final Map<_DossierBucket, _BucketState> _bucketStates = {
+    _DossierBucket.visiteAFaire: _BucketState(),
+    _DossierBucket.rapportAFaire: _BucketState(),
+    _DossierBucket.rapportEnvoye: _BucketState(),
+  };
 
   @override
   void initState() {
@@ -88,8 +143,12 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   /// EPCI id for filter matching.
   String _epciIdFor(Dossier d) => _communeFor(d)?.epciId ?? '';
 
-  List<Dossier> get _filteredDossiers {
+  /// Filtre + tri pour UNE section. Le filtre (search + EPCI) reste
+  /// global (s'applique aux 3 sections). Le tri est par bucket — chaque
+  /// section maintient sa colonne + direction indépendamment.
+  List<Dossier> _dossiersForBucket(_DossierBucket bucket) {
     List<Dossier> filtered = widget.dossiers.where((d) {
+      if (!_matchesBucket(d, bucket)) return false;
       // EPCI filter (only active when user picked a specific one).
       if (_selectedEpciId != null) {
         if (_epciIdFor(d) != _selectedEpciId) return false;
@@ -102,19 +161,14 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       return haystack.contains(term);
     }).toList();
 
-    // Comparators par colonne. On capture les valeurs dans une closure
-    // qui retourne -1/0/+1 (Comparator<Dossier>). Le sens (`asc`/`desc`)
-    // est appliqué EN APRÈS via un `* (asc ? 1 : -1)` — évite de
-    // dupliquer la logique de comparaison.
+    final state = _bucketStates[bucket]!;
     int Function(Dossier, Dossier) cmp;
-    switch (_sortColumn) {
+    switch (state.sortColumn) {
       case 'commune':
         cmp = (a, b) =>
             a.patient.city.toLowerCase().compareTo(b.patient.city.toLowerCase());
         break;
       case 'revenus':
-        // Tri numérique sur le RFR si dispo, sinon alphabétique sur la
-        // catégorie ANAH (Très modeste / Modeste / Intermédiaire / Haut).
         cmp = (a, b) {
           final ar = a.patient.fiscalRevenue ?? 0;
           final br = b.patient.fiscalRevenue ?? 0;
@@ -131,9 +185,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             _epciFor(a).toLowerCase().compareTo(_epciFor(b).toLowerCase());
         break;
       case 'date':
-        // Date de visite : ergo veut "récent → ancien" par défaut, donc
-        // ascending=false signifie ici tri du plus récent au plus
-        // ancien. Les dossiers sans date sont relégués à la fin.
         cmp = (a, b) {
           final ad = a.visitDate;
           final bd = b.visitDate;
@@ -149,9 +200,8 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             .toLowerCase()
             .compareTo(b.patient.lastName.toLowerCase());
     }
-    final direction = _sortAscending ? 1 : -1;
+    final direction = state.sortAscending ? 1 : -1;
     filtered.sort((a, b) => cmp(a, b) * direction);
-
     return filtered;
   }
 
@@ -159,29 +209,17 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   /// Si nouvelle colonne, on attaque en ascendant pour les colonnes
   /// texte (A→Z, plus pauvre→plus riche) et en DESCENDANT pour la date
   /// (le plus récent en premier — convention visite à domicile).
-  void _onHeaderTap(String column) {
+  /// Scoped au bucket → seule la section touchée se ré-trie.
+  void _onHeaderTap(_DossierBucket bucket, String column) {
+    final state = _bucketStates[bucket]!;
     setState(() {
-      if (_sortColumn == column) {
-        _sortAscending = !_sortAscending;
+      if (state.sortColumn == column) {
+        state.sortAscending = !state.sortAscending;
       } else {
-        _sortColumn = column;
-        _sortAscending = column != 'date'; // date démarre desc (récent → ancien)
+        state.sortColumn = column;
+        state.sortAscending = column != 'date';
       }
     });
-  }
-
-  String get _sortLabel {
-    // Labels génériques pour le pill « Tri » du toolbar : décrit la
-    // colonne ET la direction courantes.
-    final colLabel = switch (_sortColumn) {
-      'commune' => 'Commune',
-      'revenus' => 'Revenus',
-      'epci' => 'Communauté',
-      'date' => 'Date',
-      _ => 'Nom',
-    };
-    final dirLabel = _sortAscending ? '↑' : '↓';
-    return '$colLabel $dirLabel';
   }
 
   /// Returns the FULL list of EPCIs ("communautés de commune") from the
@@ -363,71 +401,171 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
               children: [
                 Expanded(child: _buildSearchField()),
                 const SizedBox(width: 12),
-                _buildSortPill(),
-                const SizedBox(width: 12),
                 _buildEpciPill(),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
-          // ─── Tableau : en-tête de colonnes figé + corps scrollable.
+          // ─── 3 sections collapsibles, chacune avec son propre tri.
+          // Demande utilisateur 2026-05-04 : « 3 menus déroulants avec
+          // chacun ces propres titres qui font l'ordre ». Le pill global
+          // « Tri » a été retiré — les en-têtes de colonnes par section
+          // remplissent désormais ce rôle individuellement.
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
+            child: SingleChildScrollView(
               child: Column(
                 children: [
-                  _buildTableHeader(),
+                  _buildBucketSection(_DossierBucket.visiteAFaire),
+                  const SizedBox(height: 12),
+                  _buildBucketSection(_DossierBucket.rapportAFaire),
+                  const SizedBox(height: 12),
+                  _buildBucketSection(_DossierBucket.rapportEnvoye),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Section collapsible (3 buckets : Visite à faire / Rapport à faire /
+  // Rapport envoyé). Chaque section a son propre tri + son propre état
+  // déroulé/replié, animés via AnimatedSize + AnimatedRotation.
+  // ---------------------------------------------------------------------------
+
+  Widget _buildBucketSection(_DossierBucket bucket) {
+    final state = _bucketStates[bucket]!;
+    final dossiers = _dossiersForBucket(bucket);
+    final title = _bucketTitle(bucket);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Titre de section + chevron animé. Tap = toggle expanded.
+          InkWell(
+            onTap: () => setState(() => state.expanded = !state.expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 24, vertical: 16),
+              child: Row(
+                children: [
                   Expanded(
-                    // SoftSwitcher avec key dépendant du tuple (column,
-                    // direction) → chaque clic d'en-tête change la key,
-                    // l'AnimatedSwitcher détecte un nouveau child et
-                    // joue le fade + slide 8 px déjà utilisé pour les
-                    // transitions de pages dans l'app (cf.
-                    // `soft_transitions.dart`). Demande utilisateur
-                    // 2026-05-04 : « animation d'apparition des
-                    // dossiers comme les autres animations
-                    // d'apparition quand on change de page ». La clé
-                    // ignore le terme de recherche et le filtre EPCI
-                    // pour ne pas re-animer à chaque keystroke (sinon
-                    // la liste sauterait pendant que l'ergo tape).
-                    child: SoftSwitcher(
-                      child: KeyedSubtree(
-                        key: ValueKey<String>(
-                          'sort:$_sortColumn:${_sortAscending ? 'a' : 'd'}',
+                    child: Row(
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
+                          ),
                         ),
-                        child: _filteredDossiers.isEmpty
-                            ? _buildEmptyState()
-                            : ListView.separated(
-                                padding: EdgeInsets.zero,
-                                itemCount: _filteredDossiers.length,
-                                separatorBuilder: (_, __) => Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  color: Colors.grey.shade100,
-                                ),
-                                itemBuilder: (context, index) {
-                                  final dossier = _filteredDossiers[index];
-                                  return _buildTableRow(dossier);
-                                },
-                              ),
-                      ),
+                        const SizedBox(width: 10),
+                        // Badge compteur (style discret slate-100).
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '${dossiers.length}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: state.expanded ? 0.5 : 0,
+                    duration: kSoftMedium,
+                    curve: kSoftCurve,
+                    child: const Icon(
+                      Icons.expand_more,
+                      color: Color(0xFF64748B),
+                      size: 24,
                     ),
                   ),
                 ],
               ),
             ),
+          ),
+          // Contenu animé : `AnimatedSize` collapse la hauteur quand
+          // replié, `SoftSwitcher` rejoue le fade+slide 8 px à chaque
+          // changement de tri (parité avec les transitions de pages).
+          AnimatedSize(
+            duration: kSoftMedium,
+            curve: kSoftCurve,
+            alignment: Alignment.topCenter,
+            child: state.expanded
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        height: 1,
+                        color: const Color(0xFFEEEEF2),
+                      ),
+                      _buildTableHeader(bucket),
+                      SoftSwitcher(
+                        fillParent: false,
+                        child: KeyedSubtree(
+                          key: ValueKey<String>(
+                            '${bucket.name}:${state.sortColumn}:${state.sortAscending ? 'a' : 'd'}',
+                          ),
+                          child: dossiers.isEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 24, vertical: 24),
+                                  child: Text(
+                                    'Aucun dossier dans cette catégorie.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  padding: EdgeInsets.zero,
+                                  shrinkWrap: true,
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  itemCount: dossiers.length,
+                                  separatorBuilder: (_, __) => Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: Colors.grey.shade100,
+                                  ),
+                                  itemBuilder: (context, index) =>
+                                      _buildTableRow(dossiers[index]),
+                                ),
+                        ),
+                      ),
+                    ],
+                  )
+                : const SizedBox(
+                    width: double.infinity,
+                    height: 0,
+                  ),
           ),
         ],
       ),
@@ -498,58 +636,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     );
   }
 
-  Widget _buildSortPill() {
-    // Pill « Tri » : permet de sélectionner ALL la colonne ET la
-    // direction depuis un menu unique. Ergonomie alternative aux taps
-    // directs sur les en-têtes de colonnes — utile sur écran étroit où
-    // tout l'en-tête n'est pas visible.
-    return PopupMenuButton<String>(
-      tooltip: '',
-      onSelected: (value) {
-        setState(() {
-          // value = "<column>:<asc|desc>"
-          final parts = value.split(':');
-          _sortColumn = parts[0];
-          _sortAscending = parts[1] == 'asc';
-        });
-      },
-      color: Colors.white,
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: Row(
-          children: [
-            Text(
-              _sortLabel,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(width: 8),
-            const Icon(LucideIcons.chevronDown, size: 20),
-          ],
-        ),
-      ),
-      itemBuilder: (context) => const [
-        PopupMenuItem(value: 'name:asc', child: Text('Nom — de A à Z')),
-        PopupMenuItem(value: 'name:desc', child: Text('Nom — de Z à A')),
-        PopupMenuItem(value: 'commune:asc', child: Text('Commune — A à Z')),
-        PopupMenuItem(value: 'commune:desc', child: Text('Commune — Z à A')),
-        PopupMenuItem(value: 'revenus:asc', child: Text('Revenus — croissant')),
-        PopupMenuItem(value: 'revenus:desc', child: Text('Revenus — décroissant')),
-        PopupMenuItem(value: 'epci:asc', child: Text('Communauté — A à Z')),
-        PopupMenuItem(value: 'epci:desc', child: Text('Communauté — Z à A')),
-        PopupMenuItem(value: 'date:desc', child: Text('Date — du plus récent')),
-        PopupMenuItem(value: 'date:asc', child: Text('Date — du plus ancien')),
-      ],
-    );
-  }
-
   Widget _buildEpciPill() {
     return InkWell(
       key: _epciTriggerKey,
@@ -602,7 +688,10 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   static const int _flexEpci = 4;
   static const int _flexDate = 2;
 
-  Widget _buildTableHeader() {
+  /// En-tête de colonnes pour UNE section. Le tap sur une colonne sort
+  /// uniquement les dossiers de cette section (pas les autres) — chaque
+  /// bucket conserve son propre tri.
+  Widget _buildTableHeader(_DossierBucket bucket) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       // Fond plus clair que le scaffold global (#F7F7FA) pour que la
@@ -614,24 +703,25 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
           // BÉNÉFICIAIRE inclut l'avatar rond — prévoir la même
           // réserve que dans la rangée (48 + 16 = 64 px). Cellule sans
           // tri (juste l'avatar).
-          SizedBox(width: 64, child: _headerCell('', column: null)),
+          SizedBox(
+              width: 64, child: _headerCell(bucket, '', column: null)),
           Expanded(
               flex: _flexBeneficiary,
-              child: _headerCell('BÉNÉFICIAIRE', column: 'name')),
+              child: _headerCell(bucket, 'BÉNÉFICIAIRE', column: 'name')),
           Expanded(
               flex: _flexCommune,
-              child: _headerCell('COMMUNE', column: 'commune')),
+              child: _headerCell(bucket, 'COMMUNE', column: 'commune')),
           Expanded(
               flex: _flexRevenus,
-              child: _headerCell('REVENUS', column: 'revenus')),
+              child: _headerCell(bucket, 'REVENUS', column: 'revenus')),
           Expanded(
             flex: _flexEpci,
-            child: _headerCell('COMMUNAUTÉ DE COMMUNE', column: 'epci'),
+            child: _headerCell(bucket, 'COMMUNAUTÉ DE COMMUNE',
+                column: 'epci'),
           ),
-          // Date alignée à droite (parité avec la cellule de la rangée).
           Expanded(
             flex: _flexDate,
-            child: _headerCell('DATE DE VISITE',
+            child: _headerCell(bucket, 'DATE DE VISITE',
                 column: 'date', alignRight: true),
           ),
           const SizedBox(width: 32), // espace pour le chevron des rangées
@@ -640,16 +730,19 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     );
   }
 
-  /// Cellule d'en-tête de colonne. Si [column] est non-null, le tap
-  /// déclenche `_onHeaderTap(column)` (1er clic = trie ascendant ;
-  /// 2e clic sur la même colonne = inverse). Une flèche ▲ / ▼
-  /// apparaît à côté du titre quand cette colonne est active, pour
-  /// que l'ergo voie immédiatement le sens de tri courant.
-  Widget _headerCell(String text, {String? column, bool alignRight = false}) {
-    final isActive = column != null && _sortColumn == column;
+  /// Cellule d'en-tête de colonne pour le bucket donné. Si [column] est
+  /// non-null, le tap déclenche `_onHeaderTap(bucket, column)` — 1er
+  /// clic = ascendant, 2e clic = inverse. Une flèche ▲ / ▼ apparaît
+  /// à côté du titre actif, lue depuis l'état du bucket.
+  Widget _headerCell(_DossierBucket bucket, String text,
+      {String? column, bool alignRight = false}) {
+    final state = _bucketStates[bucket]!;
+    final isActive = column != null && state.sortColumn == column;
     final indicator = isActive
         ? Icon(
-            _sortAscending ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+            state.sortAscending
+                ? Icons.arrow_drop_up
+                : Icons.arrow_drop_down,
             size: 18,
             color: const Color(0xFF7C6DAA),
           )
@@ -664,12 +757,10 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.6,
-        // Active : violet (cohérent avec la flèche). Inactif : gris.
         color: isActive ? const Color(0xFF7C6DAA) : const Color(0xFF94A3B8),
       ),
     );
 
-    // Cellule muette (avatar) → simple texte vide.
     if (column == null) return textWidget;
 
     final content = Row(
@@ -677,8 +768,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
           alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Quand alignée à droite, la flèche est À GAUCHE du texte (sinon
-        // elle déborderait dans l'espace réservé au chevron de rangée).
         if (alignRight && indicator != null) indicator,
         Flexible(child: textWidget),
         if (!alignRight && indicator != null) indicator,
@@ -686,7 +775,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     );
 
     return InkWell(
-      onTap: () => _onHeaderTap(column),
+      onTap: () => _onHeaderTap(bucket, column),
       borderRadius: BorderRadius.circular(6),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
