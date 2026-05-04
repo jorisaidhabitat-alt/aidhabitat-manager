@@ -110,10 +110,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     'Accessibilité',
     'Salle de bain',
     'WC',
-    // Onglet « Photos » inséré entre WC et Préconisations : flow
-    // d'observation (SDB/WC) → capture (Photos) → analyse
-    // (Préconisations) → dessin (Plans). Alimente la page 8 du
-    // rapport PDF (« Photos du logement »).
+    // Plans déplacé juste après WC (demande utilisateur 2026-05-04) :
+    // l'ergo dessine les plans du logement immédiatement après
+    // l'inspection des sanitaires, avant de passer aux photos puis
+    // aux préconisations.
+    'Plans',
+    // Onglet « Photos » : flow d'observation (SDB/WC) → dessin (Plans)
+    // → capture (Photos) → analyse (Préconisations). Alimente la
+    // page 8 du rapport PDF (« Photos du logement »).
     'Photos',
     // L'onglet « Préconisations » a fusionné l'ancien onglet
     // « Observations » (cf. demande utilisateur 2026-04-28) : le projet
@@ -122,7 +126,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // descendue dans la sous-section Équipements de l'onglet
     // Accessibilité. Alimente toujours les pages 6 et 7 du PDF.
     'Préconisations',
-    'Plans',
   ];
 
   /// Sous-sections de chaque onglet. Le panneau notes à droite affiche
