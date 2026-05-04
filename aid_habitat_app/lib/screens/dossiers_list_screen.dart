@@ -40,19 +40,44 @@ String _bucketTitle(_DossierBucket b) {
 }
 
 /// Détermine si le dossier appartient à la section donnée :
-///   • TO_VISIT             → Visite à faire
-///   • VISITED              → Rapport à faire (visite réalisée mais
-///                            rapport pas encore envoyé)
-///   • IN_PROGRESS et au-delà → Rapport envoyé (rapport diffusé,
-///                              dossier dans le pipeline ANAH)
+///   • TO_VISIT avec date à venir (ou aucune date) → Visite à faire
+///   • TO_VISIT avec date PASSÉE                   → Rapport à faire
+///     (demande utilisateur 2026-05-04 : si la date de visite est
+///     dépassée, la visite a manifestement eu lieu — sinon l'ergo
+///     l'aurait reportée — donc on bascule automatiquement en
+///     "Rapport à faire" sans attendre que le statut soit changé
+///     manuellement à VISITED.)
+///   • VISITED                                     → Rapport à faire
+///   • IN_PROGRESS et au-delà                      → Rapport envoyé
 bool _matchesBucket(Dossier d, _DossierBucket b) {
+  final visitInPast = _isVisitInPast(d);
   switch (b) {
     case _DossierBucket.visiteAFaire:
-      return d.status == DossierStatus.TO_VISIT;
+      return d.status == DossierStatus.TO_VISIT && !visitInPast;
     case _DossierBucket.rapportAFaire:
-      return d.status == DossierStatus.VISITED;
+      return d.status == DossierStatus.VISITED ||
+          (d.status == DossierStatus.TO_VISIT && visitInPast);
     case _DossierBucket.rapportEnvoye:
       return d.status.index >= DossierStatus.IN_PROGRESS.index;
+  }
+}
+
+/// Vrai si la date de visite du dossier est strictement antérieure à
+/// aujourd'hui (comparaison sur la date civile, pas l'heure — un
+/// dossier dont la visite est prévue aujourd'hui reste en "Visite à
+/// faire" jusqu'à minuit). Tolère une date absente ou mal formatée
+/// (renvoie false dans ces cas — on ne bascule pas par défaut).
+bool _isVisitInPast(Dossier d) {
+  final raw = d.visitDate;
+  if (raw == null || raw.trim().isEmpty) return false;
+  try {
+    final dt = DateTime.parse(raw);
+    final today = DateTime.now();
+    final dtDay = DateTime(dt.year, dt.month, dt.day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    return dtDay.isBefore(todayDay);
+  } catch (_) {
+    return false;
   }
 }
 
