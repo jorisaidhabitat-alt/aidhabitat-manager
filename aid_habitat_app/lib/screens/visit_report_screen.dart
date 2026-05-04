@@ -89,6 +89,16 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   // les flags à chaque changement de page via `onMedicalFlagsChanged`).
   Set<int> _medicalFlagNumbers = <int>{};
 
+  // Page courante de la note "Contexte de vie > Médical" (1-indexed).
+  // Demande utilisateur 2026-05-04 : « il doit y avoir simplement les 3
+  // pages déjà présentes avec une avec le numéro 1, une avec le 2 et
+  // une avec le 3, cela ne change pas en fonction des éléments cochés à
+  // gauche et cela ne doit pas être remis à chaque changement de page ».
+  // → On affiche désormais UN SEUL badge égal au numéro de page (fixe
+  // par page), au lieu d'un badge composite dérivé des flags cochés à
+  // gauche. Cf. `_MedicalPageNumberBadge` plus bas.
+  int _medicalCurrentPage = 1;
+
   /// True quand le bouton « Générer le rapport » est en cours d'appel.
   /// Affiche un spinner et bloque les double-taps.
   bool _isGeneratingReport = false;
@@ -612,8 +622,26 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   fillParentHeight: true,
                   allowPagination: true,
                   stackedCards: true,
+                  // Médical : 3 pages fixes, chaque page affiche son
+                  // numéro (1/2/3) en background. Plus aucun couplage
+                  // avec les checkboxes à gauche (Pathologie / Suivi /
+                  // Sensoriel) — celles-ci gardent leur état interne via
+                  // `medicalFlags` mais ne pilotent plus l'overlay.
+                  // Cf. `_MedicalPageNumberBadge` + `_medicalCurrentPage`
+                  // (demande utilisateur 2026-05-04).
+                  totalPages: isMedical ? 3 : 1,
                   backgroundContent: isMedical
-                      ? _MedicalFlagBadges(flags: _medicalFlagNumbers)
+                      ? _MedicalPageNumberBadge(
+                          currentPage: _medicalCurrentPage,
+                        )
+                      : null,
+                  onPageChange: isMedical
+                      ? (page) {
+                          // `page` est 0-indexé côté NotesWidget, on le
+                          // convertit en 1-indexé pour l'affichage.
+                          if (!mounted) return;
+                          setState(() => _medicalCurrentPage = page + 1);
+                        }
                       : null,
                   medicalFlags: isMedical ? _medicalFlagNumbers : null,
                   onMedicalFlagsChanged:
@@ -2060,74 +2088,11 @@ class _NotesPanelLayer extends StatelessWidget {
   }
 }
 
-/// Marqueurs numérotés sur le canvas de la note "Contexte de vie >
-/// Médical". Format : `N -` en noir gras, taille 28. Positionnés
-/// en colonne à gauche — les slots se remplissent de HAUT EN BAS selon
-/// l'ordre des flags actifs (pas leur numéro) :
-///   • 1 flag actif   → top
-///   • 2 flags actifs → top + middle
-///   • 3 flags actifs → top + middle + bottom
-/// Donc cocher uniquement le 3 l'affiche EN HAUT ; cocher 2 et 3 met
-/// le 2 en haut et le 3 au milieu ; cocher les 3 remplit les 3 slots.
-class _MedicalFlagBadges extends StatelessWidget {
-  const _MedicalFlagBadges({required this.flags});
-  final Set<int> flags;
-
-  @override
-  Widget build(BuildContext context) {
-    if (flags.isEmpty) return const SizedBox.shrink();
-    final sorted = flags.toList()..sort();
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        const leftPad = 16.0;
-        const topPad = 12.0;
-        const bottomPad = 12.0;
-        return Stack(
-          children: [
-            for (var i = 0; i < sorted.length; i++)
-              Positioned(
-                left: leftPad,
-                top: _slotTopFor(
-                  index: i,
-                  total: sorted.length,
-                  canvasHeight: constraints.maxHeight,
-                  topPad: topPad,
-                  bottomPad: bottomPad,
-                ),
-                child: _FlagMarker(number: sorted[i]),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Pour un [total] de flags actifs, retourne le `top:` absolu du slot
-  /// d'index [index] (0 = haut, total-1 = bas).
-  /// - total == 1 : un seul slot en haut
-  /// - total == 2 : haut + milieu
-  /// - total == 3 : haut + milieu + bas
-  double _slotTopFor({
-    required int index,
-    required int total,
-    required double canvasHeight,
-    required double topPad,
-    required double bottomPad,
-  }) {
-    if (total <= 1) return topPad;
-    const markerApproxHeight = 30.0; // ~ fontSize 28 + descenders
-    final topSlot = topPad;
-    final middleSlot = (canvasHeight / 2) - (markerApproxHeight / 2);
-    final bottomSlot = canvasHeight - bottomPad - markerApproxHeight;
-    if (total == 2) {
-      return index == 0 ? topSlot : middleSlot;
-    }
-    // total == 3
-    if (index == 0) return topSlot;
-    if (index == 1) return middleSlot;
-    return bottomSlot;
-  }
-}
+// `_MedicalFlagBadges` retiré le 2026-05-04 — remplacé par
+// `_MedicalPageNumberBadge` (badge unique = numéro de page courant).
+// L'ancienne logique « slots haut/milieu/bas selon les flags cochés à
+// gauche » créait une re-disposition à chaque changement de page que
+// l'utilisateur ressentait comme une « remise à zéro ».
 
 class _FlagMarker extends StatelessWidget {
   const _FlagMarker({required this.number});
@@ -2143,6 +2108,41 @@ class _FlagMarker extends StatelessWidget {
         color: Colors.black,
         height: 1.0,
       ),
+    );
+  }
+}
+
+/// Badge unique « N - » affiché en arrière-plan du canvas de la note
+/// "Contexte de vie > Médical". `N` est égal au numéro de page courant
+/// (1, 2 ou 3) — fixe par page, indépendant des cases cochées à gauche
+/// (Pathologie / Suivi / Sensoriel).
+///
+/// Demande utilisateur 2026-05-04 : « il doit y avoir simplement les 3
+/// pages déjà présentes avec une avec le numéro 1, une avec le 2 et
+/// une avec le 3, cela ne change pas en fonction des éléments cochés à
+/// gauche et cela ne doit pas être remis à chaque changement de page ».
+///
+/// Avant : `_MedicalFlagBadges` empilait jusqu'à 3 badges (haut/milieu/bas)
+/// dérivés du Set de flags cochés. À chaque changement de page, le Set
+/// était relu depuis `drawing_json` → l'overlay se reconfigurait — d'où
+/// la sensation de « remise à zéro » signalée. Désormais : un seul badge
+/// posé en haut-gauche, qui suit purement le `currentPage`.
+class _MedicalPageNumberBadge extends StatelessWidget {
+  const _MedicalPageNumberBadge({required this.currentPage});
+
+  /// Numéro de page 1-indexé (1, 2 ou 3).
+  final int currentPage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned(
+          left: 16,
+          top: 12,
+          child: _FlagMarker(number: currentPage),
+        ),
+      ],
     );
   }
 }
