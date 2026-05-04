@@ -9,6 +9,7 @@ import '../services/multi_window_stub.dart'
 // Web-only : BroadcastChannel IPC + persistance frame en localStorage.
 import '../services/note_window_web_stub.dart'
     if (dart.library.html) '../services/note_window_web.dart' as note_window_web;
+import '../components/notes_widget.dart';
 
 /// Dedicated MaterialApp shown in a SECONDARY OS window (launched via
 /// `DesktopMultiWindow.createWindow`). Hosts a single full-screen note
@@ -454,10 +455,10 @@ class NoteWindowDrawingScreen extends StatelessWidget {
   }
 }
 
-/// NotesWidget canvas instancié à part pour pouvoir importer
-/// `notes_widget.dart` uniquement dans la branche drawing — évite
-/// d'alourdir le bundle de la fenêtre détachée mode text qui n'utilise
-/// pas le canvas.
+/// NotesWidget canvas pleine page pour la fenêtre détachée Résumé.
+/// Toolset advanced + freeform + pagination (jusqu'à `maxPages = 20`
+/// par défaut). Persistance via DataService.saveNoteDrawingJson →
+/// IndexedDB partagé avec la fenêtre principale.
 class _DrawingCanvasNote extends StatelessWidget {
   final String patientId;
   final String tabKey;
@@ -469,6 +470,23 @@ class _DrawingCanvasNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _DrawingCanvasNoteImpl(patientId: patientId, tabKey: tabKey);
+    return NotesWidget(
+      key: ValueKey('window-canvas-$patientId-$tabKey'),
+      patientId: patientId,
+      tabKey: tabKey,
+      title: 'Résumé',
+      subtitle: 'Notes libres pour préparer les préconisations.',
+      toolset: NoteToolset.advanced,
+      mode: NoteCanvasMode.freeform,
+      allowPagination: true,
+      showText: false,
+      // Pas de bouton agrandir dans la fenêtre détachée elle-même
+      // (on est déjà dans la fenêtre détachée — pas besoin d'un autre
+      // niveau d'expansion).
+      allowTextModal: false,
+      showSaveButton: false,
+      fillParentHeight: true,
+      embedded: false,
+    );
   }
 }

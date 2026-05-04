@@ -839,49 +839,64 @@ class _PhotosTabState extends State<PhotosTab>
   /// existantes + slots gris vides (jusqu'à maxSlots). Le tap sur un
   /// slot vide ouvre la galerie ; le drop sur un slot vide importe ou
   /// re-tagge la photo dragguée.
+  ///
+  /// Implémentation 2026-05-04 : `Row + Expanded` (au lieu de
+  /// `LayoutBuilder + Wrap`) — `IntrinsicHeight` côté parent ne peut
+  /// pas calculer les hauteurs intrinsèques d'un sous-arbre contenant
+  /// un `LayoutBuilder` (rendu blanc). En cassant chaque rangée de 3
+  /// avec `Expanded` + `AspectRatio`, on garde le même résultat
+  /// visuel sans dépendre des constraints du parent.
   Widget _buildSlotsGrid({
     required String tag,
     required List<DocItem> photos,
     required int maxSlots,
   }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 6.0;
-        final tileWidth = (constraints.maxWidth - 2 * spacing) / 3;
-        // Nombre total d'emplacements visibles : au moins maxSlots, et
-        // au moins le nombre de photos existantes (au cas où l'ergo a
-        // dépassé la capacité — mode « surplus »).
-        final totalSlots =
-            photos.length > maxSlots ? photos.length : maxSlots;
-        final children = <Widget>[];
-        for (var i = 0; i < totalSlots; i++) {
-          if (i < photos.length) {
-            // Slot occupé — tile photo existante.
-            children.add(SizedBox(
-              width: tileWidth,
-              child: _buildOccupiedSlot(
-                tag: tag,
-                photos: photos,
-                index: i,
-              ),
-            ));
-          } else {
-            // Slot vide — gris, tappable + DragTarget.
-            children.add(SizedBox(
-              width: tileWidth,
-              child: AspectRatio(
-                aspectRatio: 1.0,
-                child: _buildEmptySlot(tag: tag),
-              ),
-            ));
-          }
+    const spacing = 6.0;
+    // Nombre total d'emplacements visibles : au moins maxSlots, et
+    // au moins le nombre de photos existantes (mode « surplus »).
+    final totalSlots =
+        photos.length > maxSlots ? photos.length : maxSlots;
+    final cells = <Widget>[];
+    for (var i = 0; i < totalSlots; i++) {
+      if (i < photos.length) {
+        cells.add(_buildOccupiedSlot(
+          tag: tag,
+          photos: photos,
+          index: i,
+        ));
+      } else {
+        cells.add(AspectRatio(
+          aspectRatio: 1.0,
+          child: _buildEmptySlot(tag: tag),
+        ));
+      }
+    }
+    // Découpe en rangées de 3 cellules max — chaque rangée utilise
+    // `Row + Expanded` pour répartir 1/3, 1/3, 1/3.
+    final rows = <Widget>[];
+    for (var i = 0; i < cells.length; i += 3) {
+      final rowChildren = <Widget>[];
+      for (var j = 0; j < 3; j++) {
+        if (j > 0) {
+          rowChildren.add(const SizedBox(width: spacing));
         }
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: children,
-        );
-      },
+        if (i + j < cells.length) {
+          rowChildren.add(Expanded(child: cells[i + j]));
+        } else {
+          // Cellule vide pour conserver la largeur 1/3 quand la
+          // dernière rangée est incomplète.
+          rowChildren.add(const Expanded(child: SizedBox.shrink()));
+        }
+      }
+      if (i > 0) rows.add(const SizedBox(height: spacing));
+      rows.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: rowChildren,
+      ));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
     );
   }
 

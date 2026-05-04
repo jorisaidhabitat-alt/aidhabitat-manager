@@ -16,11 +16,26 @@ class AccessibilityTab extends StatefulWidget {
   final DossierRepository repository;
   final VoidCallback? onHousingChanged;
 
+  /// Sous-section affichée à l'ouverture du tab. Permet à
+  /// `visit_report_screen.dart > _navigateToMissingField` de pointer
+  /// directement sur la sous-section qui contient le champ vide
+  /// (ex. "Niveaux" pour un manque de logement). Si null, on garde
+  /// la sous-section précédemment affichée OU 0 (Général) au 1er
+  /// chargement.
+  final int? initialSubSection;
+
+  /// Callback notifié à chaque tap d'onglet interne — visit_report_screen
+  /// l'utilise pour mettre à jour son cache `_activeSubsectionByTab`
+  /// (sync avec d'autres surfaces, ex. panneau notes latéral).
+  final ValueChanged<int>? onSubSectionChanged;
+
   const AccessibilityTab({
     super.key,
     required this.dossier,
     required this.repository,
     this.onHousingChanged,
+    this.initialSubSection,
+    this.onSubSectionChanged,
   });
 
   @override
@@ -271,7 +286,33 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   @override
   void initState() {
     super.initState();
+    // Honore la sous-section initiale demandée par le parent (utile
+    // pour que « Remplir les champs » dans la popup de validation
+    // pointe directement sur la bonne sous-section, pas seulement
+    // sur l'onglet — bug rapporté 2026-05-04).
+    final initial = widget.initialSubSection;
+    if (initial != null && initial >= 0 && initial < 4) {
+      _subSection = initial;
+    }
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant AccessibilityTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Quand le parent change `initialSubSection` (programmatic nav
+    // depuis _navigateToMissingField), on bascule la sous-section
+    // courante. Filtre par `oldWidget.initialSubSection !=
+    // widget.initialSubSection` pour ne pas écraser le tap manuel
+    // de l'utilisateur lors d'un rebuild banal du parent.
+    final next = widget.initialSubSection;
+    if (next != null &&
+        next != oldWidget.initialSubSection &&
+        next >= 0 &&
+        next < 4 &&
+        next != _subSection) {
+      setState(() => _subSection = next);
+    }
   }
 
   @override
