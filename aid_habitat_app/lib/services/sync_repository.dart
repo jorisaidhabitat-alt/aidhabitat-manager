@@ -511,6 +511,29 @@ class SyncRepository {
     return rows.first['remote_patient_id'] as String?;
   }
 
+  /// Look up the remote dossier id (`uuid_source` NocoDB) for a given
+  /// local dossier id (`local_*`). Renvoie `null` si le dossier n'a
+  /// pas encore été synchronisé côté serveur (créé offline mais
+  /// `dossier:create` pas encore complété). Utilisé par
+  /// `_processDossierOperation` (update branch) pour traduire le
+  /// `local_*` en `uuid_source` avant le PUT — sinon le serveur reçoit
+  /// un id qu'il ne reconnaît pas et renvoie 404 → "Load failed"
+  /// côté iPad PWA (rapporté 2026-05-04).
+  Future<String?> resolveRemoteDossierId(String dossierLocalId) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'dossiers',
+      columns: ['remote_dossier_id'],
+      where: 'local_id = ?',
+      whereArgs: [dossierLocalId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final remoteId = rows.first['remote_dossier_id'] as String?;
+    if (remoteId == null || remoteId.isEmpty) return null;
+    return remoteId;
+  }
+
   /// Delete completed sync operations older than [maxAge] to prevent
   /// unbounded SQLite growth. Safe to call periodically.
   Future<int> purgeCompleted({

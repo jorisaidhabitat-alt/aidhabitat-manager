@@ -890,7 +890,26 @@ class NocodbSyncService {
       if (dossierId == null || dossierId.isEmpty || updates == null) {
         throw Exception('Payload dossier incomplet');
       }
-      await _apiClient.updateDossier(dossierId: dossierId, updates: updates);
+      // Si le `dossierId` est un local_* (= dossier créé offline et
+      // pas encore poussé côté serveur), on tente de résoudre le
+      // remote_dossier_id (`uuid_source` NocoDB) depuis SQLite. Sans
+      // ça, le serveur reçoit `local_…` qu'il ne reconnaît pas et
+      // renvoie 404 → "Load failed" côté iPad. Si la résolution
+      // échoue (= la création n'a vraiment jamais abouti), on lève
+      // une exception transitoire pour que l'op soit retry au
+      // prochain cycle (la création a probablement réussi entre-temps).
+      String urlDossierId = dossierId;
+      if (dossierId.startsWith('local_')) {
+        final remote = await _syncRepository.resolveRemoteDossierId(dossierId);
+        if (remote != null && remote.isNotEmpty) {
+          urlDossierId = remote;
+        } else {
+          throw TransientRemoteException(
+            'Dossier $dossierId pas encore synchronisé — retry au prochain cycle',
+          );
+        }
+      }
+      await _apiClient.updateDossier(dossierId: urlDossierId, updates: updates);
       return;
     }
 

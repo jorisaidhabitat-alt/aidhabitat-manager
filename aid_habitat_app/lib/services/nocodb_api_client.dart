@@ -175,11 +175,16 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
 
+    // Timeout étendu à 60s : l'endpoint serveur exécute un queryAll
+    // TABLES.dossiers (scan complet) + canAccess + updateRecord. Sur
+    // un cold start Vercel + une base avec beaucoup de dossiers, le
+    // 20s par défaut produit un "Load failed" prématuré côté iPad
+    // PWA (rapporté 2026-05-04 — toggle « Création mandat »).
     final response = await _client.patch(
       Uri.parse('$_baseUrl/api/dossiers/$dossierId'),
       headers: _headers,
       body: jsonEncode(updates),
-    ).timeout(_defaultTimeout);
+    ).timeout(const Duration(seconds: 60));
 
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
@@ -217,13 +222,17 @@ class NocodbApiClient {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
+    // Timeout 60s (vs 20s default) — l'endpoint serveur fait plusieurs
+    // queryAll (références communes/EPCI/caisses/situations…) avant
+    // de pouvoir mapper les updates. Sur cold start + base bien
+    // peuplée → >20s observé en prod (rapporté 2026-05-04).
     final response = await _client
         .patch(
           Uri.parse('$_baseUrl/api/beneficiaires/$patientId'),
           headers: _headers,
           body: jsonEncode(updates),
         )
-        .timeout(_defaultTimeout);
+        .timeout(const Duration(seconds: 60));
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
       try {
