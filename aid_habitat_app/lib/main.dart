@@ -59,6 +59,8 @@ Future<void> main(List<String> args) async {
       tabKey: payload['tabKey'] as String,
       title: payload['title'] as String? ?? 'Note',
       initialText: payload['initialText'] as String? ?? '',
+      // 'text' (défaut) ou 'drawing' (cf. NoteWindowApp).
+      mode: payload['mode'] as String? ?? 'text',
     ));
     return;
   }
@@ -74,17 +76,24 @@ Future<void> main(List<String> args) async {
   if (kIsWeb) {
     final params = note_window_web.readUrlNoteParams();
     if (params['note_window'] == '1') {
-      // Boot ULTRA léger pour la fenêtre détachée :
-      //   - PAS de DataService.initialize (sync engine, refresh remote…)
-      //     qui ferait tourner un 2ème worker sync en parallèle de la
-      //     fenêtre principale → ops dupliquées contre NocoDB.
-      //   - PAS de databaseFactory : on n'écrit pas en SQLite ici. La
-      //     persistance passe par IPC BroadcastChannel → la fenêtre
-      //     principale fait le SQLite write + l'enqueue NocoDB
-      //     (cf. `_persistNoteText` côté visit_report_screen.dart).
-      // Le note_window est volontairement « stupide » : un éditeur de
-      // texte qui broadcast chaque keystroke et reçoit des updates
-      // depuis la fenêtre principale — rien d'autre.
+      final mode = params['mode'] ?? 'text';
+      // Boot léger pour la fenêtre détachée :
+      //   - mode='text' (défaut) : aucune init SQLite, persistance via
+      //     IPC BroadcastChannel → la fenêtre principale fait le write
+      //     SQLite + enqueue NocoDB. La 2e fenêtre n'est qu'un éditeur
+      //     de texte qui broadcast chaque keystroke. Pas de SyncEngine
+      //     duplicate, pas de double push NocoDB.
+      //
+      //   - mode='drawing' (Résumé canvas — demande utilisateur
+      //     2026-05-04) : init databaseFactory pour que NotesWidget
+      //     puisse appeler DataService.fetch/saveNoteDrawingJson
+      //     directement. IndexedDB est partagé même origin → la
+      //     fenêtre principale voit les changements au prochain reload
+      //     du dossier. PAS d'init SyncEngine ici (la fenêtre
+      //     principale s'occupe du push NocoDB au switch d'onglet).
+      if (mode == 'drawing') {
+        databaseFactory = databaseFactoryFfiWebNoWebWorker;
+      }
       await initializeDateFormatting('fr_FR', null);
       runApp(NoteWindowApp(
         // windowId : 0 sur web — on n'utilise pas DesktopMultiWindow.
@@ -94,6 +103,7 @@ Future<void> main(List<String> args) async {
         tabKey: params['tabKey'] ?? '',
         title: params['title'] ?? 'Note',
         initialText: params['initialText'] ?? '',
+        mode: mode,
       ));
       return;
     }

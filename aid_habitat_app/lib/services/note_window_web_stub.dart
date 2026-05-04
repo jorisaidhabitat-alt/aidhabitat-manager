@@ -14,6 +14,7 @@ bool tryOpenNoteWindow({
   required String initialText,
   required double defaultWidth,
   required double defaultHeight,
+  String mode = 'text',
 }) =>
     false;
 

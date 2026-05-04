@@ -31,6 +31,13 @@ class NoteWindowApp extends StatelessWidget {
   final String title;
   final String initialText;
 
+  /// 'text' (défaut, comportement historique : TextField synchronisé
+  /// par IPC avec la fenêtre principale) ou 'drawing' (canvas plein
+  /// écran avec pagination, persistance directe dans IndexedDB partagé
+  /// — démarré uniquement pour le canvas Résumé du relevé de visite,
+  /// demande utilisateur 2026-05-04).
+  final String mode;
+
   const NoteWindowApp({
     super.key,
     required this.windowId,
@@ -38,6 +45,7 @@ class NoteWindowApp extends StatelessWidget {
     required this.tabKey,
     required this.title,
     required this.initialText,
+    this.mode = 'text',
   });
 
   @override
@@ -53,13 +61,20 @@ class NoteWindowApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: NoteWindowScreen(
-        windowId: windowId,
-        patientId: patientId,
-        tabKey: tabKey,
-        title: title,
-        initialText: initialText,
-      ),
+      home: mode == 'drawing'
+          ? NoteWindowDrawingScreen(
+              windowId: windowId,
+              patientId: patientId,
+              tabKey: tabKey,
+              title: title,
+            )
+          : NoteWindowScreen(
+              windowId: windowId,
+              patientId: patientId,
+              tabKey: tabKey,
+              title: title,
+              initialText: initialText,
+            ),
     );
   }
 }
@@ -365,4 +380,95 @@ class _ResizeHintPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ResizeHintPainter oldDelegate) => false;
+}
+
+/// Variante drawing de [NoteWindowScreen] — canvas pleine page avec
+/// pagination, sans IPC stroke. Démarrée par [NoteWindowApp] quand
+/// `mode == 'drawing'` (cf. branche dans `main.dart` qui init aussi
+/// `databaseFactoryFfiWebNoWebWorker` pour que NotesWidget puisse
+/// lire/écrire le drawing JSON via DataService → SQLite WASM →
+/// IndexedDB partagé avec la fenêtre principale).
+///
+/// Demande utilisateur 2026-05-04 : seule note format dessin du VAD
+/// pouvant s'agrandir dans une 2e fenêtre browser. Voir summary_tab.dart
+/// (callback `onExpandToTab`) et visit_report_screen.dart
+/// (`_openDrawingNoteInSeparateWindow`).
+class NoteWindowDrawingScreen extends StatelessWidget {
+  final int windowId;
+  final String patientId;
+  final String tabKey;
+  final String title;
+
+  const NoteWindowDrawingScreen({
+    super.key,
+    required this.windowId,
+    required this.patientId,
+    required this.tabKey,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isWebPopup = kIsWeb;
+    return Scaffold(
+      body: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.fromLTRB(isWebPopup ? 16 : 82, 6, 14, 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade200),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF334155),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Canvas pleine page — même setup que SummaryTab (toolset
+          // advanced, freeform, allowPagination, fillParentHeight).
+          // Pas de `onExpandToTab` ici (on EST dans la fenêtre détachée
+          // déjà — pas besoin d'un 2e bouton agrandir).
+          Expanded(
+            child: _DrawingCanvasNote(
+              key: ValueKey('window-drawing-$patientId-$tabKey'),
+              patientId: patientId,
+              tabKey: tabKey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// NotesWidget canvas instancié à part pour pouvoir importer
+/// `notes_widget.dart` uniquement dans la branche drawing — évite
+/// d'alourdir le bundle de la fenêtre détachée mode text qui n'utilise
+/// pas le canvas.
+class _DrawingCanvasNote extends StatelessWidget {
+  final String patientId;
+  final String tabKey;
+  const _DrawingCanvasNote({
+    super.key,
+    required this.patientId,
+    required this.tabKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _DrawingCanvasNoteImpl(patientId: patientId, tabKey: tabKey);
+  }
 }

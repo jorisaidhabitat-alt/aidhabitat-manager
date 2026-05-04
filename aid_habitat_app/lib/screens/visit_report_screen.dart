@@ -613,6 +613,70 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       ..show();
   }
 
+  /// Variante drawing de [_openNoteInSeparateWindow] — utilisée
+  /// uniquement pour le canvas pleine page de l'onglet Résumé
+  /// (demande utilisateur 2026-05-04 : seule note dessin VAD à pouvoir
+  /// s'agrandir dans une fenêtre browser détachée). La 2e fenêtre
+  /// rendra un NotesWidget canvas (toolset advanced + freeform +
+  /// pagination) au lieu du TextField text-only — cf. branche
+  /// `mode == 'drawing'` côté `note_window_screen.dart`.
+  ///
+  /// Persistance : pas d'IPC pour les strokes (volume trop élevé). La
+  /// 2e fenêtre lit/écrit directement dans l'IndexedDB partagé via une
+  /// init minimale de databaseFactory + DataService (sans SyncEngine).
+  /// La fenêtre principale voit les changements au prochain reload du
+  /// dossier (ou au switch d'onglet, qui re-fetch les notes).
+  Future<void> _openDrawingNoteInSeparateWindow(String sourceTab) async {
+    final patientId = _dossier.patient.id;
+
+    if (kIsWeb) {
+      final size = _VisitReportStateCache.lastNoteWindowSize;
+      final opened = note_window_web.tryOpenNoteWindow(
+        patientId: patientId,
+        tabKey: sourceTab,
+        title: 'Résumé — dessin',
+        // initialText vide : en mode drawing on ne charge pas de texte
+        // (la 2e fenêtre lit le drawing JSON directement depuis SQLite).
+        initialText: '',
+        defaultWidth: size.width,
+        defaultHeight: size.height,
+        mode: 'drawing',
+      );
+      if (!opened) {
+        // Pas de fallback modal pour le moment : le mode drawing en
+        // popup browser est la seule cible supportée (Mac desktop).
+        // Sur iPad PWA (touchscreen détecté) → on ne fait rien, l'ergo
+        // continue d'éditer dans le canvas inline.
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Agrandissement disponible uniquement sur navigateur '
+              'desktop (Mac/PC). Sur iPad, utilisez le canvas inline.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Native macOS — passe par DesktopMultiWindow comme la version texte.
+    final payload = jsonEncode({
+      'patientId': patientId,
+      'tabKey': sourceTab,
+      'title': 'Résumé — dessin',
+      'initialText': '',
+      'mode': 'drawing',
+    });
+    final window = await DesktopMultiWindow.createWindow(payload);
+    final origin = _VisitReportStateCache.lastNoteWindowOrigin
+        ?? const Offset(200, 200);
+    window
+      ..setFrame(origin & _VisitReportStateCache.lastNoteWindowSize)
+      ..setTitle('Résumé — dessin')
+      ..show();
+  }
+
   /// Bumps the housing version to trigger a re-derivation of Salle de
   /// bain / WC instances from the fresh Accessibilité selections.
   void _notifyHousingChanged() {
@@ -1978,10 +2042,16 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         ),
         // Onglet Résumé — split de l'ancien Préconisations (2026-05-04).
         // Cadres Projet/Résumé en haut + canvas pleine page (style
-        // Mesures, sans image de fond) en dessous.
+        // Mesures, sans image de fond) en dessous. Le canvas supporte
+        // pagination + agrandissement dans une 2e fenêtre browser
+        // (mode drawing — cf. _openDrawingNoteInSeparateWindow).
         _wrapTabWithNotes(
           'Résumé',
-          SummaryTab(dossier: _dossier),
+          SummaryTab(
+            dossier: _dossier,
+            onExpandToTab: () =>
+                _openDrawingNoteInSeparateWindow('Résumé'),
+          ),
         ),
         _wrapTabWithNotes(
           'Préconisations',

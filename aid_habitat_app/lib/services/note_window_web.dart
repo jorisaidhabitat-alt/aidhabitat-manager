@@ -63,6 +63,15 @@ bool tryOpenNoteWindow({
   required String initialText,
   required double defaultWidth,
   required double defaultHeight,
+  /// Mode d'édition de la fenêtre détachée :
+  ///   - 'text' (défaut) → TextField simple, sync via IPC sur chaque
+  ///     keystroke. La fenêtre principale écrit en SQLite.
+  ///   - 'drawing' → NotesWidget canvas (toolset advanced + freeform +
+  ///     pagination). La 2e fenêtre init databaseFactory + DataService
+  ///     pour écrire directement dans l'IndexedDB partagé. Pas d'IPC
+  ///     stroke (volume trop élevé). Demande utilisateur 2026-05-04 :
+  ///     uniquement pour l'onglet Résumé du relevé de visite.
+  String mode = 'text',
 }) {
   if (!isDesktopBrowser()) return false;
 
@@ -89,6 +98,9 @@ bool tryOpenNoteWindow({
     // initialText peut être long — on le passe quand même via URL pour
     // éviter une race avec le bootstrap. Encoded via Uri.encodeComponent.
     'initialText': initialText,
+    // 'text' (défaut) ou 'drawing' (cf. NoteWindowApp). Lu côté
+    // main.dart dans la branche `kIsWeb`.
+    'mode': mode,
   };
   final query = params.entries
       .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
