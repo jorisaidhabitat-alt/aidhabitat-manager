@@ -1926,6 +1926,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             housingRefreshToken: _housingVersion,
           ),
         ),
+        // Plans déplacé juste après WC (demande utilisateur 2026-05-04) —
+        // doit rester aligné avec l'ordre déclaré dans `_tabs`.
+        _wrapTabWithNotes(
+          'Plans',
+          PlansTab(dossier: _dossier),
+        ),
         // Onglet Photos — pleine largeur (pas de notes latérales).
         // Voir `lib/screens/visit_report/photos_tab.dart`.
         _wrapTabWithNotes(
@@ -1935,10 +1941,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         _wrapTabWithNotes(
           'Préconisations',
           RecommendationsTab(dossier: _dossier, repository: _repository),
-        ),
-        _wrapTabWithNotes(
-          'Plans',
-          PlansTab(dossier: _dossier),
         ),
       ],
     );
