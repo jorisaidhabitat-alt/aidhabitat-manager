@@ -1076,52 +1076,56 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
   /// Lance les requêtes de géocodage + routing pour chaque segment du
   /// jour. Re-déclenché uniquement quand la liste des visites change
   /// (clé d'empreinte = liste d'IDs).
+  ///
+  /// Implémentation 2026-05-04 (fix race condition critique) :
+  /// la chaîne est résolue STRICTEMENT en SÉQUENTIEL — `await` chaque
+  /// géocodage avant de passer au dossier suivant pour que le
+  /// `previous` GeoPoint soit bien à jour. Avant : la boucle for
+  /// synchrone lançait `_resolveSegment` avec `previous = kAidHabitatOrigin`
+  /// puis tentait de mettre à jour `previous` dans un `.then()` qui
+  /// se déclenchait BIEN APRÈS l'iteration suivante → trajets 2 et 3
+  /// systématiquement calculés depuis le bureau au lieu de la visite
+  /// précédente.
   void _maybeFetchSegments() {
     final visits = _todayVisits;
     final key = visits.map((d) => d.id).join('|');
     if (key == _routedKey) return;
     _routedKey = key;
-    GeoPoint previous = kAidHabitatOrigin;
-    for (final dossier in visits) {
-      final addr = DashboardScreen.buildFullAddress(dossier.patient);
-      if (addr.isEmpty) {
-        _segmentDurations[dossier.id] = null;
-        continue;
-      }
-      // Capture `previous` dans le scope async — on attend chaque
-      // géocodage avant de passer au suivant pour calculer chaque
-      // segment depuis le point précédent.
-      _resolveSegment(
-        dossierId: dossier.id,
-        from: previous,
-        toAddress: addr,
-      );
-      // Pour estimer le `previous` du segment suivant, on peut
-      // pré-géocoder l'adresse courante en parallèle. Le résultat sera
-      // mis en cache par `RouteService.geocode` donc le `_resolveSegment`
-      // suivant le retrouvera sans coût.
-      // ignore: discarded_futures
-      RouteService.instance.geocode(addr).then((g) {
-        if (g != null) {
-          previous = g;
-        }
-      });
-    }
+    // ignore: discarded_futures
+    _runFetchChain(visits);
   }
 
-  Future<void> _resolveSegment({
-    required String dossierId,
-    required GeoPoint from,
-    required String toAddress,
-  }) async {
-    final to = await RouteService.instance.geocode(toAddress);
-    if (!mounted || to == null) {
-      if (mounted) setState(() => _segmentDurations[dossierId] = null);
-      return;
+  Future<void> _runFetchChain(List<Dossier> visits) async {
+    GeoPoint previous = kAidHabitatOrigin;
+    for (final dossier in visits) {
+      if (!mounted) return;
+      final addr = DashboardScreen.buildFullAddress(dossier.patient);
+      if (addr.isEmpty) {
+        setState(() => _segmentDurations[dossier.id] = null);
+        continue;
+      }
+      // 1) Géocode la destination de ce segment.
+      final to = await RouteService.instance.geocode(addr);
+      if (!mounted) return;
+      if (to == null) {
+        setState(() => _segmentDurations[dossier.id] = null);
+        // Pas de `previous = to` car to est null — le segment suivant
+        // partira du `previous` toujours valide (la dernière visite
+        // géocodée avec succès, ou Aid'Habitat).
+        continue;
+      }
+      // 2) Calcule le trajet depuis `previous` (séquentiel : si le
+      // dossier d'avant a été résolu, `previous` pointe sur SA
+      // destination, pas sur Aid'Habitat).
+      final d =
+          await RouteService.instance.drivingDuration(previous, to);
+      if (!mounted) return;
+      setState(() => _segmentDurations[dossier.id] = d);
+      // 3) Avance le pointeur seulement APRÈS le calcul du segment —
+      // garantit que la mise à jour est observable par l'iteration
+      // suivante (pas de capture par référence asynchrone).
+      previous = to;
     }
-    final d = await RouteService.instance.drivingDuration(from, to);
-    if (!mounted) return;
-    setState(() => _segmentDurations[dossierId] = d);
   }
 
   /// Extrait l'heure (HH:mm) d'une visit_date ISO 8601 si renseignée.

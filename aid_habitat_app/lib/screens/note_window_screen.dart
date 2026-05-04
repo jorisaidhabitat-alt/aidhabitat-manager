@@ -144,8 +144,17 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
 
     // Periodically report our current size to the main window so the
     // next popup opens with the same dimensions.
-    _sizeReportTimer =
-        Timer.periodic(const Duration(seconds: 1), (_) => _reportSize());
+    //
+    // Intervalle 5s (vs 1s avant — fix audit 2026-05-04) :
+    // `_reportSize` lui-même short-circuite si la size n'a pas changé,
+    // donc 1s amenait 3600 round-trips IPC + 3600 écritures
+    // localStorage par heure pour rien. 5s reste assez réactif pour
+    // que la prochaine ouverture de la popup retrouve la dernière
+    // dimension utilisée (l'ergo ne resize jamais 5 fois en 5s).
+    _sizeReportTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _reportSize(),
+    );
   }
 
   @override

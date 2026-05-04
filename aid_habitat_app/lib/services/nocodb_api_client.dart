@@ -175,16 +175,27 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
 
-    // Timeout étendu à 60s : l'endpoint serveur exécute un queryAll
-    // TABLES.dossiers (scan complet) + canAccess + updateRecord. Sur
-    // un cold start Vercel + une base avec beaucoup de dossiers, le
-    // 20s par défaut produit un "Load failed" prématuré côté iPad
-    // PWA (rapporté 2026-05-04 — toggle « Création mandat »).
-    final response = await _client.patch(
-      Uri.parse('$_baseUrl/api/dossiers/$dossierId'),
-      headers: _headers,
-      body: jsonEncode(updates),
-    ).timeout(const Duration(seconds: 60));
+    // Wrappé dans `_runWithTransientGuard` : Safari iOS / iPad PWA
+    // émet régulièrement une `http.ClientException: Load failed` sur
+    // les hoquets réseau (cellulaire qui flap, mise en veille du
+    // navigateur, cold start Vercel un peu long…). Sans le guard, ces
+    // erreurs étaient remontées à l'UI en bandeau rouge "Synchronisation
+    // en échec" alors qu'elles auraient dû être rejouées silencieusement.
+    // Avec le guard, ClientException → TransientRemoteException → l'op
+    // reste en queue, retry au prochain cycle (rapporté 2026-05-04 —
+    // toggle « Création mandat » bloqué malgré le serveur fonctionnel).
+    //
+    // Timeout aussi étendu à 60s : cold start Vercel + queryAll
+    // TABLES.dossiers + updateRecord peut atteindre 25-40s sur une
+    // base bien peuplée.
+    final response = await _runWithTransientGuard(
+      'Remote dossier update',
+      () => _client.patch(
+        Uri.parse('$_baseUrl/api/dossiers/$dossierId'),
+        headers: _headers,
+        body: jsonEncode(updates),
+      ).timeout(const Duration(seconds: 60)),
+    );
 
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
@@ -222,17 +233,23 @@ class NocodbApiClient {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
+    // Wrappé dans `_runWithTransientGuard` (cf. updateDossier) — les
+    // ClientException "Load failed" iPad sont reclassées en transitoires
+    // et rejouées silencieusement au prochain cycle de sync.
+    //
     // Timeout 60s (vs 20s default) — l'endpoint serveur fait plusieurs
     // queryAll (références communes/EPCI/caisses/situations…) avant
-    // de pouvoir mapper les updates. Sur cold start + base bien
-    // peuplée → >20s observé en prod (rapporté 2026-05-04).
-    final response = await _client
-        .patch(
-          Uri.parse('$_baseUrl/api/beneficiaires/$patientId'),
-          headers: _headers,
-          body: jsonEncode(updates),
-        )
-        .timeout(const Duration(seconds: 60));
+    // de pouvoir mapper les updates.
+    final response = await _runWithTransientGuard(
+      'Remote beneficiary update',
+      () => _client
+          .patch(
+            Uri.parse('$_baseUrl/api/beneficiaires/$patientId'),
+            headers: _headers,
+            body: jsonEncode(updates),
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
       try {
@@ -434,16 +451,21 @@ class NocodbApiClient {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
-    final response = await _client
-        .put(
-          Uri.parse('$_baseUrl/api/diagnostic-sanitaires/$dossierId'),
-          headers: _headers,
-          body: jsonEncode({
-            'sdbInstances': sdbInstances,
-            'wcInstances': wcInstances,
-          }),
-        )
-        .timeout(_defaultTimeout);
+    // Wrappé dans `_runWithTransientGuard` (cf. updateDossier) — les
+    // ClientException "Load failed" iPad sont reclassées en transitoires.
+    final response = await _runWithTransientGuard(
+      'Remote diagnostic sanitaires update',
+      () => _client
+          .put(
+            Uri.parse('$_baseUrl/api/diagnostic-sanitaires/$dossierId'),
+            headers: _headers,
+            body: jsonEncode({
+              'sdbInstances': sdbInstances,
+              'wcInstances': wcInstances,
+            }),
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
       try {
@@ -479,13 +501,18 @@ class NocodbApiClient {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
-    final response = await _client
-        .put(
-          Uri.parse('$_baseUrl/api/visit-recommendations/$dossierId'),
-          headers: _headers,
-          body: jsonEncode({'items': items}),
-        )
-        .timeout(const Duration(seconds: 60));
+    // Wrappé dans `_runWithTransientGuard` (cf. updateDossier) — les
+    // ClientException "Load failed" iPad sont reclassées en transitoires.
+    final response = await _runWithTransientGuard(
+      'Remote visit recommendations update',
+      () => _client
+          .put(
+            Uri.parse('$_baseUrl/api/visit-recommendations/$dossierId'),
+            headers: _headers,
+            body: jsonEncode({'items': items}),
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
       try {
