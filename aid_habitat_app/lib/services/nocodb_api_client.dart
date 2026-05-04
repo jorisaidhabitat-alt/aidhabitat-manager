@@ -457,6 +457,12 @@ class NocodbApiClient {
   /// wiki library entry (server-side validation).
   ///
   /// Idem [updateBeneficiary] : sur 409 on lève [ConflictException].
+  ///
+  /// Timeout étendu à 60s (vs 20s default) — l'endpoint serveur exécute
+  /// N delete + N create sur NocoDB. Même parallélisé, un cold start
+  /// Vercel + un NocoDB un peu lent peut atteindre 15-25s. Le 20s du
+  /// default produisait un "Load failed" prématuré côté iPad PWA
+  /// (rapporté 2026-05-04).
   Future<void> updateVisitRecommendations({
     required String dossierId,
     required List<Map<String, dynamic>> items,
@@ -470,7 +476,7 @@ class NocodbApiClient {
           headers: _headers,
           body: jsonEncode({'items': items}),
         )
-        .timeout(_defaultTimeout);
+        .timeout(const Duration(seconds: 60));
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
       try {

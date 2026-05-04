@@ -6281,32 +6281,42 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
         where: `(dossier_id,eq,${JSON.stringify(String(dossierId))})`,
       });
 
-      for (const record of existingRecords) {
+      // Suppression en LOT (un seul appel NocoDB) au lieu d'un appel
+      // par record. Avant ce fix, une liste de 10 anciennes préco
+      // déclenchait 10 round-trips séquentiels — sur iPad PWA, le
+      // browser hit le timeout 20s côté client avant que le serveur
+      // finisse, d'où le "Load failed" rapporté 2026-05-04.
+      if (existingRecords.length > 0) {
         await callNocoTool('deleteRecords', {
           tableId,
-          records: [{ id: String(record.id) }],
+          records: existingRecords.map((record) => ({ id: String(record.id) })),
         });
       }
 
-      for (const item of normalizedItems) {
-        await createRecord(tableId, {
-          uuid_source: item.id,
-          dossier_id: metadata.dossierId,
-          beneficiaire_id: metadata.patientId,
-          beneficiaire_prenom: metadata.patientFirstName || null,
-          beneficiaire_nom: metadata.patientLastName || null,
-          beneficiaire_nom_complet: metadata.patientDisplayName || null,
-          dossier_libelle: metadata.dossierLabel || null,
-          wiki_item_id: item.wikiItemId,
-          wiki_title: item.wikiTitle || null,
-          wiki_image_url: item.wikiImageUrl || null,
-          wiki_tag: item.wikiTag || null,
-          custom_title: item.customTitle || null,
-          note: item.note || null,
-          created_at: item.createdAt,
-          updated_at: item.updatedAt,
-        });
-      }
+      // Créations EN PARALLÈLE — chaque createRecord est indépendant
+      // (uuid_source unique, pas de FK croisée). Promise.all transforme
+      // une boucle 10×500ms (= 5s) en ~500ms.
+      await Promise.all(
+        normalizedItems.map((item) =>
+          createRecord(tableId, {
+            uuid_source: item.id,
+            dossier_id: metadata.dossierId,
+            beneficiaire_id: metadata.patientId,
+            beneficiaire_prenom: metadata.patientFirstName || null,
+            beneficiaire_nom: metadata.patientLastName || null,
+            beneficiaire_nom_complet: metadata.patientDisplayName || null,
+            dossier_libelle: metadata.dossierLabel || null,
+            wiki_item_id: item.wikiItemId,
+            wiki_title: item.wikiTitle || null,
+            wiki_image_url: item.wikiImageUrl || null,
+            wiki_tag: item.wikiTag || null,
+            custom_title: item.customTitle || null,
+            note: item.note || null,
+            created_at: item.createdAt,
+            updated_at: item.updatedAt,
+          }),
+        ),
+      );
     } else {
       const store = await readVisitRecommendationsStore();
       store.dossiers[dossierId] = {
