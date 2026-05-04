@@ -2466,11 +2466,55 @@ const getDossiersForApp = async (appUser) => {
     return createDossier(beneficiaryRecord, appBeneficiaryId, dossierRecord, housingRecord, contextRecord, infoRecord);
   });
 
-  const filtered = appUser?.role === 'ADMIN'
-    ? mapped
-    : mapped.filter((dossier) => stringValue(dossier.ergoId).trim() === stringValue(appUser?.ergoLabel).trim());
+  // Filtrage scope-based (parité avec Flutter `auth_service.filterDossiersForUser`).
+  // Avant : filtre simple `dossier.ergoId === appUser.ergoLabel` → divergence
+  // entre serveur et client en cas de scopes `dossier_id` (accès dossier
+  // unique) ou `dossier_ergo` (accès tout-ergo) — l'app pouvait afficher
+  // localement un dossier que le serveur refusait silencieusement au push,
+  // ou inversement (audit critique 2026-05-04).
+  const filtered = filterDossiersByScopes(mapped, appUser);
 
   return filtered.sort((a, b) => a.patient.lastName.localeCompare(b.patient.lastName) || a.patient.firstName.localeCompare(b.patient.firstName));
+};
+
+/**
+ * Filtre une liste de dossiers selon les scopes du membre — mirroir
+ * de `auth_service.dart::filterDossiersForUser` côté Flutter.
+ *
+ * Règles :
+ *   1. ADMIN ou wildcard (`dossier_access=*`) → accès total
+ *   2. Sinon : dossier visible si
+ *      - son `id` est dans la liste des scopes `dossier_id`, OU
+ *      - son `ergoId` est dans la liste des scopes `dossier_ergo`, OU
+ *      - aucun scope explicite n'est posé ET `ergoId === ergoLabel`
+ *        du membre (fallback historique).
+ */
+const filterDossiersByScopes = (dossiers, appUser) => {
+  if (!appUser) return [];
+  const scopes = buildLocalAccessScopes(appUser);
+  const isWildcard = scopes.some(
+    (s) => s.type === 'dossier_access' && s.value === '*',
+  );
+  if (appUser.role === 'ADMIN' || isWildcard) return dossiers;
+
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const dossierIds = new Set(
+    scopes.filter((s) => s.type === 'dossier_id').map((s) => norm(s.value)),
+  );
+  const dossierErgos = new Set(
+    scopes.filter((s) => s.type === 'dossier_ergo').map((s) => norm(s.value)),
+  );
+  const expectedErgo = norm(appUser.ergoLabel);
+
+  return dossiers.filter((dossier) => {
+    const dossierId = norm(dossier.id);
+    const ergoId = norm(dossier.ergoId);
+    if (dossierIds.has(dossierId) || dossierErgos.has(ergoId)) return true;
+    if (dossierIds.size === 0 && dossierErgos.size === 0 && expectedErgo) {
+      return ergoId === expectedErgo;
+    }
+    return false;
+  });
 };
 
 const ensureDossierRecord = async (dossierIdOrTemp) => {
