@@ -3924,6 +3924,16 @@ const fetchVisitPhotosForPatient = async (patientId) => {
   const photos = [];
 
   // 1) Nouvelle source : mobile_visit_photos
+  //
+  // ⚠️ Filtre crucial (2026-05-04) : on n'inclut que les rows AVEC
+  // un `contenu_base64` non vide. Le pipeline d'upload Flutter
+  // (`photos_tab.dart` → `importDocumentBytes`) cible TOUJOURS
+  // `mobile_documents` ; `mobile_visit_photos` ne se peuple que via
+  // une migration post-coup qui a laissé certains rows en STUB
+  // (UUID + métadonnées, mais 0 byte de contenu). Avant ce fix, les
+  // stubs étaient quand même listés comme source primaire et la dédup
+  // par `clientDocumentId` (étape 2 plus bas) masquait ensuite la vraie
+  // photo dans `mobile_documents` → le slot du PDF restait vide.
   try {
     const records = await queryAll(TABLES.visitPhotos, {
       fields: [
@@ -3935,13 +3945,23 @@ const fetchVisitPhotosForPatient = async (patientId) => {
         'mime_type',
         'categorie',
         'category_order',
+        'contenu_base64',
         'created_at1',
         'updated_at1',
       ],
     });
-    const matching = records.filter(
-      (r) => String(field(r, 'beneficiaire_id') || '') === String(patientId),
-    );
+    const matching = records.filter((r) => {
+      if (String(field(r, 'beneficiaire_id') || '') !== String(patientId)) {
+        return false;
+      }
+      const inline = stringValue(field(r, 'contenu_base64')).trim();
+      // Si pas de contenu inline → row de migration stub, on l'ignore
+      // pour laisser le fallback `mobile_documents` (étape 2) prendre
+      // le relais. Quand la migration sera complète (chunks ajoutés ou
+      // base64 backfillé), cette ligne deviendra équivalente à la
+      // version d'avant — pas de regression.
+      return inline.length > 0;
+    });
     for (const r of matching) {
       const cat = String(field(r, 'categorie') || '').trim().toLowerCase();
       const tag = VISIT_PHOTO_CAT_TO_TAG[cat] || 'Visite - Autres';
@@ -4819,7 +4839,16 @@ app.post(
       const patientId = stringValue(dossier?.patient?.id);
       if (patientId && bytes && bytes.length > 0) {
         const contentBase64 = Buffer.from(bytes).toString('base64');
-        const documentLocalId = `doc_report_${dossierId}_${Date.now()}`;
+        // ID STABLE par dossier (pas de Date.now()) : `upsertDocument`
+        // dédoublonne sur (beneficiaire_id, client_document_id), donc
+        // un id stable garantit qu'une regénération REMPLACE la ligne
+        // précédente au lieu d'en créer une nouvelle. Cf. règle déjà
+        // appliquée côté Flutter dans `visit_report_screen.dart` :
+        // « localId déterministe par dossier → 1 seul doc Rapport ».
+        // Symptôme avant fix (2026-05-04) : l'ergo génère le PDF, voit
+        // 2 lignes apparaître dans Documents (1 NocoDB direct + 1 polling
+        // legacy), et chaque clic « Régénérer » ajoute encore 2 lignes.
+        const documentLocalId = `doc_report_${dossierId}`;
         const titleNoExt = fileName.replace(/\.pdf$/i, '');
         const savedDoc = await mobileSyncStore.upsertDocument({
           patientId,
