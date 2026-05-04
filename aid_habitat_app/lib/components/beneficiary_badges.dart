@@ -1,21 +1,24 @@
 import 'package:flutter/material.dart';
 
 /// Canonicalise la valeur brute du champ `natureAccompagnement` (stocké
-/// en minuscules côté NocoDB) vers une forme affichable :
-///   • `diagnostic` → "Diagnostic ergo"
-///   • `ergo` → "Ergo"
-///   • `complet` → "Complet"
-///   • autre → valeur trimmée telle quelle (respecte d'éventuels
-///     libellés personnalisés saisis par un admin).
+/// en minuscules côté NocoDB) vers une forme affichable. Les libellés
+/// internes ("diagnostic" / "ergo" / "complet") restent inchangés côté
+/// NocoDB et code — seul l'affichage utilisateur reflète la
+/// terminologie métier MPA / Diag (demande utilisateur 2026-05-04).
+///
+///   • `diagnostic` → "Diag ergo"
+///   • `ergo`       → "MPA ergo"
+///   • `complet`    → "MPA complet"
+///   • autre        → valeur trimmée telle quelle.
 String formatAccompanimentType(String raw) {
   final v = raw.trim().toLowerCase();
   switch (v) {
     case 'diagnostic':
-      return 'Diagnostic ergo';
+      return 'Diag ergo';
     case 'ergo':
-      return 'Ergo';
+      return 'MPA ergo';
     case 'complet':
-      return 'Complet';
+      return 'MPA complet';
     default:
       return raw.trim();
   }
