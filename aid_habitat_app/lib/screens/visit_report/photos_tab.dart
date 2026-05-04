@@ -68,13 +68,19 @@ class _PhotosTabState extends State<PhotosTab>
   bool _isImporting = false;
   List<DocItem> _photos = const [];
 
-  /// Catégories que l'utilisateur a explicitement ajoutées via le
-  /// bouton « + Ajouter une partie » mais qui n'ont pas encore de
-  /// photo. Permet d'afficher la section vide en attendant. Une
-  /// section disparaît de cet ensemble dès qu'elle a au moins une
-  /// photo (l'affichage devient piloté par les photos elles-mêmes).
-  /// État volatile (in-memory) — re-fermer le dossier purge la liste.
-  final Set<String> _explicitlyAddedCategories = <String>{};
+  /// Sections SUPPLÉMENTAIRES ajoutées par l'ergo via le bouton
+  /// « + Ajouter une partie » (en plus des 5 sections de base toujours
+  /// visibles). Chaque entrée = {baseTag, index} → tag complet
+  /// `<baseTag> (#index)` (index >= 1). Permet d'avoir plusieurs
+  /// sections de la même catégorie sans mélanger les photos.
+  ///
+  /// Persistance : automatique via les photos (tag suffixé). Une
+  /// section extra avec ≥1 photo réapparaît au reload via
+  /// `_deriveExtraSectionsFromPhotos`. Une section extra vide est
+  /// volatile (gardée en mémoire le temps de la session, perdue à la
+  /// fermeture du dossier — l'ergo doit ajouter une photo pour la
+  /// pérenniser).
+  List<_ExtraSection> _extraSections = const [];
 
   @override
   bool get wantKeepAlive => true;
@@ -97,13 +103,27 @@ class _PhotosTabState extends State<PhotosTab>
   Future<void> _refresh() async {
     try {
       final docs = await _dataService.fetchDocuments(widget.dossier.patient.id);
+      // Filtre élargi : on accepte les tags des 5 catégories de base ET
+      // leurs variantes suffixées `(#N)` (sections supplémentaires
+      // ajoutées via « Ajouter une partie »).
       final visitImages = docs
           .where((d) =>
-              d.type == 'image' && kVisitPhotoTags.any(d.tags.contains))
+              d.type == 'image' && d.tags.any(_isAnyVisitTag))
           .toList(growable: false);
       if (!mounted) return;
+      // Re-dérive les sections supplémentaires depuis les tags des
+      // photos remontées + union avec celles déjà en mémoire (extras
+      // créés mais pas encore alimentés en photos cette session).
+      final derived = _deriveExtraSectionsFromPhotos(visitImages);
+      final union = <_ExtraSection>{...derived, ..._extraSections}.toList()
+        ..sort((a, b) {
+          final byTag = a.baseTag.compareTo(b.baseTag);
+          if (byTag != 0) return byTag;
+          return a.index.compareTo(b.index);
+        });
       setState(() {
         _photos = visitImages;
+        _extraSections = union;
         _isLoading = false;
       });
     } catch (_) {
@@ -112,11 +132,67 @@ class _PhotosTabState extends State<PhotosTab>
     }
   }
 
-  /// Renvoie les photos d'une catégorie visite, triées par
+  /// Vrai si [tag] est un tag visite reconnu — base (`Visite - X`) OU
+  /// suffixe extra (`Visite - X (#N)`).
+  static bool _isAnyVisitTag(String tag) {
+    if (kVisitPhotoTags.contains(tag)) return true;
+    for (final base in kVisitPhotoTags) {
+      if (tag.startsWith('$base (#')) return true;
+    }
+    return false;
+  }
+
+  /// Décompose un tag photo. Renvoie (baseTag, extraIndex) où
+  /// extraIndex = 0 pour une section de base et > 0 pour une extra.
+  /// Renvoie null si le tag n'appartient à aucune catégorie connue.
+  static ({String baseTag, int index})? _parseSectionTag(String tag) {
+    if (kVisitPhotoTags.contains(tag)) {
+      return (baseTag: tag, index: 0);
+    }
+    for (final base in kVisitPhotoTags) {
+      final prefix = '$base (#';
+      if (tag.startsWith(prefix) && tag.endsWith(')')) {
+        final inner = tag.substring(prefix.length, tag.length - 1);
+        final n = int.tryParse(inner);
+        if (n != null && n > 0) {
+          return (baseTag: base, index: n);
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Construit le tag complet à utiliser pour une section donnée.
+  /// Section de base (index 0) → `baseTag` ; extra → `baseTag (#N)`.
+  static String _tagForSection(_ExtraSection section) {
+    if (section.index == 0) return section.baseTag;
+    return '${section.baseTag} (#${section.index})';
+  }
+
+  /// Reconstruit la liste des sections extras depuis les tags des
+  /// photos déjà persistées. Permet à un extra (avec ≥1 photo)
+  /// d'être ré-affiché au reload du dossier sans état dédié.
+  static Set<_ExtraSection> _deriveExtraSectionsFromPhotos(
+      List<DocItem> photos) {
+    final out = <_ExtraSection>{};
+    for (final p in photos) {
+      for (final t in p.tags) {
+        final parsed = _parseSectionTag(t);
+        if (parsed != null && parsed.index > 0) {
+          out.add(_ExtraSection(
+              baseTag: parsed.baseTag, index: parsed.index));
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Renvoie les photos d'une SECTION (base ou extra), triées par
   /// `categoryOrder` (croissant) puis par date (DESC pour les rares
-  /// rangées NULL).
-  List<DocItem> _photosForCategory(String categoryTag) {
-    final filtered = _photos.where((d) => d.tags.contains(categoryTag)).toList()
+  /// rangées NULL). [exactTag] = tag complet, ex. `Visite - Logement`
+  /// pour la section base, `Visite - Logement (#1)` pour la 1ère extra.
+  List<DocItem> _photosForSectionTag(String exactTag) {
+    final filtered = _photos.where((d) => d.tags.contains(exactTag)).toList()
       ..sort((a, b) {
         final ao = a.categoryOrder;
         final bo = b.categoryOrder;
@@ -127,6 +203,10 @@ class _PhotosTabState extends State<PhotosTab>
       });
     return filtered;
   }
+
+  /// Compat ancienne signature — délègue à [_photosForSectionTag].
+  List<DocItem> _photosForCategory(String categoryTag) =>
+      _photosForSectionTag(categoryTag);
 
   // ----- Mutations -----
 
@@ -301,21 +381,23 @@ class _PhotosTabState extends State<PhotosTab>
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Layout dynamique 2026-05-04 : seules les catégories ayant au
-    // moins une photo OU explicitement ajoutées via le bouton
-    // « Ajouter une partie » sont affichées. Le reste reste latent —
-    // accessible via le menu d'ajout. Catégorie « Autres » retirée
-    // (demande utilisateur).
+    // Layout 2026-05-04 v2 : les 5 sections de BASE sont toujours
+    // visibles (Logement / Accessibilité / Sanitaires / Plan avant /
+    // Plan après). Les sections SUPPLÉMENTAIRES (extras) s'ajoutent
+    // au bout via le bouton « Ajouter une partie » et coexistent —
+    // chaque extra a son propre groupe de photos via un tag
+    // suffixé (#N). Catégorie « Autres » retirée.
     //
-    // Layout : grille 3 colonnes en Wrap, le bouton « Ajouter une
-    // partie » est posé en dernier (occupe une cellule de la même
-    // taille). Chaque ligne se remplit naturellement à 3 sections
-    // max ; au-delà, ça wrap sur la ligne suivante.
-    final visibleTags = kVisitPhotoTags
-        .where((tag) =>
-            _explicitlyAddedCategories.contains(tag) ||
-            _photosForCategory(tag).isNotEmpty)
-        .toList(growable: false);
+    // Layout : grille 3 colonnes en Wrap. Ordre : 5 bases puis
+    // extras dans l'ordre (baseTag, index croissant) puis le bouton
+    // « + Ajouter une partie ».
+    final allSections = <_ExtraSection>[
+      // Sections de base (index 0).
+      for (final tag in kVisitPhotoTags)
+        _ExtraSection(baseTag: tag, index: 0),
+      // Sections supplémentaires (index >= 1).
+      ..._extraSections,
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       child: SingleChildScrollView(
@@ -328,19 +410,26 @@ class _PhotosTabState extends State<PhotosTab>
               spacing: spacing,
               runSpacing: spacing,
               children: [
-                for (final tag in visibleTags)
+                for (final section in allSections)
                   SizedBox(
                     width: cellWidth,
                     child: _buildCategorySection(
-                      tag: tag,
-                      icon: _iconForCategory(tag),
-                      maxSlots: kVisitPhotoSlotCount[tag] ?? 0,
+                      tag: _tagForSection(section),
+                      icon: _iconForCategory(section.baseTag),
+                      maxSlots: kVisitPhotoSlotCount[section.baseTag] ?? 0,
+                      // Suffixe « #N » dans le titre pour les extras.
+                      titleOverride: section.index == 0
+                          ? null
+                          : '${visitPhotoTagShortLabel(section.baseTag)} '
+                              '#${section.index + 1}',
+                      // Bouton X de fermeture pour les extras seulement
+                      // (les bases ne sont pas supprimables).
+                      onRemove: section.index == 0
+                          ? null
+                          : () => _removeExtraSection(section),
                     ),
                   ),
-                // Bouton « Ajouter une partie » — toujours visible en
-                // dernière position, même si toutes les catégories
-                // sont déjà affichées (idempotent : ré-ajouter une
-                // catégorie déjà visible est un no-op).
+                // Bouton « Ajouter une partie » — toujours en bout.
                 SizedBox(
                   width: cellWidth,
                   child: _buildAddSectionButton(),
@@ -351,6 +440,52 @@ class _PhotosTabState extends State<PhotosTab>
         ),
       ),
     );
+  }
+
+  /// Retire une section supplémentaire (en mémoire + photos
+  /// associées si présentes). Confirmation explicite à cause du
+  /// risque de perte de photos.
+  Future<void> _removeExtraSection(_ExtraSection section) async {
+    final photosInSection =
+        _photosForSectionTag(_tagForSection(section));
+    if (photosInSection.isNotEmpty) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Supprimer cette partie ?'),
+          content: Text(
+            'Cette section contient ${photosInSection.length} '
+            'photo${photosInSection.length > 1 ? 's' : ''} qui seront '
+            'aussi supprimées définitivement.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB91C1C),
+              ),
+              child: const Text('Supprimer'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+      for (final p in photosInSection) {
+        await _dataService.deleteDocument(p.id);
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _extraSections =
+          _extraSections.where((s) => s != section).toList(growable: false);
+    });
+    await _refresh();
   }
 
   /// Bouton compact pour ajouter une nouvelle section photo. Tap →
@@ -457,7 +592,19 @@ class _PhotosTabState extends State<PhotosTab>
       ),
     );
     if (picked == null || !mounted) return;
-    setState(() => _explicitlyAddedCategories.add(picked));
+    // Trouve le prochain index libre pour cette catégorie (1, 2, 3…).
+    final usedIndices = _extraSections
+        .where((s) => s.baseTag == picked)
+        .map((s) => s.index)
+        .toSet();
+    var nextIndex = 1;
+    while (usedIndices.contains(nextIndex)) {
+      nextIndex++;
+    }
+    final newSection = _ExtraSection(baseTag: picked, index: nextIndex);
+    setState(() {
+      _extraSections = [..._extraSections, newSection];
+    });
   }
 
   Widget _addSectionMenuItem({
@@ -531,12 +678,19 @@ class _PhotosTabState extends State<PhotosTab>
     required String tag,
     required IconData icon,
     required int maxSlots,
+    /// Si fourni, override le label par défaut (utilisé pour
+    /// distinguer les extras « Logement #2 » des bases).
+    String? titleOverride,
+    /// Si fourni, affiche un bouton X (supprimer la section). Réservé
+    /// aux extras — les sections de base ne sont jamais supprimables.
+    VoidCallback? onRemove,
   }) {
     final photos = _photosForCategory(tag);
     final count = photos.length;
     final isFull = count >= maxSlots;
     final overCapacity = count > maxSlots;
-    final shortLabel = visitPhotoTagShortLabel(tag);
+    final shortLabel = titleOverride ??
+        visitPhotoTagShortLabel(_parseSectionTag(tag)?.baseTag ?? tag);
 
     // DragTarget englobe TOUT le container — drop n'importe où dans la
     // section (entête, photos, espace vide, boutons) accepte la photo.
@@ -602,6 +756,30 @@ class _PhotosTabState extends State<PhotosTab>
                 full: isFull && !overCapacity,
                 over: overCapacity,
               ),
+              // Bouton X de suppression — visible uniquement pour les
+              // sections supplémentaires (cf. demande 2026-05-04 :
+              // « il faut simplement pouvoir en ajouter davantage
+              // sans les retirer » → les bases sont protégées).
+              if (onRemove != null) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: onRemove,
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEE2E2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      LucideIcons.x,
+                      size: 14,
+                      color: Color(0xFFB91C1C),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -878,6 +1056,25 @@ class _DragPhotoPayload {
   final DocItem doc;
   final String fromTag;
   const _DragPhotoPayload({required this.doc, required this.fromTag});
+}
+
+/// Identifie une section d'affichage de l'onglet Photos.
+/// • `index == 0` = section de base (5 toujours visibles)
+/// • `index >= 1` = section supplémentaire ajoutée par l'ergo via
+///   « + Ajouter une partie ». Tag complet = `<baseTag> (#index)`.
+class _ExtraSection {
+  final String baseTag;
+  final int index;
+  const _ExtraSection({required this.baseTag, required this.index});
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ExtraSection &&
+      other.baseTag == baseTag &&
+      other.index == index;
+
+  @override
+  int get hashCode => Object.hash(baseTag, index);
 }
 
 // ---------------------------------------------------------------------------

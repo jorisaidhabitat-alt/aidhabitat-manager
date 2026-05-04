@@ -21,9 +21,62 @@ String formatAccompanimentType(String raw) {
   }
 }
 
+/// Palette du type d'accompagnement — 3 couleurs distinctes,
+/// utilisées partout où l'accompagnement est rendu (badge dans le
+/// header de dossier / relevé de visite / documents, ET avatar du
+/// bénéficiaire dans la liste « Mes dossiers » — demande utilisateur
+/// 2026-05-04 : "qui serait la même sur la photo de profil").
+///
+/// Choix des teintes :
+///   • Diagnostic → ROSE poudré (`#FCE7F3` / `#BE185D`) — couleur
+///     distinctive, jamais utilisée ailleurs dans la palette donc
+///     pas de confusion avec ANAH / catégorie de revenus.
+///   • Ergo       → VERT SAUGE (`#D9F7BE` / `#3F6212`) — plus chaud
+///     que le `#D1F4DC` de "ANAH déjà fait", donc lecture claire
+///     même quand les deux badges cohabitent.
+///   • Complet    → VIOLET (`#EDE8F5` / `#554A63`) — couleur
+///     historique d'AccompanimentBadge ; conservée pour ne pas
+///     perturber les dossiers déjà étiquetés Complet.
+///   • autre / vide → gris neutre (`#F1F5F9` / `#334155`).
+class AccompanimentPalette {
+  final Color bg;
+  final Color fg;
+  const AccompanimentPalette({required this.bg, required this.fg});
+}
+
+AccompanimentPalette accompanimentPaletteFor(String raw) {
+  final v = raw.trim().toLowerCase();
+  if (v == 'diagnostic') {
+    return const AccompanimentPalette(
+      bg: Color(0xFFFCE7F3),
+      fg: Color(0xFFBE185D),
+    );
+  }
+  if (v == 'ergo') {
+    return const AccompanimentPalette(
+      bg: Color(0xFFD9F7BE),
+      fg: Color(0xFF3F6212),
+    );
+  }
+  if (v == 'complet') {
+    return const AccompanimentPalette(
+      bg: Color(0xFFEDE8F5),
+      fg: Color(0xFF554A63),
+    );
+  }
+  // Fallback neutre quand le dossier n'a pas (encore) de type
+  // d'accompagnement renseigné. Visuellement discret, n'attire pas
+  // l'œil — l'ergo sait qu'il faut compléter le champ.
+  return const AccompanimentPalette(
+    bg: Color(0xFFF1F5F9),
+    fg: Color(0xFF334155),
+  );
+}
+
 /// Badge "type d'accompagnement" (ex. "Complet", "Diagnostic ergo",
-/// "Ergo") — fond violet clair `#EDE8F5`, typographie violet foncé.
-/// Style flat (pas de bordure), aligné avec les autres badges.
+/// "Ergo") — couleur dérivée du type via [accompanimentPaletteFor]
+/// pour que rose ↔ Diagnostic, vert ↔ Ergo, violet ↔ Complet sur
+/// TOUS les écrans qui affichent ce badge.
 ///
 /// Le paramètre [large] augmente la taille (padding + typo) pour les
 /// contextes où le badge apparaît à côté d'un titre imposant — en
@@ -31,20 +84,44 @@ String formatAccompanimentType(String raw) {
 class AccompanimentBadge extends StatelessWidget {
   final String value;
   final bool large;
+
+  /// Le `value` est toujours la forme affichée ("Diagnostic ergo",
+  /// "Ergo", "Complet"…). Pour récupérer la palette on a besoin de la
+  /// valeur brute NocoDB (`diagnostic` / `ergo` / `complet`) — soit
+  /// l'appelant la passe via [rawType], soit on la déduit du libellé
+  /// affiché (cas des call-sites historiques qui ne passent que
+  /// `value`). Cf. [_resolveRawType].
+  final String? rawType;
+
   const AccompanimentBadge({
     super.key,
     required this.value,
     this.large = false,
+    this.rawType,
   });
+
+  /// Si l'appelant ne fournit pas le rawType, on inverse le mapping
+  /// du `formatAccompanimentType` : "Diagnostic ergo" → 'diagnostic',
+  /// "Ergo" → 'ergo', "Complet" → 'complet'. Tolère les variantes de
+  /// casse.
+  String _resolveRawType() {
+    if (rawType != null && rawType!.isNotEmpty) return rawType!.toLowerCase();
+    final v = value.trim().toLowerCase();
+    if (v.startsWith('diagnostic')) return 'diagnostic';
+    if (v == 'ergo') return 'ergo';
+    if (v == 'complet') return 'complet';
+    return v;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final palette = accompanimentPaletteFor(_resolveRawType());
     return Container(
       padding: large
           ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
           : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFEDE8F5),
+        color: palette.bg,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -52,7 +129,7 @@ class AccompanimentBadge extends StatelessWidget {
         style: TextStyle(
           fontSize: large ? 14 : 12,
           fontWeight: FontWeight.w700,
-          color: const Color(0xFF554A63),
+          color: palette.fg,
         ),
       ),
     );
