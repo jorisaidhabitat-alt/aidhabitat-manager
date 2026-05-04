@@ -107,19 +107,37 @@ bool tryOpenNoteWindow({
       .join('&');
   final url = '$origin/?$query';
 
-  // `popup=yes` force une fenêtre détachée (vs un nouvel onglet) — nécessite
-  // Chrome 115+ et Safari 17+. `noopener,noreferrer` empêche la fenêtre
-  // ouverte de remonter à la principale via window.opener (sécurité +
-  // perf — Chrome ouvre dans un process séparé).
+  // `popup=yes` force une fenêtre détachée (vs un nouvel onglet) —
+  // nécessite Chrome 115+ et Safari 17+. Demande utilisateur 2026-05-04 :
+  // « ça doit ouvrir une nouvelle session (ex : deux pages google chrome
+  // pas deux onglets dans la même session) ».
+  //
+  // Important : on N'inclut PAS `noopener,noreferrer` dans la features
+  // string. Ce ne sont PAS des features `window.open` standards (ce
+  // sont des attributs `<a>`) — Chrome récent peut traiter la chaîne
+  // comme invalide et basculer en onglet si elles sont présentes.
+  // Pour la sécurité « pas d'accès au window.opener », on neutralise
+  // après coup avec `win?.opener = null` (cf. plus bas).
   final features = 'popup=yes,'
       'width=${width.round()},'
       'height=${height.round()},'
       'left=${left.round()},'
-      'top=${top.round()},'
-      'noopener,noreferrer';
+      'top=${top.round()}';
 
+  // Nom de fenêtre UNIQUE par tabKey + timestamp — sinon Chrome peut
+  // réutiliser un onglet/popup déjà existant avec le même nom et
+  // basculer dessus au lieu d'en créer un nouveau.
+  final windowName = 'aidhabitat-note-${tabKey.replaceAll(RegExp(r"[^A-Za-z0-9]"), "_")}-${DateTime.now().millisecondsSinceEpoch}';
   // ignore: deprecated_member_use
-  final win = html.window.open(url, '_blank', features);
+  final win = html.window.open(url, windowName, features);
+  // Sécurité : empêche la nouvelle fenêtre de remonter à la principale
+  // via `window.opener` (équivalent de `noopener` qui n'est pas
+  // supporté en feature). Best-effort : certaines versions de browser
+  // l'ignorent silencieusement, sans casser le flow.
+  try {
+    // ignore: invalid_assignment
+    (win as dynamic).opener = null;
+  } catch (_) {}
   // `WindowBase` n'est jamais null en pratique — Safari peut toutefois
   // renvoyer un objet "fermé" en cas de popup blocker. On considère que
   // l'ouverture a tenté ; si elle est bloquée, l'utilisateur verra
