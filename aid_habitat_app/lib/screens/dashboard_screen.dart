@@ -568,6 +568,23 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
     });
   }
 
+  /// Extrait l'heure (HH:mm) si la `visit_date` ISO contient une partie
+  /// horaire non-triviale. Renvoie null sinon — le pill heure est
+  /// alors caché dans le banner.
+  static String? _visitTimeLabel(_NextVisit nv) {
+    final raw = nv.dossier.visitDate;
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final dt = DateTime.parse(raw);
+      if (dt.hour == 0 && dt.minute == 0 && !raw.contains('T')) return null;
+      final hh = dt.hour.toString().padLeft(2, '0');
+      final mm = dt.minute.toString().padLeft(2, '0');
+      return '$hh:$mm';
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final nextVisit = widget.nextVisit;
@@ -753,7 +770,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
             ),
           ),
           const SizedBox(width: 20),
-          // Bloc date à droite
+          // Bloc date + heure à droite. Heure = pill violette plein
+          // (cohérence avec le panneau "Mes visites du jour"). Affichée
+          // uniquement si la visit_date contient une heure non triviale.
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -775,6 +794,37 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                   color: Color(0xFF7C6DAA),
                 ),
               ),
+              if (_visitTimeLabel(nv) != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C6DAA),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        LucideIcons.clock3,
+                        size: 11,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        _visitTimeLabel(nv)!,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -994,6 +1044,14 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
   /// les requêtes au moindre rebuild si la liste n'a pas changé.
   String _routedKey = '';
 
+  /// Tri chronologique sur l'heure (visit_date stocké en ISO complet :
+  /// `2026-05-04T14:30:00`). Si plusieurs visites partagent la même
+  /// heure (ou n'ont pas d'heure renseignée), on retombe sur le
+  /// nom de famille pour stabilité.
+  ///
+  /// Cap à 3 visites (demande utilisateur 2026-05-04 : « affiche que
+  /// les 3 visites du jour car dans tout les cas il y'aura 3 visites
+  /// max par jour »).
   List<Dossier> get _todayVisits {
     final today = DateTime(widget.now.year, widget.now.month, widget.now.day);
     final out = <Dossier>[];
@@ -1009,10 +1067,19 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
       final day = DateTime(when.year, when.month, when.day);
       if (day == today) out.add(d);
     }
-    out.sort((a, b) => a.patient.lastName
-        .toLowerCase()
-        .compareTo(b.patient.lastName.toLowerCase()));
-    return out;
+    out.sort((a, b) {
+      final da = DateTime.tryParse(a.visitDate ?? '');
+      final db = DateTime.tryParse(b.visitDate ?? '');
+      if (da != null && db != null) {
+        final cmp = da.compareTo(db);
+        if (cmp != 0) return cmp;
+      }
+      return a.patient.lastName
+          .toLowerCase()
+          .compareTo(b.patient.lastName.toLowerCase());
+    });
+    // Cap à 3 visites max par jour.
+    return out.length > 3 ? out.sublist(0, 3) : out;
   }
 
   @override
@@ -1078,6 +1145,27 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
     setState(() => _segmentDurations[dossierId] = d);
   }
 
+  /// Extrait l'heure (HH:mm) d'une visit_date ISO 8601 si renseignée.
+  /// Renvoie null si la chaîne ne contient qu'une date sans heure (cas
+  /// legacy avant la généralisation de l'heure de visite).
+  static String? _extractVisitTime(Dossier d) {
+    final raw = d.visitDate;
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final dt = DateTime.parse(raw);
+      // Si l'heure est 00:00:00 ET la chaîne d'origine ne contient pas
+      // de séparateur 'T', c'est une date pure → on ne montre rien.
+      if (dt.hour == 0 && dt.minute == 0 && !raw.contains('T')) {
+        return null;
+      }
+      final hh = dt.hour.toString().padLeft(2, '0');
+      final mm = dt.minute.toString().padLeft(2, '0');
+      return '$hh:$mm';
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final visits = _todayVisits;
@@ -1091,15 +1179,6 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            "Trajets calculés depuis Aid'Habitat ($kAidHabitatAddressLabel) "
-            'pour la 1ère visite, puis entre chaque étape.',
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF94A3B8),
             ),
           ),
           const SizedBox(height: 16),
@@ -1121,6 +1200,7 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
                     ? "Aid'Habitat"
                     : '${visits[i - 1].patient.firstName} '
                         '${visits[i - 1].patient.lastName.toUpperCase()}',
+                visitTime: _extractVisitTime(visits[i]),
               ),
               _RecentDossierRow(
                 dossier: visits[i],
@@ -1141,9 +1221,16 @@ class _RouteSegmentRow extends StatelessWidget {
   final Duration? duration;
   final String fromLabel;
 
+  /// Heure de la visite à laquelle ce segment mène (format `HH:mm`).
+  /// Affichée à droite en pill violette compacte. `null` = pas
+  /// d'heure renseignée (cas legacy, avant généralisation côté
+  /// NocoDB).
+  final String? visitTime;
+
   const _RouteSegmentRow({
     required this.duration,
     required this.fromLabel,
+    this.visitTime,
   });
 
   @override
@@ -1184,7 +1271,7 @@ class _RouteSegmentRow extends StatelessWidget {
                       color: Color(0xFF7C6DAA),
                     ),
                   ),
-                  TextSpan(text: ' depuis '),
+                  const TextSpan(text: ' depuis '),
                   TextSpan(
                     text: fromLabel,
                     style: const TextStyle(fontWeight: FontWeight.w600),
@@ -1193,6 +1280,37 @@ class _RouteSegmentRow extends StatelessWidget {
               ),
             ),
           ),
+          if (visitTime != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C6DAA),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    LucideIcons.clock3,
+                    size: 11,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    visitTime!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
