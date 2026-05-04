@@ -570,6 +570,18 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
       backgroundColor: Colors.white,
+      // `shape` explicite + `clipBehavior` antiAlias : le `Material`
+      // opaque du header (ligne suivante, elevation 1) peignait un
+      // rectangle aux angles vifs qui masquait les coins supérieurs
+      // arrondis du Dialog, alors que le bas restait correctement
+      // arrondi (rien n'y empiète). Sans le clip, on ne pouvait pas
+      // forcer le radius côté Material child. Avec le clip, le Dialog
+      // découpe lui-même son contenu au shape — radius uniforme sur
+      // les 4 coins (demande utilisateur 2026-05-04).
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: SizedBox(
         width: 800,
         height: 600,
