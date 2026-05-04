@@ -390,21 +390,40 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 children: [
                   _buildTableHeader(),
                   Expanded(
-                    child: _filteredDossiers.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.separated(
-                            padding: EdgeInsets.zero,
-                            itemCount: _filteredDossiers.length,
-                            separatorBuilder: (_, __) => Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: Colors.grey.shade100,
-                            ),
-                            itemBuilder: (context, index) {
-                              final dossier = _filteredDossiers[index];
-                              return _buildTableRow(dossier);
-                            },
-                          ),
+                    // SoftSwitcher avec key dépendant du tuple (column,
+                    // direction) → chaque clic d'en-tête change la key,
+                    // l'AnimatedSwitcher détecte un nouveau child et
+                    // joue le fade + slide 8 px déjà utilisé pour les
+                    // transitions de pages dans l'app (cf.
+                    // `soft_transitions.dart`). Demande utilisateur
+                    // 2026-05-04 : « animation d'apparition des
+                    // dossiers comme les autres animations
+                    // d'apparition quand on change de page ». La clé
+                    // ignore le terme de recherche et le filtre EPCI
+                    // pour ne pas re-animer à chaque keystroke (sinon
+                    // la liste sauterait pendant que l'ergo tape).
+                    child: SoftSwitcher(
+                      child: KeyedSubtree(
+                        key: ValueKey<String>(
+                          'sort:$_sortColumn:${_sortAscending ? 'a' : 'd'}',
+                        ),
+                        child: _filteredDossiers.isEmpty
+                            ? _buildEmptyState()
+                            : ListView.separated(
+                                padding: EdgeInsets.zero,
+                                itemCount: _filteredDossiers.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: Colors.grey.shade100,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final dossier = _filteredDossiers[index];
+                                  return _buildTableRow(dossier);
+                                },
+                              ),
+                      ),
+                    ),
                   ),
                 ],
               ),
