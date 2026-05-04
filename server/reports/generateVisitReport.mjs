@@ -1667,12 +1667,14 @@ async function drawVisitPhotosWithFlow({
   const log2Slot = getFieldFirstWidgetInfo(pdfDoc, form, 'logement2');
   const accSlot = getFieldFirstWidgetInfo(pdfDoc, form, 'acces1');
   const acc2Slot = getFieldFirstWidgetInfo(pdfDoc, form, 'acces2');
+  const acc3Slot = getFieldFirstWidgetInfo(pdfDoc, form, 'acces3');
   const saniSlot = getFieldFirstWidgetInfo(pdfDoc, form, 'sani1');
   const sani2Slot = getFieldFirstWidgetInfo(pdfDoc, form, 'sani2');
+  const sani3Slot = getFieldFirstWidgetInfo(pdfDoc, form, 'sani3');
   if (
     !logSlot || !log2Slot ||
-    !accSlot || !acc2Slot ||
-    !saniSlot || !sani2Slot
+    !accSlot || !acc2Slot || !acc3Slot ||
+    !saniSlot || !sani2Slot || !sani3Slot
   ) {
     console.warn(
       '[generateVisitReport] page 8 flow : slots template introuvables',
@@ -1704,6 +1706,11 @@ async function drawVisitPhotosWithFlow({
   const accXStart = accSlot.rect.x;
   const saniXStart = saniSlot.rect.x;
 
+  // X de la dernière colonne (utilisé pour les masques de titre)
+  const logXEnd = log2Slot.rect.x + log2Slot.rect.width;
+  const accXEnd = acc3Slot.rect.x + acc3Slot.rect.width;
+  const saniXEnd = sani3Slot.rect.x + sani3Slot.rect.width;
+
   // Y du TOP de la 1ère rangée Logement (= top du slot logement
   // original). En PDF coords, Y croît vers le haut.
   const firstLogTopY = logSlot.rect.y + logH;
@@ -1730,6 +1737,13 @@ async function drawVisitPhotosWithFlow({
   const bonusMarginTop = 70;
   const bonusMarginBottom = 60;
 
+  // Hauteur réservée au-dessus de la 1ère rangée d'une catégorie
+  // pour le titre custom (« Logement » / « Accessibilité » /
+  // « Sanitaires »). Couvre aussi la zone du masque blanc qui
+  // efface le titre original baked dans le template.
+  const TITLE_HEIGHT = 24;
+  const TITLE_FONT_SIZE = 13;
+
   // 1) Neutralise les apparences des form fields photo de la page 8
   for (const fname of [
     'logement', 'logement2',
@@ -1739,9 +1753,34 @@ async function drawVisitPhotosWithFlow({
     neutralizeFieldAppearance(pdfDoc, form, fname);
   }
 
-  // 2) Construit les rangées (fusion base + extras pour chaque cat)
+  // 2) Masque les 3 titres originaux du template page 8
+  // (« Logement », « Accessibilité », « Sanitaires »). Demande
+  // utilisateur 2026-05-04 : « les titres doivent bouger avec les
+  // images » — donc on efface ceux du template (positions fixes) et
+  // on dessinera des titres custom au-dessus de chaque 1ère rangée
+  // de catégorie (qui peuvent atterrir sur n'importe quelle page
+  // après pagination). Largeur du masque = celle de la rangée + un
+  // peu de marge, hauteur = 30pt centrée juste au-dessus du slot.
+  const maskTitleZone = (xStart, xEnd, slotTopY) => {
+    const xPad = 8;
+    const x = xStart - xPad;
+    const w = xEnd - xStart + xPad * 2;
+    const y = slotTopY + 2;
+    page8.drawRectangle({
+      x, y, width: w, height: 30,
+      color: rgb(1, 1, 1),
+    });
+  };
+  maskTitleZone(logXStart, logXEnd, firstLogTopY);
+  maskTitleZone(accXStart, accXEnd, accSlot.rect.y + accH);
+  maskTitleZone(saniXStart, saniXEnd, saniSlot.rect.y + saniH);
+
+  // 3) Construit les rangées (fusion base + extras pour chaque cat).
+  // `isFirstOfCategory` est mis à true pour la 1ère rangée de
+  // chaque catégorie — utilisé pour réserver de l'espace pour le
+  // titre custom au-dessus.
   const buildRowsForCategory = (
-    baseTag, perRow, slotW, slotH, hgap, xStart, type,
+    baseTag, perRow, slotW, slotH, hgap, xStart, type, label,
   ) => {
     const grouped = groupPhotosBySectionIndex(documents, baseTag);
     const allPhotos = [];
@@ -1750,7 +1789,8 @@ async function drawVisitPhotosWithFlow({
     for (let i = 0; i < allPhotos.length; i += perRow) {
       rows.push({
         photos: allPhotos.slice(i, i + perRow),
-        slotW, slotH, hgap, xStart, type,
+        slotW, slotH, hgap, xStart, type, label,
+        isFirstOfCategory: i === 0,
       });
     }
     return rows;
@@ -1758,27 +1798,32 @@ async function drawVisitPhotosWithFlow({
 
   const allRows = [
     ...buildRowsForCategory(
-      'Visite - Logement', 2, logW, logH, logHGap, logXStart, 'logement',
+      'Visite - Logement', 2, logW, logH, logHGap, logXStart,
+      'logement', 'Logement',
     ),
     ...buildRowsForCategory(
-      'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart, 'acces',
+      'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart,
+      'acces', 'Accessibilité',
     ),
     ...buildRowsForCategory(
-      'Visite - Sanitaires', 3, saniW, saniH, saniHGap, saniXStart, 'sani',
+      'Visite - Sanitaires', 3, saniW, saniH, saniHGap, saniXStart,
+      'sani', 'Sanitaires',
     ),
   ];
 
   if (allRows.length === 0) return;
 
-  // 3) Calcul du gap vertical entre 2 rangées consécutives
+  // 4) Calcul du gap vertical entre 2 rangées consécutives
   const computeVGap = (prevType, nextType) => {
     if (prevType === nextType) return VGAP_INTRA;
     if (prevType === 'logement' && nextType === 'acces') return vgapLogToAcc;
     if (prevType === 'acces' && nextType === 'sani') return vgapAccToSani;
-    return VGAP_INTRA; // fallback
+    return VGAP_INTRA;
   };
 
-  // 4) Dessin en flow avec pagination
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // 5) Dessin en flow avec pagination + titres custom
   let currentPage = page8;
   let cursorY = firstLogTopY;
   let bottomLimit = page8BottomLimit;
@@ -1786,9 +1831,11 @@ async function drawVisitPhotosWithFlow({
 
   for (let r = 0; r < allRows.length; r += 1) {
     const row = allRows[r];
+    // Espace réservé pour le titre custom au-dessus de cette rangée
+    const titleSpace = row.isFirstOfCategory ? TITLE_HEIGHT : 0;
 
-    // Pagination : la rangée tient-elle dans la zone restante ?
-    if (cursorY - row.slotH < bottomLimit) {
+    // Pagination : la rangée + son titre tiennent-ils dans la zone ?
+    if (cursorY - titleSpace - row.slotH < bottomLimit) {
       const insertAt = page8Index + 1 + bonusPagesInserted;
       currentPage = pdfDoc.insertPage(
         insertAt, [pageWidth, pageHeight],
@@ -1796,6 +1843,18 @@ async function drawVisitPhotosWithFlow({
       cursorY = pageHeight - bonusMarginTop;
       bottomLimit = bonusMarginBottom;
       bonusPagesInserted += 1;
+    }
+
+    // Dessine le titre custom si c'est la 1ère rangée de catégorie
+    if (row.isFirstOfCategory) {
+      currentPage.drawText(row.label, {
+        x: row.xStart,
+        y: cursorY - TITLE_FONT_SIZE - 2,
+        size: TITLE_FONT_SIZE,
+        color: rgb(0.18, 0.18, 0.18),
+        font: helveticaBold,
+      });
+      cursorY -= TITLE_HEIGHT;
     }
 
     // Dessine la rangée à `cursorY` (top du slot)
