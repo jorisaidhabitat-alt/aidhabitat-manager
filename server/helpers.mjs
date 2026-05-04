@@ -2324,6 +2324,12 @@ export const upsertContexte = async (
           name,
           checked: Boolean(entry?.autonomy?.[index]?.checked),
         })),
+        // 3e état autonomie « ! » — fix audit 2026-05-04 (push vers
+        // NocoDB). Voir index.mjs `upsertContexte` pour le rationale.
+        attention: AUTONOMY_ITEMS.map((name, index) => ({
+          name,
+          checked: Boolean(entry?.attention?.[index]?.checked),
+        })),
         humanHelp: AUTONOMY_ITEMS.map((name, index) => ({
           name,
           checked: Boolean(entry?.humanHelp?.[index]?.checked),
