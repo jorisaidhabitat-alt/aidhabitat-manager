@@ -42,7 +42,7 @@ class AppDelegate: FlutterAppDelegate {
           // une fenêtre déjà tabbed pourrait happer la nouvelle. On
           // détache préventivement la nouvelle fenêtre de toute tab
           // group existante.
-          window.tab.group?.removeWindow(window)
+          window.tabGroup?.removeWindow(window)
         }
       }
     }
