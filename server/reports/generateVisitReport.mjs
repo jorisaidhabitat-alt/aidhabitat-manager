@@ -1591,64 +1591,101 @@ async function drawPhotoOnPageAtRect(
 }
 
 /**
- * Dessine les photos visite en SURPLUS (au-delà des slots fixes de
- * la page 8) sur des pages bonus insérées avant la page 9 (Plan
- * avant). Demande utilisateur 2026-05-04 : si une catégorie déborde,
- * on rajoute des rangées de la MÊME catégorie en dessous, en flow
- * naturel — et on passe à la page suivante quand il n'y a plus de
- * place verticalement. Numérotation continue (pas de bis/ter).
+ * Vide l'apparence d'un form field pour qu'il n'apparaisse plus à
+ * l'écran après flatten. Utilisé pour neutraliser les 8 slots photo
+ * de la page 8 quand on bascule en mode « custom flow » (surplus
+ * détecté) — sinon les placeholders gris du template transparaissent
+ * derrière nos drawImage custom.
  *
- * Layout :
- *   - Mêmes dimensions que page 8 du template (largeur, hauteur)
- *   - Ordre vertical des rangées : Logement → Accès → Sanitaires
- *     (= ordre de la page 8 originale)
- *   - Logement : 2 photos paysage par rangée, dimensions du slot
- *     `logement` du template
- *   - Accès / Sanitaires : 3 portraits par rangée, dimensions des
- *     slots `acces1` / `sani1` du template
- *   - Toutes les rangées sont CENTRÉES horizontalement sur la page
- *   - Quand la prochaine rangée ne tient plus en hauteur (test
- *     contre `marginBottom`), on insère une nouvelle page
- *
- * Insertion : `insertBeforeIndex` donne la position cible (= index
- * de page 9 dans le PDF tel qu'il est avant ces insertions). Chaque
- * page bonus créée incrémente le compteur pour conserver l'ordre.
+ * Technique : remplace l'AP/N (apparence normale) du widget par un
+ * stream PDF vide. Identique à la passe finale de
+ * `drawImageWithCoverFit` mais standalone (sans dessiner d'image).
  */
-async function drawVisitPhotosOverflowBonusPages({
-  pdfDoc, form, fetchImageBytes, stats,
-  surplus,
-  insertBeforeIndex,
-}) {
-  const totalSurplus =
-      surplus.logement.length +
-      surplus.accessibilite.length +
-      surplus.sanitaires.length;
-  if (totalSurplus === 0) return;
+function neutralizeFieldAppearance(pdfDoc, form, fieldName) {
+  let field;
+  try {
+    field = form.getField(fieldName);
+  } catch (_) {
+    return;
+  }
+  if (!field) return;
+  const widgets = field.acroField?.getWidgets?.() || [];
+  for (const widget of widgets) {
+    const rect = widget.getRectangle();
+    if (!rect) continue;
+    const emptyStream = pdfDoc.context.formXObject([], {
+      BBox: pdfDoc.context.obj([0, 0, rect.width, rect.height]),
+      Matrix: pdfDoc.context.obj([1, 0, 0, 1, 0, 0]),
+      Resources: pdfDoc.context.obj({}),
+    });
+    const emptyRef = pdfDoc.context.register(emptyStream);
+    const apDict = pdfDoc.context.obj({});
+    apDict.set(PDFName.of('N'), emptyRef);
+    widget.dict.set(PDFName.of('AP'), apDict);
+  }
+}
 
-  // Lit les dimensions des slots originaux du template — garantit
-  // que les pages bonus aient EXACTEMENT le même look (mêmes tailles
-  // de cadres) que la page 8 originale.
+/**
+ * Dessine TOUTES les photos visite (Logement / Accessibilité /
+ * Sanitaires, base + sections extras fusionnées) en flow continu sur
+ * la page 8 et, si nécessaire, sur des pages bonus insérées juste
+ * après. Demande utilisateur 2026-05-04 : « les photos
+ * supplémentaires de logement apparaissent direct en dessous des
+ * deux premières photos du logement, ce qui fait descendre
+ * accessibilité d'un cran et sanitaires passe sur une autre page
+ * si nécessaire ».
+ *
+ * Algorithme :
+ *   1. Lit les rect des 8 slots du template (logement, logement2,
+ *      acces1-3, sani1-3) pour récupérer dimensions et positions
+ *      d'origine.
+ *   2. Neutralise les apparences des 8 form fields (sinon les
+ *      placeholders gris du template transparaissent).
+ *   3. Construit la liste des rangées à dessiner (ordre Logement →
+ *      Accès → Sanitaires), 2 ou 3 photos par rangée selon catégorie.
+ *   4. Démarre `cursorY` au TOP exact du slot logement original →
+ *      garantit que la 1ère rangée Logement est positionnée à
+ *      l'identique du template.
+ *   5. Pour chaque rangée : pagination implicite — si elle ne tient
+ *      pas dans la zone restante, on insère une nouvelle page bonus
+ *      juste après la précédente.
+ *   6. Le gap vertical entre rangées varie : intra-catégorie =
+ *      `VGAP_INTRA` (16pt, plus serré), inter-catégorie = lu sur le
+ *      template (espace réel entre logement → acces1 et acces1 →
+ *      sani1).
+ *
+ * Cas standard 2+3+3 (pas de surplus) : les 3 rangées tiennent sur
+ * la page 8 et leurs Y collent EXACTEMENT aux Y du template (parce
+ * qu'on initialise `cursorY` au top de logement et qu'on utilise les
+ * vgap inter-catégorie du template). Aucune régression visuelle par
+ * rapport au comportement précédent.
+ */
+async function drawVisitPhotosWithFlow({
+  pdfDoc, form, fetchImageBytes, stats, documents,
+}) {
   const logSlot = getFieldFirstWidgetInfo(pdfDoc, form, 'logement');
+  const log2Slot = getFieldFirstWidgetInfo(pdfDoc, form, 'logement2');
   const accSlot = getFieldFirstWidgetInfo(pdfDoc, form, 'acces1');
+  const acc2Slot = getFieldFirstWidgetInfo(pdfDoc, form, 'acces2');
   const saniSlot = getFieldFirstWidgetInfo(pdfDoc, form, 'sani1');
-  if (!logSlot || !accSlot || !saniSlot) {
+  const sani2Slot = getFieldFirstWidgetInfo(pdfDoc, form, 'sani2');
+  if (
+    !logSlot || !log2Slot ||
+    !accSlot || !acc2Slot ||
+    !saniSlot || !sani2Slot
+  ) {
     console.warn(
-      '[generateVisitReport] photos surplus : slots template introuvables, abort bonus pages',
+      '[generateVisitReport] page 8 flow : slots template introuvables',
     );
     return;
   }
 
   const pageWidth = logSlot.pageWidth;
   const pageHeight = logSlot.pageHeight;
+  const page8Index = logSlot.pageIndex;
+  const page8 = logSlot.page;
 
-  // Marges et gaps. Marges haut/bas généreuses pour laisser respirer
-  // visuellement et éviter que l'overlay titre touche le bord.
-  const marginTop = 70;
-  const marginBottom = 60;
-  const hgap = 12;
-  const vgap = 22;
-
-  // Pré-calcul des positions X centrées pour chaque type de rangée
+  // Dimensions des slots
   const logW = logSlot.rect.width;
   const logH = logSlot.rect.height;
   const accW = accSlot.rect.width;
@@ -1656,54 +1693,114 @@ async function drawVisitPhotosOverflowBonusPages({
   const saniW = saniSlot.rect.width;
   const saniH = saniSlot.rect.height;
 
-  const totalLogRowW = 2 * logW + hgap;
-  const xLogStart = (pageWidth - totalLogRowW) / 2;
-  const totalAccRowW = 3 * accW + 2 * hgap;
-  const xAccStart = (pageWidth - totalAccRowW) / 2;
-  const totalSaniRowW = 3 * saniW + 2 * hgap;
-  const xSaniStart = (pageWidth - totalSaniRowW) / 2;
+  // Gaps horizontaux du template (espace entre 2 photos d'une même
+  // rangée). Conservés tels quels pour préserver le rendu d'origine.
+  const logHGap = log2Slot.rect.x - (logSlot.rect.x + logW);
+  const accHGap = acc2Slot.rect.x - (accSlot.rect.x + accW);
+  const saniHGap = sani2Slot.rect.x - (saniSlot.rect.x + saniW);
 
-  // Construit la liste des rangées à dessiner, ordre Logement → Accès
-  // → Sanitaires. Chaque entrée représente UNE rangée.
-  const rows = [];
-  for (let i = 0; i < surplus.logement.length; i += 2) {
-    rows.push({
-      photos: surplus.logement.slice(i, i + 2),
-      slotW: logW, slotH: logH,
-      xStart: xLogStart,
-    });
-  }
-  for (let i = 0; i < surplus.accessibilite.length; i += 3) {
-    rows.push({
-      photos: surplus.accessibilite.slice(i, i + 3),
-      slotW: accW, slotH: accH,
-      xStart: xAccStart,
-    });
-  }
-  for (let i = 0; i < surplus.sanitaires.length; i += 3) {
-    rows.push({
-      photos: surplus.sanitaires.slice(i, i + 3),
-      slotW: saniW, slotH: saniH,
-      xStart: xSaniStart,
-    });
+  // X de la première colonne de chaque catégorie — exact match template
+  const logXStart = logSlot.rect.x;
+  const accXStart = accSlot.rect.x;
+  const saniXStart = saniSlot.rect.x;
+
+  // Y du TOP de la 1ère rangée Logement (= top du slot logement
+  // original). En PDF coords, Y croît vers le haut.
+  const firstLogTopY = logSlot.rect.y + logH;
+
+  // Gaps verticaux : intra-catégorie (rangées de la même catégorie
+  // qui se suivent) plus serré que inter-catégorie (lu du template
+  // pour matcher l'espacement original).
+  const VGAP_INTRA = 16;
+  const vgapLogToAcc = Math.max(
+    VGAP_INTRA,
+    logSlot.rect.y - (accSlot.rect.y + accH),
+  );
+  const vgapAccToSani = Math.max(
+    VGAP_INTRA,
+    accSlot.rect.y - (saniSlot.rect.y + saniH),
+  );
+
+  // Limite basse de la zone photos sur la page 8 — on s'arrête un
+  // peu au-dessus du footer (10pt sous le bas du slot sani1
+  // d'origine).
+  const page8BottomLimit = Math.max(40, saniSlot.rect.y - 10);
+
+  // Marges des pages bonus (zone full page sans titre)
+  const bonusMarginTop = 70;
+  const bonusMarginBottom = 60;
+
+  // 1) Neutralise les apparences des form fields photo de la page 8
+  for (const fname of [
+    'logement', 'logement2',
+    'acces1', 'acces2', 'acces3',
+    'sani1', 'sani2', 'sani3',
+  ]) {
+    neutralizeFieldAppearance(pdfDoc, form, fname);
   }
 
-  let currentPage = null;
-  let cursorY = 0; // Y du haut du prochain slot à dessiner
-  let pagesInserted = 0;
+  // 2) Construit les rangées (fusion base + extras pour chaque cat)
+  const buildRowsForCategory = (
+    baseTag, perRow, slotW, slotH, hgap, xStart, type,
+  ) => {
+    const grouped = groupPhotosBySectionIndex(documents, baseTag);
+    const allPhotos = [];
+    for (const ps of grouped.values()) allPhotos.push(...ps);
+    const rows = [];
+    for (let i = 0; i < allPhotos.length; i += perRow) {
+      rows.push({
+        photos: allPhotos.slice(i, i + perRow),
+        slotW, slotH, hgap, xStart, type,
+      });
+    }
+    return rows;
+  };
 
-  for (const row of rows) {
-    const rowBottomIfDrawn = cursorY - row.slotH;
-    const needsNewPage = !currentPage || rowBottomIfDrawn < marginBottom;
-    if (needsNewPage) {
-      const insertAt = insertBeforeIndex + pagesInserted;
-      currentPage = pdfDoc.insertPage(insertAt, [pageWidth, pageHeight]);
-      cursorY = pageHeight - marginTop;
-      pagesInserted += 1;
+  const allRows = [
+    ...buildRowsForCategory(
+      'Visite - Logement', 2, logW, logH, logHGap, logXStart, 'logement',
+    ),
+    ...buildRowsForCategory(
+      'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart, 'acces',
+    ),
+    ...buildRowsForCategory(
+      'Visite - Sanitaires', 3, saniW, saniH, saniHGap, saniXStart, 'sani',
+    ),
+  ];
+
+  if (allRows.length === 0) return;
+
+  // 3) Calcul du gap vertical entre 2 rangées consécutives
+  const computeVGap = (prevType, nextType) => {
+    if (prevType === nextType) return VGAP_INTRA;
+    if (prevType === 'logement' && nextType === 'acces') return vgapLogToAcc;
+    if (prevType === 'acces' && nextType === 'sani') return vgapAccToSani;
+    return VGAP_INTRA; // fallback
+  };
+
+  // 4) Dessin en flow avec pagination
+  let currentPage = page8;
+  let cursorY = firstLogTopY;
+  let bottomLimit = page8BottomLimit;
+  let bonusPagesInserted = 0;
+
+  for (let r = 0; r < allRows.length; r += 1) {
+    const row = allRows[r];
+
+    // Pagination : la rangée tient-elle dans la zone restante ?
+    if (cursorY - row.slotH < bottomLimit) {
+      const insertAt = page8Index + 1 + bonusPagesInserted;
+      currentPage = pdfDoc.insertPage(
+        insertAt, [pageWidth, pageHeight],
+      );
+      cursorY = pageHeight - bonusMarginTop;
+      bottomLimit = bonusMarginBottom;
+      bonusPagesInserted += 1;
     }
 
+    // Dessine la rangée à `cursorY` (top du slot)
     for (let i = 0; i < row.photos.length; i += 1) {
-      const x = row.xStart + i * (row.slotW + hgap);
+      const x = row.xStart + i * (row.slotW + row.hgap);
       const y = cursorY - row.slotH;
       const rect = { x, y, width: row.slotW, height: row.slotH };
       await drawPhotoOnPageAtRect(
@@ -1711,7 +1808,12 @@ async function drawVisitPhotosOverflowBonusPages({
         fetchImageBytes, stats,
       );
     }
-    cursorY = cursorY - row.slotH - vgap;
+
+    // Avance le curseur pour la rangée suivante
+    cursorY -= row.slotH;
+    if (r + 1 < allRows.length) {
+      cursorY -= computeVGap(row.type, allRows[r + 1].type);
+    }
   }
 }
 
@@ -2314,16 +2416,11 @@ export async function generateVisitReport({
   // centrée dans son cadre". `setImage` de pdf-lib applique
   // exactement cette logique (scaleToFit + ImageAlignment.Center).
   // ---------------------------------------------------------------
-  // Fusion sections base + extras pour chaque catégorie (demande
-  // utilisateur 2026-05-04, option 4A) : les photos extras créées
-  // via « + Ajouter une partie » dans Flutter sont mergées au flux
-  // principal. Les N premières alimentent les slots fixes du
-  // template, le reste va sur les pages bonus (cf. boucle suivante).
-  const visitPhotoSurplus = {
-    logement: [],
-    accessibilite: [],
-    sanitaires: [],
-  };
+  // Calcule le total de photos par catégorie pour décider du mode de
+  // rendu de la page 8. Cas standard (pas de surplus) → comportement
+  // historique via les form fields du template (zéro régression).
+  // Sinon, on bascule en « custom flow » : tout est redessiné en
+  // flow continu sur la page 8 puis pages bonus.
   const PAGE8_CATEGORIES = [
     {
       key: 'logement',
@@ -2341,47 +2438,48 @@ export async function generateVisitReport({
       fields: PAGE8_PHOTO_SLOTS[2].fields,
     },
   ];
-  for (const cat of PAGE8_CATEGORIES) {
-    const grouped = groupPhotosBySectionIndex(documents, cat.baseTag);
-    const allPhotos = [];
-    for (const photos of grouped.values()) allPhotos.push(...photos);
+  const countPhotosForCategory = (baseTag) => {
+    const grouped = groupPhotosBySectionIndex(documents, baseTag);
+    let n = 0;
+    for (const ps of grouped.values()) n += ps.length;
+    return n;
+  };
+  const hasPage8Overflow = PAGE8_CATEGORIES.some(
+    (cat) => countPhotosForCategory(cat.baseTag) > cat.fields.length,
+  );
 
-    // Slots fixes du template — N premières photos
-    for (let i = 0; i < cat.fields.length; i += 1) {
-      const fieldName = cat.fields[i];
-      const photo = allPhotos[i];
-      if (!photo) continue;
-      await setImageInField(
-        pdfDoc, form, fieldName,
-        { kind: 'document', id: photo.id },
-        fetchImageBytes, stats,
-      );
-      const tags = Array.isArray(photo.tags) ? photo.tags : [];
-      if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
-        await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
+  if (!hasPage8Overflow) {
+    // Mode template : remplit les form fields page 8 comme avant.
+    for (const cat of PAGE8_CATEGORIES) {
+      const grouped = groupPhotosBySectionIndex(documents, cat.baseTag);
+      const allPhotos = [];
+      for (const ps of grouped.values()) allPhotos.push(...ps);
+      for (let i = 0; i < cat.fields.length; i += 1) {
+        const fieldName = cat.fields[i];
+        const photo = allPhotos[i];
+        if (!photo) continue;
+        await setImageInField(
+          pdfDoc, form, fieldName,
+          { kind: 'document', id: photo.id },
+          fetchImageBytes, stats,
+        );
+        const tags = Array.isArray(photo.tags) ? photo.tags : [];
+        if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+          await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
+        }
       }
     }
-    // Surplus (au-delà des N slots fixes) → pages bonus
-    visitPhotoSurplus[cat.key] = allPhotos.slice(cat.fields.length);
+  } else {
+    // Mode flow : redessine TOUTE la page 8 en flow continu,
+    // pagination automatique vers des pages bonus si nécessaire.
+    // Demande utilisateur 2026-05-04 : les photos surplus de Logement
+    // s'insèrent DIRECTEMENT en dessous de la rangée Logement
+    // d'origine, ce qui pousse Accès puis Sanitaires plus bas (et
+    // potentiellement sur la page suivante).
+    await drawVisitPhotosWithFlow({
+      pdfDoc, form, fetchImageBytes, stats, documents,
+    });
   }
-
-  // Pages bonus pour le surplus de la page 8 — insérées juste avant
-  // la page 9 (Plan avant) pour que la pagination reste continue sans
-  // « bis/ter ». Demande utilisateur 2026-05-04 : si une catégorie a
-  // plus de photos que ses slots du template, on rajoute une rangée
-  // de la même catégorie en dessous (et donc une page si nécessaire).
-  // Logement : par paquets de 2 photos paysage ; Accès / Sanitaires :
-  // par paquets de 3 portraits — exactement comme la page 8.
-  const planAvantInfo =
-      getFieldFirstWidgetInfo(pdfDoc, form, 'plan avt_af_image');
-  const surplusInsertAt = planAvantInfo
-      ? planAvantInfo.pageIndex
-      : pdfDoc.getPageCount();
-  await drawVisitPhotosOverflowBonusPages({
-    pdfDoc, form, fetchImageBytes, stats,
-    surplus: visitPhotoSurplus,
-    insertBeforeIndex: surplusInsertAt,
-  });
 
   // ---------------------------------------------------------------
   // Pages 9-10 — Plans avant / après. Source : UNIQUEMENT les photos
