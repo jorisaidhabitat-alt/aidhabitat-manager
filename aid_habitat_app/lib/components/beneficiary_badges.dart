@@ -24,22 +24,27 @@ String formatAccompanimentType(String raw) {
   }
 }
 
-/// Palette du type d'accompagnement — 3 couleurs distinctes,
+/// Palette du type d'accompagnement — 3 couleurs PASTEL distinctes,
 /// utilisées partout où l'accompagnement est rendu (badge dans le
 /// header de dossier / relevé de visite / documents, ET avatar du
 /// bénéficiaire dans la liste « Mes dossiers » — demande utilisateur
 /// 2026-05-04 : "qui serait la même sur la photo de profil").
 ///
+/// Refonte 2026-05-04 v2 : teintes adoucies pour mieux s'intégrer à
+/// la charte (violet pastel #EDE8F5 / catégories de revenu pastel
+/// bleu+jaune). Demande utilisateur : "fait 3 couleurs plus pastel
+/// cohérentes avec le reste de la charte graphique".
+///
 /// Choix des teintes :
-///   • Diagnostic → ROSE poudré (`#FCE7F3` / `#BE185D`) — couleur
-///     distinctive, jamais utilisée ailleurs dans la palette donc
-///     pas de confusion avec ANAH / catégorie de revenus.
-///   • Ergo       → VERT SAUGE (`#D9F7BE` / `#3F6212`) — plus chaud
-///     que le `#D1F4DC` de "ANAH déjà fait", donc lecture claire
-///     même quand les deux badges cohabitent.
-///   • Complet    → VIOLET (`#EDE8F5` / `#554A63`) — couleur
-///     historique d'AccompanimentBadge ; conservée pour ne pas
-///     perturber les dossiers déjà étiquetés Complet.
+///   • Diagnostic → ROSE PASTEL doux (`#FFE4EC` / `#A8336B`) — plus
+///     léger que l'ancien rose-magenta, harmonisé avec l'ambre/jaune
+///     pastel de la palette des revenus.
+///   • Ergo       → VERT SAUGE PASTEL (`#E5F0D7` / `#5C7A3E`) — plus
+///     doux que l'ancien vert un peu vif ; même tonalité que les
+///     autres badges pastel pour une lecture sereine côte à côte.
+///   • Complet    → VIOLET PASTEL (`#EDE8F5` / `#554A63`) — couleur
+///     historique de la charte. Conservée telle quelle, sert de
+///     pivot pour les deux autres pastels.
 ///   • autre / vide → gris neutre (`#F1F5F9` / `#334155`).
 class AccompanimentPalette {
   final Color bg;
@@ -51,14 +56,14 @@ AccompanimentPalette accompanimentPaletteFor(String raw) {
   final v = raw.trim().toLowerCase();
   if (v == 'diagnostic') {
     return const AccompanimentPalette(
-      bg: Color(0xFFFCE7F3),
-      fg: Color(0xFFBE185D),
+      bg: Color(0xFFFFE4EC),
+      fg: Color(0xFFA8336B),
     );
   }
   if (v == 'ergo') {
     return const AccompanimentPalette(
-      bg: Color(0xFFD9F7BE),
-      fg: Color(0xFF3F6212),
+      bg: Color(0xFFE5F0D7),
+      fg: Color(0xFF5C7A3E),
     );
   }
   if (v == 'complet') {
