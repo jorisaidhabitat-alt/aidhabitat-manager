@@ -481,19 +481,32 @@ class _NotesWidgetState extends State<NotesWidget> {
       _switchPage(widget.currentPage);
     }
     // Le parent a poussé une nouvelle sélection de flags médicaux (ex.
-    // case à cocher togglée dans ContextTab) → on applique aux flags de
-    // la page courante et on persiste. On ne ré-émet PAS onMedicalFlagsChanged
-    // ici, pour éviter une boucle aller-retour avec le parent.
+    // case à cocher togglée dans ContextTab) → on applique à TOUTES
+    // les pages et on persiste. Demande utilisateur 2026-05-04 :
+    // « laisse ce qui a été coché à gauche pareil pour chaque page
+    // note, ça remet à zéro ce que j'ai coché quand je change de
+    // page ». Avant : on n'écrivait que sur la page courante → la
+    // page voisine restait avec d'anciens flags qui réécrasaient
+    // la coche au moment du switch via onMedicalFlagsChanged.
+    // Désormais : flags GLOBAUX (mêmes valeurs sur toutes les pages),
+    // donc le switch ne change rien à l'état des cases parent.
     if (widget.medicalFlags != null &&
         !_setIntEquals(
           widget.medicalFlags!,
           _pageMedicalFlags[_currentPage] ?? const <int>{},
         )) {
+      final newFlags = {...widget.medicalFlags!};
       setState(() {
-        _pageMedicalFlags[_currentPage] = {...widget.medicalFlags!};
+        for (var p = 0; p < _totalPages; p++) {
+          _pageMedicalFlags[p] = {...newFlags};
+        }
       });
-      // Persiste immédiatement la nouvelle sélection sur la page courante.
-      unawaited(_persistPage(_currentPage));
+      // Persiste sur TOUTES les pages (pas seulement la courante) pour
+      // que la prochaine ouverture du dossier retrouve le même état
+      // peu importe la page lue par `_loadPages`.
+      for (var p = 0; p < _totalPages; p++) {
+        unawaited(_persistPage(p));
+      }
     }
     if (oldWidget.totalPages != widget.totalPages) {
       setState(() => _totalPages = math.max(1, widget.totalPages));
@@ -1152,10 +1165,12 @@ class _NotesWidgetState extends State<NotesWidget> {
       _redoStack.clear();
     });
     widget.onPageChange?.call(page);
-    // Informe le parent des flags médicaux stockés pour cette page — le
-    // parent met alors à jour les cases à cocher (ContextTab) et les
-    // badges numérotés (overlay canvas) en fonction de la nouvelle page.
-    _emitMedicalFlagsForCurrentPage();
+    // PAS d'émission de medicalFlags ici (demande utilisateur
+    // 2026-05-04 : les cases cochées à gauche doivent rester
+    // identiques quand on change de page de note dessin). Les flags
+    // sont désormais globaux — synchronisés sur toutes les pages au
+    // moment du toggle (cf. didUpdateWidget) — donc inutile de
+    // re-pousser l'état au parent à chaque switch.
   }
 
   /// Pousse `_pageMedicalFlags[_currentPage]` (ou {}) vers le parent via
@@ -1243,9 +1258,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       _redoStack.clear();
       _isDirty = false;
     });
-    // Les flags médicaux de la page courante ont peut-être changé (on a
-    // sauté sur la page précédente) → informe le parent.
-    _emitMedicalFlagsForCurrentPage();
+    // PAS d'émission medicalFlags après suppression de page : les
+    // flags sont désormais globaux (cf. didUpdateWidget) — l'état
+    // parent ne doit pas changer suite à un déplacement d'index page.
 
     // Persiste l'état des pages déplacées (decalées d'un cran vers le bas)
     // pour que le serveur voie les bonnes valeurs sous leur nouvel index.

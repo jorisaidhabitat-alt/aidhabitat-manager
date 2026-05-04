@@ -2187,7 +2187,11 @@ class _MedicalPageNumberBadge extends StatelessWidget {
       children: [
         Positioned(
           left: 16,
-          top: 12,
+          // top descendu de 12 → 56 (demande utilisateur 2026-05-04 :
+          // « redescend légèrement le numéro pour ne pas être en face
+          // de l'outil navigation entre page »). 56 pt = sous la zone
+          // top-right occupée par le contrôle pagination.
+          top: 56,
           child: _FlagMarker(number: currentPage),
         ),
       ],
