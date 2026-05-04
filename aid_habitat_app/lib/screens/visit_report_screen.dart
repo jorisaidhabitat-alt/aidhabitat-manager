@@ -1412,6 +1412,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         subSectionIndex: 3,
       ));
     }
+    // Type d'accompagnement (Diag ergo / MPA ergo / MPA complet) doit
+    // être renseigné — demande utilisateur 2026-05-04 : « tout doit
+    // avoir un type d'accompagnement ». Sans ça, la cellule AMO du PDF
+    // tombe sur "/" alors que le dossier méritait un montant.
+    if (_dossier.natureAccompagnement.trim().isEmpty) {
+      missing.add(_MissingField(
+        label: 'Admin — type d\'accompagnement (Diag ergo / MPA ergo / MPA complet)',
+        tabIndex: tab,
+        subSectionIndex: 3,
+      ));
+    }
   }
 
   Future<void> _checkAccessibilite(List<_MissingField> missing) async {

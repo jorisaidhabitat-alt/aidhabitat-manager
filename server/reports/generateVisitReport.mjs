@@ -1342,8 +1342,6 @@ const PHOTO_TAG_PDF_NO_LABEL = '__pdf_no_label';
  * paramètre direct de drawRectangle dans pdf-lib.
  */
 async function drawPhotoLabelOverlay(pdfDoc, form, fieldName, label) {
-  const safeLabel = sanitizeForPdfFont(String(label || '')).trim();
-  if (!safeLabel) return;
   let field;
   try {
     field = form.getField(fieldName);
@@ -1360,6 +1358,19 @@ async function drawPhotoLabelOverlay(pdfDoc, form, fieldName, label) {
   if (!pageRef) return;
   const page = pdfDoc.getPages().find((p) => p.ref === pageRef);
   if (!page) return;
+  await drawPhotoLabelOverlayAtRect(pdfDoc, page, rect, label);
+}
+
+/**
+ * Variante de `drawPhotoLabelOverlay` qui prend directement une page
+ * + un rectangle, sans dépendance au form field. Utilisé pour les
+ * pages bonus créées via `pdfDoc.insertPage` (Plan après cards
+ * supplémentaires, débordement photos page 8, etc.).
+ */
+async function drawPhotoLabelOverlayAtRect(pdfDoc, page, rect, label) {
+  const safeLabel = sanitizeForPdfFont(String(label || '')).trim();
+  if (!safeLabel) return;
+  if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontSize = 9;
@@ -1368,9 +1379,6 @@ async function drawPhotoLabelOverlay(pdfDoc, form, fieldName, label) {
   const bandY = rect.y + rect.height - bandH;
   const maxWidth = rect.width - padX * 2;
 
-  // Tronque le texte avec ellipse si nécessaire pour éviter que le
-  // label déborde du slot photo (slots Accessibilité/Sanitaires =
-  // 153pt de large, peu de marge).
   let displayed = safeLabel;
   if (helvetica.widthOfTextAtSize(displayed, fontSize) > maxWidth) {
     while (
@@ -1382,9 +1390,6 @@ async function drawPhotoLabelOverlay(pdfDoc, form, fieldName, label) {
     displayed = `${displayed}…`;
   }
 
-  // Bande noire semi-transparente — `opacity: 0.55` donne un voile
-  // assez sombre pour que le texte blanc reste lisible sur n'importe
-  // quelle photo, mais on voit toujours l'image en transparence.
   page.drawRectangle({
     x: rect.x,
     y: bandY,
@@ -1401,6 +1406,313 @@ async function drawPhotoLabelOverlay(pdfDoc, form, fieldName, label) {
     color: rgb(1, 1, 1),
     font: helvetica,
   });
+}
+
+/**
+ * Récupère les coordonnées + page parente du PREMIER widget d'un
+ * field nommé. Pratique pour cloner un slot photo sur une page bonus
+ * sans avoir à conserver une référence au field. Renvoie null si le
+ * field n'existe pas, n'a pas de widget, ou pas de page parente.
+ */
+function getFieldFirstWidgetInfo(pdfDoc, form, fieldName) {
+  let field;
+  try {
+    field = form.getField(fieldName);
+  } catch (_) {
+    return null;
+  }
+  const widgets = field?.acroField?.getWidgets?.() || [];
+  if (widgets.length === 0) return null;
+  const widget = widgets[0];
+  const rect = widget.getRectangle();
+  const pageRef = widget.P?.();
+  if (!rect || !pageRef) return null;
+  const pages = pdfDoc.getPages();
+  const pageIndex = pages.findIndex((p) => p.ref === pageRef);
+  if (pageIndex === -1) return null;
+  const page = pages[pageIndex];
+  return {
+    rect,
+    page,
+    pageIndex,
+    pageWidth: page.getWidth(),
+    pageHeight: page.getHeight(),
+  };
+}
+
+/**
+ * Groupe les photos d'une catégorie visite par section. La section
+ * de base (tag exact `baseTag`) reçoit l'index 0 ; les sections
+ * supplémentaires créées via « + Ajouter une partie » dans Flutter
+ * portent un tag suffixé `(#N)` (N >= 1). Renvoie une Map ordonnée
+ * par index croissant — Map JS préserve l'ordre d'insertion.
+ *
+ * Utilisé pour Plan après / Travaux préconisés où chaque section =
+ * un projet et obtient sa propre page bonus avec label « Projet N ».
+ */
+function groupPhotosBySectionIndex(documents, baseTag) {
+  const sections = new Map();
+  const basePhotos = photosForVisitTag(documents, baseTag);
+  if (basePhotos.length > 0) sections.set(0, basePhotos);
+
+  // Scanne tous les tags pour détecter les sections extras `(#N)`.
+  // Normalisation identique à `photosForVisitTag` pour que les
+  // variantes NFC/NFD/casse soient regroupées sous le même index.
+  const normalize = (s) => String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const baseLower = normalize(baseTag);
+  const extraIndices = new Set();
+  for (const doc of documents) {
+    const tags = Array.isArray(doc?.tags) ? doc.tags : [];
+    for (const t of tags) {
+      const tn = normalize(t);
+      const m = tn.match(/^(.+) \(#(\d+)\)$/);
+      if (!m) continue;
+      if (m[1] !== baseLower) continue;
+      const idx = parseInt(m[2], 10);
+      if (!Number.isNaN(idx) && idx >= 1) extraIndices.add(idx);
+    }
+  }
+  for (const idx of [...extraIndices].sort((a, b) => a - b)) {
+    const tag = `${baseTag} (#${idx})`;
+    const ps = photosForVisitTag(documents, tag);
+    if (ps.length > 0) sections.set(idx, ps);
+  }
+  return sections;
+}
+
+/**
+ * Dessine un label « Projet N » en haut à droite d'une page —
+ * bandeau noir alpha 0.55 (cohérent avec l'overlay titre des photos)
+ * + texte blanc Helvetica 11pt. Demande utilisateur 2026-05-04 :
+ * « en haut à droite du cadre tu met "Projet 1" pour le premier et
+ * "Projet 2" pour le deuxième et ainsi de suite ». S'applique
+ * UNIQUEMENT quand l'ergo a 2+ cards Travaux préconisés.
+ */
+async function drawProjectLabelTopRight(pdfDoc, page, projectNumber) {
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const text = `Projet ${projectNumber}`;
+  const fontSize = 11;
+  const padX = 8;
+  const padY = 4;
+  const textWidth = helvetica.widthOfTextAtSize(text, fontSize);
+  const bandW = textWidth + padX * 2;
+  const bandH = fontSize + padY * 2;
+  const margin = 18;
+  const pageWidth = page.getWidth();
+  const pageHeight = page.getHeight();
+  const x = pageWidth - margin - bandW;
+  const y = pageHeight - margin - bandH;
+  page.drawRectangle({
+    x, y, width: bandW, height: bandH,
+    color: rgb(0, 0, 0),
+    opacity: 0.55,
+  });
+  page.drawText(text, {
+    x: x + padX,
+    y: y + padY + 1,
+    size: fontSize,
+    color: rgb(1, 1, 1),
+    font: helvetica,
+  });
+}
+
+/**
+ * Dessine une photo sur une page à un rectangle arbitraire (cover-fit
+ * + clip — même algo que `drawImageWithCoverFit` mais sans field
+ * AcroForm). Pour les pages bonus créées via `pdfDoc.insertPage`.
+ * Inclut l'overlay titre par-dessus sauf si la photo porte le tag
+ * `__pdf_no_label`.
+ */
+async function drawPhotoOnPageAtRect(
+  pdfDoc, page, rect, photo, fetchImageBytes, stats,
+) {
+  if (!rect || rect.width <= 0 || rect.height <= 0) return;
+  let fetched = null;
+  try {
+    fetched = await fetchImageBytes({ kind: 'document', id: photo.id });
+  } catch (error) {
+    console.warn(
+      '[generateVisitReport] fetch bonus photo :',
+      error?.message || error,
+    );
+  }
+  if (!fetched?.buffer) {
+    if (stats) stats.bonusPhotosFailed = (stats.bonusPhotosFailed || 0) + 1;
+    return;
+  }
+  let pdfImage;
+  try {
+    pdfImage = await embedImageAuto(pdfDoc, fetched.buffer, fetched.mimeType);
+  } catch (error) {
+    console.warn(
+      '[generateVisitReport] embed bonus photo :',
+      error?.message || error,
+    );
+    return;
+  }
+  if (!pdfImage) return;
+
+  const slotRatio = rect.width / rect.height;
+  const imgRatio = pdfImage.width / pdfImage.height;
+  let drawW;
+  let drawH;
+  if (imgRatio > slotRatio) {
+    drawH = rect.height;
+    drawW = drawH * imgRatio;
+  } else {
+    drawW = rect.width;
+    drawH = drawW / imgRatio;
+  }
+  const drawX = rect.x + (rect.width - drawW) / 2;
+  const drawY = rect.y + (rect.height - drawH) / 2;
+
+  page.pushOperators(
+    pushGraphicsState(),
+    rectangle(rect.x, rect.y, rect.width, rect.height),
+    clip(),
+    endPath(),
+  );
+  page.drawImage(pdfImage, {
+    x: drawX, y: drawY, width: drawW, height: drawH,
+  });
+  page.pushOperators(popGraphicsState());
+
+  if (stats) stats.bonusPhotosApplied = (stats.bonusPhotosApplied || 0) + 1;
+
+  const tags = Array.isArray(photo.tags) ? photo.tags : [];
+  if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+    await drawPhotoLabelOverlayAtRect(pdfDoc, page, rect, photo.title);
+  }
+}
+
+/**
+ * Dessine les photos visite en SURPLUS (au-delà des slots fixes de
+ * la page 8) sur des pages bonus insérées avant la page 9 (Plan
+ * avant). Demande utilisateur 2026-05-04 : si une catégorie déborde,
+ * on rajoute des rangées de la MÊME catégorie en dessous, en flow
+ * naturel — et on passe à la page suivante quand il n'y a plus de
+ * place verticalement. Numérotation continue (pas de bis/ter).
+ *
+ * Layout :
+ *   - Mêmes dimensions que page 8 du template (largeur, hauteur)
+ *   - Ordre vertical des rangées : Logement → Accès → Sanitaires
+ *     (= ordre de la page 8 originale)
+ *   - Logement : 2 photos paysage par rangée, dimensions du slot
+ *     `logement` du template
+ *   - Accès / Sanitaires : 3 portraits par rangée, dimensions des
+ *     slots `acces1` / `sani1` du template
+ *   - Toutes les rangées sont CENTRÉES horizontalement sur la page
+ *   - Quand la prochaine rangée ne tient plus en hauteur (test
+ *     contre `marginBottom`), on insère une nouvelle page
+ *
+ * Insertion : `insertBeforeIndex` donne la position cible (= index
+ * de page 9 dans le PDF tel qu'il est avant ces insertions). Chaque
+ * page bonus créée incrémente le compteur pour conserver l'ordre.
+ */
+async function drawVisitPhotosOverflowBonusPages({
+  pdfDoc, form, fetchImageBytes, stats,
+  surplus,
+  insertBeforeIndex,
+}) {
+  const totalSurplus =
+      surplus.logement.length +
+      surplus.accessibilite.length +
+      surplus.sanitaires.length;
+  if (totalSurplus === 0) return;
+
+  // Lit les dimensions des slots originaux du template — garantit
+  // que les pages bonus aient EXACTEMENT le même look (mêmes tailles
+  // de cadres) que la page 8 originale.
+  const logSlot = getFieldFirstWidgetInfo(pdfDoc, form, 'logement');
+  const accSlot = getFieldFirstWidgetInfo(pdfDoc, form, 'acces1');
+  const saniSlot = getFieldFirstWidgetInfo(pdfDoc, form, 'sani1');
+  if (!logSlot || !accSlot || !saniSlot) {
+    console.warn(
+      '[generateVisitReport] photos surplus : slots template introuvables, abort bonus pages',
+    );
+    return;
+  }
+
+  const pageWidth = logSlot.pageWidth;
+  const pageHeight = logSlot.pageHeight;
+
+  // Marges et gaps. Marges haut/bas généreuses pour laisser respirer
+  // visuellement et éviter que l'overlay titre touche le bord.
+  const marginTop = 70;
+  const marginBottom = 60;
+  const hgap = 12;
+  const vgap = 22;
+
+  // Pré-calcul des positions X centrées pour chaque type de rangée
+  const logW = logSlot.rect.width;
+  const logH = logSlot.rect.height;
+  const accW = accSlot.rect.width;
+  const accH = accSlot.rect.height;
+  const saniW = saniSlot.rect.width;
+  const saniH = saniSlot.rect.height;
+
+  const totalLogRowW = 2 * logW + hgap;
+  const xLogStart = (pageWidth - totalLogRowW) / 2;
+  const totalAccRowW = 3 * accW + 2 * hgap;
+  const xAccStart = (pageWidth - totalAccRowW) / 2;
+  const totalSaniRowW = 3 * saniW + 2 * hgap;
+  const xSaniStart = (pageWidth - totalSaniRowW) / 2;
+
+  // Construit la liste des rangées à dessiner, ordre Logement → Accès
+  // → Sanitaires. Chaque entrée représente UNE rangée.
+  const rows = [];
+  for (let i = 0; i < surplus.logement.length; i += 2) {
+    rows.push({
+      photos: surplus.logement.slice(i, i + 2),
+      slotW: logW, slotH: logH,
+      xStart: xLogStart,
+    });
+  }
+  for (let i = 0; i < surplus.accessibilite.length; i += 3) {
+    rows.push({
+      photos: surplus.accessibilite.slice(i, i + 3),
+      slotW: accW, slotH: accH,
+      xStart: xAccStart,
+    });
+  }
+  for (let i = 0; i < surplus.sanitaires.length; i += 3) {
+    rows.push({
+      photos: surplus.sanitaires.slice(i, i + 3),
+      slotW: saniW, slotH: saniH,
+      xStart: xSaniStart,
+    });
+  }
+
+  let currentPage = null;
+  let cursorY = 0; // Y du haut du prochain slot à dessiner
+  let pagesInserted = 0;
+
+  for (const row of rows) {
+    const rowBottomIfDrawn = cursorY - row.slotH;
+    const needsNewPage = !currentPage || rowBottomIfDrawn < marginBottom;
+    if (needsNewPage) {
+      const insertAt = insertBeforeIndex + pagesInserted;
+      currentPage = pdfDoc.insertPage(insertAt, [pageWidth, pageHeight]);
+      cursorY = pageHeight - marginTop;
+      pagesInserted += 1;
+    }
+
+    for (let i = 0; i < row.photos.length; i += 1) {
+      const x = row.xStart + i * (row.slotW + hgap);
+      const y = cursorY - row.slotH;
+      const rect = { x, y, width: row.slotW, height: row.slotH };
+      await drawPhotoOnPageAtRect(
+        pdfDoc, currentPage, rect, row.photos[i],
+        fetchImageBytes, stats,
+      );
+    }
+    cursorY = cursorY - row.slotH - vgap;
+  }
 }
 
 /**
@@ -2002,29 +2314,74 @@ export async function generateVisitReport({
   // centrée dans son cadre". `setImage` de pdf-lib applique
   // exactement cette logique (scaleToFit + ImageAlignment.Center).
   // ---------------------------------------------------------------
-  for (const slot of PAGE8_PHOTO_SLOTS) {
-    const photos = photosForVisitTag(documents, slot.tag);
-    for (let i = 0; i < slot.fields.length; i += 1) {
-      const fieldName = slot.fields[i];
-      const photo = photos[i];
+  // Fusion sections base + extras pour chaque catégorie (demande
+  // utilisateur 2026-05-04, option 4A) : les photos extras créées
+  // via « + Ajouter une partie » dans Flutter sont mergées au flux
+  // principal. Les N premières alimentent les slots fixes du
+  // template, le reste va sur les pages bonus (cf. boucle suivante).
+  const visitPhotoSurplus = {
+    logement: [],
+    accessibilite: [],
+    sanitaires: [],
+  };
+  const PAGE8_CATEGORIES = [
+    {
+      key: 'logement',
+      baseTag: 'Visite - Logement',
+      fields: PAGE8_PHOTO_SLOTS[0].fields,
+    },
+    {
+      key: 'accessibilite',
+      baseTag: 'Visite - Accessibilité',
+      fields: PAGE8_PHOTO_SLOTS[1].fields,
+    },
+    {
+      key: 'sanitaires',
+      baseTag: 'Visite - Sanitaires',
+      fields: PAGE8_PHOTO_SLOTS[2].fields,
+    },
+  ];
+  for (const cat of PAGE8_CATEGORIES) {
+    const grouped = groupPhotosBySectionIndex(documents, cat.baseTag);
+    const allPhotos = [];
+    for (const photos of grouped.values()) allPhotos.push(...photos);
+
+    // Slots fixes du template — N premières photos
+    for (let i = 0; i < cat.fields.length; i += 1) {
+      const fieldName = cat.fields[i];
+      const photo = allPhotos[i];
       if (!photo) continue;
       await setImageInField(
-        pdfDoc,
-        form,
-        fieldName,
+        pdfDoc, form, fieldName,
         { kind: 'document', id: photo.id },
-        fetchImageBytes,
-        stats,
+        fetchImageBytes, stats,
       );
-      // Overlay du titre en haut du slot — sauf si la photo porte le
-      // tag magique `__pdf_no_label` (toggle utilisateur dans le
-      // dialog plein écran de l'onglet Photos).
       const tags = Array.isArray(photo.tags) ? photo.tags : [];
       if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
         await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
       }
     }
+    // Surplus (au-delà des N slots fixes) → pages bonus
+    visitPhotoSurplus[cat.key] = allPhotos.slice(cat.fields.length);
   }
+
+  // Pages bonus pour le surplus de la page 8 — insérées juste avant
+  // la page 9 (Plan avant) pour que la pagination reste continue sans
+  // « bis/ter ». Demande utilisateur 2026-05-04 : si une catégorie a
+  // plus de photos que ses slots du template, on rajoute une rangée
+  // de la même catégorie en dessous (et donc une page si nécessaire).
+  // Logement : par paquets de 2 photos paysage ; Accès / Sanitaires :
+  // par paquets de 3 portraits — exactement comme la page 8.
+  const planAvantInfo =
+      getFieldFirstWidgetInfo(pdfDoc, form, 'plan avt_af_image');
+  const surplusInsertAt = planAvantInfo
+      ? planAvantInfo.pageIndex
+      : pdfDoc.getPageCount();
+  await drawVisitPhotosOverflowBonusPages({
+    pdfDoc, form, fetchImageBytes, stats,
+    surplus: visitPhotoSurplus,
+    insertBeforeIndex: surplusInsertAt,
+  });
 
   // ---------------------------------------------------------------
   // Pages 9-10 — Plans avant / après. Source : UNIQUEMENT les photos
@@ -2041,30 +2398,149 @@ export async function generateVisitReport({
   //
   // Photos prises pour chaque slot : ordre = celui de
   // `photosForVisitTag` (date DESC par défaut), max 2 par phase.
-  for (const slot of [
-    { tag: 'Visite - Plan avant', fields: PLAN_SLOTS.avant },
-    { tag: 'Visite - Plan après', fields: PLAN_SLOTS.apres },
-  ]) {
-    const photos = photosForVisitTag(documents, slot.tag);
-    for (let i = 0; i < slot.fields.length; i += 1) {
-      const fieldName = slot.fields[i];
-      const photo = photos[i];
+  // ---------------------------------------------------------------
+  // Pages 9-10 — Plans avant / après. Logique de pages bonus
+  // (demande utilisateur 2026-05-04) :
+  //   - Plan avant : on FUSIONNE toutes les sections (base + extras
+  //     `(#N)`) en un seul flux, et on déborde par paquets de 2 sur
+  //     des pages bonus insérées juste après page 9. Pas de label
+  //     additionnel (« sans ajout de texte »).
+  //   - Plan après / Travaux préconisés : on traite chaque section
+  //     comme un PROJET indépendant. Section 0 reste sur la page 10
+  //     du template ; chaque section extra (#1, #2…) consomme une
+  //     page bonus dédiée insérée à la suite. Si 2+ projets, label
+  //     « Projet N » ajouté en haut à droite de chaque page (page
+  //     10 incluse). Si 1 seul projet, AUCUN label (parité visuelle
+  //     avec les rapports historiques).
+  //
+  // Implémentation : pour les pages bonus on n'utilise PAS les form
+  // fields (collisions de noms), on dessine les photos directement
+  // sur la page vierge aux mêmes coordonnées que les rectangles des
+  // form fields originaux du template (récupérées une fois, puis
+  // réutilisées). L'overlay titre est appliqué via la variante
+  // `drawPhotoLabelOverlayAtRect` qui fonctionne sans field.
+  // ---------------------------------------------------------------
+
+  // ----- Plan avant (page 9) — fusion + débordement par paquets de 2
+  {
+    const baseTag = 'Visite - Plan avant';
+    const sections = groupPhotosBySectionIndex(documents, baseTag);
+    // Fusion : toutes les photos de toutes les sections dans un seul
+    // flux, ordre = sections par index croissant.
+    const allPhotos = [];
+    for (const photos of sections.values()) allPhotos.push(...photos);
+
+    const slotFields = PLAN_SLOTS.avant; // ['plan avt_af_image', 'plan avt1_af_image']
+    // Remplit la page 9 (slots du template) avec les 2 premières.
+    for (let i = 0; i < slotFields.length; i += 1) {
+      const photo = allPhotos[i];
       if (!photo) continue;
       await setImageInField(
-        pdfDoc,
-        form,
-        fieldName,
+        pdfDoc, form, slotFields[i],
         { kind: 'document', id: photo.id },
-        fetchImageBytes,
-        stats,
-        // Mode 'contain' (parité avec les photos page 8) — garde
-        // l'image entière sans cropper, fond blanc autour si le ratio
-        // diffère du slot.
+        fetchImageBytes, stats,
       );
-      // Même overlay titre que page 8 (cf. boucle précédente).
       const tags = Array.isArray(photo.tags) ? photo.tags : [];
       if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
-        await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
+        await drawPhotoLabelOverlay(pdfDoc, form, slotFields[i], photo.title);
+      }
+    }
+    // Débordement (3e photo et +) sur des pages bonus
+    if (allPhotos.length > slotFields.length) {
+      const slot0Info = getFieldFirstWidgetInfo(pdfDoc, form, slotFields[0]);
+      const slot1Info = getFieldFirstWidgetInfo(pdfDoc, form, slotFields[1]);
+      if (slot0Info && slot1Info) {
+        const overflow = allPhotos.slice(slotFields.length);
+        // Insère les pages bonus juste APRÈS la page 9 (= slot0Info.pageIndex).
+        // À chaque insertion, l'index d'insertion suivant s'incrémente
+        // pour conserver l'ordre.
+        for (let p = 0; p < overflow.length; p += 2) {
+          const insertAt = slot0Info.pageIndex + 1 + (p / 2);
+          const newPage = pdfDoc.insertPage(
+            insertAt,
+            [slot0Info.pageWidth, slot0Info.pageHeight],
+          );
+          const photoTop = overflow[p];
+          const photoBot = overflow[p + 1];
+          if (photoTop) {
+            await drawPhotoOnPageAtRect(
+              pdfDoc, newPage, slot0Info.rect, photoTop,
+              fetchImageBytes, stats,
+            );
+          }
+          if (photoBot) {
+            await drawPhotoOnPageAtRect(
+              pdfDoc, newPage, slot1Info.rect, photoBot,
+              fetchImageBytes, stats,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // ----- Plan après / Travaux préconisés (page 10) — sections =
+  // projets, label « Projet N » si 2+ sections
+  {
+    const baseTag = 'Visite - Plan après';
+    const sections = groupPhotosBySectionIndex(documents, baseTag);
+    const sectionEntries = [...sections.entries()]; // [[idx, photos], …]
+    const showProjectLabels = sectionEntries.length > 1;
+    const slotFields = PLAN_SLOTS.apres;
+
+    if (sectionEntries.length > 0) {
+      // Section [0] = section base → page 10 du template
+      const basePhotos = sectionEntries[0][1];
+      for (let i = 0; i < slotFields.length; i += 1) {
+        const photo = basePhotos[i];
+        if (!photo) continue;
+        await setImageInField(
+          pdfDoc, form, slotFields[i],
+          { kind: 'document', id: photo.id },
+          fetchImageBytes, stats,
+        );
+        const tags = Array.isArray(photo.tags) ? photo.tags : [];
+        if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+          await drawPhotoLabelOverlay(pdfDoc, form, slotFields[i], photo.title);
+        }
+      }
+
+      // Récupère les rects des slots page 10 — utilisés ET pour le
+      // label « Projet 1 » sur la page 10 ET comme template
+      // dimensionnel pour les pages bonus.
+      const slot0Info = getFieldFirstWidgetInfo(pdfDoc, form, slotFields[0]);
+      const slot1Info = getFieldFirstWidgetInfo(pdfDoc, form, slotFields[1]);
+
+      if (showProjectLabels && slot0Info) {
+        await drawProjectLabelTopRight(pdfDoc, slot0Info.page, 1);
+      }
+
+      // Sections extras (idx >= 1) → 1 page bonus chacune
+      if (sectionEntries.length > 1 && slot0Info && slot1Info) {
+        for (let s = 1; s < sectionEntries.length; s += 1) {
+          const [, photos] = sectionEntries[s];
+          // Insère après la page 10 originale, dans l'ordre des sections
+          const insertAt = slot0Info.pageIndex + s;
+          const newPage = pdfDoc.insertPage(
+            insertAt,
+            [slot0Info.pageWidth, slot0Info.pageHeight],
+          );
+          const photoTop = photos[0];
+          const photoBot = photos[1];
+          if (photoTop) {
+            await drawPhotoOnPageAtRect(
+              pdfDoc, newPage, slot0Info.rect, photoTop,
+              fetchImageBytes, stats,
+            );
+          }
+          if (photoBot) {
+            await drawPhotoOnPageAtRect(
+              pdfDoc, newPage, slot1Info.rect, photoBot,
+              fetchImageBytes, stats,
+            );
+          }
+          await drawProjectLabelTopRight(pdfDoc, newPage, s + 1);
+        }
       }
     }
   }

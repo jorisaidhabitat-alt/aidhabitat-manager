@@ -66,30 +66,16 @@ AccompanimentPalette accompanimentPaletteFor(String raw) {
       fg: Color(0xFF5C7A3E),
     );
   }
-  if (v == 'complet') {
-    // Teal pastel — sortie du violet `#EDE8F5` historique (demande
-    // utilisateur 2026-05-04 : « pas de violet clair comme le reste de
-    // l'application »). Le violet était partagé avec le fallback
-    // neutre du badge revenu et le fond des avatars sidebar → plus
-    // possible de distinguer un MPA complet du reste de l'UI au
-    // premier coup d'œil. Le teal reste cool/professionnel sans
-    // entrer en collision avec :
-    //   - Diagnostic (rose poudré)
-    //   - Ergo       (vert sauge)
-    //   - ANAH déjà fait (vert pomme)  — saturation différente, vert
-    //                                    moins pastel
-    //   - Income Très modeste (bleu acier) — bleu vs teal distincts
-    return const AccompanimentPalette(
-      bg: Color(0xFFCCEFE8),
-      fg: Color(0xFF1F6F66),
-    );
-  }
-  // Fallback neutre quand le dossier n'a pas (encore) de type
-  // d'accompagnement renseigné. Visuellement discret, n'attire pas
-  // l'œil — l'ergo sait qu'il faut compléter le champ.
+  // 'complet' OU valeur vide / non-reconnue → palette Complet (teal
+  // pastel). Demande utilisateur 2026-05-04 : « tout doit avoir un
+  // type d'accompagnement, pas de gris "(inconnue)" ». Un dossier
+  // sans type renseigné est visuellement traité comme MPA complet ;
+  // la validation pré-génération PDF (cf. `_checkBeneficiaryAdmin`
+  // dans visit_report_screen.dart) flagge le champ vide pour que
+  // l'ergo le complète au prochain rapport.
   return const AccompanimentPalette(
-    bg: Color(0xFFF1F5F9),
-    fg: Color(0xFF334155),
+    bg: Color(0xFFCCEFE8),
+    fg: Color(0xFF1F6F66),
   );
 }
 
@@ -159,16 +145,24 @@ class AccompanimentBadge extends StatelessWidget {
 }
 
 /// Palette unique par catégorie de revenu utilisée partout dans
-/// l'app (dossier, relevé de visite, liste des dossiers). La couleur
-/// de fond ET la couleur de typo dépendent de la catégorie. Mise à
-/// jour 2026-05-04 : 4 catégories ANAH désormais explicitement
-/// couleur-codées (avant : Intermédiaire et Supérieur tombaient sur
-/// le fallback violet).
-///   • Très modeste → fond bleu clair,   typo bleu acier
-///   • Modeste      → fond jaune clair,  typo orange brûlé
-///   • Intermédiaire→ fond violet pastel,typo violet graphite (charte)
-///   • Supérieur    → fond rouge pastel, typo rouge bordeaux #8B181A
-///   • inconnue     → fallback violet pastel (≈ Intermédiaire)
+/// l'app (dossier, relevé de visite, liste des dossiers). 4 catégories
+/// ANAH explicitement couleur-codées — chaque dossier doit retomber
+/// sur l'une d'elles (le serveur calcule `categorie_revenu_calculee`
+/// à partir de `numberPeople` × `fiscalRevenue` via les barèmes ANAH,
+/// puis tombe sur 'Modeste' si le RFR n'a jamais été saisi — cf.
+/// `mapPatient` dans server/index.mjs ligne 1675).
+///
+/// Demande utilisateur 2026-05-04 : « il ne doit pas y avoir
+/// d'(inconnue), tout doit être catégorisé ». Le fallback final reste
+/// la couleur d'Intermédiaire (violet pastel charte) — pas une 5e
+/// teinte « inconnue » distincte — pour qu'un dossier mal-typé soit
+/// visuellement traité comme Intermédiaire le temps que la donnée
+/// soit corrigée côté NocoDB.
+///
+///   • Très modeste → fond bleu clair,    typo bleu acier
+///   • Modeste      → fond jaune clair,   typo orange brûlé
+///   • Intermédiaire→ fond violet pastel, typo violet graphite (charte)
+///   • Supérieur    → fond rouge pastel,  typo rouge bordeaux #8B181A
 class IncomeCategoryPalette {
   final Color bg;
   final Color fg;
@@ -178,8 +172,7 @@ class IncomeCategoryPalette {
 IncomeCategoryPalette incomePaletteFor(String value) {
   final v = value.trim().toLowerCase();
   // Ordre important : "très modeste" doit être testé AVANT "modeste"
-  // (sinon `contains('modeste')` capture les deux). Idem "supérieur"
-  // avant le fallback.
+  // (sinon `contains('modeste')` capture les deux).
   if (v.contains('très modeste') || v.contains('tres modeste')) {
     return const IncomeCategoryPalette(
       bg: Color(0xFFCFE3F0),
@@ -202,14 +195,10 @@ IncomeCategoryPalette incomePaletteFor(String value) {
       fg: Color(0xFF8B181A),
     );
   }
-  if (v.contains('intermédiaire') || v.contains('intermediaire')) {
-    return const IncomeCategoryPalette(
-      bg: Color(0xFFEDE8F5),
-      fg: Color(0xFF554A63),
-    );
-  }
-  // Fallback neutre : catégorie inconnue → violet doux (identique à
-  // Intermédiaire, n'attire pas l'œil).
+  // `intermédiaire` OU valeur vide / non-reconnue → palette
+  // Intermédiaire (violet pastel charte). Visuellement un dossier
+  // mal-typé sera traité comme Intermédiaire ; la donnée reste à
+  // corriger côté NocoDB mais l'UI ne montre jamais d'« inconnue ».
   return const IncomeCategoryPalette(
     bg: Color(0xFFEDE8F5),
     fg: Color(0xFF554A63),
