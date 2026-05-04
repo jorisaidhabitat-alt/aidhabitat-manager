@@ -22,6 +22,11 @@ import 'services/sync_engine.dart';
 // place pour que la compilation passe.
 import 'services/multi_window_stub.dart'
     if (dart.library.io) 'package:desktop_multi_window/desktop_multi_window.dart';
+// Web-only helpers pour la fenêtre détachée des notes (cf.
+// `note_window_web.dart` pour le rationale). Sur natif, le stub fait
+// passer la compilation.
+import 'services/note_window_web_stub.dart'
+    if (dart.library.html) 'services/note_window_web.dart' as note_window_web;
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
