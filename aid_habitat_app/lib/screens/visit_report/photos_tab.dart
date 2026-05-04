@@ -132,15 +132,19 @@ class _PhotosTabState extends State<PhotosTab>
     }
   }
 
+  /// Regex strict pour parser le suffixe ` (#N)` à la fin d'un tag
+  /// extra. Garantit que :
+  ///   - le baseTag est matché à l'identique (pas de collision si
+  ///     un futur baseTag contient les caractères ` (#` dans son nom),
+  ///   - l'index est uniquement des chiffres > 0,
+  ///   - rien après la `)` (pas de trailing whitespace toléré).
+  /// Hardening 2026-05-04 (audit).
+  static final RegExp _extraSuffixRe = RegExp(r' \(#(\d+)\)$');
+
   /// Vrai si [tag] est un tag visite reconnu — base (`Visite - X`) OU
   /// suffixe extra (`Visite - X (#N)`).
-  static bool _isAnyVisitTag(String tag) {
-    if (kVisitPhotoTags.contains(tag)) return true;
-    for (final base in kVisitPhotoTags) {
-      if (tag.startsWith('$base (#')) return true;
-    }
-    return false;
-  }
+  static bool _isAnyVisitTag(String tag) =>
+      _parseSectionTag(tag) != null;
 
   /// Décompose un tag photo. Renvoie (baseTag, extraIndex) où
   /// extraIndex = 0 pour une section de base et > 0 pour une extra.
@@ -149,17 +153,13 @@ class _PhotosTabState extends State<PhotosTab>
     if (kVisitPhotoTags.contains(tag)) {
       return (baseTag: tag, index: 0);
     }
-    for (final base in kVisitPhotoTags) {
-      final prefix = '$base (#';
-      if (tag.startsWith(prefix) && tag.endsWith(')')) {
-        final inner = tag.substring(prefix.length, tag.length - 1);
-        final n = int.tryParse(inner);
-        if (n != null && n > 0) {
-          return (baseTag: base, index: n);
-        }
-      }
-    }
-    return null;
+    final match = _extraSuffixRe.firstMatch(tag);
+    if (match == null) return null;
+    final base = tag.substring(0, match.start);
+    if (!kVisitPhotoTags.contains(base)) return null;
+    final n = int.tryParse(match.group(1)!);
+    if (n == null || n <= 0) return null;
+    return (baseTag: base, index: n);
   }
 
   /// Construit le tag complet à utiliser pour une section donnée.

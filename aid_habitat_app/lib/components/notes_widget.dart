@@ -404,6 +404,13 @@ class _NotesWidgetState extends State<NotesWidget> {
   // fournis par le parent (onglet "Contexte de vie > Médical").
   final Map<int, Set<int>> _pageMedicalFlags = <int, Set<int>>{};
 
+  /// Chaîne de promesses pour sérialiser les écritures de flags
+  /// médicaux (cf. didUpdateWidget). Chaque toggle utilisateur
+  /// déclenche une écriture sur les N pages — sans cette chaîne, les
+  /// writes étaient concurrents et l'ordre des pushes NocoDB
+  /// indéterministe (race fix 2026-05-04).
+  Future<void>? _flagsPersistChain;
+
   // Outil actif
   late NoteTool _activeTool;
   int _penColor = _kDefaultPenColor;
@@ -501,12 +508,20 @@ class _NotesWidgetState extends State<NotesWidget> {
           _pageMedicalFlags[p] = {...newFlags};
         }
       });
-      // Persiste sur TOUTES les pages (pas seulement la courante) pour
-      // que la prochaine ouverture du dossier retrouve le même état
-      // peu importe la page lue par `_loadPages`.
-      for (var p = 0; p < _totalPages; p++) {
-        unawaited(_persistPage(p));
-      }
+      // Persiste les pages en SÉRIE via une chaîne `_flagsPersistChain`
+      // (fix audit 2026-05-04). Avant : `unawaited(_persistPage(p))` ×
+      // N pages en parallèle → si l'ergo cliquait 2 cases coup sur
+      // coup, 2N writes concurrents s'entrelaçaient et l'ordre final
+      // dépendait de qui finissait en premier (NocoDB peut renvoyer
+      // les responses dans n'importe quel ordre). Désormais chaque
+      // burst de toggle est ajouté à la queue, ce qui garantit que
+      // la dernière coche utilisateur écrase bien les précédentes.
+      _flagsPersistChain = (_flagsPersistChain ?? Future.value()).then((_) async {
+        for (var p = 0; p < _totalPages; p++) {
+          if (!mounted) return;
+          await _persistPage(p);
+        }
+      });
     }
     if (oldWidget.totalPages != widget.totalPages) {
       setState(() => _totalPages = math.max(1, widget.totalPages));

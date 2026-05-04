@@ -4351,30 +4351,11 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
         .join('\n\n');
       return merged.trim() ? merged : null;
     })();
-    // Diagnostic verbose (à retirer une fois le bug "obs vide" tracé)
-    // — montre combien de pages NocoDB ont été remontées par tabKey,
-    // et si le scopeId filter rejette quelque chose. Affiché dans les
-    // Vercel Functions Logs côté backend.
-    // eslint-disable-next-line no-console
-    console.log('[fetchVadOverlayNotes] patient=%s dossier=%s | ' +
-      'projet=%d resume=%d accNotes=%d accGen=%d accExt=%d accLegEq=%d ' +
-      'sanUnified=%d sdbLegacy=%d wcLegacy=%d | ' +
-      'extracted lengths : projet=%d resume=%d accessibilite=%d sanitaires=%d',
-      patientId, dossierId,
-      asArray(projetPages).length,
-      asArray(resumePages).length,
-      asArray(accSharedPages).length,
-      asArray(accGeneralPages).length,
-      asArray(accExterieurPages).length,
-      asArray(legacyEquipPages).length,
-      asArray(sanitairesUnifiedPages).length,
-      asArray(sdbPages).length,
-      asArray(wcPages).length,
-      (joinPages(projetPages) || '').length,
-      (joinPages(resumePages) || '').length,
-      (accessibilite || '').length,
-      (sanitaires || '').length,
-    );
+    // Diagnostic verbose retiré 2026-05-04 (audit) — exposait IDs
+    // patient/dossier en clair dans les Vercel Functions Logs (donnée
+    // santé indirecte). Le bug "obs vide" était lié au champ manquant
+    // `observationEquipements` dans `observationsView` (cf. fix
+    // generateVisitReport.mjs), rien à voir avec ces compteurs.
     return {
       projet: joinPages(projetPages),
       resume: joinPages(resumePages),
@@ -4832,18 +4813,7 @@ app.post(
             (vadOverlayNotes.sanitaires &&
               vadOverlayNotes.sanitaires.trim()) || '';
           const fromLegacy = String(base.observationEquipements || '').trim();
-          const final = fromNotes || fromLegacy;
-          // Diagnostic verbose pour le bug "obs vide" reporté
-          // 2026-04-29. À retirer une fois le bug confirmé fixé.
-          // eslint-disable-next-line no-console
-          console.log(
-            '[observations.merge] dossier=%s | sanitairesNotes=%d legacyObs=%d → final=%d',
-            dossierId,
-            fromNotes.length,
-            fromLegacy.length,
-            final.length,
-          );
-          return final;
+          return fromNotes || fromLegacy;
         })(),
         accessibiliteObservation:
           (vadOverlayNotes.accessibilite &&

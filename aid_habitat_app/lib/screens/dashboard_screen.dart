@@ -309,22 +309,20 @@ class _RecentDossierRow extends StatefulWidget {
 
 class _RecentDossierRowState extends State<_RecentDossierRow> {
   bool _hover = false;
+  // ReferencesService est un singleton — on le lit à chaque build
+  // sans s'y abonner ici. L'abonnement vit au NIVEAU DU PARENT
+  // (_TodayVisitsPanel) pour ne pas multiplier les listeners par le
+  // nombre de visites affichées (audit 2026-05-04 : avant, chaque row
+  // s'abonnait → 5+ listeners pour 5 visites + propagation 5 rebuilds
+  // au lieu d'1). Le parent appelle setState au moment de l'émission,
+  // ce qui rebuild les enfants automatiquement.
   final ReferencesService _refs = ReferencesService();
-  StreamSubscription<ReferencesPayload>? _refsSub;
 
   @override
   void initState() {
     super.initState();
+    // Charge si pas déjà fait (idempotent dans ReferencesService).
     _refs.ensureLoaded();
-    _refsSub = _refs.onLoaded.listen((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _refsSub?.cancel();
-    super.dispose();
   }
 
   /// Resolves the EPCI label for the current dossier via the commune
@@ -1014,14 +1012,40 @@ class _TodayVisitsPanel extends StatefulWidget {
 
 class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
   /// Temps de trajet calculés pour chaque visite affichée. Clé = id du
-  /// dossier ; valeur = durée jusqu'à cette visite depuis la PRÉCÉDENTE
-  /// (ou Aid'Habitat pour la 1ère). Rempli au fur et à mesure des
-  /// requêtes OSRM.
-  final Map<String, Duration?> _segmentDurations = <String, Duration?>{};
+  /// dossier ; valeur = état du segment (loading / failed / done).
+  /// Rempli au fur et à mesure des requêtes OSRM.
+  ///
+  /// Une clé absente = pas encore tenté (équivalent à loading initial).
+  /// Distingue explicitement « calcul en cours » et « échec OSRM /
+  /// offline » côté UI (audit 2026-05-04).
+  final Map<String, _SegmentState> _segmentDurations =
+      <String, _SegmentState>{};
 
   /// Empreinte des visites actuellement résolues — évite de relancer
   /// les requêtes au moindre rebuild si la liste n'a pas changé.
   String _routedKey = '';
+
+  /// Subscription unique à `ReferencesService.onLoaded` au niveau du
+  /// PANEL — fait à la place de N subscriptions par row enfant
+  /// (audit 2026-05-04). À l'émission, on rebuild le panel entier qui
+  /// rebuild ses children, sans avoir N listeners actifs.
+  StreamSubscription<ReferencesPayload>? _refsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final refs = ReferencesService();
+    refs.ensureLoaded();
+    _refsSub = refs.onLoaded.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _refsSub?.cancel();
+    super.dispose();
+  }
 
   /// Tri chronologique sur l'heure (visit_date stocké en ISO complet :
   /// `2026-05-04T14:30:00`). Si plusieurs visites partagent la même
@@ -1096,34 +1120,41 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
   }
 
   Future<void> _runFetchChain(List<Dossier> visits) async {
+    // Marque tout comme "loading" avant de commencer pour que l'UI
+    // affiche un placeholder cohérent (vs "failed" sur les segments
+    // pas encore tentés).
+    if (mounted) {
+      setState(() {
+        for (final d in visits) {
+          _segmentDurations[d.id] = const _SegmentState.loading();
+        }
+      });
+    }
     GeoPoint previous = kAidHabitatOrigin;
     for (final dossier in visits) {
       if (!mounted) return;
       final addr = DashboardScreen.buildFullAddress(dossier.patient);
       if (addr.isEmpty) {
-        setState(() => _segmentDurations[dossier.id] = null);
+        setState(() =>
+            _segmentDurations[dossier.id] = const _SegmentState.failed());
         continue;
       }
       // 1) Géocode la destination de ce segment.
       final to = await RouteService.instance.geocode(addr);
       if (!mounted) return;
       if (to == null) {
-        setState(() => _segmentDurations[dossier.id] = null);
-        // Pas de `previous = to` car to est null — le segment suivant
-        // partira du `previous` toujours valide (la dernière visite
-        // géocodée avec succès, ou Aid'Habitat).
+        setState(() =>
+            _segmentDurations[dossier.id] = const _SegmentState.failed());
         continue;
       }
-      // 2) Calcule le trajet depuis `previous` (séquentiel : si le
-      // dossier d'avant a été résolu, `previous` pointe sur SA
-      // destination, pas sur Aid'Habitat).
+      // 2) Calcule le trajet depuis `previous` (séquentiel).
       final d =
           await RouteService.instance.drivingDuration(previous, to);
       if (!mounted) return;
-      setState(() => _segmentDurations[dossier.id] = d);
-      // 3) Avance le pointeur seulement APRÈS le calcul du segment —
-      // garantit que la mise à jour est observable par l'iteration
-      // suivante (pas de capture par référence asynchrone).
+      setState(() => _segmentDurations[dossier.id] = d != null
+          ? _SegmentState.done(d)
+          : const _SegmentState.failed());
+      // 3) Avance le pointeur après calcul.
       previous = to;
     }
   }
@@ -1178,7 +1209,8 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
           else
             for (var i = 0; i < visits.length; i++) ...[
               _RouteSegmentRow(
-                duration: _segmentDurations[visits[i].id],
+                state: _segmentDurations[visits[i].id] ??
+                    const _SegmentState.loading(),
                 fromLabel: i == 0
                     ? "Aid'Habitat"
                     : '${visits[i - 1].patient.firstName} '
@@ -1201,7 +1233,7 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
 /// libellé « 12 min depuis X ». Affichée AVANT chaque visite (pour
 /// indiquer le trajet à effectuer pour s'y rendre).
 class _RouteSegmentRow extends StatelessWidget {
-  final Duration? duration;
+  final _SegmentState state;
   final String fromLabel;
 
   /// Heure de la visite à laquelle ce segment mène (format `HH:mm`).
@@ -1211,7 +1243,7 @@ class _RouteSegmentRow extends StatelessWidget {
   final String? visitTime;
 
   const _RouteSegmentRow({
-    required this.duration,
+    required this.state,
     required this.fromLabel,
     this.visitTime,
   });
@@ -1238,30 +1270,81 @@ class _RouteSegmentRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text.rich(
-              TextSpan(
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                ),
-                children: [
-                  TextSpan(
-                    text: duration == null
-                        ? '— min'
-                        : RouteService.formatDuration(duration!),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF7C6DAA),
+            child: switch (state) {
+              _SegmentLoading() => const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.6,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF7C6DAA),
+                        ),
+                      ),
                     ),
-                  ),
-                  const TextSpan(text: ' depuis '),
+                    SizedBox(width: 8),
+                    Text(
+                      'Calcul du trajet…',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF94A3B8),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              _SegmentFailed() => Text.rich(
                   TextSpan(
-                    text: fromLabel,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                    children: [
+                      const TextSpan(
+                        text: 'Trajet indisponible',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF94A3B8),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const TextSpan(text: ' depuis '),
+                      TextSpan(
+                        text: fromLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              _SegmentDone(duration: final d) => Text.rich(
+                  TextSpan(
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                    children: [
+                      TextSpan(
+                        text: RouteService.formatDuration(d),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF7C6DAA),
+                        ),
+                      ),
+                      const TextSpan(text: ' depuis '),
+                      TextSpan(
+                        text: fromLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+            },
           ),
           if (visitTime != null) ...[
             const SizedBox(width: 8),
@@ -1299,3 +1382,28 @@ class _RouteSegmentRow extends StatelessWidget {
     );
   }
 }
+
+/// État du calcul de trajet pour un segment du dashboard.
+/// `loading` = requête OSRM en cours.
+/// `failed`  = géocodage / routing échoué (offline, BAN/OSRM down, adresse invalide).
+/// `done`    = trajet calculé, durée disponible.
+sealed class _SegmentState {
+  const _SegmentState();
+  const factory _SegmentState.loading() = _SegmentLoading;
+  const factory _SegmentState.failed() = _SegmentFailed;
+  const factory _SegmentState.done(Duration duration) = _SegmentDone;
+}
+
+class _SegmentLoading extends _SegmentState {
+  const _SegmentLoading();
+}
+
+class _SegmentFailed extends _SegmentState {
+  const _SegmentFailed();
+}
+
+class _SegmentDone extends _SegmentState {
+  final Duration duration;
+  const _SegmentDone(this.duration);
+}
+
