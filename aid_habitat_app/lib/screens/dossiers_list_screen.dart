@@ -30,7 +30,14 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   StreamSubscription<ReferencesPayload>? _refsSub;
 
   String _searchTerm = '';
-  String _sortOrder = 'asc'; // asc, desc
+  // Tri : `_sortColumn` est l'identifiant de colonne (name, commune,
+  // revenus, epci, date) et `_sortAscending` la direction. Demande
+  // utilisateur 2026-05-04 : chaque entête de colonne est cliquable —
+  // 1er clic = tri ascendant (descendant pour la date qui se lit
+  // "récent → ancien"), 2e clic = inverse. Default = name asc, comme
+  // avant le ré-aménagement.
+  String _sortColumn = 'name';
+  bool _sortAscending = true;
   String? _selectedEpciId; // null = no filter
   String _selectedEpciLabel = 'Communauté de commune';
 
