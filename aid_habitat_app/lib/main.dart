@@ -68,6 +68,40 @@ Future<void> main(List<String> args) async {
     return;
   }
 
+  // Web equivalent : quand on ouvre la fenêtre détachée via
+  // `window.open(url, '_blank', 'popup,...')` (cf. note_window_web.dart),
+  // le navigateur lance la même app à l'URL passée. On détecte la
+  // query param `note_window=1` et on branche sur NoteWindowApp AVANT
+  // d'initialiser la stack complète (DataService / AuthService) — le
+  // SQLite (IndexedDB) est partagé entre les fenêtres du même origin,
+  // donc la NoteWindowScreen y a accès directement sans repasser par
+  // un AuthService duplicate.
+  if (kIsWeb) {
+    final params = note_window_web.readUrlNoteParams();
+    if (params['note_window'] == '1') {
+      databaseFactory = databaseFactoryFfiWebNoWebWorker;
+      await initializeDateFormatting('fr_FR', null);
+      // Boot léger : seul DataService est requis (pour fetch/write les
+      // notes). AuthService et sync engine restent dans la fenêtre
+      // principale ; la fenêtre détachée n'écrit qu'en SQLite local et
+      // laisse la propagation NocoDB à la fenêtre principale (qui voit
+      // les changements via le polling 1 s du `NoteWindowScreen`).
+      try {
+        await DataService().initialize();
+      } catch (_) {/* best effort */}
+      runApp(NoteWindowApp(
+        // windowId : 0 sur web — on n'utilise pas DesktopMultiWindow.
+        // L'IPC passe par BroadcastChannel, sans besoin d'identifiant.
+        windowId: 0,
+        patientId: params['patientId'] ?? '',
+        tabKey: params['tabKey'] ?? '',
+        title: params['title'] ?? 'Note',
+        initialText: params['initialText'] ?? '',
+      ));
+      return;
+    }
+  }
+
   // Run each bootstrap step with a timeout + try/catch. On web, any
   // step could hang silently (sqflite shared worker, a slow HTTP call,
   // a connectivity plugin quirk). Without these guards, a single hung
