@@ -68,6 +68,14 @@ class _PhotosTabState extends State<PhotosTab>
   bool _isImporting = false;
   List<DocItem> _photos = const [];
 
+  /// Catégories que l'utilisateur a explicitement ajoutées via le
+  /// bouton « + Ajouter une partie » mais qui n'ont pas encore de
+  /// photo. Permet d'afficher la section vide en attendant. Une
+  /// section disparaît de cet ensemble dès qu'elle a au moins une
+  /// photo (l'affichage devient piloté par les photos elles-mêmes).
+  /// État volatile (in-memory) — re-fermer le dossier purge la liste.
+  final Set<String> _explicitlyAddedCategories = <String>{};
+
   @override
   bool get wantKeepAlive => true;
 
@@ -293,49 +301,212 @@ class _PhotosTabState extends State<PhotosTab>
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Layout sur 2 lignes de 3 colonnes (demande utilisateur 2026-04-28) :
-    //   Ligne 1 : Logement · Accessibilité · Sanitaires
-    //   Ligne 2 : Plan avant travaux · Plan travaux préconisés · Autres
+    // Layout dynamique 2026-05-04 : seules les catégories ayant au
+    // moins une photo OU explicitement ajoutées via le bouton
+    // « Ajouter une partie » sont affichées. Le reste reste latent —
+    // accessible via le menu d'ajout. Catégorie « Autres » retirée
+    // (demande utilisateur).
     //
-    // Chaque colonne fait 1/3 de la largeur disponible. Le container
-    // s'adapte en hauteur à son contenu (pas de stretch). Les photos
-    // dans chaque colonne sont posées HORIZONTALEMENT (côte à côte)
-    // et se redimensionnent automatiquement pour rentrer toutes dans
-    // la largeur du container — pas de scroll, pas de stack vertical.
-    final tagsRow1 = kVisitPhotoTags.sublist(0, 3);
-    final tagsRow2 = kVisitPhotoTags.sublist(3);
+    // Layout : grille 3 colonnes en Wrap, le bouton « Ajouter une
+    // partie » est posé en dernier (occupe une cellule de la même
+    // taille). Chaque ligne se remplit naturellement à 3 sections
+    // max ; au-delà, ça wrap sur la ligne suivante.
+    final visibleTags = kVisitPhotoTags
+        .where((tag) =>
+            _explicitlyAddedCategories.contains(tag) ||
+            _photosForCategory(tag).isNotEmpty)
+        .toList(growable: false);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildCategoryRow(tagsRow1),
-            const SizedBox(height: 14),
-            _buildCategoryRow(tagsRow2),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const spacing = 14.0;
+            final cellWidth =
+                (constraints.maxWidth - 2 * spacing) / 3;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final tag in visibleTags)
+                  SizedBox(
+                    width: cellWidth,
+                    child: _buildCategorySection(
+                      tag: tag,
+                      icon: _iconForCategory(tag),
+                      maxSlots: kVisitPhotoSlotCount[tag] ?? 0,
+                    ),
+                  ),
+                // Bouton « Ajouter une partie » — toujours visible en
+                // dernière position, même si toutes les catégories
+                // sont déjà affichées (idempotent : ré-ajouter une
+                // catégorie déjà visible est un no-op).
+                SizedBox(
+                  width: cellWidth,
+                  child: _buildAddSectionButton(),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  /// Construit une ligne de 3 colonnes pour les tags donnés. Chaque
-  /// colonne occupe 1/3 de la largeur et appelle `_buildCategorySection`.
-  Widget _buildCategoryRow(List<String> tags) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < tags.length; i++) ...[
-          if (i > 0) const SizedBox(width: 14),
-          Expanded(
-            child: _buildCategorySection(
-              tag: tags[i],
-              icon: _iconForCategory(tags[i]),
-              maxSlots: kVisitPhotoSlotCount[tags[i]] ?? 0,
+  /// Bouton compact pour ajouter une nouvelle section photo. Tap →
+  /// menu de choix entre les 5 catégories (Logement, Accessibilité,
+  /// Sanitaires, Plan avant, Plan après). La catégorie sélectionnée
+  /// est marquée comme « explicitement ajoutée » et apparaît
+  /// immédiatement dans la grille (vide), prête à recevoir une photo
+  /// via tap sur un slot ou drag-drop.
+  Widget _buildAddSectionButton() {
+    return Builder(
+      builder: (ctx) => GestureDetector(
+        onTap: () => _showAddSectionMenu(ctx),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 22, 16, 22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFCBD5E1),
+              width: 1,
             ),
           ),
-        ],
-      ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _kPurpleLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  LucideIcons.plus,
+                  size: 22,
+                  color: _kPurple,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Ajouter une partie',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: _kSlate,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bottom sheet listant les 5 catégories disponibles. La catégorie
+  /// choisie est ajoutée à `_explicitlyAddedCategories` (rendu
+  /// immédiat) — l'ergo peut ensuite y déposer ou capturer des
+  /// photos via les slots vides de la nouvelle section.
+  Future<void> _showAddSectionMenu(BuildContext context) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Type de partie',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _kSlate,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Choisis la catégorie de photos à regrouper dans cette '
+                'nouvelle partie.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 14),
+              for (final tag in kVisitPhotoTags) ...[
+                _addSectionMenuItem(
+                  ctx: ctx,
+                  tag: tag,
+                  icon: _iconForCategory(tag),
+                  label: visitPhotoTagShortLabel(tag),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _explicitlyAddedCategories.add(picked));
+  }
+
+  Widget _addSectionMenuItem({
+    required BuildContext ctx,
+    required String tag,
+    required IconData icon,
+    required String label,
+  }) {
+    return InkWell(
+      onTap: () => Navigator.pop(ctx, tag),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _kPurpleLight,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 18, color: _kPurple),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _kSlate,
+                ),
+              ),
+            ),
+            const Icon(
+              LucideIcons.chevronRight,
+              size: 18,
+              color: Color(0xFF94A3B8),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -351,8 +522,6 @@ class _PhotosTabState extends State<PhotosTab>
         return LucideIcons.map;
       case kPhotoTagPlanApres:
         return LucideIcons.layers;
-      case kPhotoTagAutres:
-        return LucideIcons.folderPlus;
       default:
         return LucideIcons.image;
     }

@@ -41,39 +41,47 @@ const String kPhotoTagPlanAvant = 'Visite - Plan avant';
 /// catégorie d'organisation, pas de slot PDF dédié.
 const String kPhotoTagPlanApres = 'Visite - Plan après';
 
-/// Tag fourre-tout — photos de la visite qui ne tombent dans aucune
-/// des autres catégories (anomalies, détail particulier, etc.).
+/// Tag fourre-tout (LEGACY) — retiré de l'UI 2026-05-04 (demande
+/// utilisateur : « supprime la partie autres, elle est inutile »).
+/// La constante reste exportée pour ne pas casser le mapping des
+/// anciens dossiers qui auraient encore des photos taggées « Autres » ;
+/// elles seront simplement filtrées et n'apparaîtront plus dans
+/// l'onglet Photos.
 const String kPhotoTagAutres = 'Visite - Autres';
 
 /// Tous les tags photos visite réunis pour faciliter le filtrage
-/// dans DocumentsScreen et l'onglet Photos. L'ordre détermine l'ordre
-/// d'affichage des sections dans l'UI :
-///   ligne 1 : Logement / Accessibilité / Sanitaires
-///   ligne 2 : Plan avant / Plan après / Autres
+/// dans DocumentsScreen et l'onglet Photos. Ordre = ordre des
+/// catégories proposées au choix dans le menu « Ajouter une partie » :
+///   Logement / Accessibilité / Sanitaires / Plan avant / Plan après
 const List<String> kVisitPhotoTags = [
   kPhotoTagLogement,
   kPhotoTagAccessibilite,
   kPhotoTagSanitaires,
   kPhotoTagPlanAvant,
   kPhotoTagPlanApres,
+];
+
+/// Variante incluant le tag legacy `Autres` — utilisée UNIQUEMENT pour
+/// purger côté DocumentsScreen les anciennes photos de visite (qu'on
+/// ne veut pas voir réapparaître dans la grille générale). Ne pas
+/// utiliser pour l'affichage dans l'onglet Photos.
+const List<String> kVisitPhotoTagsIncludingLegacy = [
+  ...kVisitPhotoTags,
   kPhotoTagAutres,
 ];
 
 /// Nombre max de photos utilisées par le PDF dans chaque catégorie.
 /// Au-delà, les photos restent en base mais sont marquées « non
 /// utilisées dans le rapport » (pastille rouge `+` sur la tile).
-/// Les 3 catégories de la 2e ligne (plans + autres) n'ont pas de
-/// slot PDF — la limite est purement indicative pour l'UI.
+/// Les catégories Plan avant / Plan après n'ont pas de slot PDF dédié
+/// dans le rapport actuel — la limite est purement indicative pour
+/// l'UI.
 const Map<String, int> kVisitPhotoSlotCount = {
   kPhotoTagLogement: 2,
   kPhotoTagAccessibilite: 3,
   kPhotoTagSanitaires: 3,
-  // 2 slots pour Plan avant / Plan après / Autres — demande user
-  // 2026-04-28 : "les deux parties plans et la partie autres
-  // nécessitent seulement 2 images pas 6".
   kPhotoTagPlanAvant: 2,
   kPhotoTagPlanApres: 2,
-  kPhotoTagAutres: 2,
 };
 
 /// Libellé court pour l'UI (sans le préfixe « Visite - »).
@@ -90,6 +98,9 @@ String visitPhotoTagShortLabel(String tag) {
     case kPhotoTagPlanApres:
       return 'Plan travaux préconisés';
     case kPhotoTagAutres:
+      // Legacy — ne devrait plus s'afficher dans l'onglet Photos
+      // (catégorie retirée 2026-05-04), mais on garde le label au
+      // cas où une vue legacy l'utilise.
       return 'Autres';
     default:
       return tag;
