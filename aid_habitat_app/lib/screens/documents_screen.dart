@@ -3806,38 +3806,69 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
         } catch (_) {}
       }
     }
-    // 2. URL distante via cache SQLite (auth-aware)
-    if (bytes == null && url != null && url.isNotEmpty) {
+    // 2. URL distante : on tente d'abord le cache (offline-friendly),
+    //    PUIS si le cache renvoie des bytes invalides ou vides, on
+    //    force un re-fetch réseau frais. Demande utilisateur 2026-05-05 :
+    //    sur macOS web le PDF "Synchronisé" refusait de s'ouvrir parce
+    //    qu'une entrée stale (HTML SPA fallback / bytes 0) traînait
+    //    dans `web_media_cache` depuis les "Load failed" d'hier.
+    Future<bool> tryOpenBytes(Uint8List? data) async {
+      if (data == null || data.isEmpty) return false;
+      // Validation magic-number PDF : un vrai PDF commence par "%PDF-".
+      // Si ce n'est pas le cas (= bytes corrompus, HTML, etc.), on
+      // skippe pour laisser place à un re-fetch.
+      if (data.length < 5 ||
+          data[0] != 0x25 ||
+          data[1] != 0x50 ||
+          data[2] != 0x44 ||
+          data[3] != 0x46 ||
+          data[4] != 0x2D) {
+        return false;
+      }
+      try {
+        final doc = await PdfDocument.openData(data);
+        if (!mounted) {
+          // ignore: discarded_futures
+          doc.close();
+          return true;
+        }
+        _doc = doc;
+        _totalPages = doc.pagesCount;
+        await _renderCurrent();
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    if (await tryOpenBytes(bytes)) return;
+
+    // Cache miss / data URL absente / bytes invalides → fetch via cache.
+    if (url != null && url.isNotEmpty) {
       bytes = await MediaCacheService.instance.webCachedFetch(
         url,
         headers: MediaCacheService.authHeaders(),
       );
+      if (await tryOpenBytes(bytes)) return;
+
+      // Si même le cache renvoie quelque chose qui n'ouvre pas, on
+      // invalide l'entrée stale et on retente un fetch réseau direct
+      // (bypass cache). Ça récupère un dossier généré sur un autre
+      // device dont la 1ère fetch sur cette machine avait échoué et
+      // laissé du HTML/0 byte dans le cache local.
+      await MediaCacheService.instance.invalidateUrl(url);
+      bytes = await MediaCacheService.instance.webCachedFetch(
+        url,
+        headers: MediaCacheService.authHeaders(),
+      );
+      if (await tryOpenBytes(bytes)) return;
     }
+
     if (!mounted) return;
-    if (bytes == null || bytes.isEmpty) {
-      setState(() {
-        _loading = false;
-        _error = 'PDF introuvable (vérifiez la connexion).';
-      });
-      return;
-    }
-    try {
-      final doc = await PdfDocument.openData(bytes);
-      if (!mounted) {
-        // ignore: discarded_futures
-        doc.close();
-        return;
-      }
-      _doc = doc;
-      _totalPages = doc.pagesCount;
-      await _renderCurrent();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'Lecture du PDF impossible : $e';
-      });
-    }
+    setState(() {
+      _loading = false;
+      _error = 'Lecture du PDF impossible — fichier introuvable ou corrompu.';
+    });
   }
 
   /// Rend la page courante. Si la page a une annotation déjà sauvée

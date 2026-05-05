@@ -541,13 +541,31 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
     if (oldWidget.liveText != widget.liveText && widget.liveText != null) {
       final incoming = widget.liveText!;
-      if (_textController.text != incoming && !_textFocusNode.hasFocus) {
-        // Detach the listener briefly so the mirrored write doesn't mark
-        // the widget dirty / trigger an autosave loop.
+      if (_textController.text != incoming) {
+        // Sync vrai instantané (demande utilisateur 2026-05-05 : « tout
+        // doit être complètement instantané sur cette partie là et
+        // parfaitement synchronisé sans délais »). Avant 2026-05-05 on
+        // skippait l'update quand le widget avait le focus, pour éviter
+        // de yanker le curseur de l'utilisateur. Mais BroadcastChannel
+        // ne renvoie PAS le message à la fenêtre qui l'a posté → on ne
+        // reçoit JAMAIS notre propre echo. Donc même focused, l'IPC
+        // qui arrive vient forcément de l'autre fenêtre → l'utilisateur
+        // n'est pas en train de taper ici. On peut updater sans risque
+        // de race.
+        //
+        // Préservation du curseur : on conserve l'offset relatif si
+        // possible (clampé à la nouvelle longueur). Évite le retour
+        // forcé en fin de texte si le focus est resté en place.
+        final oldOffset = _textController.selection.baseOffset.clamp(
+          0,
+          incoming.length,
+        );
         _textController.removeListener(_onTextChanged);
         _textController.value = TextEditingValue(
           text: incoming,
-          selection: TextSelection.collapsed(offset: incoming.length),
+          selection: TextSelection.collapsed(
+            offset: oldOffset >= 0 ? oldOffset : incoming.length,
+          ),
         );
         _textController.addListener(_onTextChanged);
         _pageTexts[_currentPage] = incoming;

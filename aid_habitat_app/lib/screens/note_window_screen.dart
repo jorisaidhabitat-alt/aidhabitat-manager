@@ -116,17 +116,30 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
         TextSelection.collapsed(offset: widget.initialText.length);
 
     // IPC handler: the main window pushes text when the user types in
-    // the in-app NotesWidget — mirror it here unless we're actively
-    // typing (we don't want to yank the cursor out from under them).
+    // the in-app NotesWidget — mirror it here EVEN if we're focused.
+    //
+    // Avant 2026-05-05 : on skippait l'update quand le TextField avait
+    // le focus (pour éviter de yanker le curseur de l'utilisateur).
+    // Demande utilisateur 2026-05-05 : « tout doit être complètement
+    // instantané sur cette partie là et parfaitement synchronisé sans
+    // délais ». Le BroadcastChannel ne renvoie PAS le message à
+    // l'expéditeur (spec W3C) → quand on reçoit `pushNote`, c'est
+    // forcément que l'autre fenêtre a tapé, donc le curseur courant
+    // ici n'est pas en train de bouger. On préserve quand même la
+    // position du caret (clampée à la nouvelle longueur) au cas où
+    // l'utilisateur aurait juste cliqué dans le champ sans taper.
     void onPushNote(Map<String, dynamic> args) {
       if (args['patientId'] != widget.patientId ||
           args['tabKey'] != widget.tabKey) return;
       final text = args['text']?.toString() ?? '';
       if (_controller.text == text) return;
-      if (_focusNode.hasFocus) return;
+      final oldOffset = _controller.selection.baseOffset
+          .clamp(0, text.length);
       _controller.value = TextEditingValue(
         text: text,
-        selection: TextSelection.collapsed(offset: text.length),
+        selection: TextSelection.collapsed(
+          offset: oldOffset >= 0 ? oldOffset : text.length,
+        ),
       );
     }
 

@@ -213,6 +213,26 @@ class MediaCacheService {
   ///      bytes + return them.
   ///   3. http.get fails / non-200 → return null so the caller can render
   ///      its error widget.
+  /// Invalide l'entrée web_media_cache pour [url]. Utilisé quand
+  /// l'appelant détecte que les bytes cachés sont corrompus (ex:
+  /// PdfDocument.openData échoue) → on supprime l'entrée et on
+  /// re-fetch frais. Demande utilisateur 2026-05-05 : un PDF
+  /// « synchronisé » sur macOS refusait de s'ouvrir parce qu'une
+  /// entrée stale (HTML SPA / 0 byte) trainait dans le cache.
+  Future<void> invalidateUrl(String url) async {
+    final resolved = resolveMediaUrl(url);
+    if (resolved.isEmpty) return;
+    final hash = sha1.convert(utf8.encode(resolved)).toString();
+    try {
+      final db = await LocalDatabase.instance.database;
+      await db.delete(
+        'web_media_cache',
+        where: 'url_hash = ?',
+        whereArgs: [hash],
+      );
+    } catch (_) {/* best-effort, ignore SQLite errors */}
+  }
+
   Future<Uint8List?> webCachedFetch(
     String url, {
     Map<String, String>? headers,
