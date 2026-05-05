@@ -4787,6 +4787,61 @@ app.post(
     const documents = mergeInlineDocuments(remoteDocuments, inlineAssets.documents);
     const notePages = mergeInlineNotePages(remoteNotePages, inlineAssets.plans);
 
+    // 3a) Auto-cleanup des photos NocoDB orphelines.
+    //
+    // Demande utilisateur 2026-05-05 : « dès qu'on régénère le PDF, ça
+    // nettoie toutes les sauvegardes précédentes et garde uniquement
+    // celles qui sont dans le relevé de visite au moment où je
+    // génère ». Logique : l'iPad envoie en inline TOUTES les photos
+    // qu'il a localement (= source de vérité). Tout ce qui est en
+    // NocoDB pour ce patient mais PAS dans inline est un orphelin
+    // (= résidu de sync échouée, doublons après ré-imports, etc.).
+    //
+    // On supprime ces orphelins (rows mobile_documents + leurs chunks)
+    // EN ARRIÈRE-PLAN après la réponse — pas critique pour la
+    // génération du PDF en cours, mais essentiel pour la prochaine.
+    //
+    // Garde-fou : on ne déclenche le cleanup QUE si l'iPad a envoyé
+    // au moins 1 photo inline. Sinon (cas où le PDF est généré avec
+    // un iPad offline qui n'a pas pu charger les photos), on ne
+    // toucherait pas à NocoDB pour ne pas tout supprimer par erreur.
+    const inlineDocCount = inlineAssets.documents.size;
+    if (inlineDocCount > 0 && patientId) {
+      const inlineIds = new Set(
+        Array.from(inlineAssets.documents.keys()).map((k) => String(k)),
+      );
+      const orphans = [];
+      for (const doc of remoteDocuments) {
+        if (!doc) continue;
+        const docId = String(doc.id || '');
+        const cid = String(doc.clientDocumentId || '');
+        if (inlineIds.has(docId) || (cid && inlineIds.has(cid))) continue;
+        // Pas dans inline → orphelin à supprimer.
+        orphans.push(doc);
+      }
+      if (orphans.length > 0) {
+        // Lance le cleanup en arrière-plan (pas d'await).
+        // ignore: discarded_futures
+        (async () => {
+          for (const orphan of orphans) {
+            try {
+              await mobileSyncStore.deleteDocument(orphan.id);
+            } catch (err) {
+              console.warn(
+                `[report] cleanup orphan ${orphan.id} échoué :`,
+                err?.message || err,
+              );
+            }
+          }
+          // ignore: avoid_print
+          console.log(
+            `[report] cleanup auto : ${orphans.length} photo(s) ` +
+            `orpheline(s) supprimée(s) pour patient=${patientId}`,
+          );
+        })();
+      }
+    }
+
     // 3b) Merge VAD overlay notes (nouvelle source) avec
     // `observations_synthese` (ancienne source). Notes gagnent.
     //
