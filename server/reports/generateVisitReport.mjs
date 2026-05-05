@@ -1740,17 +1740,11 @@ async function drawVisitPhotosWithFlow({
   // Titres custom au-dessus des rangées de chaque catégorie
   // (« Logement » / « Accessibilité » / « Sanitaires »).
   //
-  // Demande utilisateur 2026-05-05 : « par défaut les titres ne
-  // doivent pas être visibles, c'est uniquement si je clique sur le
-  // switch que cela affiche le titre ». Le switch UI n'étant pas
-  // encore câblé, on désactive simplement TOUS les titres par défaut.
-  // Quand le switch existera, on remplacera par une lecture du flag
-  // depuis la donnée de la photo (ex. `documents[i].displayPdfTitle`).
-  //
-  // `TITLE_ENABLED = false` → on saute la `drawText` ET on ne réserve
-  // pas de hauteur au-dessus de la rangée. Les masques blancs des
-  // titres template restent (sinon on verrait les titres baked).
-  const TITLE_ENABLED = false;
+  // Réactivés 2026-05-05 (après un bref désactivement) — demande
+  // utilisateur de les remettre par défaut. Quand un vrai switch UI
+  // par section sera câblé côté iPad, remplacer par une lecture du
+  // flag depuis la donnée (ex. `documents[i].displayPdfTitle`).
+  const TITLE_ENABLED = true;
   const TITLE_HEIGHT = TITLE_ENABLED ? 24 : 0;
   const TITLE_FONT_SIZE = 13;
 
