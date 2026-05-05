@@ -3812,8 +3812,19 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
     //    sur macOS web le PDF "Synchronisé" refusait de s'ouvrir parce
     //    qu'une entrée stale (HTML SPA fallback / bytes 0) traînait
     //    dans `web_media_cache` depuis les "Load failed" d'hier.
+
+    /// Capture la dernière exception levée par `PdfDocument.openData` —
+    /// utilisée pour enrichir le message d'erreur final si TOUS les
+    /// fallbacks (data URL → cache → cache invalidé+refetch) échouent.
+    /// Permet à l'ergo de signaler le diagnostic exact (token, 404,
+    /// PDF tronqué, etc.) au lieu d'un « fichier introuvable » générique.
+    Object? lastOpenError;
+    int? lastBytesLength;
+    bool lastBytesLookedLikePdf = false;
+
     Future<bool> tryOpenBytes(Uint8List? data) async {
       if (data == null || data.isEmpty) return false;
+      lastBytesLength = data.length;
       // Validation magic-number PDF : un vrai PDF commence par "%PDF-".
       // Si ce n'est pas le cas (= bytes corrompus, HTML, etc.), on
       // skippe pour laisser place à un re-fetch.
@@ -3823,8 +3834,10 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
           data[2] != 0x44 ||
           data[3] != 0x46 ||
           data[4] != 0x2D) {
+        lastBytesLookedLikePdf = false;
         return false;
       }
+      lastBytesLookedLikePdf = true;
       try {
         final doc = await PdfDocument.openData(data);
         if (!mounted) {
@@ -3836,7 +3849,8 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
         _totalPages = doc.pagesCount;
         await _renderCurrent();
         return true;
-      } catch (_) {
+      } catch (e) {
+        lastOpenError = e;
         return false;
       }
     }
@@ -3865,9 +3879,27 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
     }
 
     if (!mounted) return;
+    // Message d'erreur diagnostic : on précise pourquoi ça a échoué.
+    //   - Aucun byte récupéré → URL invalide / 401 / 404 silencieux
+    //   - Bytes mais pas du PDF → SPA HTML / JSON erreur / fichier
+    //     corrompu côté serveur (template generation crash ?)
+    //   - Bytes PDF mais openData échoue → PDF tronqué / lib pdfx
+    //     incompatible avec ce PDF particulier
+    String message;
+    if (lastBytesLength == null) {
+      message = 'Lecture du PDF impossible — aucun fichier reçu '
+          '(URL invalide, problème d\'authentification ou hors-ligne).';
+    } else if (!lastBytesLookedLikePdf) {
+      message = 'Lecture du PDF impossible — le serveur a renvoyé '
+          '${lastBytesLength!} octets qui ne sont pas un PDF valide '
+          '(fichier corrompu côté serveur ou réponse d\'erreur).';
+    } else {
+      final errStr = lastOpenError?.toString() ?? 'erreur inconnue';
+      message = 'Lecture du PDF impossible — $errStr';
+    }
     setState(() {
       _loading = false;
-      _error = 'Lecture du PDF impossible — fichier introuvable ou corrompu.';
+      _error = message;
     });
   }
 
