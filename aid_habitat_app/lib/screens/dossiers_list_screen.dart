@@ -857,12 +857,20 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
               child: Builder(builder: (_) {
                 final palette =
                     accompanimentPaletteFor(dossier.natureAccompagnement);
+                // Bordure jaune (non préparé) / verte (préparé) autour
+                // de l'avatar — demande utilisateur 2026-05-05. Reflète
+                // le flag `beneficiary_prepared` togglé dans le bandeau
+                // bénéficiaire de l'écran dossier.
+                final borderColor = dossier.beneficiaryPrepared
+                    ? const Color(0xFF86EFAC) // green-300, vert léger
+                    : const Color(0xFFFDE047); // yellow-300, jaune léger
                 return Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
                     color: palette.bg,
                     shape: BoxShape.circle,
+                    border: Border.all(color: borderColor, width: 2.5),
                   ),
                   alignment: Alignment.center,
                   child: Text(
