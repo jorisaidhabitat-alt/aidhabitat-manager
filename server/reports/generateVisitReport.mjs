@@ -1737,11 +1737,21 @@ async function drawVisitPhotosWithFlow({
   const bonusMarginTop = 70;
   const bonusMarginBottom = 60;
 
-  // Hauteur réservée au-dessus de la 1ère rangée d'une catégorie
-  // pour le titre custom (« Logement » / « Accessibilité » /
-  // « Sanitaires »). Couvre aussi la zone du masque blanc qui
-  // efface le titre original baked dans le template.
-  const TITLE_HEIGHT = 24;
+  // Titres custom au-dessus des rangées de chaque catégorie
+  // (« Logement » / « Accessibilité » / « Sanitaires »).
+  //
+  // Demande utilisateur 2026-05-05 : « par défaut les titres ne
+  // doivent pas être visibles, c'est uniquement si je clique sur le
+  // switch que cela affiche le titre ». Le switch UI n'étant pas
+  // encore câblé, on désactive simplement TOUS les titres par défaut.
+  // Quand le switch existera, on remplacera par une lecture du flag
+  // depuis la donnée de la photo (ex. `documents[i].displayPdfTitle`).
+  //
+  // `TITLE_ENABLED = false` → on saute la `drawText` ET on ne réserve
+  // pas de hauteur au-dessus de la rangée. Les masques blancs des
+  // titres template restent (sinon on verrait les titres baked).
+  const TITLE_ENABLED = false;
+  const TITLE_HEIGHT = TITLE_ENABLED ? 24 : 0;
   const TITLE_FONT_SIZE = 13;
 
   // 1) Neutralise les apparences des form fields photo de la page 8
@@ -1849,7 +1859,9 @@ async function drawVisitPhotosWithFlow({
     }
 
     // Dessine le titre custom si c'est la 1ère rangée de catégorie
-    if (row.isFirstOfCategory) {
+    // ET que le titre est activé (cf. TITLE_ENABLED — désactivé par
+    // défaut depuis 2026-05-05).
+    if (TITLE_ENABLED && row.isFirstOfCategory) {
       currentPage.drawText(row.label, {
         x: row.xStart,
         y: cursorY - TITLE_FONT_SIZE - 2,

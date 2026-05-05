@@ -33,10 +33,20 @@ class SummaryTab extends StatefulWidget {
   /// caché.
   final VoidCallback? onExpandToTab;
 
+  /// Callback pour les 2 notes texte du haut (« Projet de l'usager »
+  /// et « Résumé des préconisations ») — paramètre = tabKey à ouvrir
+  /// dans une fenêtre détachée en mode TEXT (vs `onExpandToTab` qui
+  /// gère uniquement la note canvas en mode drawing).
+  /// Demande utilisateur 2026-05-05 : « projet de l'usager et résumé
+  /// des préconisations doivent s'ouvrir dans un nouvel onglet si on
+  /// agrandit comme les autres notes de VAD ».
+  final void Function(String tabKey)? onExpandTextNote;
+
   const SummaryTab({
     super.key,
     required this.dossier,
     this.onExpandToTab,
+    this.onExpandTextNote,
   });
 
   @override
@@ -77,7 +87,16 @@ class _SummaryTabState extends State<SummaryTab>
                     showSaveButton: false,
                     allowPagination: false,
                     allowTextModal: true,
-                    expandModalFullscreen: true,
+                    // Si le parent a fourni `onExpandTextNote`, le tap
+                    // sur agrandir ouvre une fenêtre détachée (parité
+                    // avec les notes VAD classiques). Sinon fallback
+                    // sur le modal fullscreen in-app.
+                    onExpandToTab: widget.onExpandTextNote == null
+                        ? null
+                        : () => widget.onExpandTextNote!(
+                              'Préconisations-Projet',
+                            ),
+                    expandModalFullscreen: widget.onExpandTextNote == null,
                     fillParentHeight: true,
                   ),
                 ),
@@ -93,7 +112,12 @@ class _SummaryTabState extends State<SummaryTab>
                     showSaveButton: false,
                     allowPagination: false,
                     allowTextModal: true,
-                    expandModalFullscreen: true,
+                    onExpandToTab: widget.onExpandTextNote == null
+                        ? null
+                        : () => widget.onExpandTextNote!(
+                              'Préconisations-Résumé',
+                            ),
+                    expandModalFullscreen: widget.onExpandTextNote == null,
                     fillParentHeight: true,
                   ),
                 ),

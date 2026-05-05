@@ -2083,6 +2083,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             dossier: _dossier,
             onExpandToTab: () =>
                 _openDrawingNoteInSeparateWindow('Résumé'),
+            // Notes texte du haut (Projet / Résumé des préco) → même
+            // mécanisme que les notes VAD classiques : nouvelle
+            // fenêtre détachée en mode text. Demande utilisateur
+            // 2026-05-05.
+            onExpandTextNote: (tabKey) =>
+                _openNoteInSeparateWindow(tabKey),
           ),
         ),
         _wrapTabWithNotes(
