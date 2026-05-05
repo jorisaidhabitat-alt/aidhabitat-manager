@@ -244,6 +244,31 @@ class DossierRepository {
     SyncEngine().notify();
   }
 
+  /// Toggle local-only du flag « bénéficiaire préparé » sur un dossier
+  /// (demande utilisateur 2026-05-05). Pas de sync NocoDB en v1 — la
+  /// colonne `beneficiary_prepared` n'existe que côté SQLite. Si une
+  /// future version veut la sync, il faudra :
+  ///   - ajouter une colonne miroir dans NocoDB (`beneficiaire_prepare`)
+  ///   - mapper dans `nocodb_sync_service.dart`
+  ///   - enqueuer une `sync_op` ici
+  Future<void> setBeneficiaryPrepared({
+    required String dossierLocalId,
+    required bool prepared,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    await db.update(
+      'dossiers',
+      {
+        'beneficiary_prepared': prepared ? 1 : 0,
+        'updated_at': now,
+      },
+      where: 'local_id = ?',
+      whereArgs: [dossierLocalId],
+    );
+    // Pas de SyncEngine().notify() : champ local-only.
+  }
+
   static String _generateLocalId() {
     final random = Random.secure();
     final bytes = List<int>.generate(8, (_) => random.nextInt(256));
@@ -278,6 +303,7 @@ class DossierRepository {
         d.nature_accompagnement AS dossier_nature_accompagnement,
         d.envoi_rapport AS dossier_envoi_rapport,
         d.personnes_presentes_visite AS dossier_personnes_presentes,
+        d.beneficiary_prepared AS dossier_beneficiary_prepared,
         p.sync_state AS patient_sync_state,
         h.sync_state AS housing_sync_state,
         p.local_id AS patient_local_id,
@@ -1515,6 +1541,8 @@ class DossierRepository {
       envoiRapport: row['dossier_envoi_rapport'] as String? ?? '',
       personnesPresentesVisite:
           row['dossier_personnes_presentes'] as String? ?? '',
+      beneficiaryPrepared:
+          (row['dossier_beneficiary_prepared'] as int? ?? 0) == 1,
       housing: Housing(
         type: HousingType.values.byName(row['housing_type'] as String),
         year: row['housing_year_value'] as int?,

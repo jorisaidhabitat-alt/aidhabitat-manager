@@ -156,6 +156,20 @@ class DataService {
     );
   }
 
+  /// Toggle local-only du flag « bénéficiaire préparé » d'un dossier
+  /// (coche ronde dans le bandeau bénéficiaire). Voir
+  /// [DossierRepository.setBeneficiaryPrepared] — pas de sync NocoDB
+  /// en v1 (le flag reste sur l'appareil).
+  Future<void> setBeneficiaryPrepared({
+    required String dossierLocalId,
+    required bool prepared,
+  }) {
+    return _dossierRepository.setBeneficiaryPrepared(
+      dossierLocalId: dossierLocalId,
+      prepared: prepared,
+    );
+  }
+
   /// Creates a wiki item with an offline-first flow: the record is written
   /// to SQLite immediately (with a `local_draft_*` id) and a sync operation
   /// is enqueued. Works without network — the row is picked up by the sync

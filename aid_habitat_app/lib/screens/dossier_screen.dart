@@ -69,6 +69,13 @@ class _DossierScreenState extends State<DossierScreen> {
   bool _saving = false;
   bool _isBeneficiaryLocked = true;
 
+  /// Coche « bénéficiaire préparé » du bandeau bénéficiaire (demande
+  /// utilisateur 2026-05-05). Initialisée depuis `widget.dossier`,
+  /// togglée via le bouton check entouré à côté du crayon. Persistée
+  /// localement via `DataService.setBeneficiaryPrepared` (pas de sync
+  /// NocoDB en v1).
+  late bool _beneficiaryPrepared;
+
   // Editable fields shown in the card
   late String _firstName;
   late String _lastName;
@@ -195,6 +202,7 @@ class _DossierScreenState extends State<DossierScreen> {
     _incomeCategory = p.incomeCategory;
     _natureAccompagnement = widget.dossier.natureAccompagnement;
     _fiscalRevenue = _householdFiscalRevenue(p);
+    _beneficiaryPrepared = widget.dossier.beneficiaryPrepared;
 
     final n = p.numberPeople ?? 0;
     if (n <= 0) {
@@ -678,6 +686,21 @@ class _DossierScreenState extends State<DossierScreen> {
     );
     final fullAddress = _formatFullAddress(streetAddress, _zipCode, _city);
 
+    // Couleurs du bandeau bénéficiaire — animées selon l'état
+    // « préparé » du dossier (demande utilisateur 2026-05-05). Quand
+    // coché : fond violet foncé + texte/icônes en violet clair.
+    // Quand non coché : fond violet clair + texte/icônes en violet
+    // foncé (look historique).
+    final bannerBg = _beneficiaryPrepared
+        ? const Color(0xFF554A63) // violet foncé
+        : const Color(0xFFEDE8F5); // violet clair
+    final bannerFg = _beneficiaryPrepared
+        ? const Color(0xFFEDE8F5) // violet clair (texte sur fond foncé)
+        : const Color(0xFF554A63); // violet foncé (texte sur fond clair)
+    final bannerAccent = _beneficiaryPrepared
+        ? const Color(0xFFEDE8F5)
+        : const Color(0xFF7C6DAA);
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -687,28 +710,74 @@ class _DossierScreenState extends State<DossierScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- Bandeau violet clair (icône + titre + save + crayon) ---
-          Container(
+          // --- Bandeau violet clair / foncé (animé) ---
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeInOut,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            color: const Color(0xFFEDE8F5),
+            color: bannerBg,
             child: Row(
               children: [
-                const Icon(LucideIcons.user,
-                    color: Color(0xFF7C6DAA), size: 20),
+                Icon(LucideIcons.user, color: bannerAccent, size: 20),
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Bénéficiaire',
+                Expanded(
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 280),
+                    curve: Curves.easeInOut,
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF554A63),
+                      color: bannerFg,
                     ),
-                    overflow: TextOverflow.ellipsis,
+                    child: const Text(
+                      'Bénéficiaire',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
                 SaveStatusIndicator(saving: _saving),
                 const SizedBox(width: 6),
+                // Bouton check entouré : toggle « bénéficiaire préparé ».
+                // Demande utilisateur 2026-05-05 : à côté du crayon.
+                // Quand coché → bandeau passe en violet foncé (animation
+                // ci-dessus). L'icône elle-même change : cercle vide →
+                // cercle plein avec check.
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () async {
+                    final next = !_beneficiaryPrepared;
+                    setState(() => _beneficiaryPrepared = next);
+                    try {
+                      await DataService().setBeneficiaryPrepared(
+                        dossierLocalId: widget.dossier.id,
+                        prepared: next,
+                      );
+                    } catch (_) {
+                      // Échec persistance : revert pour cohérence UI
+                      if (mounted) {
+                        setState(() => _beneficiaryPrepared = !next);
+                      }
+                    }
+                  },
+                  child: Tooltip(
+                    message: _beneficiaryPrepared
+                        ? 'Marquer comme non préparé'
+                        : 'Marquer comme préparé',
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        _beneficiaryPrepared
+                            ? LucideIcons.checkCircle2
+                            : LucideIcons.circle,
+                        size: 20,
+                        color: bannerAccent,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
                 InkWell(
                   borderRadius: BorderRadius.circular(999),
                   onTap: () {
@@ -731,7 +800,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             ? LucideIcons.pencil
                             : LucideIcons.check,
                         size: 18,
-                        color: const Color(0xFF7C6DAA),
+                        color: bannerAccent,
                       ),
                     ),
                   ),
