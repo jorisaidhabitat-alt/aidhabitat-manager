@@ -4069,12 +4069,22 @@ const fetchVisitPhotosForPatient = async (patientId) => {
       'visite - plan apres',
       'visite - autres',
     ]);
+    // Une photo appartient à une visite si son tag matche EXACTEMENT
+    // une base OU si elle porte un suffixe `(#N)` indiquant une
+    // section supplémentaire ajoutée par l'ergo via « + Ajouter une
+    // partie » (ex. « Visite - Sanitaires (#1) »). Sans le 2e check,
+    // les photos extras étaient silencieusement filtrées et n'arrivaient
+    // jamais au générateur (rapporté 2026-05-05 sur BARBIER Léon).
+    const matchesVisitBase = (tag) => {
+      const tn = normalizeTag(tag);
+      if (visitTagsNormalized.has(tn)) return true;
+      const m = tn.match(/^(.+) \(#\d+\)$/);
+      return Boolean(m && visitTagsNormalized.has(m[1]));
+    };
     for (const doc of asArray(docs)) {
       const mime = String(doc?.mimeType || '');
       if (!mime.startsWith('image/')) continue;
-      const hasVisitTag = asArray(doc?.tags).some((tag) =>
-        visitTagsNormalized.has(normalizeTag(tag)),
-      );
+      const hasVisitTag = asArray(doc?.tags).some(matchesVisitBase);
       if (!hasVisitTag) continue;
       // Évite le doublon si un row legacy a la même `client_document_id`
       // qu'un row déjà migré dans mobile_visit_photos (les ids cross-table

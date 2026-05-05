@@ -1072,6 +1072,13 @@ class Dossier {
   final String envoiRapport;
   final String personnesPresentesVisite;
 
+  /// Coche « bénéficiaire préparé » du bloc bénéficiaire de l'écran
+  /// dossier (demande utilisateur 2026-05-05). Quand `true`, l'UI
+  /// bascule le bandeau bénéficiaire en violet foncé et la liste
+  /// « Mes dossiers » entoure l'avatar de vert (vs jaune par défaut).
+  /// Local-only en v1 — non synchronisé NocoDB.
+  final bool beneficiaryPrepared;
+
   Dossier({
     required this.id,
     required this.patient,
@@ -1089,6 +1096,7 @@ class Dossier {
     this.natureAccompagnement = '',
     this.envoiRapport = '',
     this.personnesPresentesVisite = '',
+    this.beneficiaryPrepared = false,
   });
 
   Dossier copyWith({
@@ -1100,6 +1108,7 @@ class Dossier {
     String? autonomyNotes,
     Map<String, FinancialPlan>? plans,
     SyncState? syncState,
+    bool? beneficiaryPrepared,
   }) {
     return Dossier(
       id: id,
@@ -1112,6 +1121,13 @@ class Dossier {
       plans: plans ?? this.plans,
       createdAt: createdAt,
       syncState: syncState ?? this.syncState,
+      medicalContext: medicalContext,
+      autonomy: autonomy,
+      compteAnah: compteAnah,
+      natureAccompagnement: natureAccompagnement,
+      envoiRapport: envoiRapport,
+      personnesPresentesVisite: personnesPresentesVisite,
+      beneficiaryPrepared: beneficiaryPrepared ?? this.beneficiaryPrepared,
     );
   }
 }

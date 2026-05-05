@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 16;
+  static const _dbVersion = 17;
 
   Database? _database;
 
@@ -82,6 +82,27 @@ class LocalDatabase {
     if (oldVersion < 16) {
       await _migrateV15ToV16(db);
     }
+    if (oldVersion < 17) {
+      await _migrateV16ToV17(db);
+    }
+  }
+
+  /// v16 → v17 : flag `beneficiary_prepared` sur `dossiers` — coche
+  /// « Bénéficiaire préparé » dans le bloc bénéficiaire de l'écran
+  /// dossier (demande utilisateur 2026-05-05). Quand `1`, l'UI passe
+  /// le bandeau bénéficiaire en violet foncé et la liste « Mes
+  /// dossiers » entoure l'avatar de vert (vs jaune par défaut).
+  ///
+  /// Local-only en v1 — pas de colonne miroir sur NocoDB. Si l'ergo
+  /// recharge le dossier depuis un autre device, le flag repart à 0.
+  /// Acceptable pour cette première itération (sync à voir plus tard).
+  Future<void> _migrateV16ToV17(Database db) async {
+    await _addColumnIfMissing(
+      db,
+      'dossiers',
+      'beneficiary_prepared',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
   }
 
   /// v15 → v16 : flag `easy_access_set` sur `housings` pour distinguer
@@ -707,6 +728,7 @@ class LocalDatabase {
         nature_accompagnement TEXT NOT NULL DEFAULT '',
         envoi_rapport TEXT NOT NULL DEFAULT '',
         personnes_presentes_visite TEXT NOT NULL DEFAULT '',
+        beneficiary_prepared INTEGER NOT NULL DEFAULT 0,
         medical_context_json TEXT,
         autonomy_json TEXT,
         plans_json TEXT NOT NULL,
