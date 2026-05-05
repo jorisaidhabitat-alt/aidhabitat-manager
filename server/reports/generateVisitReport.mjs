@@ -1796,6 +1796,23 @@ async function drawVisitPhotosWithFlow({
     const allPhotos = [];
     for (const ps of grouped.values()) allPhotos.push(...ps);
     const rows = [];
+    // Pas de photos pour cette catégorie → on crée quand même une
+    // rangée avec des emplacements vierges (= placeholders) pour que
+    // la zone garde son volume visuel sur la page. Demande utilisateur
+    // 2026-05-05 : « je dois avoir la partie logement avec les
+    // emplacements vierges » — sinon, dès qu'une autre catégorie
+    // déborde et déclenche le mode flow, les sections vides
+    // disparaissent complètement de la page. `null` côté `photos[i]`
+    // est interprété par la boucle de rendu plus bas comme « slot
+    // gris vide » via `drawEmptyPhotoSlot`.
+    if (allPhotos.length === 0) {
+      rows.push({
+        photos: new Array(perRow).fill(null),
+        slotW, slotH, hgap, xStart, type, label,
+        isFirstOfCategory: true,
+      });
+      return rows;
+    }
     for (let i = 0; i < allPhotos.length; i += perRow) {
       rows.push({
         photos: allPhotos.slice(i, i + perRow),
@@ -1872,13 +1889,29 @@ async function drawVisitPhotosWithFlow({
       cursorY -= TITLE_HEIGHT;
     }
 
-    // Dessine la rangée à `cursorY` (top du slot)
+    // Dessine la rangée à `cursorY` (top du slot). Si `photo === null`
+    // (catégorie sans photo, cf. buildRowsForCategory ci-dessus), on
+    // dessine un emplacement vide (rectangle gris doux) plutôt que de
+    // skip la cellule — ça préserve la disposition de la page.
     for (let i = 0; i < row.photos.length; i += 1) {
       const x = row.xStart + i * (row.slotW + row.hgap);
       const y = cursorY - row.slotH;
       const rect = { x, y, width: row.slotW, height: row.slotH };
+      const photo = row.photos[i];
+      if (photo == null) {
+        currentPage.drawRectangle({
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          color: rgb(0.95, 0.96, 0.98), // slate-100 — placeholder doux
+          borderColor: rgb(0.85, 0.87, 0.91), // slate-200 — bordure discrète
+          borderWidth: 1,
+        });
+        continue;
+      }
       await drawPhotoOnPageAtRect(
-        pdfDoc, currentPage, rect, row.photos[i],
+        pdfDoc, currentPage, rect, photo,
         fetchImageBytes, stats,
       );
     }
