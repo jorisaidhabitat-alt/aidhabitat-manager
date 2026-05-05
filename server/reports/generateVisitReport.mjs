@@ -1777,38 +1777,23 @@ async function drawVisitPhotosWithFlow({
   const TITLE_HEIGHT = TITLE_ENABLED ? 24 : 0;
   const TITLE_FONT_SIZE = 13;
 
-  // Une catégorie est considérée "active" si elle a au moins 1 photo
-  // (base ou extra `(#N)`). Les catégories sans photo gardent leurs
-  // form fields template + leur titre baked → l'utilisateur voit les
-  // cadres vierges natifs du template (demande 2026-05-05 : « pour
-  // les cadres vierge, il faut que ce soit les cadres par défaut qui
-  // sont sur le template »).
-  const photosCount = (baseTag) => {
-    const grouped = groupPhotosBySectionIndex(documents, baseTag);
-    let n = 0;
-    for (const ps of grouped.values()) n += ps.length;
-    return n;
-  };
-  const logementActive = photosCount('Visite - Logement') > 0;
-  const accesActive = photosCount('Visite - Accessibilité') > 0;
-  const saniActive = photosCount('Visite - Sanitaires') > 0;
-
-  // 1) Neutralise UNIQUEMENT les form fields des catégories actives.
-  //    Les catégories sans photo conservent leur appearance d'origine
-  //    du template (cadres gris « image placeholder ») visible.
-  const fieldsToNeutralize = [];
-  if (logementActive) fieldsToNeutralize.push('logement', 'logement2');
-  if (accesActive) fieldsToNeutralize.push('acces1', 'acces2', 'acces3');
-  if (saniActive) fieldsToNeutralize.push('sani1', 'sani2', 'sani3');
-  for (const fname of fieldsToNeutralize) {
+  // 1) Neutralise TOUS les form fields photo de la page 8. Le mode
+  //    flow re-dessine intégralement le contenu (photos pour les
+  //    catégories actives, placeholders gris pour les catégories
+  //    vides). Demande utilisateur 2026-05-05 : Logement doit rester
+  //    contigu sous un seul titre, et c'est Accessibilité / Sanitaires
+  //    qui descendent — donc on ne peut pas garder les form fields
+  //    template à leurs positions fixes (ils ne suivent pas le flow).
+  for (const fname of [
+    'logement', 'logement2',
+    'acces1', 'acces2', 'acces3',
+    'sani1', 'sani2', 'sani3',
+  ]) {
     neutralizeFieldAppearance(pdfDoc, form, fname);
   }
 
-  // 2) Masque UNIQUEMENT les titres baked des catégories actives.
-  //    Pour les catégories vides, le titre baked du template reste
-  //    visible (Affinity a baked « Logement » / « Accessibilité » /
-  //    « Sanitaires » au-dessus de chaque zone). Sinon il y aurait
-  //    un trou visuel en plus du cadre template visible.
+  // 2) Masque TOUS les titres baked du template — les titres custom
+  //    ré-écrits au-dessus de chaque rangée flow prennent le relais.
   const maskTitleZone = (xStart, xEnd, slotTopY) => {
     const xPad = 8;
     const x = xStart - xPad;
@@ -1819,9 +1804,9 @@ async function drawVisitPhotosWithFlow({
       color: rgb(1, 1, 1),
     });
   };
-  if (logementActive) maskTitleZone(logXStart, logXEnd, firstLogTopY);
-  if (accesActive) maskTitleZone(accXStart, accXEnd, accSlot.rect.y + accH);
-  if (saniActive) maskTitleZone(saniXStart, saniXEnd, saniSlot.rect.y + saniH);
+  maskTitleZone(logXStart, logXEnd, firstLogTopY);
+  maskTitleZone(accXStart, accXEnd, accSlot.rect.y + accH);
+  maskTitleZone(saniXStart, saniXEnd, saniSlot.rect.y + saniH);
 
   // 3) Construit les rangées (fusion base + extras pour chaque cat).
   // `isFirstOfCategory` est mis à true pour la 1ère rangée de
@@ -1834,6 +1819,20 @@ async function drawVisitPhotosWithFlow({
     const allPhotos = [];
     for (const ps of grouped.values()) allPhotos.push(...ps);
     const rows = [];
+    if (allPhotos.length === 0) {
+      // Catégorie vide → 1 rangée placeholder (perRow nulls). La
+      // boucle de rendu dessine des cadres gris discrets à la place
+      // des photos. Demande utilisateur 2026-05-05 : « Accessibilité
+      // et Sanitaires descendent à la suite de Logement quand il
+      // déborde » → la zone vide doit avoir une rangée dans le flow
+      // pour pouvoir descendre naturellement.
+      rows.push({
+        photos: new Array(perRow).fill(null),
+        slotW, slotH, hgap, xStart, type, label,
+        isFirstOfCategory: true,
+      });
+      return rows;
+    }
     for (let i = 0; i < allPhotos.length; i += perRow) {
       rows.push({
         photos: allPhotos.slice(i, i + perRow),
@@ -1843,11 +1842,6 @@ async function drawVisitPhotosWithFlow({
     }
     return rows;
   };
-
-  // Early return si aucune photo nulle part — la passe 2 (extras)
-  // fait son propre check, mais on évite l'embed de la font Inter
-  // quand y a rien à dessiner.
-  if (!logementActive && !accesActive && !saniActive) return;
 
   // 4) Calcul du gap vertical entre 2 rangées consécutives
   const computeVGap = (prevType, nextType) => {
@@ -1877,108 +1871,52 @@ async function drawVisitPhotosWithFlow({
     helveticaTitle = await pdfDoc.embedFont(StandardFonts.Helvetica);
   }
 
-  // 5) Dessin en 2 passes :
+  // 5) Flow continu sur p8 + pages bonus si overflow.
   //
-  // PASSE 1 — Rangées in-zone : la 1ère rangée de chaque catégorie
-  //   active est dessinée à sa position template fixe (Logement en
-  //   haut, Accessibilité au milieu, Sanitaires en bas). Les
-  //   catégories vides sont SKIPPÉES — leurs form fields template
-  //   restent visibles avec leur titre baked. Cette passe garantit
-  //   que la mise en page de la page 8 reste stable, peu importe le
-  //   nombre de photos ajoutées en surplus.
-  //
-  // PASSE 2 — Rangées overflow : pour chaque catégorie qui a plus de
-  //   photos que sa zone template ne peut en contenir, les rangées
-  //   supplémentaires sont dessinées en flow continu sur des pages
-  //   bonus insérées après la page 8. Elles gardent leur titre custom.
-  //   Demande utilisateur 2026-05-05 : « les blocs blancs vierges
-  //   d'Accessibilité doivent être à la suite des photos Logement,
-  //   pas par-dessus » — donc on pousse les Logement extras sur une
-  //   page bonus pour préserver la zone Accessibilité.
-
-  const drawRowAtY = async (row, page, topY) => {
-    let y = topY;
-    if (TITLE_ENABLED && row.isFirstOfCategory) {
-      page.drawText(row.label, {
-        x: row.xStart,
-        y: y - TITLE_FONT_SIZE - 2,
-        size: TITLE_FONT_SIZE,
-        color: rgb(0.18, 0.18, 0.18),
-        font: helveticaTitle,
-      });
-      y -= TITLE_HEIGHT;
-    }
-    for (let i = 0; i < row.photos.length; i += 1) {
-      const x = row.xStart + i * (row.slotW + row.hgap);
-      const rect = { x, y: y - row.slotH, width: row.slotW, height: row.slotH };
-      await drawPhotoOnPageAtRect(
-        pdfDoc, page, rect, row.photos[i],
-        fetchImageBytes, stats,
-      );
-    }
-  };
-
-  // Sépare in-zone (rangée 1) et extras (rangées 2+). Le template a
-  // exactement 1 rangée par catégorie (logement = 2 slots, acces = 3,
-  // sani = 3) ; les rangées au-delà sont des extras.
-  const splitInZone = (rows) => {
-    if (rows.length === 0) return { inZone: null, extras: [] };
-    return { inZone: rows[0], extras: rows.slice(1) };
-  };
-  const logRowsAll = buildRowsForCategory(
-    'Visite - Logement', 2, logW, logH, logHGap, logXStart,
-    'logement', 'Logement',
-  );
-  const accRowsAll = buildRowsForCategory(
-    'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart,
-    'acces', 'Accessibilité',
-  );
-  const saniRowsAll = buildRowsForCategory(
-    'Visite - Sanitaires', 3, saniW, saniH, saniHGap, saniXStart,
-    'sani', 'Sanitaires',
-  );
-  const log = splitInZone(logRowsAll);
-  const acc = splitInZone(accRowsAll);
-  const sani = splitInZone(saniRowsAll);
-
-  // PASSE 1 — In-zone à positions template fixes sur la page 8.
-  if (log.inZone) await drawRowAtY(log.inZone, page8, firstLogTopY);
-  if (acc.inZone) {
-    await drawRowAtY(acc.inZone, page8, accSlot.rect.y + accH);
-  }
-  if (sani.inZone) {
-    await drawRowAtY(sani.inZone, page8, saniSlot.rect.y + saniH);
-  }
-
-  // PASSE 2 — Extras en flow continu sur pages bonus.
-  // Re-marque la 1ère rangée extras de chaque catégorie comme
-  // `isFirstOfCategory: true` pour qu'elle déclenche un titre custom
-  // sur la page bonus (sinon le titre baked du template est seulement
-  // sur p8, l'ergo ne sait pas quelle catégorie il regarde).
-  const overflowRows = [
-    ...log.extras.map((r, i) => ({ ...r, isFirstOfCategory: i === 0 })),
-    ...acc.extras.map((r, i) => ({ ...r, isFirstOfCategory: i === 0 })),
-    ...sani.extras.map((r, i) => ({ ...r, isFirstOfCategory: i === 0 })),
+  // Toutes les rangées de toutes les catégories (Logement →
+  // Accessibilité → Sanitaires) sont concaténées et dessinées en
+  // séquence. Quand une catégorie est vide, sa rangée placeholder
+  // (cf. buildRowsForCategory) prend la place visuelle avec des
+  // cadres gris discrets. Quand Logement déborde (>1 rangée),
+  // Accessibilité et Sanitaires descendent naturellement en dessous
+  // — c'est le comportement demandé par l'utilisateur 2026-05-05 :
+  // « toutes les photos logement doivent être ensemble, c'est
+  // sanitaire et accessibilité qui doivent descendre ».
+  const allRows = [
+    ...buildRowsForCategory(
+      'Visite - Logement', 2, logW, logH, logHGap, logXStart,
+      'logement', 'Logement',
+    ),
+    ...buildRowsForCategory(
+      'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart,
+      'acces', 'Accessibilité',
+    ),
+    ...buildRowsForCategory(
+      'Visite - Sanitaires', 3, saniW, saniH, saniHGap, saniXStart,
+      'sani', 'Sanitaires',
+    ),
   ];
+  if (allRows.length === 0) return;
 
-  if (overflowRows.length === 0) return;
-
-  let currentPage = null;
-  let cursorY = 0;
-  let bottomLimit = bonusMarginBottom;
+  let currentPage = page8;
+  let cursorY = firstLogTopY;
+  let bottomLimit = page8BottomLimit;
   let bonusPagesInserted = 0;
 
-  for (let r = 0; r < overflowRows.length; r += 1) {
-    const row = overflowRows[r];
+  for (let r = 0; r < allRows.length; r += 1) {
+    const row = allRows[r];
     const titleSpace = row.isFirstOfCategory ? TITLE_HEIGHT : 0;
-    const needsNewPage =
-      currentPage === null || cursorY - titleSpace - row.slotH < bottomLimit;
-    if (needsNewPage) {
+
+    // Pagination : la rangée + son titre tiennent-ils dans la zone ?
+    if (cursorY - titleSpace - row.slotH < bottomLimit) {
       const insertAt = page8Index + 1 + bonusPagesInserted;
       currentPage = pdfDoc.insertPage(insertAt, [pageWidth, pageHeight]);
       cursorY = pageHeight - bonusMarginTop;
+      bottomLimit = bonusMarginBottom;
       bonusPagesInserted += 1;
     }
+
+    // Titre custom au-dessus de la 1ère rangée de la catégorie.
     if (TITLE_ENABLED && row.isFirstOfCategory) {
       currentPage.drawText(row.label, {
         x: row.xStart,
@@ -1989,19 +1927,33 @@ async function drawVisitPhotosWithFlow({
       });
       cursorY -= TITLE_HEIGHT;
     }
+
+    // Dessine la rangée — photos (drawPhotoOnPageAtRect) ou
+    // placeholder gris (catégorie vide → photo === null).
     for (let i = 0; i < row.photos.length; i += 1) {
       const x = row.xStart + i * (row.slotW + row.hgap);
-      const rect = {
-        x, y: cursorY - row.slotH, width: row.slotW, height: row.slotH,
-      };
+      const y = cursorY - row.slotH;
+      const rect = { x, y, width: row.slotW, height: row.slotH };
+      const photo = row.photos[i];
+      if (photo == null) {
+        currentPage.drawRectangle({
+          x: rect.x, y: rect.y,
+          width: rect.width, height: rect.height,
+          color: rgb(0.95, 0.96, 0.98),
+          borderColor: rgb(0.85, 0.87, 0.91),
+          borderWidth: 1,
+        });
+        continue;
+      }
       await drawPhotoOnPageAtRect(
-        pdfDoc, currentPage, rect, row.photos[i],
+        pdfDoc, currentPage, rect, photo,
         fetchImageBytes, stats,
       );
     }
+
     cursorY -= row.slotH;
-    if (r + 1 < overflowRows.length) {
-      cursorY -= computeVGap(row.type, overflowRows[r + 1].type);
+    if (r + 1 < allRows.length) {
+      cursorY -= computeVGap(row.type, allRows[r + 1].type);
     }
   }
 }
