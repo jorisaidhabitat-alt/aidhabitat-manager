@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
@@ -10,6 +12,37 @@ import 'document_repository.dart';
 import 'local_database.dart';
 import 'nocodb_api_client.dart';
 import 'sync_repository.dart';
+
+/// Vrai si l'erreur attrapée par le catch générique du sync engine est
+/// en réalité un hoquet réseau (à rejouer silencieusement) plutôt qu'une
+/// vraie erreur métier (à remonter à l'UI).
+///
+/// On capture :
+///   - `http.ClientException` → "Load failed" sur Safari iOS / iPad PWA
+///     quand la connexion est cancelée par le navigateur (mise en
+///     veille, scroll qui interrompt le fetch, cellulaire qui flap…)
+///   - `TimeoutException` → la requête a dépassé son `.timeout(...)`
+///   - `SocketException` / `HttpException` → erreurs bas niveau Dart
+///   - le pattern textuel "Load failed" / "fetch failed" / "Failed to
+///     fetch" en fallback (au cas où une de ces exceptions remonterait
+///     wrappée dans une `Exception` générique).
+///
+/// Demande utilisateur 2026-05-05 : « tout fonctionnait bien jusqu'à
+/// la partie Accessibilité du VAD » — le PATCH /api/logements échouait
+/// en "Load failed" sur iPad et le bandeau rouge bloquait l'ergo.
+/// Avec ce reclassement, l'op est rejouée au cycle suivant sans aucune
+/// alerte UI.
+bool _isTransientErrorLike(Object error) {
+  if (error is TimeoutException) return true;
+  if (error is SocketException) return true;
+  if (error is HttpException) return true;
+  if (error is http.ClientException) return true;
+  final s = error.toString().toLowerCase();
+  return s.contains('load failed') ||
+      s.contains('fetch failed') ||
+      s.contains('failed to fetch') ||
+      s.contains('clientexception');
+}
 
 /// Indicates that a sync operation was rejected due to a conflict (HTTP 409).
 /// The engine should NOT retry these -- they require user resolution.
@@ -181,15 +214,36 @@ class NocodbSyncService {
           error: e.toString(),
         );
       } catch (error) {
-        final message = error.toString();
-        await _syncRepository.markFailed(
-          operationId: operation.id,
-          entityType: operation.entityType,
-          entityLocalId: operation.entityLocalId,
-          error: message,
-        );
-        failed += 1;
-        failures.add('${operation.entityType}:${operation.operationType}');
+        // Filet de sécurité : reclasse toute erreur réseau bas niveau
+        // (incluant `http.ClientException: Load failed` côté iPad PWA)
+        // en transitoire — l'op reste en queue et est rejouée au
+        // prochain cycle, pas de bandeau rouge.
+        // Sans ce reclassement, n'importe quel endpoint d'écriture qui
+        // n'est pas wrappé dans `_runWithTransientGuard` produisait un
+        // failed définitif au moindre hoquet Safari iOS (rapporté
+        // 2026-05-05 sur housing:update / Accessibilité).
+        if (_isTransientErrorLike(error)) {
+          // ignore: avoid_print
+          print('[sync] reclassed-as-transient ${operation.entityType}:'
+              '${operation.operationType} id=${operation.entityLocalId} '
+              'err=$error — retry au prochain cycle');
+          await _syncRepository.markTransientFailure(
+            operationId: operation.id,
+            entityType: operation.entityType,
+            entityLocalId: operation.entityLocalId,
+            error: error.toString(),
+          );
+        } else {
+          final message = error.toString();
+          await _syncRepository.markFailed(
+            operationId: operation.id,
+            entityType: operation.entityType,
+            entityLocalId: operation.entityLocalId,
+            error: message,
+          );
+          failed += 1;
+          failures.add('${operation.entityType}:${operation.operationType}');
+        }
       }
     }
 

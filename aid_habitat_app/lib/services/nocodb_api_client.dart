@@ -279,14 +279,23 @@ class NocodbApiClient {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
-    final response = await _client
-        .patch(
-          Uri.parse(
-              '$_baseUrl/api/logements/by-beneficiary/$beneficiaryId'),
-          headers: _headers,
-          body: jsonEncode(updates),
-        )
-        .timeout(_defaultTimeout);
+    // Wrappé dans `_runWithTransientGuard` (cf. updateDossier) — les
+    // ClientException "Load failed" iPad sont reclassées en transitoires.
+    // L'endpoint serveur fait plusieurs queryAll (bénéficiaires, logements,
+    // type_logement, porte_garage, portail, dossiers) avant de pouvoir
+    // mapper les updates, d'où le timeout 60s comme pour les autres
+    // endpoints d'écriture lourds.
+    final response = await _runWithTransientGuard(
+      'Remote logement update',
+      () => _client
+          .patch(
+            Uri.parse(
+                '$_baseUrl/api/logements/by-beneficiary/$beneficiaryId'),
+            headers: _headers,
+            body: jsonEncode(updates),
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
       try {
