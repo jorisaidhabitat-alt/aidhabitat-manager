@@ -30,6 +30,7 @@ import {
   endPath,
   rgb,
 } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +38,15 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_TEMPLATE_PATH = path.resolve(
   __dirname,
   '../templates/visitReport.template.pdf',
+);
+
+// Inter Medium — substitut open-source de HelveticaNeue Medium (Apple
+// proprio) utilisé par les titres baked du template Affinity. Bundlé
+// dans le repo pour fonctionner sur Vercel (Linux serverless n'a pas
+// de fonts système). Subsetting via fontkit pour garder le PDF léger.
+const INTER_MEDIUM_FONT_PATH = path.resolve(
+  __dirname,
+  '../templates/fonts/Inter-Medium.ttf',
 );
 const MAPPING_PATH = path.resolve(
   __dirname,
@@ -1759,16 +1769,13 @@ async function drawVisitPhotosWithFlow({
   const bonusMarginBottom = 60;
 
   // Titres custom au-dessus des rangées de chaque catégorie
-  // (« Logement » / « Accessibilité » / « Sanitaires »).
-  //
-  // Typographie alignée sur les titres BAKED du template (Affinity
-  // Publisher exporte en HelveticaNeue Bold ~14pt). pdf-lib n'a pas
-  // HelveticaNeue dans StandardFonts ; HelveticaBold est le rendu le
-  // plus proche visuellement. Demande utilisateur 2026-05-05 :
-  // « reprend la même typo que les autres titres ».
+  // (« Logement » / « Accessibilité » / « Sanitaires »). Match exact
+  // de la typo baked du template : HelveticaNeue Medium 13pt.
+  // Substitut open-source Inter Medium (cf. INTER_MEDIUM_FONT_PATH +
+  // bloc d'embed plus bas). Demande utilisateur 2026-05-05.
   const TITLE_ENABLED = true;
-  const TITLE_HEIGHT = TITLE_ENABLED ? 26 : 0;
-  const TITLE_FONT_SIZE = 14;
+  const TITLE_HEIGHT = TITLE_ENABLED ? 24 : 0;
+  const TITLE_FONT_SIZE = 13;
 
   // Une catégorie est considérée "active" si elle a au moins 1 photo
   // (base ou extra `(#N)`). Les catégories sans photo gardent leurs
@@ -1862,13 +1869,25 @@ async function drawVisitPhotosWithFlow({
     return VGAP_INTRA;
   };
 
-  // Helvetica regular pour rendre les titres custom légèrement moins
-  // épais (demande utilisateur 2026-05-05 « fais légèrement moins
-  // bold »). pdf-lib n'a pas de Medium en StandardFonts — Regular est
-  // le plus proche d'un poids intermédiaire entre Regular et Bold.
-  // On garde la taille augmentée à 14pt pour garder de la présence
-  // visuelle malgré le poids plus léger.
-  const helveticaTitle = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  // Inter Medium (substitut open-source HelveticaNeue Medium) pour
+  // matcher exactement la typo baked du template. pdf-lib subset
+  // automatiquement la font via fontkit → +~3KB par PDF (vs +66KB
+  // sans subsetting). Fallback Helvetica Bold si la font n'est pas
+  // trouvée (build incomplet, fichier absent…) — pas de crash.
+  let helveticaTitle;
+  try {
+    pdfDoc.registerFontkit(fontkit);
+    const interMediumBytes = await fs.readFile(INTER_MEDIUM_FONT_PATH);
+    helveticaTitle = await pdfDoc.embedFont(interMediumBytes, {
+      subset: true,
+    });
+  } catch (err) {
+    console.warn(
+      '[generateVisitReport] Inter Medium introuvable, fallback Helvetica :',
+      err?.message || err,
+    );
+    helveticaTitle = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  }
 
   // 5) Dessin en flow avec pagination + titres custom.
   //
