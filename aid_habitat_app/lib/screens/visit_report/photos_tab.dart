@@ -1133,16 +1133,20 @@ class _PhotosTabState extends State<PhotosTab>
         },
         onMetadataChanged: ({
           required String newTitle,
-          required bool hideLabelOnPdf,
+          required bool showLabelOnPdf,
         }) async {
-          // Préserve les autres tags (catégorie visite, classification),
-          // toggle le tag magique `__pdf_no_label`. Aucune mutation de
-          // tags catégorie ici — le rename ne déplace jamais la photo.
-          final preserved =
-              doc.tags.where((t) => t != kPhotoTagPdfNoLabel).toList();
+          // Préserve les autres tags (catégorie visite, classification).
+          // Modèle opt-in 2026-05-05 : on retire les DEUX tags magiques
+          // (le legacy `__pdf_no_label` ET le nouveau `__pdf_show_label`)
+          // et on rajoute UNIQUEMENT `__pdf_show_label` si l'ergo a
+          // coché. Default (tag absent) = pas d'overlay titre PDF.
+          final preserved = doc.tags
+              .where((t) =>
+                  t != kPhotoTagPdfNoLabel && t != kPhotoTagPdfShowLabel)
+              .toList();
           final nextTags = <String>[
             ...preserved,
-            if (hideLabelOnPdf) kPhotoTagPdfNoLabel,
+            if (showLabelOnPdf) kPhotoTagPdfShowLabel,
           ];
           await _dataService.updateDocumentMetadata(
             documentId: doc.id,
@@ -1485,9 +1489,14 @@ class _PhotoFullscreenDialog extends StatefulWidget {
   /// Appelé après un rename ou un toggle du switch « Afficher dans le
   /// PDF ». Le callback persiste dans SQLite + déclenche le sync, et
   /// le parent rafraîchit la liste des photos.
+  ///
+  /// Sémantique 2026-05-05 : `showLabelOnPdf` est un OPT-IN — true =
+  /// ajout du tag `__pdf_show_label`, false = retrait (default).
+  /// L'inverse de l'ancien `hideLabelOnPdf` (qui posait
+  /// `__pdf_no_label`).
   final Future<void> Function({
     required String newTitle,
-    required bool hideLabelOnPdf,
+    required bool showLabelOnPdf,
   })? onMetadataChanged;
 
   const _PhotoFullscreenDialog({
@@ -1511,9 +1520,16 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
   /// `onMetadataChanged`).
   late String _currentTitle;
 
-  /// État du switch « Afficher le nom dans le PDF ». Vrai par défaut
-  /// (= label visible). Initialisé à partir de la présence du tag
-  /// magique `kPhotoTagPdfNoLabel` sur le doc.
+  /// État du switch « Afficher le nom dans le PDF ». Default = false
+  /// (= label MASQUÉ par défaut, opt-in seulement). Initialisé à
+  /// partir de la présence du tag `kPhotoTagPdfShowLabel` sur le doc.
+  /// Demande utilisateur 2026-05-05 : « le switch doit être
+  /// désélectionné par défaut pour ne pas afficher le titre. On le
+  /// sélectionne uniquement si nécessaire ».
+  ///
+  /// Compat ascendante : si la photo a l'ancien tag `__pdf_no_label`
+  /// (rare désormais), le switch reste OFF (cohérent avec le sens
+  /// historique « ne pas afficher »).
   late bool _showLabelOnPdf;
 
   bool _isSaving = false;
@@ -1522,7 +1538,8 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
   void initState() {
     super.initState();
     _currentTitle = widget.doc.title;
-    _showLabelOnPdf = !widget.doc.tags.contains(kPhotoTagPdfNoLabel);
+    _showLabelOnPdf = widget.doc.tags.contains(kPhotoTagPdfShowLabel) &&
+        !widget.doc.tags.contains(kPhotoTagPdfNoLabel);
     _load();
   }
 
@@ -1574,7 +1591,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
     if (cb == null) return;
     setState(() => _isSaving = true);
     try {
-      await cb(newTitle: newName, hideLabelOnPdf: !_showLabelOnPdf);
+      await cb(newTitle: newName, showLabelOnPdf: _showLabelOnPdf);
       if (mounted) setState(() => _currentTitle = newName);
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -1591,7 +1608,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
       _isSaving = true;
     });
     try {
-      await cb(newTitle: _currentTitle, hideLabelOnPdf: !next);
+      await cb(newTitle: _currentTitle, showLabelOnPdf: next);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }

@@ -49,14 +49,21 @@ const String kPhotoTagPlanApres = 'Visite - Plan après';
 /// l'onglet Photos.
 const String kPhotoTagAutres = 'Visite - Autres';
 
-/// Tag MAGIQUE (commence par `__`) — quand présent sur une photo
-/// visite, le générateur PDF n'affiche PAS l'overlay de titre en
-/// haut de la photo dans le rapport (page 8 / pages 9-10). Permet
-/// à l'ergo de masquer ponctuellement le label sur certains clichés
-/// (ex. photo « pure » sans légende voulue) sans perdre le `title`
-/// éditable côté app. Ne pas afficher dans les UIs qui listent les
-/// tags humains (filtré par préfixe `__`).
+/// Tag MAGIQUE LEGACY (commence par `__`) — quand présent sur une
+/// photo visite, le générateur PDF n'affiche PAS l'overlay de titre
+/// en haut de la photo. Reste reconnu côté serveur pour compat
+/// ascendante mais N'EST PLUS posé par les nouveaux togglers : on
+/// est passés à un système opt-in (cf. `kPhotoTagPdfShowLabel`).
+/// Demande utilisateur 2026-05-05 : « par défaut les titres ne
+/// doivent pas s'afficher dans le PDF, c'est uniquement quand on
+/// active le switch que ça les affiche ».
 const String kPhotoTagPdfNoLabel = '__pdf_no_label';
+
+/// Tag MAGIQUE OPT-IN — présent UNIQUEMENT quand l'ergo a coché le
+/// switch « Afficher le titre » sur une photo. Default (tag absent) =
+/// pas d'overlay titre dans le PDF. Mirroir exact de
+/// `PHOTO_TAG_PDF_SHOW_LABEL` côté `server/reports/generateVisitReport.mjs`.
+const String kPhotoTagPdfShowLabel = '__pdf_show_label';
 
 /// Tous les tags photos visite réunis pour faciliter le filtrage
 /// dans DocumentsScreen et l'onglet Photos. Ordre = ordre des
