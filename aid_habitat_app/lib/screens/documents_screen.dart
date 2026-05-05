@@ -4402,20 +4402,73 @@ class _RemoteImageAnnotatorWrapperState
     }
   }
 
+  /// Vérifie qu'un buffer ressemble à une image (JPEG/PNG/GIF/WebP/BMP/HEIC).
+  /// Permet de détecter une entrée stale dans `web_media_cache` qui
+  /// contiendrait du HTML SPA fallback ou 0 byte — cas où l'image
+  /// importée sur iPad apparaissait sur Mac mais sans ouvrir de preview.
+  bool _looksLikeImageBytes(Uint8List? bytes) {
+    if (bytes == null || bytes.length < 8) return false;
+    if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return true;
+    if (bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return true;
+    }
+    if (bytes[0] == 0x47 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x38) {
+      return true;
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return true;
+    }
+    if (bytes[0] == 0x42 && bytes[1] == 0x4D) return true;
+    if (bytes.length >= 12 &&
+        bytes[4] == 0x66 &&
+        bytes[5] == 0x74 &&
+        bytes[6] == 0x79 &&
+        bytes[7] == 0x70) {
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _load() async {
     // Web : fetch bytes via le cache SQLite (`dart:io File` n'existe pas
     // dans le navigateur). Native : fetch File via le cache filesystem.
     // Dans les deux cas on passe l'auth `X-App-Session` pour que les URLs
     // privées `/api/mobile-documents/<id>/content` ne renvoient pas 401.
     if (kIsWeb) {
-      final bytes = await MediaCacheService.instance.webCachedFetch(
+      var bytes = await MediaCacheService.instance.webCachedFetch(
         widget.url,
         headers: MediaCacheService.authHeaders(),
       );
+      // Si le cache renvoie quelque chose qui n'est PAS une image (HTML
+      // SPA fallback, 0 byte, JSON d'erreur), on invalide l'entrée stale
+      // et on retente un fetch frais. Demande utilisateur 2026-05-04 :
+      // les photos importées sur iPad apparaissaient mais ne pouvaient
+      // pas être prévisualisées sur Mac à cause d'un cache pourri.
+      if (bytes != null && !_looksLikeImageBytes(bytes)) {
+        await MediaCacheService.instance.invalidateUrl(widget.url);
+        bytes = await MediaCacheService.instance.webCachedFetch(
+          widget.url,
+          headers: MediaCacheService.authHeaders(),
+        );
+      }
       if (!mounted) return;
       setState(() {
-        _bytes = bytes;
-        _failed = bytes == null;
+        _bytes = _looksLikeImageBytes(bytes) ? bytes : null;
+        _failed = _bytes == null;
       });
       return;
     }

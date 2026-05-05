@@ -1331,6 +1331,60 @@ final Map<String, Uint8List> _photoBytesCache = {};
 /// fetch réseau est lancée et toutes attendent la même Future.
 final Map<String, Future<Uint8List?>> _photoBytesInflight = {};
 
+/// Vérifie si les bytes ressemblent à une image valide via les signatures
+/// magic-number standard (JPEG, PNG, GIF, WebP, BMP, HEIC/HEIF). Permet
+/// de détecter une entrée stale dans `web_media_cache` qui contiendrait
+/// par exemple du HTML (SPA fallback après "Load failed") ou 0 byte —
+/// cas observé sur Mac quand iPad a poussé la photo sur NocoDB et qu'un
+/// premier fetch côté Mac avait échoué silencieusement.
+///
+/// Demande utilisateur 2026-05-04 : « les images importées sur iPad
+/// doivent également être accessibles sur le Mac, actuellement je les
+/// vois mais pas de preview, pas cliquable » — symptôme d'un cache
+/// pourri qui renvoie des bytes non décodables par `Image.memory`.
+bool _looksLikeImageBytes(Uint8List? bytes) {
+  if (bytes == null || bytes.length < 8) return false;
+  // JPEG: FF D8 FF
+  if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return true;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (bytes[0] == 0x89 &&
+      bytes[1] == 0x50 &&
+      bytes[2] == 0x4E &&
+      bytes[3] == 0x47) {
+    return true;
+  }
+  // GIF: "GIF8"
+  if (bytes[0] == 0x47 &&
+      bytes[1] == 0x49 &&
+      bytes[2] == 0x46 &&
+      bytes[3] == 0x38) {
+    return true;
+  }
+  // WebP: "RIFF....WEBP"
+  if (bytes.length >= 12 &&
+      bytes[0] == 0x52 &&
+      bytes[1] == 0x49 &&
+      bytes[2] == 0x46 &&
+      bytes[3] == 0x46 &&
+      bytes[8] == 0x57 &&
+      bytes[9] == 0x45 &&
+      bytes[10] == 0x42 &&
+      bytes[11] == 0x50) {
+    return true;
+  }
+  // BMP: 42 4D
+  if (bytes[0] == 0x42 && bytes[1] == 0x4D) return true;
+  // HEIC/HEIF: "ftypheic" / "ftypheix" / "ftypmif1" à l'offset 4
+  if (bytes.length >= 12 &&
+      bytes[4] == 0x66 &&
+      bytes[5] == 0x74 &&
+      bytes[6] == 0x79 &&
+      bytes[7] == 0x70) {
+    return true;
+  }
+  return false;
+}
+
 /// Récupère les bytes d'une photo via la chaîne de fallback :
 ///   1. cache mémoire (`_photoBytesCache`)
 ///   2. inflight (autre instance en train de fetch)
@@ -1338,6 +1392,10 @@ final Map<String, Future<Uint8List?>> _photoBytesInflight = {};
 ///   4. `localPath` (native filesystem) → readAsBytes
 ///   5. `url` (NocoDB signed URL) → MediaCacheService web cache
 ///      (SQLite-backed, persistant offline-first)
+///   6. Si le cache renvoie des bytes invalides (HTML stale, 0 byte),
+///      on invalide l'entrée et on retente un fetch frais. Évite que
+///      l'app reste coincée sur une image cassée à cause d'une réponse
+///      foirée stockée dans `web_media_cache`.
 ///
 /// Renvoie null seulement si aucune source n'a marché.
 Future<Uint8List?> _resolvePhotoBytes(DocItem doc) async {
@@ -1352,7 +1410,8 @@ Future<Uint8List?> _resolvePhotoBytes(DocItem doc) async {
     if (dataUrl != null && dataUrl.startsWith('data:')) {
       try {
         final b64 = dataUrl.split(',').last;
-        return base64Decode(b64);
+        final decoded = base64Decode(b64);
+        if (_looksLikeImageBytes(decoded)) return decoded;
       } catch (_) {}
     }
     if (!kIsWeb) {
@@ -1370,11 +1429,23 @@ Future<Uint8List?> _resolvePhotoBytes(DocItem doc) async {
     if (url.isNotEmpty) {
       try {
         if (kIsWeb) {
-          final bytes = await MediaCacheService.instance.webCachedFetch(
+          var bytes = await MediaCacheService.instance.webCachedFetch(
             url,
             headers: {'X-App-Session': AppConfig.appSessionToken},
           );
-          if (bytes != null) return bytes;
+          if (_looksLikeImageBytes(bytes)) return bytes;
+          // Cache renvoie quelque chose qui ne ressemble PAS à une image
+          // (HTML SPA fallback, 0 byte, JSON d'erreur). On invalide
+          // l'entrée stale et on retente un fetch réseau direct — fix
+          // pour les photos iPad non-cliquables sur Mac.
+          if (bytes != null) {
+            await MediaCacheService.instance.invalidateUrl(url);
+            bytes = await MediaCacheService.instance.webCachedFetch(
+              url,
+              headers: {'X-App-Session': AppConfig.appSessionToken},
+            );
+            if (_looksLikeImageBytes(bytes)) return bytes;
+          }
         } else {
           final file = await MediaCacheService.instance.fetch(
             url,
