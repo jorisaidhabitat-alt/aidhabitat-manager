@@ -1761,13 +1761,14 @@ async function drawVisitPhotosWithFlow({
   // Titres custom au-dessus des rangées de chaque catégorie
   // (« Logement » / « Accessibilité » / « Sanitaires »).
   //
-  // Réactivés 2026-05-05 (après un bref désactivement) — demande
-  // utilisateur de les remettre par défaut. Quand un vrai switch UI
-  // par section sera câblé côté iPad, remplacer par une lecture du
-  // flag depuis la donnée (ex. `documents[i].displayPdfTitle`).
+  // Typographie alignée sur les titres BAKED du template (Affinity
+  // Publisher exporte en HelveticaNeue Bold ~14pt). pdf-lib n'a pas
+  // HelveticaNeue dans StandardFonts ; HelveticaBold est le rendu le
+  // plus proche visuellement. Demande utilisateur 2026-05-05 :
+  // « reprend la même typo que les autres titres ».
   const TITLE_ENABLED = true;
-  const TITLE_HEIGHT = TITLE_ENABLED ? 24 : 0;
-  const TITLE_FONT_SIZE = 13;
+  const TITLE_HEIGHT = TITLE_ENABLED ? 26 : 0;
+  const TITLE_FONT_SIZE = 14;
 
   // Une catégorie est considérée "active" si elle a au moins 1 photo
   // (base ou extra `(#N)`). Les catégories sans photo gardent leurs
@@ -1861,10 +1862,11 @@ async function drawVisitPhotosWithFlow({
     return VGAP_INTRA;
   };
 
-  // Helvetica regular (pas Bold) — demande utilisateur 2026-05-04 :
-  // « réduis légèrement l'épaisseur des titres ». Couleur conservée
-  // sombre pour garder la présence visuelle.
-  const helveticaTitle = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  // HelveticaBold pour matcher la typo baked du template
+  // (HelveticaNeue Bold n'étant pas dans StandardFonts pdf-lib, c'est
+  // le rendu le plus proche). Demande utilisateur 2026-05-05 :
+  // « reprend la même typo que les autres titres ».
+  const helveticaTitle = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   // 5) Dessin en flow avec pagination + titres custom.
   //
