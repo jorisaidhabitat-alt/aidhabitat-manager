@@ -1862,11 +1862,13 @@ async function drawVisitPhotosWithFlow({
     return VGAP_INTRA;
   };
 
-  // HelveticaBold pour matcher la typo baked du template
-  // (HelveticaNeue Bold n'étant pas dans StandardFonts pdf-lib, c'est
-  // le rendu le plus proche). Demande utilisateur 2026-05-05 :
-  // « reprend la même typo que les autres titres ».
-  const helveticaTitle = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  // Helvetica regular pour rendre les titres custom légèrement moins
+  // épais (demande utilisateur 2026-05-05 « fais légèrement moins
+  // bold »). pdf-lib n'a pas de Medium en StandardFonts — Regular est
+  // le plus proche d'un poids intermédiaire entre Regular et Bold.
+  // On garde la taille augmentée à 14pt pour garder de la présence
+  // visuelle malgré le poids plus léger.
+  const helveticaTitle = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   // 5) Dessin en flow avec pagination + titres custom.
   //
