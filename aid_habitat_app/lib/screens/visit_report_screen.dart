@@ -2089,6 +2089,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // 2026-05-05.
             onExpandTextNote: (tabKey) =>
                 _openNoteInSeparateWindow(tabKey),
+            // Sync bi-directionnel avec la fenêtre détachée — fix
+            // demande utilisateur 2026-05-05 : « quand j'écris dans
+            // le nouvel onglet note, il faut également que ça écrive
+            // direct dans le cadre note écrite de l'application ».
+            // L'IPC `liveNote` met à jour `_liveText[...]` côté state
+            // → SummaryTab le lit et le passe en `liveText:` à
+            // chaque NotesWidget. Réciproque : `onDraftChange` →
+            // `_pushDraftToOpenWindow`.
+            liveTextProjet: _liveText[
+                '${_dossier.patient.id}::Préconisations-Projet'],
+            liveTextResume: _liveText[
+                '${_dossier.patient.id}::Préconisations-Résumé'],
+            onDraftChange: (tabKey, text) =>
+                _pushDraftToOpenWindow(tabKey, text),
           ),
         ),
         _wrapTabWithNotes(

@@ -42,11 +42,31 @@ class SummaryTab extends StatefulWidget {
   /// agrandit comme les autres notes de VAD ».
   final void Function(String tabKey)? onExpandTextNote;
 
+  /// Texte courant poussé par la fenêtre détachée pour le cadre
+  /// « Projet de l'usager ». Re-rendu à chaque keystroke depuis la
+  /// popup pour que le cadre in-app reflète immédiatement la saisie
+  /// (demande utilisateur 2026-05-05 : « quand j'écris dans le nouvel
+  /// onglet note, il faut également que ça écrive direct dans le
+  /// cadre note écrite de l'application »).
+  final String? liveTextProjet;
+
+  /// Idem pour le cadre « Résumé des préconisations ».
+  final String? liveTextResume;
+
+  /// Callback : quand l'ergo tape dans un cadre note in-app, on
+  /// pousse le texte vers la fenêtre détachée si elle est ouverte
+  /// (parité avec les autres notes du VAD — cf.
+  /// `_pushDraftToOpenWindow` côté visit_report_screen).
+  final void Function(String tabKey, String text)? onDraftChange;
+
   const SummaryTab({
     super.key,
     required this.dossier,
     this.onExpandToTab,
     this.onExpandTextNote,
+    this.liveTextProjet,
+    this.liveTextResume,
+    this.onDraftChange,
   });
 
   @override
@@ -97,6 +117,20 @@ class _SummaryTabState extends State<SummaryTab>
                               'Préconisations-Projet',
                             ),
                     expandModalFullscreen: widget.onExpandTextNote == null,
+                    // Sync bi-directionnel avec la fenêtre détachée :
+                    // - liveText : reflète chaque keystroke poussé par
+                    //   la popup → met à jour le cadre in-app en
+                    //   temps réel (fix demande utilisateur 2026-05-05).
+                    // - onDraftChange : réciproque — chaque tape dans
+                    //   le cadre in-app est poussée vers la popup
+                    //   ouverte (`_pushDraftToOpenWindow`).
+                    liveText: widget.liveTextProjet,
+                    onDraftChange: widget.onDraftChange == null
+                        ? null
+                        : (draft) => widget.onDraftChange!(
+                              'Préconisations-Projet',
+                              draft.text,
+                            ),
                     fillParentHeight: true,
                   ),
                 ),
@@ -118,6 +152,13 @@ class _SummaryTabState extends State<SummaryTab>
                               'Préconisations-Résumé',
                             ),
                     expandModalFullscreen: widget.onExpandTextNote == null,
+                    liveText: widget.liveTextResume,
+                    onDraftChange: widget.onDraftChange == null
+                        ? null
+                        : (draft) => widget.onDraftChange!(
+                              'Préconisations-Résumé',
+                              draft.text,
+                            ),
                     fillParentHeight: true,
                   ),
                 ),
