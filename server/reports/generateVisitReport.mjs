@@ -1844,22 +1844,10 @@ async function drawVisitPhotosWithFlow({
     return rows;
   };
 
-  const allRows = [
-    ...buildRowsForCategory(
-      'Visite - Logement', 2, logW, logH, logHGap, logXStart,
-      'logement', 'Logement',
-    ),
-    ...buildRowsForCategory(
-      'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart,
-      'acces', 'Accessibilité',
-    ),
-    ...buildRowsForCategory(
-      'Visite - Sanitaires', 3, saniW, saniH, saniHGap, saniXStart,
-      'sani', 'Sanitaires',
-    ),
-  ];
-
-  if (allRows.length === 0) return;
+  // Early return si aucune photo nulle part — la passe 2 (extras)
+  // fait son propre check, mais on évite l'embed de la font Inter
+  // quand y a rien à dessiner.
+  if (!logementActive && !accesActive && !saniActive) return;
 
   // 4) Calcul du gap vertical entre 2 rangées consécutives
   const computeVGap = (prevType, nextType) => {
@@ -1889,43 +1877,108 @@ async function drawVisitPhotosWithFlow({
     helveticaTitle = await pdfDoc.embedFont(StandardFonts.Helvetica);
   }
 
-  // 5) Dessin en flow avec pagination + titres custom.
+  // 5) Dessin en 2 passes :
   //
-  // `cursorY` initial = haut de la 1ère catégorie ACTIVE. Si Logement
-  // est vide, on saute sa zone pour ne pas écraser ses cadres template
-  // (laissés intacts car non-neutralisés). Idem si Accessibilité est
-  // aussi vide → on commence direct à Sanitaires.
-  let currentPage = page8;
-  let cursorY;
-  if (logementActive) {
-    cursorY = firstLogTopY;
-  } else if (accesActive) {
-    cursorY = accSlot.rect.y + accH;
-  } else {
-    cursorY = saniSlot.rect.y + saniH;
+  // PASSE 1 — Rangées in-zone : la 1ère rangée de chaque catégorie
+  //   active est dessinée à sa position template fixe (Logement en
+  //   haut, Accessibilité au milieu, Sanitaires en bas). Les
+  //   catégories vides sont SKIPPÉES — leurs form fields template
+  //   restent visibles avec leur titre baked. Cette passe garantit
+  //   que la mise en page de la page 8 reste stable, peu importe le
+  //   nombre de photos ajoutées en surplus.
+  //
+  // PASSE 2 — Rangées overflow : pour chaque catégorie qui a plus de
+  //   photos que sa zone template ne peut en contenir, les rangées
+  //   supplémentaires sont dessinées en flow continu sur des pages
+  //   bonus insérées après la page 8. Elles gardent leur titre custom.
+  //   Demande utilisateur 2026-05-05 : « les blocs blancs vierges
+  //   d'Accessibilité doivent être à la suite des photos Logement,
+  //   pas par-dessus » — donc on pousse les Logement extras sur une
+  //   page bonus pour préserver la zone Accessibilité.
+
+  const drawRowAtY = async (row, page, topY) => {
+    let y = topY;
+    if (TITLE_ENABLED && row.isFirstOfCategory) {
+      page.drawText(row.label, {
+        x: row.xStart,
+        y: y - TITLE_FONT_SIZE - 2,
+        size: TITLE_FONT_SIZE,
+        color: rgb(0.18, 0.18, 0.18),
+        font: helveticaTitle,
+      });
+      y -= TITLE_HEIGHT;
+    }
+    for (let i = 0; i < row.photos.length; i += 1) {
+      const x = row.xStart + i * (row.slotW + row.hgap);
+      const rect = { x, y: y - row.slotH, width: row.slotW, height: row.slotH };
+      await drawPhotoOnPageAtRect(
+        pdfDoc, page, rect, row.photos[i],
+        fetchImageBytes, stats,
+      );
+    }
+  };
+
+  // Sépare in-zone (rangée 1) et extras (rangées 2+). Le template a
+  // exactement 1 rangée par catégorie (logement = 2 slots, acces = 3,
+  // sani = 3) ; les rangées au-delà sont des extras.
+  const splitInZone = (rows) => {
+    if (rows.length === 0) return { inZone: null, extras: [] };
+    return { inZone: rows[0], extras: rows.slice(1) };
+  };
+  const logRowsAll = buildRowsForCategory(
+    'Visite - Logement', 2, logW, logH, logHGap, logXStart,
+    'logement', 'Logement',
+  );
+  const accRowsAll = buildRowsForCategory(
+    'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart,
+    'acces', 'Accessibilité',
+  );
+  const saniRowsAll = buildRowsForCategory(
+    'Visite - Sanitaires', 3, saniW, saniH, saniHGap, saniXStart,
+    'sani', 'Sanitaires',
+  );
+  const log = splitInZone(logRowsAll);
+  const acc = splitInZone(accRowsAll);
+  const sani = splitInZone(saniRowsAll);
+
+  // PASSE 1 — In-zone à positions template fixes sur la page 8.
+  if (log.inZone) await drawRowAtY(log.inZone, page8, firstLogTopY);
+  if (acc.inZone) {
+    await drawRowAtY(acc.inZone, page8, accSlot.rect.y + accH);
   }
-  let bottomLimit = page8BottomLimit;
+  if (sani.inZone) {
+    await drawRowAtY(sani.inZone, page8, saniSlot.rect.y + saniH);
+  }
+
+  // PASSE 2 — Extras en flow continu sur pages bonus.
+  // Re-marque la 1ère rangée extras de chaque catégorie comme
+  // `isFirstOfCategory: true` pour qu'elle déclenche un titre custom
+  // sur la page bonus (sinon le titre baked du template est seulement
+  // sur p8, l'ergo ne sait pas quelle catégorie il regarde).
+  const overflowRows = [
+    ...log.extras.map((r, i) => ({ ...r, isFirstOfCategory: i === 0 })),
+    ...acc.extras.map((r, i) => ({ ...r, isFirstOfCategory: i === 0 })),
+    ...sani.extras.map((r, i) => ({ ...r, isFirstOfCategory: i === 0 })),
+  ];
+
+  if (overflowRows.length === 0) return;
+
+  let currentPage = null;
+  let cursorY = 0;
+  let bottomLimit = bonusMarginBottom;
   let bonusPagesInserted = 0;
 
-  for (let r = 0; r < allRows.length; r += 1) {
-    const row = allRows[r];
-    // Espace réservé pour le titre custom au-dessus de cette rangée
+  for (let r = 0; r < overflowRows.length; r += 1) {
+    const row = overflowRows[r];
     const titleSpace = row.isFirstOfCategory ? TITLE_HEIGHT : 0;
-
-    // Pagination : la rangée + son titre tiennent-ils dans la zone ?
-    if (cursorY - titleSpace - row.slotH < bottomLimit) {
+    const needsNewPage =
+      currentPage === null || cursorY - titleSpace - row.slotH < bottomLimit;
+    if (needsNewPage) {
       const insertAt = page8Index + 1 + bonusPagesInserted;
-      currentPage = pdfDoc.insertPage(
-        insertAt, [pageWidth, pageHeight],
-      );
+      currentPage = pdfDoc.insertPage(insertAt, [pageWidth, pageHeight]);
       cursorY = pageHeight - bonusMarginTop;
-      bottomLimit = bonusMarginBottom;
       bonusPagesInserted += 1;
     }
-
-    // Dessine le titre custom si c'est la 1ère rangée de catégorie
-    // ET que le titre est activé (cf. TITLE_ENABLED — désactivé par
-    // défaut depuis 2026-05-05).
     if (TITLE_ENABLED && row.isFirstOfCategory) {
       currentPage.drawText(row.label, {
         x: row.xStart,
@@ -1936,22 +1989,19 @@ async function drawVisitPhotosWithFlow({
       });
       cursorY -= TITLE_HEIGHT;
     }
-
-    // Dessine la rangée à `cursorY` (top du slot).
     for (let i = 0; i < row.photos.length; i += 1) {
       const x = row.xStart + i * (row.slotW + row.hgap);
-      const y = cursorY - row.slotH;
-      const rect = { x, y, width: row.slotW, height: row.slotH };
+      const rect = {
+        x, y: cursorY - row.slotH, width: row.slotW, height: row.slotH,
+      };
       await drawPhotoOnPageAtRect(
         pdfDoc, currentPage, rect, row.photos[i],
         fetchImageBytes, stats,
       );
     }
-
-    // Avance le curseur pour la rangée suivante
     cursorY -= row.slotH;
-    if (r + 1 < allRows.length) {
-      cursorY -= computeVGap(row.type, allRows[r + 1].type);
+    if (r + 1 < overflowRows.length) {
+      cursorY -= computeVGap(row.type, overflowRows[r + 1].type);
     }
   }
 }
