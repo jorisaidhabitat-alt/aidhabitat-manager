@@ -1321,6 +1321,27 @@ function drawImageWithCoverFit(pdfDoc, field, pdfImage) {
  */
 const PHOTO_TAG_PDF_NO_LABEL = '__pdf_no_label';
 
+/// Tag opt-in pour AFFICHER l'overlay du titre d'une photo dans le
+/// PDF. Demande utilisateur 2026-05-05 : « par défaut les titres
+/// modifiables sur l'app ne doivent pas s'afficher dans le PDF, c'est
+/// uniquement quand on active le switch que ça les affiche ». Donc :
+///   • Tag absent  → pas d'overlay (default)
+///   • Tag présent → overlay du `photo.title` affiché
+///
+/// Le tag historique `PHOTO_TAG_PDF_NO_LABEL` ('__pdf_no_label') reste
+/// reconnu pour la compat ascendante : si la photo a CE tag, on
+/// n'affiche jamais l'overlay (priorité à la non-affichage).
+const PHOTO_TAG_PDF_SHOW_LABEL = '__pdf_show_label';
+
+/// Aide centrale : doit-on afficher l'overlay titre pour cette photo ?
+/// Default = false. True UNIQUEMENT si tag `__pdf_show_label` présent
+/// ET tag `__pdf_no_label` absent.
+function shouldShowPhotoLabel(tags) {
+  if (!Array.isArray(tags)) return false;
+  if (tags.includes(PHOTO_TAG_PDF_NO_LABEL)) return false;
+  return tags.includes(PHOTO_TAG_PDF_SHOW_LABEL);
+}
+
 /**
  * Dessine un bandeau noir semi-transparent en haut du widget d'un
  * slot photo et place le texte du label en blanc dedans. Demande
@@ -1585,7 +1606,7 @@ async function drawPhotoOnPageAtRect(
   if (stats) stats.bonusPhotosApplied = (stats.bonusPhotosApplied || 0) + 1;
 
   const tags = Array.isArray(photo.tags) ? photo.tags : [];
-  if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+  if (shouldShowPhotoLabel(tags)) {
     await drawPhotoLabelOverlayAtRect(pdfDoc, page, rect, photo.title);
   }
 }
@@ -1748,23 +1769,38 @@ async function drawVisitPhotosWithFlow({
   const TITLE_HEIGHT = TITLE_ENABLED ? 24 : 0;
   const TITLE_FONT_SIZE = 13;
 
-  // 1) Neutralise les apparences des form fields photo de la page 8
-  for (const fname of [
-    'logement', 'logement2',
-    'acces1', 'acces2', 'acces3',
-    'sani1', 'sani2', 'sani3',
-  ]) {
+  // Une catégorie est considérée "active" si elle a au moins 1 photo
+  // (base ou extra `(#N)`). Les catégories sans photo gardent leurs
+  // form fields template + leur titre baked → l'utilisateur voit les
+  // cadres vierges natifs du template (demande 2026-05-05 : « pour
+  // les cadres vierge, il faut que ce soit les cadres par défaut qui
+  // sont sur le template »).
+  const photosCount = (baseTag) => {
+    const grouped = groupPhotosBySectionIndex(documents, baseTag);
+    let n = 0;
+    for (const ps of grouped.values()) n += ps.length;
+    return n;
+  };
+  const logementActive = photosCount('Visite - Logement') > 0;
+  const accesActive = photosCount('Visite - Accessibilité') > 0;
+  const saniActive = photosCount('Visite - Sanitaires') > 0;
+
+  // 1) Neutralise UNIQUEMENT les form fields des catégories actives.
+  //    Les catégories sans photo conservent leur appearance d'origine
+  //    du template (cadres gris « image placeholder ») visible.
+  const fieldsToNeutralize = [];
+  if (logementActive) fieldsToNeutralize.push('logement', 'logement2');
+  if (accesActive) fieldsToNeutralize.push('acces1', 'acces2', 'acces3');
+  if (saniActive) fieldsToNeutralize.push('sani1', 'sani2', 'sani3');
+  for (const fname of fieldsToNeutralize) {
     neutralizeFieldAppearance(pdfDoc, form, fname);
   }
 
-  // 2) Masque les 3 titres originaux du template page 8
-  // (« Logement », « Accessibilité », « Sanitaires »). Demande
-  // utilisateur 2026-05-04 : « les titres doivent bouger avec les
-  // images » — donc on efface ceux du template (positions fixes) et
-  // on dessinera des titres custom au-dessus de chaque 1ère rangée
-  // de catégorie (qui peuvent atterrir sur n'importe quelle page
-  // après pagination). Largeur du masque = celle de la rangée + un
-  // peu de marge, hauteur = 30pt centrée juste au-dessus du slot.
+  // 2) Masque UNIQUEMENT les titres baked des catégories actives.
+  //    Pour les catégories vides, le titre baked du template reste
+  //    visible (Affinity a baked « Logement » / « Accessibilité » /
+  //    « Sanitaires » au-dessus de chaque zone). Sinon il y aurait
+  //    un trou visuel en plus du cadre template visible.
   const maskTitleZone = (xStart, xEnd, slotTopY) => {
     const xPad = 8;
     const x = xStart - xPad;
@@ -1775,9 +1811,9 @@ async function drawVisitPhotosWithFlow({
       color: rgb(1, 1, 1),
     });
   };
-  maskTitleZone(logXStart, logXEnd, firstLogTopY);
-  maskTitleZone(accXStart, accXEnd, accSlot.rect.y + accH);
-  maskTitleZone(saniXStart, saniXEnd, saniSlot.rect.y + saniH);
+  if (logementActive) maskTitleZone(logXStart, logXEnd, firstLogTopY);
+  if (accesActive) maskTitleZone(accXStart, accXEnd, accSlot.rect.y + accH);
+  if (saniActive) maskTitleZone(saniXStart, saniXEnd, saniSlot.rect.y + saniH);
 
   // 3) Construit les rangées (fusion base + extras pour chaque cat).
   // `isFirstOfCategory` est mis à true pour la 1ère rangée de
@@ -1790,23 +1826,6 @@ async function drawVisitPhotosWithFlow({
     const allPhotos = [];
     for (const ps of grouped.values()) allPhotos.push(...ps);
     const rows = [];
-    // Pas de photos pour cette catégorie → on crée quand même une
-    // rangée avec des emplacements vierges (= placeholders) pour que
-    // la zone garde son volume visuel sur la page. Demande utilisateur
-    // 2026-05-05 : « je dois avoir la partie logement avec les
-    // emplacements vierges » — sinon, dès qu'une autre catégorie
-    // déborde et déclenche le mode flow, les sections vides
-    // disparaissent complètement de la page. `null` côté `photos[i]`
-    // est interprété par la boucle de rendu plus bas comme « slot
-    // gris vide » via `drawEmptyPhotoSlot`.
-    if (allPhotos.length === 0) {
-      rows.push({
-        photos: new Array(perRow).fill(null),
-        slotW, slotH, hgap, xStart, type, label,
-        isFirstOfCategory: true,
-      });
-      return rows;
-    }
     for (let i = 0; i < allPhotos.length; i += perRow) {
       rows.push({
         photos: allPhotos.slice(i, i + perRow),
@@ -1847,9 +1866,21 @@ async function drawVisitPhotosWithFlow({
   // sombre pour garder la présence visuelle.
   const helveticaTitle = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // 5) Dessin en flow avec pagination + titres custom
+  // 5) Dessin en flow avec pagination + titres custom.
+  //
+  // `cursorY` initial = haut de la 1ère catégorie ACTIVE. Si Logement
+  // est vide, on saute sa zone pour ne pas écraser ses cadres template
+  // (laissés intacts car non-neutralisés). Idem si Accessibilité est
+  // aussi vide → on commence direct à Sanitaires.
   let currentPage = page8;
-  let cursorY = firstLogTopY;
+  let cursorY;
+  if (logementActive) {
+    cursorY = firstLogTopY;
+  } else if (accesActive) {
+    cursorY = accSlot.rect.y + accH;
+  } else {
+    cursorY = saniSlot.rect.y + saniH;
+  }
   let bottomLimit = page8BottomLimit;
   let bonusPagesInserted = 0;
 
@@ -1883,29 +1914,13 @@ async function drawVisitPhotosWithFlow({
       cursorY -= TITLE_HEIGHT;
     }
 
-    // Dessine la rangée à `cursorY` (top du slot). Si `photo === null`
-    // (catégorie sans photo, cf. buildRowsForCategory ci-dessus), on
-    // dessine un emplacement vide (rectangle gris doux) plutôt que de
-    // skip la cellule — ça préserve la disposition de la page.
+    // Dessine la rangée à `cursorY` (top du slot).
     for (let i = 0; i < row.photos.length; i += 1) {
       const x = row.xStart + i * (row.slotW + row.hgap);
       const y = cursorY - row.slotH;
       const rect = { x, y, width: row.slotW, height: row.slotH };
-      const photo = row.photos[i];
-      if (photo == null) {
-        currentPage.drawRectangle({
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-          color: rgb(0.95, 0.96, 0.98), // slate-100 — placeholder doux
-          borderColor: rgb(0.85, 0.87, 0.91), // slate-200 — bordure discrète
-          borderWidth: 1,
-        });
-        continue;
-      }
       await drawPhotoOnPageAtRect(
-        pdfDoc, currentPage, rect, photo,
+        pdfDoc, currentPage, rect, row.photos[i],
         fetchImageBytes, stats,
       );
     }
@@ -2565,7 +2580,7 @@ export async function generateVisitReport({
           fetchImageBytes, stats,
         );
         const tags = Array.isArray(photo.tags) ? photo.tags : [];
-        if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+        if (shouldShowPhotoLabel(tags)) {
           await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
         }
       }
@@ -2640,7 +2655,7 @@ export async function generateVisitReport({
         fetchImageBytes, stats,
       );
       const tags = Array.isArray(photo.tags) ? photo.tags : [];
-      if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+      if (shouldShowPhotoLabel(tags)) {
         await drawPhotoLabelOverlay(pdfDoc, form, slotFields[i], photo.title);
       }
     }
@@ -2699,7 +2714,7 @@ export async function generateVisitReport({
           fetchImageBytes, stats,
         );
         const tags = Array.isArray(photo.tags) ? photo.tags : [];
-        if (!tags.includes(PHOTO_TAG_PDF_NO_LABEL)) {
+        if (shouldShowPhotoLabel(tags)) {
           await drawPhotoLabelOverlay(pdfDoc, form, slotFields[i], photo.title);
         }
       }
