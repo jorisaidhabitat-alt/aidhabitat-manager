@@ -19,9 +19,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
 
 import '../components/beneficiary_badges.dart';
+import '../components/file_drop_zone.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
+import '../services/file_drop_listener.dart' show DroppedFile;
 import '../services/web_file_picker.dart';
 import '../services/web_file_saver.dart';
 import '../services/app_config.dart';
@@ -93,6 +95,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   // Sélection multiple
   final Set<String> _selectedIds = <String>{};
   bool _isSelectionMode = false;
+
+  /// True pendant qu'un drag OS (Finder Mac) survole la grille — fait
+  /// apparaître un overlay violet « Déposer pour importer » qui couvre
+  /// toute la zone. Géré par `FileDropZone.onHighlight`.
+  bool _dragHighlight = false;
 
   // Auto-refresh : polling toutes les 10 s + refresh au retour focus app.
   Timer? _refreshTimer;
@@ -1036,13 +1043,134 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : _buildGrid(),
+                    : _buildGridWithDropZone(),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// Wrap la grille des documents dans un `FileDropZone` qui accepte
+  /// les drops du Finder Mac (ou Explorer Windows). Sur natif, le
+  /// drop zone est un no-op et la grille s'affiche normalement.
+  ///
+  /// Demande utilisateur 2026-05-05 : « sur Mac, le drag and drop ne
+  /// fonctionne pas quand je souhaite prendre un document ou une image
+  /// et le mettre direct dans l'espace document. Cela doit être
+  /// possible ».
+  Widget _buildGridWithDropZone() {
+    return FileDropZone(
+      onDrop: _importDroppedFiles,
+      onHighlight: (on) {
+        if (mounted && _dragHighlight != on) {
+          setState(() => _dragHighlight = on);
+        }
+      },
+      child: Stack(
+        children: [
+          _buildGrid(),
+          if (_dragHighlight)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _kPurple.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: _kPurple,
+                      width: 2,
+                      style: BorderStyle.solid,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 16,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(
+                          LucideIcons.upload,
+                          size: 18,
+                          color: _kDarkPurple,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Déposer pour importer',
+                          style: TextStyle(
+                            color: _kDarkPurple,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Importe les fichiers déposés via drag-and-drop (web Mac uniquement).
+  /// Boucle sur chaque fichier et appelle le même chemin que l'import
+  /// classique via `pickFiles` → `importDocumentBytes`.
+  Future<void> _importDroppedFiles(List<DroppedFile> files) async {
+    if (files.isEmpty) return;
+    if (_isImporting) return;
+    setState(() => _isImporting = true);
+    int success = 0;
+    int failed = 0;
+    try {
+      for (final f in files) {
+        try {
+          final autoTitle = f.name.isNotEmpty
+              ? f.name.split('.').first
+              : 'Document';
+          await _documentRepository.importDocumentBytes(
+            patientId: _patientId,
+            bytes: f.bytes,
+            fileName: f.name,
+            tags: const [],
+            title: autoTitle,
+          );
+          success += 1;
+        } catch (_) {
+          failed += 1;
+        }
+      }
+      await _loadDocuments(silent: true);
+      if (!mounted) return;
+      if (success > 0 && failed == 0) {
+        _showSnack(
+          success == 1
+              ? 'Document importé.'
+              : '$success documents importés.',
+        );
+      } else if (success > 0 && failed > 0) {
+        _showSnack('$success importé(s), $failed échec(s).');
+      } else {
+        _showError('Import impossible.');
+      }
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
+    }
   }
 
   /// Bouton retour rond — copie du `_buildBackButton` du

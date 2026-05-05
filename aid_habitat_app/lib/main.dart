@@ -16,6 +16,7 @@ import 'services/app_config.dart';
 import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
+import 'services/file_drop_listener.dart';
 import 'services/references_service.dart';
 import 'services/sync_engine.dart';
 // Web-only helpers pour la fenêtre détachée des notes (cf.
@@ -176,6 +177,12 @@ Future<void> main(List<String> args) async {
   // revient, le SyncEngine lance automatiquement un push des opérations
   // en attente (notes, documents, dossiers…) vers NocoDB.
   ConnectivityService().bindSyncEngine(SyncEngine());
+  // Active l'écoute des drops OS → Flutter (web uniquement). Permet à
+  // l'ergo de glisser un fichier depuis le Finder Mac vers une section
+  // Photos du VAD ou vers l'espace Documents. Sur natif (iPad
+  // standalone), le service est un no-op — le file_picker reste la
+  // seule voie d'import.
+  FileDropListener.instance.activate();
   await bootStep(
       'initializeDateFormatting', initializeDateFormatting('fr_FR', null));
 

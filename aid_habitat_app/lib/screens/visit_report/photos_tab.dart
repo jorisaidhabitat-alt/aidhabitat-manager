@@ -8,11 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../components/file_drop_zone.dart';
 import '../../components/soft_transitions.dart';
 import '../../models/types.dart';
 import '../../models/visit_report_categories.dart';
 import '../../services/app_config.dart';
 import '../../services/data_service.dart';
+import '../../services/file_drop_listener.dart' show DroppedFile;
 import '../../services/media_cache_service.dart';
 
 /// Onglet « Photos » du relevé de visite — alimente la page 8 du
@@ -242,6 +244,71 @@ class _PhotosTabState extends State<PhotosTab>
     } finally {
       if (mounted) setState(() => _isImporting = false);
     }
+  }
+
+  /// Importe une liste de fichiers déposés via drag-and-drop OS dans
+  /// la section [categoryTag]. Filtre les non-images (le drop d'un
+  /// fichier vidéo ou PDF dans la section Photos serait incohérent et
+  /// rejeté côté repo de toute façon). Demande utilisateur 2026-05-05 :
+  /// « le drag and drop ne fonctionne pas quand je souhaite mettre une
+  /// image direct dans une des parties photos de la VAD ».
+  Future<void> _persistDroppedFiles(
+    List<DroppedFile> files,
+    String categoryTag,
+  ) async {
+    if (_isImporting) return;
+    final images = files.where((f) => f.isImage).toList();
+    if (images.isEmpty) {
+      _showError('Seules les images peuvent être déposées dans les Photos.');
+      return;
+    }
+    setState(() => _isImporting = true);
+    try {
+      for (final f in images) {
+        try {
+          await _persistDroppedBytes(
+            bytes: f.bytes,
+            originalName: f.name,
+            categoryTag: categoryTag,
+          );
+        } catch (_) {
+          // Continue : un échec d'une photo ne doit pas bloquer le
+          // reste. L'utilisateur verra le résultat partiel via le
+          // refresh suivant.
+        }
+      }
+      await _refresh();
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
+    }
+  }
+
+  /// Mirror de `_persistPicked` mais à partir de bytes en mémoire
+  /// (drag-and-drop OS). Pas de compression ici — on prend le fichier
+  /// tel que déposé. Si l'image dépasse les ~5Mo l'utilisateur
+  /// devrait la compresser avant ; on ne ré-encode pas en JPEG pour
+  /// éviter une dépendance image_processing côté web.
+  Future<void> _persistDroppedBytes({
+    required Uint8List bytes,
+    required String originalName,
+    required String categoryTag,
+  }) async {
+    final order = _nextOrderInCategory(categoryTag);
+    final simpleTitle = _buildSimplePhotoTitle(categoryTag, order);
+    final fileName = _buildPhotoFileName(
+      categoryTag,
+      originalName,
+      simpleTitle,
+    );
+    final inserted = await _dataService.importDocumentBytes(
+      patientId: widget.dossier.patient.id,
+      bytes: bytes,
+      fileName: fileName,
+      title: simpleTitle,
+      tags: [categoryTag],
+      categoryOrder: order,
+    );
+    _photoBytesCache[inserted.id] = bytes;
   }
 
   Future<void> _persistPicked(XFile xfile, String categoryTag) async {
@@ -780,7 +847,16 @@ class _PhotosTabState extends State<PhotosTab>
     //
     // `onWillAcceptWithDetails` highlight la cible quand un drag survole
     // (border violet → bleu pâle), retour à la normale au leave.
-    return DragTarget<_DragPhotoPayload>(
+    //
+    // FileDropZone (web) : enveloppe en plus tout le container pour
+    // accepter les drops Finder / Explorer / onglet image — l'image
+    // déposée est importée comme nouvelle photo dans la catégorie de
+    // cette section. Sur natif (iPad), la zone est un no-op et le
+    // DragTarget interne reste seul actif.
+    return _PhotoSectionDropWrapper(
+      categoryTag: tag,
+      onDrop: (files) => _persistDroppedFiles(files, tag),
+      child: DragTarget<_DragPhotoPayload>(
       onWillAcceptWithDetails: (details) =>
           details.data.fromTag != tag,
       onAcceptWithDetails: (details) async {
@@ -879,6 +955,7 @@ class _PhotosTabState extends State<PhotosTab>
       ),
         );
       },
+      ),
     );
   }
 
@@ -1162,6 +1239,113 @@ class _PhotosTabState extends State<PhotosTab>
   // _buildAddButton retiré : les boutons « Prendre / Galerie » ont
   // été supprimés au profit du tap sur les slots vides gris (cf.
   // `_buildEmptySlot`). Demande utilisateur 2026-04-28.
+}
+
+// ---------------------------------------------------------------------------
+// Wrapper Stateful pour le drag-and-drop OS au niveau d'une section
+// Photos — affiche un overlay violet « Déposer ici » quand un drag
+// Finder Mac survole la section. Web uniquement (sur natif iPad le
+// FileDropZone est no-op et le wrapper rend juste son child).
+// ---------------------------------------------------------------------------
+
+class _PhotoSectionDropWrapper extends StatefulWidget {
+  /// Tag complet de la section (`Visite - Logement`, ou
+  /// `Visite - Logement (#2)` pour une extra). Passé tel quel au
+  /// callback de drop pour l'attribution du tag.
+  final String categoryTag;
+
+  /// Reçoit les fichiers déposés. L'appelant filtre les non-images via
+  /// `DroppedFile.isImage`.
+  final void Function(List<DroppedFile> files) onDrop;
+  final Widget child;
+
+  const _PhotoSectionDropWrapper({
+    required this.categoryTag,
+    required this.onDrop,
+    required this.child,
+  });
+
+  @override
+  State<_PhotoSectionDropWrapper> createState() =>
+      _PhotoSectionDropWrapperState();
+}
+
+class _PhotoSectionDropWrapperState extends State<_PhotoSectionDropWrapper> {
+  bool _highlight = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return FileDropZone(
+      onDrop: widget.onDrop,
+      onHighlight: (on) {
+        if (mounted && _highlight != on) {
+          setState(() => _highlight = on);
+        }
+      },
+      // N'accepte que les images : le drop d'un PDF dans une section
+      // photo serait incohérent (les rapports/templates vivent dans
+      // l'espace Documents, pas la VAD). Le filtre prevent aussi
+      // l'overlay vert de s'afficher pour des fichiers qu'on
+      // refuserait de toute façon.
+      accept: (files) => files.any((f) => f.isImage),
+      child: Stack(
+        children: [
+          widget.child,
+          if (_highlight)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEDE8F5).withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFF7C6DAA),
+                      width: 2,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 12,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(
+                          LucideIcons.imagePlus,
+                          size: 16,
+                          color: Color(0xFF554A63),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Déposer ici',
+                          style: TextStyle(
+                            color: Color(0xFF554A63),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
