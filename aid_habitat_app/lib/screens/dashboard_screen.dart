@@ -50,10 +50,19 @@ class DashboardScreen extends StatelessWidget {
     'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
   ];
 
-  /// Returns the earliest upcoming visit (today or later) across all
-  /// dossiers, or null if none is scheduled.
+  /// Renvoie la prochaine visite à venir — la plus proche dans le
+  /// futur en termes de DATETIME (pas seulement de jour). Demande
+  /// utilisateur 2026-05-05 : « la plus proche est la prochaine, puis
+  /// une fois que l'horaire est passé ça passe à l'autre
+  /// automatiquement ». Donc une visite prévue aujourd'hui à 9:00 ne
+  /// reste pas affichée à 14:00 — elle laisse la place à la suivante.
+  ///
+  /// Cas spécial : si la `visit_date` n'a pas d'heure (date pure
+  /// sans 'T' et 00:00:00), on considère que la visite court
+  /// JUSQU'À la fin de la journée (23:59) — sans heure renseignée,
+  /// on ne peut pas décider qu'elle est passée tant que le jour J
+  /// n'est pas terminé.
   _NextVisit? _findNextVisit(List<Dossier> dossiers, DateTime now) {
-    final today = DateTime(now.year, now.month, now.day);
     _NextVisit? best;
     for (final d in dossiers) {
       final raw = d.visitDate;
@@ -64,10 +73,16 @@ class DashboardScreen extends StatelessWidget {
       } catch (_) {
         continue;
       }
-      final day = DateTime(when.year, when.month, when.day);
-      if (day.isBefore(today)) continue;
-      if (best == null || day.isBefore(best.date)) {
-        best = _NextVisit(dossier: d, date: day);
+      // Deadline = heure réelle si renseignée, sinon fin de la
+      // journée comme proxy pour « visite encore valable aujourd'hui ».
+      final hasTime =
+          raw.contains('T') && !(when.hour == 0 && when.minute == 0);
+      final deadline = hasTime
+          ? when
+          : DateTime(when.year, when.month, when.day, 23, 59, 59);
+      if (deadline.isBefore(now)) continue;
+      if (best == null || when.isBefore(best.dateTime)) {
+        best = _NextVisit(dossier: d, dateTime: when);
       }
     }
     return best;
@@ -301,7 +316,26 @@ class _RecentDossierRow extends StatefulWidget {
   final Dossier dossier;
   final VoidCallback onTap;
 
-  const _RecentDossierRow({required this.dossier, required this.onTap});
+  /// Si fourni, affiche une sur-ligne compacte (icône voiture +
+  /// durée) en haut de la card pour indiquer le temps de trajet
+  /// jusqu'à cette visite. Demande utilisateur 2026-05-05 : pour
+  /// « Mes visites du jour » on intègre le temps de route DANS la
+  /// bannière de la visite (sans mentionner la visite précédente).
+  final _SegmentState? travelState;
+
+  /// Si fourni, le pill « date de visite » par défaut est remplacé
+  /// par un pill HEURE mis en évidence (fond violet plein, texte
+  /// blanc, icône horloge). Demande utilisateur 2026-05-05 : pour
+  /// les visites du jour, pas besoin du jour J — uniquement l'heure
+  /// en valeur.
+  final String? visitTimeHighlight;
+
+  const _RecentDossierRow({
+    required this.dossier,
+    required this.onTap,
+    this.travelState,
+    this.visitTimeHighlight,
+  });
 
   @override
   State<_RecentDossierRow> createState() => _RecentDossierRowState();
@@ -357,6 +391,12 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
     final visitLabel = _formatVisitDate(widget.dossier.visitDate);
     final epci = _epciLabel();
 
+    final travelState = widget.travelState;
+    final visitTimeHighlight = widget.visitTimeHighlight;
+    final showTravelOverline = travelState != null;
+    final showHourPill =
+        visitTimeHighlight != null && visitTimeHighlight.isNotEmpty;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -374,8 +414,16 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 : const Color(0xFFF7F7FA), // slate-50
             borderRadius: BorderRadius.circular(16),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              if (showTravelOverline) ...[
+                _TravelOverline(state: travelState),
+                const SizedBox(height: 10),
+              ],
+              Row(
+                children: [
               Container(
                 width: 48,
                 height: 48,
@@ -443,41 +491,75 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 EpciBadge(label: epci, maxWidth: 180),
                 const SizedBox(width: 8),
               ],
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: visitLabel.isEmpty
-                      ? const Color(0xFFF1F5F9)
-                      : const Color(0xFFEDE8F5), // violet clair du thème
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      LucideIcons.calendar,
-                      size: 13,
-                      color: visitLabel.isEmpty
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF7C6DAA),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      visitLabel.isEmpty ? 'À planifier' : visitLabel,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+              if (showHourPill)
+                // Mode « visite du jour » — l'heure prend la place du
+                // pill date (le jour est implicite, c'est aujourd'hui).
+                // Style pill violet plein, blanc, icône horloge — même
+                // hiérarchie visuelle que l'ancien _RouteSegmentRow.
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C6DAA),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        LucideIcons.clock3,
+                        size: 12,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        visitTimeHighlight,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: visitLabel.isEmpty
+                        ? const Color(0xFFF1F5F9)
+                        : const Color(0xFFEDE8F5),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        LucideIcons.calendar,
+                        size: 13,
                         color: visitLabel.isEmpty
-                            ? const Color(0xFF64748B)
+                            ? const Color(0xFF94A3B8)
                             : const Color(0xFF7C6DAA),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        visitLabel.isEmpty ? 'À planifier' : visitLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: visitLabel.isEmpty
+                              ? const Color(0xFF64748B)
+                              : const Color(0xFF7C6DAA),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               const SizedBox(width: 16),
               Icon(
                 LucideIcons.arrowRight,
@@ -485,6 +567,8 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 color: _hover
                     ? const Color(0xFF7C6DAA)
                     : const Color(0xFFCBD5E1), // slate-300
+              ),
+                ],
               ),
             ],
           ),
@@ -517,8 +601,11 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
 
 class _NextVisit {
   final Dossier dossier;
-  final DateTime date;
-  const _NextVisit({required this.dossier, required this.date});
+  /// Datetime complète (jour + heure) de la visite. Si la
+  /// `visit_date` source n'a pas d'heure, l'heure est 00:00:00 — la
+  /// bannière affichera alors juste le jour sans l'horaire.
+  final DateTime dateTime;
+  const _NextVisit({required this.dossier, required this.dateTime});
 }
 
 class _NextVisitBanner extends StatefulWidget {
@@ -648,17 +735,21 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
     final nv = nextVisit;
     final patient = nv.dossier.patient;
     final fullAddress = DashboardScreen.buildFullAddress(patient);
-    final rawDay = DateFormat('EEEE d MMMM', 'fr_FR').format(nv.date);
+    final rawDay = DateFormat('EEEE d MMMM', 'fr_FR').format(nv.dateTime);
     final dayLabel = rawDay.isNotEmpty
         ? rawDay.replaceFirst(rawDay[0], rawDay[0].toUpperCase())
         : rawDay;
-    final daysUntil = nv.date
-        .difference(DateTime(
-          DateTime.now().year,
-          DateTime.now().month,
-          DateTime.now().day,
-        ))
-        .inDays;
+    final today = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    final visitDay = DateTime(
+      nv.dateTime.year,
+      nv.dateTime.month,
+      nv.dateTime.day,
+    );
+    final daysUntil = visitDay.difference(today).inDays;
     final distanceLabel = daysUntil == 0
         ? "aujourd'hui"
         : daysUntil == 1
@@ -1208,18 +1299,17 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
             )
           else
             for (var i = 0; i < visits.length; i++) ...[
-              _RouteSegmentRow(
-                state: _segmentDurations[visits[i].id] ??
-                    const _SegmentState.loading(),
-                fromLabel: i == 0
-                    ? "Aid'Habitat"
-                    : '${visits[i - 1].patient.firstName} '
-                        '${visits[i - 1].patient.lastName.toUpperCase()}',
-                visitTime: _extractVisitTime(visits[i]),
-              ),
+              // Demande utilisateur 2026-05-05 : le temps de route est
+              // intégré DANS la card de visite (sur-ligne en haut),
+              // sans mentionner la visite précédente. L'heure de la
+              // visite remplace le pill date (« mes visites du jour »
+              // = jour J implicite, seule l'heure compte).
               _RecentDossierRow(
                 dossier: visits[i],
                 onTap: () => widget.onSelect(visits[i]),
+                travelState: _segmentDurations[visits[i].id] ??
+                    const _SegmentState.loading(),
+                visitTimeHighlight: _extractVisitTime(visits[i]),
               ),
               if (i < visits.length - 1) const SizedBox(height: 12),
             ],
@@ -1229,156 +1319,76 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
   }
 }
 
-/// Petite ligne discrète entre deux cartes de visite : icône voiture +
-/// libellé « 12 min depuis X ». Affichée AVANT chaque visite (pour
-/// indiquer le trajet à effectuer pour s'y rendre).
-class _RouteSegmentRow extends StatelessWidget {
+/// Sur-ligne compacte intégrée en haut d'une card de visite du jour
+/// pour indiquer le temps de trajet à parcourir. Demande utilisateur
+/// 2026-05-05 : intégrer le temps de route DANS la bannière de la
+/// visite et masquer le nom de la visite précédente (vs ancien
+/// `_RouteSegmentRow` qui affichait « 12 min depuis JEAN DUPONT »
+/// entre 2 cards).
+///
+/// Affiche juste « 🚗 12 min » (ou état loading/failed) — pas de
+/// référence au point de départ.
+class _TravelOverline extends StatelessWidget {
   final _SegmentState state;
-  final String fromLabel;
 
-  /// Heure de la visite à laquelle ce segment mène (format `HH:mm`).
-  /// Affichée à droite en pill violette compacte. `null` = pas
-  /// d'heure renseignée (cas legacy, avant généralisation côté
-  /// NocoDB).
-  final String? visitTime;
-
-  const _RouteSegmentRow({
-    required this.state,
-    required this.fromLabel,
-    this.visitTime,
-  });
+  const _TravelOverline({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEDE8F5),
-              borderRadius: BorderRadius.circular(8),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(
+          LucideIcons.car,
+          size: 13,
+          color: Color(0xFF7C6DAA),
+        ),
+        const SizedBox(width: 6),
+        switch (state) {
+          _SegmentLoading() => const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 10,
+                  height: 10,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.4,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFF7C6DAA),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Calcul du trajet…',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Color(0xFF94A3B8),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ),
-            alignment: Alignment.center,
-            child: const Icon(
-              LucideIcons.car,
-              size: 14,
-              color: Color(0xFF7C6DAA),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: switch (state) {
-              _SegmentLoading() => const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.6,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Color(0xFF7C6DAA),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Calcul du trajet…',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF94A3B8),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                ),
-              _SegmentFailed() => Text.rich(
-                  TextSpan(
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF64748B),
-                    ),
-                    children: [
-                      const TextSpan(
-                        text: 'Trajet indisponible',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF94A3B8),
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                      const TextSpan(text: ' depuis '),
-                      TextSpan(
-                        text: fromLabel,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              _SegmentDone(duration: final d) => Text.rich(
-                  TextSpan(
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF64748B),
-                    ),
-                    children: [
-                      TextSpan(
-                        text: RouteService.formatDuration(d),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF7C6DAA),
-                        ),
-                      ),
-                      const TextSpan(text: ' depuis '),
-                      TextSpan(
-                        text: fromLabel,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-            },
-          ),
-          if (visitTime != null) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF7C6DAA),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    LucideIcons.clock3,
-                    size: 11,
-                    color: Colors.white,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    visitTime!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
+          _SegmentFailed() => const Text(
+              'Trajet indisponible',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF94A3B8),
+                fontStyle: FontStyle.italic,
               ),
             ),
-          ],
-        ],
-      ),
+          _SegmentDone(duration: final d) => Text(
+              RouteService.formatDuration(d),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF7C6DAA),
+                letterSpacing: 0.2,
+              ),
+            ),
+        },
+      ],
     );
   }
 }

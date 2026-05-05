@@ -560,25 +560,55 @@ class SyncRepository {
   ///    [maxPendingAge] (they should have completed long ago).
   ///
   /// Returns the number of rows removed. Safe to call on app boot.
-  /// Purge les `sync_operations` obsolètes. On ne touche JAMAIS aux
-  /// `pending` — quelle que soit leur ancienneté, elles doivent être
-  /// poussées au prochain retour de connexion. Seuls les `failed`
-  /// (erreur définitive, typiquement rejet serveur 400/403/409 avec
-  /// attempt_count ≥ max retries) et les `running` bloqués > 72h (orphelins
-  /// si l'app a crashé en plein milieu d'un push) sont purgés.
+  /// Purge les `sync_operations` obsolètes ET réhabilite les `failed`
+  /// pour qu'elles repartent en `pending` au boot — sinon les données
+  /// modifiées offline puis qui ont échoué (« Load failed », 5xx
+  /// transient…) restaient bloquées dans la queue, étaient purgées
+  /// au boot suivant, et la modif locale n'était JAMAIS poussée vers
+  /// NocoDB (rapporté 2026-05-05 sur le dossier BARBIER Léon : toutes
+  /// les infos étaient en SQLite local mais NocoDB vide → PDF vide).
+  ///
+  /// Comportement post-fix :
+  ///   • `pending`             : intacts (toujours poussés au prochain push)
+  ///   • `failed`              : RÉHABILITÉS → `pending` avec
+  ///                             `attempt_count = 0` et `last_error = NULL`,
+  ///                             pour repartir fresh sans backoff bloquant.
+  ///                             Les vrais 4xx (rejet serveur définitif)
+  ///                             retomberont en `failed` au prochain push,
+  ///                             mais ne sont plus perdus silencieusement.
+  ///   • `running` > 72h       : purgés (orphelins crashés)
+  ///
+  /// Reste en place : la purge d'URGENCE OOM (payload > 500KB ET
+  /// attempt_count ≥ 3) qui drop les ops doomed pour libérer la RAM.
   Future<int> purgeStalePendingOperations({
     Duration maxRunningAge = const Duration(hours: 72),
   }) async {
     final db = await _database.database;
     final cutoff = DateTime.now().subtract(maxRunningAge).toIso8601String();
+    final now = DateTime.now().toIso8601String();
+    // 1) Réhabilite les `failed` → `pending` (au lieu de DELETE qui
+    //    perdait les modifs offline pour toujours).
+    final rehab = await db.update(
+      'sync_operations',
+      {
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'updated_at': now,
+      },
+      where: 'status = ?',
+      whereArgs: [SyncOperationStatus.failed.name],
+    );
+    if (rehab > 0) {
+      // ignore: avoid_print
+      print('[sync] boot rehab : $rehab op(s) failed → pending');
+    }
+    // 2) Purge les `running` orphelins (> 72h — l'app a crashé pendant
+    //    le push, l'op est stuck running pour toujours).
     final n1 = await db.delete(
       'sync_operations',
-      where: '''
-        status = ?
-        OR (status = ? AND updated_at < ?)
-      ''',
+      where: 'status = ? AND updated_at < ?',
       whereArgs: [
-        SyncOperationStatus.failed.name,
         SyncOperationStatus.running.name,
         cutoff,
       ],
