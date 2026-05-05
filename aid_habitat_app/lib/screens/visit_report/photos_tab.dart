@@ -475,17 +475,24 @@ class _PhotosTabState extends State<PhotosTab>
         rowCells.add(const SizedBox.shrink());
       }
       if (i > 0) rows.add(const SizedBox(height: spacing));
-      rows.add(IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: rowCells[0]),
-            const SizedBox(width: spacing),
-            Expanded(child: rowCells[1]),
-            const SizedBox(width: spacing),
-            Expanded(child: rowCells[2]),
-          ],
-        ),
+      // Pas de `IntrinsicHeight` ici — sur Flutter web (Safari iPad),
+      // le double-pass de layout qu'il déclenche est instable quand le
+      // contenu d'une carte grandit dynamiquement (ajout de photo) : les
+      // rangées suivantes voyaient leur hauteur recalculée dans un
+      // ordre inattendu et venaient se superposer aux rangées
+      // précédentes (rapporté 2026-05-05). Avec un `Row` simple +
+      // `crossAxisAlignment.start`, chaque cellule garde sa hauteur
+      // naturelle, le `Column` parent stacke les rangées de manière
+      // déterministe, plus de chevauchement.
+      rows.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: rowCells[0]),
+          const SizedBox(width: spacing),
+          Expanded(child: rowCells[1]),
+          const SizedBox(width: spacing),
+          Expanded(child: rowCells[2]),
+        ],
       ));
     }
     return Padding(
