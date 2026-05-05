@@ -49,6 +49,15 @@ class DossierScreen extends StatefulWidget {
   /// la sidebar et la masquait.
   final VoidCallback? onOpenDocuments;
 
+  /// Notifié immédiatement quand l'ergo coche/décoche « bénéficiaire
+  /// préparé » dans le bandeau bénéficiaire. Permet à MainScreen de
+  /// patcher sa liste `_dossiers` SANS attendre un refresh complet du
+  /// sync engine — la bordure verte/jaune sur l'avatar de la liste
+  /// « Mes dossiers » se met à jour instantanément (demande
+  /// utilisateur 2026-05-05).
+  final void Function(String dossierId, bool prepared)?
+      onBeneficiaryPreparedChanged;
+
   const DossierScreen({
     super.key,
     required this.dossier,
@@ -56,6 +65,7 @@ class DossierScreen extends StatefulWidget {
     this.repository,
     this.onOpenVisitReport,
     this.onOpenDocuments,
+    this.onBeneficiaryPreparedChanged,
   });
 
   @override
@@ -747,16 +757,24 @@ class _DossierScreenState extends State<DossierScreen> {
                   onTap: () async {
                     final next = !_beneficiaryPrepared;
                     setState(() => _beneficiaryPrepared = next);
+                    // Notifie le parent IMMÉDIATEMENT (avant l'await
+                    // SQLite) pour que la bordure verte/jaune dans
+                    // « Mes dossiers » réponde instantanément, sans
+                    // attendre la persistance ni un refresh sync.
+                    widget.onBeneficiaryPreparedChanged
+                        ?.call(widget.dossier.id, next);
                     try {
                       await DataService().setBeneficiaryPrepared(
                         dossierLocalId: widget.dossier.id,
                         prepared: next,
                       );
                     } catch (_) {
-                      // Échec persistance : revert pour cohérence UI
+                      // Échec persistance : revert UI + parent
                       if (mounted) {
                         setState(() => _beneficiaryPrepared = !next);
                       }
+                      widget.onBeneficiaryPreparedChanged
+                          ?.call(widget.dossier.id, !next);
                     }
                   },
                   child: Tooltip(

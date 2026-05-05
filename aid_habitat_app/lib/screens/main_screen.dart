@@ -631,6 +631,26 @@ class _MainScreenState extends State<MainScreen>
             _activeView = 'documents';
           });
         },
+        // Patch local IMMÉDIAT de la liste `_dossiers` quand l'ergo
+        // toggle « bénéficiaire préparé » dans le bandeau — la
+        // bordure verte/jaune sur l'avatar de la liste répond sans
+        // attendre un refresh sync (demande utilisateur 2026-05-05).
+        onBeneficiaryPreparedChanged: (id, prepared) {
+          if (!mounted) return;
+          setState(() {
+            _dossiers = [
+              for (final d in _dossiers)
+                if (d.id == id)
+                  d.copyWith(beneficiaryPrepared: prepared)
+                else
+                  d,
+            ];
+            if (_selectedDossier?.id == id) {
+              _selectedDossier =
+                  _selectedDossier!.copyWith(beneficiaryPrepared: prepared);
+            }
+          });
+        },
       );
     }
     if (_activeView == 'documents' && _selectedDossier != null) {

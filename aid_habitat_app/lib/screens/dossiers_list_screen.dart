@@ -870,7 +870,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                   decoration: BoxDecoration(
                     color: palette.bg,
                     shape: BoxShape.circle,
-                    border: Border.all(color: borderColor, width: 2.5),
+                    border: Border.all(color: borderColor, width: 1.5),
                   ),
                   alignment: Alignment.center,
                   child: Text(
