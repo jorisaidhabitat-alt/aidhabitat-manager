@@ -1129,6 +1129,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           title: result.fileName.replaceAll(RegExp(r'\.pdf$'), ''),
           tags: const ['Rapport'],
           remoteUuid: result.savedDocUuid!,
+          // CRITICAL : utilise le `clientDocumentId` déterministe
+          // pour que `mergeRemoteDocuments` retrouve cette ligne au
+          // prochain polling (match `local_id == clientDocumentId`)
+          // et n'insère pas un 2e doc. Sans ça, doublon garanti
+          // dans Documents (bug reporté 2026-05-05).
+          // ID strictement aligné avec celui généré côté serveur
+          // dans `app.post('/api/reports/visit/:dossierId')` →
+          // `documentLocalId = doc_report_<dossierId>`.
+          clientDocumentId: 'doc_report_${_dossier.id}',
         );
       } else {
         // ignore: avoid_print

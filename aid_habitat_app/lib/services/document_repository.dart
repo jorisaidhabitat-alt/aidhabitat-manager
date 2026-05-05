@@ -141,6 +141,18 @@ class DocumentRepository {
     String? title,
     int? categoryOrder,
     String? dossierId,
+    /// Identifiant déterministe assigné par le client (Flutter) — DOIT
+    /// correspondre au `client_document_id` que le serveur a stocké
+    /// dans NocoDB. Utilisé comme `local_id` pour que `mergeRemoteDocuments`
+    /// puisse retrouver cette ligne au prochain polling et éviter de
+    /// créer un doublon.
+    ///
+    /// Si null → fallback sur `remoteUuid` (comportement legacy, à
+    /// éviter pour les rapports : crée un doublon au prochain pull
+    /// car le serveur renvoie `clientDocumentId = doc_report_<dossierId>`
+    /// qui ne matche aucun `local_id` existant). Bug reporté
+    /// 2026-05-05.
+    String? clientDocumentId,
   }) async {
     final db = await _database.database;
     final now = DateTime.now();
@@ -151,7 +163,13 @@ class DocumentRepository {
     final resolvedTitle = (title != null && title.trim().isNotEmpty)
         ? title.trim()
         : p.basenameWithoutExtension(fileName);
-    final localId = remoteUuid; // Use the remote UUID as local_id
+    // Priorité au clientDocumentId pour que le merge polling matche
+    // par `local_id == clientDocumentId`. Fallback sur remoteUuid si
+    // l'appelant ne le connaît pas (cas legacy).
+    final localId =
+        (clientDocumentId != null && clientDocumentId.isNotEmpty)
+            ? clientDocumentId
+            : remoteUuid;
     final mimeType = _mimeTypeFor(extension);
     final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
 

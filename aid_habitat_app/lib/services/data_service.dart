@@ -434,6 +434,7 @@ class DataService {
     String? title,
     int? categoryOrder,
     String? dossierId,
+    String? clientDocumentId,
   }) async {
     return _documentRepository.importDocumentRemoteOnly(
       patientId: patientId,
@@ -444,6 +445,7 @@ class DataService {
       title: title,
       categoryOrder: categoryOrder,
       dossierId: dossierId,
+      clientDocumentId: clientDocumentId,
     );
   }
 
