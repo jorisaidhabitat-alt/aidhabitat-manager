@@ -270,6 +270,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           final tabKey = args['tabKey']?.toString() ?? '';
           final text = args['text']?.toString() ?? '';
           final flush = args['flush'] == true;
+          // ignore: avoid_print
+          print(
+            '[IPC←app] liveNote received: patient=$patientId tabKey=$tabKey '
+            'len=${text.length} mounted=$mounted',
+          );
           if (mounted) {
             setState(() {
               _liveText['${patientId}::$tabKey'] = text;
@@ -496,6 +501,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// Sur natif : DesktopMultiWindow.invokeMethod ciblé par windowId.
   void _pushDraftToOpenWindow(String tabKey, String text) {
     final patientId = _dossier.patient.id;
+    // ignore: avoid_print
+    print(
+      '[IPC→popup] pushNote sent: tabKey=$tabKey len=${text.length}',
+    );
     if (kIsWeb) {
       note_window_web.sendNoteIpc(
         method: 'pushNote',
