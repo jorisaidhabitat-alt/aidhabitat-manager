@@ -47,7 +47,12 @@ class SyncEngine {
 
   /// Debounce window for push-on-mutation. Rapid successive mutations (e.g.
   /// while the user types) collapse into a single sync cycle.
-  static const Duration _notifyDebounce = Duration(milliseconds: 200);
+  ///
+  /// Réduit à 50 ms (vs 200 ms historique) le 2026-05-06 — l'utilisateur
+  /// veut que la frappe iPad apparaisse sur Mac quasi-instantanément.
+  /// 50 ms suffit pour collapser une rafale de keystrokes (~1 par 100 ms
+  /// pour un dactylo rapide) sans ajouter de lag perceptible.
+  static const Duration _notifyDebounce = Duration(milliseconds: 50);
 
   /// Periodic background check interval when idle and online. Short safety net
   /// — push-on-mutation should handle most cases.
@@ -62,22 +67,38 @@ class SyncEngine {
   /// Délai entre 2 pulls quand l'utilisateur est ACTIF (a sauvegardé
   /// quelque chose dans la dernière minute). Cible la sensation
   /// « instant » sur le device qui regarde — l'autre device pousse à
-  /// NocoDB en ~500ms, le poll de 5s récupère à 5500ms max.
-  static const Duration _pullIntervalActive = Duration(seconds: 5);
+  /// NocoDB en ~500ms, le poll de 2s récupère à 2500ms max.
+  ///
+  /// 2 s (vs 5 s historique) — demande utilisateur 2026-05-06 « ça
+  /// doit être moins de 3 secondes » sur l'ensemble des écrans
+  /// (wiki, caisses, dossiers). Le pull workspace inclut désormais
+  /// dossiers + wiki + caisses + auth en chaîne, fire-and-forget,
+  /// donc même 2 s d'intervalle reste tenable côté NocoDB (chaque
+  /// endpoint ramène peu de Mo en réalité, et la plupart des cycles
+  /// no-op sur les rows non modifiées).
+  static const Duration _pullIntervalActive = Duration(seconds: 2);
 
   /// Délai entre 2 pulls quand un écran « focus haute fréquence » est
-  /// ouvert (ex. VisitReportScreen via [enterActiveContext]). Cible
-  /// la sensation « tape sur iPad → apparait sur Mac » sub-3 sec.
-  /// L'intervalle reste raisonnable pour ne pas marteler NocoDB ni
-  /// vider la batterie iPad — push iPad ~600 ms + poll Mac max 2 s
-  /// = lag visible < 3 s au pire (demande utilisateur 2026-05-06 :
-  /// note écrite VAD doit s'actualiser quasi-instantanément Mac↔iPad).
-  static const Duration _pullIntervalUltraActive = Duration(seconds: 2);
+  /// ouvert (ex. VisitReportScreen via [enterActiveContext]). Note :
+  /// pour la note écrite courante, le NotesWidget a SON PROPRE timer
+  /// 1 s qui hit directement `/api/note-pages/:patientId` (endpoint
+  /// léger, ~1 row). Ce pull workspace ultra-actif (1 s) couvre les
+  /// AUTRES champs du dossier (date naissance, cases à cocher, etc.)
+  /// — endpoint plus lourd (`/api/dossiers`) mais 1 s reste tenable.
+  ///
+  /// 1 s (vs 2 s historique) — demande utilisateur 2026-05-06 « la
+  /// synchronisation entre les deux supports doit être bien plus
+  /// rapide ». Sub-2 s end-to-end sur tout l'écran VAD.
+  static const Duration _pullIntervalUltraActive = Duration(seconds: 1);
 
   /// Délai entre 2 pulls quand l'utilisateur est IDLE (pas de save
-  /// depuis ≥ 1 minute). Économise la bande passante quand personne ne
-  /// modifie côté autre device — l'app reste à jour sans spammer.
-  static const Duration _pullIntervalIdle = Duration(seconds: 30);
+  /// depuis ≥ 1 minute). Sub-3s end-to-end même sans interaction —
+  /// demande utilisateur 2026-05-06 : « ça doit être moins de 3
+  /// secondes ». Avant : 30 s, ce qui faisait que l'app iPad laissée
+  /// ouverte sans saisie pendant 10 min ne voyait pas les changements
+  /// du Mac avant le prochain tick. À 3 s, latence end-to-end
+  /// systématiquement < 3 s même iPad au repos.
+  static const Duration _pullIntervalIdle = Duration(seconds: 3);
 
   /// Délai entre 2 pulls quand l'app est en arrière-plan. Préserve la
   /// batterie + le quota cellulaire — au retour foreground on

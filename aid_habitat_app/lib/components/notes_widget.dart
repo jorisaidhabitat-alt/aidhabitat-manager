@@ -465,6 +465,16 @@ class _NotesWidgetState extends State<NotesWidget> {
   StreamSubscription<SyncEngineState>? _syncSubscription;
   DateTime? _lastObservedSyncAt;
 
+  /// Timer dédié qui poll `/api/note-pages/:patientId` toutes les 1 s
+  /// pour la page courante. Découplé du pull workspace lourd
+  /// (`/api/dossiers`) : même si ce dernier est lent (cold start
+  /// Vercel, queryAll volumineux), la note écrite reste sub-2 s.
+  /// Demande utilisateur 2026-05-06 : « la synchronisation entre les
+  /// deux supports doit être bien plus rapide ». Endpoint très léger
+  /// (1 row par patient/tab/page, ~quelques Ko).
+  Timer? _notePollTimer;
+  bool _notePollRunning = false;
+
   @override
   void initState() {
     super.initState();
@@ -489,6 +499,39 @@ class _NotesWidgetState extends State<NotesWidget> {
       // ignore: discarded_futures
       _refreshCurrentPageFromRemoteAfterPull();
     });
+
+    _startNotePolling();
+  }
+
+  /// Démarre le timer périodique 1 s qui re-tire la note courante
+  /// depuis NocoDB (endpoint léger `/api/note-pages/:patientId`). Ce
+  /// poll est INDÉPENDANT du pull workspace (qui hit `/api/dossiers`,
+  /// plus lourd) — donc même si le workspace est en cold start ou
+  /// freeze sous queryAll, la note écrite reste sub-2 s.
+  ///
+  /// Garde-fous :
+  ///  - `_notePollRunning` empêche d'empiler des requêtes si NocoDB
+  ///    répond plus lentement que 1 s (cold start Vercel par ex.).
+  ///  - `_isDirty` skip le pull pendant la frappe locale pour ne pas
+  ///    écraser ce que l'utilisateur est en train de taper.
+  void _startNotePolling() {
+    _notePollTimer?.cancel();
+    _notePollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_isDirty) return;
+      if (_notePollRunning) return;
+      // ignore: discarded_futures
+      _runNotePoll();
+    });
+  }
+
+  Future<void> _runNotePoll() async {
+    _notePollRunning = true;
+    try {
+      await _refreshCurrentPageFromRemoteAfterPull();
+    } finally {
+      _notePollRunning = false;
+    }
   }
 
   Future<void> _refreshCurrentPageFromRemoteAfterPull() async {
@@ -638,6 +681,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   @override
   void dispose() {
     _autoSaveDebounce?.cancel();
+    _notePollTimer?.cancel();
+    _notePollTimer = null;
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
     _textFocusNode.dispose();
