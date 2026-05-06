@@ -111,8 +111,14 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDocuments();
-    // Polling silencieux toutes les 10 secondes (identique à React).
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    // Polling silencieux toutes les 2 secondes — accéléré 2026-05-06
+    // pour parité avec PhotosTab (« la synchronisation est plus lente
+    // dans Documents »). Avec le push debounce ~200ms côté émetteur +
+    // 2s pull côté récepteur → latence ~2-3s. La requête est légère
+    // (SELECT documents WHERE patient_id), pas de binaire transféré
+    // tant que `_warmDocumentBinaryCache` ne le demande pas pour les
+    // nouveaux docs uniquement (cf. cache idempotent).
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (mounted) _loadDocuments(silent: true);
     });
   }
