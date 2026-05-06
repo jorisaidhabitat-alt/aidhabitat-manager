@@ -2212,11 +2212,15 @@ class _DocThumbnailState extends State<_DocThumbnail> {
   Widget build(BuildContext context) {
     final doc = widget.doc;
     if (doc.type == 'image') {
-      // Web offline : bytes mémorisés (1 seul `base64Decode` par doc).
+      // BoxFit.contain (vs cover historique) — demande utilisateur
+      // 2026-05-06 : « je n'ai pas l'image complète, une partie est
+      // coupée ». Avec cover, une photo portrait dans une tile carrée
+      // perdait haut+bas. contain = lettrebox éventuel mais image
+      // entière visible → l'ergo reconnaît son contenu d'un coup d'œil.
       if (_bytes != null) {
         return Image.memory(
           _bytes!,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           gaplessPlayback: true, // évite le flash blanc au rebuild
           errorBuilder: _fallback,
         );
@@ -2228,7 +2232,7 @@ class _DocThumbnailState extends State<_DocThumbnail> {
         if (file.existsSync()) {
           return Image.file(
             file,
-            fit: BoxFit.cover,
+            fit: BoxFit.contain,
             gaplessPlayback: true,
             errorBuilder: _fallback,
           );
@@ -2238,7 +2242,7 @@ class _DocThumbnailState extends State<_DocThumbnail> {
         // Télécharge via MediaCacheService (cache persistant offline-first).
         return _RemoteImage(
           url: doc.url!,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           fallback: _iconPlaceholder(doc.type),
         );
       }
@@ -2257,7 +2261,7 @@ class _DocThumbnailState extends State<_DocThumbnail> {
       if (overlayBytes != null) {
         return Image.memory(
           overlayBytes,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           gaplessPlayback: true,
           errorBuilder: _fallback,
         );
@@ -2463,7 +2467,7 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
       alignment: Alignment.topCenter,
       child: Image.memory(
         _bytes!,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (_, _, _) => Container(
