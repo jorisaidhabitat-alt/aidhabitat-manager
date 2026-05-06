@@ -265,6 +265,31 @@ class NocodbSyncService {
         // Pas de break : les ops transitoires n'invalident pas la suite
         // (le serveur peut avoir juste un hoquet éphémère).
       } catch (error, stack) {
+        // Filet de sécurité : reclasse toute erreur réseau bas niveau
+        // (incluant `http.ClientException: Load failed` côté iPad PWA)
+        // en transitoire — l'op reste en queue et est rejouée au
+        // prochain cycle, pas de bandeau rouge. Sans ce reclassement,
+        // n'importe quel endpoint d'écriture qui n'est pas wrappé dans
+        // `_runWithTransientGuard` produisait un failed définitif au
+        // moindre hoquet Safari iOS (rapporté 2026-05-05 sur
+        // housing:update / Accessibilité). Préservé lors du passage
+        // en pool de workers parallèles 2026-05-06.
+        if (_isTransientErrorLike(error)) {
+          // ignore: avoid_print
+          print('[sync] reclassed-as-transient ${operation.entityType}:'
+              '${operation.operationType} id=${operation.entityLocalId} '
+              'err=$error — retry au prochain cycle');
+          await _syncRepository.markTransientFailure(
+            operationId: operation.id,
+            entityType: operation.entityType,
+            entityLocalId: operation.entityLocalId,
+            error: error.toString(),
+          );
+          // Ne casse PAS le groupe sur transient — les ops suivantes
+          // peuvent passer (le serveur a peut-être juste un hoquet
+          // éphémère).
+          continue;
+        }
         // ignore: avoid_print
         print(
           '[sync] ÉCHEC ${operation.entityType}:${operation.operationType} '

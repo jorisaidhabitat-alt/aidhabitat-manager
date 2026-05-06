@@ -57,6 +57,13 @@ const List<String> _kAvailableTags = [
 const Color _kPurple = Color(0xFF7C6DAA);
 const Color _kDarkPurple = Color(0xFF554a63);
 
+/// Nombre maximum de fetches binaires en parallèle dans
+/// `_warmDocumentBinaryCache`. Calé sur 4 — même valeur que le pool
+/// du SyncEngine (cf. `NocodbSyncService._maxConcurrency`). Au-dessus,
+/// les navigateurs commencent à empiler les requêtes et les vignettes
+/// mettent paradoxalement plus de temps à apparaître.
+const int _kWarmCacheConcurrency = 4;
+
 // ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
@@ -190,6 +197,14 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   /// Fire-and-forget : on n'attend pas. Les fetches échouent
   /// silencieusement individuellement. Idempotent : cache hit = no-op
   /// sub-millisecond.
+  ///
+  /// Concurrency limit (demande utilisateur 2026-05-06) : avant, on
+  /// lançait TOUTES les fetches en parallèle sans limite. Avec 20+
+  /// docs sur Wi-Fi domestique, la connexion saturait et chaque
+  /// fetch ralentissait — résultat : les vignettes mettaient
+  /// **plus** de temps à apparaître qu'avec une limite raisonnable.
+  /// On utilise désormais un pool de [_kWarmCacheConcurrency]
+  /// workers, comme le pool sync engine (4 entités en // max).
   void _warmDocumentBinaryCache(List<DocItem> docs) {
     if (docs.isEmpty) return;
     final urls = <String>{};
@@ -206,16 +221,31 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     if (urls.isEmpty) return;
     if (kIsWeb) {
       // Sur web : `webCachedFetch` lit depuis SQLite, fetch + persiste si
-      // miss. On lance les requêtes en parallèle, sans bloquer.
-      for (final url in urls) {
-        // ignore: discarded_futures
-        MediaCacheService.instance
-            .webCachedFetch(
+      // miss. Pool de workers — chaque worker prend une URL de la queue
+      // partagée, fetch (~quelques 100 ms à quelques s selon la taille),
+      // passe à la suivante. Borne la concurrence pour ne pas saturer
+      // la connexion ni le navigateur (Safari iOS limite déjà à ~6 req
+      // simultanées par origine, mais lancer 50 fetches en parallèle
+      // les empile et amplifie les retards perçus).
+      final queue = urls.toList();
+      Future<void> worker() async {
+        while (queue.isNotEmpty) {
+          final url = queue.removeAt(0);
+          try {
+            await MediaCacheService.instance.webCachedFetch(
               url,
               headers: {'X-App-Session': AppConfig.appSessionToken},
-            )
-            .then((_) {}, onError: (_) {});
+            );
+          } catch (_) {/* best-effort */}
+        }
       }
+
+      final n = urls.length < _kWarmCacheConcurrency
+          ? urls.length
+          : _kWarmCacheConcurrency;
+      // Fire-and-forget — pas d'await sur le Future.wait global.
+      // ignore: discarded_futures
+      Future.wait(List.generate(n, (_) => worker()));
     } else {
       // Native : `prefetchAll` utilise le filesystem cache.
       // ignore: discarded_futures
