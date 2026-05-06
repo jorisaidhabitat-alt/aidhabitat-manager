@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +10,7 @@ import '../models/types.dart';
 import '../services/data_service.dart';
 import '../services/media_cache_service.dart';
 import '../services/retirement_funds_repository.dart';
+import '../services/sync_engine.dart';
 
 class RetirementFundsScreen extends StatefulWidget {
   const RetirementFundsScreen({super.key});
@@ -25,15 +28,42 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
   bool _isLoading = true;
   String? _error;
 
+  /// Subscription au sync engine — re-fetch les caisses depuis SQLite
+  /// à chaque pull workspace réussi (Mac↔iPad sync).
+  StreamSubscription<SyncEngineState>? _syncSubscription;
+  DateTime? _lastObservedSyncAt;
+
   @override
   void initState() {
     super.initState();
     _loadFunds();
+    _syncSubscription = SyncEngine().stateStream.listen((state) {
+      if (!mounted) return;
+      final at = state.lastSyncAt;
+      if (at == null) return;
+      if (_lastObservedSyncAt != null && at == _lastObservedSyncAt) return;
+      _lastObservedSyncAt = at;
+      // ignore: discarded_futures
+      _refetchFromCacheAfterPull();
+    });
+  }
+
+  Future<void> _refetchFromCacheAfterPull() async {
+    try {
+      final refreshed = await _repository.fetchAllFunds();
+      if (!mounted) return;
+      setState(() {
+        _funds = refreshed;
+        _isLoading = false;
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _syncSubscription?.cancel();
+    _syncSubscription = null;
     super.dispose();
   }
 

@@ -736,14 +736,23 @@ class DataService {
       final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
       if (rawPayloads.isEmpty) return false;
       await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);
-      // Pull aussi l'auth state — sinon une nouvelle photo de profil
-      // uploadée sur l'autre device ne se propage pas tant que l'app
-      // n'est pas redémarrée. Demande utilisateur 2026-05-06 : la
-      // photo de profil doit s'actualiser de manière quasi-instantanée
-      // entre Mac et iPad. Best-effort : si le remote auth fail, on
-      // ne fait pas échouer le pull workspace pour autant.
+      // Pull aussi les entités GLOBALES qui n'étaient rafraîchies
+      // qu'au boot (wiki, caisses retraite, photo profil, admin
+      // access). Demande utilisateur 2026-05-06 : « ça fait 10 min
+      // que mon app est ouverte sur iPad, page bibliothèque vide,
+      // page caisses vide … alors que tout est accessible sur Mac ».
+      // Sans ces refresh-en-chaîne, ces données restaient stale tant
+      // que l'app n'était pas relancée. Best-effort, fire-and-forget
+      // pour ne pas allonger le cycle pull (chacun a son timeout
+      // interne). Le SyncEngine émettra ensuite `lastSyncAt` →
+      // chaque écran (Wiki/Caisses/Documents/VAD) re-fetch via son
+      // propre listener.
       // ignore: discarded_futures
       refreshLocalAuthStateFromRemote();
+      // ignore: discarded_futures
+      refreshWikiItemsFromRemote();
+      // ignore: discarded_futures
+      refreshRetirementFundsFromRemote();
       return true;
     } catch (_) {
       return false;

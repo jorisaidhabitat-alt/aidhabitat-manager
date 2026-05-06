@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -9,6 +10,7 @@ import '../components/cached_remote_image.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
+import '../services/sync_engine.dart';
 import '../services/url_resolver.dart';
 import '../services/wiki_repository.dart';
 
@@ -33,16 +35,44 @@ class _WikiScreenState extends State<WikiScreen> {
 
   String get _searchTerm => _searchController.text;
 
+  /// Subscription au sync engine — re-fetch les items wiki depuis
+  /// SQLite à chaque pull workspace réussi (Mac↔iPad sync).
+  StreamSubscription<SyncEngineState>? _syncSubscription;
+  DateTime? _lastObservedSyncAt;
+
   @override
   void initState() {
     super.initState();
     _searchController.addListener(() => setState(() {}));
     _loadItems();
+    _syncSubscription = SyncEngine().stateStream.listen((state) {
+      if (!mounted) return;
+      final at = state.lastSyncAt;
+      if (at == null) return;
+      if (_lastObservedSyncAt != null && at == _lastObservedSyncAt) return;
+      _lastObservedSyncAt = at;
+      // ignore: discarded_futures
+      _refetchFromCacheAfterPull();
+    });
+  }
+
+  Future<void> _refetchFromCacheAfterPull() async {
+    try {
+      final refreshed = await _wikiRepository.fetchAllItems();
+      if (!mounted) return;
+      setState(() {
+        _items = refreshed;
+        _availableTags = _extractTags(refreshed);
+        _isLoading = false;
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _syncSubscription?.cancel();
+    _syncSubscription = null;
     super.dispose();
   }
 
