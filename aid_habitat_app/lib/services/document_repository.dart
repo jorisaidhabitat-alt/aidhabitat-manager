@@ -1027,44 +1027,52 @@ class DocumentRepository {
       // Toute ligne `synced` (donc déjà connue du serveur) qui n'est
       // PAS dans le set canonique remote est purgée. Les drafts
       // (sync_state != synced) et les soft-deletes (pending_delete=1)
-      // sont préservés. On ne purge rien si remoteDocuments est vide
-      // (filet de sécurité contre un fetch ratée silencieusement).
+      // sont préservés.
+      //
+      // Filtre temporel : on ne purge que les docs créés il y a plus
+      // de 5 minutes. Protection contre la consistance éventuelle de
+      // NocoDB — un doc uploadé < 5 min plus tôt peut ne pas encore
+      // figurer dans la pull list. Au prochain pull (≥ 5 min plus
+      // tard), si le doc reste absent, on purge.
+      //
+      // Cas spécial 2026-05-06 (bug fix) : si `remoteLocalIds` est
+      // VIDE (= NocoDB n'a aucun doc pour ce patient), on purge quand
+      // même les rows synced antérieurs au seuil. Avant : on skippait
+      // par sécurité, mais ça empêchait la propagation de la dernière
+      // suppression d'un patient (l'ergo supprimait la seule photo
+      // sur iPad → le Mac ne purgeait jamais la sienne).
       // ----------------------------------------------------------------
+      final ageThreshold = DateTime.now().subtract(
+        const Duration(minutes: 5),
+      );
+      final args = <Object?>[
+        patientId,
+        SyncState.synced.name,
+        ageThreshold.toIso8601String(),
+      ];
+      String whereClause = 'patient_local_id = ? AND sync_state = ? '
+          'AND pending_delete = 0 '
+          'AND created_at < ?';
       if (remoteLocalIds.isNotEmpty) {
-        // Filtre temporel : on ne purge que les docs créés il y a plus de
-        // 5 minutes. Protection contre la consistance éventuelle de
-        // NocoDB — un doc uploadé par un autre device < 5 min plus tôt
-        // peut ne pas encore figurer dans la pull list, et le purger
-        // créerait une perte silencieuse côté ce device. Au prochain
-        // pull (≥ 5 min plus tard), si le doc reste absent du remote,
-        // alors la suppression est légitime et on purge.
-        final ageThreshold = DateTime.now().subtract(
-          const Duration(minutes: 5),
-        );
         final placeholders =
             List.filled(remoteLocalIds.length, '?').join(',');
-        final args = <Object?>[
-          patientId,
-          SyncState.synced.name,
-          ageThreshold.toIso8601String(),
-          ...remoteLocalIds,
-        ];
-        final deleted = await txn.delete(
-          'documents',
-          where:
-              'patient_local_id = ? AND sync_state = ? '
-              'AND pending_delete = 0 '
-              'AND created_at < ? '
-              'AND local_id NOT IN ($placeholders)',
-          whereArgs: args,
+        whereClause += ' AND local_id NOT IN ($placeholders)';
+        args.addAll(remoteLocalIds);
+      }
+      // Si `remoteLocalIds` est vide, le where ne contient pas
+      // `NOT IN (…)` → on purge TOUT ce qui est synced + > 5min,
+      // ce qui correspond à « l'autre device a tout supprimé ».
+      final deleted = await txn.delete(
+        'documents',
+        where: whereClause,
+        whereArgs: args,
+      );
+      if (deleted > 0) {
+        // ignore: avoid_print
+        print(
+          '[reconcile] documents (patient=$patientId) : '
+          '$deleted ligne(s) purgée(s) (suppression remote, âge > 5min)',
         );
-        if (deleted > 0) {
-          // ignore: avoid_print
-          print(
-            '[reconcile] documents (patient=$patientId) : '
-            '$deleted ligne(s) purgée(s) (suppression remote, âge > 5min)',
-          );
-        }
       }
     });
 
