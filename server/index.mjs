@@ -3248,6 +3248,16 @@ app.get('/api/references', requireAuth, async (req, res, next) => {
 
 app.get('/api/retirement-funds', requireAuth, async (_req, res, next) => {
   try {
+    // Cache HTTP côté navigateur — données quasi-statiques (caisses
+    // de retraite, mises à jour rares). Pendant les 30 premières
+    // secondes le browser sert sa cache SANS hitter Vercel (fresh).
+    // Entre 30s et 330s il sert la cache stale puis revalide en
+    // background. Effet user : page Caisses INSTANTANÉE à la
+    // réouverture si déjà visitée dans les 5 dernières minutes.
+    // `private` interdit aux CDN intermédiaires de cacher (auth-gated).
+    // `Vary: X-App-Session` garantit que le cache est per-user.
+    res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=300');
+    res.set('Vary', 'X-App-Session');
     const records = await queryAll(TABLES.caissesRetraiteComplementaires, { fields: FIELD_SETS.caissesRetraiteComplementaires });
     const store = await readRetirementFundsStore();
     const remoteFunds = records
@@ -3301,6 +3311,11 @@ app.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) 
 
 app.get('/api/anah-status', requireAuth, async (_req, res, next) => {
   try {
+    // Cache HTTP : ANAH status (feature flag + URLs) change quasi
+    // jamais. 30s fresh + 5min stale-while-revalidate. cf. commentaire
+    // sur /api/retirement-funds pour le détail.
+    res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=300');
+    res.set('Vary', 'X-App-Session');
     const status = await readAnahStatus();
     res.json({
       success: true,
@@ -3316,6 +3331,11 @@ app.get('/api/anah-status', requireAuth, async (_req, res, next) => {
 
 app.get('/api/wiki-library', requireAuth, async (_req, res, next) => {
   try {
+    // Cache HTTP : wiki/bibliothèque mis à jour manuellement par
+    // l'admin → 30s fresh + 5min stale-while-revalidate. cf.
+    // commentaire sur /api/retirement-funds.
+    res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=300');
+    res.set('Vary', 'X-App-Session');
     const items = await loadWikiLibrary();
     res.json({
       success: true,
