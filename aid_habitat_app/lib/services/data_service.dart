@@ -795,4 +795,53 @@ class DataService {
     await _syncRepository.clearPendingOperationsForEntity(remoteDossier.id);
   }
 
+  /// Vide TOUTES les données locales (dossiers, documents, notes, sync_ops,
+  /// caches) MAIS préserve les tables d'auth (`app_users`,
+  /// `user_access_scopes`, `access_members`, `app_session`) pour que le
+  /// re-login fonctionne sans re-fetch initial du serveur.
+  ///
+  /// Utilisé par :
+  ///   - Bouton « Forcer la sync » dans AccountDialog (demande utilisateur
+  ///     2026-05-06 : « le bouton doit être accessible quand on clique
+  ///     sur le profil »)
+  ///   - `AuthService.signOut()` — un logout = état propre, le prochain
+  ///     login ré-tire toutes les données depuis NocoDB.
+  ///
+  /// Renvoie le nombre de lignes supprimées (pour log/debug).
+  Future<int> wipeLocalDataForResync() async {
+    final db = await _dossierRepository.databaseHandle;
+    int total = 0;
+    // Tables de DONNÉES (à wiper) — l'auth + la session sont préservées.
+    const dataTables = <String>[
+      'dossiers',
+      'patients',
+      'housings',
+      'documents',
+      'note_pages',
+      'sync_operations',
+      'contexte_de_vie',
+      'diagnostic_sanitaires',
+      'mesures_anthropometriques',
+      'observations_synthese',
+      'visit_recommendations',
+      'wiki_items',
+      'retirement_funds',
+      'reference_sync_meta',
+      'web_media_cache',
+    ];
+    for (final table in dataTables) {
+      try {
+        final n = await db.delete(table);
+        total += n;
+      } catch (_) {
+        // Table peut-être pas encore créée (migration partielle) — ignore.
+      }
+    }
+    // Trigger un pull workspace + le SyncEngine reprendra ses pulls
+    // adaptatifs. Best-effort : si offline, le data viendra dès le retour
+    // online via le polling natif.
+    // ignore: discarded_futures
+    refreshWorkspaceFromRemote();
+    return total;
+  }
 }
