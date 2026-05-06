@@ -234,6 +234,21 @@ _StoredFrame? _loadStoredFrame(String tabKey) {
 // ---------------------------------------------------------------------------
 // IPC via BroadcastChannel
 // ---------------------------------------------------------------------------
+//
+// ⚠️ AVERTISSEMENT pour les futurs mainteneurs (humains ou agents IA) :
+// Ce channel est partagé entre la fenêtre principale et toutes les popups
+// détachées du même origin. Si tu veux tester BroadcastChannel via la
+// console DevTools, **N'UTILISE JAMAIS LE NOM `aidhabitat-note-ipc`** —
+// sinon ton listener de test reçoit aussi tous les messages Flutter
+// internes, et un `postMessage` accidentel peut provoquer une boucle
+// d'écho (le handler Flutter peut re-broadcaster sur des messages
+// inconnus). Conséquences observées le 2026-05-06 : flood de plusieurs
+// centaines de broadcasts en quelques secondes → DDoS Mitigation Vercel
+// auto-déclenchée → IP de l'ergo bloquée pendant ~1h sur le projet
+// `aid-habitat-app`.
+//
+// Pour tester : utilise un nom dédié (ex. `'test-debug-channel'`) qui
+// n'interfère pas avec Flutter.
 
 html.BroadcastChannel? _channel;
 

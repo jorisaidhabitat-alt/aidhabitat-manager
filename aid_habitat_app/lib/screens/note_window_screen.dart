@@ -129,12 +129,6 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
     // position du caret (clampée à la nouvelle longueur) au cas où
     // l'utilisateur aurait juste cliqué dans le champ sans taper.
     void onPushNote(Map<String, dynamic> args) {
-      // ignore: avoid_print
-      print(
-        '[IPC←popup] pushNote received: patient=${args['patientId']} '
-        'tabKey=${args['tabKey']} len=${args['text']?.toString().length ?? 0} '
-        'me_patient=${widget.patientId} me_tabKey=${widget.tabKey}',
-      );
       if (args['patientId'] != widget.patientId ||
           args['tabKey'] != widget.tabKey) return;
       final text = args['text']?.toString() ?? '';
@@ -274,11 +268,6 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
   /// instantly. The main window throttles the SQLite/NocoDB writes on
   /// its side.
   void _sendLive(String text, {bool flush = false}) {
-    // ignore: avoid_print
-    print(
-      '[IPC→app] liveNote sent: tabKey=${widget.tabKey} '
-      'len=${text.length} flush=$flush',
-    );
     if (kIsWeb) {
       note_window_web.sendNoteIpc(method: 'liveNote', args: {
         'patientId': widget.patientId,
