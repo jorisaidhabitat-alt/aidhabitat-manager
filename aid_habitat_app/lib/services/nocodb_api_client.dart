@@ -37,6 +37,27 @@ class TransientRemoteException implements Exception {
   String toString() => 'TransientRemoteException: $message';
 }
 
+/// Résultat d'une tentative de login distant. 3 états :
+///   - [success] : serveur a accepté + retourné un token JWT.
+///   - [rejected] : serveur a explicitement rejeté (401/403). Le caller
+///     NE doit PAS tenter le fallback local — l'admin a probablement
+///     changé le password et l'ancien hash local doit être invalidé.
+///   - [unreachable] : pas de réponse (timeout, 5xx, DNS error, etc.).
+///     Le caller peut tomber sur le hash local pour usage offline.
+class RemoteLoginResult {
+  final String? token;
+  final bool rejected;
+
+  const RemoteLoginResult._({this.token, required this.rejected});
+  const RemoteLoginResult.success(String token)
+      : this._(token: token, rejected: false);
+  const RemoteLoginResult.rejected() : this._(token: null, rejected: true);
+  const RemoteLoginResult.unreachable() : this._(token: null, rejected: false);
+
+  bool get isSuccess => token != null && !rejected;
+  bool get isUnreachable => token == null && !rejected;
+}
+
 /// True si l'erreur réseau sous-jacente doit être considérée comme
 /// transitoire (retry silencieux plutôt qu'échec remonté à l'UI).
 bool _isTransientNetworkError(Object error) =>
@@ -1091,11 +1112,21 @@ class NocodbApiClient {
   /// Authenticate against the Express API and return the session token.
   /// Unlike other methods, this does not require [AppConfig.hasRemoteConfig]
   /// since we're establishing it.
-  Future<String?> loginToRemote({
+  /// Résultat détaillé d'un login distant — distingue **rejet explicite**
+  /// (401) de **panne réseau / serveur indisponible** (timeout, 5xx,
+  /// DNS error…). Avant 2026-05-06, `loginToRemote` retournait `String?`
+  /// et fusionnait les deux cas en `null` — le caller `signIn` ne pouvait
+  /// pas savoir si le serveur avait dit « non » ou s'il était inatteignable,
+  /// et acceptait le hash local dans les deux cas. Conséquence : un
+  /// changement de mot de passe côté serveur n'invalidait jamais le hash
+  /// local → l'ancien mot de passe restait valide indéfiniment.
+  Future<RemoteLoginResult> loginToRemote({
     required String email,
     required String password,
   }) async {
-    if (AppConfig.apiBaseUrl.trim().isEmpty) return null;
+    if (AppConfig.apiBaseUrl.trim().isEmpty) {
+      return const RemoteLoginResult.unreachable();
+    }
 
     try {
       final response = await _client.post(
@@ -1104,19 +1135,35 @@ class NocodbApiClient {
         body: jsonEncode({'email': email, 'password': password}),
       ).timeout(_defaultTimeout);
 
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        // Serveur a explicitement rejeté l'authentification — mauvais
+        // email/password. Le caller NE DOIT PAS retomber sur le hash
+        // local : si l'admin a changé le password serveur, on veut que
+        // l'ancien hash local devienne invalide.
+        return const RemoteLoginResult.rejected();
+      }
+
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        return null;
+        // 5xx ou autre code d'erreur transient — serveur en difficulté
+        // mais pas un rejet d'auth explicite. Le caller peut tenter
+        // le fallback local pour permettre l'usage offline.
+        return const RemoteLoginResult.unreachable();
       }
 
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
-      if (payload['success'] != true) return null;
+      if (payload['success'] != true) return const RemoteLoginResult.rejected();
 
       final data =
           (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
       final token = data['token']?.toString();
-      return (token != null && token.isNotEmpty) ? token : null;
+      if (token == null || token.isEmpty) {
+        return const RemoteLoginResult.rejected();
+      }
+      return RemoteLoginResult.success(token);
     } catch (_) {
-      return null;
+      // Timeout / réseau / DNS / TLS — pas un rejet, le serveur est
+      // peut-être hors ligne. Permettre le fallback local.
+      return const RemoteLoginResult.unreachable();
     }
   }
 

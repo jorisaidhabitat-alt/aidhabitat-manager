@@ -17,7 +17,13 @@ import '../services/route_service.dart';
 ///
 /// Data still comes from Flutter (SQLite + SyncEngine). The top sync banner
 /// and [onSyncNow] wiring are kept intact.
-class DashboardScreen extends StatelessWidget {
+///
+/// Stateful : un ticker interne rebuild le screen toutes les 60s pour
+/// que la « Prochaine visite » se rafraîchisse automatiquement quand
+/// une heure passe. Sans ça, le `now` capturé au premier build restait
+/// figé et la visite de 9h continuait à s'afficher comme prochaine
+/// même à 14h. Demande utilisateur 2026-05-06.
+class DashboardScreen extends StatefulWidget {
   final List<Visit> visits;
   final List<Dossier> dossiers;
   final int pendingSyncCount;
@@ -43,6 +49,73 @@ class DashboardScreen extends StatelessWidget {
     this.userName,
     this.onNavigateToDossiers,
   });
+
+  /// Builds the full postal address `<street> <zip> <CITY>`.
+  /// Empty segments are skipped + whitespace collapsed. Static pour
+  /// pouvoir être appelé via `DashboardScreen.buildFullAddress(p)`
+  /// depuis les widgets enfants (banner, panel) sans contexte d'État.
+  static String buildFullAddress(Patient p) {
+    final street = p.address.trim();
+    final zip = p.zipCode.trim();
+    final city = p.city.trim();
+    return [street, zip, city.toUpperCase()]
+        .where((s) => s.isNotEmpty)
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Adresse courte (CP + ville UPPER) pour les listes du dashboard où
+  /// la rue + numéro pollue la ligne sans apporter de valeur — l'ergo
+  /// veut juste savoir où se trouve géographiquement le bénéficiaire.
+  /// Demande utilisateur 2026-04-28 : « la petite ligne doit simplement
+  /// mettre le code postal et la ville mais pas le numéro et la rue ».
+  static String buildShortAddress(Patient p) {
+    final zip = p.zipCode.trim();
+    final city = p.city.trim();
+    return [zip, city.toUpperCase()]
+        .where((s) => s.isNotEmpty)
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  /// Ticker qui rafraîchit le `now` du dashboard toutes les 60s. Sans
+  /// ça, l'heure courante utilisée par `_findNextVisit` se figeait au
+  /// premier build et une visite à 9h restait affichée comme prochaine
+  /// jusqu'à un rebuild forcé (changement d'onglet, scroll…). 60s est
+  /// suffisamment fin pour que la transition à l'heure pile soit
+  /// invisible et assez large pour ne pas empiler des frames.
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  // Pass-through getters for backward compat avec le reste du fichier
+  // qui référence directement les props (avant la conversion en
+  // StatefulWidget). Évite de toucher à 50+ usages.
+  List<Visit> get visits => widget.visits;
+  List<Dossier> get dossiers => widget.dossiers;
+  int get pendingSyncCount => widget.pendingSyncCount;
+  bool get isSyncing => widget.isSyncing;
+  VoidCallback get onSyncNow => widget.onSyncNow;
+  void Function(Dossier) get onSelectDossier => widget.onSelectDossier;
+  String? get userName => widget.userName;
+  VoidCallback? get onNavigateToDossiers => widget.onNavigateToDossiers;
 
   // Short French month labels for the activity chart (Jan..Déc).
   static const List<String> _monthsFr = [
@@ -86,32 +159,6 @@ class DashboardScreen extends StatelessWidget {
       }
     }
     return best;
-  }
-
-  /// Builds the full postal address `<street> <zip> <CITY>`.
-  /// Empty segments are skipped + whitespace collapsed.
-  static String buildFullAddress(Patient p) {
-    final street = p.address.trim();
-    final zip = p.zipCode.trim();
-    final city = p.city.trim();
-    return [street, zip, city.toUpperCase()]
-        .where((s) => s.isNotEmpty)
-        .join(' ')
-        .replaceAll(RegExp(r'\s+'), ' ');
-  }
-
-  /// Adresse courte (CP + ville UPPER) pour les listes du dashboard où
-  /// la rue + numéro pollue la ligne sans apporter de valeur — l'ergo
-  /// veut juste savoir où se trouve géographiquement le bénéficiaire.
-  /// Demande utilisateur 2026-04-28 : « la petite ligne doit simplement
-  /// mettre le code postal et la ville mais pas le numéro et la rue ».
-  static String buildShortAddress(Patient p) {
-    final zip = p.zipCode.trim();
-    final city = p.city.trim();
-    return [zip, city.toUpperCase()]
-        .where((s) => s.isNotEmpty)
-        .join(' ')
-        .replaceAll(RegExp(r'\s+'), ' ');
   }
 
   /// Builds the last-6-months activity series from the real dossiers list.
