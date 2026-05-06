@@ -264,17 +264,24 @@ class MediaCacheService {
           .get(Uri.parse(resolved), headers: headers)
           .timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        // ignore: avoid_print
-        print(
-          '[media_cache] HTTP ${response.statusCode} on $resolved '
-          '(content-type=${response.headers['content-type'] ?? '-'})',
-        );
+        // 404 silencieux (cas fréquent : photo de profil dont l'URL
+        // pointe vers un fichier supprimé / un déploiement précédent).
+        // Le widget appelant retombe sur son fallback (ex. initiales en
+        // cercle violet) — pas besoin de polluer la console. Les autres
+        // codes (5xx, 403…) restent loggués car ils indiquent un vrai
+        // souci serveur ou de droits.
+        if (response.statusCode != 404) {
+          // ignore: avoid_print
+          print(
+            '[media_cache] HTTP ${response.statusCode} on $resolved '
+            '(content-type=${response.headers['content-type'] ?? '-'})',
+          );
+        }
         return null;
       }
       final bytes = response.bodyBytes;
       if (bytes.isEmpty) {
-        // ignore: avoid_print
-        print('[media_cache] Empty body on $resolved (HTTP 200, 0 bytes)');
+        // Empty body silencieux pour la même raison que 404.
         return null;
       }
       // SPA fallback guard (same as native _download).

@@ -288,16 +288,6 @@ class _SidebarState extends State<Sidebar> {
                   // photo après l'AccountDialog sans attendre que le
                   // parent re-propage le user.
                   final user = _effectiveUser;
-                  // ── Diagnostic profile photo (retirer plus tard) ──
-                  // Log l'URL reçue du serveur à chaque rebuild du sidebar
-                  // → visible dans la console navigateur (DevTools)
-                  // pour confirmer si l'app reçoit bien une URL non-vide.
-                  // ignore: avoid_print
-                  print(
-                    '[sidebar] profilePhotoUrl="${user.profilePhotoUrl}" '
-                    'pending="${user.pendingProfilePhotoDataUrl.isEmpty ? "" : "<pending-dataurl>"}" '
-                    'email=${user.email}',
-                  );
                   return Container(
                   width: 48,
                   height: 48,

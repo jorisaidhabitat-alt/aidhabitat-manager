@@ -82,6 +82,17 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   final ImagePicker _imagePicker = ImagePicker();
   final FocusNode _keyboardFocus = FocusNode();
 
+  /// Compression cible pour les photos importées dans Documents
+  /// (caméra ou galerie). Identique à PhotosTab — sans ces paramètres,
+  /// `pickImage` retournait des fichiers 5-15 MB qui dépassaient la
+  /// limite 4,5 MB de Vercel Hobby → 413 silencieux et doc bloqué en
+  /// pending sync (bug reporté 2026-05-06 sur Moreau Henri).
+  ///
+  /// Ne s'applique pas aux PDF / fichiers non-image importés via
+  /// `FilePicker` — ces derniers ne passent pas par image_picker.
+  static const double _kCompressMaxWidth = 1600;
+  static const int _kCompressQuality = 80;
+
   String _searchTerm = '';
   bool _isLoading = true;
   bool _isImporting = false;
@@ -226,8 +237,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     _isPicking = true;
     try {
       if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
-        final xfile =
-            await _imagePicker.pickImage(source: ImageSource.camera);
+        final xfile = await _imagePicker.pickImage(
+          source: ImageSource.camera,
+          maxWidth: _kCompressMaxWidth,
+          imageQuality: _kCompressQuality,
+        );
         if (xfile == null) return;
         if (kIsWeb) {
           await _openUploadModalWeb(xfile, defaultTag: 'Photo');
@@ -269,8 +283,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         return;
       }
       if (Platform.isIOS || Platform.isAndroid) {
-        final xfile =
-            await _imagePicker.pickImage(source: ImageSource.gallery);
+        final xfile = await _imagePicker.pickImage(
+          source: ImageSource.gallery,
+          maxWidth: _kCompressMaxWidth,
+          imageQuality: _kCompressQuality,
+        );
         if (xfile == null) return;
         await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
         return;
@@ -348,8 +365,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     _isPicking = true;
     try {
       if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
-        final xfile =
-            await _imagePicker.pickImage(source: ImageSource.camera);
+        final xfile = await _imagePicker.pickImage(
+          source: ImageSource.camera,
+          maxWidth: _kCompressMaxWidth,
+          imageQuality: _kCompressQuality,
+        );
         if (xfile == null) return;
         if (kIsWeb) {
           await _openUploadModalWeb(xfile, defaultTag: 'Scan');
