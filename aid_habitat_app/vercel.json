@@ -12,14 +12,14 @@
       "source": "/(.*)",
       "headers": [
         { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" },
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" }
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
       ]
     },
     {
       "source": "/sqflite_sw.js",
       "headers": [
         { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" },
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" }
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
       ]
     },
     {
