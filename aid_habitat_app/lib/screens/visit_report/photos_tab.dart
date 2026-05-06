@@ -87,23 +87,36 @@ class _PhotosTabState extends State<PhotosTab>
   @override
   bool get wantKeepAlive => true;
 
+  /// Polling silencieux 10s — comme `DocumentsScreen` — pour pull les
+  /// photos remote ajoutées depuis un autre device (iPad ↔ Mac).
+  /// Avant 2026-05-06 : le tab ne pull JAMAIS, donc après un
+  /// `clear site data` les photos restaient invisibles tant qu'on
+  /// n'ouvrait pas l'onglet Documents (le seul à pull les docs).
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     _refresh();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _refresh(silent: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   // ----- Data -----
 
-  /// Recharge la liste depuis SQLite et la trie par catégorie. Appelé
-  /// après chaque action (import / re-tag / delete / reorder).
-  ///
-  /// Filtre : images portant AU MOINS un des trois tags visite. Les
-  /// photos d'archive importées depuis l'espace Documents ne sont pas
-  /// chargées — elles restent dans Documents et n'apparaissent jamais
-  /// ici.
-  Future<void> _refresh() async {
+  /// Recharge la liste depuis SQLite + déclenche un refresh remote en
+  /// arrière-plan, puis recharge SQLite si remote a apporté du nouveau.
+  /// Filtre : images portant AU MOINS un des tags visite (base ou extras).
+  Future<void> _refresh({bool silent = false}) async {
     try {
+      // 1) Lecture locale immédiate (SQLite cache).
       final docs = await _dataService.fetchDocuments(widget.dossier.patient.id);
       // Filtre élargi : on accepte les tags des 5 catégories de base ET
       // leurs variantes suffixées `(#N)` (sections supplémentaires
@@ -128,9 +141,36 @@ class _PhotosTabState extends State<PhotosTab>
         _extraSections = union;
         _isLoading = false;
       });
+      // 2) Pull remote en arrière-plan (best-effort) — sans ça, après
+      // un `clear site data` le cache local est vide et on n'aurait
+      // jamais les photos d'autres devices. Aligne le comportement
+      // sur DocumentsScreen.
+      final refreshed = await _dataService
+          .refreshDocumentsFromRemote(widget.dossier.patient.id);
+      if (!mounted || !refreshed) return;
+      // 3) Re-lit la SQLite après merge — si remote a apporté du nouveau,
+      // l'UI se met à jour silencieusement.
+      final remoteDocs =
+          await _dataService.fetchDocuments(widget.dossier.patient.id);
+      final remoteVisitImages = remoteDocs
+          .where((d) => d.type == 'image' && d.tags.any(_isAnyVisitTag))
+          .toList(growable: false);
+      if (!mounted) return;
+      final remoteDerived = _deriveExtraSectionsFromPhotos(remoteVisitImages);
+      final remoteUnion =
+          <_ExtraSection>{...remoteDerived, ..._extraSections}.toList()
+            ..sort((a, b) {
+              final byTag = a.baseTag.compareTo(b.baseTag);
+              if (byTag != 0) return byTag;
+              return a.index.compareTo(b.index);
+            });
+      setState(() {
+        _photos = remoteVisitImages;
+        _extraSections = remoteUnion;
+      });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      if (!silent) setState(() => _isLoading = false);
     }
   }
 
