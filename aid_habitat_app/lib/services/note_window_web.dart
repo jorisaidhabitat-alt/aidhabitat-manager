@@ -244,23 +244,55 @@ html.BroadcastChannel _ensureChannel() {
 /// Envoie un message à toutes les autres fenêtres du même origin
 /// (broadcast). Utilisé par la fenêtre détachée pour pousser le texte
 /// tapé (méthode `liveNote`) vers la fenêtre principale, et inversement.
+///
+/// Fix audit 2026-05-06 : on sérialise désormais le payload en JSON
+/// **string** avant `postMessage`. Avant ça on passait la Map<String,dynamic>
+/// directement, ce qui en dart2js sur Mac arrivait côté receveur comme un
+/// `JSObject` opaque (pas une Map Dart) → le check `data is! Map` échouait
+/// et aucun message n'était propagé. Une string JSON traverse proprement
+/// la frontière JS↔Dart sans conversion ambiguë.
 void sendNoteIpc({required String method, required Map<String, dynamic> args}) {
   try {
-    _ensureChannel().postMessage({'method': method, 'args': args});
+    final payload = jsonEncode({'method': method, 'args': args});
+    _ensureChannel().postMessage(payload);
   } catch (_) {/* ignore */}
 }
 
 /// S'abonne aux messages IPC. Le callback reçoit method + args. Retourne
 /// une `StreamSubscription` que l'appelant doit cancel() au dispose.
+///
+/// Cf. [sendNoteIpc] pour le rationale du transport JSON string. On parse
+/// ici le payload reçu — robuste aux deux variantes (string JSON nouveau
+/// format, et Map Dart legacy si une ancienne fenêtre n'a pas encore
+/// été reloadée — utile pendant les transitions de déploiement).
 StreamSubscription<dynamic> listenNoteIpc(
     void Function(String method, Map<String, dynamic> args) callback) {
   final ch = _ensureChannel();
   return ch.onMessage.listen((event) {
     try {
-      final data = event.data;
-      if (data is! Map) return;
+      final raw = event.data;
+      Map? data;
+      if (raw is String) {
+        // Nouveau format (2026-05-06) : JSON string. Le path standard.
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) data = decoded;
+      } else if (raw is Map) {
+        // Legacy : Map Dart envoyée tel quel. Encore utilisé tant que les
+        // 2 fenêtres n'ont pas reloadé après le déploiement du fix.
+        data = raw;
+      }
+      // Note : on N'essaie PAS de gérer le cas JSObject (raw n'est ni
+      // String ni Map) — c'est précisément ce qui se passait avant et
+      // qui causait le bug. Avec la sérialisation JSON forcée côté
+      // sendNoteIpc, ce cas ne devrait plus arriver.
+      if (data == null) return;
       final method = data['method']?.toString() ?? '';
-      final args = (data['args'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final rawArgs = data['args'];
+      final args = rawArgs is Map
+          ? Map<String, dynamic>.from(
+              rawArgs.map((k, v) => MapEntry(k.toString(), v)),
+            )
+          : <String, dynamic>{};
       callback(method, args);
     } catch (_) {/* ignore message mal formé */}
   });
