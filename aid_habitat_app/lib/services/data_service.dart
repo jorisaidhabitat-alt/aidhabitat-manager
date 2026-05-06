@@ -753,6 +753,16 @@ class DataService {
       refreshWikiItemsFromRemote();
       // ignore: discarded_futures
       refreshRetirementFundsFromRemote();
+      // Warmup ANAH — la fonction Vercel `/api/anah-status` n'est appelée
+      // qu'à l'ouverture de l'écran ANAH. Sans ce ping au pull workspace,
+      // un cold start peut faire attendre 3-10 s la 1ère fois que
+      // l'utilisateur clique sur ANAH après une période d'inactivité.
+      // En la pinguant ici (fire-and-forget), elle est chaude au moment
+      // où l'utilisateur navigue vers l'écran. Demande utilisateur
+      // 2026-05-06 : « la première requête après inactivité doit
+      // prendre moins de 3 sec ».
+      // ignore: discarded_futures
+      _nocodbApiClient.fetchAnahStatus().catchError((_) => <String, dynamic>{});
       return true;
     } catch (_) {
       return false;

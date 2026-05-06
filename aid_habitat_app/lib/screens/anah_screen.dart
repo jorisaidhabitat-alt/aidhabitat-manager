@@ -19,8 +19,17 @@ class AnahScreen extends StatefulWidget {
 class _AnahScreenState extends State<AnahScreen> {
   final DataService _dataService = DataService();
 
-  bool _loadingStatus = true;
-  bool _available = false;
+  // Démarre en `false` avec les valeurs par défaut (URLs officielles
+  // hardcodées) pour afficher la carte INSTANTANÉMENT à l'ouverture.
+  // Le fetch réseau tourne en arrière-plan et met à jour silencieusement
+  // si le serveur renvoie autre chose (feature flag désactivé, etc.).
+  // Avant 2026-05-06 : on attendait le serveur (spinner pendant le cold
+  // start Vercel pouvait durer 3-10 s à la 1ère ouverture après une
+  // période d'inactivité). Demande utilisateur 2026-05-06 : « les pages
+  // qui ne bougent quasiment pas type ANAH doivent être quasiment
+  // instantanées même à la réouverture ».
+  bool _loadingStatus = false;
+  bool _available = true;
   String _registrationUrl = 'https://monprojet.anah.gouv.fr/';
   String _publicUrl = 'https://www.anah.gouv.fr/';
   String _reason = '';
@@ -30,24 +39,29 @@ class _AnahScreenState extends State<AnahScreen> {
   InAppWebViewController? _webController;
   double _webProgress = 0;
   bool _webLoading = true;
-  String _currentUrl = '';
+  String _currentUrl = 'https://monprojet.anah.gouv.fr/';
 
   @override
   void initState() {
     super.initState();
-    _fetchStatus();
+    // Background fetch — silencieux, met à jour si différent. Pas de
+    // setState `_loadingStatus = true` au départ : on garde l'UI déjà
+    // rendue (avec valeurs par défaut) pour ne pas la flasher.
+    _fetchStatus(silent: true);
   }
 
-  Future<void> _fetchStatus() async {
-    setState(() {
-      _loadingStatus = true;
-      _statusError = null;
-    });
+  Future<void> _fetchStatus({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loadingStatus = true;
+        _statusError = null;
+      });
+    }
     try {
       final status = await _dataService.fetchAnahStatus();
       if (!mounted) return;
       setState(() {
-        _available = status['available'] as bool? ?? false;
+        _available = status['available'] as bool? ?? true;
         _registrationUrl = status['registrationUrl']?.toString() ??
             'https://monprojet.anah.gouv.fr/';
         _publicUrl =
@@ -55,9 +69,15 @@ class _AnahScreenState extends State<AnahScreen> {
         _reason = status['reason']?.toString() ?? '';
         _currentUrl = _registrationUrl;
         _loadingStatus = false;
+        _statusError = null;
       });
     } catch (err) {
       if (!mounted) return;
+      // En silent mode (fetch background), un échec ne doit PAS faire
+      // basculer l'UI en erreur — on garde les valeurs par défaut déjà
+      // affichées. L'erreur ne s'affiche que si l'utilisateur a cliqué
+      // explicitement sur « Réessayer ».
+      if (silent) return;
       setState(() {
         _statusError = err.toString();
         _currentUrl = _registrationUrl;

@@ -47,15 +47,37 @@ class _WcTabState extends State<WcTab>
   // (Ancien Set de clés d'édition pour le repli "CollapsedValueRow"
   // retiré : les toggles restent maintenant toujours visibles.)
 
+  /// Polling cross-device 2s — demande utilisateur 2026-05-06 :
+  /// « la synchronisation entre Mac et iPad doit être bien plus
+  /// rapide ». Avant, sanitaires n'était fetché qu'à l'init du tab —
+  /// si le Mac modifiait la cuvette pendant que l'iPad regardait
+  /// l'onglet WC, l'iPad ne voyait rien jusqu'à un changement
+  /// d'onglet. Le poll est skippé si l'utilisateur édite localement
+  /// (saveTimer actif) — `refreshDiagnosticSanitaireFromRemote` a
+  /// déjà sa propre garde `pendingSync`, donc deux niveaux de
+  /// protection contre l'écrasement d'une saisie en cours.
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      // Skip si une saisie est en cours côté local (debounce save actif
+      // ou save HTTP en flight) → on ne touche pas à _diagnostic pour
+      // ne pas écraser la valeur que l'utilisateur tape.
+      if (_saveTimer?.isActive == true) return;
+      if (_saving) return;
+      // ignore: discarded_futures
+      _load();
+    });
   }
 
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 

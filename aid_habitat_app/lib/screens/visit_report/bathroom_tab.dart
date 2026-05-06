@@ -122,15 +122,29 @@ class _BathroomTabState extends State<BathroomTab>
   // (Anciens Sets d'édition/repli retirés : les toggles et listes
   // d'équipements restent maintenant toujours visibles.)
 
+  /// Polling cross-device 2s — cf. doc identique côté `wc_tab.dart`.
+  /// Sanitaires et WC partagent la même table `diagnostic_sanitaires`,
+  /// donc les deux onglets restent en phase quand l'autre device
+  /// modifie un équipement.
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      if (_saveTimer?.isActive == true) return;
+      if (_saving) return;
+      // ignore: discarded_futures
+      _load();
+    });
   }
 
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 

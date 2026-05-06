@@ -223,6 +223,17 @@ class SyncEngine {
     if (_disposed) return;
     _activeContextRefCount += 1;
     if (_activeContextRefCount == 1) {
+      // Fire un pull IMMÉDIAT à l'entrée d'un écran ultra-actif (VAD)
+      // pour ne pas faire patienter l'utilisateur jusqu'au prochain
+      // tick du timer. Sans ça, l'ouverture de la VAD pouvait avoir un
+      // décalage 0-2s entre le moment où l'écran s'affiche et où il
+      // contient les données fraîches du serveur. Demande utilisateur
+      // 2026-05-06 : « la sync entre Mac et iPad doit être bien plus
+      // rapide ». Avec ce kick immédiat, l'écran VAD reflète l'état
+      // serveur en ~500 ms (le temps du round-trip HTTP) au lieu
+      // d'attendre potentiellement 1-2 s.
+      // ignore: discarded_futures
+      _runPullSafe();
       _schedulePull();
     }
   }
