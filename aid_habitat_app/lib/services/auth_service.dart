@@ -266,13 +266,32 @@ class AuthService {
 
     // Try the Express API in parallel with the same password. If the server
     // accepts it, the user gets both a local and a remote session.
-    final remoteToken = await NocodbApiClient().loginToRemote(
+    final remoteResult = await NocodbApiClient().loginToRemote(
       email: normalizedEmail,
       password: password,
     );
+    final remoteToken = remoteResult.token;
+
+    // Fix audit 2026-05-06 : si le serveur a EXPLICITEMENT rejeté (401),
+    // on N'accepte JAMAIS le fallback local. Sinon un changement de
+    // mot de passe côté admin ne pouvait jamais invalider l'ancien hash
+    // local — l'utilisateur continuait à pouvoir se connecter avec son
+    // ancien mot de passe pour toujours, et le nouveau ne marchait pas.
+    // Le fallback local reste actif uniquement quand le serveur est
+    // INATTEIGNABLE (mode offline) — auquel cas on suppose que l'auth
+    // n'a pas changé.
+    if (remoteResult.rejected) {
+      // Sync local hash si l'utilisateur a tapé le bon nouveau password
+      // (qui matche pas le hash local) — non, attends : si le serveur
+      // rejette, c'est qu'il n'accepte pas non plus. Donc on échoue net.
+      return const LocalSignInResult(
+        success: false,
+        error: 'Mot de passe invalide',
+      );
+    }
 
     if (!localPasswordMatches && remoteToken == null) {
-      // Neither local nor remote accepted the password.
+      // Serveur inatteignable ET local KO → vrai échec.
       return const LocalSignInResult(
         success: false,
         error: 'Mot de passe invalide',
@@ -330,10 +349,11 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final token = await NocodbApiClient().loginToRemote(
+    final result = await NocodbApiClient().loginToRemote(
       email: email.trim().toLowerCase(),
       password: password,
     );
+    final token = result.token;
     if (token == null) return false;
 
     final db = await _database.database;
