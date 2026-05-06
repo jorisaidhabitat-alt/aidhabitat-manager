@@ -303,8 +303,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           if (flush) {
             _persistNoteText(patientId, tabKey, text);
           } else {
+            // Debounce 150 ms (vs 400 ms historique) — demande
+            // utilisateur 2026-05-06 : la note écrite doit apparaitre
+            // sur l'autre device quasi-instantanément. 150 ms reste
+            // assez pour collapser la frappe (≥2 keystrokes typiques).
             _saveDebounce[key] = Timer(
-              const Duration(milliseconds: 400),
+              const Duration(milliseconds: 150),
               () => _persistNoteText(patientId, tabKey, text),
             );
           }
@@ -501,8 +505,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                         });
                         final key = '${_dossier.patient.id}::$sourceTab';
                         _saveDebounce[key]?.cancel();
+                        // Debounce 150 ms — cohérent avec le handler
+                        // IPC `liveNote` ci-dessus (2026-05-06).
                         _saveDebounce[key] = Timer(
-                          const Duration(milliseconds: 400),
+                          const Duration(milliseconds: 150),
                           () => _persistNoteText(
                               _dossier.patient.id, sourceTab, text),
                         );
