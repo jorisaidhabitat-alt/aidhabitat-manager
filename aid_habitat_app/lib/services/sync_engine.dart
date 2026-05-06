@@ -65,6 +65,15 @@ class SyncEngine {
   /// NocoDB en ~500ms, le poll de 5s récupère à 5500ms max.
   static const Duration _pullIntervalActive = Duration(seconds: 5);
 
+  /// Délai entre 2 pulls quand un écran « focus haute fréquence » est
+  /// ouvert (ex. VisitReportScreen via [enterActiveContext]). Cible
+  /// la sensation « tape sur iPad → apparait sur Mac » sub-3 sec.
+  /// L'intervalle reste raisonnable pour ne pas marteler NocoDB ni
+  /// vider la batterie iPad — push iPad ~600 ms + poll Mac max 2 s
+  /// = lag visible < 3 s au pire (demande utilisateur 2026-05-06 :
+  /// note écrite VAD doit s'actualiser quasi-instantanément Mac↔iPad).
+  static const Duration _pullIntervalUltraActive = Duration(seconds: 2);
+
   /// Délai entre 2 pulls quand l'utilisateur est IDLE (pas de save
   /// depuis ≥ 1 minute). Économise la bande passante quand personne ne
   /// modifie côté autre device — l'app reste à jour sans spammer.
@@ -102,6 +111,13 @@ class SyncEngine {
   bool _pullRunning = false;
   DateTime _lastInteractionAt = DateTime.now();
   AppLifecycleState _appLifecycle = AppLifecycleState.resumed;
+
+  /// Compteur d'écrans ayant déclaré un focus haute fréquence via
+  /// [enterActiveContext]. Tant qu'il est > 0, [_currentPullInterval]
+  /// renvoie [_pullIntervalUltraActive] (2 s) au lieu de 5 s/30 s.
+  /// Ref-counted pour gérer plusieurs écrans empilés (ex. VAD ouvre
+  /// le NotesWindow → 2 demandes, 1 seule vraiment active).
+  int _activeContextRefCount = 0;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -172,14 +188,47 @@ class SyncEngine {
     _schedulePull();
   }
 
+  /// Déclare qu'un écran sensible aux modifs distantes vient d'être
+  /// ouvert — tant qu'il y a au moins un appelant en cours, le pull
+  /// passe en mode ultra-actif (2 s) pour donner une sensation
+  /// quasi-instantanée Mac↔iPad. À appeler dans `initState`, à
+  /// équilibrer avec [leaveActiveContext] dans `dispose`.
+  ///
+  /// Idempotent côté ref-count, mais chaque enter doit avoir son leave
+  /// pour ne pas figer le mode ultra-actif quand l'écran disparait.
+  /// Re-planifie immédiatement le prochain pull avec le nouvel
+  /// intervalle (sinon on attend la fin du timer 30 s en cours).
+  void enterActiveContext() {
+    if (_disposed) return;
+    _activeContextRefCount += 1;
+    if (_activeContextRefCount == 1) {
+      _schedulePull();
+    }
+  }
+
+  /// Pendant inverse de [enterActiveContext]. Le compteur ne descend
+  /// jamais en dessous de 0 (sécurité contre un dispose() appelé sans
+  /// initState() correspondant — ex. hot reload qui rejoue dispose).
+  void leaveActiveContext() {
+    if (_disposed) return;
+    if (_activeContextRefCount > 0) {
+      _activeContextRefCount -= 1;
+    }
+    if (_activeContextRefCount == 0) {
+      _schedulePull();
+    }
+  }
+
   /// Calcule l'intervalle entre 2 pulls en fonction de l'état courant :
   ///   - background → 5min
+  ///   - écran « focus haute fréquence » ouvert → 2s (ultra-actif)
   ///   - foreground actif (save < 1min) → 5s
   ///   - foreground idle → 30s
   Duration _currentPullInterval() {
     if (_appLifecycle != AppLifecycleState.resumed) {
       return _pullIntervalBackground;
     }
+    if (_activeContextRefCount > 0) return _pullIntervalUltraActive;
     final idle = DateTime.now().difference(_lastInteractionAt);
     if (idle < _idleThreshold) return _pullIntervalActive;
     return _pullIntervalIdle;
