@@ -8,6 +8,7 @@ import 'access_members_repository.dart';
 import 'auth_service.dart';
 import 'dossier_repository.dart';
 import 'document_repository.dart';
+import 'local_database.dart';
 import 'note_repository.dart';
 import 'nocodb_api_client.dart';
 import 'nocodb_sync_service.dart';
@@ -809,7 +810,7 @@ class DataService {
   ///
   /// Renvoie le nombre de lignes supprimées (pour log/debug).
   Future<int> wipeLocalDataForResync() async {
-    final db = await _dossierRepository.databaseHandle;
+    final db = await LocalDatabase.instance.database;
     int total = 0;
     // Tables de DONNÉES (à wiper) — l'auth + la session sont préservées.
     const dataTables = <String>[

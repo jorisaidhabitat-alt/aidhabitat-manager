@@ -397,6 +397,39 @@ class AuthService {
   Future<void> signOut() async {
     final db = await _database.database;
     await db.delete('app_session');
+    // Purge complète des données locales — convention « logout = état
+    // propre » (demande utilisateur 2026-05-06). Évite les divergences
+    // après re-login : le prochain login ré-tire toutes les données
+    // depuis NocoDB sans les bloquer derrière des `pending_sync` flags
+    // hérités de la session précédente. Les tables d'auth (app_users,
+    // user_access_scopes, access_members) sont préservées pour que le
+    // re-login offline marche.
+    //
+    // Tables wipées (alignées avec `DataService.wipeLocalDataForResync`) :
+    const dataTables = <String>[
+      'dossiers',
+      'patients',
+      'housings',
+      'documents',
+      'note_pages',
+      'sync_operations',
+      'contexte_de_vie',
+      'diagnostic_sanitaires',
+      'mesures_anthropometriques',
+      'observations_synthese',
+      'visit_recommendations',
+      'wiki_items',
+      'retirement_funds',
+      'reference_sync_meta',
+      'web_media_cache',
+    ];
+    for (final table in dataTables) {
+      try {
+        await db.delete(table);
+      } catch (_) {
+        // Table inexistante (migration partielle) — ignore.
+      }
+    }
   }
 
   Future<bool> isUsingBootstrapPassword(String userId) async {

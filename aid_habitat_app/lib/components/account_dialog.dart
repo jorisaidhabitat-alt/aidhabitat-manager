@@ -34,10 +34,78 @@ class _AccountDialogState extends State<AccountDialog> {
   String? _photoError;
   late String _photoUrl;
 
+  /// True quand le bouton « Forcer la sync » est en cours d'exécution.
+  /// Affiche un spinner + désactive les actions pour éviter les
+  /// double-taps.
+  bool _isResyncing = false;
+
   @override
   void initState() {
     super.initState();
     _photoUrl = widget.currentUser.profilePhotoUrl;
+  }
+
+  /// Wipe le cache local + re-pull depuis NocoDB. Demande utilisateur
+  /// 2026-05-06 : moyen de résoudre les divergences iPad ↔ Mac sans
+  /// passer par Safari → Avancé → Données de sites web. Confirmation
+  /// préalable car potentiellement long (recharge de tous les dossiers).
+  Future<void> _handleForceResync() async {
+    if (_isResyncing) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Forcer la synchronisation ?'),
+        content: const Text(
+          "Toutes les données locales seront supprimées et re-téléchargées "
+          "depuis le serveur. Utile en cas de divergence entre vos appareils. "
+          "Aucune perte — les données sont préservées dans NocoDB.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF7C6DAA),
+            ),
+            child: const Text('Synchroniser'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    setState(() => _isResyncing = true);
+    try {
+      final n = await _dataService.wipeLocalDataForResync();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Synchronisation lancée — $n entrée(s) locales effacées, '
+            're-téléchargement en cours…',
+          ),
+          backgroundColor: const Color(0xFF7C6DAA),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      // Ferme la dialog après lancement — le pull tourne en arrière-plan,
+      // l'app va se rafraîchir au prochain tick du SyncEngine (~5s).
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Synchronisation impossible : $e'),
+          backgroundColor: const Color(0xFFB91C1C),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isResyncing = false);
+    }
   }
 
   Future<void> _pickAndUploadPhoto() async {
@@ -311,15 +379,45 @@ class _AccountDialogState extends State<AccountDialog> {
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 18),
-                  // Quick actions: Logout (la gestion des accès se fait
-                  // désormais directement sur NocoDB, pas dans l'app).
+                  // Quick actions :
+                  //   • Forcer la sync — wipe le cache local + re-pull
+                  //     depuis NocoDB. Utile si on observe une divergence
+                  //     iPad ↔ Mac sans vouloir se déconnecter (demande
+                  //     utilisateur 2026-05-06).
+                  //   • Se déconnecter — purge la session ET le cache
+                  //     local (cf. `AuthService.signOut`).
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      OutlinedButton.icon(
+                        onPressed:
+                            _isUploadingPhoto || _isResyncing
+                                ? null
+                                : _handleForceResync,
+                        icon: _isResyncing
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Color(0xFF7C6DAA),
+                                  ),
+                                ),
+                              )
+                            : const Icon(LucideIcons.refreshCcw, size: 16),
+                        label: Text(_isResyncing
+                            ? 'Synchronisation…'
+                            : 'Forcer la sync'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF7C6DAA),
+                          side: const BorderSide(color: Color(0xFFD8CFE0)),
+                        ),
+                      ),
                       if (widget.onLogout != null)
                         OutlinedButton.icon(
-                          onPressed: _isUploadingPhoto
+                          onPressed: _isUploadingPhoto || _isResyncing
                               ? null
                               : () async {
                                   Navigator.of(context).pop();
