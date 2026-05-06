@@ -87,18 +87,24 @@ class _PhotosTabState extends State<PhotosTab>
   @override
   bool get wantKeepAlive => true;
 
-  /// Polling silencieux 10s — comme `DocumentsScreen` — pour pull les
-  /// photos remote ajoutées depuis un autre device (iPad ↔ Mac).
-  /// Avant 2026-05-06 : le tab ne pull JAMAIS, donc après un
-  /// `clear site data` les photos restaient invisibles tant qu'on
-  /// n'ouvrait pas l'onglet Documents (le seul à pull les docs).
+  /// Polling silencieux 2s — accéléré 2026-05-06 (« il faudrait faire
+  /// plus court encore » par rapport au 10s historique). Avec push
+  /// debounce ~200ms côté iPad + 2s pull côté Mac → latence iPad → Mac
+  /// d'environ 2,5s. Coût serveur : ~30 GET/min par utilisateur actif
+  /// dans cet onglet, mais la requête est légère (SELECT documents
+  /// where patient_local_id, pas de binaire transféré tant que les
+  /// bytes ne sont pas demandés).
+  ///
+  /// Polling pause quand l'app passe en background ou quand l'onglet
+  /// Photos n'est plus visible (cf. `wantKeepAlive` Flutter — le state
+  /// est détruit si pas keep-alive).
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _refresh();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (mounted) _refresh(silent: true);
     });
   }
@@ -164,10 +170,24 @@ class _PhotosTabState extends State<PhotosTab>
               if (byTag != 0) return byTag;
               return a.index.compareTo(b.index);
             });
+      // Capture les IDs connus AVANT le setState pour identifier les
+      // photos qui viennent vraiment d'apparaître (delta merge).
+      final previouslyKnownIds = _photos.map((d) => d.id).toSet();
       setState(() {
         _photos = remoteVisitImages;
         _extraSections = remoteUnion;
       });
+      // 4) Pre-warm bytes des NOUVELLES photos en cache mémoire dès
+      // qu'elles arrivent par merge — sans attendre que l'utilisateur
+      // les regarde. Réduit la latence perçue : la photo est déjà
+      // décodée en RAM au moment où la `_PhotoThumbnail` se monte →
+      // pas de spinner intermédiaire.
+      for (final d in remoteVisitImages) {
+        if (!previouslyKnownIds.contains(d.id)) {
+          // ignore: discarded_futures
+          _resolvePhotoBytes(d);
+        }
+      }
     } catch (_) {
       if (!mounted) return;
       if (!silent) setState(() => _isLoading = false);
