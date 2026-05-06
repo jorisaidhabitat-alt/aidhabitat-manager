@@ -1729,7 +1729,15 @@ class _PhotoThumbnailState extends State<_PhotoThumbnail> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // Cache hit VRAIMENT synchrone : on assigne `_bytes` AVANT le
+    // premier build pour qu'il rende l'image directement, sans passer
+    // par un placeholder. Avant 2026-05-06 : le hit était fait dans
+    // `_load()` async → assigné après le premier build SANS setState
+    // → la vignette d'une photo fraîchement importée restait sur le
+    // placeholder jusqu'à ce que l'utilisateur quitte/rouvre l'écran
+    // (symptôme reporté : « la preview n'a jamais été disponible »).
+    _bytes = _photoBytesCache[widget.doc.id];
+    if (_bytes == null) _load();
   }
 
   @override
@@ -1738,17 +1746,23 @@ class _PhotoThumbnailState extends State<_PhotoThumbnail> {
     if (old.doc.id != widget.doc.id ||
         old.doc.dataUrl != widget.doc.dataUrl ||
         old.doc.url != widget.doc.url) {
-      _bytes = null;
-      _failed = false;
-      _load();
+      // Tente le cache mémoire d'abord — si déjà chargée par
+      // _persistPicked (import frais), on l'affiche immédiatement.
+      final cached = _photoBytesCache[widget.doc.id];
+      setState(() {
+        _bytes = cached;
+        _failed = false;
+      });
+      if (cached == null) _load();
     }
   }
 
   Future<void> _load() async {
-    // Cache hit synchrone → render direct, pas de flicker.
+    // Cache check (couvre le cas où une autre miniature aurait primé
+    // le cache pendant qu'on attendait — race condition au refresh).
     final cached = _photoBytesCache[widget.doc.id];
     if (cached != null) {
-      _bytes = cached;
+      if (mounted) setState(() => _bytes = cached);
       return;
     }
     final bytes = await _resolvePhotoBytes(widget.doc);

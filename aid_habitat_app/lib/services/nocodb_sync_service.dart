@@ -162,90 +162,58 @@ class NocodbSyncService {
 
     // Group operations by entity key so same-entity ops stay sequential
     // while different entities can proceed in parallel.
+    //
+    // Demande utilisateur 2026-05-06 : « la synchronisation des
+    // documents est trop longue à la connexion ». Avant ce changement,
+    // le for-loop itérait `operations` strictement en SÉRIE — chaque
+    // upload de photo (1-3 Mo, 5-15s) attendait le précédent.
+    // 10 photos en queue = ~1 minute de bandeau « sync ». Maintenant
+    // on traite les groupes (= entités) en parallèle, avec un pool
+    // de [_maxConcurrency] workers (constante déjà existante sur la
+    // classe). Chaque groupe reste séquentiel en interne (préserve
+    // l'ordre upload→merge sur la même entité, contrat conservé pour
+    // `mergeRemoteDocuments`).
     final groups = <String, List<SyncOperation>>{};
     for (final op in operations) {
       final key = '${op.entityType}:${op.entityLocalId}';
       groups.putIfAbsent(key, () => []).add(op);
     }
-
-    var pushed = 0;
-    var failed = 0;
-    var conflicts = 0;
-    final failures = <String>[];
     final groupList = groups.values.toList();
 
-    for (final operation in operations) {
-      await _syncRepository.markRunning(operation.id);
-      try {
-        await _processOperation(operation);
-        await _syncRepository.markCompleted(
-          operationId: operation.id,
-          entityType: operation.entityType,
-          entityLocalId: operation.entityLocalId,
-        );
-        pushed += 1;
-      } on ConflictException catch (e) {
-        // Auto-résolution « remote always wins » (demande utilisateur
-        // 2026-04-30 : « il ne faut aucun bouton ni intervention tout
-        // doit se faire tout seul en backend »). Sur 409 NocoDB, on
-        // ABANDONNE la modif locale au profit de la version serveur.
-        // Trade-off : un éventuel edit fait offline qui conflicte avec
-        // un edit récent sur un autre device sera silencieusement
-        // perdu. C'est le compromis assumé pour ne plus jamais avoir
-        // de données stales sur un device qui aurait raté un push.
-        await _autoResolveConflictTakingRemote(operation, e);
-        // Compté comme `pushed` (du point de vue UI : l'op est
-        // résolue, plus rien à signaler) pour ne pas afficher le
-        // bandeau rouge.
-        pushed += 1;
-      } on TransientRemoteException catch (e) {
-        // 5xx / timeout / déconnexion : l'op reste en pending pour être
-        // rejouée silencieusement au prochain cycle. On ne remonte rien
-        // à l'UI (pas de bandeau rouge) — c'est un hoquet réseau, pas
-        // une vraie erreur métier.
-        // ignore: avoid_print
-        print('[sync] transient ${operation.entityType}:'
-            '${operation.operationType} id=${operation.entityLocalId} '
-            'err=$e — retry au prochain cycle');
-        await _syncRepository.markTransientFailure(
-          operationId: operation.id,
-          entityType: operation.entityType,
-          entityLocalId: operation.entityLocalId,
-          error: e.toString(),
-        );
-      } catch (error) {
-        // Filet de sécurité : reclasse toute erreur réseau bas niveau
-        // (incluant `http.ClientException: Load failed` côté iPad PWA)
-        // en transitoire — l'op reste en queue et est rejouée au
-        // prochain cycle, pas de bandeau rouge.
-        // Sans ce reclassement, n'importe quel endpoint d'écriture qui
-        // n'est pas wrappé dans `_runWithTransientGuard` produisait un
-        // failed définitif au moindre hoquet Safari iOS (rapporté
-        // 2026-05-05 sur housing:update / Accessibilité).
-        if (_isTransientErrorLike(error)) {
-          // ignore: avoid_print
-          print('[sync] reclassed-as-transient ${operation.entityType}:'
-              '${operation.operationType} id=${operation.entityLocalId} '
-              'err=$error — retry au prochain cycle');
-          await _syncRepository.markTransientFailure(
-            operationId: operation.id,
-            entityType: operation.entityType,
-            entityLocalId: operation.entityLocalId,
-            error: error.toString(),
-          );
-        } else {
-          final message = error.toString();
-          await _syncRepository.markFailed(
-            operationId: operation.id,
-            entityType: operation.entityType,
-            entityLocalId: operation.entityLocalId,
-            error: message,
-          );
-          failed += 1;
-          failures.add('${operation.entityType}:${operation.operationType}');
-        }
+    // Pool de workers : chaque worker tire un groupe de la queue
+    // partagée, le traite via `_processGroup` (qui gère markRunning /
+    // markCompleted / markFailed pour chaque op), et passe au suivant.
+    // Dart étant single-threaded, `removeAt(0)` est atomique entre
+    // deux awaits — pas besoin de lock.
+    final queue = List<List<SyncOperation>>.from(groupList);
+    final results = <_GroupResult>[];
+    Future<void> worker() async {
+      while (queue.isNotEmpty) {
+        final group = queue.removeAt(0);
+        final r = await _processGroup(group);
+        results.add(r);
       }
     }
+
+    final workerCount = groupList.length < _maxConcurrency
+        ? groupList.length
+        : _maxConcurrency;
+    await Future.wait(List.generate(workerCount, (_) => worker()));
+
+    // Agrégation finale des résultats par groupe.
+    var pushed = 0;
+    var failed = 0;
+    final failures = <String>[];
+    for (final r in results) {
+      pushed += r.pushed;
+      failed += r.failed;
+      failures.addAll(r.failures);
+    }
+    // Le compteur `conflicts` était déjà toujours 0 dans l'ancien
+    // for-loop (les conflits sont auto-résolus et comptés comme
+    // `pushed`). On le garde à 0 pour préserver la sémantique
+    // observée par les callers + le banner UI.
+    const conflicts = 0;
 
     final message = (failed == 0 && conflicts == 0)
         ? 'Synchronisation terminée'
