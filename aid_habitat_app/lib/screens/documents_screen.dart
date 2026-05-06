@@ -2643,7 +2643,7 @@ class _PdfThumbnailFromBytesState extends State<_PdfThumbnailFromBytes> {
       alignment: Alignment.topCenter,
       child: Image.memory(
         _png!,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
         gaplessPlayback: true,
