@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../services/data_service.dart';
+import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
 
 // =============================================================================
@@ -455,6 +456,15 @@ class _NotesWidgetState extends State<NotesWidget> {
   // restait clippé aux dimensions de la note source.
   OverlayEntry? _textModalEntry;
 
+  /// Subscription au `SyncEngine.stateStream` — quand un pull arrive
+  /// depuis l'autre device (Mac ↔ iPad), on re-sollicite le remote
+  /// pour la page courante (sauf si l'ergo est en train d'éditer →
+  /// `_isDirty` protège la saisie locale). Sans ça, les notes
+  /// modifiées sur l'autre appareil n'apparaissaient pas tant que
+  /// l'écran restait ouvert. Demande utilisateur 2026-05-06.
+  StreamSubscription<SyncEngineState>? _syncSubscription;
+  DateTime? _lastObservedSyncAt;
+
   @override
   void initState() {
     super.initState();
@@ -465,6 +475,44 @@ class _NotesWidgetState extends State<NotesWidget> {
     _activeTool = widget.activeTool ?? _availableToolsFor(widget.toolset).first;
     _textController.addListener(_onTextChanged);
     _loadPages();
+
+    _syncSubscription = SyncEngine().stateStream.listen((state) {
+      if (!mounted) return;
+      final at = state.lastSyncAt;
+      if (at == null) return;
+      if (_lastObservedSyncAt != null && at == _lastObservedSyncAt) return;
+      _lastObservedSyncAt = at;
+      if (_isDirty) return; // ne casse pas une saisie en cours
+      // Re-fetch remote la page courante. `refreshNotePageFromRemote`
+      // met à jour SQLite ; on relit ensuite via fetchDrawingJson et on
+      // applique. Best-effort, errors swallowed.
+      // ignore: discarded_futures
+      _refreshCurrentPageFromRemoteAfterPull();
+    });
+  }
+
+  Future<void> _refreshCurrentPageFromRemoteAfterPull() async {
+    try {
+      await _dataService.refreshNotePageFromRemote(
+        patientId: widget.patientId,
+        tabKey: widget.tabKey,
+        pageNumber: _currentPage,
+      );
+      if (!mounted || _isDirty) return;
+      final refreshed = await _dataService.fetchNoteDrawingJson(
+        patientId: widget.patientId,
+        tabKey: widget.tabKey,
+        pageNumber: _currentPage,
+      );
+      if (!mounted || _isDirty) return;
+      setState(() => _applyJson(
+            _currentPage,
+            refreshed,
+            hydrateController: true,
+          ));
+    } catch (_) {
+      // best-effort
+    }
   }
 
   @override
@@ -593,6 +641,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
     _textFocusNode.dispose();
+    _syncSubscription?.cancel();
+    _syncSubscription = null;
     // Sécurité : si le pop-up est encore visible quand le NotesWidget
     // est démonté (ex. navigation arrière), on retire l'OverlayEntry
     // pour éviter de garder un orphelin sur l'écran.

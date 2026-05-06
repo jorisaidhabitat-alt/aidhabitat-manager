@@ -130,6 +130,14 @@ class _MainScreenState extends State<MainScreen>
     _syncEngine.setAppLifecycleState(state);
   }
 
+  /// Dernier `lastSyncAt` observé sur le state du SyncEngine. Sert à
+  /// détecter qu'un PULL workspace vient de se terminer avec succès
+  /// (le SyncEngine émet alors un state avec un nouveau `lastSyncAt`)
+  /// pour rafraîchir tout de suite la liste des dossiers — sans ça,
+  /// les changements faits sur l'autre device n'apparaissaient qu'au
+  /// prochain push local. Demande utilisateur 2026-05-06.
+  DateTime? _lastObservedSyncAt;
+
   void _onSyncStateChanged(SyncEngineState state) {
     if (!mounted) return;
 
@@ -141,14 +149,17 @@ class _MainScreenState extends State<MainScreen>
       _lastSyncError = state.lastError;
     });
 
-    // Refresh the dossier list in two situations:
-    //  1) After a sync run completes (remote pulls may have updated data).
+    // Refresh the dossier list in trois situations:
+    //  1) After a sync RUN completes (push terminé).
     //  2) As soon as a new local op is enqueued (pending count goes up).
-    //     This makes name / firstName / city edits visible immediately
-    //     everywhere in the app, even while offline — without waiting for
-    //     NocoDB to acknowledge the push.
+    //  3) Après un PULL workspace réussi (lastSyncAt vient de bouger
+    //     même si isSyncing n'a jamais été true) — propagation cross-
+    //     device des changements arrivés depuis l'autre appareil.
     final newOpEnqueued = state.pendingCount > previousPendingCount;
-    if ((wasSyncing && !state.isSyncing) || newOpEnqueued) {
+    final syncAtChanged = state.lastSyncAt != null &&
+        state.lastSyncAt != _lastObservedSyncAt;
+    if (syncAtChanged) _lastObservedSyncAt = state.lastSyncAt;
+    if ((wasSyncing && !state.isSyncing) || newOpEnqueued || syncAtChanged) {
       _refreshDossiers();
     }
   }

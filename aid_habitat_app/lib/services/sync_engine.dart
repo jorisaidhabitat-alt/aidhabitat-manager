@@ -199,12 +199,24 @@ class SyncEngine {
   /// Exécute un pull workspace si online + non disposé + pas déjà en cours.
   /// Toutes les erreurs sont avalées (le pull est best-effort, ne doit
   /// jamais bloquer l'utilisateur).
+  ///
+  /// IMPORTANT 2026-05-06 : émet un état avec `lastSyncAt = now` à
+  /// chaque pull RÉUSSI, pour que les écrans ouverts (VisitReportScreen,
+  /// NotesWidget, MainScreen…) puissent re-fetch SQLite et afficher les
+  /// changements arrivés depuis l'autre device. Sans cette émission, le
+  /// pull mettait à jour SQLite « en silence » et l'UI continuait à
+  /// rendre le snapshot du moment de l'ouverture (symptôme reporté :
+  /// date de naissance + notes BALS Joris non synchronisées entre Mac
+  /// et iPad sur l'écran VAD).
   Future<void> _runPullSafe() async {
     if (_disposed || _pullRunning) return;
     if (ConnectivityService().isOffline) return;
     _pullRunning = true;
     try {
-      await DataService().refreshWorkspaceFromRemote();
+      final didRefresh = await DataService().refreshWorkspaceFromRemote();
+      if (didRefresh && !_disposed) {
+        _emitState(lastSyncAt: DateTime.now());
+      }
     } catch (_) {
       // Best-effort — un échec ne bloque pas, on retente au prochain tick.
     } finally {

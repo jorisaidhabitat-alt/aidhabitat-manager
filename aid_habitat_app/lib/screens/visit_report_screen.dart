@@ -19,6 +19,7 @@ import '../services/app_config.dart';
 import '../services/connectivity_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/data_service.dart';
+import '../services/sync_engine.dart';
 import '../components/beneficiary_badges.dart';
 import '../components/notes_widget.dart';
 import '../components/soft_transitions.dart';
@@ -239,6 +240,19 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     _tabController.addListener(_handleTabChange);
     _refreshDossier();
 
+    // Auto-refresh quand un pull workspace arrive depuis l'autre
+    // device — sinon les modifs faites sur Mac n'apparaissent pas sur
+    // iPad (et inversement) tant que l'écran VAD reste ouvert.
+    _syncSubscription = SyncEngine().stateStream.listen((state) {
+      if (!mounted) return;
+      final at = state.lastSyncAt;
+      if (at == null) return;
+      if (_lastObservedSyncAt != null && at == _lastObservedSyncAt) return;
+      _lastObservedSyncAt = at;
+      // ignore: discarded_futures
+      _refreshDossier();
+    });
+
     // Migration ponctuelle (demande utilisateur 2026-04-29) : on purge
     // les notes saisies sous les anciens tabKeys « Salle de
     // bain-Équipements » et « WC-Config. & équipements ». Désormais
@@ -321,6 +335,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// Subscription au BroadcastChannel web — annulée au dispose pour
   /// éviter de leak un listener si l'écran est navigué hors stack.
   StreamSubscription<dynamic>? _ipcSubscription;
+
+  /// Subscription au `SyncEngine.stateStream` — quand un pull workspace
+  /// vient de se terminer (lastSyncAt change), on re-fetch le dossier
+  /// depuis SQLite pour propager les modifs faites sur l'autre device
+  /// (Mac ↔ iPad). Sans ça, l'écran VAD restait sur le snapshot du
+  /// moment de l'ouverture (symptôme reporté 2026-05-06 : date de
+  /// naissance + notes BALS Joris non synchronisées).
+  StreamSubscription<SyncEngineState>? _syncSubscription;
+  DateTime? _lastObservedSyncAt;
 
   /// Merges the new text into the existing `drawing_json` (preserving
   /// strokes) and persists it via DataService, which also enqueues a
@@ -525,6 +548,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     _saveDebounce.clear();
     _ipcSubscription?.cancel();
     _ipcSubscription = null;
+    _syncSubscription?.cancel();
+    _syncSubscription = null;
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     super.dispose();
