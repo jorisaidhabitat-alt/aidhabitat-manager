@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -288,10 +289,56 @@ class _AuthRootState extends State<AuthRoot> {
   bool _isLoading = true;
   String? _bootError;
 
+  /// Écoute les pulls workspace pour rafraîchir le `currentUser`
+  /// quand un autre device a modifié son profil (notamment la photo).
+  /// Demande utilisateur 2026-05-06 : « j'ai changé la photo de
+  /// profil sur l'iPad, ça ne s'est pas actualisé sur le mac, ça
+  /// doit être le cas de manière quasi instantané ».
+  StreamSubscription<SyncEngineState>? _syncSubscription;
+  DateTime? _lastObservedSyncAt;
+
   @override
   void initState() {
     super.initState();
     _restoreSession();
+    _syncSubscription = SyncEngine().stateStream.listen((state) {
+      if (!mounted || _currentUser == null) return;
+      final at = state.lastSyncAt;
+      if (at == null) return;
+      if (_lastObservedSyncAt != null && at == _lastObservedSyncAt) return;
+      _lastObservedSyncAt = at;
+      // Re-lit l'utilisateur courant depuis SQLite (qui vient d'être
+      // mis à jour par `refreshLocalAuthStateFromRemote` chaîné dans
+      // refreshWorkspaceFromRemote). Si la photo a changé, MainScreen
+      // rebuild avec la nouvelle URL en prop.
+      // ignore: discarded_futures
+      _refreshCurrentUserAfterPull();
+    });
+  }
+
+  Future<void> _refreshCurrentUserAfterPull() async {
+    try {
+      final fresh = await _authService.getCurrentUser();
+      if (!mounted || fresh == null) return;
+      // Si rien n'a changé, on évite un setState/rebuild inutile.
+      final old = _currentUser;
+      if (old != null &&
+          old.profilePhotoUrl == fresh.profilePhotoUrl &&
+          old.pendingProfilePhotoDataUrl == fresh.pendingProfilePhotoDataUrl &&
+          old.displayName == fresh.displayName) {
+        return;
+      }
+      setState(() => _currentUser = fresh);
+    } catch (_) {
+      // best-effort
+    }
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    _syncSubscription = null;
+    super.dispose();
   }
 
   Future<void> _restoreSession() async {

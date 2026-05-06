@@ -736,6 +736,14 @@ class DataService {
       final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
       if (rawPayloads.isEmpty) return false;
       await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);
+      // Pull aussi l'auth state — sinon une nouvelle photo de profil
+      // uploadée sur l'autre device ne se propage pas tant que l'app
+      // n'est pas redémarrée. Demande utilisateur 2026-05-06 : la
+      // photo de profil doit s'actualiser de manière quasi-instantanée
+      // entre Mac et iPad. Best-effort : si le remote auth fail, on
+      // ne fait pas échouer le pull workspace pour autant.
+      // ignore: discarded_futures
+      refreshLocalAuthStateFromRemote();
       return true;
     } catch (_) {
       return false;
