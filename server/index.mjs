@@ -3162,14 +3162,50 @@ app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
       await writeAuthStore(store);
     }
 
+    // Bug rapporté 2026-05-07 : la photo de profil changée sur Mac
+    // n'apparaissait jamais sur iPad, même après reconnexion. Cause :
+    // l'écriture NocoDB échouait silencieusement (timeout, validation
+    // de longueur de champ LongText, etc.) et la photo restait
+    // uniquement dans `auth-store` RAM (volatile cross-deploy depuis
+    // la migration 2026-05-06 qui a sorti l'auth-store de Vercel Blob).
+    // Au prochain cold start serveur, la RAM était purgée → iPad lisait
+    // NocoDB qui n'avait jamais reçu la photo → vieille photo affichée.
+    //
+    // Maintenant on fail HARD en cas d'erreur NocoDB : le client reçoit
+    // un 5xx, le sync engine reclassifie en transient et retry au cycle
+    // suivant. Si NocoDB est durablement KO, l'utilisateur verra son
+    // sync-op rester en attente, ce qui est meilleur qu'une perte
+    // silencieuse.
     if (currentUser.ergoRecordId) {
       try {
         await updateRecord(TABLES.ergotherapeutes, currentUser.ergoRecordId, {
           profile_photo_base64: photoUrl,
         });
       } catch (error) {
-        console.warn('[profile-photo] sync NocoDB impossible, photo conservée localement.', error);
+        console.error(
+          '[profile-photo] échec sync NocoDB — '
+          + 'le client retentera (op transient).',
+          error,
+        );
+        throw httpError(
+          503,
+          `Synchronisation profil indisponible (${error.message || error}). `
+          + `La photo sera ré-uploadée automatiquement dès que possible.`,
+        );
       }
+    } else {
+      // ergoRecordId manquant — fallback risqué (la photo ne va PAS dans
+      // NocoDB). On log clairement et on refuse plutôt que silencieuse-
+      // ment perdre la photo.
+      console.error(
+        `[profile-photo] ergoRecordId manquant pour ${currentUser.email} — `
+        + 'photo non synchronisée NocoDB. Vérifier que cet utilisateur '
+        + 'a bien une ligne dans `ergotherapeutes`.',
+      );
+      throw httpError(
+        500,
+        'Compte ergothérapeute introuvable côté NocoDB. Contactez le support.',
+      );
     }
 
     memberRegistryCache = null;
