@@ -25,6 +25,7 @@ import '../models/types.dart';
 import '../models/visit_report_categories.dart';
 import '../services/connectivity_service.dart';
 import '../services/file_drop_listener.dart' show DroppedFile;
+import '../services/image_compressor.dart';
 import '../services/web_file_picker.dart';
 import '../services/web_file_saver.dart';
 import '../services/app_config.dart';
@@ -394,22 +395,33 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     required String defaultTag,
   }) async {
     if (!mounted) return;
-    final autoTitle = fileName.isNotEmpty
-        ? fileName.split('.').first
+
+    // Compression image si applicable (PNG/JPEG/HEIC/WebP/...) — passe
+    // les autres formats (PDF, etc.) tel quel. Voir
+    // `services/image_compressor.dart` pour le rationale (sync Mac→iPad
+    // sous 3s, plus de canvas browser donc plus de truncation).
+    final compressed = await compressImageForUpload(
+      bytes: Uint8List.fromList(bytes),
+      fileName: fileName,
+    );
+    final autoTitle = compressed.fileName.isNotEmpty
+        ? compressed.fileName.split('.').first
         : 'Document';
 
     setState(() => _isImporting = true);
     try {
       await _documentRepository.importDocumentBytes(
         patientId: _patientId,
-        bytes: bytes,
-        fileName: fileName,
+        bytes: compressed.bytes,
+        fileName: compressed.fileName,
         tags: const [],
         title: autoTitle,
       );
       await _loadDocuments(silent: true);
       if (!mounted) return;
-      _showSnack('Document enregistré localement.');
+      _showSnack(compressed.wasRecompressed
+          ? 'Image enregistrée (compressée pour sync rapide).'
+          : 'Document enregistré localement.');
     } catch (err) {
       _showError('Import impossible: $err');
     } finally {
@@ -1224,13 +1236,19 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     try {
       for (final f in files) {
         try {
-          final autoTitle = f.name.isNotEmpty
-              ? f.name.split('.').first
+          // Compression si image (cf. compressImageForUpload).
+          final compressed = await compressImageForUpload(
+            bytes: f.bytes,
+            fileName: f.name,
+            sourceMimeType: f.mimeType,
+          );
+          final autoTitle = compressed.fileName.isNotEmpty
+              ? compressed.fileName.split('.').first
               : 'Document';
           await _documentRepository.importDocumentBytes(
             patientId: _patientId,
-            bytes: f.bytes,
-            fileName: f.name,
+            bytes: compressed.bytes,
+            fileName: compressed.fileName,
             tags: const [],
             title: autoTitle,
           );

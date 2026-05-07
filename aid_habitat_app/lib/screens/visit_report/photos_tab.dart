@@ -16,6 +16,7 @@ import '../../services/app_config.dart';
 import '../../services/connectivity_service.dart';
 import '../../services/data_service.dart';
 import '../../services/file_drop_listener.dart' show DroppedFile;
+import '../../services/image_compressor.dart';
 import '../../services/media_cache_service.dart';
 import '../../services/sync_engine.dart';
 import '../../services/web_file_picker.dart';
@@ -404,31 +405,39 @@ class _PhotosTabState extends State<PhotosTab>
   }
 
   /// Mirror de `_persistPicked` mais à partir de bytes en mémoire
-  /// (drag-and-drop OS). Pas de compression ici — on prend le fichier
-  /// tel que déposé. Si l'image dépasse les ~5Mo l'utilisateur
-  /// devrait la compresser avant ; on ne ré-encode pas en JPEG pour
-  /// éviter une dépendance image_processing côté web.
+  /// (drag-and-drop OS, pickWebFile, capture browser).
+  ///
+  /// Compression 2026-05-07 : on ré-encode l'image en JPEG quality 80
+  /// max 1600px AVANT l'upload (pure Dart via le package `image`,
+  /// PAS de canvas browser, donc pas de risque de troncature à 1 MiB
+  /// observé avec image_picker_for_web sur Safari macOS). Une photo
+  /// brute de 2-3 MB devient ~150-400 KB, ce qui ramène la sync
+  /// Mac→iPad sous les 3 secondes en conditions normales.
   Future<void> _persistDroppedBytes({
     required Uint8List bytes,
     required String originalName,
     required String categoryTag,
   }) async {
+    final compressed = await compressImageForUpload(
+      bytes: bytes,
+      fileName: originalName,
+    );
     final order = _nextOrderInCategory(categoryTag);
     final simpleTitle = _buildSimplePhotoTitle(categoryTag, order);
     final fileName = _buildPhotoFileName(
       categoryTag,
-      originalName,
+      compressed.fileName,
       simpleTitle,
     );
     final inserted = await _dataService.importDocumentBytes(
       patientId: widget.dossier.patient.id,
-      bytes: bytes,
+      bytes: compressed.bytes,
       fileName: fileName,
       title: simpleTitle,
       tags: [categoryTag],
       categoryOrder: order,
     );
-    _photoBytesCache[inserted.id] = bytes;
+    _photoBytesCache[inserted.id] = compressed.bytes;
   }
 
   Future<void> _persistPicked(XFile xfile, String categoryTag) async {
