@@ -32,7 +32,7 @@ class RetirementFundsRepository {
       for (final fund in remoteFunds) {
         final existing = await txn.query(
           'retirement_funds',
-          columns: ['sync_state'],
+          columns: ['sync_state', 'last_edited_at'],
           where: 'id = ?',
           whereArgs: [fund.id],
           limit: 1,
@@ -40,7 +40,20 @@ class RetirementFundsRepository {
         if (existing.isNotEmpty) {
           final syncState = existing.first['sync_state'] as String?;
           if (syncState != null && syncState != SyncState.synced.name) {
-            continue; // preserve local pending mutation
+            // Stratégie LWW (last-writer-wins) — fix 2026-05-07.
+            // Cf. note_repository / document_repository / wiki_repository
+            // pour le rationale détaillé : ne plus skipper aveuglément
+            // sur `pendingSync` car ça bloque la propagation cross-
+            // device dès qu'une op est orpheline. On compare désormais
+            // `last_edited_at` (timestamp authoritatif côté serveur).
+            final localUpdatedAt = existing.first['last_edited_at'] as String?;
+            final remoteIsNewer = _isRemoteUpdatedAtNewer(
+              remoteUpdatedAt: fund.lastEditedAt,
+              localUpdatedAt: localUpdatedAt,
+            );
+            if (!remoteIsNewer) {
+              continue;
+            }
           }
         }
         final now = DateTime.now().toIso8601String();
@@ -207,5 +220,21 @@ class RetirementFundsRepository {
       // this through the next sync.
       createdAt: row['last_synced_at'] as String?,
     );
+  }
+
+  /// Compare deux timestamps ISO-8601 pour décider si la version remote
+  /// est strictement plus récente que la version locale. Renvoie `false`
+  /// si timestamp manquant/invalide. Cf. parité avec note_repository /
+  /// document_repository / wiki_repository.
+  bool _isRemoteUpdatedAtNewer({
+    required String? remoteUpdatedAt,
+    required String? localUpdatedAt,
+  }) {
+    if (remoteUpdatedAt == null || remoteUpdatedAt.isEmpty) return false;
+    if (localUpdatedAt == null || localUpdatedAt.isEmpty) return true;
+    final remote = DateTime.tryParse(remoteUpdatedAt);
+    final local = DateTime.tryParse(localUpdatedAt);
+    if (remote == null || local == null) return false;
+    return remote.isAfter(local);
   }
 }

@@ -2192,17 +2192,23 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
   }
 
   // Synchronise le mot de passe NocoDB avec l'auth-store :
-  //  - Si mot_de_passe est renseigné → on hache avec scrypt et on stocke le hash.
-  //    Un checksum sha256 du texte brut permet de détecter les changements sans
-  //    stocker le mot de passe lui-même côté serveur.
-  //  - Si mot_de_passe est vide → on supprime les champs noco* de l'auth-store
-  //    (retour au mot de passe auto-généré).
-  // Dans tous les cas, nocoPassword est effacé de l'objet membre en mémoire.
+  //  - `nocoPassword` est UNDEFINED si NocoDB a échoué et qu'on est
+  //    tombé sur les `MEMBER_PROFILES` hardcoded → on NE TOUCHE PAS
+  //    au store (le hash en cache reste valide). Bug rapporté
+  //    2026-05-07 : « de temps en temps mot de passe invalide même
+  //    avec le bon mdp ». Symptôme exact : NocoDB rame ou timeout au
+  //    cold start, fallback hardcoded → reset des nocoPasswordHash →
+  //    login échoue jusqu'au prochain refresh NocoDB réussi.
+  //  - `nocoPassword` est une STRING non-vide → on hache avec scrypt
+  //    et on stocke le hash si différent du précédent.
+  //  - `nocoPassword` est NULL (string vide ou champ explicitement
+  //    effacé côté NocoDB) → on supprime les `noco*` du store.
+  // Dans tous les cas, nocoPassword est effacé de l'objet membre.
   for (const member of members) {
     const plain = member.nocoPassword;
-    member.nocoPassword = null; // jamais conservé en clair en mémoire
+    member.nocoPassword = null; // jamais conservé en clair
 
-    if (plain) {
+    if (typeof plain === 'string' && plain.length > 0) {
       const checksum = crypto.createHash('sha256').update(plain).digest('hex');
       const stored = store.users[member.email];
       if (stored?.nocoPasswordChecksum !== checksum) {
@@ -2215,8 +2221,8 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
         };
         storeMutated = true;
       }
-    } else {
-      // Mot de passe NocoDB effacé → retirer les champs noco* de l'auth-store
+    } else if (plain === null) {
+      // mot_de_passe NocoDB explicitement vide → reset noco*
       const stored = store.users[member.email];
       if (stored?.nocoPasswordHash) {
         const { nocoPasswordHash: _h, nocoPasswordSalt: _s, nocoPasswordChecksum: _c, ...rest } = stored;
@@ -2224,6 +2230,8 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
         storeMutated = true;
       }
     }
+    // Si plain === undefined : on garde le hash en cache (fallback
+    // NocoDB KO).
   }
 
   if (storeMutated) {
@@ -3298,7 +3306,16 @@ app.post('/api/auth/login', async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
-    const { members, store } = await loadMemberRegistryForAuth();
+    // 2026-05-07 — fix login intermittent. Avant : `loadMemberRegistryForAuth`
+    // se contentait du cache RAM, retournait un store VIDE
+    // (`users: {}`) si l'instance Vercel n'avait pas encore hydraté le
+    // cache. Conséquence : 401 "Mot de passe incorrect" aléatoire après
+    // chaque cold start, jusqu'à ce qu'un autre endpoint (ex. /api/dossiers)
+    // déclenche `loadMemberRegistry` et remplisse le cache.
+    // Maintenant : login force `loadMemberRegistry()` qui pull NocoDB
+    // + calcule les `nocoPasswordHash` si pas en cache → toujours
+    // valide même au cold start.
+    const { members, store } = await loadMemberRegistry();
     const member = members.find((entry) => entry.email === email);
 
     if (!member) {

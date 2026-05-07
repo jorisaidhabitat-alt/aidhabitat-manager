@@ -432,6 +432,13 @@ class DossierRepository {
                 existingRows.first['sync_state'] as String,
               );
 
+        // NOTE 2026-05-07 : ce chemin LEGACY n'est plus appelé (cf.
+        // commentaire de la fonction). Le chemin courant est
+        // `mergeRemoteDossierPayloads` qui a son propre LWW. Si on
+        // réactive cette fonction un jour, ajouter ici la stratégie
+        // LWW (comparer remote_updated_at) — actuellement le modèle
+        // `Dossier` Flutter n'expose pas l'updated_at, donc skip
+        // simple sur `pendingSync` pour rester safe.
         if (existingRows.isNotEmpty && existingSyncState != SyncState.synced) {
           continue;
         }
@@ -551,9 +558,45 @@ class DossierRepository {
                 existingDossier.first['sync_state'] as String,
               );
 
+        // Pré-calcule "remote strictement plus récent que local" — utilisé
+        // par les gardes 1 et 2 ci-dessous pour échapper au skip aveugle
+        // sur `pendingSync`. Fix 2026-05-07 (parité avec note_repository
+        // et document_repository) : avant ce fix, dès qu'une op
+        // `pendingSync` orpheline existait sur le dossier/patient/housing,
+        // toute mise à jour cross-device était bloquée indéfiniment —
+        // l'utilisateur ne voyait JAMAIS les modifs faites sur l'autre
+        // device tant qu'il n'avait pas resolu l'op.
+        //
+        // Avec LWW : si le payload remote est strictement plus récent que
+        // le `remote_updated_at` local, on autorise le merge même quand
+        // sync_state ≠ synced. La sync_op pending pourra toujours retenter
+        // son push après ; si elle échoue (409), markConflict prendra le
+        // relais. Si elle réussit, elle ré-écrit la valeur dans NocoDB
+        // (potentiellement la même que ce qu'on vient de merger).
+        bool remoteIsStrictlyNewer = false;
+        final remoteUpdatedAtForLww = _extractRemoteUpdatedAt(raw);
+        if (remoteUpdatedAtForLww != null && existingDossier.isNotEmpty) {
+          final dossierRow = await txn.query(
+            'dossiers',
+            columns: ['remote_updated_at'],
+            where: 'local_id = ?',
+            whereArgs: [dossierId],
+            limit: 1,
+          );
+          if (dossierRow.isNotEmpty) {
+            final localRemoteUpdated =
+                dossierRow.first['remote_updated_at'] as String?;
+            remoteIsStrictlyNewer = localRemoteUpdated == null ||
+                localRemoteUpdated.isEmpty ||
+                remoteUpdatedAtForLww.compareTo(localRemoteUpdated) > 0;
+          }
+        }
+
         if (existingDossier.isNotEmpty &&
-            existingSyncState != SyncState.synced) {
-          // User has unsync'd local edits — do not overwrite them.
+            existingSyncState != SyncState.synced &&
+            !remoteIsStrictlyNewer) {
+          // User has unsync'd local edits ET le remote n'est pas plus
+          // récent → on préserve la version locale.
           continue;
         }
 
@@ -565,7 +608,9 @@ class DossierRepository {
         // « le nom modifié disparaît pendant quelques secondes » — le
         // serveur renvoyait l'ancien nom (eventual consistency) et le
         // merge l'écrivait par-dessus le nouveau nom local.
-        if (existingDossier.isNotEmpty) {
+        //
+        // 2026-05-07 : LWW également appliqué ici (cf. garde 1).
+        if (existingDossier.isNotEmpty && !remoteIsStrictlyNewer) {
           final patientLocalIdExisting =
               existingDossier.first['patient_local_id'] as String?;
           final housingLocalIdExisting =

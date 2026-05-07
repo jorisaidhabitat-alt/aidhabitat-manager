@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
 import '../services/auth_service.dart';
@@ -19,7 +18,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = true;
   bool _isSubmitting = false;
-  bool _isBootstrapPasswordActive = false;
   String? _error;
   String? _selectedEmail;
   List<LocalAppUser> _users = const [];
@@ -33,27 +31,17 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _loadUsers() async {
     final users = await _authService.fetchAvailableUsers();
     final selectedEmail = users.isNotEmpty ? users.first.email : null;
-    final isBootstrapPasswordActive = selectedEmail == null
-        ? false
-        : await _authService.isBootstrapPasswordActiveForEmail(selectedEmail);
     if (!mounted) return;
     setState(() {
       _users = users;
       _selectedEmail = selectedEmail;
-      _isBootstrapPasswordActive = isBootstrapPasswordActive;
       _isLoading = false;
     });
   }
 
-  Future<void> _handleAccountSelection(String? email) async {
+  void _handleAccountSelection(String? email) {
     if (email == null) return;
-    final isBootstrapPasswordActive = await _authService
-        .isBootstrapPasswordActiveForEmail(email);
-    if (!mounted) return;
-    setState(() {
-      _selectedEmail = email;
-      _isBootstrapPasswordActive = isBootstrapPasswordActive;
-    });
+    setState(() => _selectedEmail = email);
   }
 
   Future<void> _submit() async {
@@ -134,35 +122,17 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF7C6DAA,
-                            ).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: const Icon(
-                            LucideIcons.lock,
-                            color: Color(0xFF7C6DAA),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
+                        // Demande utilisateur 2026-05-07 : épuration de la
+                        // page connexion. Plus d'icône cadenas, plus de
+                        // texte de description, plus d'astuce mot de passe
+                        // initial. On garde uniquement titre + 2 champs +
+                        // bouton.
                         const Text(
-                          "Connexion locale",
+                          "Connexion",
                           style: TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.w800,
                             color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Accès bureau Flutter hors ligne. Les comptes sont lus sur ce poste.",
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            height: 1.4,
                           ),
                         ),
                         const SizedBox(height: 28),
@@ -205,16 +175,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           onSubmitted: (_) => _submit(),
                         ),
-                        if (_isBootstrapPasswordActive) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            "Mot de passe initial du poste: ${AuthService.bootstrapPassword}",
-                            style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
                         if (_error != null) ...[
                           const SizedBox(height: 16),
                           Container(
