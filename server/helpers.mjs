@@ -144,12 +144,12 @@ export const FIELD_SETS = {
   observations: ['uuid_source', 'dossier_id', 'observation_equipements', 'projet_souhait_usage', 'resume_preconisations'],
   referencesLibelle: ['libelle'],
   referencesNom: ['nom'],
-  ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement'],
+  ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'profile_photo_base64'],
   communes: ['nom', 'code_postal', 'epci_id1', 'epci'],
   baremesAnah: ['libelle', 'nombre_personnes', 'annee_plafond'],
   caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire'],
   wikiTags: ['uuid_source', 'tags'],
-  wiki: ['uuid_source', 'titre', 'photos', 'contenu', 'wiki_tags_id', 'wiki_tags'],
+  wiki: ['uuid_source', 'titre', 'photos', 'photo_base64', 'contenu', 'wiki_tags_id', 'wiki_tags'],
 };
 
 export const AUTONOMY_ITEMS = [
@@ -1734,12 +1734,18 @@ export const buildMemberFromErgoRecord = (record) => {
   if (!email) return null;
   const special = specialMemberProfile(email);
   const derivedName = special?.displayName || refLabel(record) || email;
+  // Migration 2026-05-06 : photo profil en base64 dans la nouvelle
+  // colonne `profile_photo_base64` (NocoDB). Fallback `nom_etablissement_id`
+  // pour les anciennes lignes qui contiennent l'URL Blob (legacy).
+  const profilePhotoB64 = stringValue(field(record, 'profile_photo_base64')).trim();
+  const profilePhotoLegacy = stringValue(field(record, 'nom_etablissement_id')).trim();
   return {
     email,
     displayName: derivedName,
     role: special?.role || 'ERGO',
     selectable: special?.selectable ?? true,
-    profilePhotoUrl: resolveClientMediaUrl(field(record, 'nom_etablissement_id')),
+    profilePhotoUrl: profilePhotoB64
+        || resolveClientMediaUrl(profilePhotoLegacy),
     establishmentId: field(record, 'etablissements_id') ? String(field(record, 'etablissements_id')) : '',
     establishmentLabel: refLabel(field(record, 'etablissement')) || special?.establishmentLabel || '',
     ergoRecordId: String(record.id),

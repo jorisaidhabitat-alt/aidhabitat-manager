@@ -273,7 +273,7 @@ const FIELD_SETS = {
   baremesAnah: ['libelle', 'nombre_personnes', 'annee_plafond'],
   caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire', 'a_une_aide_specifique'],
   wikiTags: ['uuid_source', 'tags'],
-  wiki: ['uuid_source', 'titre', 'photos', 'contenu', 'wiki_tags_id', 'wiki_tags'],
+  wiki: ['uuid_source', 'titre', 'photos', 'photo_base64', 'contenu', 'wiki_tags_id', 'wiki_tags'],
 };
 
 const AUTONOMY_ITEMS = [
@@ -3383,14 +3383,14 @@ app.post('/api/wiki-library', requireAuth, async (req, res, next) => {
     let imageUrl = stringValue(req.body?.imageUrl).trim() || '/wiki-access.svg';
     const imageDataUrl = stringValue(req.body?.imageDataUrl).trim();
     if (imageDataUrl) {
+      // Migration 2026-05-06 — plus de Vercel Blob. L'image est
+      // stockée en base64 directement dans `wiki.photo_base64`
+      // (colonne ajoutée 2026-05-06). On garde le data URL tel quel
+      // côté response — le client Flutter affiche les data URLs
+      // nativement (cf. wiki_screen.dart cached_remote_image).
       const imagePayload = parseImageDataUrl(imageDataUrl);
-      const fileName = `${safeSlug(title, 'wiki-item')}-${Date.now()}.${imagePayload.extension}`;
-      const { url: uploadedUrl } = await putObject({
-        key: `wiki-library/${fileName}`,
-        buffer: imagePayload.buffer,
-        contentType: `image/${imagePayload.extension === 'jpg' ? 'jpeg' : imagePayload.extension}`,
-      });
-      imageUrl = uploadedUrl;
+      const mimeType = `image/${imagePayload.extension === 'jpg' ? 'jpeg' : imagePayload.extension}`;
+      imageUrl = `data:${mimeType};base64,${imagePayload.buffer.toString('base64')}`;
     }
 
     const item = normalizeWikiItemPayload({
@@ -3416,10 +3416,15 @@ app.post('/api/wiki-library', requireAuth, async (req, res, next) => {
       const primaryTag = stringValue(item.tags[0]).trim();
       const primaryTagRecord = primaryTag ? normalizedMap.get(primaryTag.toLowerCase()) : undefined;
       const existing = wikiRecords.find((record) => stringValue(field(record, 'uuid_source')).trim() === item.id);
+      // Migration 2026-05-06 — l'image est en base64 dans
+      // `photo_base64`. La colonne `photos` legacy contenait une URL
+      // Blob — on la set à vide pour les nouvelles créations.
+      const isDataUrl = String(item.imageUrl || '').startsWith('data:');
       const payload = {
         uuid_source: item.id,
         titre: item.title,
-        photos: item.imageUrl,
+        photos: isDataUrl ? '' : item.imageUrl,
+        photo_base64: isDataUrl ? item.imageUrl : '',
         contenu: serializeWikiContent(item),
         wiki_tags_id: primaryTagRecord ? Number(primaryTagRecord.id) : null,
       };
@@ -3463,14 +3468,10 @@ app.put('/api/wiki-library/:itemId', requireAuth, async (req, res, next) => {
     let imageUrl = current.imageUrl;
     const imageDataUrl = stringValue(req.body?.imageDataUrl).trim();
     if (imageDataUrl) {
+      // Migration 2026-05-06 — plus de Blob (cf. POST /api/wiki-library).
       const imagePayload = parseImageDataUrl(imageDataUrl);
-      const fileName = `${safeSlug(title, 'wiki-item')}-${Date.now()}.${imagePayload.extension}`;
-      const { url: uploadedUrl } = await putObject({
-        key: `wiki-library/${fileName}`,
-        buffer: imagePayload.buffer,
-        contentType: `image/${imagePayload.extension === 'jpg' ? 'jpeg' : imagePayload.extension}`,
-      });
-      imageUrl = uploadedUrl;
+      const mimeType = `image/${imagePayload.extension === 'jpg' ? 'jpeg' : imagePayload.extension}`;
+      imageUrl = `data:${mimeType};base64,${imagePayload.buffer.toString('base64')}`;
     }
 
     const updated = normalizeWikiItemPayload({
