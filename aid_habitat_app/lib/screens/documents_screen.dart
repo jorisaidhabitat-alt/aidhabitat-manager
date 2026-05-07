@@ -4628,18 +4628,43 @@ class _RemoteImageAnnotatorWrapperState
     }
   }
 
-  /// Vérifie qu'un buffer ressemble à une image (JPEG/PNG/GIF/WebP/BMP/HEIC).
-  /// Permet de détecter une entrée stale dans `web_media_cache` qui
-  /// contiendrait du HTML SPA fallback ou 0 byte — cas où l'image
-  /// importée sur iPad apparaissait sur Mac mais sans ouvrir de preview.
+  /// Vérifie qu'un buffer ressemble à une image COMPLÈTE (JPEG / PNG /
+  /// GIF / WebP / BMP / HEIC). Détecte les entrées stales dans
+  /// `web_media_cache` (HTML SPA fallback, 0 byte) ET les uploads
+  /// tronqués (PNG sans bloc IEND, JPEG sans marqueur EOI 0xFFD9).
+  ///
+  /// Renforcé 2026-05-07 — bug rapporté : un PNG tronqué à exactement
+  /// 1 MiB était stocké tel quel sur NocoDB, le serveur le re-servait
+  /// au format complet (1 MiB), mais Safari iPad PWA refusait de
+  /// rendre la moitié inférieure car bloc IEND manquant. La validation
+  /// head-only laissait passer ces bytes corrompus dans le cache.
   bool _looksLikeImageBytes(Uint8List? bytes) {
     if (bytes == null || bytes.length < 8) return false;
-    if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return true;
+    // JPEG: FF D8 FF en tête + FF D9 en queue
+    if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+      if (bytes.length < 4) return false;
+      final last = bytes.length;
+      return bytes[last - 2] == 0xFF && bytes[last - 1] == 0xD9;
+    }
+    // PNG: 89 50 4E 47 en tête + bloc IEND (12 bytes) en queue
     if (bytes[0] == 0x89 &&
         bytes[1] == 0x50 &&
         bytes[2] == 0x4E &&
         bytes[3] == 0x47) {
-      return true;
+      if (bytes.length < 12) return false;
+      final last = bytes.length;
+      return bytes[last - 12] == 0x00 &&
+          bytes[last - 11] == 0x00 &&
+          bytes[last - 10] == 0x00 &&
+          bytes[last - 9] == 0x00 &&
+          bytes[last - 8] == 0x49 &&
+          bytes[last - 7] == 0x45 &&
+          bytes[last - 6] == 0x4E &&
+          bytes[last - 5] == 0x44 &&
+          bytes[last - 4] == 0xAE &&
+          bytes[last - 3] == 0x42 &&
+          bytes[last - 2] == 0x60 &&
+          bytes[last - 1] == 0x82;
     }
     if (bytes[0] == 0x47 &&
         bytes[1] == 0x49 &&

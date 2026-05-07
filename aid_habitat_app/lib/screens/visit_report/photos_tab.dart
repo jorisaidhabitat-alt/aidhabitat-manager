@@ -1598,20 +1598,43 @@ final Map<String, Future<Uint8List?>> _photoBytesInflight = {};
 /// cas observé sur Mac quand iPad a poussé la photo sur NocoDB et qu'un
 /// premier fetch côté Mac avait échoué silencieusement.
 ///
-/// Demande utilisateur 2026-05-04 : « les images importées sur iPad
-/// doivent également être accessibles sur le Mac, actuellement je les
-/// vois mais pas de preview, pas cliquable » — symptôme d'un cache
-/// pourri qui renvoie des bytes non décodables par `Image.memory`.
+/// Renforcé 2026-05-07 : on vérifie AUSSI les marqueurs end-of-file
+/// pour PNG (bloc IEND) et JPEG (marqueur EOI 0xFFD9). Sans ça, un
+/// upload tronqué (~1 MiB exactement coupé par le browser ou Vercel
+/// Edge) passait l'ancien check head-only et s'affichait avec la
+/// moitié inférieure en gris sur Safari iPad. Maintenant les bytes
+/// tronqués sont rejetés du cache → placeholder propre + l'utilisateur
+/// sait qu'il doit réimporter.
 bool _looksLikeImageBytes(Uint8List? bytes) {
   if (bytes == null || bytes.length < 8) return false;
-  // JPEG: FF D8 FF
-  if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return true;
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  // JPEG: FF D8 FF en tête + FF D9 en queue
+  if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+    if (bytes.length < 4) return false;
+    final last = bytes.length;
+    return bytes[last - 2] == 0xFF && bytes[last - 1] == 0xD9;
+  }
+  // PNG: 89 50 4E 47 0D 0A 1A 0A en tête + IEND (49 45 4E 44) au début
+  // des 8 derniers bytes (suivi de 4 bytes CRC).
   if (bytes[0] == 0x89 &&
       bytes[1] == 0x50 &&
       bytes[2] == 0x4E &&
       bytes[3] == 0x47) {
-    return true;
+    if (bytes.length < 12) return false;
+    // Les 12 derniers bytes d'un PNG complet sont :
+    // 00 00 00 00  49 45 4E 44  AE 42 60 82
+    final last = bytes.length;
+    return bytes[last - 12] == 0x00 &&
+        bytes[last - 11] == 0x00 &&
+        bytes[last - 10] == 0x00 &&
+        bytes[last - 9] == 0x00 &&
+        bytes[last - 8] == 0x49 &&
+        bytes[last - 7] == 0x45 &&
+        bytes[last - 6] == 0x4E &&
+        bytes[last - 5] == 0x44 &&
+        bytes[last - 4] == 0xAE &&
+        bytes[last - 3] == 0x42 &&
+        bytes[last - 2] == 0x60 &&
+        bytes[last - 1] == 0x82;
   }
   // GIF: "GIF8"
   if (bytes[0] == 0x47 &&

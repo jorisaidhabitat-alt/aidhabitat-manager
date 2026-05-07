@@ -404,6 +404,84 @@ const toBoolOrNull = (value) => {
 };
 const boolText = (value) => String(Boolean(value));
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
+
+/**
+ * Validate that a binary buffer represents a COMPLETE image (correct
+ * end-of-file marker). Returns `null` if valid, or a descriptive error
+ * string if truncated/corrupt. Used to reject silent uploads of broken
+ * images that would otherwise be cached on NocoDB and silently truncated
+ * forever.
+ *
+ * Bug rapporté 2026-05-07 — un PNG uploadé depuis macOS a fini stocké à
+ * exactement 1 MiB (1024×1024 bytes) sur NocoDB, sans bloc IEND, donc
+ * Safari iPad PWA l'affichait avec la moitié inférieure en gris.
+ * Probablement une coupure côté Vercel Edge ou browser FileReader.
+ * Sans validation côté serveur, l'utilisateur ne s'aperçoit du problème
+ * qu'au moment où un autre device essaie de l'afficher (trop tard).
+ *
+ * Couvre PNG (`IEND` chunk = 0x49 0x45 0x4E 0x44 0xAE 0x42 0x60 0x82 sur
+ * 8 bytes finaux après les 4 bytes de longueur=0) et JPEG (EOI marker
+ * `FF D9` sur 2 bytes finaux). Pour les autres formats (WebP, HEIC, GIF,
+ * BMP) on vérifie juste la signature de tête, faute de marqueur EOF
+ * standard simple.
+ */
+const validateImageBufferIsComplete = (buffer, hintedMimeType = '') => {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    return 'Buffer vide';
+  }
+  const mt = String(hintedMimeType || '').toLowerCase();
+
+  // PNG : 89 50 4E 47 0D 0A 1A 0A en tête + 00 00 00 00 49 45 4E 44 AE 42 60 82 en queue
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47
+    && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A
+  ) {
+    if (buffer.length < 12) return 'PNG trop court';
+    const tail = buffer.subarray(buffer.length - 12);
+    const expected = Buffer.from([
+      0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
+      0xAE, 0x42, 0x60, 0x82,
+    ]);
+    if (!tail.equals(expected)) {
+      return 'PNG tronqué (bloc IEND manquant)';
+    }
+    return null;
+  }
+
+  // JPEG : FF D8 FF en tête + FF D9 en queue
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    if (buffer.length < 4) return 'JPEG trop court';
+    const tail = buffer.subarray(buffer.length - 2);
+    if (tail[0] !== 0xFF || tail[1] !== 0xD9) {
+      return 'JPEG tronqué (marqueur EOI 0xFFD9 manquant)';
+    }
+    return null;
+  }
+
+  // GIF, WebP, BMP, HEIC : on vérifie juste la signature de tête. Pas
+  // de marqueur EOF universellement simple.
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return null; // GIF
+  if (
+    buffer.length >= 12
+    && buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+    && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+  ) {
+    return null; // WebP
+  }
+  if (buffer[0] === 0x42 && buffer[1] === 0x4D) return null; // BMP
+  if (
+    buffer.length >= 12
+    && buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70
+  ) {
+    return null; // HEIC/HEIF
+  }
+
+  // Pas une image — laisse passer (PDF, autres docs validés ailleurs).
+  if (mt.startsWith('image/')) {
+    return 'Format image non reconnu (signature inconnue)';
+  }
+  return null;
+};
 const latestRecord = (records) => {
   const sorted = [...records].sort((a, b) => {
     const aDate = new Date(field(a, 'UpdatedAt') || field(a, 'updated_at') || field(a, 'created_at') || 0).getTime();
@@ -5475,6 +5553,23 @@ app.post(
         throw httpError(400, 'Fichier manquant');
       }
 
+      // Garde-fou anti-corruption : refuser les images tronquées avant
+      // de les stocker sur NocoDB. cf. validateImageBufferIsComplete.
+      const corruptionReason = validateImageBufferIsComplete(bodyBuffer, mimeType);
+      if (corruptionReason) {
+        // ignore: avoid_print
+        console.warn(
+          `[upload] refus fichier corrompu patient=${patientId} `
+          + `documentLocalId=${documentLocalId} fileName=${requestedFileName} `
+          + `size=${bodyBuffer.length} reason=${corruptionReason}`,
+        );
+        throw httpError(
+          422,
+          `Fichier image corrompu / incomplet (${corruptionReason}). `
+          + `Veuillez réessayer l'import depuis l'application.`,
+        );
+      }
+
       const access = await resolveBeneficiaryAccess(req.appUser, patientId);
       const documentContext = buildBeneficiaryDocumentContext({
         beneficiaryRecord: access.beneficiaryRecord,
@@ -5525,6 +5620,33 @@ app.post('/api/documents', requireAuth, documentUpload.single('file'), async (re
     let contentBase64 = req.body?.contentBase64;
     if (!contentBase64 && req.file?.buffer) {
       contentBase64 = req.file.buffer.toString('base64');
+    }
+
+    // Garde-fou anti-corruption (cf. /api/documents/upload). Vérifie
+    // sur le buffer multer ou sur le base64 fourni inline.
+    const validationBuffer = req.file?.buffer
+      || (contentBase64 ? Buffer.from(contentBase64, 'base64') : null);
+    const validationMime = stringValue(req.body?.mimeType).trim()
+      || req.file?.mimetype
+      || '';
+    if (validationBuffer && validationBuffer.length > 0) {
+      const corruptionReason = validateImageBufferIsComplete(
+        validationBuffer,
+        validationMime,
+      );
+      if (corruptionReason) {
+        // ignore: avoid_print
+        console.warn(
+          `[upload-multipart] refus fichier corrompu patient=${patientId} `
+          + `documentLocalId=${documentLocalId} fileName=${requestedFileName} `
+          + `size=${validationBuffer.length} reason=${corruptionReason}`,
+        );
+        throw httpError(
+          422,
+          `Fichier image corrompu / incomplet (${corruptionReason}). `
+          + `Veuillez réessayer l'import depuis l'application.`,
+        );
+      }
     }
 
     const access = await resolveBeneficiaryAccess(req.appUser, patientId);
@@ -5675,6 +5797,35 @@ app.post(
 
       // Reassemble — fail-fast si chunks manquants ou non contigus.
       const buffer = await reassembleChunks(uploadId);
+
+      // Garde-fou anti-corruption : si l'image réassemblée est tronquée
+      // (chunk manquant en fin → IEND/EOI absent), on refuse plutôt que
+      // de la stocker. Le client recevra un 422 + pourra retenter.
+      const finalizeMime = stringValue(req.body?.mimeType).trim()
+        || 'application/octet-stream';
+      const finalizeCorruptionReason = validateImageBufferIsComplete(
+        buffer,
+        finalizeMime,
+      );
+      if (finalizeCorruptionReason) {
+        // ignore: avoid_print
+        console.warn(
+          `[finalize] refus fichier corrompu uploadId=${uploadId} `
+          + `patient=${patientId} documentLocalId=${documentLocalId} `
+          + `fileName=${requestedFileName} size=${buffer.length} `
+          + `reason=${finalizeCorruptionReason}`,
+        );
+        // Cleanup tout de suite — pas la peine de garder les chunks
+        // d'un upload qu'on refuse. Le client va retenter avec un
+        // nouvel uploadId.
+        await deleteChunks(uploadId);
+        throw httpError(
+          422,
+          `Fichier image corrompu / incomplet `
+          + `(${finalizeCorruptionReason}). Veuillez réessayer l'import.`,
+        );
+      }
+
       const contentBase64 = buffer.toString('base64');
 
       const access = await resolveBeneficiaryAccess(req.appUser, patientId);
