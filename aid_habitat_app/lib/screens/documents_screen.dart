@@ -266,26 +266,35 @@ class _DocumentsScreenState extends State<DocumentsScreen>
 
   // ----- Import flows -----
 
-  /// Caméra — iOS/Android/web. Sur web (PWA iPad), `image_picker` route
-  /// vers `<input type="file" accept="image/*" capture="environment">` qui
-  /// ouvre directement l'appareil photo iOS. Sur desktop, fallback sur le
-  /// file picker système.
+  /// Caméra — iOS/Android/web. Sur web (PWA iPad), on bypass complètement
+  /// `image_picker` et on utilise `pickWebFile` qui crée un
+  /// `<input type="file" accept="image/*" capture="environment">` direct.
+  /// `image_picker_for_web` re-encode via canvas et certaines images
+  /// ressortaient tronquées à 1 MiB sur Safari macOS (bug rapporté
+  /// 2026-05-07, bloc PNG IEND manquant). En lisant le fichier brut
+  /// via FileReader on préserve l'intégrité bit-pour-bit.
   Future<void> _pickFromCamera() async {
     if (_isPicking || _isImporting) return;
     _isPicking = true;
     try {
-      if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
+      if (kIsWeb) {
+        final picked = await pickWebFile(accept: 'image/*', capture: true);
+        if (picked == null) return;
+        await _openUploadModalFromBytes(
+          bytes: picked.bytes,
+          fileName: picked.name,
+          defaultTag: 'Photo',
+        );
+        return;
+      }
+      if (Platform.isIOS || Platform.isAndroid) {
         final xfile = await _imagePicker.pickImage(
           source: ImageSource.camera,
           maxWidth: _kCompressMaxWidth,
           imageQuality: _kCompressQuality,
         );
         if (xfile == null) return;
-        if (kIsWeb) {
-          await _openUploadModalWeb(xfile, defaultTag: 'Photo');
-        } else {
-          await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
-        }
+        await _openUploadModal(File(xfile.path), defaultTag: 'Photo');
         return;
       }
       // Desktop (macOS/Windows/Linux) → fallback galerie système.
