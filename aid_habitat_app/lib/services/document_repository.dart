@@ -945,11 +945,36 @@ class DocumentRepository {
 
         final existing = existingRows.isNotEmpty ? existingRows.first : null;
         final existingSyncState = existing?['sync_state'] as String?;
-        // Skip drafts / pending uploads : ils sont en cours de push et ne
-        // doivent pas être écrasés par la version remote tant qu'on n'a
-        // pas confirmé que le push est réussi.
+        // Stratégie LWW (last-writer-wins) — même fix que pour
+        // `mergeRemoteNotePage` (note_repository.dart 2026-05-07).
+        //
+        // Avant : on skippait aveuglément dès que la row locale était
+        // `pendingSync`. Conséquence : si une ancienne op de cette row
+        // était bloquée en `failed`/`pendingSync` côté Mac, toutes les
+        // versions remote suivantes (notamment les photos importées
+        // depuis iPad) étaient ignorées. Symptôme reporté 2026-05-07 :
+        // « nouvelle photo Accessibilité importée sur iPad mais ne se
+        // met pas sur Mac, default de synchronisation toujours présent ».
+        //
+        // Désormais :
+        //  1. Si row locale `synced` → merge directement (pas de risque)
+        //  2. Sinon, comparer `remote.updatedAt` vs `local.updated_at` :
+        //     - remote plus récent → merge (la version distante gagne,
+        //       on rattrape un local stale)
+        //     - remote plus ancien → skip (préserve un push en cours)
+        //  3. Timestamps absents/invalides → skip safely (ancien
+        //     comportement)
         if (existing != null && existingSyncState != SyncState.synced.name) {
-          continue;
+          final localUpdatedAt = existing['updated_at'] as String?;
+          final remoteUpdatedAt = remote['updatedAt']?.toString();
+          final remoteIsNewer = _isRemoteUpdatedAtNewer(
+            remoteUpdatedAt: remoteUpdatedAt,
+            localUpdatedAt: localUpdatedAt,
+          );
+          if (!remoteIsNewer) {
+            continue;
+          }
+          // Sinon on tombe en bas pour faire le merge.
         }
         // Anti-resurrection : si l'utilisateur a supprimé le doc localement
         // (pending_delete=1) et que le DELETE remote n'a pas encore été
@@ -1270,6 +1295,24 @@ class DocumentRepository {
       default:
         return 'application/octet-stream';
     }
+  }
+
+  /// Compare deux timestamps ISO-8601 (ex. `2026-05-07T14:30:00Z`)
+  /// pour décider si la version remote est strictement plus récente
+  /// que la version locale. Utilisé par `mergeRemoteDocuments` pour
+  /// décider si on rattrape une row locale `pendingSync` orpheline.
+  /// En cas de timestamp manquant ou invalide, renvoie `false` (= refuse
+  /// le merge) pour rester safe.
+  bool _isRemoteUpdatedAtNewer({
+    required String? remoteUpdatedAt,
+    required String? localUpdatedAt,
+  }) {
+    if (remoteUpdatedAt == null || remoteUpdatedAt.isEmpty) return false;
+    if (localUpdatedAt == null || localUpdatedAt.isEmpty) return true;
+    final remote = DateTime.tryParse(remoteUpdatedAt);
+    final local = DateTime.tryParse(localUpdatedAt);
+    if (remote == null || local == null) return false;
+    return remote.isAfter(local);
   }
 }
 
