@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/types.dart';
+import '../../services/connectivity_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../services/url_resolver.dart';
@@ -41,14 +42,44 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   Timer? _saveDebounce;
   final WikiRepository _wikiRepo = WikiRepository();
 
+  /// Polling cross-device 2 s. Demande utilisateur 2026-05-07 :
+  /// les préconisations doivent se synchroniser comme les autres
+  /// onglets (avant ce fix, c'était PURE LOCAL — la liste sur
+  /// l'autre device n'était mise à jour qu'au reload de l'app).
+  ///
+  /// Le polling est SAFE grâce aux gardes existantes côté
+  /// `refreshVisitRecommendationsFromRemote` (cf. `dossier_repository.
+  /// dart`) :
+  ///  - skip si `existingSyncState == pendingSync` (modifs locales en
+  ///    cours pas encore poussées)
+  ///  - merge `[...remoteItems, ...localDrafts]` où localDrafts =
+  ///    items sans `wikiItemId` (= picker pas encore validé) — ne
+  ///    sont jamais écrasés par le remote
+  ///
+  /// On ajoute un garde-fou supplémentaire ici : skip si l'utilisateur
+  /// a un save en attente (`_saveDebounce.isActive`) ou en flight
+  /// (`_saving`) → on ne touche pas à `_items` pendant qu'il édite.
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      if (ConnectivityService().isOffline) return;
+      // Skip si saisie en cours côté local — évite d'écraser un title
+      // ou un customTitle que l'utilisateur est en train de taper.
+      if (_saveDebounce?.isActive == true) return;
+      if (_saving) return;
+      // ignore: discarded_futures
+      _pollRefresh();
+    });
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     // Flush immédiat si un save était en attente (debounce non tiré).
     // Sinon, toute modif dans les 2 dernières secondes avant fermeture
     // de l'onglet / app était perdue.
@@ -62,6 +93,54 @@ class _RecommendationsTabState extends State<RecommendationsTab>
           .catchError((_) {});
     }
     super.dispose();
+  }
+
+  /// Tick de polling cross-device : refresh remote → relit SQLite
+  /// → met à jour `_items` si changement. Best-effort, swallows
+  /// errors. Ne touche RIEN si la fetch remote échoue (offline,
+  /// 5xx, etc.) — on garde l'état local courant.
+  Future<void> _pollRefresh() async {
+    try {
+      final didRefresh = await widget.repository
+          .refreshVisitRecommendationsFromRemote(widget.dossier.id);
+      if (!mounted) return;
+      // Re-checks après l'await : utilisateur peut avoir commencé à
+      // éditer pendant la requête HTTP (~500ms-1s).
+      if (_saveDebounce?.isActive == true) return;
+      if (_saving) return;
+      if (!didRefresh) return;
+      final fresh = await widget.repository
+          .fetchVisitRecommendations(widget.dossier.id);
+      if (!mounted) return;
+      if (_saveDebounce?.isActive == true) return;
+      if (_saving) return;
+      // Diff léger : on ne setState que si la liste a vraiment changé,
+      // sinon on déclenche un rebuild inutile à chaque tick.
+      if (_recommendationListsEqual(_items, fresh)) return;
+      setState(() => _items = fresh);
+    } catch (_) {
+      // best-effort : un échec ponctuel ne casse rien.
+    }
+  }
+
+  /// Compare deux listes d'items recommandation. Renvoie true si
+  /// strictement identiques (mêmes ids dans le même ordre, mêmes
+  /// champs serializables). Utilisé pour skipper les setState
+  /// no-op côté polling.
+  bool _recommendationListsEqual(
+    List<VisitRecommendationItem> a,
+    List<VisitRecommendationItem> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i += 1) {
+      final x = a[i];
+      final y = b[i];
+      if (x.id != y.id) return false;
+      if (x.wikiItemId != y.wikiItemId) return false;
+      if (x.customTitle != y.customTitle) return false;
+      if (x.note != y.note) return false;
+    }
+    return true;
   }
 
   Future<void> _load() async {

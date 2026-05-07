@@ -86,10 +86,16 @@ class SyncEngine {
   /// AUTRES champs du dossier (date naissance, cases à cocher, etc.)
   /// — endpoint plus lourd (`/api/dossiers`) mais 1 s reste tenable.
   ///
-  /// 1 s (vs 2 s historique) — demande utilisateur 2026-05-06 « la
-  /// synchronisation entre les deux supports doit être bien plus
-  /// rapide ». Sub-2 s end-to-end sur tout l'écran VAD.
-  static const Duration _pullIntervalUltraActive = Duration(seconds: 1);
+  /// 500 ms (vs 1 s puis 2 s historique) — demande utilisateur
+  /// 2026-05-07 : « ça doit être quasiment instantané ». Trade-off
+  /// connu : double les Function Invocations Vercel (passe d'environ
+  /// 8 %/mois du quota Hobby 1M à environ 16 %/mois en solo dev).
+  /// Tient largement avant la migration App Developer prévue fin mai.
+  /// Au-delà de 500 ms, on devient à la limite de ce que l'utilisateur
+  /// perçoit comme « instantané » : push iPad ~1 s + pull ≤ 500 ms
+  /// + merge ~300 ms = ≤ 2 s end-to-end.
+  static const Duration _pullIntervalUltraActive =
+      Duration(milliseconds: 500);
 
   /// Délai entre 2 pulls quand l'utilisateur est IDLE (pas de save
   /// depuis ≥ 1 minute). Sub-3s end-to-end même sans interaction —
