@@ -106,6 +106,17 @@ class NocodbApiClient {
   /// take longer on mobile networks.
   static const Duration _uploadTimeout = Duration(seconds: 60);
 
+  /// Génération PDF de rapport : aligné sur la limite Vercel function
+  /// (300 s = 5 min). Le serveur fait 5 queryAll NocoDB + embed images
+  /// + flatten PDF (pdf-lib) — sur une base peuplée + cold start ça
+  /// peut largement dépasser 60 s. Avant 2026-05-07 le client timeout
+  /// à 60 s coupait la génération ALORS QUE le serveur était encore
+  /// en train de répondre → bandeau « TimeoutException after
+  /// 0:01:00 » signalé par l'utilisateur. Désormais le client attend
+  /// que le serveur finisse (ou que Vercel kill la fonction à 300 s,
+  /// auquel cas on récupère une 504 propre).
+  static const Duration _reportGenerationTimeout = Duration(seconds: 300);
+
   String get _baseUrl => AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
 
   Map<String, String> get _headers => {
@@ -961,7 +972,7 @@ class NocodbApiClient {
               Uri.parse('$_baseUrl/api/reports/visit/$dossierId'),
               headers: _headers,
             )
-            .timeout(_uploadTimeout),
+            .timeout(_reportGenerationTimeout),
       );
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1071,7 +1082,8 @@ class NocodbApiClient {
     // retry au cycle suivant au lieu de marquer définitivement failed.
     http.StreamedResponse streamed;
     try {
-      streamed = await _client.send(request).timeout(_uploadTimeout);
+      streamed =
+          await _client.send(request).timeout(_reportGenerationTimeout);
     } catch (error) {
       if (_isTransientNetworkError(error)) {
         throw TransientRemoteException(

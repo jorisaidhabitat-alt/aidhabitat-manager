@@ -607,17 +607,24 @@ class _PhotosTabState extends State<PhotosTab>
         rowCells.add(const SizedBox.shrink());
       }
       if (i > 0) rows.add(const SizedBox(height: spacing));
-      // Pas de `IntrinsicHeight` ici — sur Flutter web (Safari iPad),
-      // le double-pass de layout qu'il déclenche est instable quand le
-      // contenu d'une carte grandit dynamiquement (ajout de photo) : les
-      // rangées suivantes voyaient leur hauteur recalculée dans un
-      // ordre inattendu et venaient se superposer aux rangées
-      // précédentes (rapporté 2026-05-05). Avec un `Row` simple +
-      // `crossAxisAlignment.start`, chaque cellule garde sa hauteur
-      // naturelle, le `Column` parent stacke les rangées de manière
-      // déterministe, plus de chevauchement.
-      rows.add(Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+
+      // Pour les rangées non-finales : `Row` simple + `crossAxisAlignment
+      // .start`. Chaque cellule garde sa hauteur naturelle, le `Column`
+      // parent stacke les rangées de manière déterministe — pas de
+      // chevauchement même quand une card grandit dynamiquement (ajout
+      // de photo). Bug rapporté 2026-05-05 quand `IntrinsicHeight` était
+      // appliqué partout.
+      //
+      // Pour la DERNIÈRE rangée (qui contient le bouton « Ajouter une
+      // partie ») : on ré-active `IntrinsicHeight` + `stretch` pour que
+      // le bouton fasse la même hauteur que les cards sœurs (demande
+      // utilisateur 2026-05-06). Sécurisé contre le chevauchement
+      // puisqu'il n'y a pas de rangée en dessous à pousser.
+      final isLastRow = i + 3 >= allCells.length;
+      final row = Row(
+        crossAxisAlignment: isLastRow
+            ? CrossAxisAlignment.stretch
+            : CrossAxisAlignment.start,
         children: [
           Expanded(child: rowCells[0]),
           const SizedBox(width: spacing),
@@ -625,7 +632,8 @@ class _PhotosTabState extends State<PhotosTab>
           const SizedBox(width: spacing),
           Expanded(child: rowCells[2]),
         ],
-      ));
+      );
+      rows.add(isLastRow ? IntrinsicHeight(child: row) : row);
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
@@ -690,9 +698,12 @@ class _PhotosTabState extends State<PhotosTab>
   /// fichier de documents »). Fond violet pâle, bordure pointillée
   /// violette, cercle plus + label centré.
   ///
-  /// Le `Container` ne fixe PAS de hauteur — c'est le parent
-  /// `IntrinsicHeight` (cf. build) qui aligne sa hauteur sur celle
-  /// de la card sœur la plus grande de la même ligne.
+  /// Le `Container` ne fixe PAS de hauteur. La rangée parente est
+  /// wrapée dans `IntrinsicHeight` + `crossAxisAlignment.stretch`
+  /// (cf. `build`) → le bouton se cale sur la hauteur de la card
+  /// sœur la plus grande (demande utilisateur 2026-05-06 : « le
+  /// cadre Ajouter une partie doit être de la même hauteur que les
+  /// autres cards »).
   Widget _buildAddSectionButton() {
     return Builder(
       builder: (ctx) => MouseRegion(
