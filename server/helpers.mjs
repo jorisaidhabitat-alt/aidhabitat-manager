@@ -237,6 +237,10 @@ export const absoluteUrl = (value) => {
 export const resolveClientMediaUrl = (value) => {
   const stringified = String(value || '').trim();
   if (!stringified) return '';
+  // Data URL `data:image/...;base64,...` (migration 2026-05-06 hors
+  // de Vercel Blob) → passe-plat. Sinon le fallback préfixe avec `/`
+  // et donne une URL invalide.
+  if (stringified.startsWith('data:')) return stringified;
   if (LOCALHOST_URL_PATTERN.test(stringified)) {
     try {
       const parsed = new URL(stringified);
