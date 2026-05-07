@@ -41,7 +41,9 @@ export const VISIT_RECOMMENDATIONS_STORE_URL = dataFileUrl('visit-recommendation
 export const VISIT_RECOMMENDATIONS_TABLE_NAME = process.env.NOCODB_VISIT_RECOMMENDATIONS_TABLE_NAME || 'mobile_visit_recommendations';
 export const WIKI_LIBRARY_STORE_URL = dataFileUrl('wikiLibraryStatic.json');
 export const BUNDLED_WIKI_LIBRARY_PATH = path.resolve(SERVER_DIR_PATH, '../data/wikiLibraryStatic.json');
-export const AUTH_CACHE_TTL_MS = 30_000;
+// 2026-05-07 : 30s → 10s pour propagation cross-device sub-3s de la
+// photo profil (cf. duplicate dans index.mjs).
+export const AUTH_CACHE_TTL_MS = 10_000;
 export const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 export const ANAH_STATUS_TTL_MS = 60_000;
 export const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';

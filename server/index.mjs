@@ -56,7 +56,12 @@ const VISIT_RECOMMENDATIONS_STORE_URL = dataFileUrl('visit-recommendations.json'
 const VISIT_RECOMMENDATIONS_TABLE_NAME = process.env.NOCODB_VISIT_RECOMMENDATIONS_TABLE_NAME || 'mobile_visit_recommendations';
 const WIKI_LIBRARY_STORE_URL = dataFileUrl('wikiLibraryStatic.json');
 const BUNDLED_WIKI_LIBRARY_PATH = path.resolve(SERVER_DIR_PATH, '../data/wikiLibraryStatic.json');
-const AUTH_CACHE_TTL_MS = 30_000;
+// 2026-05-07 : 30s → 10s pour propagation cross-device sub-3s de la
+// photo profil. Le cache reste utile pour absorber la rafale d'appels
+// auth liés au polling sync (un device call /api/auth/local-state
+// toutes les 2-3 s ; avec TTL 10s, on hit NocoDB ~6 fois/min/instance,
+// négligeable).
+const AUTH_CACHE_TTL_MS = 10_000;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ANAH_STATUS_TTL_MS = 60_000;
 const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';
@@ -3100,7 +3105,14 @@ app.get('/api/auth/session', requireAuth, async (req, res) => {
 
 app.get('/api/auth/local-state', requireAuth, async (req, res, next) => {
   try {
-    const { members } = await loadMemberRegistryForAuth();
+    // `loadMemberRegistry` (vs `loadMemberRegistryForAuth`) respecte
+    // un TTL court qui force un refresh NocoDB régulier — sinon le
+    // cache permanent par-instance Vercel Fluid Compute fait que la
+    // photo profil mise à jour sur Mac n'arrive jamais sur iPad si
+    // les requêtes tombent sur des instances différentes (rapporté
+    // 2026-05-07). Le coût (1 GET NocoDB toutes les ~10 s par
+    // instance active) est négligeable.
+    const { members } = await loadMemberRegistry();
     const currentUser = req.appUser;
     const visibleMembers = currentUser?.role === 'ADMIN'
       ? members
