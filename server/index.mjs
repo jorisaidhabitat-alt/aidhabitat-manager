@@ -1271,11 +1271,16 @@ const mapWikiRecordToItem = (record) => {
     ? metadata.tags
     : linkedTag ? [linkedTag] : [];
 
+  // Migration 2026-05-06 — la photo est désormais en base64 dans
+  // `photo_base64`. La colonne `photos` legacy contient une URL Blob
+  // pour les anciennes lignes — on l'utilise en fallback.
+  const photoB64 = stringValue(field(record, 'photo_base64')).trim();
+  const photoLegacy = stringValue(field(record, 'photos')).trim();
   return mapWikiLibraryItem({
     id: field(record, 'uuid_source') || `wiki-record-${record.id}`,
     title: stringValue(field(record, 'titre')),
     description: metadata.description,
-    imageUrl: stringValue(field(record, 'photos')),
+    imageUrl: photoB64 || photoLegacy,
     tags,
     category: metadata.category,
     createdAt: field(record, 'CreatedAt') || new Date().toISOString(),
@@ -3496,10 +3501,13 @@ app.put('/api/wiki-library/:itemId', requireAuth, async (req, res, next) => {
       const primaryTag = stringValue(updated.tags[0]).trim();
       const primaryTagRecord = primaryTag ? normalizedMap.get(primaryTag.toLowerCase()) : undefined;
       const existing = wikiRecords.find((record) => stringValue(field(record, 'uuid_source')).trim() === updated.id);
+      // Migration 2026-05-06 — image en base64 dans `photo_base64`.
+      const isDataUrl = String(updated.imageUrl || '').startsWith('data:');
       const payload = {
         uuid_source: updated.id,
         titre: updated.title,
-        photos: updated.imageUrl,
+        photos: isDataUrl ? '' : updated.imageUrl,
+        photo_base64: isDataUrl ? updated.imageUrl : '',
         contenu: serializeWikiContent(updated),
         wiki_tags_id: primaryTagRecord ? Number(primaryTagRecord.id) : null,
       };

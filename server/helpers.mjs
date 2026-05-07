@@ -1117,16 +1117,31 @@ export const buildLegacyWcInstances = (payload) => {
   }];
 };
 
-export const mapWikiLibraryItem = (item) => ({
-  id: String(item.id),
-  title: stringValue(item.title),
-  description: stringValue(item.description),
-  imageUrl: String(item.imageUrl || '').startsWith('/wiki-') ? String(item.imageUrl) : absoluteUrl(item.imageUrl),
-  tags: normalizeWikiItemPayload(item).tags,
-  category: stringValue(item.category) || 'Autre',
-  createdAt: item.createdAt,
-  updatedAt: item.updatedAt,
-});
+export const mapWikiLibraryItem = (item) => {
+  const raw = String(item.imageUrl || '');
+  // Data URLs (image base64 inline depuis NocoDB) → passe-plat.
+  // Asset statique `/wiki-*.svg` → passe-plat.
+  // Sinon (URL absolute legacy / chemin relatif) → absoluteUrl pour
+  // que le client la résolve correctement.
+  let imageUrl;
+  if (raw.startsWith('data:')) {
+    imageUrl = raw;
+  } else if (raw.startsWith('/wiki-')) {
+    imageUrl = raw;
+  } else {
+    imageUrl = absoluteUrl(item.imageUrl);
+  }
+  return {
+    id: String(item.id),
+    title: stringValue(item.title),
+    description: stringValue(item.description),
+    imageUrl,
+    tags: normalizeWikiItemPayload(item).tags,
+    category: stringValue(item.category) || 'Autre',
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+};
 
 export const mapWikiRecordToItem = (record) => {
   const metadata = parseWikiContent(field(record, 'contenu'));
@@ -1135,11 +1150,15 @@ export const mapWikiRecordToItem = (record) => {
     ? metadata.tags
     : linkedTag ? [linkedTag] : [];
 
+  // Migration 2026-05-06 — `photo_base64` (data URL) prioritaire,
+  // fallback sur l'ancienne colonne `photos` (URL Blob legacy).
+  const photoB64 = stringValue(field(record, 'photo_base64')).trim();
+  const photoLegacy = stringValue(field(record, 'photos')).trim();
   return mapWikiLibraryItem({
     id: field(record, 'uuid_source') || `wiki-record-${record.id}`,
     title: stringValue(field(record, 'titre')),
     description: metadata.description,
-    imageUrl: stringValue(field(record, 'photos')),
+    imageUrl: photoB64 || photoLegacy,
     tags,
     category: metadata.category,
     createdAt: field(record, 'CreatedAt') || new Date().toISOString(),
