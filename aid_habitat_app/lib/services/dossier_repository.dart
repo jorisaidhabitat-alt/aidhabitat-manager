@@ -1114,11 +1114,57 @@ class DossierRepository {
       'easy_access_set': raw['easyAccess'] == null ? 0 : 1,
       'comments': raw['comments']?.toString() ?? '',
       'access_observation': raw['accessObservation']?.toString() ?? '',
+      // Pièces par niveau — fix 2026-05-07. Le serveur renvoie
+      // `roomsBreakdown` (Map) ; on l'éclate en 5 colonnes
+      // `*_rooms_json` côté SQLite pour que l'UI (accessibility_tab) lise
+      // les pièces par niveau sans changer son code.
+      //
+      // Si le serveur renvoie `null` (colonne `rooms_breakdown_json` pas
+      // encore créée côté NocoDB OU vide), on **NE TOUCHE PAS** aux
+      // colonnes locales — c'est le job de `_upsertByLocalId` qui ne
+      // mettra pas à jour les colonnes absentes du payload. Donc on
+      // omet ces clés du payload quand `roomsBreakdown == null`. Les
+      // pièces locales SQLite sont préservées tant que le serveur ne
+      // renvoie pas explicitement une valeur.
+      ..._extractRoomsBreakdownToColumns(raw['roomsBreakdown']),
       'updated_at': now,
       // Voir _buildDossierPayload : on stocke l'updatedAt serveur, pas
       // l'horodatage local du merge (sert au check optimistic au push).
       'remote_updated_at': _extractRemoteUpdatedAt(raw) ?? now,
       'sync_state': SyncState.synced.name,
+    };
+  }
+
+  /// Convertit l'objet `roomsBreakdown` (5 niveaux possibles) en colonnes
+  /// `*_rooms_json` SQLite. Renvoie une Map vide si le serveur ne fournit
+  /// rien (colonne pas encore en NocoDB) — auquel cas
+  /// `_upsertByLocalId` préserve les valeurs locales existantes.
+  Map<String, dynamic> _extractRoomsBreakdownToColumns(dynamic raw) {
+    if (raw == null) return const {};
+    Map<String, dynamic>? map;
+    if (raw is Map) {
+      map = raw.cast<String, dynamic>();
+    } else if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) map = decoded.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    if (map == null) return const {};
+    String encodeList(dynamic value) {
+      if (value is List) {
+        return jsonEncode(
+          value.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList(),
+        );
+      }
+      return jsonEncode(const <String>[]);
+    }
+    return {
+      'basement_rooms_json': encodeList(map['basement']),
+      'rdc_rooms_json': encodeList(map['rdc']),
+      'floor_rooms_json': encodeList(map['floor']),
+      'second_floor_rooms_json': encodeList(map['secondFloor']),
+      'third_floor_rooms_json': encodeList(map['thirdFloor']),
     };
   }
 
