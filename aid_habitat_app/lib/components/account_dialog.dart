@@ -137,10 +137,15 @@ class _AccountDialogState extends State<AccountDialog> {
     });
 
     try {
+      // Compression aggressive — la photo profil est affichée 48×48
+      // dans la sidebar et 96×96 dans le dialog. 400×400 suffit
+      // largement et garantit un base64 < 70 KB (sous la limite
+      // NocoDB LongText à 100 000 chars). Avant 2026-05-07 :
+      // 800×800 q85 → ~130 KB → rejet NocoDB 422 → 503 côté client.
       final picked = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 800,
-        imageQuality: 85,
+        maxWidth: 400,
+        imageQuality: 70,
       );
       if (picked == null) {
         setState(() => _isUploadingPhoto = false);

@@ -3164,6 +3164,24 @@ app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
     const mimeType = `image/${extension === 'jpg' ? 'jpeg' : extension}`;
     const photoUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
+    // Garde-fou taille NocoDB : la colonne LongText est limitée à
+    // 100 000 caractères (limite par défaut NocoDB v2). Au-delà, le
+    // PATCH renvoie 422 ERR_INVALID_VALUE_FOR_FIELD. On rejette ici
+    // avec 413 explicite pour que le client puisse reproposer une
+    // photo plus petite (la nouvelle UI compresse à 400×400 q70 →
+    // ~50 KB en data URL, largement sous la limite).
+    if (photoUrl.length > 95_000) {
+      res.status(413).json({
+        success: false,
+        error:
+          `Image trop grosse (${Math.round(photoUrl.length / 1024)} KB) — `
+          + `merci de re-tenter avec une photo plus petite. La PWA récente `
+          + `compresse automatiquement, peut-être que ton client est obsolète `
+          + `(hard-refresh Cmd+Shift+R).`,
+      });
+      return;
+    }
+
     const store = await readAuthStore();
     const credentials = store.users[currentUser.email];
     if (credentials) {
