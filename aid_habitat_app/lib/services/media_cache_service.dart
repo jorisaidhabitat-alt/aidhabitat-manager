@@ -69,6 +69,24 @@ class MediaCacheService {
     final resolved = resolveMediaUrl(url);
     if (resolved.isEmpty) return null;
 
+    // Migration 2026-05-06 — data URL `data:image/...;base64,...` :
+    // les images NocoDB (photo profil, wiki) sont désormais inline en
+    // base64. On décode localement, sans HTTP, et on persiste comme
+    // d'habitude pour bénéficier du cache hors-ligne.
+    if (resolved.startsWith('data:')) {
+      final dir = await _getCacheDir();
+      final file = File(p.join(dir.path, _cacheKey(resolved)));
+      if (await file.exists()) return file;
+      final bytes = _decodeDataUrl(resolved);
+      if (bytes == null || bytes.isEmpty) return null;
+      try {
+        await file.writeAsBytes(bytes, flush: true);
+        return file;
+      } catch (_) {
+        return null;
+      }
+    }
+
     final dir = await _getCacheDir();
     final file = File(p.join(dir.path, _cacheKey(resolved)));
 
@@ -239,6 +257,14 @@ class MediaCacheService {
   }) async {
     final resolved = resolveMediaUrl(url);
     if (resolved.isEmpty) return null;
+
+    // Migration 2026-05-06 — data URL inline (photo profil, wiki).
+    // Décodage local immédiat, pas de HTTP. Évite l'erreur 414 URI
+    // Too Long quand on passait toute la base64 dans `Uri.parse`.
+    if (resolved.startsWith('data:')) {
+      return _decodeDataUrl(resolved);
+    }
+
     final hash = sha1.convert(utf8.encode(resolved)).toString();
 
     final db = await LocalDatabase.instance.database;
@@ -351,6 +377,29 @@ class MediaCacheService {
         statusCode: -1,
         message: e.toString(),
       );
+    }
+  }
+
+  /// Décode une data URL `data:<mime>;base64,<…>` en bytes. Retourne
+  /// null si le format n'est pas reconnu ou si le décodage base64
+  /// échoue. Utilisé pour les photos profil + wiki images stockées
+  /// inline dans NocoDB (migration 2026-05-06 hors de Vercel Blob).
+  static Uint8List? _decodeDataUrl(String dataUrl) {
+    try {
+      final commaIdx = dataUrl.indexOf(',');
+      if (commaIdx < 0) return null;
+      final header = dataUrl.substring(0, commaIdx);
+      final payload = dataUrl.substring(commaIdx + 1);
+      // Le header doit contenir `;base64`. Si ce n'est pas une data
+      // URL base64 (texte brut URL-encodé par exemple), on ne sait
+      // pas décoder.
+      if (!header.toLowerCase().contains(';base64')) return null;
+      // Strip whitespace éventuel (les data URLs peuvent contenir
+      // des newlines selon comment elles ont été générées).
+      final clean = payload.replaceAll(RegExp(r'\s+'), '');
+      return base64Decode(clean);
+    } catch (_) {
+      return null;
     }
   }
 }
