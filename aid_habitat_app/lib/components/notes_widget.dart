@@ -557,6 +557,14 @@ class _NotesWidgetState extends State<NotesWidget> {
             refreshed,
             hydrateController: true,
           ));
+      // Pousse les flags médicaux fraîchement mergés vers le parent —
+      // sans ça, ContextTab ne voyait jamais les `medicalFlags` mis à
+      // jour côté autre device. Bug 2026-05-07 : pathologie cochée
+      // sur iPad ne se propageait pas sur Mac (`_pageMedicalFlags` mis
+      // à jour en interne mais aucune émission `onMedicalFlagsChanged`
+      // après le polling refresh — l'émission n'était faite qu'au
+      // chargement initial via `_loadPages`).
+      _emitMedicalFlagsForCurrentPage();
     } catch (_) {
       // best-effort
     }
@@ -792,6 +800,11 @@ class _NotesWidgetState extends State<NotesWidget> {
             if (!mounted || _isDirty) return;
             setState(() => _applyJson(_currentPage, refreshed,
                 hydrateController: true));
+            // Émet aussi après le refresh initial (cf. fix
+            // _refreshCurrentPageFromRemoteAfterPull) — la version remote
+            // peut contenir de nouveaux medicalFlags posés depuis l'autre
+            // device entre l'init local et l'arrivée du refresh.
+            _emitMedicalFlagsForCurrentPage();
           }),
     );
 
