@@ -406,8 +406,40 @@ class NoteRepository {
     final existing = existingRows.isNotEmpty ? existingRows.first : null;
     final existingSyncState = existing?['sync_state'] as String?;
 
+    // Stratégie LWW (last-writer-wins) basée sur les timestamps.
+    //
+    // Avant 2026-05-07 : on skippait simplement si `existingSyncState !=
+    // synced`, ce qui bloquait définitivement la propagation cross-
+    // device dès qu'une row locale était orpheline en `pendingSync`
+    // (ex. push échoué silencieusement, op `failed` non rejouée…).
+    // Symptôme reporté : « j'ai modifié la note médicale Contexte de
+    // vie de BALS Joris sur iPad, sur Mac ça ne se change pas ».
+    //
+    // Désormais :
+    //  1. Si `remote.updatedAt > local.updated_at` → merge (le serveur
+    //     a une version plus récente, on prend, même si la row locale
+    //     est `pendingSync`).
+    //  2. Si `remote.updatedAt <= local.updated_at` → skip (notre
+    //     version locale est plus fraîche, le push en attente la
+    //     propagera bientôt).
+    //  3. Cas dégradés (timestamps absents / non-parsables) → fallback
+    //     sur l'ancien comportement (skip si !synced) pour préserver
+    //     le travail local en cours.
+    //
+    // Le NotesWidget protège déjà la frappe en cours via `_isDirty` →
+    // pas de risque d'écraser ce que l'utilisateur tape MAINTENANT,
+    // c'est seulement les modifs anciennes orphelines qui peuvent
+    // être ratrapées.
     if (existing != null && existingSyncState != SyncState.synced.name) {
-      return false;
+      final localUpdatedAt = existing['updated_at'] as String?;
+      final remoteIsNewer = _isRemoteUpdatedAtNewer(
+        remoteUpdatedAt: updatedAt,
+        localUpdatedAt: localUpdatedAt,
+      );
+      if (!remoteIsNewer) {
+        return false;
+      }
+      // Sinon on tombe en bas pour faire le merge.
     }
 
     // Si le serveur ne nous renvoie pas explicitement de planPhase
@@ -434,6 +466,22 @@ class NoteRepository {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     return true;
+  }
+
+  /// Compare deux timestamps ISO-8601 (ex. `2026-05-07T14:30:00Z`)
+  /// pour décider si la version remote est strictement plus récente
+  /// que la version locale. En cas de timestamp manquant ou invalide,
+  /// renvoie `false` (= refuse le merge) pour rester safe.
+  bool _isRemoteUpdatedAtNewer({
+    required String? remoteUpdatedAt,
+    required String? localUpdatedAt,
+  }) {
+    if (remoteUpdatedAt == null || remoteUpdatedAt.isEmpty) return false;
+    if (localUpdatedAt == null || localUpdatedAt.isEmpty) return true;
+    final remote = DateTime.tryParse(remoteUpdatedAt);
+    final local = DateTime.tryParse(localUpdatedAt);
+    if (remote == null || local == null) return false;
+    return remote.isAfter(local);
   }
 
   /// Migration locale (demande utilisateur 2026-04-29, option « 3 ») :
