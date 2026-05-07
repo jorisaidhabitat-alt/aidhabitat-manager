@@ -240,6 +240,23 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     _tabController.addListener(_handleTabChange);
     _refreshDossier();
 
+    // Pull BULK de toutes les notes du patient — 1 seul HTTP request
+    // ramène toutes les pages de tous les onglets (Contexte de vie,
+    // Sanitaires-Notes, Préconisations, Plans, etc.) directement en
+    // SQLite. Démarre IMMÉDIATEMENT à l'ouverture de l'écran (en
+    // parallèle du `_refreshDossier`) pour que les NotesWidget
+    // affichent la note dès qu'on arrive sur l'onglet, pas 1-2 s
+    // plus tard. Demande utilisateur 2026-05-07 : « les notes
+    // écrites doivent arriver en même temps que les autres infos
+    // du relevé de visite quand je l'ouvre ».
+    //
+    // Fire-and-forget : on ne bloque PAS le mount initial. Quand le
+    // pull se termine on signale via `_lastNotesBulkAt` → les
+    // NotesWidget montés re-fetchent leur page courante depuis
+    // SQLite (déjà à jour grâce au merge bulk).
+    // ignore: discarded_futures
+    _kickInitialNotesBulkPull();
+
     // Active le mode pull « ultra-actif » (2 s) tant que l'écran VAD
     // est ouvert. Sans ça, le device qui REGARDE (sans taper) bascule
     // en idle au bout d'1 min et le pull tombe à 30 s — les notes
@@ -580,6 +597,30 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     setState(() {});
   }
 
+  /// Compteur incrémenté à chaque pull bulk de notes terminé. Passé en
+  /// prop au `NotesWidget` (`externalRefreshToken`) → le widget
+  /// déclenche `_reloadCurrentPageFromStore()` quand il change, ce qui
+  /// re-lit SQLite (désormais à jour grâce au merge bulk) et affiche
+  /// la note. Le mécanisme `externalRefreshToken` existe déjà — on
+  /// l'utilise au lieu d'inventer un nouveau canal.
+  int _notesBulkPullToken = 0;
+
+  /// Pull bulk des notes — fire-and-forget depuis `initState`. Quand
+  /// la requête se termine, on incrémente [_notesBulkPullToken] →
+  /// chaque NotesWidget monté reçoit le nouveau token via build et
+  /// se rafraîchit depuis SQLite.
+  Future<void> _kickInitialNotesBulkPull() async {
+    final patientId = _dossier.patient.id;
+    if (patientId.isEmpty) return;
+    final merged = await _dataService.refreshAllNotePagesForPatient(patientId);
+    if (!mounted) return;
+    if (merged > 0) {
+      setState(() {
+        _notesBulkPullToken += 1;
+      });
+    }
+  }
+
   /// Re-fetches the dossier from the local database and updates state.
   /// Called after any tab saves, so every other tab sees fresh patient /
   /// housing / dossier fields on the next rebuild.
@@ -781,6 +822,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   // on retombe sur le label de la sous-section.
                   placeholder: pdfPlaceholder ?? section,
                   liveText: _liveText[liveKey],
+                  // Token incrémenté quand le pull bulk des notes
+                  // termine — déclenche `_reloadCurrentPageFromStore`
+                  // côté NotesWidget pour afficher la note fraîche
+                  // depuis SQLite (déjà mergée par le pull bulk).
+                  externalRefreshToken: _notesBulkPullToken,
                   onDraftChange: (draft) =>
                       _pushDraftToOpenWindow(tabKey, draft.text),
                   onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
