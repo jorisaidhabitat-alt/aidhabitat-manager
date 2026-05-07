@@ -160,7 +160,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     // HTTP qui échoue immédiatement (DNS / SocketException), gaspille
     // CPU + batterie iPad. Le ConnectivityService re-déclenche un
     // sync immédiat au retour réseau via `onConnectivityBack`.
-    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    //
+    // Polling 1s (au lieu de 2s) — demande utilisateur 2026-05-07 :
+    // sync Mac→iPad doit être quasi instantanée (< 3s).
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (ConnectivityService().isOffline) return;
       _loadDocuments(silent: true);

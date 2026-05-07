@@ -17,6 +17,7 @@ import '../../services/connectivity_service.dart';
 import '../../services/data_service.dart';
 import '../../services/file_drop_listener.dart' show DroppedFile;
 import '../../services/media_cache_service.dart';
+import '../../services/sync_engine.dart';
 import '../../services/web_file_picker.dart';
 
 /// Onglet « Photos » du relevé de visite — alimente la page 8 du
@@ -102,15 +103,43 @@ class _PhotosTabState extends State<PhotosTab>
   /// est détruit si pas keep-alive).
   Timer? _refreshTimer;
 
+  /// Subscription au stream du SyncEngine — déclenche un refresh
+  /// immédiat de la liste des photos quand un pull workspace réussit
+  /// (l'autre device a probablement uploadé qqch dans les ~1-3s qui
+  /// précèdent). Sans ça, on attendait jusqu'à 1s du polling local
+  /// pour voir une nouvelle photo Mac→iPad. Demande utilisateur
+  /// 2026-05-07 : « env. 30 sec, ça doit être quasiment instantané ».
+  StreamSubscription<SyncEngineState>? _syncSubscription;
+  DateTime? _lastObservedSyncAt;
+
   @override
   void initState() {
     super.initState();
     _refresh();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    // Polling 1s (était 2s) — tick agressif pendant que l'utilisateur
+    // regarde l'onglet Photos. En combinaison avec l'écoute du
+    // SyncEngine ci-dessous, la latence Mac→iPad devrait passer sous
+    // 3-5s en conditions normales.
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      // Skip offline (2026-05-07) — évite des tentatives HTTP qui
-      // échoueront immédiatement et gaspillent CPU/batterie.
       if (ConnectivityService().isOffline) return;
+      _refresh(silent: true);
+    });
+
+    // Active le mode pull "ultra-actif" (1s) sur le SyncEngine tant
+    // que l'onglet Photos est ouvert — équilibré dans dispose().
+    SyncEngine().enterActiveContext();
+
+    // À chaque pull workspace réussi, on re-pousse aussi un refresh
+    // photos. Sans attendre le tick de 1s ci-dessus.
+    _syncSubscription = SyncEngine().stateStream.listen((state) {
+      if (!mounted) return;
+      final at = state.lastSyncAt;
+      if (at == null) return;
+      if (_lastObservedSyncAt != null && at == _lastObservedSyncAt) return;
+      _lastObservedSyncAt = at;
+      if (ConnectivityService().isOffline) return;
+      // ignore: discarded_futures
       _refresh(silent: true);
     });
   }
@@ -118,6 +147,8 @@ class _PhotosTabState extends State<PhotosTab>
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _syncSubscription?.cancel();
+    SyncEngine().leaveActiveContext();
     super.dispose();
   }
 
