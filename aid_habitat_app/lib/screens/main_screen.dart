@@ -280,6 +280,20 @@ class _MainScreenState extends State<MainScreen>
       _lastDossierTreeView = 'dossier_detail';
       _lastDossierTreeSelected = dossier;
     });
+    // PRÉ-PULL des notes du dossier dès la sélection — pendant que
+    // l'utilisateur regarde la fiche bénéficiaire et clique sur
+    // « Relevé de visite », le pull bulk se termine en arrière-plan.
+    // Quand le VisitReportScreen mount, les notes sont DÉJÀ en SQLite
+    // → elles s'affichent en même temps que les autres infos du
+    // dossier (date naissance, cases à cocher, etc.). Demande
+    // utilisateur 2026-05-07 : « les notes écrites doivent arriver
+    // en même temps que les autres infos quand j'ouvre le dossier ».
+    // Fire-and-forget : aucun await, aucun blocking.
+    final patientId = dossier.patient.id;
+    if (patientId.isNotEmpty) {
+      // ignore: discarded_futures
+      _dataService.refreshAllNotePagesForPatient(patientId);
+    }
   }
 
   void _handleSyncNow() {
