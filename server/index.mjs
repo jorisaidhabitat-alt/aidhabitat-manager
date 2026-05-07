@@ -2616,6 +2616,102 @@ const getDossiersForApp = async (appUser) => {
 };
 
 /**
+ * Variante CIBLÉE de [getDossiersForApp] qui charge UNIQUEMENT le
+ * dossier dont `uuid_source === dossierId`. Au lieu des 5 `queryAll`
+ * complets (beneficiaires + dossiers + logements + contextes + infos
+ * admin) qui peuvent ramener plusieurs centaines de rows et prendre
+ * 30-60 s en cold start sur une base peuplée, on filtre dès la
+ * requête NocoDB → 5 fetches ciblés ramenant 1-3 rows chacun, ~1 s
+ * total même cold.
+ *
+ * Skipper les backfills (`ensureDossiersForBeneficiaries`,
+ * `backfillLegacyDossierAssignments`, `backfillChildDossierLinks`)
+ * est sûr ici car ils sont déjà exécutés par `getDossiersForApp` au
+ * démarrage de l'app (premier `/api/dossiers`). Pour la génération
+ * PDF, on suppose que la base est déjà cohérente.
+ *
+ * Retourne `null` si le dossier n'existe pas ou est hors scope du
+ * `appUser` — mêmes règles que `filterDossiersByScopes`.
+ *
+ * Utilisé par `POST /api/reports/visit/:dossierId` (chemin critique
+ * de génération PDF) — demande utilisateur 2026-05-07 : « il faut
+ * que les délais [PDF] soient plus courts ».
+ */
+const getDossierByIdForApp = async (dossierId, appUser) => {
+  if (!dossierId) return null;
+
+  // 1. Charge UN seul dossier par uuid_source.
+  const escapedId = String(dossierId).replace(/[(),]/g, '');
+  const dossiers = await queryAll(TABLES.dossiers, {
+    fields: FIELD_SETS.dossiers,
+    where: `(uuid_source,eq,${escapedId})`,
+  });
+  if (dossiers.length === 0) return null;
+  const dossierRecord = dossiers[0];
+  const beneficiaireRowId = field(dossierRecord, 'beneficiaires_id');
+  if (!beneficiaireRowId) return null;
+
+  // 2. Charge en parallèle les autres tables filtrées sur ce
+  //    bénéficiaire (beneficiaires, logements, contextes, infos).
+  const beneficiaireFilter = `(beneficiaires_id,eq,${beneficiaireRowId})`;
+  const [beneficiaires, logements, contextes, infosAdmin] = await Promise.all([
+    queryAll(TABLES.beneficiaires, {
+      fields: FIELD_SETS.beneficiaires,
+      where: `(Id,eq,${beneficiaireRowId})`,
+    }),
+    queryAll(TABLES.logements, {
+      fields: FIELD_SETS.logements,
+      where: beneficiaireFilter,
+    }),
+    queryAll(TABLES.contexteDeVie, {
+      fields: FIELD_SETS.contexteDeVie,
+      where: beneficiaireFilter,
+    }),
+    queryAll(TABLES.informationsAdministratives, {
+      fields: FIELD_SETS.informationsAdministratives,
+      where: beneficiaireFilter,
+    }),
+  ]);
+  if (beneficiaires.length === 0) return null;
+  const beneficiaryRecord = beneficiaires[0];
+
+  // 3. Construit le dossier — mêmes règles que getDossiersForApp.
+  const appBeneficiaryId = deriveBeneficiaryAppId({
+    beneficiaryRecord,
+    dossierRecords: dossiers,
+    housingRecords: logements,
+    contextRecords: contextes,
+    infoRecords: infosAdmin,
+  });
+  const dossierSourceId = field(dossierRecord, 'uuid_source');
+  const housingRecord = latestRecord(logements);
+  const contextByDossier = groupBy(contextes, 'dossier_id');
+  const infoByDossier = groupBy(infosAdmin, 'dossier_id');
+  const contextRecord = latestRecord(
+    (dossierSourceId && contextByDossier.get(String(dossierSourceId))) ||
+      contextes ||
+      [],
+  );
+  const infoRecord = latestRecord(
+    (dossierSourceId && infoByDossier.get(String(dossierSourceId))) ||
+      infosAdmin ||
+      [],
+  );
+  const dossier = createDossier(
+    beneficiaryRecord,
+    appBeneficiaryId,
+    dossierRecord,
+    housingRecord,
+    contextRecord,
+    infoRecord,
+  );
+
+  // 4. Scope check (même règle que la liste complète).
+  const filtered = filterDossiersByScopes([dossier], appUser);
+  return filtered[0] || null;
+};
+
+/**
  * Filtre une liste de dossiers selon les scopes du membre — mirroir
  * de `auth_service.dart::filterDossiersForUser` côté Flutter.
  *
@@ -4952,9 +5048,14 @@ app.post(
       );
     }
 
-    // 1) Dossier (avec scope d'accès appliqué via getDossiersForApp).
-    const dossiers = await getDossiersForApp(req.appUser);
-    const dossier = dossiers.find((d) => String(d.id) === dossierId);
+    // 1) Dossier ciblé (1 seule row au lieu de tout charger).
+    //
+    // Avant 2026-05-07 : `getDossiersForApp(req.appUser)` chargeait
+    // les 5 tables complètes (beneficiaires + dossiers + logements +
+    // contextes + infos) puis filtrait — 30-60 s sur grosse base.
+    // Maintenant : `getDossierByIdForApp` filtre dès NocoDB par
+    // `uuid_source` puis par `beneficiaires_id` → ~1 s même cold.
+    const dossier = await getDossierByIdForApp(dossierId, req.appUser);
     if (!dossier) {
       throw httpError(404, `Dossier ${dossierId} introuvable ou hors scope`);
     }

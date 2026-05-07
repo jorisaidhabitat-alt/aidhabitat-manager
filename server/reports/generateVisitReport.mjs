@@ -2682,6 +2682,15 @@ export async function generateVisitReport({
 
   if (!hasPage8Overflow) {
     // Mode template : remplit les form fields page 8 comme avant.
+    // Parallélisation 2026-05-07 : les 8 slots photo de la page 8
+    // (Logement × 2 + Accès × 3 + Sanitaires × 3) sont indépendants.
+    // Chaque slot fait fetch image + embed PDF + setImage — l'essentiel
+    // du coût est I/O réseau (NocoDB) ou CPU embed (zlib JPG/PNG).
+    // Les exécuter en `Promise.all` overlap les latences et divise
+    // le temps de remplissage page 8 par ~N (jusqu'à 8x sur réseau
+    // froid). Les slots ciblent des fields différents → pas de race
+    // pdf-lib sur les widgets.
+    const page8Tasks = [];
     for (const cat of PAGE8_CATEGORIES) {
       const grouped = groupPhotosBySectionIndex(documents, cat.baseTag);
       const allPhotos = [];
@@ -2690,17 +2699,20 @@ export async function generateVisitReport({
         const fieldName = cat.fields[i];
         const photo = allPhotos[i];
         if (!photo) continue;
-        await setImageInField(
-          pdfDoc, form, fieldName,
-          { kind: 'document', id: photo.id },
-          fetchImageBytes, stats,
-        );
-        const tags = Array.isArray(photo.tags) ? photo.tags : [];
-        if (shouldShowPhotoLabel(tags)) {
-          await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
-        }
+        page8Tasks.push((async () => {
+          await setImageInField(
+            pdfDoc, form, fieldName,
+            { kind: 'document', id: photo.id },
+            fetchImageBytes, stats,
+          );
+          const tags = Array.isArray(photo.tags) ? photo.tags : [];
+          if (shouldShowPhotoLabel(tags)) {
+            await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
+          }
+        })());
       }
     }
+    await Promise.all(page8Tasks);
   } else {
     // Mode flow : redessine TOUTE la page 8 en flow continu,
     // pagination automatique vers des pages bonus si nécessaire.
@@ -2761,20 +2773,23 @@ export async function generateVisitReport({
     for (const photos of sections.values()) allPhotos.push(...photos);
 
     const slotFields = PLAN_SLOTS.avant; // ['plan avt_af_image', 'plan avt1_af_image']
-    // Remplit la page 9 (slots du template) avec les 2 premières.
-    for (let i = 0; i < slotFields.length; i += 1) {
+    // Remplit la page 9 (slots du template) avec les 2 premières —
+    // parallélisé 2026-05-07 (cf. page 8). Les overflow pages bonus
+    // restent séquentielles à cause de `insertPage` qui doit garder
+    // l'ordre d'insertion stable.
+    await Promise.all(slotFields.map(async (fieldName, i) => {
       const photo = allPhotos[i];
-      if (!photo) continue;
+      if (!photo) return;
       await setImageInField(
-        pdfDoc, form, slotFields[i],
+        pdfDoc, form, fieldName,
         { kind: 'document', id: photo.id },
         fetchImageBytes, stats,
       );
       const tags = Array.isArray(photo.tags) ? photo.tags : [];
       if (shouldShowPhotoLabel(tags)) {
-        await drawPhotoLabelOverlay(pdfDoc, form, slotFields[i], photo.title);
+        await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
       }
-    }
+    }));
     // Débordement (3e photo et +) sur des pages bonus
     if (allPhotos.length > slotFields.length) {
       const slot0Info = getFieldFirstWidgetInfo(pdfDoc, form, slotFields[0]);
@@ -2820,20 +2835,22 @@ export async function generateVisitReport({
 
     if (sectionEntries.length > 0) {
       // Section [0] = section base → page 10 du template
+      // Parallélisé 2026-05-07 (cf. page 9). Les sections extras
+      // (pages bonus) restent séquentielles à cause de `insertPage`.
       const basePhotos = sectionEntries[0][1];
-      for (let i = 0; i < slotFields.length; i += 1) {
+      await Promise.all(slotFields.map(async (fieldName, i) => {
         const photo = basePhotos[i];
-        if (!photo) continue;
+        if (!photo) return;
         await setImageInField(
-          pdfDoc, form, slotFields[i],
+          pdfDoc, form, fieldName,
           { kind: 'document', id: photo.id },
           fetchImageBytes, stats,
         );
         const tags = Array.isArray(photo.tags) ? photo.tags : [];
         if (shouldShowPhotoLabel(tags)) {
-          await drawPhotoLabelOverlay(pdfDoc, form, slotFields[i], photo.title);
+          await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
         }
-      }
+      }));
 
       // Récupère les rects des slots page 10 — utilisés ET pour le
       // label « Projet 1 » sur la page 10 ET comme template
@@ -2880,6 +2897,13 @@ export async function generateVisitReport({
   // fixes en v1 ; au-delà, on incrémente `recoOverflow` mais on ne
   // génère pas (encore) de pages bonus dynamiques — TODO chunk 4.2c.
   // ---------------------------------------------------------------
+  // 1) Texte : `setText` est synchrone → on l'applique en boucle
+  //    classique (pas de gain à paralléliser).
+  // 2) Images wiki : chacune fait fetch HTTP wiki + embed PDF →
+  //    parallélisé 2026-05-07 pour overlap les latences réseau.
+  //    Avant : 8 awaits séquentiels = ~5-8s sur cold start.
+  //    Après : Promise.all = ~1-2s (max d'une seule fetch).
+  const recoImageTasks = [];
   for (let i = 0; i < recommendations.length; i += 1) {
     if (i >= RECO_TEXT_FIELDS.length) {
       stats.recoOverflow += 1;
@@ -2906,13 +2930,14 @@ export async function generateVisitReport({
     const imageFieldName = RECO_IMAGE_FIELDS[i];
     const wikiUrl = String(reco?.wikiImageUrl || '').trim();
     if (imageFieldName && wikiUrl) {
-      await setImageInField(
+      recoImageTasks.push(setImageInField(
         pdfDoc, form, imageFieldName,
         { kind: 'url', url: wikiUrl },
         fetchImageBytes, stats,
-      );
+      ));
     }
   }
+  await Promise.all(recoImageTasks);
 
   // ---------------------------------------------------------------
   // Élision des cases de préconisation vides (demande utilisateur :
