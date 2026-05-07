@@ -17,6 +17,7 @@ import '../../services/connectivity_service.dart';
 import '../../services/data_service.dart';
 import '../../services/file_drop_listener.dart' show DroppedFile;
 import '../../services/media_cache_service.dart';
+import '../../services/web_file_picker.dart';
 
 /// Onglet « Photos » du relevé de visite — alimente la page 8 du
 /// rapport PDF (« Photos du logement »).
@@ -295,6 +296,29 @@ class _PhotosTabState extends State<PhotosTab>
     if (_isImporting) return;
     setState(() => _isImporting = true);
     try {
+      // Sur web : on bypass complètement `image_picker` et on lit le
+      // fichier ORIGINAL via FileReader (`pickWebFile`). Bug rapporté
+      // 2026-05-07 : `image_picker_for_web` re-encode l'image via canvas
+      // (toBlob) et certaines images ressortaient tronquées à exactement
+      // 1 MiB sur Mac Safari/Chrome — bloc PNG IEND manquant, photo
+      // affichée moitié grise sur iPad. En lisant le fichier brut on
+      // préserve l'intégrité bit-pour-bit. Le serveur valide ensuite
+      // qu'il n'y a pas de troncature avant de stocker (cf.
+      // `validateImageBufferIsComplete` dans server/index.mjs).
+      if (kIsWeb) {
+        final picked = await pickWebFile(
+          accept: source == ImageSource.camera ? 'image/*' : 'image/*',
+          capture: source == ImageSource.camera,
+        );
+        if (picked == null) return;
+        await _persistDroppedBytes(
+          bytes: Uint8List.fromList(picked.bytes),
+          originalName: picked.name,
+          categoryTag: categoryTag,
+        );
+        await _refresh();
+        return;
+      }
       final XFile? picked = await _imagePicker.pickImage(
         source: source,
         // image_picker compresse côté natif : on demande JPEG ≤1600px

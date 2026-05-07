@@ -1221,9 +1221,9 @@ async function setImageInField(
       stats.imagesApplied += 1;
     } catch (error) {
       console.warn(`[generateVisitReport] cover-fit("${fieldName}") a échoué :`, error?.message || error);
-      // Fallback contain via setImage natif → mieux que rien.
+      // Fallback contain manuel.
       try {
-        field.setImage(pdfImage);
+        drawImageWithContainFit(pdfDoc, field, pdfImage);
         stats.imagesApplied += 1;
       } catch (e2) {
         stats.imagesFailedEmbed += 1;
@@ -1232,13 +1232,21 @@ async function setImageInField(
     return;
   }
 
-  // fit === 'contain' : chemin pdf-lib classique.
+  // fit === 'contain' : redraw manuel (cf. JSDoc de
+  // `drawImageWithContainFit` pour le pourquoi). On garde un fallback
+  // sur `field.setImage` natif si le redraw échoue (rare — widget
+  // sans rect ou page introuvable), mieux que rien.
   try {
-    field.setImage(pdfImage);
+    drawImageWithContainFit(pdfDoc, field, pdfImage);
     stats.imagesApplied += 1;
   } catch (error) {
-    console.warn(`[generateVisitReport] setImage("${fieldName}") a échoué :`, error?.message || error);
-    stats.imagesFailedEmbed += 1;
+    console.warn(`[generateVisitReport] contain-fit("${fieldName}") a échoué :`, error?.message || error);
+    try {
+      field.setImage(pdfImage);
+      stats.imagesApplied += 1;
+    } catch (e2) {
+      stats.imagesFailedEmbed += 1;
+    }
   }
 }
 
@@ -1311,6 +1319,82 @@ function drawImageWithCoverFit(pdfDoc, field, pdfImage) {
     // PNG semi-transparente. Pour les JPEG opaques c'est un no-op
     // visuel, mais on l'applique systématiquement pour éviter le
     // double-rendu (le button + notre drawImage par-dessus).
+    const emptyStream = pdfDoc.context.formXObject([], {
+      BBox: pdfDoc.context.obj([0, 0, rect.width, rect.height]),
+      Matrix: pdfDoc.context.obj([1, 0, 0, 1, 0, 0]),
+      Resources: pdfDoc.context.obj({}),
+    });
+    const emptyRef = pdfDoc.context.register(emptyStream);
+    const apDict = pdfDoc.context.obj({});
+    apDict.set(PDFName.of('N'), emptyRef);
+    widget.dict.set(PDFName.of('AP'), apDict);
+  }
+}
+
+/**
+ * Dessine [pdfImage] dans le rect du widget de [field] avec un fit
+ * "contain" : l'image entière rentre dans le slot, les côtés courts
+ * laissent des bandes blanches. Aspect ratio toujours préservé.
+ *
+ * Pourquoi ce helper plutôt que `field.setImage()` natif de pdf-lib :
+ * `setImage` s'appuie sur les flags MK/IF du widget (icon fit:
+ * SW/S/A/FB) configurés par l'éditeur PDF (Affinity). Quand ces
+ * flags sont absents ou mal configurés (cas Affinity par défaut →
+ * `S=A` anamorphic stretch ou crop), le rendu coupait/déformait
+ * l'image. Symptôme reporté 2026-05-07 : « la photo importé dans
+ * sanitaires apparait coupée ».
+ *
+ * En redessinant manuellement (pattern jumeau de
+ * `drawImageWithCoverFit` mais avec calcul `min` au lieu de `max`),
+ * on garantit un rendu identique sur tous les lecteurs PDF, indépendant
+ * du config widget.
+ */
+function drawImageWithContainFit(pdfDoc, field, pdfImage) {
+  const widgets = field.acroField.getWidgets?.() || [];
+  for (const widget of widgets) {
+    const rect = widget.getRectangle();
+    if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+
+    const pageRef = widget.P?.();
+    if (!pageRef) continue;
+    const page = pdfDoc.getPages().find((p) => p.ref === pageRef);
+    if (!page) continue;
+
+    const slotRatio = rect.width / rect.height;
+    const imgRatio = pdfImage.width / pdfImage.height;
+
+    // Contain : on rétrécit jusqu'à ce que l'image rentre ENTIÈREMENT
+    // dans le slot. Bandes blanches sur le côté plus court.
+    let drawW;
+    let drawH;
+    if (imgRatio > slotRatio) {
+      // Image plus large que le slot → on cale à la largeur, des
+      // bandes apparaîtront en haut et en bas.
+      drawW = rect.width;
+      drawH = drawW / imgRatio;
+    } else {
+      // Image plus haute → on cale à la hauteur, bandes à gauche/droite.
+      drawH = rect.height;
+      drawW = drawH * imgRatio;
+    }
+    const drawX = rect.x + (rect.width - drawW) / 2;
+    const drawY = rect.y + (rect.height - drawH) / 2;
+
+    // Pas de clip nécessaire (l'image ne dépasse pas du slot), mais
+    // on garde le push/pop graphics state pour ne pas polluer l'état
+    // de la page si on ajoute du dessin par-dessus plus tard
+    // (overlay titre via `drawPhotoLabelOverlay` p. ex.).
+    page.pushOperators(pushGraphicsState());
+    page.drawImage(pdfImage, {
+      x: drawX,
+      y: drawY,
+      width: drawW,
+      height: drawH,
+    });
+    page.pushOperators(popGraphicsState());
+
+    // Purge le placeholder gris du widget — même logique que
+    // drawImageWithCoverFit. Cf. commentaire là-bas pour le détail.
     const emptyStream = pdfDoc.context.formXObject([], {
       BBox: pdfDoc.context.obj([0, 0, rect.width, rect.height]),
       Matrix: pdfDoc.context.obj([1, 0, 0, 1, 0, 0]),
