@@ -31,6 +31,7 @@ import '../services/app_config.dart';
 import '../services/data_service.dart';
 import '../services/document_repository.dart';
 import '../services/media_cache_service.dart';
+import '../services/sync_engine.dart';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -138,6 +139,15 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDocuments();
+    // Active le mode pull « ultra-actif » (1 s) du SyncEngine tant
+    // que l'écran Documents est ouvert — parité avec VisitReportScreen.
+    // Sans ça, le device qui regarde sans interagir bascule en idle
+    // au bout d'1 min et le pull workspace tombe à 30 s ; les
+    // documents importés depuis l'autre device pouvaient mettre
+    // jusqu'à 30 s à apparaître. Équilibré dans `dispose()` via
+    // `leaveActiveContext`. Demande utilisateur 2026-05-07 :
+    // « ajouter enterActiveContext aux écrans sensibles ».
+    SyncEngine().enterActiveContext();
     // Polling silencieux toutes les 2 secondes — accéléré 2026-05-06
     // pour parité avec PhotosTab (« la synchronisation est plus lente
     // dans Documents »). Avec le push debounce ~200ms côté émetteur +
@@ -1549,6 +1559,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _refreshTimer?.cancel();
+    // Relâche le mode ultra-actif activé dans `initState`. Le SyncEngine
+    // repasse sur l'intervalle adaptatif normal (5 s actif / 30 s idle)
+    // une fois qu'on quitte l'écran Documents.
+    SyncEngine().leaveActiveContext();
     _keyboardFocus.dispose();
     super.dispose();
   }
