@@ -640,6 +640,50 @@ class DataService {
     }
   }
 
+  /// Pull bulk : récupère TOUTES les notes d'un patient en 1 seul
+  /// HTTP request et les merge en SQLite. À appeler au mount du
+  /// VisitReportScreen (et idéalement plus tôt, dès que le dossier
+  /// devient sélectionné dans la liste) pour que les NotesWidget
+  /// affichent la note instantanément à l'arrivée sur le screen.
+  ///
+  /// Avant 2026-05-07 : chaque NotesWidget faisait son propre fetch
+  /// au mount → la note arrivait 1-2 s après les autres infos du
+  /// dossier (déjà chargées via le pull workspace). Désormais le
+  /// bulk pull précède le mount des widgets → tout arrive ensemble.
+  ///
+  /// Renvoie le nombre de notes effectivement mergées (utile pour
+  /// log/debug). Best-effort, errors swallowed.
+  Future<int> refreshAllNotePagesForPatient(String patientId) async {
+    try {
+      final remoteNotes =
+          await _nocodbApiClient.fetchAllNotePagesForPatient(patientId);
+      if (remoteNotes.isEmpty) return 0;
+      var merged = 0;
+      for (final remote in remoteNotes) {
+        final tabKey = remote['tabKey']?.toString() ?? '';
+        if (tabKey.isEmpty) continue;
+        final pageNumberRaw = remote['pageNumber'];
+        final pageNumber = pageNumberRaw is int
+            ? pageNumberRaw
+            : int.tryParse(pageNumberRaw?.toString() ?? '') ?? 0;
+        final didMerge = await _noteRepository.mergeRemoteNotePage(
+          patientId: patientId,
+          tabKey: tabKey,
+          pageNumber: pageNumber,
+          drawingJson: remote['drawingJson']?.toString() ?? '',
+          remotePath: remote['remotePath']?.toString(),
+          remoteUrl: remote['remoteUrl']?.toString(),
+          updatedAt: remote['updatedAt']?.toString(),
+          planPhase: remote['planPhase']?.toString(),
+        );
+        if (didMerge) merged += 1;
+      }
+      return merged;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<void> saveNoteDrawingJson({
     required String patientId,
     required String tabKey,

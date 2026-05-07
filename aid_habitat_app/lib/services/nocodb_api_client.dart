@@ -1684,6 +1684,44 @@ class NocodbApiClient {
     return notePages.first;
   }
 
+  /// Fetches TOUTES les notes d'un patient en UNE seule requête HTTP.
+  /// Endpoint serveur : `GET /api/note-pages/:patientId` SANS query
+  /// `tabKey`/`pageNumber` → retourne toutes les pages de tous les
+  /// onglets (Contexte de vie, Sanitaires-Notes, Préconisations,
+  /// Plans, etc.).
+  ///
+  /// Utilisé au mount du VisitReportScreen pour précharger TOUTES
+  /// les notes en SQLite avant que les NotesWidget se montent → la
+  /// note écrite arrive en même temps que les autres infos du
+  /// dossier (date naissance, cases à cocher, etc.). Demande
+  /// utilisateur 2026-05-07 : « les notes écrites arrivent en même
+  /// temps que les autres infos quand j'ouvre le dossier ».
+  ///
+  /// Retourne une liste vide si AppConfig.hasRemoteConfig=false ou
+  /// si le serveur ne renvoie aucune note pour ce patient.
+  Future<List<Map<String, dynamic>>> fetchAllNotePagesForPatient(
+    String patientId,
+  ) async {
+    if (!AppConfig.hasRemoteConfig) return const [];
+
+    final uri = Uri.parse('$_baseUrl/api/note-pages/$patientId');
+    final response =
+        await _client.get(uri, headers: _headers).timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote bulk note fetch failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ((data['notePages'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
   Dossier _mapRemoteDossier(Map<String, dynamic> json) {
     final patientJson =
         (json['patient'] as Map?)?.cast<String, dynamic>() ?? const {};
