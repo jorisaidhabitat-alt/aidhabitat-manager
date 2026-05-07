@@ -102,7 +102,15 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   static const int _kCompressQuality = 80;
 
   String _searchTerm = '';
-  bool _isLoading = true;
+  // Note : `_isLoading` retiré 2026-05-07. Plus de spinner d'attente —
+  // la page s'affiche immédiatement (grille vide ou peuplée depuis
+  // SQLite) et les documents apparaissent dès que `_loadDocuments`
+  // met à jour `_documents`. Demande utilisateur : « pour l'espace
+  // documents, ne fais pas de chargement, affiche simplement la page
+  // et les documents s'affichent dès qu'ils sont chargés ». Le
+  // pré-pull dans `main_screen._handleSelectDossier` hydrate SQLite
+  // pendant que l'utilisateur navigue → la grille est déjà peuplée
+  // à l'ouverture.
   bool _isImporting = false;
   bool _isBulkDownloading = false;
   /// True pendant qu'un picker (caméra / galerie / fichier) est ouvert.
@@ -160,18 +168,14 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   // ----- Data loading -----
 
   Future<void> _loadDocuments({bool silent = false}) async {
-    if (!silent) setState(() => _isLoading = true);
+    // Plus de toggle `_isLoading` — la grille reste affichée même
+    // pendant le fetch (cf. commentaire sur la déclaration du champ).
+    // Le `silent` param est gardé pour compat des appelants existants
+    // (importDocument, deleteDocument, etc. qui passent silent:true).
     final docs = await _dataService.fetchDocuments(_patientId);
     if (!mounted) return;
-    // Si la lecture locale a déjà des documents → on les affiche tout de
-    // suite (spinner off). Sinon, on garde le spinner pendant le refresh
-    // remote pour éviter d'afficher une grille vide trompeuse pendant
-    // que NocoDB répond — typiquement après un clear cache iPad PWA, où
-    // SQLite est vide alors que le dossier a bien des documents côté
-    // serveur.
     setState(() {
       _documents = docs;
-      if (docs.isNotEmpty) _isLoading = false;
     });
     // Préchauffe le cache binaire (images + PDFs) en parallèle dès
     // l'affichage de la grille — comme ça les vignettes sont prêtes à
@@ -185,15 +189,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       if (!mounted) return;
       setState(() {
         _documents = remoteDocs;
-        _isLoading = false;
       });
       _warmDocumentBinaryCache(remoteDocs);
-    } else {
-      // Remote KO (offline ou erreur) → on relâche le spinner pour
-      // que l'user voie la grille (même vide). Le polling timer (10 s)
-      // retentera plus tard.
-      setState(() => _isLoading = false);
     }
+    // Remote KO (offline ou erreur) → la grille reste sur le snapshot
+    // SQLite affiché juste avant. Le polling timer (2 s) retentera.
   }
 
   /// Pré-télécharge les bytes de TOUS les documents listés (images
@@ -1105,9 +1105,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               _buildPatientHeader(),
               const SizedBox(height: 16),
               Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _buildGridWithDropZone(),
+                child: _buildGridWithDropZone(),
               ),
             ],
           ),
