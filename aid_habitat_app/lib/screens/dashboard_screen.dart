@@ -9,6 +9,7 @@ import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
 import '../services/route_service.dart';
+import '../services/sync_engine.dart';
 
 /// Dashboard screen aligned with the React web `Dashboard.tsx` layout:
 ///   - Welcome header with user name + today's date
@@ -94,6 +95,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    // Active le mode pull « ultra-actif » (1 s) du SyncEngine tant
+    // que le Dashboard est ouvert — parité avec VisitReportScreen +
+    // DocumentsScreen. Les KPIs et la liste des dossiers récents
+    // reflètent ainsi quasi-instantanément les modifs faites depuis
+    // l'autre device. Équilibré dans `dispose()` via
+    // `leaveActiveContext`. Demande utilisateur 2026-05-07.
+    SyncEngine().enterActiveContext();
     _ticker = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted) setState(() {});
     });
@@ -102,6 +110,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
+    // Relâche le mode ultra-actif activé dans `initState`. Le SyncEngine
+    // repasse sur l'intervalle adaptatif normal (5 s actif / 30 s idle).
+    SyncEngine().leaveActiveContext();
     super.dispose();
   }
 
