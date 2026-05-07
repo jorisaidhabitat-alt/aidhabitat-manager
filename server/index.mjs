@@ -243,7 +243,16 @@ const FIELD_SETS = {
     'cheminement_escalier_exterieur', 'cheminement_escalier_interieur', 'cheminement_pente_douce',
     'cheminement_plat', 'cheminement_quelques_marches', 'cheminement_par_arriere', 'cheminement_seuil_porte',
     'difficultes_circulation_interieure', 'porte_de_garage', 'portail', 'acces_facile_rue',
-    'commentaire', 'observation_accessibilite', 'UpdatedAt',
+    'commentaire', 'observation_accessibilite',
+    // Liste des pièces par niveau, encodée en JSON :
+    // `{"basement": ["Cave"], "rdc": ["Salle de bain", "WC"], "floor": [...]}`.
+    // Avant 2026-05-07 : les pièces étaient stockées UNIQUEMENT en SQLite
+    // local (`rdc_rooms_json` etc.) → perdues au moindre wipe / nouveau
+    // device. Désormais source de vérité côté NocoDB. Si la colonne
+    // n'existe pas encore en base, NocoDB renvoie `null` → comportement
+    // identique à avant (pas de pièces affichées).
+    'rooms_breakdown_json',
+    'UpdatedAt',
   ],
   contexteDeVie: [
     'uuid_source', 'dossier_id', 'beneficiaire_id', 'beneficiaires_id', 'aide_technique_deplacement', 'restrictions_conduite',
@@ -1761,7 +1770,32 @@ const mapHousing = (housingRecord) => {
     easyAccess: toBoolOrNull(field(housingRecord, 'acces_facile_rue')),
     comments: stringValue(field(housingRecord, 'commentaire')),
     accessObservation: stringValue(field(housingRecord, 'observation_accessibilite')),
+    // Pièces par niveau : décodées du JSON stocké dans NocoDB (cf.
+    // FIELD_SETS.logements.rooms_breakdown_json). Si null/manquant ou
+    // malformé, on renvoie un objet vide → côté Flutter les rooms_json
+    // restent intacts si déjà en SQLite (préserve le legacy local-only).
+    roomsBreakdown: parseRoomsBreakdownJson(field(housingRecord, 'rooms_breakdown_json')),
   };
+};
+
+/**
+ * Parse safe d'un JSON `rooms_breakdown_json` venant de NocoDB. Format
+ * attendu : `{ "basement": ["Cave"], "rdc": ["WC"], ... }`. Renvoie
+ * `null` si invalide / manquant — le client Flutter saura interpréter
+ * `null` comme « pas de données serveur, garde la version SQLite ».
+ */
+const parseRoomsBreakdownJson = (raw) => {
+  const str = stringValue(raw).trim();
+  if (!str) return null;
+  try {
+    const parsed = JSON.parse(str);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch (_) {
+    // JSON cassé — on traite comme absent.
+  }
+  return null;
 };
 
 const mapPatient = (beneficiaryRecord, appBeneficiaryId) => ({
@@ -5783,6 +5817,28 @@ app.patch('/api/logements/by-beneficiary/:beneficiaryId', requireAuth, async (re
       acces_facile_rue: boolText(updates.easyAccess),
       commentaire: nullableString(updates.comments),
       observation_accessibilite: nullableString(updates.accessObservation),
+      // Pièces par niveau — fix 2026-05-07 : avant ce mapping, les
+      // *_rooms_json étaient ignorés silencieusement par le PATCH →
+      // les pièces saisies en RDC/Sous-sol/Étage n'étaient jamais
+      // sauvegardées en NocoDB → perdues au prochain wipe SQLite ou
+      // nouveau device. Symptôme reporté : « les pièces que j'ai
+      // indiqué dans niveaux ne se sont pas save alors que j'avais
+      // salle de bain et wc dans rdc ».
+      //
+      // Désormais, le client envoie un objet `roomsBreakdown` (5 niveaux
+      // possibles : basement, rdc, floor, secondFloor, thirdFloor) qu'on
+      // sérialise en JSON pour le stocker dans la colonne LongText
+      // `rooms_breakdown_json` côté NocoDB.
+      //
+      // Si la colonne `rooms_breakdown_json` n'existe pas encore dans
+      // NocoDB, l'écriture retournera une erreur 422 — `sanitizeUndefined`
+      // ne strippe pas les `undefined`, mais ici on a une string. NocoDB
+      // dropper silencieusement les colonnes inconnues côté update donc
+      // c'est safe.
+      rooms_breakdown_json:
+          updates.roomsBreakdown && typeof updates.roomsBreakdown === 'object'
+              ? JSON.stringify(updates.roomsBreakdown)
+              : undefined,
       type_de_logement_id: typeLogement ? Number(typeLogement.id) : undefined,
       porte_de_garage_id: porteGarage ? Number(porteGarage.id) : undefined,
       portail_id1: portail ? Number(portail.id) : undefined,

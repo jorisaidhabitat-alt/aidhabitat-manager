@@ -1932,9 +1932,47 @@ class DossierRepository {
       // les passerait en snake_case et le serveur les ignorerait
       // silencieusement, mais autant être explicite).
     };
+    // Mapping rooms_json (5 niveaux) → 1 seul champ `roomsBreakdown` côté
+    // serveur (cf. fix 2026-05-07 : les `*_rooms_json` n'étaient pas
+    // persistés en NocoDB, donc perdus au moindre wipe SQLite). Map
+    // serveur prend le clé Flutter UI / serveur → clé courte du JSON.
+    const roomsJsonToBreakdownKey = <String, String>{
+      'basement_rooms_json': 'basement',
+      'rdc_rooms_json': 'rdc',
+      'floor_rooms_json': 'floor',
+      'second_floor_rooms_json': 'secondFloor',
+      'third_floor_rooms_json': 'thirdFloor',
+    };
+    final roomsBreakdown = <String, List<String>>{};
     final out = <String, dynamic>{};
     fields.forEach((key, value) {
       if (key == 'updated_at' || key == 'sync_state') return;
+
+      // Pièces par niveau : on agrège les 5 *_rooms_json en un objet
+      // `roomsBreakdown` envoyé en bloc au serveur. Décode chaque
+      // valeur (JSON list de strings) ; si malformé, on ignore.
+      if (roomsJsonToBreakdownKey.containsKey(key)) {
+        final breakdownKey = roomsJsonToBreakdownKey[key]!;
+        if (value is String && value.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(value);
+            if (decoded is List) {
+              roomsBreakdown[breakdownKey] = decoded
+                  .map((e) => e?.toString() ?? '')
+                  .where((s) => s.isNotEmpty)
+                  .toList();
+            }
+          } catch (_) {
+            // JSON malformé → on n'ajoute pas cette clé.
+          }
+        } else {
+          // Valeur vide / null → niveau désactivé, on transmet une
+          // liste vide pour explicitement vider côté serveur (sinon
+          // l'ancienne valeur reste).
+          roomsBreakdown[breakdownKey] = const [];
+        }
+        return;
+      }
       // `easy_access_set` est local-only (migration v15→v16). NocoDB n'a
       // pas de colonne dédiée — on garde la sémantique « non renseigné »
       // côté Flutter uniquement. Si plus tard on veut propager la
@@ -1989,6 +2027,13 @@ class DossierRepository {
         }
       }
     });
+    // Si au moins un *_rooms_json a été traité, on attache l'objet
+    // `roomsBreakdown` au payload sortant. NB : on attache MÊME quand
+    // toutes les listes sont vides — c'est le moyen explicite de
+    // « vider » les pièces côté serveur (ex. niveau désactivé).
+    if (roomsBreakdown.isNotEmpty) {
+      out['roomsBreakdown'] = roomsBreakdown;
+    }
     return out;
   }
 
