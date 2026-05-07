@@ -2356,7 +2356,122 @@ const canAccessDossierRecord = (appUser, dossierRecord) => {
   return stringValue(field(dossierRecord, 'ergo_id')).trim() === stringValue(appUser?.ergoLabel).trim();
 };
 
+/**
+ * Tente le fast path filtré pour `resolveBeneficiaryAccess`. Renvoie
+ * `undefined` si on doit retomber sur le slow path (5 queryAll
+ * complets), sinon `{ beneficiaryRecord, dossierRecord }`.
+ *
+ * Couvre les 2 cas standards :
+ *   1. `patientId` est synthétique (`synthetic-N`) → fetch direct par
+ *      row ID du bénéficiaire.
+ *   2. `patientId` est un UUID applicatif présent dans
+ *      `dossiers.patient_id` → 1 queryAll dossiers filtré, puis 1
+ *      queryAll bénéficiaire filtré par `beneficiaires_id`.
+ *
+ * Si le `patientId` n'a pas de dossier associé (cas rare : bénéficiaire
+ * créé via logement/contexte sans dossier), on renvoie undefined →
+ * fallback slow path qui scanne les 4 tables filles.
+ */
+const _tryResolveBeneficiaryAccessFast = async (appUser, patientId) => {
+  const syntheticId = parseSyntheticBeneficiaryId(patientId);
+  if (syntheticId != null) {
+    const beneficiaires = await queryAll(TABLES.beneficiaires, {
+      fields: FIELD_SETS.beneficiaires,
+      where: `(Id,eq,${syntheticId})`,
+    });
+    if (beneficiaires.length === 0) return undefined;
+    return _resolveAccessFromBeneficiary(appUser, beneficiaires[0]);
+  }
+
+  const escapedId = String(patientId).replace(/[(),]/g, '');
+  if (!escapedId) return undefined;
+  const dossiers = await queryAll(TABLES.dossiers, {
+    fields: FIELD_SETS.dossiers,
+    where: `(patient_id,eq,${escapedId})`,
+  });
+  if (dossiers.length === 0) return undefined;
+  const beneficiaireRowId = field(latestRecord(dossiers), 'beneficiaires_id');
+  if (!beneficiaireRowId) return undefined;
+
+  const beneficiaires = await queryAll(TABLES.beneficiaires, {
+    fields: FIELD_SETS.beneficiaires,
+    where: `(Id,eq,${beneficiaireRowId})`,
+  });
+  if (beneficiaires.length === 0) return undefined;
+  return _resolveAccessFromBeneficiary(
+    appUser,
+    beneficiaires[0],
+    dossiers,
+  );
+};
+
+/**
+ * Étape commune entre les 2 branches du fast path : applique le scope
+ * check (avec retry refresh memberRegistry) puis renvoie
+ * `{ beneficiaryRecord, dossierRecord }`. Si `knownDossiers` est fourni
+ * on évite un nouveau fetch. Throw 403 si l'accès est refusé.
+ */
+const _resolveAccessFromBeneficiary = async (
+  appUser,
+  beneficiaryRecord,
+  knownDossiers = null,
+) => {
+  let dossiers = knownDossiers;
+  if (!dossiers) {
+    dossiers = await queryAll(TABLES.dossiers, {
+      fields: FIELD_SETS.dossiers,
+      where: `(beneficiaires_id,eq,${beneficiaryRecord.id})`,
+    });
+  }
+  const dossierRecord = latestByFieldValue(
+    dossiers,
+    'beneficiaires_id',
+    beneficiaryRecord.id,
+  );
+
+  if (dossierRecord && !canAccessDossierRecord(appUser, dossierRecord)) {
+    // Retry avec refresh memberRegistry (cf. commentaire historique
+    // dans le slow path) pour absorber un cache stale post-login.
+    try {
+      const { members } = await loadMemberRegistry({ forceRefresh: true });
+      const refreshed = members.find((m) => m.email === appUser?.email);
+      if (refreshed) {
+        const refreshedAppUser = { ...appUser, ergoLabel: refreshed.ergoLabel };
+        if (canAccessDossierRecord(refreshedAppUser, dossierRecord)) {
+          return { beneficiaryRecord, dossierRecord };
+        }
+      }
+    } catch (_) {
+      // Refresh échoué : on tombe sur le 403.
+    }
+    throw httpError(403, 'Accès interdit à ce bénéficiaire');
+  }
+
+  return { beneficiaryRecord, dossierRecord };
+};
+
 const resolveBeneficiaryAccess = async (appUser, patientId) => {
+  // Fast path 2026-05-07 : pour le cas standard où `patientId` est un
+  // UUID stocké dans `dossiers.patient_id`, on filtre dès NocoDB →
+  // 2 queryAll filtrés au lieu de 5 queryAll complets.
+  //
+  // Avant : ~30-60 s en cold start (5 × queryAll(N rows) = ~5-10 s
+  // par table sur grosse base, somme = 30-60 s).
+  // Après : ~500 ms-1 s (chaque fetch filtré ramène 1-3 rows).
+  //
+  // Demande utilisateur 2026-05-07 : « réduire les délais
+  // d'importation d'une image sur photos » — `resolveBeneficiaryAccess`
+  // est appelé à CHAQUE finalize (donc chaque photo importée).
+  //
+  // Si le fast path ne trouve rien (edge case : appBeneficiaryId
+  // stocké uniquement dans `logements.beneficiaire_id` /
+  // `contextes.beneficiaire_id` / etc. SANS dossier associé), on
+  // retombe sur le slow path historique (5 queryAll complets) pour
+  // préserver la compat.
+  const fast = await _tryResolveBeneficiaryAccessFast(appUser, patientId);
+  if (fast !== undefined) return fast;
+
+  // Slow path : ancien comportement (5 queryAll non filtrés).
   const [beneficiaires, dossiers, logements, contextes, infosAdmin] = await Promise.all([
     queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires }),
     queryAll(TABLES.dossiers, { fields: FIELD_SETS.dossiers }),
