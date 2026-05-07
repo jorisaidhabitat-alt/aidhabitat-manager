@@ -858,12 +858,28 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (changed) setState(() {});
   }
 
+  /// Helper : pose une nouvelle valeur sur `_textController` SANS
+  /// déclencher `_onTextChanged` (qui appellerait `_markDirty()` et
+  /// poserait faussement `_isDirty = true`). Bug 2026-05-07 : sans
+  /// cette protection, chaque polling tick qui mergait les modifs
+  /// d'un autre device marquait l'iPad comme « dirty », ce qui
+  /// bloquait définitivement les polls suivants → la note Mac→iPad
+  /// ne se mettait plus à jour.
+  void _setControllerSilently(String text) {
+    _textController.removeListener(_onTextChanged);
+    _textController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _textController.addListener(_onTextChanged);
+  }
+
   void _applyJson(int page, String? json, {required bool hydrateController}) {
     if (json == null || json.isEmpty) {
       _pageStrokes[page] = <_Stroke>[];
       _pageTexts[page] = '';
       _pageMedicalFlags[page] = <int>{};
-      if (hydrateController) _textController.text = '';
+      if (hydrateController) _setControllerSilently('');
       return;
     }
     try {
@@ -872,7 +888,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         _pageStrokes[page] = <_Stroke>[];
         _pageTexts[page] = '';
         _pageMedicalFlags[page] = <int>{};
-        if (hydrateController) _textController.text = '';
+        if (hydrateController) _setControllerSilently('');
         return;
       }
       final text = decoded['text']?.toString() ?? '';
@@ -900,12 +916,12 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageStrokes[page] = strokes;
       _pageTexts[page] = text;
       _pageMedicalFlags[page] = flags;
-      if (hydrateController) _textController.text = text;
+      if (hydrateController) _setControllerSilently(text);
     } catch (_) {
       _pageStrokes[page] = <_Stroke>[];
       _pageTexts[page] = '';
       _pageMedicalFlags[page] = <int>{};
-      if (hydrateController) _textController.text = '';
+      if (hydrateController) _setControllerSilently('');
     }
   }
 
@@ -951,6 +967,18 @@ class _NotesWidgetState extends State<NotesWidget> {
         pageNumber: _currentPage,
         drawingJson: _currentDrawingJson(),
       );
+      // Reset _isDirty après l'auto-save réussi — sans ça, le flag
+      // restait true éternellement (seul le bouton Save manuel le
+      // remettait à false), ce qui bloquait le polling cross-device
+      // (`_runNotePoll` skip si `_isDirty`). Bug 2026-05-07 : modifs
+      // Mac→iPad ne se propageaient plus dès qu'une saisie locale
+      // avait eu lieu.
+      if (mounted) {
+        setState(() {
+          _isDirty = false;
+          _saveLabel = _SaveLabel.saved;
+        });
+      }
     } catch (_) {
       // silencieux : l'utilisateur peut quand même déclencher manuellement Save.
     }
