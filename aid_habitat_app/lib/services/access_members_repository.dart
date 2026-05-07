@@ -45,6 +45,17 @@ class AccessMembersRepository {
       };
 
       // Insert/update remote members.
+      //
+      // NOTE 2026-05-07 : ce repo skip aveuglément si `pendingSync`,
+      // contrairement à note/document/wiki/retirement_funds qui font du
+      // LWW (parité fix 2026-05-07). On garde le skip aveugle ICI car
+      // le modèle `AdminAccessMember` n'expose pas d'`updatedAt`
+      // authoritatif côté serveur — sans timestamp, impossible de
+      // décider qui gagne. Impact perçu : faible (la table
+      // `access_members` est administrée par 1 admin, peu de races
+      // possibles). Si on a un bug « membre ajouté côté NocoDB n'arrive
+      // pas sur l'app », ajouter `updatedAt` au model + LWW comme
+      // ailleurs.
       for (final m in remoteMembers) {
         final existing = existingByEmail[m.email];
         if (existing != null) {
