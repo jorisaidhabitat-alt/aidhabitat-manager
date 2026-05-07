@@ -147,168 +147,133 @@ export const putJson = async (key, data) => {
 // Chunked upload helpers — used by /api/documents/chunk and /finalize for
 // big files that would otherwise exceed Vercel's 10s function timeout.
 //
-// Strategy : the client splits a file into ~1 MB chunks and POSTs each
-// independently. Each chunk is small enough to upload in <2s. The final
-// `/finalize` call assembles the chunks (download from Blob → concat →
-// upload to NocoDB).
+// Strategy v2 (2026-05-06) : MIGRATION HORS DE VERCEL BLOB. Demande
+// utilisateur : « tout doit fonctionner à 100 % entre NocoDB et
+// l'application Flutter ». Les chunks sont désormais stockés en
+// MÉMOIRE PURE côté serveur (Map JS), pas dans Blob.
 //
-// Layout :
-//   _chunks/<uploadId>/<chunkIndex>.bin   ← raw chunk data
-//   _chunks/<uploadId>/manifest.json      ← {fileName, mimeType, total, …}
+// Pourquoi pas Blob :
+//   - free tier Vercel Blob = 2000 ops/mois (atteint en 1 jour avec
+//     le pull adaptatif + uploads chunked)
+//   - le résultat final est de toute façon stocké dans NocoDB via
+//     `mobileSyncStore.upsertDocument({contentBase64, ...})` — Blob
+//     n'était qu'un buffer temporaire entre les chunks et le
+//     reassemble.
+//   - chunks séquentiels rapides → la même instance Fluid Compute
+//     traite typiquement chunk N et finalize, donc la Map en RAM
+//     suffit dans 99 % des cas.
 //
-// Cleanup : after `/finalize` succeeds, all blobs under _chunks/<uploadId>/
-// are deleted. Orphaned uploads (client crashed mid-upload) accumulate
-// until manually purged. A daily cron could call `purgeStaleChunks()`.
+// Limites :
+//   - Si Fluid Compute redémarre l'instance entre chunk N et finalize
+//     (rare mais possible), les chunks précédents sont perdus → le
+//     client doit retry l'upload from scratch (même `uploadId`
+//     régénéré). C'est OK pour un cas exceptionnel.
+//   - La RAM par instance Fluid Compute est limitée — un PDF de 10 MB
+//     en chunks d'1 MB consomme 10 MB de RAM le temps de l'upload.
+//     Acceptable.
 // ---------------------------------------------------------------------------
 
 /**
- * Stocke un chunk binaire d'un upload en cours. La clé est
- * `_chunks/<uploadId>/<chunkIndex>.bin`. Renvoie l'URL pour récupération
- * ultérieure.
+ * Stockage in-memory des chunks en cours d'upload.
+ * Map<uploadId, Map<chunkIndex, Buffer>>
+ *
+ * Chaque uploadId a sa propre sous-map indexée par chunkIndex. Le
+ * GC nettoie automatiquement après `deleteChunks` (qui delete la
+ * top-level entry).
+ */
+const _inMemoryChunks = new Map();
+
+/**
+ * Timestamp de dernière activité par uploadId — utilisé par le GC
+ * `purgeStaleChunks` pour détruire les uploads abandonnés (ex. client
+ * crashé en plein milieu).
+ */
+const _chunkLastActivity = new Map();
+
+/**
+ * Stocke un chunk binaire en mémoire serveur (plus de Vercel Blob).
+ * Le buffer est conservé tel quel (pas de copy) — l'appelant ne doit
+ * pas le muter après.
  */
 export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
-  const key = `_chunks/${uploadId}/${String(chunkIndex).padStart(6, '0')}.bin`;
-  return putObject({ key, buffer, contentType: 'application/octet-stream' });
+  if (!_inMemoryChunks.has(uploadId)) {
+    _inMemoryChunks.set(uploadId, new Map());
+  }
+  _inMemoryChunks.get(uploadId).set(chunkIndex, buffer);
+  _chunkLastActivity.set(uploadId, Date.now());
+  return {
+    url: `memory://chunks/${uploadId}/${chunkIndex}`,
+    updatedAt: new Date().toISOString(),
+  };
 };
 
 /**
- * Liste tous les chunks d'un upload, triés par chunkIndex croissant.
- * Renvoie un tableau de `{ index, url, size }` ou `[]` si aucun chunk
- * trouvé (uploadId invalide, déjà finalisé/purgé).
+ * Liste tous les chunks d'un upload en mémoire, triés par chunkIndex
+ * croissant. Renvoie `[]` si aucun chunk trouvé.
  */
 export const listChunks = async (uploadId) => {
-  const prefix = `_chunks/${uploadId}/`;
-  if (USE_BLOB) {
-    const result = await list({ prefix });
-    return result.blobs
-      .filter((b) => b.pathname.endsWith('.bin'))
-      .map((b) => ({
-        url: b.url,
-        size: b.size,
-        index: extractChunkIndex(b.pathname),
-      }))
-      .sort((a, b) => a.index - b.index);
-  }
-  // FS fallback
-  const dirPath = path.join(_DATA_DIR_PATH, prefix);
-  try {
-    const files = await fs.readdir(dirPath);
-    const chunks = await Promise.all(
-      files
-        .filter((f) => f.endsWith('.bin'))
-        .map(async (f) => {
-          const fullPath = path.join(dirPath, f);
-          const stats = await fs.stat(fullPath);
-          return {
-            url: `/uploads/${prefix}${f}`,
-            size: stats.size,
-            index: extractChunkIndex(f),
-          };
-        }),
-    );
-    return chunks.sort((a, b) => a.index - b.index);
-  } catch (error) {
-    if (error?.code === 'ENOENT') return [];
-    throw error;
-  }
+  const subMap = _inMemoryChunks.get(uploadId);
+  if (!subMap) return [];
+  const indices = [...subMap.keys()].sort((a, b) => a - b);
+  return indices.map((idx) => ({
+    url: `memory://chunks/${uploadId}/${idx}`,
+    size: subMap.get(idx)?.length || 0,
+    index: idx,
+  }));
 };
 
 /**
- * Télécharge tous les chunks d'un upload et les concatène dans un
- * Buffer unique. Bloquant — utiliser uniquement dans le handler
- * `/finalize` qui dispose du timeout complet de la fonction Vercel.
+ * Concatène tous les chunks en mémoire dans un Buffer unique.
+ * Throw si aucun chunk ou indices non contigus.
  */
 export const reassembleChunks = async (uploadId) => {
-  const chunks = await listChunks(uploadId);
-  if (chunks.length === 0) {
-    throw new Error(`Aucun chunk trouvé pour uploadId="${uploadId}"`);
+  const subMap = _inMemoryChunks.get(uploadId);
+  if (!subMap || subMap.size === 0) {
+    throw new Error(
+      `Aucun chunk trouvé pour uploadId="${uploadId}" — `
+      + `peut-être perdu suite à un redémarrage Function ; le client doit retry.`,
+    );
   }
-  // Sanity check : les indices doivent être contigus 0..n-1.
-  for (let i = 0; i < chunks.length; i += 1) {
-    if (chunks[i].index !== i) {
+  const indices = [...subMap.keys()].sort((a, b) => a - b);
+  for (let i = 0; i < indices.length; i += 1) {
+    if (indices[i] !== i) {
       throw new Error(
         `Chunks non contigus pour uploadId="${uploadId}" : `
-        + `index ${i} attendu, trouvé ${chunks[i].index}`,
+        + `index ${i} attendu, trouvé ${indices[i]}`,
       );
     }
   }
-  const buffers = await Promise.all(
-    chunks.map(async (c) => {
-      if (USE_BLOB) {
-        const response = await fetch(c.url, { cache: 'no-store' });
-        if (!response.ok) {
-          throw new Error(`Chunk fetch HTTP ${response.status} : ${c.url}`);
-        }
-        const ab = await response.arrayBuffer();
-        return Buffer.from(ab);
-      }
-      // FS fallback : lire le fichier local
-      const filePath = path.join(_DATA_DIR_PATH, c.url.replace(/^\/uploads\//, ''));
-      return fs.readFile(filePath);
-    }),
-  );
+  const buffers = indices.map((idx) => subMap.get(idx));
   return Buffer.concat(buffers);
 };
 
 /**
- * Supprime tous les blobs/fichiers liés à un uploadId — chunks +
- * manifest. Idempotent. Best-effort : les erreurs sont avalées (le
- * pire cas est un orphelin qui sera purgé par `purgeStaleChunks`).
+ * Supprime tous les chunks d'un uploadId. Idempotent — appelé après
+ * `/finalize` réussi pour libérer la RAM.
  */
 export const deleteChunks = async (uploadId) => {
-  const prefix = `_chunks/${uploadId}/`;
-  if (USE_BLOB) {
-    try {
-      const result = await list({ prefix });
-      if (result.blobs.length === 0) return;
-      await del(result.blobs.map((b) => b.url));
-    } catch {
-      // best-effort
-    }
-    return;
-  }
-  // FS fallback
-  const dirPath = path.join(_DATA_DIR_PATH, prefix);
-  try {
-    await fs.rm(dirPath, { recursive: true, force: true });
-  } catch {
-    // best-effort
-  }
+  _inMemoryChunks.delete(uploadId);
+  _chunkLastActivity.delete(uploadId);
 };
 
 /**
- * Purge les uploads chunked orphelins (clients qui ont commencé un
- * upload puis abandonné). À appeler depuis un cron quotidien — pas
- * critique pour le bon fonctionnement, juste pour limiter l'usage
- * stockage.
+ * Purge les uploads chunked orphelins en RAM (clients qui ont
+ * commencé un upload puis abandonné). À appeler depuis un cron
+ * périodique pour limiter la conso RAM. Avec Fluid Compute, les
+ * instances qui restent en vie peuvent accumuler des chunks
+ * orphelins entre les redémarrages — ce GC les libère.
  */
 export const purgeStaleChunks = async ({
-  olderThan = 24 * 60 * 60 * 1000, // 24h
+  olderThan = 60 * 60 * 1000, // 1h (raccourci vs 24h Blob — RAM > stockage)
 } = {}) => {
   const cutoff = Date.now() - olderThan;
-  const prefix = '_chunks/';
   let purged = 0;
-  if (USE_BLOB) {
-    const result = await list({ prefix });
-    const stale = result.blobs.filter((b) => {
-      const uploadedAt = b.uploadedAt?.getTime() ?? 0;
-      return uploadedAt < cutoff;
-    });
-    if (stale.length > 0) {
-      await del(stale.map((b) => b.url));
-      purged = stale.length;
+  for (const [uploadId, lastActivity] of _chunkLastActivity.entries()) {
+    if (lastActivity < cutoff) {
+      _inMemoryChunks.delete(uploadId);
+      _chunkLastActivity.delete(uploadId);
+      purged += 1;
     }
-    return purged;
   }
-  // FS fallback : skip (dev only, /tmp is wiped between runs anyway)
   return purged;
-};
-
-/**
- * Extrait l'index d'un nom de fichier chunk (ex. `000003.bin` → 3).
- * Tolère les chemins absolus (Blob renvoie `_chunks/<id>/000003.bin`).
- */
-function extractChunkIndex(pathname) {
-  const match = pathname.match(/(\d+)\.bin$/);
-  return match ? parseInt(match[1], 10) : -1;
 }
