@@ -42,7 +42,29 @@ class _AccountDialogState extends State<AccountDialog> {
   @override
   void initState() {
     super.initState();
-    _photoUrl = widget.currentUser.profilePhotoUrl;
+    // Priorité au data URL pending (= photo fraîchement uploadée pas
+    // encore confirmée par le serveur, mais déjà visible localement).
+    // Sans ça, après un upload depuis ce dialog, on ferme/rouvre et le
+    // dialog réaffiche l'ancienne photo persistée tant que le sync
+    // engine n'a pas pushé la nouvelle vers NocoDB. Demande utilisateur
+    // 2026-05-07. Mêmes priorités que la sidebar (cf. sidebar.dart).
+    _photoUrl = widget.currentUser.pendingProfilePhotoDataUrl.isNotEmpty
+        ? widget.currentUser.pendingProfilePhotoDataUrl
+        : widget.currentUser.profilePhotoUrl;
+  }
+
+  @override
+  void didUpdateWidget(covariant AccountDialog old) {
+    super.didUpdateWidget(old);
+    // Si le parent met à jour `currentUser` (ex. AuthRoot listener
+    // sync stream remplace _currentUser après un pull workspace), on
+    // resynchronise `_photoUrl` pour refléter la photo courante.
+    final next = widget.currentUser.pendingProfilePhotoDataUrl.isNotEmpty
+        ? widget.currentUser.pendingProfilePhotoDataUrl
+        : widget.currentUser.profilePhotoUrl;
+    if (next != _photoUrl) {
+      setState(() => _photoUrl = next);
+    }
   }
 
   /// Wipe le cache local + re-pull depuis NocoDB. Demande utilisateur
