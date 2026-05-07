@@ -14,11 +14,10 @@ import {
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
+// 2026-05-06 — Vercel Blob entièrement éliminé. Seuls les helpers
+// chunks (in-memory désormais) restent utilisés depuis storage.mjs.
+// putObject/statObject/getJson/putJson ne sont plus appelés.
 import {
-  putObject,
-  statObject,
-  getJson,
-  putJson,
   putChunk,
   reassembleChunks,
   deleteChunks,
@@ -1253,16 +1252,24 @@ const buildLegacyWcInstances = (payload) => {
   }];
 };
 
-const mapWikiLibraryItem = (item) => ({
+const mapWikiLibraryItem = (item) => {
+  const raw = String(item.imageUrl || '');
+  // Migration 2026-05-06 — data URL (image base64 NocoDB) en pass-through.
+  let imageUrl;
+  if (raw.startsWith('data:')) imageUrl = raw;
+  else if (raw.startsWith('/wiki-')) imageUrl = raw;
+  else imageUrl = absoluteUrl(item.imageUrl);
+  return {
   id: String(item.id),
   title: stringValue(item.title),
   description: stringValue(item.description),
-  imageUrl: String(item.imageUrl || '').startsWith('/wiki-') ? String(item.imageUrl) : absoluteUrl(item.imageUrl),
+  imageUrl,
   tags: normalizeWikiItemPayload(item).tags,
   category: stringValue(item.category) || 'Autre',
   createdAt: item.createdAt,
   updatedAt: item.updatedAt,
-});
+};
+};
 
 const mapWikiRecordToItem = (record) => {
   const metadata = parseWikiContent(field(record, 'contenu'));
@@ -1957,11 +1964,25 @@ const getVisitPlanFileUrl = (dossierId) => {
   return new URL(`${folderName}/plan_logement.png`, VISIT_PLANS_DIR_URL);
 };
 
-const readVisitPlanMeta = async (dossierId) => {
-  const folderName = safeSlug(dossierId, 'dossier');
-  const key = `visit-plans/${folderName}/plan_logement.png`;
-  const { url, updatedAt } = await statObject(key);
-  return { publicUrl: url, updatedAt };
+const readVisitPlanMeta = async (dossierId, beneficiaireId = null) => {
+  // Migration 2026-05-06 — plus de Vercel Blob. Le plan visite est
+  // stocké en base64 dans `mobile_documents` avec
+  // `client_document_id = plan_logement_<dossierId>` (id stable, donc
+  // upsert remplace l'ancien). On lit la dernière version en filtrant
+  // sur cet id et on retourne la data URL `data:image/png;base64,…`.
+  const documents = await mobileSyncStore.listDocumentsByPatient(
+    beneficiaireId,
+    {},
+  ).catch(() => []);
+  const planClientId = `plan_logement_${dossierId}`;
+  const planDoc = documents.find((d) => d.clientDocumentId === planClientId);
+  if (!planDoc) return { publicUrl: null, updatedAt: null };
+  const contentBase64 = stringValue(planDoc.contentBase64);
+  if (!contentBase64) return { publicUrl: null, updatedAt: null };
+  return {
+    publicUrl: `data:image/png;base64,${contentBase64}`,
+    updatedAt: planDoc.updatedAt || null,
+  };
 };
 
 const syncPresetMembersInErgos = async () => {
@@ -6023,7 +6044,14 @@ app.get('/api/visit-plans/:dossierId', requireAuth, async (req, res, next) => {
       return;
     }
 
-    const visitPlan = await readVisitPlanMeta(field(dossierRecord, 'uuid_source') || req.params.dossierId);
+    const dossierIdResolved =
+        field(dossierRecord, 'uuid_source') || req.params.dossierId;
+    const beneficiaireId =
+        field(dossierRecord, 'beneficiaires_id')
+        || field(dossierRecord, 'patient_id')
+        || null;
+    const visitPlan = await readVisitPlanMeta(
+        dossierIdResolved, beneficiaireId);
     res.json({
       success: true,
       error: null,
@@ -6049,13 +6077,31 @@ app.put('/api/visit-plans/:dossierId', requireAuth, async (req, res, next) => {
 
     const image = parseImageDataUrl(contentBase64);
     const dossierId = field(dossierRecord, 'uuid_source') || req.params.dossierId;
-    const folderName = safeSlug(dossierId, 'dossier');
-    const { url: planUrl, updatedAt: planUpdatedAt } = await putObject({
-      key: `visit-plans/${folderName}/plan_logement.png`,
-      buffer: image.buffer,
-      contentType: 'image/png',
+    const beneficiaireId =
+        field(dossierRecord, 'beneficiaires_id')
+        || field(dossierRecord, 'patient_id')
+        || null;
+    if (!beneficiaireId) {
+      throw httpError(400, 'beneficiaireId introuvable pour ce dossier');
+    }
+    // Migration 2026-05-06 — plus de Vercel Blob. Stockage en base64
+    // dans `mobile_documents` avec id stable (upsert = remplacement).
+    const planContentB64 = image.buffer.toString('base64');
+    const saved = await mobileSyncStore.upsertDocument({
+      patientId: beneficiaireId,
+      dossierId,
+      documentLocalId: `plan_logement_${dossierId}`,
+      title: 'Plan logement',
+      fileName: 'plan_logement.png',
+      mimeType: 'image/png',
+      tags: ['plan-logement'],
+      contentBase64: planContentB64,
     });
-    const visitPlan = { publicUrl: planUrl, updatedAt: planUpdatedAt };
+    const planUrl = `data:image/png;base64,${planContentB64}`;
+    const visitPlan = {
+      publicUrl: planUrl,
+      updatedAt: saved?.updatedAt || new Date().toISOString(),
+    };
     res.json({
       success: true,
       error: null,

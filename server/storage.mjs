@@ -1,199 +1,47 @@
 /**
- * Storage abstraction — Vercel Blob in production, local FS in development.
+ * Storage abstraction — version 2026-05-06 (post-migration Vercel Blob).
  *
- * Backend selection:
- *  - If BLOB_READ_WRITE_TOKEN is set → @vercel/blob (persistent across deploys)
- *  - Otherwise → local filesystem under server/data/ (dev only)
+ * Plus aucun appel @vercel/blob. Tout passe par NocoDB (base64 dans
+ * `mobile_documents` / `mobile_visit_photos` / `ergotherapeutes` /
+ * `wiki`) ou par la RAM serveur (auth-store, chunks d'upload).
  *
- * Key format: '<folder>/<filename>'
- *   profile-photos/safeEmail-timestamp.jpg
- *   visit-plans/<dossier-slug>/plan_logement.png
- *   wiki-library/title-slug-timestamp.jpg
+ * Ce fichier conserve uniquement le helper de chunking d'upload :
+ * pendant qu'un client envoie un gros fichier en chunks de 1 MB,
+ * on garde les chunks en mémoire le temps que tous arrivent puis
+ * `reassembleChunks` concatène et le pipeline final écrit en base64
+ * dans NocoDB via `mobileSyncStore.upsertDocument`.
  *
- * Returned URL:
- *  - Blob mode  → absolute https:// URL (resolveClientMediaUrl already passes these through)
- *  - FS mode    → relative /uploads/<key>  (served by express.static)
+ * Pourquoi RAM et pas Blob :
+ *   - free tier Vercel Blob = 2000 ops/mois (atteint en 1 jour avec
+ *     les uploads chunked + auth reads).
+ *   - les chunks sont éphémères (vie ~quelques secondes max), pas
+ *     besoin d'un stockage persistant pour ça.
+ *   - le résultat final est dans NocoDB de toute façon.
+ *
+ * Limites :
+ *   - Si Fluid Compute redémarre l'instance entre chunk N et finalize
+ *     (rare), les chunks précédents sont perdus → le client retry
+ *     l'upload.
+ *   - La RAM par instance Fluid est limitée — un PDF de 10 MB en
+ *     chunks 1 MB consomme 10 MB le temps de l'upload. Acceptable.
  */
 
-import { put, list, del } from '@vercel/blob';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import process from 'node:process';
-
-// Mirror helpers.mjs DATA_DIR_PATH logic — kept here to avoid circular imports.
-const _LOCAL_DATA_DIR_PATH = fileURLToPath(new URL('./data/', import.meta.url));
-const _DATA_DIR_PATH = process.env.VERCEL
-  ? path.join('/tmp', 'aidhabitat-data')
-  : _LOCAL_DATA_DIR_PATH;
-
-/** True when Vercel Blob credentials are present. */
-export const USE_BLOB = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
-
 /**
- * Write a binary object to storage.
- *
- * @param {{ key: string, buffer: Buffer, contentType: string }} opts
- * @returns {{ url: string, updatedAt: string }}
- */
-export const putObject = async ({ key, buffer, contentType }) => {
-  if (USE_BLOB) {
-    const blob = await put(key, buffer, {
-      access: 'public',
-      contentType,
-      addRandomSuffix: false,
-    });
-    return {
-      url: blob.url,
-      updatedAt: blob.uploadedAt?.toISOString() ?? new Date().toISOString(),
-    };
-  }
-  // FS fallback
-  const filePath = path.join(_DATA_DIR_PATH, key);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, buffer);
-  return { url: `/uploads/${key}`, updatedAt: new Date().toISOString() };
-};
-
-/**
- * Check whether an object exists and return its public URL + timestamp.
- * Returns { url: null, updatedAt: null } when the object is absent.
- *
- * @param {string} key
- * @returns {{ url: string|null, updatedAt: string|null }}
- */
-export const statObject = async (key) => {
-  if (USE_BLOB) {
-    const result = await list({ prefix: key, limit: 1 });
-    const blob = result.blobs[0];
-    if (!blob) return { url: null, updatedAt: null };
-    return {
-      url: blob.url,
-      updatedAt: blob.uploadedAt?.toISOString() ?? null,
-    };
-  }
-  // FS fallback
-  const filePath = path.join(_DATA_DIR_PATH, key);
-  try {
-    const stats = await fs.stat(filePath);
-    return { url: `/uploads/${key}`, updatedAt: stats.mtime.toISOString() };
-  } catch (error) {
-    if (error?.code === 'ENOENT') return { url: null, updatedAt: null };
-    throw error;
-  }
-};
-
-/**
- * Read a JSON object from storage. Returns `fallback` when the key is absent.
- *
- * Blob mode: the blob is stored with `access: 'public'` (same as putObject)
- * and fetched via its public URL. In-memory caching is deliberately left to
- * the caller — auth-store.json is small and read at most once per request.
- *
- * @template T
- * @param {string} key
- * @param {T} fallback
- * @returns {Promise<T>}
- */
-export const getJson = async (key, fallback) => {
-  if (USE_BLOB) {
-    const result = await list({ prefix: key, limit: 1 });
-    const blob = result.blobs.find((b) => b.pathname === key);
-    if (!blob) return fallback;
-    const response = await fetch(blob.url, { cache: 'no-store' });
-    if (!response.ok) {
-      throw new Error(`getJson(${key}) HTTP ${response.status}`);
-    }
-    return await response.json();
-  }
-  const filePath = path.join(_DATA_DIR_PATH, key);
-  try {
-    const raw = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(raw);
-  } catch (error) {
-    if (error?.code === 'ENOENT') return fallback;
-    throw error;
-  }
-};
-
-/**
- * Write a JSON object to storage atomically (same key overwrites previous).
- *
- * @param {string} key
- * @param {unknown} data
- * @returns {Promise<{ url: string, updatedAt: string }>}
- */
-export const putJson = async (key, data) => {
-  const payload = JSON.stringify(data, null, 2);
-  if (USE_BLOB) {
-    const blob = await put(key, payload, {
-      access: 'public',
-      contentType: 'application/json; charset=utf-8',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    return {
-      url: blob.url,
-      updatedAt: blob.uploadedAt?.toISOString() ?? new Date().toISOString(),
-    };
-  }
-  const filePath = path.join(_DATA_DIR_PATH, key);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, payload);
-  return { url: `/uploads/${key}`, updatedAt: new Date().toISOString() };
-};
-
-// ---------------------------------------------------------------------------
-// Chunked upload helpers — used by /api/documents/chunk and /finalize for
-// big files that would otherwise exceed Vercel's 10s function timeout.
-//
-// Strategy v2 (2026-05-06) : MIGRATION HORS DE VERCEL BLOB. Demande
-// utilisateur : « tout doit fonctionner à 100 % entre NocoDB et
-// l'application Flutter ». Les chunks sont désormais stockés en
-// MÉMOIRE PURE côté serveur (Map JS), pas dans Blob.
-//
-// Pourquoi pas Blob :
-//   - free tier Vercel Blob = 2000 ops/mois (atteint en 1 jour avec
-//     le pull adaptatif + uploads chunked)
-//   - le résultat final est de toute façon stocké dans NocoDB via
-//     `mobileSyncStore.upsertDocument({contentBase64, ...})` — Blob
-//     n'était qu'un buffer temporaire entre les chunks et le
-//     reassemble.
-//   - chunks séquentiels rapides → la même instance Fluid Compute
-//     traite typiquement chunk N et finalize, donc la Map en RAM
-//     suffit dans 99 % des cas.
-//
-// Limites :
-//   - Si Fluid Compute redémarre l'instance entre chunk N et finalize
-//     (rare mais possible), les chunks précédents sont perdus → le
-//     client doit retry l'upload from scratch (même `uploadId`
-//     régénéré). C'est OK pour un cas exceptionnel.
-//   - La RAM par instance Fluid Compute est limitée — un PDF de 10 MB
-//     en chunks d'1 MB consomme 10 MB de RAM le temps de l'upload.
-//     Acceptable.
-// ---------------------------------------------------------------------------
-
-/**
- * Stockage in-memory des chunks en cours d'upload.
- * Map<uploadId, Map<chunkIndex, Buffer>>
- *
- * Chaque uploadId a sa propre sous-map indexée par chunkIndex. Le
- * GC nettoie automatiquement après `deleteChunks` (qui delete la
- * top-level entry).
+ * Map<uploadId, Map<chunkIndex, Buffer>>.
+ * Chaque uploadId a sa propre sous-map indexée par chunkIndex.
+ * Le GC nettoie automatiquement après `deleteChunks`.
  */
 const _inMemoryChunks = new Map();
 
 /**
  * Timestamp de dernière activité par uploadId — utilisé par le GC
- * `purgeStaleChunks` pour détruire les uploads abandonnés (ex. client
- * crashé en plein milieu).
+ * `purgeStaleChunks` pour détruire les uploads abandonnés.
  */
 const _chunkLastActivity = new Map();
 
 /**
- * Stocke un chunk binaire en mémoire serveur (plus de Vercel Blob).
- * Le buffer est conservé tel quel (pas de copy) — l'appelant ne doit
- * pas le muter après.
+ * Stocke un chunk binaire en RAM serveur. Le buffer est conservé tel
+ * quel (pas de copy) — l'appelant ne doit pas le muter après.
  */
 export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
   if (!_inMemoryChunks.has(uploadId)) {
@@ -208,7 +56,7 @@ export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
 };
 
 /**
- * Liste tous les chunks d'un upload en mémoire, triés par chunkIndex
+ * Liste tous les chunks d'un upload en RAM, triés par chunkIndex
  * croissant. Renvoie `[]` si aucun chunk trouvé.
  */
 export const listChunks = async (uploadId) => {
@@ -223,8 +71,8 @@ export const listChunks = async (uploadId) => {
 };
 
 /**
- * Concatène tous les chunks en mémoire dans un Buffer unique.
- * Throw si aucun chunk ou indices non contigus.
+ * Concatène tous les chunks en RAM dans un Buffer unique.
+ * Throw si aucun chunk trouvé ou indices non contigus.
  */
 export const reassembleChunks = async (uploadId) => {
   const subMap = _inMemoryChunks.get(uploadId);
@@ -243,8 +91,7 @@ export const reassembleChunks = async (uploadId) => {
       );
     }
   }
-  const buffers = indices.map((idx) => subMap.get(idx));
-  return Buffer.concat(buffers);
+  return Buffer.concat(indices.map((idx) => subMap.get(idx)));
 };
 
 /**
@@ -257,14 +104,11 @@ export const deleteChunks = async (uploadId) => {
 };
 
 /**
- * Purge les uploads chunked orphelins en RAM (clients qui ont
- * commencé un upload puis abandonné). À appeler depuis un cron
- * périodique pour limiter la conso RAM. Avec Fluid Compute, les
- * instances qui restent en vie peuvent accumuler des chunks
- * orphelins entre les redémarrages — ce GC les libère.
+ * Purge les uploads chunked orphelins en RAM. À appeler depuis un
+ * cron périodique pour limiter la conso RAM.
  */
 export const purgeStaleChunks = async ({
-  olderThan = 60 * 60 * 1000, // 1h (raccourci vs 24h Blob — RAM > stockage)
+  olderThan = 60 * 60 * 1000, // 1h
 } = {}) => {
   const cutoff = Date.now() - olderThan;
   let purged = 0;
@@ -276,4 +120,11 @@ export const purgeStaleChunks = async ({
     }
   }
   return purged;
-}
+};
+
+/**
+ * Backward-compat — exporté à false (plus jamais de Blob actif).
+ * Du code legacy peut encore référencer ce flag pour des branches
+ * conditionnelles ; elles tomberont toutes dans le path NocoDB.
+ */
+export const USE_BLOB = false;

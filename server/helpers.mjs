@@ -8,7 +8,10 @@ import { callNocoTool, closeMcpClient } from './nocodbMcpClient.mjs';
 import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
-import { getJson, putJson, USE_BLOB } from './storage.mjs';
+// 2026-05-06 : Vercel Blob entièrement éliminé du flow. Les fonctions
+// `getJson` / `putJson` ne sont plus utilisées — auth-store désormais
+// en RAM (cf. readAuthStore plus bas). On garde l'import storage.mjs
+// éventuellement pour USE_BLOB côté code legacy non encore migré.
 
 export { callNocoTool, closeMcpClient, getRetirementFundMeta, WIKI_FILTER_TAGS };
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
