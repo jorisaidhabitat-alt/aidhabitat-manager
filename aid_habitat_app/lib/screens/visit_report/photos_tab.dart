@@ -13,6 +13,7 @@ import '../../components/soft_transitions.dart';
 import '../../models/types.dart';
 import '../../models/visit_report_categories.dart';
 import '../../services/app_config.dart';
+import '../../services/connectivity_service.dart';
 import '../../services/data_service.dart';
 import '../../services/file_drop_listener.dart' show DroppedFile;
 import '../../services/media_cache_service.dart';
@@ -105,7 +106,11 @@ class _PhotosTabState extends State<PhotosTab>
     super.initState();
     _refresh();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted) _refresh(silent: true);
+      if (!mounted) return;
+      // Skip offline (2026-05-07) — évite des tentatives HTTP qui
+      // échoueront immédiatement et gaspillent CPU/batterie.
+      if (ConnectivityService().isOffline) return;
+      _refresh(silent: true);
     });
   }
 

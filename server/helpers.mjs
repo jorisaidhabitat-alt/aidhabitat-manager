@@ -679,35 +679,72 @@ export const mapMedicalContext = (contextRecord) => {
 
 const AUTH_STORE_KEY = 'auth-store.json';
 
-export const readAuthStore = async () => {
-  const parsed = await getJson(AUTH_STORE_KEY, null);
-  if (!parsed) {
-    return {
-      version: 1,
-      secret: randomSecret(),
-      users: {},
-      pendingCredentials: {},
-    };
+/**
+ * Migration 2026-05-06 — auth-store déconnecté de Vercel Blob.
+ *
+ * Avant : `auth-store.json` était stocké dans Blob (1 read par cold
+ * start malgré le cache RAM 30 s) → quota free tier 2000 ops/mois
+ * dépassé en quelques jours.
+ *
+ * Après : zéro Blob côté auth.
+ *   - Secret HMAC : env var `AUTH_SESSION_SECRET` (stable cross-deploy).
+ *     Fallback dérivé déterministe du `NOCODB_API_TOKEN` si absente —
+ *     OK pour MVP TestFlight, le token NocoDB est lui-même secret et
+ *     stable. Logué en warning pour rappeler de set la vraie env.
+ *   - Mots de passe : `ergotherapeutes.mot_de_passe` (NocoDB) — déjà
+ *     prioritaire sur l'auth-store dans `loadMemberRegistry`.
+ *   - Photos profil : `ergotherapeutes.profile_photo_base64` (NocoDB,
+ *     colonne ajoutée 2026-05-06). Plus d'URL Blob.
+ *   - PendingCredentials : RAM uniquement (perdu à chaque restart, OK
+ *     car affichés au + une fois à l'admin lors de la création d'un
+ *     ergo, et l'admin peut toujours les régénérer en remettant le
+ *     `mot_de_passe` à blanc dans NocoDB UI).
+ *
+ * Cache RAM : `memberRegistryCache` (30 s TTL) reste en place — gère
+ * la haute fréquence de pulls API sans solliciter NocoDB à chaque
+ * requête authentifiée.
+ */
+
+let _ramAuthStore = null;
+
+const _getStableSecret = () => {
+  const fromEnv = String(process.env.AUTH_SESSION_SECRET || '').trim();
+  if (fromEnv.length >= 32) return fromEnv;
+  // Fallback déterministe dérivé du token NocoDB (lui-même secret +
+  // stable). Si AUTH_SESSION_SECRET n'est pas set, les sessions
+  // restent valides cross-deploy tant que le token NocoDB ne change
+  // pas. À set proprement en production avec une valeur dédiée.
+  if (!process.env.AUTH_SESSION_SECRET) {
+    console.warn(
+      '[auth] AUTH_SESSION_SECRET non défini — fallback dérivé du token NocoDB. '
+      + 'Définir une env var dédiée pour la prod.',
+    );
   }
-  const users = Object.fromEntries(
-    Object.entries(parsed.users || {}).map(([email, user]) => [
-      email,
-      {
-        ...user,
-        profilePhotoUrl: stringValue(user?.profilePhotoUrl),
-      },
-    ]),
-  );
-  return {
+  const seed = String(process.env.NOCODB_API_TOKEN || 'aidhabitat-fallback');
+  return crypto.createHmac('sha256', 'aidhabitat-auth-secret-derivation')
+    .update(seed)
+    .digest('base64url');
+};
+
+export const readAuthStore = async () => {
+  if (_ramAuthStore) return _ramAuthStore;
+  _ramAuthStore = {
     version: 1,
-    secret: parsed.secret || randomSecret(),
-    users,
-    pendingCredentials: parsed.pendingCredentials || {},
+    secret: _getStableSecret(),
+    users: {},
+    pendingCredentials: {},
   };
+  return _ramAuthStore;
 };
 
 export const writeAuthStore = async (store) => {
-  await putJson(AUTH_STORE_KEY, store);
+  // Garde la valeur en RAM pour les autres reads dans le même process.
+  // Plus de write Blob — les modifications de users[*] sont reflétées
+  // dans le cache mémoire mais ne survivent pas à un cold restart.
+  // Acceptable car :
+  //   - les hash NocoDB sont recalculés au boot via loadMemberRegistry
+  //   - les pendingCredentials sont éphémères par design
+  _ramAuthStore = store;
 };
 
 export const readJsonStore = async (storeUrl, fallbackValue) => {

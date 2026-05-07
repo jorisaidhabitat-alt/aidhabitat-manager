@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../services/connectivity_service.dart';
 import '../services/data_service.dart';
 import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
@@ -518,6 +519,9 @@ class _NotesWidgetState extends State<NotesWidget> {
     _notePollTimer?.cancel();
     _notePollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
+      // Skip offline (2026-05-07) — la note partagée se rafraîchira
+      // toute seule au retour réseau via le sync engine.
+      if (ConnectivityService().isOffline) return;
       if (_isDirty) return;
       if (_notePollRunning) return;
       // ignore: discarded_futures

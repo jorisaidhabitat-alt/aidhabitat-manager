@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
+import '../../services/connectivity_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
@@ -64,6 +65,9 @@ class _WcTabState extends State<WcTab>
     _load();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
+      // Skip offline (2026-05-07) — pas de tentative HTTP qui
+      // échouerait silencieusement et gaspillerait CPU/batterie.
+      if (ConnectivityService().isOffline) return;
       // Skip si une saisie est en cours côté local (debounce save actif
       // ou save HTTP en flight) → on ne touche pas à _diagnostic pour
       // ne pas écraser la valeur que l'utilisateur tape.

@@ -23,6 +23,7 @@ import '../components/file_drop_zone.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
+import '../services/connectivity_service.dart';
 import '../services/file_drop_listener.dart' show DroppedFile;
 import '../services/web_file_picker.dart';
 import '../services/web_file_saver.dart';
@@ -136,8 +137,15 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     // (SELECT documents WHERE patient_id), pas de binaire transféré
     // tant que `_warmDocumentBinaryCache` ne le demande pas pour les
     // nouveaux docs uniquement (cf. cache idempotent).
+    //
+    // Skip si offline (2026-05-07) — sinon chaque tick tente un fetch
+    // HTTP qui échoue immédiatement (DNS / SocketException), gaspille
+    // CPU + batterie iPad. Le ConnectivityService re-déclenche un
+    // sync immédiat au retour réseau via `onConnectivityBack`.
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted) _loadDocuments(silent: true);
+      if (!mounted) return;
+      if (ConnectivityService().isOffline) return;
+      _loadDocuments(silent: true);
     });
   }
 

@@ -268,7 +268,7 @@ const FIELD_SETS = {
   observations: ['uuid_source', 'dossier_id', 'observation_equipements', 'projet_souhait_usage', 'resume_preconisations', 'UpdatedAt'],
   referencesLibelle: ['libelle'],
   referencesNom: ['nom'],
-  ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'mot_de_passe'],
+  ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'mot_de_passe', 'profile_photo_base64'],
   communes: ['nom', 'code_postal', 'epci_id1', 'epci'],
   baremesAnah: ['libelle', 'nombre_personnes', 'annee_plafond'],
   caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire', 'a_une_aide_specifique'],
@@ -837,43 +837,52 @@ const mapMedicalContext = (contextRecord) => {
 
 const AUTH_STORE_KEY = 'auth-store.json';
 
-// Prefer a stable `JWT_SECRET` env var over the per-instance random one. On
-// Vercel serverless (without Blob storage) the auth-store lives in /tmp,
-// which is ephemeral and per-cold-start — so every new function instance
-// would otherwise regenerate `secret` and invalidate every JWT the previous
-// instance signed (→ random 401s on the clients). Setting JWT_SECRET in
-// the project's env vars pins it across cold starts.
-const STATIC_JWT_SECRET = stringValue(process.env.JWT_SECRET).trim();
+// Migration 2026-05-06 — auth-store déconnecté de Vercel Blob (cf.
+// version helpers.mjs pour le rationale détaillé). Le secret HMAC
+// vient maintenant de l'env `AUTH_SESSION_SECRET` (ou `JWT_SECRET`
+// pour la compat ascendante), avec fallback dérivé du token NocoDB.
+// `_ramAuthStore` cache l'objet store en mémoire pour que les writes
+// successifs (changement password, photo) restent cohérents au sein
+// d'un même process Node — perdus au cold restart, ce qui est OK
+// car les hash NocoDB sont recalculés au boot via loadMemberRegistry.
+const STATIC_JWT_SECRET =
+    stringValue(process.env.AUTH_SESSION_SECRET).trim()
+    || stringValue(process.env.JWT_SECRET).trim();
+
+let _ramAuthStoreLocal = null;
+
+const _resolveAuthSecret = () => {
+  if (STATIC_JWT_SECRET && STATIC_JWT_SECRET.length >= 32) {
+    return STATIC_JWT_SECRET;
+  }
+  if (!STATIC_JWT_SECRET) {
+    console.warn(
+      '[auth] AUTH_SESSION_SECRET non défini — fallback dérivé du token NocoDB. '
+      + 'Définir une env var dédiée pour la prod.',
+    );
+  }
+  const seed = stringValue(process.env.NOCODB_API_TOKEN || 'aidhabitat-fallback');
+  return crypto.createHmac('sha256', 'aidhabitat-auth-secret-derivation')
+      .update(seed).digest('base64url');
+};
 
 const readAuthStore = async () => {
-  const parsed = await getJson(AUTH_STORE_KEY, null);
-  if (!parsed) {
-    return {
-      version: 1,
-      secret: STATIC_JWT_SECRET || randomSecret(),
-      users: {},
-      pendingCredentials: {},
-    };
-  }
-  const users = Object.fromEntries(
-    Object.entries(parsed.users || {}).map(([email, user]) => [
-      email,
-      {
-        ...user,
-        profilePhotoUrl: stringValue(user?.profilePhotoUrl),
-      },
-    ]),
-  );
-  return {
+  if (_ramAuthStoreLocal) return _ramAuthStoreLocal;
+  _ramAuthStoreLocal = {
     version: 1,
-    secret: STATIC_JWT_SECRET || parsed.secret || randomSecret(),
-    users,
-    pendingCredentials: parsed.pendingCredentials || {},
+    secret: _resolveAuthSecret(),
+    users: {},
+    pendingCredentials: {},
   };
+  return _ramAuthStoreLocal;
 };
 
 const writeAuthStore = async (store) => {
-  await putJson(AUTH_STORE_KEY, store);
+  // Plus de Blob — store conservé en RAM uniquement pour cohérence
+  // intra-process. Les hash NocoDB sont recalculés au démarrage via
+  // loadMemberRegistry (cf. helpers.mjs `readAuthStore` pour le
+  // rationale complet de la migration).
+  _ramAuthStoreLocal = store;
 };
 
 const readJsonStore = async (storeUrl, fallbackValue) => {
@@ -1863,12 +1872,19 @@ const buildMemberFromErgoRecord = (record) => {
   const special = specialMemberProfile(email);
   const derivedName = special?.displayName || refLabel(record) || email;
   const nocoPassword = stringValue(field(record, 'mot_de_passe')).trim() || null;
+  // Migration 2026-05-06 : la photo profil est maintenant stockée en
+  // base64 dans `profile_photo_base64`. Fallback `nom_etablissement_id`
+  // pour les anciennes lignes qui ont encore l'URL Blob (legacy —
+  // sera nettoyé quand l'ergo réuploade sa photo).
+  const profilePhotoB64 = stringValue(field(record, 'profile_photo_base64')).trim();
+  const profilePhotoLegacy = stringValue(field(record, 'nom_etablissement_id')).trim();
   return {
     email,
     displayName: derivedName,
     role: special?.role || 'ERGO',
     selectable: special?.selectable ?? true,
-    profilePhotoUrl: resolveClientMediaUrl(field(record, 'nom_etablissement_id')),
+    profilePhotoUrl: profilePhotoB64
+        || resolveClientMediaUrl(profilePhotoLegacy),
     establishmentId: field(record, 'etablissements_id') ? String(field(record, 'etablissements_id')) : '',
     establishmentLabel: refLabel(field(record, 'etablissement')) || special?.establishmentLabel || '',
     ergoRecordId: String(record.id),
@@ -3017,13 +3033,14 @@ app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
       return;
     }
 
-    const safeEmail = currentUser.email.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-    const fileName = `${safeEmail}-${Date.now()}.${extension}`;
-    const { url: photoUrl } = await putObject({
-      key: `profile-photos/${fileName}`,
-      buffer,
-      contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
-    });
+    // Migration 2026-05-06 — plus de Vercel Blob. La photo est
+    // encodée en data URL (`data:image/jpeg;base64,…`) et stockée
+    // directement dans `ergotherapeutes.profile_photo_base64` (colonne
+    // ajoutée 2026-05-06). Le client Flutter affiche les data URLs
+    // nativement (cf. `cached_remote_image.dart` qui parse
+    // `data:image/…`).
+    const mimeType = `image/${extension === 'jpg' ? 'jpeg' : extension}`;
+    const photoUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
     const store = await readAuthStore();
     const credentials = store.users[currentUser.email];
@@ -3038,7 +3055,7 @@ app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
     if (currentUser.ergoRecordId) {
       try {
         await updateRecord(TABLES.ergotherapeutes, currentUser.ergoRecordId, {
-          nom_etablissement_id: photoUrl,
+          profile_photo_base64: photoUrl,
         });
       } catch (error) {
         console.warn('[profile-photo] sync NocoDB impossible, photo conservée localement.', error);

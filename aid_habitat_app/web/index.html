@@ -43,24 +43,24 @@
     moindre PDF.
 
     Version 2.13.216 — proven stable avec `pdfx ^2.6.x` (cf. la doc
-    officielle du package). Le `crossorigin="anonymous"` est requis
-    parce que le PWA tourne en `Cross-Origin-Embedder-Policy:
-    credentialless` (cf. vercel.json) — sans ça le browser refuse
-    d'exécuter le script.
+    officielle du package).
 
-    Service Worker Flutter cache le script après la 1re visite, donc
-    pas de roundtrip réseau ensuite : la preview s'ouvre instantanément.
+    Bundlé localement dans `web/pdfjs/` (au lieu d'un CDN unpkg.com)
+    depuis 2026-05-07 pour garantir le fonctionnement 100 % offline :
+    le service worker Flutter cache automatiquement les assets
+    same-origin, donc PDF.js reste dispo même si l'iPad part offline
+    avant le 1er load PDF (avant ce changement, le browser cache HTTP
+    pouvait évincer le script CDN et casser la preview offline).
+    Voir `web/pdfjs/pdf.min.js` (~230 Ko) + `pdf.worker.min.js`
+    (~1 Mo). Mise à jour : remplacer les deux fichiers manuellement
+    en récupérant la version voulue depuis https://unpkg.com/pdfjs-dist/.
   -->
-  <script
-    src="https://unpkg.com/pdfjs-dist@2.13.216/build/pdf.min.js"
-    crossorigin="anonymous"></script>
+  <script src="pdfjs/pdf.min.js"></script>
   <script>
     if (window.pdfjsLib) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://unpkg.com/pdfjs-dist@2.13.216/build/pdf.worker.min.js';
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdfjs/pdf.worker.min.js';
     } else {
-      // ignore: avoid_print
-      console.warn('[pdfjs] pdf.min.js non chargé — vérifiez la connectivité ou les CSP/COEP du serveur.');
+      console.warn('[pdfjs] pdf.min.js non chargé — vérifier que web/pdfjs/ est bien servi.');
     }
   </script>
 </head>

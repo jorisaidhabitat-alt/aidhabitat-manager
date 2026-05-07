@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
+import '../../services/connectivity_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
@@ -134,6 +135,8 @@ class _BathroomTabState extends State<BathroomTab>
     _load();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
+      // Skip offline (2026-05-07) — cf. wc_tab.dart pour le rationale.
+      if (ConnectivityService().isOffline) return;
       if (_saveTimer?.isActive == true) return;
       if (_saving) return;
       // ignore: discarded_futures
