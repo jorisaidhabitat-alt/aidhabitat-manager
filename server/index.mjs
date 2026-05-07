@@ -3220,9 +3220,22 @@ app.post('/api/profile/photo', requireAuth, async (req, res, next) => {
       );
     }
 
+    // Invalide juste le cache — NE PAS re-fetch immédiatement.
+    // Avant 2026-05-07 : `loadMemberRegistry({forceRefresh: true})`
+    // re-pull TOUTES les lignes `ergotherapeutes` (avec leurs photos
+    // base64 désormais), payload qui peut atteindre plusieurs MB →
+    // Vercel function timeout (503 vu côté client) sur Fluid Compute.
+    // Maintenant : on invalide juste le cache, le prochain hit
+    // `local-state` (le pull du sync engine, 2-3 s plus tard) refera
+    // un load fraîchement avec la nouvelle photo.
     memberRegistryCache = null;
-    const { members } = await loadMemberRegistry({ forceRefresh: true });
-    const refreshedUser = members.find((member) => member.email === currentUser.email) || currentUser;
+
+    // Construit la version refreshed du user à partir du store qu'on
+    // vient de muter — pas besoin de re-fetch NocoDB.
+    const refreshedUser = {
+      ...currentUser,
+      profilePhotoUrl: photoUrl,
+    };
 
     res.json({
       success: true,
