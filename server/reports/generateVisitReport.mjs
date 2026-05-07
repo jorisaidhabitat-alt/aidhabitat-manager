@@ -895,27 +895,34 @@ function buildViewModel({
       })(),
     },
     contexte: (() => {
-      // Source primaire : les NOTES écrites par l'ergo dans
+      // Source UNIQUE : les NOTES écrites par l'ergo dans
       // `Contexte de vie > Médical` (Environnement) et
-      // `Contexte de vie > Autonomie` (Habitudes de vie). Demande
-      // utilisateur — la note libre est plus riche que les données
-      // structurées du formulaire (cases cochées + textes courts).
+      // `Contexte de vie > Autonomie` (Habitudes de vie).
       //
-      // Fallback : si aucune note n'a été saisie, on retombe sur
-      // l'ancienne agrégation des champs structurés du dossier
-      // (`buildEnvironnementText` / `buildHabitudesText`) pour ne
-      // jamais avoir de section vide.
+      // Avant 2026-05-07 : fallback automatique sur les checkboxes
+      // structurées (`buildEnvironnementText` / `buildHabitudesText`)
+      // si la note était vide. Conséquence : Marie Pommier sans note
+      // Habitudes mais avec quelques cases cochées dans le formulaire
+      // → le PDF affichait une liste « Autonomie observée : … » alors
+      // que l'ergo n'avait rien saisi en habitudes. Symptôme reporté :
+      // « j'avais rien mis dans habitudes de vie donc ça aurait dû
+      // rester vierge ».
+      //
+      // Désormais : note vide = section vide dans le PDF. L'ergo a
+      // le contrôle total, les checkboxes structurées ne sont plus
+      // exposées au lecteur du rapport (elles restent stockées en base
+      // pour les requêtes/stats internes). `buildEnvironnementText` et
+      // `buildHabitudesText` deviennent dead code mais sont gardés au
+      // cas où on souhaite réintroduire un opt-in plus tard.
       const medicalPages = contexteNotes.filter(
         (pg) => String(pg?.tabKey || '') === 'Contexte de vie-Médical',
       );
       const autonomyPages = contexteNotes.filter(
         (pg) => String(pg?.tabKey || '') === 'Contexte de vie-Autonomie',
       );
-      const envFromNotes = joinNotePagesText(medicalPages);
-      const habFromNotes = joinNotePagesText(autonomyPages);
       return {
-        environnement: envFromNotes || buildEnvironnementText(dossier),
-        habitudes: habFromNotes || buildHabitudesText(dossier),
+        environnement: joinNotePagesText(medicalPages),
+        habitudes: joinNotePagesText(autonomyPages),
       };
     })(),
     housing: housingView,
