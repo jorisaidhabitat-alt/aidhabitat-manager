@@ -69,14 +69,13 @@ class SyncEngine {
   /// « instant » sur le device qui regarde — l'autre device pousse à
   /// NocoDB en ~500ms, le poll de 2s récupère à 2500ms max.
   ///
-  /// 2 s (vs 5 s historique) — demande utilisateur 2026-05-06 « ça
-  /// doit être moins de 3 secondes » sur l'ensemble des écrans
-  /// (wiki, caisses, dossiers). Le pull workspace inclut désormais
-  /// dossiers + wiki + caisses + auth en chaîne, fire-and-forget,
-  /// donc même 2 s d'intervalle reste tenable côté NocoDB (chaque
-  /// endpoint ramène peu de Mo en réalité, et la plupart des cycles
-  /// no-op sur les rows non modifiées).
-  static const Duration _pullIntervalActive = Duration(seconds: 2);
+  /// 5 s (revert depuis 2 s) — fix 2026-05-11 budget Vercel : on
+  /// avait atteint 83 % du quota Fast Origin Transfer (8.3/10 GB du
+  /// free tier Hobby) en 4 jours d'optimisations 1-2 s. Pour tenir
+  /// jusqu'au reset mensuel sans upgrade Pro, on revient sur 5 s
+  /// (la valeur historique) qui reste sub-6 s end-to-end — OK pour
+  /// la sync cross-device tant qu'on est en mode actif.
+  static const Duration _pullIntervalActive = Duration(seconds: 5);
 
   /// Délai entre 2 pulls quand un écran « focus haute fréquence » est
   /// ouvert (ex. VisitReportScreen via [enterActiveContext]). Note :
@@ -86,25 +85,28 @@ class SyncEngine {
   /// AUTRES champs du dossier (date naissance, cases à cocher, etc.)
   /// — endpoint plus lourd (`/api/dossiers`) mais 1 s reste tenable.
   ///
-  /// 500 ms (vs 1 s puis 2 s historique) — demande utilisateur
-  /// 2026-05-07 : « ça doit être quasiment instantané ». Trade-off
-  /// connu : double les Function Invocations Vercel (passe d'environ
-  /// 8 %/mois du quota Hobby 1M à environ 16 %/mois en solo dev).
-  /// Tient largement avant la migration App Developer prévue fin mai.
-  /// Au-delà de 500 ms, on devient à la limite de ce que l'utilisateur
-  /// perçoit comme « instantané » : push iPad ~1 s + pull ≤ 500 ms
-  /// + merge ~300 ms = ≤ 2 s end-to-end.
-  static const Duration _pullIntervalUltraActive =
-      Duration(milliseconds: 500);
+  /// 2 s (revert depuis 500 ms) — fix 2026-05-11 budget Vercel : la
+  /// valeur 500 ms avait fait sauter le quota Fast Origin Transfer
+  /// (8.3/10 GB en 4 jours sur free tier Hobby). À 2 s on conserve
+  /// une sensation "rapide" (push iPad ~1 s + pull max 2 s = ≤ 3 s
+  /// end-to-end) sans saturer la bande passante Vercel.
+  ///
+  /// Note : la note écrite courante a SON PROPRE timer 1 s dédié
+  /// dans NotesWidget qui hit `/api/note-pages` (endpoint léger,
+  /// 1 row), pas le pull workspace lourd. Donc cette valeur ne
+  /// dégrade PAS la sync des notes — seulement la sync des autres
+  /// champs du dossier (date naissance, cases à cocher) qui peut
+  /// rester à 3 s sans gêner l'usage.
+  static const Duration _pullIntervalUltraActive = Duration(seconds: 2);
 
-  /// Délai entre 2 pulls quand l'utilisateur est IDLE (pas de save
-  /// depuis ≥ 1 minute). Sub-3s end-to-end même sans interaction —
-  /// demande utilisateur 2026-05-06 : « ça doit être moins de 3
-  /// secondes ». Avant : 30 s, ce qui faisait que l'app iPad laissée
-  /// ouverte sans saisie pendant 10 min ne voyait pas les changements
-  /// du Mac avant le prochain tick. À 3 s, latence end-to-end
-  /// systématiquement < 3 s même iPad au repos.
-  static const Duration _pullIntervalIdle = Duration(seconds: 3);
+  /// 30 s (revert depuis 3 s) — fix 2026-05-11 budget Vercel : avec
+  /// la valeur 3 s, l'app iPad ouverte sans interaction consommait
+  /// 1 200 requêtes/heure inutiles (rien à syncer mais on poll quand
+  /// même). À 30 s, on diviser par 10 la conso idle tout en gardant
+  /// une latence acceptable pour un device au repos : si tu veux
+  /// reprendre l'activité, n'importe quelle saisie te repasse en
+  /// active (5 s) le temps que tu interagisses.
+  static const Duration _pullIntervalIdle = Duration(seconds: 30);
 
   /// Délai entre 2 pulls quand l'app est en arrière-plan. Préserve la
   /// batterie + le quota cellulaire — au retour foreground on

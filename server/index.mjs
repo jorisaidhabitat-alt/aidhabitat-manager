@@ -3841,7 +3841,7 @@ app.get('/api/retirement-funds', requireAuth, async (_req, res, next) => {
     // réouverture si déjà visitée dans les 5 dernières minutes.
     // `private` interdit aux CDN intermédiaires de cacher (auth-gated).
     // `Vary: X-App-Session` garantit que le cache est per-user.
-    res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=300');
+    res.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=1800');
     res.set('Vary', 'X-App-Session');
     const records = await queryAll(TABLES.caissesRetraiteComplementaires, { fields: FIELD_SETS.caissesRetraiteComplementaires });
     const store = await readRetirementFundsStore();
@@ -3899,7 +3899,7 @@ app.get('/api/anah-status', requireAuth, async (_req, res, next) => {
     // Cache HTTP : ANAH status (feature flag + URLs) change quasi
     // jamais. 30s fresh + 5min stale-while-revalidate. cf. commentaire
     // sur /api/retirement-funds pour le détail.
-    res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=300');
+    res.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=1800');
     res.set('Vary', 'X-App-Session');
     const status = await readAnahStatus();
     res.json({
@@ -3919,7 +3919,7 @@ app.get('/api/wiki-library', requireAuth, async (_req, res, next) => {
     // Cache HTTP : wiki/bibliothèque mis à jour manuellement par
     // l'admin → 30s fresh + 5min stale-while-revalidate. cf.
     // commentaire sur /api/retirement-funds.
-    res.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=300');
+    res.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=1800');
     res.set('Vary', 'X-App-Session');
     const items = await loadWikiLibrary();
     res.json({
