@@ -559,6 +559,23 @@ class NocodbSyncService {
     }
     // ignore: avoid_print
     print('[sync] document "Rapport" inséré localement (id=doc_report_$dossierId)');
+
+    // Notifie le succès — l'overlay global affiche le bandeau vert
+    // "Rapport ajouté à l'espace Documents (<fileName>)", peu importe
+    // l'écran où se trouve l'utilisateur. Fix 2026-05-11 : avant ce
+    // changement, la voie différée drainait silencieusement et le PDF
+    // apparaissait "en attente" puis "synced" dans Documents sans
+    // aucune notification — l'ergo ne savait pas que c'était terminé.
+    ReportGenerationService.instance.notifySuccess(
+      ReportGenerationSuccess(
+        dossierId: dossierId,
+        patientLabel: patientLabel,
+        fileName: fileName,
+        byteSize: result.bytes.length,
+        savedDocUuid: result.savedDocUuid,
+        completedAt: DateTime.now(),
+      ),
+    );
   }
 
   /// Pushes a Contexte de vie update (medical context + autonomy
