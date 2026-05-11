@@ -479,6 +479,36 @@ class NocodbSyncService {
       throw Exception('Payload report_generation incomplet '
           '(dossierId="$dossierId", patientId="$patientId")');
     }
+
+    // Lookup du nom patient pour pouvoir l'inclure dans la notification
+    // de succès globale (bandeau vert "Rapport BALS Joris ajouté à
+    // l'espace Documents…"). Si la lecture échoue (rare — patient
+    // supprimé localement), on retombe sur un libellé neutre plutôt
+    // que d'aborter la génération.
+    String patientLabel = 'patient';
+    try {
+      final dossier = await DossierRepository().fetchDossierById(dossierId);
+      if (dossier != null) {
+        final last = dossier.patient.lastName.trim().toUpperCase();
+        final first = dossier.patient.firstName.trim();
+        final composed = [last, first].where((p) => p.isNotEmpty).join(' ');
+        if (composed.isNotEmpty) patientLabel = composed;
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[sync] lookup patient label failed: $e');
+    }
+
+    // Signale à l'overlay global que la génération a démarré (badge
+    // violet "Génération en cours…"). Si l'utilisateur n'avait pas
+    // démarré la génération depuis l'écran courant — typiquement après
+    // un retour en ligne qui draine la queue offline — il voit quand
+    // même un indicateur visible que quelque chose se passe.
+    ReportGenerationService.instance.notifyStart(
+      dossierId: dossierId,
+      patientLabel: patientLabel,
+    );
+
     // ignore: avoid_print
     print('[sync] POST /api/reports/visit/$dossierId (generation différée)');
     final result = await _apiClient.downloadVisitReport(dossierId: dossierId);
