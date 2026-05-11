@@ -2289,13 +2289,24 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       ),
                       // Badges insérés ENTRE le nom et l'adresse — parité
                       // avec l'écran dossier (demande utilisateur).
-                      if (accompanimentLabel.isNotEmpty) ...[
-                        const SizedBox(width: 10),
-                        AccompanimentBadge(
-                          value: accompanimentLabel,
-                          large: true,
-                        ),
-                      ],
+                      //
+                      // Fallback "MPA complet" 2026-05-07 : si le champ
+                      // `nature_accompagnement` est vide (dossiers legacy
+                      // créés avant que la validation rende le champ
+                      // obligatoire), on affiche quand même le badge avec
+                      // le défaut. Sans ça, le badge disparait sans
+                      // explication. La couleur teal pastel "Complet" est
+                      // déjà le fallback dans `accompanimentPaletteFor`.
+                      const SizedBox(width: 10),
+                      AccompanimentBadge(
+                        value: accompanimentLabel.isNotEmpty
+                            ? accompanimentLabel
+                            : 'MPA complet',
+                        rawType: _dossier.natureAccompagnement.trim().isNotEmpty
+                            ? _dossier.natureAccompagnement
+                            : 'complet',
+                        large: true,
+                      ),
                       if (incomeLabel.isNotEmpty) ...[
                         const SizedBox(width: 6),
                         IncomeCategoryBadge(

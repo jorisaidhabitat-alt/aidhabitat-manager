@@ -1352,13 +1352,19 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                   const SizedBox(width: 16),
                   Expanded(child: _buildSelectionToolbar()),
                 ] else ...[
-                  if (accompanimentLabel.isNotEmpty) ...[
-                    const SizedBox(width: 10),
-                    AccompanimentBadge(
-                      value: accompanimentLabel,
-                      large: true,
-                    ),
-                  ],
+                  // Fallback "MPA complet" 2026-05-07 — cf. commentaire
+                  // identique dans visit_report_screen.dart.
+                  const SizedBox(width: 10),
+                  AccompanimentBadge(
+                    value: accompanimentLabel.isNotEmpty
+                        ? accompanimentLabel
+                        : 'MPA complet',
+                    rawType: widget.dossier.natureAccompagnement
+                            .trim().isNotEmpty
+                        ? widget.dossier.natureAccompagnement
+                        : 'complet',
+                    large: true,
+                  ),
                   if (incomeLabel.isNotEmpty) ...[
                     const SizedBox(width: 6),
                     IncomeCategoryBadge(

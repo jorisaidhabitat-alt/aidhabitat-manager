@@ -903,6 +903,94 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     );
   };
 
+  // Tab_keys utilisés par les versions PRÉ-migration de l'app (lowercase,
+  // sans `:` ni `-`). Quand l'app a évolué vers de nouveaux noms d'onglets
+  // (ex: 'beneficiaire' → 'Bénéficiaire:profile:drawing'), `upsertNotePage`
+  // n'a pas trouvé l'ancienne note (clé identité différente) et a CRÉÉ une
+  // nouvelle ligne au lieu de migrer — d'où la prolifération de notes
+  // legacy vides dans NocoDB. Cf. cleanup 2026-05-11.
+  //
+  // `notes_rapides` n'est PAS dans cette liste : c'est un onglet ENCORE
+  // ACTIF dans l'app courante (cf. dossier_screen.dart:169) — on doit pas
+  // toucher à ses notes.
+  const LEGACY_NOTE_TAB_KEYS = new Set([
+    'beneficiaire',
+    'contexte_de_vie',
+    'accessibilite',
+    'salle_de_bain',
+    'wc',
+    'plans',
+    'general',
+    'mesures',
+    'sanitaires',
+  ]);
+
+  const isLegacyNoteTabKey = (tab) =>
+    LEGACY_NOTE_TAB_KEYS.has(stringValue(tab).trim().toLowerCase());
+
+  const isEmptyNotePageRecord = (record) => {
+    const drawingRaw = stringValue(field(record, 'drawing_json')).trim();
+    if (drawingRaw) {
+      try {
+        const parsed = JSON.parse(drawingRaw);
+        if (parsed && typeof parsed === 'object') {
+          const strokes = parsed.strokes || parsed.paths || parsed.lines || [];
+          if (Array.isArray(strokes) && strokes.length > 0) return false;
+          const text = stringValue(parsed.text).trim();
+          if (text) return false;
+        }
+      } catch {
+        // drawing_json non-JSON → on considère qu'il y a du contenu
+        // opaque, on NE supprime PAS.
+        return false;
+      }
+    }
+    if (stringValue(field(record, 'text_content')).trim()) return false;
+    return true;
+  };
+
+  // Cleanup self-healing : à chaque upsert, supprime les notes VIDES dont
+  // le `tab_key` est dans la liste legacy ci-dessus (lowercase pré-migration)
+  // et qui partagent le même (patient + scope + page) que la note courante.
+  // Garantit qu'on ne perd jamais de contenu utilisateur (filter
+  // isEmptyNotePageRecord). Self-healing : à mesure que les ergos
+  // re-sauvegardent leurs onglets dans la nouvelle app, les reliquats
+  // legacy se nettoient progressivement sans intervention manuelle.
+  const cleanupLegacyEmptyNoteCrossKey = async ({
+    patientId,
+    scopeType,
+    scopeId,
+    pageNumber,
+    currentTabKey,
+  }) => {
+    const where = `(beneficiaire_id,eq,${JSON.stringify(String(patientId))})`
+      + `~and(scope_type,eq,${JSON.stringify(String(scopeType || 'legacy'))})`
+      + `~and(scope_id,eq,${JSON.stringify(String(scopeId || patientId))})`
+      + `~and(page_number,eq,${Number(pageNumber) || 0})`;
+    const candidates = await queryAll(notePagesTableId, {
+      fields: ['uuid_source', 'tab_key', 'drawing_json', 'text_content'],
+      where,
+    });
+    const stale = candidates.filter((record) => {
+      const tabKey = stringValue(field(record, 'tab_key'));
+      // Ne touche jamais à la note qu'on vient d'upserter, peu importe sa
+      // forme — son tab_key courant est `currentTabKey`.
+      if (tabKey === currentTabKey) return false;
+      if (!isLegacyNoteTabKey(tabKey)) return false;
+      return isEmptyNotePageRecord(record);
+    });
+    if (stale.length === 0) return;
+    // ignore: avoid_print
+    console.log(
+      `[notePage cleanup] suppression ${stale.length} note(s) vide(s) `
+      + `legacy (patient=${patientId} scope=${scopeType}/${scopeId} `
+      + `page=${pageNumber} currentTab=${currentTabKey})`,
+    );
+    await Promise.all(
+      stale.map((record) => deleteRecord(notePagesTableId, record.id)),
+    );
+  };
+
   const syncRemoteNotePagesBeneficiaryMetadata = async (patientId, metadata = {}) => {
     const beneficiary = normalizeBeneficiaryMetadata(metadata);
     const records = await queryAll(notePagesTableId, {
@@ -1298,6 +1386,13 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       pageNumber,
       keepRecordId: created?.id,
     });
+    await cleanupLegacyEmptyNoteCrossKey({
+      patientId,
+      scopeType,
+      scopeId: scopeId || dossierId || patientId,
+      pageNumber,
+      currentTabKey: tabKey,
+    });
     await syncRemoteNotePagesBeneficiaryMetadata(patientId, { ...beneficiary, dossierId });
 
     return buildNotePagePayload({
@@ -1390,6 +1485,13 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         pageNumber,
         keepRecordId: existing.id,
       });
+      await cleanupLegacyEmptyNoteCrossKey({
+        patientId,
+        scopeType,
+        scopeId: scopeId || dossierId || patientId,
+        pageNumber,
+        currentTabKey: tabKey,
+      });
       await syncRemoteNotePagesBeneficiaryMetadata(patientId, { ...beneficiary, dossierId });
 
       return buildNotePagePayload({
@@ -1447,6 +1549,13 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       subTabKey,
       pageNumber,
       keepRecordId: created?.id,
+    });
+    await cleanupLegacyEmptyNoteCrossKey({
+      patientId,
+      scopeType,
+      scopeId: scopeId || dossierId || patientId,
+      pageNumber,
+      currentTabKey: tabKey,
     });
     await syncRemoteNotePagesBeneficiaryMetadata(patientId, { ...beneficiary, dossierId });
 
