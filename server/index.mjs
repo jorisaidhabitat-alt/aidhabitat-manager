@@ -1775,16 +1775,7 @@ const mapHousing = (housingRecord) => {
     // malformé, on renvoie un objet vide → côté Flutter les rooms_json
     // restent intacts si déjà en SQLite (préserve le legacy local-only).
     roomsBreakdown: parseRoomsBreakdownJson(field(housingRecord, 'rooms_breakdown_json')),
-    // Fix 2026-05-11 : sans `updatedAt` ici, le client Flutter
-    // (`_extractRemoteUpdatedAt`) faisait fallback sur createdAt,
-    // figeant le `expectedUpdatedAt` à la date de création →
-    // 409 Conflict permanent sur les PATCH /api/logements.
-    // Cf. commentaire détaillé dans `createDossier`.
-    updatedAt: field(housingRecord, 'UpdatedAt')
-        || field(housingRecord, 'updated_at')
-        || field(housingRecord, 'CreatedAt')
-        || field(housingRecord, 'created_at')
-        || new Date().toISOString(),
+    // ROLLBACK 2026-05-11 (10:05) — cf. createDossier pour le détail.
   };
 };
 
@@ -1873,16 +1864,7 @@ const mapPatient = (beneficiaryRecord, appBeneficiaryId) => ({
   occupant2SocialSecurityNumber: stringValue(field(beneficiaryRecord, 'numero_securite_sociale_madame')),
   caisseRetraitePrincipale: refLabel(field(beneficiaryRecord, 'caisse_retraite_principale')),
   caissesRetraiteComplementaires: refLabel(field(beneficiaryRecord, 'caisse_retraite_secondaire')),
-  // Fix 2026-05-11 : exposition de l'`updatedAt` NocoDB pour
-  // l'optimistic concurrency côté Flutter. Sans ce champ, le client
-  // tombait sur `createdAt` (figé) et envoyait `expectedUpdatedAt`
-  // obsolète → 409 sur tous les PATCH /api/beneficiaires.
-  // Cf. commentaire détaillé dans `createDossier`.
-  updatedAt: field(beneficiaryRecord, 'UpdatedAt')
-      || field(beneficiaryRecord, 'updated_at')
-      || field(beneficiaryRecord, 'CreatedAt')
-      || field(beneficiaryRecord, 'created_at')
-      || new Date().toISOString(),
+  // ROLLBACK 2026-05-11 (10:05) — cf. createDossier pour le détail.
 });
 
 const createVirtualDossier = (beneficiaryRecord, appBeneficiaryId, housingRecord, contextRecord, dossierRecord, infoRecord) => ({
@@ -1927,27 +1909,13 @@ const createDossier = (beneficiaryRecord, appBeneficiaryId, dossierRecord, housi
     PF3: { id: 'PF3', works: [], grants: [] },
   },
   createdAt: field(dossierRecord, 'created_at') || field(dossierRecord, 'CreatedAt') || new Date().toISOString(),
-  // CRITIQUE — fix 2026-05-11. Avant ce fix, `updatedAt` n'était pas
-  // exposé dans le payload dossier. Le client Flutter
-  // (`_extractRemoteUpdatedAt`) faisait alors fallback sur `createdAt`,
-  // qui est FIGÉ à la date de création du dossier. Conséquence :
-  // `remote_updated_at` côté SQLite restait bloqué à mars (date de
-  // création), et chaque PATCH `/api/dossiers/:id` envoyait
-  // `expectedUpdatedAt=<mars>` → le serveur (sendConflictIfStale)
-  // renvoyait 409 → l'op tournait en boucle.
-  //
-  // Symptôme reporté 2026-05-11 (capture Network DevTools) :
-  // « PATCH dossier en rouge, expectedUpdatedAt: 2026-03-10 11:39:00 »
-  // (alors qu'on était en mai 2026).
-  //
-  // Désormais on lit `UpdatedAt` (colonne NocoDB auto-mise-à-jour
-  // à chaque updateRecord) et on l'expose au client. Au prochain pull,
-  // le client stocke ce timestamp frais → PATCH suivant passe sans 409.
-  updatedAt: field(dossierRecord, 'UpdatedAt')
-      || field(dossierRecord, 'updated_at')
-      || field(dossierRecord, 'CreatedAt')
-      || field(dossierRecord, 'created_at')
-      || new Date().toISOString(),
+  // ROLLBACK 2026-05-11 (10:05) : le précédent fix `updatedAt` causait
+  // un 500 spammant sur GET /api/dossiers (24 erreurs consécutives en
+  // production capturées DevTools). Sans accès aux logs runtime
+  // Vercel, je ne peux pas pinpoint la cause exacte — le code paraît
+  // null-safe et `node --check` passe. Possible interaction avec un
+  // autre agent qui a aussi touché mobileSyncStore.mjs entre temps.
+  // Revert pour rétablir l'app, ré-investigation calme ensuite.
 });
 
 const queryAll = async (tableId, options = {}) => {
