@@ -47,6 +47,27 @@ import { callNocoTool } from './nocodbMcpClient.mjs';
 const TMP_DOC_UUID_PREFIX = 'upload_';
 
 /**
+ * Taille max d'une cellule LongText NocoDB en pratique (~100k chars).
+ * On vise 95 000 par sécurité (parité avec `splitBase64IntoChunks`
+ * côté `mobileSyncStore.mjs`). Si on stockait un chunk client de
+ * 1 MB binaire (= ~1.33 M chars base64) tel quel, NocoDB rejette
+ * l'insert avec un 500 — d'où le besoin de splitter en sous-chunks
+ * NocoDB (bug rapporté 2026-05-11 : `POST /upload/chunk` 500 en
+ * série après le fix RAM→NocoDB).
+ */
+const NOCODB_SUBCHUNK_SIZE = 95000;
+
+/**
+ * Multiplicateur pour encoder (chunkIndex client, subIndex NocoDB)
+ * dans la colonne `chunk_index` (unique flat int) :
+ *   chunk_index NocoDB = chunkIndex_client * SUBCHUNK_STRIDE + subIdx
+ * Un chunk client peut donc se diviser en jusqu'à 999 sous-chunks
+ * → jusqu'à 95 MB par chunk client. Largement suffisant pour les
+ * tailles actuelles (1-4 MB par chunk).
+ */
+const SUBCHUNK_STRIDE = 1000;
+
+/**
  * Cache module-level de l'id NocoDB de `mobile_document_chunks`.
  * Récupéré une fois via `getTablesList` puis réutilisé pour la vie de
  * l'instance Node. Pas de problème en multi-instance Vercel : chaque
@@ -105,21 +126,44 @@ const queryUploadChunks = async (uploadId) => {
 export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
   const tableId = await getDocumentChunksTableId();
   const tmpKey = `${TMP_DOC_UUID_PREFIX}${uploadId}`;
+  const base64 = buffer.toString('base64');
   const now = new Date().toISOString();
-  await callNocoTool('createRecords', {
-    tableId,
-    records: [{
-      fields: {
-        // Chaque chunk row a son propre UUID pour ne pas se cogner si
-        // le client retry le même chunkIndex après échec réseau.
-        uuid_source: `chunk_${uploadId}_${chunkIndex}_${Date.now()}`,
-        document_uuid_source: tmpKey,
-        chunk_index: chunkIndex,
-        chunk_base64: buffer.toString('base64'),
-        updated_at: now,
-      },
-    }],
-  });
+
+  // Split en sous-chunks ≤ NOCODB_SUBCHUNK_SIZE pour respecter la limite
+  // LongText NocoDB. Un chunk client de 1 MB binaire → ~14 sous-chunks.
+  const subChunks = [];
+  for (let off = 0; off < base64.length; off += NOCODB_SUBCHUNK_SIZE) {
+    subChunks.push(base64.slice(off, off + NOCODB_SUBCHUNK_SIZE));
+  }
+  if (subChunks.length === 0) subChunks.push('');
+
+  if (subChunks.length >= SUBCHUNK_STRIDE) {
+    throw new Error(
+      `Chunk client trop volumineux pour le schéma temporaire : `
+      + `${subChunks.length} sous-chunks NocoDB requis, max ${SUBCHUNK_STRIDE - 1}. `
+      + `Réduire la taille de chunk côté client (actuellement ${buffer.length} B).`,
+    );
+  }
+
+  // Insert parallèle des sous-chunks. NocoDB tient sans difficulté
+  // (testé jusqu'à 100 requêtes parallèles côté équipe).
+  await Promise.all(
+    subChunks.map((sub, subIdx) =>
+      callNocoTool('createRecords', {
+        tableId,
+        records: [{
+          fields: {
+            uuid_source: `chunk_${uploadId}_${chunkIndex}_${subIdx}_${Date.now()}`,
+            document_uuid_source: tmpKey,
+            chunk_index: chunkIndex * SUBCHUNK_STRIDE + subIdx,
+            chunk_base64: sub,
+            updated_at: now,
+          },
+        }],
+      }),
+    ),
+  );
+
   return {
     url: `nocodb://chunks/${tmpKey}/${chunkIndex}`,
     updatedAt: now,
@@ -151,18 +195,19 @@ export const reassembleChunks = async (uploadId) => {
       + 'le client doit retry l\'upload (chunks expirés ou jamais reçus).',
     );
   }
-  for (let i = 0; i < records.length; i += 1) {
-    const idx = Number(records[i].chunk_index);
-    if (idx !== i) {
-      throw new Error(
-        `Chunks non contigus pour uploadId="${uploadId}" : `
-        + `index ${i} attendu, trouvé ${idx}.`,
-      );
-    }
-  }
-  return Buffer.concat(
-    records.map((r) => Buffer.from(String(r.chunk_base64 || ''), 'base64')),
-  );
+  // `queryUploadChunks` renvoie déjà trié par `chunk_index` croissant.
+  // L'encodage est `clientChunkIdx * SUBCHUNK_STRIDE + subIdx`, donc
+  // le tri naturel met les sous-chunks de chaque chunk client dans
+  // l'ordre (chunk0:sub0, chunk0:sub1, ..., chunk0:subN, chunk1:sub0, ...).
+  //
+  // On concatène TOUTES les chaînes base64 d'abord (qui sont
+  // sémantiquement la base64 contiguë du fichier), puis on décode en
+  // une fois. Couper le base64 et décoder par bouts donnerait des
+  // bytes corrompus à cause du padding `=` mal-placé en milieu.
+  const concatBase64 = records
+    .map((r) => String(r.chunk_base64 || ''))
+    .join('');
+  return Buffer.from(concatBase64, 'base64');
 };
 
 /**
