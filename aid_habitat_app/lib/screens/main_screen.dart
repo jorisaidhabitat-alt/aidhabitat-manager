@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../components/report_generation_overlay.dart';
 import '../components/sidebar.dart';
 import '../components/soft_transitions.dart';
 import 'anah_screen.dart';
@@ -453,7 +454,8 @@ class _MainScreenState extends State<MainScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ReportGenerationOverlay(
+      child: Scaffold(
       body: Row(
         children: [
           Sidebar(
@@ -520,6 +522,7 @@ class _MainScreenState extends State<MainScreen>
             ),
           ),
         ],
+      ),
       ),
     );
   }

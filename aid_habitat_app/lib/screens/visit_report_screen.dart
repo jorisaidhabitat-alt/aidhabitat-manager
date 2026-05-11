@@ -254,6 +254,25 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     _tabController.addListener(_handleTabChange);
     _refreshDossier();
 
+    // Synchronise l'état "génération en cours" avec le singleton global —
+    // si l'utilisateur revient sur ce dossier alors qu'une génération
+    // lancée précédemment est encore en train de tourner, on RÉACTIVE
+    // l'indicateur de loading du bouton. Bug rapporté 2026-05-11 : « quand
+    // je quitte le relevé de visite et que je retourne dessus, je n'ai
+    // plus le load qui indique la generation en cours ».
+    final initialState = ReportGenerationService.instance.currentState;
+    _isGeneratingReport = initialState.inProgress
+        && initialState.activeDossierId == widget.dossier.id;
+    _reportGenSubscription = ReportGenerationService.instance.stateStream
+        .listen((state) {
+      if (!mounted) return;
+      final mineInProgress = state.inProgress
+          && state.activeDossierId == widget.dossier.id;
+      if (mineInProgress != _isGeneratingReport) {
+        setState(() => _isGeneratingReport = mineInProgress);
+      }
+    });
+
     // Pull BULK de toutes les notes du patient — 1 seul HTTP request
     // ramène toutes les pages de tous les onglets (Contexte de vie,
     // Sanitaires-Notes, Préconisations, Plans, etc.) directement en
@@ -596,6 +615,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     _ipcSubscription = null;
     _syncSubscription?.cancel();
     _syncSubscription = null;
+    _reportGenSubscription?.cancel();
+    _reportGenSubscription = null;
     // Relâche le mode ultra-actif activé dans `initState`. Re-bascule
     // le SyncEngine sur l'intervalle adaptatif normal (5 s actif /
     // 30 s idle) une fois qu'on quitte l'écran VAD.
@@ -1059,6 +1080,21 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// téléchargement / suppression.
   Future<void> _generateReport() async {
     if (_isGeneratingReport) return;
+    // Bloque aussi si une autre génération tourne (même autre dossier)
+    // pour éviter de saturer Vercel avec 2-3 PDFs en parallèle (~30 s
+    // CPU chacun). Le bouton reste cliquable mais le user verra le
+    // bandeau global "génération en cours" lui dire d'attendre.
+    if (ReportGenerationService.instance.currentState.inProgress) {
+      _showReportError(
+        'Une autre génération de rapport est déjà en cours, '
+        'patientez quelques secondes avant de relancer.',
+      );
+      return;
+    }
+    final patientLabel = [
+      _dossier.patient.lastName.toUpperCase(),
+      _dossier.patient.firstName,
+    ].where((s) => s.trim().isNotEmpty).join(' ').trim();
 
     // Validation amont : vérifie que les champs critiques sont remplis.
     // Si certains manquent, ouvre une popup avec la liste + 2 actions :
@@ -1087,7 +1123,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       }
     }
 
-    setState(() => _isGeneratingReport = true);
+    // Notifie le service global → indicateur de loading visible depuis
+    // n'importe quel écran (dashboard, autre dossier, documents, etc.)
+    // et persistant si l'utilisateur revient sur ce dossier.
+    ReportGenerationService.instance.notifyStart(
+      dossierId: _dossier.id,
+      patientLabel: patientLabel,
+    );
 
     // Détection offline en amont : si la connectivité est perdue, on
     // ne tente même pas la génération online (qui finirait en timeout
@@ -1099,7 +1141,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             'Hors ligne — votre rapport sera généré automatiquement '
             'dès la prochaine connexion.',
       );
-      if (mounted) setState(() => _isGeneratingReport = false);
+      // Marque l'event "différé" comme un échec spécifique pour que
+      // l'overlay global affiche le snackbar adapté.
+      ReportGenerationService.instance.notifyFailure(
+        ReportGenerationFailure(
+          dossierId: _dossier.id,
+          patientLabel: patientLabel,
+          message: 'Hors ligne — rapport ajouté à la file d\'attente.',
+          deferred: true,
+          occurredAt: DateTime.now(),
+        ),
+      );
       return;
     }
 
@@ -1154,6 +1206,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             'Synchronisation incomplète : ${syncResult.conflictCount} '
             'conflit(s) à résoudre avant de pouvoir générer le rapport.',
           );
+          ReportGenerationService.instance.notifyFailure(
+            ReportGenerationFailure(
+              dossierId: _dossier.id,
+              patientLabel: patientLabel,
+              message: 'Conflits à résoudre avant génération.',
+              occurredAt: DateTime.now(),
+            ),
+          );
           return;
         }
         if (syncResult.failedOperations > 0) {
@@ -1165,6 +1225,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 'rapport sera généré automatiquement à la prochaine '
                 'reprise de la sync.',
           );
+          ReportGenerationService.instance.notifyFailure(
+            ReportGenerationFailure(
+              dossierId: _dossier.id,
+              patientLabel: patientLabel,
+              message: 'Sync interrompue — rapport en attente.',
+              deferred: true,
+              occurredAt: DateTime.now(),
+            ),
+          );
           return;
         }
       } catch (error) {
@@ -1175,6 +1244,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               'Connexion perdue pendant la synchronisation — votre '
               'rapport sera généré automatiquement dès le retour '
               'réseau.',
+        );
+        ReportGenerationService.instance.notifyFailure(
+          ReportGenerationFailure(
+            dossierId: _dossier.id,
+            patientLabel: patientLabel,
+            message: 'Connexion perdue — rapport en attente.',
+            deferred: true,
+            occurredAt: DateTime.now(),
+          ),
         );
         return;
       }
@@ -1200,6 +1278,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           reason:
               'Le serveur n\'a pas pu générer le rapport tout de suite '
               ': $error\nIl sera retenté automatiquement.',
+        );
+        ReportGenerationService.instance.notifyFailure(
+          ReportGenerationFailure(
+            dossierId: _dossier.id,
+            patientLabel: patientLabel,
+            message: 'Serveur indisponible — rapport en attente.',
+            deferred: true,
+            occurredAt: DateTime.now(),
+          ),
         );
         return;
       }
@@ -1281,6 +1368,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           'Rapport généré mais introuvable dans Documents '
           '(patient="$patientId"). Voir console pour détails.',
         );
+        ReportGenerationService.instance.notifyFailure(
+          ReportGenerationFailure(
+            dossierId: _dossier.id,
+            patientLabel: patientLabel,
+            message: 'Rapport généré mais introuvable dans Documents.',
+            occurredAt: DateTime.now(),
+          ),
+        );
         return;
       }
 
@@ -1311,15 +1406,47 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       final docsInDocumentsSpace =
           docs.where((d) => !d.tags.any(isVisitTag)).length;
       _showReportSuccess(result, totalDocs: docsInDocumentsSpace);
+
+      // Notifie le service global → bandeau vert affichable depuis
+      // n'importe quel écran (dashboard, autre dossier, etc.) si
+      // l'utilisateur a navigué pendant la génération. Demande
+      // utilisateur 2026-05-11 : « le bandeau vert qui indique qu'il
+      // a été mis dans l'espace document doit également apparaitre en
+      // bas meme si je suis sur une autre page une fois la generation
+      // effectuée ».
+      ReportGenerationService.instance.notifySuccess(
+        ReportGenerationSuccess(
+          dossierId: _dossier.id,
+          patientLabel: patientLabel,
+          fileName: result.fileName,
+          byteSize: result.bytes.length,
+          savedDocUuid: result.savedDocUuid,
+          bytes: result.bytes,
+          completedAt: DateTime.now(),
+        ),
+      );
     } catch (error) {
       // Filet de sécurité : toute autre exception non capturée → queue
       // différée plutôt qu'une erreur sèche.
       await _enqueueReportForLater(
         reason: 'Génération interrompue : $error. Sera retentée plus tard.',
       );
-    } finally {
-      if (mounted) setState(() => _isGeneratingReport = false);
+      ReportGenerationService.instance.notifyFailure(
+        ReportGenerationFailure(
+          dossierId: _dossier.id,
+          patientLabel: patientLabel,
+          message: 'Génération interrompue — rapport en attente.',
+          deferred: true,
+          occurredAt: DateTime.now(),
+        ),
+      );
     }
+    // Note : pas de `finally { setState(_isGeneratingReport = false) }`
+    // ici — le flag local est désormais piloté par le stream du
+    // ReportGenerationService (cf. listener dans initState). Le
+    // service signale `inProgress=false` via notifySuccess /
+    // notifyFailure ci-dessus, ce qui déclenche le setState
+    // synchronisé pour ce widget ET tous les autres écrans abonnés.
   }
 
   /// True si la note (NotesWidget) sous le `tabKey` donné contient du
