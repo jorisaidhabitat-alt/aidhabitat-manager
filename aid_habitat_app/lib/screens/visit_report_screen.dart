@@ -1279,11 +1279,19 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               'Le serveur n\'a pas pu générer le rapport tout de suite '
               ': $error\nIl sera retenté automatiquement.',
         );
+        // Message plus parlant pour l'ergo : on précise que le retry
+        // est automatique + qu'un rappel apparaîtra quand ce sera prêt.
+        // L'erreur technique brute est sauvegardée dans la sync_op
+        // (last_error) pour debug, mais on n'inflige pas son contenu à
+        // l'utilisateur. Demande utilisateur 2026-05-11 : « j'ai juste
+        // 'Serveur indisponible — rapport en attente' et je ne sais
+        // pas si ça va se débloquer ».
         ReportGenerationService.instance.notifyFailure(
           ReportGenerationFailure(
             dossierId: _dossier.id,
             patientLabel: patientLabel,
-            message: 'Serveur indisponible — rapport en attente.',
+            message: 'Rapport mis en file d\'attente — réessai automatique. '
+                'Le bandeau vert s\'affichera dès qu\'il sera prêt.',
             deferred: true,
             occurredAt: DateTime.now(),
           ),
