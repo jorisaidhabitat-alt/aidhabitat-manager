@@ -155,24 +155,30 @@ export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
     );
   }
 
-  // Insert parallèle des sous-chunks. NocoDB tient sans difficulté
-  // (testé jusqu'à 100 requêtes parallèles côté équipe).
-  await Promise.all(
-    subChunks.map((sub, subIdx) =>
-      callNocoTool('createRecords', {
-        tableId,
-        records: [{
-          fields: {
-            uuid_source: `chunk_${uploadId}_${chunkIndex}_${subIdx}_${Date.now()}`,
-            document_uuid_source: tmpKey,
-            chunk_index: chunkIndex * SUBCHUNK_STRIDE + subIdx,
-            chunk_base64: sub,
-            updated_at: now,
-          },
-        }],
-      }),
-    ),
-  );
+  // Insert SÉQUENTIEL des sous-chunks au sein d'un putChunk (= une
+  // requête `/upload/chunk`). Le client Flutter envoie déjà N chunks
+  // en parallèle (Promise.all côté `_uploadDocumentChunked`), donc le
+  // backend a déjà N requêtes Express concurrentes. Si chaque requête
+  // fait en plus M inserts NocoDB en parallèle, on atteint N×M inserts
+  // simultanés (typique : 5 × 14 = 70) → NocoDB throttle ou timeout
+  // → 500 sur certains chunks (bug rapporté 2026-05-11 : "Chunk 4/5
+  // upload failed" en série). On garde donc le parallélisme entre les
+  // requêtes Express (1 chunk Flutter = 1 requête = ~14 inserts
+  // séquentiels), mais on évite le sur-parallélisme intra-requête.
+  for (let subIdx = 0; subIdx < subChunks.length; subIdx += 1) {
+    await callNocoTool('createRecords', {
+      tableId,
+      records: [{
+        fields: {
+          uuid_source: `chunk_${uploadId}_${chunkIndex}_${subIdx}_${Date.now()}`,
+          document_uuid_source: tmpKey,
+          chunk_index: chunkIndex * SUBCHUNK_STRIDE + subIdx,
+          chunk_base64: subChunks[subIdx],
+          updated_at: now,
+        },
+      }],
+    });
+  }
 
   return {
     url: `nocodb://chunks/${tmpKey}/${chunkIndex}`,
