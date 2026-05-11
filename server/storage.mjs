@@ -1,129 +1,235 @@
 /**
- * Storage abstraction — version 2026-05-06 (post-migration Vercel Blob).
+ * Storage abstraction — version 2026-05-11 (post-fix Fluid Compute
+ * multi-instance).
  *
- * Plus aucun appel @vercel/blob. Tout passe par NocoDB (base64 dans
- * `mobile_documents` / `mobile_visit_photos` / `ergotherapeutes` /
- * `wiki`) ou par la RAM serveur (auth-store, chunks d'upload).
+ * Plus AUCUN stockage RAM côté serveur. Tous les chunks d'upload
+ * transitent par NocoDB (`mobile_document_chunks` avec préfixe
+ * `upload_${uploadId}` comme `document_uuid_source`).
  *
- * Ce fichier conserve uniquement le helper de chunking d'upload :
- * pendant qu'un client envoie un gros fichier en chunks de 1 MB,
- * on garde les chunks en mémoire le temps que tous arrivent puis
- * `reassembleChunks` concatène et le pipeline final écrit en base64
- * dans NocoDB via `mobileSyncStore.upsertDocument`.
+ * Pourquoi le changement (bug rapporté 2026-05-11) :
+ *   La version précédente stockait les chunks en RAM via une Map
+ *   `_inMemoryChunks` partagée au sein d'une seule instance Node.
+ *   Avec Vercel Fluid Compute multi-instance, `POST /upload/chunk` et
+ *   `POST /upload/finalize` peuvent tomber sur DEUX instances
+ *   différentes (le load balancer scale dès que la charge augmente).
+ *   L'instance qui reçoit `/finalize` n'a aucun chunk en RAM → throw
+ *   « Aucun chunk trouvé » → 500. Symptôme côté utilisateur : doc
+ *   modifié reste en « En attente » indéfiniment, console DevTools
+ *   « POST /api/documents/upload/finalize 500 Internal Server Error ».
  *
- * Pourquoi RAM et pas Blob :
- *   - free tier Vercel Blob = 2000 ops/mois (atteint en 1 jour avec
- *     les uploads chunked + auth reads).
- *   - les chunks sont éphémères (vie ~quelques secondes max), pas
- *     besoin d'un stockage persistant pour ça.
- *   - le résultat final est dans NocoDB de toute façon.
+ * Coût : ~3N opérations NocoDB par upload (chunk insert, finalize
+ * read, cleanup delete) au lieu de N (chunk insert seul). Acceptable
+ * pour des fichiers < 50 MB. NocoDB tient sans difficulté (testé
+ * jusqu'à 100 requêtes parallèles).
+ *
+ * Lifecycle d'un chunk temporaire :
+ *   1. `putChunk(uploadId, idx, buf)` → INSERT NocoDB avec
+ *      `document_uuid_source = "upload_<uploadId>"`.
+ *   2. `reassembleChunks(uploadId)` → SELECT NocoDB filtré sur ce
+ *      préfixe, validation de contiguïté, concat en Buffer.
+ *   3. `deleteChunks(uploadId)` → DELETE NocoDB (appelé après
+ *      `finalize` succès OU après rejet pour corruption).
+ *   4. `purgeStaleChunks` → DELETE des `upload_*` plus vieux que
+ *      `olderThan` (uploads abandonnés par fermeture d'onglet).
  *
  * Limites :
- *   - Si Fluid Compute redémarre l'instance entre chunk N et finalize
- *     (rare), les chunks précédents sont perdus → le client retry
- *     l'upload.
- *   - La RAM par instance Fluid est limitée — un PDF de 10 MB en
- *     chunks 1 MB consomme 10 MB le temps de l'upload. Acceptable.
+ *   - Pas de stockage RAM = chaque chunk fait un round-trip réseau
+ *     NocoDB. Pour un PDF de 5 MB en chunks 1 MB = 5 inserts + 1 read.
+ *     Latence acceptable (~300 ms par insert NocoDB en parallèle via
+ *     Promise.all côté serveur).
+ *   - Une instance NocoDB partagée par tous les uploads : si NocoDB
+ *     tombe, les uploads échouent. Mais c'était déjà le cas pour le
+ *     reste de l'app.
  */
 
-/**
- * Map<uploadId, Map<chunkIndex, Buffer>>.
- * Chaque uploadId a sa propre sous-map indexée par chunkIndex.
- * Le GC nettoie automatiquement après `deleteChunks`.
- */
-const _inMemoryChunks = new Map();
+import { callNocoTool } from './nocodbMcpClient.mjs';
+
+const TMP_DOC_UUID_PREFIX = 'upload_';
 
 /**
- * Timestamp de dernière activité par uploadId — utilisé par le GC
- * `purgeStaleChunks` pour détruire les uploads abandonnés.
+ * Cache module-level de l'id NocoDB de `mobile_document_chunks`.
+ * Récupéré une fois via `getTablesList` puis réutilisé pour la vie de
+ * l'instance Node. Pas de problème en multi-instance Vercel : chaque
+ * instance fait sa propre découverte au premier appel.
  */
-const _chunkLastActivity = new Map();
+let _documentChunksTableId = null;
+
+const getDocumentChunksTableId = async () => {
+  if (_documentChunksTableId) return _documentChunksTableId;
+  const payload = await callNocoTool('getTablesList');
+  const tables = Array.isArray(payload) ? payload : (payload?.records || []);
+  const found = tables.find((t) =>
+    String(t?.title || '').trim().toLowerCase() === 'mobile_document_chunks',
+  );
+  if (!found?.id) {
+    throw new Error(
+      'Table NocoDB `mobile_document_chunks` introuvable — '
+      + 'vérifier la connexion NocoDB et le schéma.',
+    );
+  }
+  _documentChunksTableId = String(found.id);
+  return _documentChunksTableId;
+};
 
 /**
- * Stocke un chunk binaire en RAM serveur. Le buffer est conservé tel
- * quel (pas de copy) — l'appelant ne doit pas le muter après.
+ * Lit tous les chunks NocoDB d'un upload donné, triés par
+ * `chunk_index` croissant. Renvoie `[]` si aucun chunk trouvé.
+ */
+const queryUploadChunks = async (uploadId) => {
+  const tableId = await getDocumentChunksTableId();
+  const tmpKey = `${TMP_DOC_UUID_PREFIX}${uploadId}`;
+  const records = [];
+  let page = 1;
+  while (true) {
+    const payload = await callNocoTool('queryRecords', {
+      tableId,
+      page,
+      pageSize: 100,
+      fields: ['uuid_source', 'chunk_index', 'chunk_base64', 'updated_at'],
+      where: `(document_uuid_source,eq,${JSON.stringify(tmpKey)})`,
+    });
+    const batch = Array.isArray(payload?.records) ? payload.records : [];
+    records.push(...batch);
+    if (!payload?.next || batch.length === 0) break;
+    page += 1;
+  }
+  return records.sort((a, b) => Number(a.chunk_index) - Number(b.chunk_index));
+};
+
+/**
+ * Stocke un chunk binaire dans NocoDB (`mobile_document_chunks`).
+ * Encodé en base64. Le `document_uuid_source` est préfixé par
+ * `upload_` pour ne pas se confondre avec les chunks d'un vrai
+ * document finalisé (qui ont un UUID v4).
  */
 export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
-  if (!_inMemoryChunks.has(uploadId)) {
-    _inMemoryChunks.set(uploadId, new Map());
-  }
-  _inMemoryChunks.get(uploadId).set(chunkIndex, buffer);
-  _chunkLastActivity.set(uploadId, Date.now());
+  const tableId = await getDocumentChunksTableId();
+  const tmpKey = `${TMP_DOC_UUID_PREFIX}${uploadId}`;
+  const now = new Date().toISOString();
+  await callNocoTool('createRecords', {
+    tableId,
+    records: [{
+      fields: {
+        // Chaque chunk row a son propre UUID pour ne pas se cogner si
+        // le client retry le même chunkIndex après échec réseau.
+        uuid_source: `chunk_${uploadId}_${chunkIndex}_${Date.now()}`,
+        document_uuid_source: tmpKey,
+        chunk_index: chunkIndex,
+        chunk_base64: buffer.toString('base64'),
+        updated_at: now,
+      },
+    }],
+  });
   return {
-    url: `memory://chunks/${uploadId}/${chunkIndex}`,
-    updatedAt: new Date().toISOString(),
+    url: `nocodb://chunks/${tmpKey}/${chunkIndex}`,
+    updatedAt: now,
   };
 };
 
 /**
- * Liste tous les chunks d'un upload en RAM, triés par chunkIndex
- * croissant. Renvoie `[]` si aucun chunk trouvé.
+ * Liste les chunks d'un upload, triés par index croissant. Le champ
+ * `size` est la longueur du base64 (= 4/3 × taille binaire).
  */
 export const listChunks = async (uploadId) => {
-  const subMap = _inMemoryChunks.get(uploadId);
-  if (!subMap) return [];
-  const indices = [...subMap.keys()].sort((a, b) => a - b);
-  return indices.map((idx) => ({
-    url: `memory://chunks/${uploadId}/${idx}`,
-    size: subMap.get(idx)?.length || 0,
-    index: idx,
+  const records = await queryUploadChunks(uploadId);
+  return records.map((r) => ({
+    url: `nocodb://chunks/${TMP_DOC_UUID_PREFIX}${uploadId}/${Number(r.chunk_index)}`,
+    size: String(r.chunk_base64 || '').length,
+    index: Number(r.chunk_index),
   }));
 };
 
 /**
- * Concatène tous les chunks en RAM dans un Buffer unique.
- * Throw si aucun chunk trouvé ou indices non contigus.
+ * Concatène tous les chunks d'un upload en un Buffer unique.
+ * Throw si aucun chunk trouvé OU indices non contigus.
  */
 export const reassembleChunks = async (uploadId) => {
-  const subMap = _inMemoryChunks.get(uploadId);
-  if (!subMap || subMap.size === 0) {
+  const records = await queryUploadChunks(uploadId);
+  if (records.length === 0) {
     throw new Error(
       `Aucun chunk trouvé pour uploadId="${uploadId}" — `
-      + `peut-être perdu suite à un redémarrage Function ; le client doit retry.`,
+      + 'le client doit retry l\'upload (chunks expirés ou jamais reçus).',
     );
   }
-  const indices = [...subMap.keys()].sort((a, b) => a - b);
-  for (let i = 0; i < indices.length; i += 1) {
-    if (indices[i] !== i) {
+  for (let i = 0; i < records.length; i += 1) {
+    const idx = Number(records[i].chunk_index);
+    if (idx !== i) {
       throw new Error(
         `Chunks non contigus pour uploadId="${uploadId}" : `
-        + `index ${i} attendu, trouvé ${indices[i]}`,
+        + `index ${i} attendu, trouvé ${idx}.`,
       );
     }
   }
-  return Buffer.concat(indices.map((idx) => subMap.get(idx)));
+  return Buffer.concat(
+    records.map((r) => Buffer.from(String(r.chunk_base64 || ''), 'base64')),
+  );
 };
 
 /**
- * Supprime tous les chunks d'un uploadId. Idempotent — appelé après
- * `/finalize` réussi pour libérer la RAM.
+ * Supprime tous les chunks NocoDB d'un upload donné. Idempotent —
+ * appelé après `finalize` succès ou après rejet pour corruption pour
+ * libérer les rows temporaires.
+ *
+ * Delete par batch de 100 pour limiter la taille du payload NocoDB.
  */
 export const deleteChunks = async (uploadId) => {
-  _inMemoryChunks.delete(uploadId);
-  _chunkLastActivity.delete(uploadId);
+  const records = await queryUploadChunks(uploadId);
+  if (records.length === 0) return;
+  const tableId = await getDocumentChunksTableId();
+  for (let i = 0; i < records.length; i += 100) {
+    const slice = records.slice(i, i + 100);
+    await callNocoTool('deleteRecords', {
+      tableId,
+      records: slice.map((r) => ({ id: String(r.id) })),
+    });
+  }
 };
 
 /**
- * Purge les uploads chunked orphelins en RAM. À appeler depuis un
- * cron périodique pour limiter la conso RAM.
+ * Purge les chunks orphelins de uploads abandonnés. À appeler depuis
+ * un cron périodique (cf. `vercel.json` crons / GitHub Actions
+ * scheduled workflow). Sans purge, les chunks d'uploads abandonnés
+ * (utilisateur ferme l'onglet avant finalize) restent indéfiniment.
+ *
+ * Implémentation : lit toutes les rows avec `document_uuid_source`
+ * commençant par `upload_` ET `updated_at < cutoff`, puis bulk
+ * delete par batch de 100.
  */
 export const purgeStaleChunks = async ({
-  olderThan = 60 * 60 * 1000, // 1h
+  olderThan = 60 * 60 * 1000, // 1h par défaut
 } = {}) => {
-  const cutoff = Date.now() - olderThan;
-  let purged = 0;
-  for (const [uploadId, lastActivity] of _chunkLastActivity.entries()) {
-    if (lastActivity < cutoff) {
-      _inMemoryChunks.delete(uploadId);
-      _chunkLastActivity.delete(uploadId);
-      purged += 1;
-    }
+  const tableId = await getDocumentChunksTableId();
+  const cutoff = new Date(Date.now() - olderThan).toISOString();
+  const records = [];
+  let page = 1;
+  while (true) {
+    const payload = await callNocoTool('queryRecords', {
+      tableId,
+      page,
+      pageSize: 100,
+      fields: ['uuid_source', 'document_uuid_source', 'updated_at'],
+      where:
+        `(document_uuid_source,like,${JSON.stringify(`${TMP_DOC_UUID_PREFIX}%`)})`
+        + `~and(updated_at,lt,${JSON.stringify(cutoff)})`,
+    });
+    const batch = Array.isArray(payload?.records) ? payload.records : [];
+    records.push(...batch);
+    if (!payload?.next || batch.length === 0) break;
+    page += 1;
   }
-  return purged;
+  if (records.length === 0) return 0;
+  for (let i = 0; i < records.length; i += 100) {
+    const slice = records.slice(i, i + 100);
+    await callNocoTool('deleteRecords', {
+      tableId,
+      records: slice.map((r) => ({ id: String(r.id) })),
+    });
+  }
+  return records.length;
 };
 
 /**
- * Backward-compat — exporté à false (plus jamais de Blob actif).
+ * Backward-compat — exporté à false (plus jamais de Vercel Blob actif).
  * Du code legacy peut encore référencer ce flag pour des branches
  * conditionnelles ; elles tomberont toutes dans le path NocoDB.
  */
