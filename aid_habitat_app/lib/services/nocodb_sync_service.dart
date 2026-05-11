@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
@@ -509,9 +510,35 @@ class NocodbSyncService {
       patientLabel: patientLabel,
     );
 
-    // ignore: avoid_print
-    print('[sync] POST /api/reports/visit/$dossierId (generation différée)');
-    final result = await _apiClient.downloadVisitReport(dossierId: dossierId);
+    final ({
+      Uint8List bytes,
+      String fileName,
+      Map<String, dynamic>? stats,
+      String? savedDocUuid,
+    }) result;
+    try {
+      // ignore: avoid_print
+      print('[sync] POST /api/reports/visit/$dossierId (generation différée)');
+      result = await _apiClient.downloadVisitReport(dossierId: dossierId);
+    } catch (error) {
+      // On notifie un failure (deferred=true → snackbar violet "rapport
+      // toujours en attente") puis on rethrow pour que le sync engine
+      // mette l'op en `failed` (transient) et la rejoue au cycle suivant.
+      // Sans ce notify, l'overlay restait bloqué sur le badge violet
+      // "Génération en cours" alors que le retry a déjà échoué.
+      ReportGenerationService.instance.notifyFailure(
+        ReportGenerationFailure(
+          dossierId: dossierId,
+          patientLabel: patientLabel,
+          message: _isTransientErrorLike(error)
+              ? 'Connexion lente — réessai automatique en arrière-plan.'
+              : 'Génération différée — réessai automatique.',
+          deferred: true,
+          occurredAt: DateTime.now(),
+        ),
+      );
+      rethrow;
+    }
     // ignore: avoid_print
     print('[sync] PDF reçu (${result.bytes.length} bytes), import local…');
     final fileName = result.fileName;
