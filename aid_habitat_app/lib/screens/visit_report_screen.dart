@@ -19,6 +19,7 @@ import '../services/app_config.dart';
 import '../services/connectivity_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/data_service.dart';
+import '../services/report_generation_service.dart';
 import '../services/sync_engine.dart';
 import '../components/beneficiary_badges.dart';
 import '../components/notes_widget.dart';
@@ -108,7 +109,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   /// True quand le bouton « Générer le rapport » est en cours d'appel.
   /// Affiche un spinner et bloque les double-taps.
+  ///
+  /// 2026-05-11 : ce flag est désormais MIRROIR de l'état du singleton
+  /// [ReportGenerationService] (filtré sur le `dossierId` courant).
+  /// Permet à l'UI du VisitReportScreen de continuer à montrer "Génération
+  /// en cours…" même si l'utilisateur quitte et revient sur le dossier
+  /// pendant que la génération tourne en arrière-plan. Demande utilisateur
+  /// 2026-05-11 : « Quand je quitte le relevé de visite et que je retourne
+  /// dessus, je n'ai plus le load qui indique la generation en cours ».
   bool _isGeneratingReport = false;
+
+  /// Subscription au stream du `ReportGenerationService` pour synchroniser
+  /// `_isGeneratingReport` quand l'utilisateur re-mount ce dossier alors
+  /// qu'une génération en cours était lancée depuis ce même dossier.
+  StreamSubscription<ReportGenerationState>? _reportGenSubscription;
 
   static const List<String> _tabs = [
     'Bénéficiaire',

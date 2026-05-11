@@ -1082,8 +1082,20 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
 
   async upsertDocument({ patientId, dossierId, documentLocalId, title, fileName, mimeType, tags, contentBase64, patientFirstName, patientLastName, patientDisplayName, dossierLabel }) {
     const { mimeType: resolvedMimeType, buffer, base64 } = decodeBase64FilePayload({ contentBase64, mimeType, fileName });
-    if (buffer.length > 5 * 1024 * 1024) {
-      throw new Error('Fichier trop volumineux pour le stockage NocoDB (> 5 MB)');
+    // Limite 50 MB — relâchée 2026-05-11 (avant : 5 MB trop restrictif).
+    // Le PDF rapport de visite peut atteindre 9-15 MB quand il contient
+    // les photos visite haute résolution. Avec l'ancien 5 MB, la
+    // sauvegarde directe NocoDB côté serveur (cf. /api/reports/visit
+    // ~ligne 5530 server/index.mjs) échouait silencieusement → pas de
+    // header X-Saved-Doc-Uuid → le client tombait sur le chemin
+    // d'upload fallback qui queue une op `upload_file` → doc affiché
+    // "en attente" indéfiniment. Bug rapporté 2026-05-11.
+    //
+    // Le système de chunks (95k chars base64 par row, cf.
+    // splitBase64IntoChunks) supporte largement 50 MB → ~700 chunks
+    // dans mobile_document_chunks, NocoDB tient sans difficulté.
+    if (buffer.length > 50 * 1024 * 1024) {
+      throw new Error('Fichier trop volumineux pour le stockage NocoDB (> 50 MB)');
     }
 
     const existingRecords = documentLocalId
