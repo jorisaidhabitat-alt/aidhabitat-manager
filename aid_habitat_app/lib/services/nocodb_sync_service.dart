@@ -9,8 +9,10 @@ import '../models/types.dart';
 import 'app_config.dart';
 import 'connectivity_service.dart';
 import 'document_repository.dart';
+import 'dossier_repository.dart';
 import 'local_database.dart';
 import 'nocodb_api_client.dart';
+import 'report_generation_service.dart';
 import 'sync_repository.dart';
 
 /// Vrai si l'erreur attrapée par le catch générique du sync engine est
