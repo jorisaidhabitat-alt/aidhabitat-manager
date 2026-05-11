@@ -214,17 +214,30 @@ const callRestTool = async (name, args = {}) => {
     }
     case 'createRecords': {
       const records = Array.isArray(args.records) ? args.records : [];
-      const created = [];
+      if (records.length === 0) return [];
 
-      for (const record of records) {
+      // Bulk insert : NocoDB v2 accepte un body array pour insérer N rows
+      // en 1 round-trip. Speedup ~14× sur les `putChunk` qui insèrent 14
+      // sous-chunks d'un même chunk Flutter (bug rapporté 2026-05-11 :
+      // upload bouclé + chunks orphelins en spirale à cause du `for await`
+      // séquentiel qui dépassait le timeout client 60s).
+      //
+      // Un seul record → on envoie un objet (compat 100% avec l'ancien
+      // comportement). Plusieurs → array.
+      if (records.length === 1) {
         const payload = await restRequest('POST', `/api/v2/tables/${encodeURIComponent(String(args.tableId))}/records`, {
-          body: record?.fields || {},
+          body: records[0]?.fields || {},
           expectedStatuses: [200, 201],
         });
-        created.push(toMcpRecord(payload));
+        return [toMcpRecord(payload)];
       }
 
-      return created;
+      const payload = await restRequest('POST', `/api/v2/tables/${encodeURIComponent(String(args.tableId))}/records`, {
+        body: records.map((r) => r?.fields || {}),
+        expectedStatuses: [200, 201],
+      });
+      const arr = Array.isArray(payload) ? payload : [payload];
+      return arr.map(toMcpRecord);
     }
     case 'updateRecords': {
       const records = Array.isArray(args.records) ? args.records : [];

@@ -155,30 +155,25 @@ export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
     );
   }
 
-  // Insert SÉQUENTIEL des sous-chunks au sein d'un putChunk (= une
-  // requête `/upload/chunk`). Le client Flutter envoie déjà N chunks
-  // en parallèle (Promise.all côté `_uploadDocumentChunked`), donc le
-  // backend a déjà N requêtes Express concurrentes. Si chaque requête
-  // fait en plus M inserts NocoDB en parallèle, on atteint N×M inserts
-  // simultanés (typique : 5 × 14 = 70) → NocoDB throttle ou timeout
-  // → 500 sur certains chunks (bug rapporté 2026-05-11 : "Chunk 4/5
-  // upload failed" en série). On garde donc le parallélisme entre les
-  // requêtes Express (1 chunk Flutter = 1 requête = ~14 inserts
-  // séquentiels), mais on évite le sur-parallélisme intra-requête.
-  for (let subIdx = 0; subIdx < subChunks.length; subIdx += 1) {
-    await callNocoTool('createRecords', {
-      tableId,
-      records: [{
-        fields: {
-          uuid_source: `chunk_${uploadId}_${chunkIndex}_${subIdx}_${Date.now()}`,
-          document_uuid_source: tmpKey,
-          chunk_index: chunkIndex * SUBCHUNK_STRIDE + subIdx,
-          chunk_base64: subChunks[subIdx],
-          updated_at: now,
-        },
-      }],
-    });
-  }
+  // Bulk insert : 1 POST NocoDB pour les N sous-chunks d'un même chunk
+  // Flutter. Le helper `callNocoTool('createRecords')` détecte
+  // `records.length > 1` et utilise le bulk endpoint v2 → speedup ~14×
+  // vs le for-séquentiel précédent (bug rapporté 2026-05-11 : upload
+  // bouclé en spirale avec chunks orphelins parce que le for-séquentiel
+  // dépassait le `_uploadTimeout = 60s` côté client).
+  const ts = Date.now();
+  await callNocoTool('createRecords', {
+    tableId,
+    records: subChunks.map((sub, subIdx) => ({
+      fields: {
+        uuid_source: `chunk_${uploadId}_${chunkIndex}_${subIdx}_${ts}`,
+        document_uuid_source: tmpKey,
+        chunk_index: chunkIndex * SUBCHUNK_STRIDE + subIdx,
+        chunk_base64: sub,
+        updated_at: now,
+      },
+    })),
+  });
 
   return {
     url: `nocodb://chunks/${tmpKey}/${chunkIndex}`,
