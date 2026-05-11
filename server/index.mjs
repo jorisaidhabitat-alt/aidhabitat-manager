@@ -59,9 +59,18 @@ const BUNDLED_WIKI_LIBRARY_PATH = path.resolve(SERVER_DIR_PATH, '../data/wikiLib
 // 2026-05-07 : 30s → 10s pour propagation cross-device sub-3s de la
 // photo profil. Le cache reste utile pour absorber la rafale d'appels
 // auth liés au polling sync (un device call /api/auth/local-state
-// toutes les 2-3 s ; avec TTL 10s, on hit NocoDB ~6 fois/min/instance,
-// négligeable).
-const AUTH_CACHE_TTL_MS = 10_000;
+// toutes les 2-3 s).
+//
+// Passé de 10s à 60s le 2026-05-11 pour réduire la pression CPU/memory
+// Vercel Fluid sur Hobby (96% quota Fluid Provisioned Memory atteint
+// après une journée intense). À 10s : ~360 fetches NocoDB/heure/instance
+// pour rafraîchir le registre des ergos. À 60s : ~60/heure → ÷6 sur le
+// coût compute.
+//
+// Trade-off : un changement de `mot_de_passe` côté NocoDB UI met
+// jusqu'à 60s (au lieu de 10s) pour invalider les anciens tokens via
+// le bump `sessionVersion`. Acceptable pour ce cas d'usage.
+const AUTH_CACHE_TTL_MS = 60_000;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ANAH_STATUS_TTL_MS = 60_000;
 const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';
@@ -2054,13 +2063,26 @@ const buildMemberFromErgoRecord = (record) => {
   // sera nettoyé quand l'ergo réuploade sa photo).
   const profilePhotoB64 = stringValue(field(record, 'profile_photo_base64')).trim();
   const profilePhotoLegacy = stringValue(field(record, 'nom_etablissement_id')).trim();
+  // 2026-05-11 : on ne sert plus les URLs Vercel Blob mortes au
+  // client. Elles consommaient le quota Blob Advanced Operations
+  // (140% dépassé) à chaque fetch d'un avatar dont le fichier blob
+  // a été purgé. Si on n'a pas de base64 et que la legacy est une
+  // URL blob, on retourne `''` → le client affiche l'avatar par
+  // défaut. L'ergo verra une photo vide jusqu'à ce qu'il en
+  // re-uploade une (qui partira en `profile_photo_base64`).
+  const isDeadBlobUrl = (url) =>
+    typeof url === 'string'
+    && /^https?:\/\/[^/]*blob\.vercel-storage\.com/i.test(url);
+  const resolvedPhotoUrl = profilePhotoB64
+      || (isDeadBlobUrl(profilePhotoLegacy)
+        ? ''
+        : resolveClientMediaUrl(profilePhotoLegacy));
   return {
     email,
     displayName: derivedName,
     role: special?.role || 'ERGO',
     selectable: special?.selectable ?? true,
-    profilePhotoUrl: profilePhotoB64
-        || resolveClientMediaUrl(profilePhotoLegacy),
+    profilePhotoUrl: resolvedPhotoUrl,
     establishmentId: field(record, 'etablissements_id') ? String(field(record, 'etablissements_id')) : '',
     establishmentLabel: refLabel(field(record, 'etablissement')) || special?.establishmentLabel || '',
     ergoRecordId: String(record.id),
