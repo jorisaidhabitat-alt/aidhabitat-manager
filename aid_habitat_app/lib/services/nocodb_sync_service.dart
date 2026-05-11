@@ -484,24 +484,49 @@ class NocodbSyncService {
     print('[sync] PDF reçu (${result.bytes.length} bytes), import local…');
     final fileName = result.fileName;
     final title = fileName.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '');
-    // localId déterministe par dossier → REPLACE plutôt que créer un
-    // nouveau doc à chaque retry de l'op `report_generation`. Sans
-    // ça, un retry créait une nouvelle ligne `documents` à chaque
-    // fois (15 documents observés pour 1 click — bug reporté
-    // 2026-04-30). Cf. `importDocumentBytes` qui gère le replace +
-    // la préservation des annotations.
-    await DocumentRepository().importDocumentBytes(
-      patientId: patientId,
-      dossierId: dossierId,
-      bytes: result.bytes,
-      fileName: fileName,
-      title: title.isEmpty ? 'Rapport de visite' : title,
-      tags: const ['Rapport'],
-      localId: 'doc_report_$dossierId',
-    );
+
+    // DEUX CHEMINS selon que le serveur a sauvegardé le PDF directement
+    // dans NocoDB (header X-Saved-Doc-Uuid) ou non. Bug fix 2026-05-11 :
+    // avant ce changement, le path différé utilisait TOUJOURS
+    // `importDocumentBytes` (qui queue un upload_file op). Pour un PDF
+    // de 9 MB, cet upload échouait avec 413 Vercel (body limit 4.5 MB)
+    // → le doc restait stuck "en attente" indéfiniment côté iPad. Avec
+    // le savedDocUuid, on bypass le ré-upload et on insère direct comme
+    // `synced` (le serveur a déjà tout sauvegardé).
+    if (result.savedDocUuid != null && result.savedDocUuid!.isNotEmpty) {
+      // ignore: avoid_print
+      print('[sync] doc déjà en NocoDB (uuid=${result.savedDocUuid}) '
+          '→ import remote-only synced (pas de re-upload)');
+      await DocumentRepository().importDocumentRemoteOnly(
+        patientId: patientId,
+        dossierId: dossierId,
+        bytes: result.bytes,
+        fileName: fileName,
+        title: title.isEmpty ? 'Rapport de visite' : title,
+        tags: const ['Rapport'],
+        remoteUuid: result.savedDocUuid!,
+        clientDocumentId: 'doc_report_$dossierId',
+      );
+    } else {
+      // Fallback compat (rare — server-side save échoué) : ancien chemin.
+      // localId déterministe par dossier → REPLACE plutôt que créer un
+      // nouveau doc à chaque retry de l'op `report_generation`. Sans
+      // ça, un retry créait une nouvelle ligne `documents` à chaque
+      // fois (15 documents observés pour 1 click — bug reporté
+      // 2026-04-30). Cf. `importDocumentBytes` qui gère le replace +
+      // la préservation des annotations.
+      await DocumentRepository().importDocumentBytes(
+        patientId: patientId,
+        dossierId: dossierId,
+        bytes: result.bytes,
+        fileName: fileName,
+        title: title.isEmpty ? 'Rapport de visite' : title,
+        tags: const ['Rapport'],
+        localId: 'doc_report_$dossierId',
+      );
+    }
     // ignore: avoid_print
-    print('[sync] document "Rapport" inséré localement (id=doc_report_$dossierId), '
-        'upload_file op enqueued par DocumentRepository');
+    print('[sync] document "Rapport" inséré localement (id=doc_report_$dossierId)');
   }
 
   /// Pushes a Contexte de vie update (medical context + autonomy
