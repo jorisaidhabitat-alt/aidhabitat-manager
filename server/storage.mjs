@@ -96,6 +96,14 @@ const getDocumentChunksTableId = async () => {
  * Lit tous les chunks NocoDB d'un upload donné, triés par
  * `chunk_index` croissant. Renvoie `[]` si aucun chunk trouvé.
  */
+/**
+ * Helper : lit un champ d'un record retourné par `callNocoTool`.
+ * Les records sont du shape `{ id: "...", fields: {col: value, ...} }`
+ * (cf. `toMcpRecord` dans nocodbMcpClient.mjs) — il faut donc passer
+ * par `.fields[name]`, sinon les champs sont `undefined`.
+ */
+const field = (record, name) => record?.fields?.[name];
+
 const queryUploadChunks = async (uploadId) => {
   const tableId = await getDocumentChunksTableId();
   const tmpKey = `${TMP_DOC_UUID_PREFIX}${uploadId}`;
@@ -114,7 +122,9 @@ const queryUploadChunks = async (uploadId) => {
     if (!payload?.next || batch.length === 0) break;
     page += 1;
   }
-  return records.sort((a, b) => Number(a.chunk_index) - Number(b.chunk_index));
+  return records.sort(
+    (a, b) => Number(field(a, 'chunk_index')) - Number(field(b, 'chunk_index')),
+  );
 };
 
 /**
@@ -177,9 +187,9 @@ export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
 export const listChunks = async (uploadId) => {
   const records = await queryUploadChunks(uploadId);
   return records.map((r) => ({
-    url: `nocodb://chunks/${TMP_DOC_UUID_PREFIX}${uploadId}/${Number(r.chunk_index)}`,
-    size: String(r.chunk_base64 || '').length,
-    index: Number(r.chunk_index),
+    url: `nocodb://chunks/${TMP_DOC_UUID_PREFIX}${uploadId}/${Number(field(r, 'chunk_index'))}`,
+    size: String(field(r, 'chunk_base64') || '').length,
+    index: Number(field(r, 'chunk_index')),
   }));
 };
 
@@ -196,18 +206,35 @@ export const reassembleChunks = async (uploadId) => {
     );
   }
   // `queryUploadChunks` renvoie déjà trié par `chunk_index` croissant.
-  // L'encodage est `clientChunkIdx * SUBCHUNK_STRIDE + subIdx`, donc
-  // le tri naturel met les sous-chunks de chaque chunk client dans
-  // l'ordre (chunk0:sub0, chunk0:sub1, ..., chunk0:subN, chunk1:sub0, ...).
+  // L'encodage est `clientChunkIdx * SUBCHUNK_STRIDE + subIdx`.
   //
-  // On concatène TOUTES les chaînes base64 d'abord (qui sont
-  // sémantiquement la base64 contiguë du fichier), puis on décode en
-  // une fois. Couper le base64 et décoder par bouts donnerait des
-  // bytes corrompus à cause du padding `=` mal-placé en milieu.
-  const concatBase64 = records
-    .map((r) => String(r.chunk_base64 || ''))
-    .join('');
-  return Buffer.from(concatBase64, 'base64');
+  // Stratégie de decode : on regroupe les sous-chunks par chunk client
+  // (chunk_index NocoDB ÷ SUBCHUNK_STRIDE), on concat les base64 de
+  // chaque groupe, puis on décode chaque groupe séparément. On NE
+  // PEUT PAS concat tous les sous-chunks puis décoder en une fois,
+  // car le base64 d'un chunk client se termine par du padding `=` ou
+  // `==` qui se retrouve au MILIEU de la chaîne concaténée — et
+  // `Buffer.from(str, 'base64')` s'arrête silencieusement au premier
+  // `=` rencontré, donnant un buffer tronqué (bug rapporté 2026-05-11
+  // après le déploiement RAM→NocoDB : reassemble renvoyait juste le
+  // 1er chunk au lieu du fichier complet).
+  const byClientChunk = new Map();
+  for (const r of records) {
+    const flatIdx = Number(field(r, 'chunk_index'));
+    const clientIdx = Math.floor(flatIdx / SUBCHUNK_STRIDE);
+    if (!byClientChunk.has(clientIdx)) byClientChunk.set(clientIdx, []);
+    byClientChunk.get(clientIdx).push({
+      subIdx: flatIdx % SUBCHUNK_STRIDE,
+      b64: String(field(r, 'chunk_base64') || ''),
+    });
+  }
+  const orderedClientIndices = [...byClientChunk.keys()].sort((a, b) => a - b);
+  const buffers = orderedClientIndices.map((ci) => {
+    const subs = byClientChunk.get(ci).sort((a, b) => a.subIdx - b.subIdx);
+    const fullBase64 = subs.map((s) => s.b64).join('');
+    return Buffer.from(fullBase64, 'base64');
+  });
+  return Buffer.concat(buffers);
 };
 
 /**
