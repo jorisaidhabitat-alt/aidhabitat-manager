@@ -2222,20 +2222,36 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
       const stored = store.users[member.email];
       if (stored?.nocoPasswordChecksum !== checksum) {
         const salt = randomSecret(16);
+        // Bump `sessionVersion` à chaque changement effectif de mdp
+        // NocoDB → invalide TOUS les tokens X-App-Session existants
+        // pour cet email (cf. resolveSessionUser). C'est le mécanisme
+        // attendu : changer le mdp = déconnecter immédiatement.
+        // 1ère mise en cache (stored absent) : on n'incrémente PAS
+        // pour ne pas invalider les sessions existantes basées sur le
+        // passwordHash auto-généré historique.
+        const previousSv = Number(stored?.sessionVersion) || 0;
+        const nextSv = stored?.nocoPasswordChecksum
+          ? previousSv + 1
+          : previousSv;
         store.users[member.email] = {
           ...(stored || { createdAt: new Date().toISOString(), profilePhotoUrl: '' }),
           nocoPasswordHash: hashPassword(plain, salt),
           nocoPasswordSalt: salt,
           nocoPasswordChecksum: checksum,
+          sessionVersion: nextSv,
         };
         storeMutated = true;
       }
     } else if (plain === null) {
-      // mot_de_passe NocoDB explicitement vide → reset noco*
+      // mot_de_passe NocoDB explicitement vide → reset noco* + bump sv
+      // (l'effacement intentionnel doit aussi déconnecter les sessions).
       const stored = store.users[member.email];
       if (stored?.nocoPasswordHash) {
         const { nocoPasswordHash: _h, nocoPasswordSalt: _s, nocoPasswordChecksum: _c, ...rest } = stored;
-        store.users[member.email] = rest;
+        store.users[member.email] = {
+          ...rest,
+          sessionVersion: (Number(stored?.sessionVersion) || 0) + 1,
+        };
         storeMutated = true;
       }
     }
@@ -2266,9 +2282,15 @@ const loadMemberRegistryForAuth = async () => {
 
 const signSessionToken = async (email) => {
   const { store } = await loadMemberRegistryForAuth();
+  // Per-user `sessionVersion` (cf. resolveSessionUser) : permet de
+  // révoquer toutes les sessions d'un user sans toucher aux autres.
+  // Bump automatique quand `mot_de_passe` NocoDB change (cf.
+  // loadMemberRegistry) ou via POST /api/auth/revoke-sessions/:email.
+  const sessionVersion = Number(store.users[email]?.sessionVersion) || 0;
   const payload = {
     email,
     exp: Date.now() + SESSION_TTL_MS,
+    sv: sessionVersion,
   };
   const encodedPayload = encodeBase64Url(payload);
   const signature = crypto.createHmac('sha256', store.secret).update(encodedPayload).digest('base64url');
@@ -2293,7 +2315,15 @@ const resolveSessionUser = async (req) => {
   const payload = decodeBase64Url(encodedPayload);
   if (!payload?.email || Number(payload.exp) < Date.now()) return null;
 
-  return members.find((member) => member.email === normalizeEmail(payload.email)) || null;
+  // Révocation per-user via `sessionVersion`. Si le bump a eu lieu
+  // (changement mdp NocoDB ou révocation admin explicite), le token
+  // antérieur a une `sv` plus ancienne que celle stockée → invalide.
+  const email = normalizeEmail(payload.email);
+  const currentSv = Number(store.users[email]?.sessionVersion) || 0;
+  const tokenSv = Number(payload.sv) || 0;
+  if (tokenSv !== currentSv) return null;
+
+  return members.find((member) => member.email === email) || null;
 };
 
 const requireAuth = async (req, res, next) => {
@@ -3697,6 +3727,52 @@ app.delete('/api/admin/access-members/:email', requireAdmin, async (req, res, ne
     }
     memberRegistryCache = null;
     res.json({ success: true, error: null, data: {} });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/access-members/:email/revoke-sessions
+ *
+ * Révoque toutes les sessions actives d'un membre — incrémente son
+ * `sessionVersion` dans le auth-store. Tous les tokens X-App-Session
+ * antérieurs deviennent immédiatement invalides (cf. resolveSessionUser
+ * qui compare `payload.sv` à `store.users[email].sessionVersion`).
+ *
+ * Cas d'usage typique : ergo viré, mdp compromis, retrait d'accès en
+ * urgence. Le bump auto se déclenche aussi quand on change le
+ * `mot_de_passe` directement dans NocoDB (cf. loadMemberRegistry) — cet
+ * endpoint sert pour les cas où on veut révoquer SANS changer le mdp.
+ */
+app.post('/api/admin/access-members/:email/revoke-sessions', requireAdmin, async (req, res, next) => {
+  try {
+    const targetEmail = normalizeEmail(decodeURIComponent(req.params.email));
+    if (!targetEmail) {
+      return res.status(400).json({ success: false, error: 'Email manquant' });
+    }
+    const store = await readAuthStore();
+    if (!store.users[targetEmail]) {
+      return res.status(404).json({ success: false, error: `Aucun utilisateur trouvé pour ${targetEmail}` });
+    }
+    const previousSv = Number(store.users[targetEmail].sessionVersion) || 0;
+    const nextSv = previousSv + 1;
+    store.users[targetEmail] = {
+      ...store.users[targetEmail],
+      sessionVersion: nextSv,
+    };
+    await writeAuthStore(store);
+    memberRegistryCache = null;
+    res.json({
+      success: true,
+      error: null,
+      data: {
+        email: targetEmail,
+        previousSessionVersion: previousSv,
+        sessionVersion: nextSv,
+        message: `Sessions révoquées pour ${targetEmail}. Tous les tokens antérieurs sont invalides.`,
+      },
+    });
   } catch (error) {
     next(error);
   }
