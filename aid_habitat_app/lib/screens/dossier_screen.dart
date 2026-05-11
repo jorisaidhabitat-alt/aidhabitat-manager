@@ -502,10 +502,18 @@ class _DossierScreenState extends State<DossierScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (accompanimentLabel.isNotEmpty) ...[
-                const SizedBox(width: 12),
-                AccompanimentBadge(value: accompanimentLabel, large: true),
-              ],
+              // Fallback "MPA complet" 2026-05-07 : badge toujours
+              // affiché même si le champ est vide (dossiers legacy).
+              const SizedBox(width: 12),
+              AccompanimentBadge(
+                value: accompanimentLabel.isNotEmpty
+                    ? accompanimentLabel
+                    : 'MPA complet',
+                rawType: _natureAccompagnement.trim().isNotEmpty
+                    ? _natureAccompagnement
+                    : 'complet',
+                large: true,
+              ),
               if (incomeLabel.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 IncomeCategoryBadge(value: incomeLabel, large: true),
