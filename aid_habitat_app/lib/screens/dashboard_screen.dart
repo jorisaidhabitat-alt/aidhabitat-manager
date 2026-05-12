@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/beneficiary_badges.dart' show formatAccompanimentType;
 import '../components/beneficiary_palettes.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
@@ -228,12 +229,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     int visitsThisWeek = 0;
     int activeDossiers = 0;
     for (final d in dossiers) {
-      final status = d.status.trim().toLowerCase();
-      if (status != 'visité' && status != 'visite' && status.isNotEmpty) {
-        activeDossiers += 1;
-      } else if (status.isEmpty) {
-        // dossiers sans statut explicite → on les compte aussi comme
-        // actifs (état par défaut).
+      // Un dossier est « en cours » tant qu'il n'a pas été clôturé /
+      // archivé. Les états VISITED / CLOSED / ARCHIVED sortent du
+      // compteur ; le reste (TO_VISIT, IN_PROGRESS, WAITING_*, etc.)
+      // y est inclus.
+      const closedStates = {
+        DossierStatus.VISITED,
+        DossierStatus.CLOSED,
+        DossierStatus.ARCHIVED,
+      };
+      if (!closedStates.contains(d.status)) {
         activeDossiers += 1;
       }
       final raw = d.visitDate;
@@ -1599,11 +1604,14 @@ class _PendingReportsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // « En cours » = pas encore visité ni clôturé / archivé.
+    const closedStates = {
+      DossierStatus.VISITED,
+      DossierStatus.CLOSED,
+      DossierStatus.ARCHIVED,
+    };
     final pending = dossiers
-        .where((d) {
-          final s = d.status.trim().toLowerCase();
-          return s != 'visité' && s != 'visite';
-        })
+        .where((d) => !closedStates.contains(d.status))
         .toList(growable: false)
       ..sort((a, b) {
         // Plus récents d'abord (createdAt desc).
@@ -1710,10 +1718,8 @@ class _PendingReportRow extends StatelessWidget {
       if (age != null) '$age ans',
       if (city.isNotEmpty) city,
     ].join(' · ');
-    final statusLabel = dossier.status.trim().isEmpty
-        ? 'À traiter'
-        : dossier.status.trim();
-    final statusPalette = _statusPalette(statusLabel);
+    final statusLabel = dossier.status.label;
+    final statusPalette = _statusPalette(dossier.status);
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -1833,32 +1839,50 @@ class _PendingReportRow extends StatelessWidget {
     return age >= 0 && age < 150 ? age : null;
   }
 
-  _StatusPalette _statusPalette(String status) {
-    final s = status.toLowerCase();
+  _StatusPalette _statusPalette(DossierStatus status) {
     // Palette compacte alignée sur l'esprit de la maquette : ton
-    // pastel + point vif. Les libellés viennent directement du
-    // champ NocoDB `dossiers.status` (À visiter / En cours / etc.).
-    if (s.contains('visit')) {
-      // 'À visiter', 'Visité' (visité ne devrait pas atterrir ici
-      // car filtré côté panel, mais safety).
-      return const _StatusPalette(
-        bg: Color(0xFFFCE7F3),
-        fg: Color(0xFFBE185D),
-        dot: Color(0xFFDB2777),
-      );
+    // pastel + point vif. Mapping sur les enum existants (cf.
+    // DossierStatus + DossierStatusLabel). Demande utilisateur
+    // 2026-05-12 : ne pas changer les statuts, juste mieux les
+    // visualiser.
+    switch (status) {
+      case DossierStatus.TO_VISIT:
+        return const _StatusPalette(
+          bg: Color(0xFFFCE7F3),
+          fg: Color(0xFFBE185D),
+          dot: Color(0xFFDB2777),
+        );
+      case DossierStatus.IN_PROGRESS:
+        return const _StatusPalette(
+          bg: Color(0xFFFFEDD5),
+          fg: Color(0xFFB45309),
+          dot: Color(0xFFD97706),
+        );
+      case DossierStatus.WAITING_QUOTES:
+      case DossierStatus.QUOTES_RECEIVED:
+      case DossierStatus.WAITING_GRANT:
+        return const _StatusPalette(
+          bg: Color(0xFFFEE2E2),
+          fg: Color(0xFFB91C1C),
+          dot: Color(0xFFDC2626),
+        );
+      case DossierStatus.GRANT_VALIDATED:
+      case DossierStatus.WORKS_STARTED:
+      case DossierStatus.WORKS_COMPLETED:
+        return const _StatusPalette(
+          bg: Color(0xFFDCFCE7),
+          fg: Color(0xFF15803D),
+          dot: Color(0xFF16A34A),
+        );
+      case DossierStatus.VISITED:
+      case DossierStatus.CLOSED:
+      case DossierStatus.ARCHIVED:
+        return const _StatusPalette(
+          bg: Color(0xFFF1F5F9),
+          fg: Color(0xFF475569),
+          dot: Color(0xFF94A3B8),
+        );
     }
-    if (s.contains('cours')) {
-      return const _StatusPalette(
-        bg: Color(0xFFFFEDD5),
-        fg: Color(0xFFB45309),
-        dot: Color(0xFFD97706),
-      );
-    }
-    return const _StatusPalette(
-      bg: Color(0xFFFEE2E2),
-      fg: Color(0xFFB91C1C),
-      dot: Color(0xFFDC2626),
-    );
   }
 }
 

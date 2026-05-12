@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="SRE — Retraites de l'État">
+  <defs>
+    <linearGradient id="sreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B2C7D"/>
+      <stop offset="100%" stop-color="#000091"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="44" fill="url(#sreGrad)"/>
+  <rect x="60" y="38" width="120" height="6" rx="3" fill="#E1000F"/>
+  <rect x="60" y="48" width="120" height="6" rx="3" fill="#ffffff" opacity="0.95"/>
+  <text x="120" y="142" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="76" font-weight="900" fill="#ffffff" letter-spacing="2">SRE</text>
+  <text x="120" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="2">RETRAITES DE L'ÉTAT</text>
+</svg>

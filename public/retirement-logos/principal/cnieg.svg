@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="CNIEG">
+  <defs>
+    <linearGradient id="cniegGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F08A1F"/>
+      <stop offset="100%" stop-color="#C5500B"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="44" fill="url(#cniegGrad)"/>
+  <path d="M190 38 L196 58 L188 56 L194 74 L182 60 L188 60 Z" fill="rgba(255,255,255,0.25)"/>
+  <circle cx="46" cy="196" r="26" fill="rgba(255,255,255,0.08)"/>
+  <text x="120" y="138" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="62" font-weight="900" fill="#ffffff" letter-spacing="-1">CNIEG</text>
+  <text x="120" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="600" fill="rgba(255,255,255,0.90)" letter-spacing="2">ÉLECTRICITÉ &amp; GAZ</text>
+</svg>

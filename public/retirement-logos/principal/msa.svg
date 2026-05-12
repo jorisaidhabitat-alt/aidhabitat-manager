@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="MSA">
+  <defs>
+    <linearGradient id="msaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8BC34A"/>
+      <stop offset="100%" stop-color="#5A8E2E"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="44" fill="url(#msaGrad)"/>
+  <path d="M180 38 Q200 60 184 86 Q168 60 180 38 Z" fill="rgba(255,255,255,0.20)"/>
+  <path d="M196 58 Q216 80 200 106 Q184 80 196 58 Z" fill="rgba(255,255,255,0.12)"/>
+  <text x="120" y="142" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="76" font-weight="900" fill="#ffffff" letter-spacing="2">MSA</text>
+  <text x="120" y="176" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="3">AGRICULTURE</text>
+</svg>

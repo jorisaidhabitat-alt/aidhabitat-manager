@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="CPRP SNCF">
+  <defs>
+    <linearGradient id="cprpGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D6324A"/>
+      <stop offset="100%" stop-color="#9A0F2A"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="44" fill="url(#cprpGrad)"/>
+  <circle cx="190" cy="50" r="22" fill="rgba(255,255,255,0.10)"/>
+  <circle cx="46" cy="196" r="26" fill="rgba(255,255,255,0.08)"/>
+  <text x="120" y="118" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="46" font-weight="900" fill="#ffffff" letter-spacing="0">CPRP</text>
+  <text x="120" y="166" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="38" font-weight="900" fill="#ffffff" letter-spacing="2">SNCF</text>
+  <rect x="60" y="184" width="120" height="3" rx="1.5" fill="rgba(255,255,255,0.7)"/>
+</svg>
