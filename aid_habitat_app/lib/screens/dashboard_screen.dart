@@ -1807,10 +1807,12 @@ class _PendingReportsPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (items.isEmpty)
-            const _EmptyStatePlaceholder(
-              icon: LucideIcons.check,
-              text: 'Tout est à jour',
-              subText: 'Aucun rapport à réaliser pour le moment.',
+            const Expanded(
+              child: _EmptyStatePlaceholder(
+                icon: LucideIcons.check,
+                text: 'Tout est à jour',
+                subText: 'Aucun rapport à réaliser pour le moment.',
+              ),
             )
           else
             ...items.map((d) => Padding(
@@ -2032,11 +2034,14 @@ class _EmptyStatePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    // Center pour centrer dans n'importe quel parent (vs Expanded qui
+    // ne marche que dans un Flex et casse IntrinsicHeight). Demande
+    // utilisateur 2026-05-12 : « centre les dans leur container ».
+    return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 8),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 56,
@@ -2179,10 +2184,12 @@ class _WeekAgendaPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (items.isEmpty)
-            const _EmptyStatePlaceholder(
-              icon: LucideIcons.calendar,
-              text: 'Aucune visite cette semaine',
-              subText: 'Profite d\'une semaine plus calme.',
+            const Expanded(
+              child: _EmptyStatePlaceholder(
+                icon: LucideIcons.calendar,
+                text: 'Aucune visite cette semaine',
+                subText: 'Profite d\'une semaine plus calme.',
+              ),
             )
           else
             ...items.map((it) => Padding(
