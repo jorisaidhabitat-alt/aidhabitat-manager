@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
-import '../../services/connectivity_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
@@ -123,11 +122,7 @@ class _BathroomTabState extends State<BathroomTab>
   // (Anciens Sets d'édition/repli retirés : les toggles et listes
   // d'équipements restent maintenant toujours visibles.)
 
-  /// Polling cross-device 2s — cf. doc identique côté `wc_tab.dart`.
-  /// Sanitaires et WC partagent la même table `diagnostic_sanitaires`,
-  /// donc les deux onglets restent en phase quand l'autre device
-  /// modifie un équipement.
-  Timer? _refreshTimer;
+  // _refreshTimer supprimé 2026-05-12 (refactor sync à la (re)connexion).
 
   @override
   void initState() {
@@ -141,7 +136,6 @@ class _BathroomTabState extends State<BathroomTab>
   @override
   void dispose() {
     _saveTimer?.cancel();
-    _refreshTimer?.cancel();
     super.dispose();
   }
 

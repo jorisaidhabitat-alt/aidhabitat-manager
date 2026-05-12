@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/types.dart';
-import '../../services/connectivity_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../services/url_resolver.dart';
@@ -88,33 +87,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     super.dispose();
   }
 
-  /// Tick de polling cross-device : refresh remote → relit SQLite
-  /// → met à jour `_items` si changement. Best-effort, swallows
-  /// errors. Ne touche RIEN si la fetch remote échoue (offline,
-  /// 5xx, etc.) — on garde l'état local courant.
-  Future<void> _pollRefresh() async {
-    try {
-      final didRefresh = await widget.repository
-          .refreshVisitRecommendationsFromRemote(widget.dossier.id);
-      if (!mounted) return;
-      // Re-checks après l'await : utilisateur peut avoir commencé à
-      // éditer pendant la requête HTTP (~500ms-1s).
-      if (_saveDebounce?.isActive == true) return;
-      if (_saving) return;
-      if (!didRefresh) return;
-      final fresh = await widget.repository
-          .fetchVisitRecommendations(widget.dossier.id);
-      if (!mounted) return;
-      if (_saveDebounce?.isActive == true) return;
-      if (_saving) return;
-      // Diff léger : on ne setState que si la liste a vraiment changé,
-      // sinon on déclenche un rebuild inutile à chaque tick.
-      if (_recommendationListsEqual(_items, fresh)) return;
-      setState(() => _items = fresh);
-    } catch (_) {
-      // best-effort : un échec ponctuel ne casse rien.
-    }
-  }
+  // _pollRefresh supprimé 2026-05-12 (refactor sync à la (re)connexion).
+  // Le pull workspace se charge de rafraîchir les recommandations au
+  // foreground return / reconnect / login.
 
   /// Compare deux listes d'items recommandation. Renvoie true si
   /// strictement identiques (mêmes ids dans le même ordre, mêmes

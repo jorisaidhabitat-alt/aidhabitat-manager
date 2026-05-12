@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
-import '../../services/connectivity_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/form_widgets.dart';
@@ -48,16 +47,7 @@ class _WcTabState extends State<WcTab>
   // (Ancien Set de clés d'édition pour le repli "CollapsedValueRow"
   // retiré : les toggles restent maintenant toujours visibles.)
 
-  /// Polling cross-device 2s — demande utilisateur 2026-05-06 :
-  /// « la synchronisation entre Mac et iPad doit être bien plus
-  /// rapide ». Avant, sanitaires n'était fetché qu'à l'init du tab —
-  /// si le Mac modifiait la cuvette pendant que l'iPad regardait
-  /// l'onglet WC, l'iPad ne voyait rien jusqu'à un changement
-  /// d'onglet. Le poll est skippé si l'utilisateur édite localement
-  /// (saveTimer actif) — `refreshDiagnosticSanitaireFromRemote` a
-  /// déjà sa propre garde `pendingSync`, donc deux niveaux de
-  /// protection contre l'écrasement d'une saisie en cours.
-  Timer? _refreshTimer;
+  // _refreshTimer supprimé 2026-05-12 (refactor sync à la (re)connexion).
 
   @override
   void initState() {
@@ -73,7 +63,6 @@ class _WcTabState extends State<WcTab>
   @override
   void dispose() {
     _saveTimer?.cancel();
-    _refreshTimer?.cancel();
     super.dispose();
   }
 

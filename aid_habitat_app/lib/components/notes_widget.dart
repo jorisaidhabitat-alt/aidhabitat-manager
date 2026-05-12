@@ -516,15 +516,6 @@ class _NotesWidgetState extends State<NotesWidget> {
     // (re)connexion pour les voir.
   }
 
-  Future<void> _runNotePoll() async {
-    _notePollRunning = true;
-    try {
-      await _refreshCurrentPageFromRemoteAfterPull();
-    } finally {
-      _notePollRunning = false;
-    }
-  }
-
   Future<void> _refreshCurrentPageFromRemoteAfterPull() async {
     try {
       await _dataService.refreshNotePageFromRemote(
