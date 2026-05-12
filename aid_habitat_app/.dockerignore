@@ -1,0 +1,15 @@
+# ---------------------------------------------------------------------------
+# .dockerignore pour Dockerfile.web.
+# Le Dockerfile.web ne copie QUE `build/web/` + `nginx.conf` — pas besoin
+# d'embarquer le code source Dart ni les outils de build.
+# ---------------------------------------------------------------------------
+
+# Tout sauf le bundle web compilé + la conf nginx
+*
+
+!build/web/
+!build/web/**
+!nginx.conf
+!Dockerfile.web
+
+# (le `*` exclu tout, les `!xxx` ré-incluent ce qu'on veut)
