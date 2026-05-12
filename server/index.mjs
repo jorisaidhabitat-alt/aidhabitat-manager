@@ -3929,6 +3929,43 @@ app.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) 
   }
 });
 
+/// POST /api/retirement-funds-principal — crée une caisse de retraite
+/// principale (table `caisses_de_retraite` NocoDB). Demande utilisateur
+/// 2026-05-12 : bouton « Ajouter une caisse de retraite » disponible
+/// aussi sur la page Caisses principales (parité avec Caisses
+/// complémentaires). Schema simpler : juste `nom` + `numero_telephone_contact`.
+app.post('/api/retirement-funds-principal', requireAuth, async (req, res, next) => {
+  try {
+    const name = stringValue(req.body?.name).trim();
+    const phone = stringValue(req.body?.phone).trim();
+
+    if (!name) {
+      res.status(400).json({ success: false, error: 'Nom obligatoire' });
+      return;
+    }
+
+    const created = await createRecord(TABLES.caissesRetraite, {
+      uuid_source: crypto.randomUUID(),
+      nom: name,
+      numero_telephone_contact: phone || null,
+    });
+
+    res.json({
+      success: true,
+      error: null,
+      data: {
+        fund: {
+          id: String(created?.id || ''),
+          name,
+          phone,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/anah-status', requireAuth, async (_req, res, next) => {
   try {
     // Cache HTTP : ANAH status (feature flag + URLs) change quasi
