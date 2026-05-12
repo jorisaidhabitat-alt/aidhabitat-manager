@@ -11,15 +11,16 @@
 // de retraite principale comme ce que tu as fait pour les caisses de retraite
 // complémentaire ».
 //
-// Les SVG dans `public/retirement-logos/principal/` sont des compositions
-// typographiques originales avec couleurs institutionnelles — pas des
-// reproductions de logos officiels. Le but : avoir un visuel reconnaissable
-// par caisse, plus professionnel que des initiales auto-générées.
+// MAJ 2026-05-12 : la plupart des entrées pointent désormais vers les
+// VRAIS logos officiels (PNG/JPG/SVG téléchargés depuis Wikimedia Commons
+// ou les sites institutionnels — usage informationnel/nominatif fair use).
+// Seules les caisses sans logo trouvable publiquement gardent la
+// composition typographique d'origine (.svg dans le même dossier).
 
 export const PRINCIPAL_FUNDS_CATALOG = {
   'cnav (assurance retraite / carsat)': {
     displayName: 'CNAV / CARSAT',
-    logoUrl: '/retirement-logos/principal/cnav.svg',
+    logoUrl: '/retirement-logos/principal/cnav.png',
     primary: '#0055A4',
     secondary: '#003781',
   },
@@ -31,7 +32,7 @@ export const PRINCIPAL_FUNDS_CATALOG = {
   },
   'cnracl': {
     displayName: 'CNRACL',
-    logoUrl: '/retirement-logos/principal/cnracl.svg',
+    logoUrl: '/retirement-logos/principal/cnracl.png',
     primary: '#2D4A8A',
     secondary: '#1D3461',
   },
@@ -49,37 +50,37 @@ export const PRINCIPAL_FUNDS_CATALOG = {
   },
   'ssi (sécurité sociale des indépendants)': {
     displayName: 'SSI',
-    logoUrl: '/retirement-logos/principal/ssi.svg',
+    logoUrl: '/retirement-logos/principal/ssi.png',
     primary: '#A5C742',
     secondary: '#6E9322',
   },
   'ssi': {
     displayName: 'SSI',
-    logoUrl: '/retirement-logos/principal/ssi.svg',
+    logoUrl: '/retirement-logos/principal/ssi.png',
     primary: '#A5C742',
     secondary: '#6E9322',
   },
   'cnavpl': {
     displayName: 'CNAVPL',
-    logoUrl: '/retirement-logos/principal/cnavpl.svg',
+    logoUrl: '/retirement-logos/principal/cnavpl.png',
     primary: '#3E7AB5',
     secondary: '#1E4C7D',
   },
   'cnbf': {
     displayName: 'CNBF',
-    logoUrl: '/retirement-logos/principal/cnbf.svg',
+    logoUrl: '/retirement-logos/principal/cnbf.png',
     primary: '#A33352',
     secondary: '#6B1530',
   },
   'cnieg': {
     displayName: 'CNIEG',
-    logoUrl: '/retirement-logos/principal/cnieg.svg',
+    logoUrl: '/retirement-logos/principal/cnieg.jpg',
     primary: '#F08A1F',
     secondary: '#C5500B',
   },
   'cprp sncf': {
     displayName: 'CPRP SNCF',
-    logoUrl: '/retirement-logos/principal/cprp-sncf.svg',
+    logoUrl: '/retirement-logos/principal/cprp-sncf.jpg',
     primary: '#D6324A',
     secondary: '#9A0F2A',
   },
@@ -91,13 +92,13 @@ export const PRINCIPAL_FUNDS_CATALOG = {
   },
   'enim': {
     displayName: 'ENIM',
-    logoUrl: '/retirement-logos/principal/enim.svg',
+    logoUrl: '/retirement-logos/principal/enim.png',
     primary: '#1A6B9C',
     secondary: '#003B5C',
   },
   'crpcen': {
     displayName: 'CRPCEN',
-    logoUrl: '/retirement-logos/principal/crpcen.svg',
+    logoUrl: '/retirement-logos/principal/crpcen.png',
     primary: '#2A5294',
     secondary: '#13315B',
   },
