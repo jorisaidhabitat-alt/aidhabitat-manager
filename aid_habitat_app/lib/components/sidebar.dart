@@ -445,7 +445,7 @@ class _CaissesSubMenuButton extends StatelessWidget {
             value: 'precos_principal',
             child: Row(
               children: [
-                Icon(LucideIcons.landmark,
+                Icon(LucideIcons.building,
                     size: 18, color: Color(0xFF7C6DAA)),
                 SizedBox(width: 10),
                 Text('Caisses principales'),
