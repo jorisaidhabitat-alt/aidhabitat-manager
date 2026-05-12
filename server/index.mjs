@@ -12,6 +12,7 @@ import {
   resyncBeneficiaireDenormalizedNames,
 } from './resyncLegacyNames.mjs';
 import { getRetirementFundMeta, buildLogoDataUri } from './retirementFundsCatalog.mjs';
+import { getPrincipalFundBranding } from './principalRetirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
 // 2026-05-06 — Vercel Blob entièrement éliminé. Seuls les helpers
