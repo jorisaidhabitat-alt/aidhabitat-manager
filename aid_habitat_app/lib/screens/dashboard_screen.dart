@@ -41,6 +41,12 @@ class DashboardScreen extends StatefulWidget {
   /// cards and the "Voir tout" button for parity with the React version.
   final VoidCallback? onNavigateToDossiers;
 
+  /// Callback déclenché par le bouton « Démarrer le relevé » dans la
+  /// bannière prochaine visite — ouvre directement la VAD du
+  /// bénéficiaire (visit_report_screen) sans passer par l'écran
+  /// dossier. Demande utilisateur 2026-05-12.
+  final void Function(Dossier)? onStartReport;
+
   const DashboardScreen({
     super.key,
     required this.visits,
@@ -51,6 +57,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onSelectDossier,
     this.userName,
     this.onNavigateToDossiers,
+    this.onStartReport,
   });
 
   /// Builds the full postal address `<street> <zip> <CITY>`.
@@ -159,6 +166,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool get isSyncing => widget.isSyncing;
   VoidCallback get onSyncNow => widget.onSyncNow;
   void Function(Dossier) get onSelectDossier => widget.onSelectDossier;
+  void Function(Dossier)? get onStartReport => widget.onStartReport;
   String? get userName => widget.userName;
   VoidCallback? get onNavigateToDossiers => widget.onNavigateToDossiers;
 
@@ -766,9 +774,19 @@ class _NextVisit {
 
 class _NextVisitBanner extends StatefulWidget {
   final _NextVisit? nextVisit;
+  /// Tap général sur la bannière (zones gauche + zone info bénéficiaire)
+  /// → navigation vers le dossier détail.
   final VoidCallback? onTap;
+  /// Tap spécifique sur le bouton « Démarrer le relevé » → navigation
+  /// directe vers la VAD (visit_report_screen). Demande utilisateur
+  /// 2026-05-12.
+  final VoidCallback? onStartReport;
 
-  const _NextVisitBanner({required this.nextVisit, required this.onTap});
+  const _NextVisitBanner({
+    required this.nextVisit,
+    required this.onTap,
+    this.onStartReport,
+  });
 
   @override
   State<_NextVisitBanner> createState() => _NextVisitBannerState();
