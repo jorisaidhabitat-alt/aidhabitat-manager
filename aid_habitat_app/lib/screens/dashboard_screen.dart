@@ -5,7 +5,10 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/beneficiary_badges.dart'
-    show formatAccompanimentType, accompanimentPaletteFor;
+    show
+        formatAccompanimentType,
+        accompanimentPaletteFor,
+        IncomeCategoryBadge;
 import '../components/beneficiary_palettes.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
@@ -1839,8 +1842,10 @@ class _PendingReportRow extends StatelessWidget {
       if (age != null) '$age ans',
       if (city.isNotEmpty) city,
     ].join(' · ');
-    final statusLabel = dossier.status.label;
-    final statusPalette = _statusPalette(dossier.status);
+    // Remplace le badge statut par le badge catégorie de revenu en
+    // monochrome (parité visuelle avec la liste « Mes dossiers »).
+    // Demande utilisateur 2026-05-12.
+    final income = p.incomeCategory.trim();
 
     // Palette d'avatar identique à `DossiersListScreen` (basée sur la
     // nature d'accompagnement Diag/MPA) + contour vert/jaune selon le
@@ -1910,37 +1915,13 @@ class _PendingReportRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            // Badge statut
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: statusPalette.bg,
-                borderRadius: BorderRadius.circular(999),
+            // Badge catégorie de revenu (variante monochrome — fond
+            // gris neutre, pas de teinte selon le palier ANAH).
+            if (income.isNotEmpty)
+              IncomeCategoryBadge(
+                value: income,
+                monochrome: true,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: statusPalette.dot,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    statusLabel,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: statusPalette.fg,
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(width: 10),
             const Icon(LucideIcons.arrowRight,
                 size: 18, color: Color(0xFFCBD5E1)),
