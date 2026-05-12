@@ -63,16 +63,11 @@ class _SidebarState extends State<Sidebar> {
     },
     {'id': 'dossiers', 'label': 'Dossiers', 'icon': LucideIcons.folderOpen},
     {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.bookOpen},
-    {
-      'id': 'precos_principal',
-      'label': 'Caisses principales',
-      'icon': LucideIcons.building,
-    },
-    {
-      'id': 'precos',
-      'label': 'Caisses complémentaires',
-      'icon': LucideIcons.heart,
-    },
+    // Item « Caisses » unifié — la page interne propose un switch
+    // Complémentaires ↔ Principales (cf.
+    // RetirementFundsCombinedScreen). Demande utilisateur 2026-05-12 :
+    // 1 seul item avec icône cœur, mode par défaut Complémentaires.
+    {'id': 'precos', 'label': 'Caisses', 'icon': LucideIcons.heart},
     // Item ANAH : on n'utilise plus une icône Lucide mais le vrai logo
     // de l'Anah (asset embarqué `assets/logos/anah.png` → toujours
     // disponible offline). Le rendu est géré dans le `build` ci-dessous

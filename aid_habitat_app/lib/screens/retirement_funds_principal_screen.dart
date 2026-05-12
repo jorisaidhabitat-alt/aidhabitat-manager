@@ -28,7 +28,14 @@ import '../services/nocodb_api_client.dart';
 /// plus compactes (juste nom + téléphone). Demande utilisateur
 /// 2026-05-12.
 class RetirementFundsPrincipalScreen extends StatefulWidget {
-  const RetirementFundsPrincipalScreen({super.key});
+  /// Cache le header (titre + search) — utilisé quand l'écran est
+  /// embarqué dans `RetirementFundsCombinedScreen`.
+  final bool showHeader;
+
+  const RetirementFundsPrincipalScreen({
+    super.key,
+    this.showHeader = true,
+  });
 
   @override
   State<RetirementFundsPrincipalScreen> createState() =>
@@ -256,63 +263,65 @@ class _RetirementFundsPrincipalScreenState
 
   Widget _buildContent() {
     return Padding(
-      padding: const EdgeInsets.all(32),
+      padding: EdgeInsets.fromLTRB(32, widget.showHeader ? 32 : 0, 32, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // En-tête : titre + barre de recherche pill (parité 1:1 avec
           // la page Caisses complémentaires).
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Expanded(
-                child: Text(
-                  'Caisses de retraite principales',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+          if (widget.showHeader) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Caisses de retraite principales',
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 24),
-              SizedBox(
-                width: 320,
-                child: Container(
-                  height: 52,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(LucideIcons.search,
-                          size: 18, color: Color(0xFF64748B)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (_) => setState(() {}),
-                          decoration: const InputDecoration(
-                            hintText: 'CARSAT, MSA, CNRACL...',
-                            hintStyle:
-                                TextStyle(color: Color(0xFF94A3B8)),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            isCollapsed: true,
+                const SizedBox(width: 24),
+                SizedBox(
+                  width: 320,
+                  child: Container(
+                    height: 52,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(LucideIcons.search,
+                            size: 18, color: Color(0xFF64748B)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              hintText: 'CARSAT, MSA, CNRACL...',
+                              hintStyle:
+                                  TextStyle(color: Color(0xFF94A3B8)),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              isCollapsed: true,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
           if (_isLoading)
             const Expanded(child: Center(child: CircularProgressIndicator()))
           else if (_error != null)

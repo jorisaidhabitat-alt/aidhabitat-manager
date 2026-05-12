@@ -13,7 +13,13 @@ import '../services/retirement_funds_repository.dart';
 import '../services/sync_engine.dart';
 
 class RetirementFundsScreen extends StatefulWidget {
-  const RetirementFundsScreen({super.key});
+  /// Cache le header (titre + barre de recherche) — utilisé quand l'écran
+  /// est embarqué dans `RetirementFundsCombinedScreen` qui fournit son
+  /// propre header avec un switch « Principales / Complémentaires ».
+  /// Demande utilisateur 2026-05-12.
+  final bool showHeader;
+
+  const RetirementFundsScreen({super.key, this.showHeader = true});
 
   @override
   State<RetirementFundsScreen> createState() => _RetirementFundsScreenState();
@@ -191,13 +197,14 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
 
   Widget _buildContent() {
     return Padding(
-      padding: const EdgeInsets.all(32),
+      padding: EdgeInsets.fromLTRB(32, widget.showHeader ? 32 : 0, 32, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // En-tête : titre + sous-titre directs (pas de carte blanche),
           // champ de recherche en pill blanc à droite — parité 1:1 avec
           // l'en-tête Bibliothèque.
+          if (widget.showHeader)
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -252,7 +259,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          if (widget.showHeader) const SizedBox(height: 24),
           if (_isLoading)
             const Expanded(child: Center(child: CircularProgressIndicator()))
           else if (_error != null)
