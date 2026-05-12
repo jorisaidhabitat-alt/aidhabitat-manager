@@ -331,14 +331,24 @@ class _WikiScreenState extends State<WikiScreen> {
         Positioned(
           right: 24,
           bottom: 24,
-          child: Tooltip(
-            message: 'Ajouter un élément',
-            child: FloatingActionButton(
-              onPressed: _createItem,
-              backgroundColor: const Color(0xFF7C6DAA),
-              foregroundColor: Colors.white,
-              elevation: 4,
-              child: const Icon(LucideIcons.plus, size: 28),
+          // Bouton « + Ajouter un élément » — demande utilisateur
+          // 2026-05-12 : « ajoute du radius pour que ça devienne un
+          // véritable arrondi et ajoute le texte ajouter un élément ».
+          // Extended FAB avec StadiumBorder (radius max = pill complet),
+          // icône `+` à gauche + label.
+          child: FloatingActionButton.extended(
+            onPressed: _createItem,
+            backgroundColor: const Color(0xFF7C6DAA),
+            foregroundColor: Colors.white,
+            elevation: 4,
+            shape: const StadiumBorder(),
+            icon: const Icon(LucideIcons.plus, size: 22),
+            label: const Text(
+              'Ajouter un élément',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),

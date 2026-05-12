@@ -3900,6 +3900,14 @@ app.get('/api/retirement-funds', requireAuth, async (_req, res, next) => {
 
 app.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) => {
   try {
+    // Cache HTTP per-user : 5 min fresh + 30 min stale-while-revalidate.
+    // Données quasi-statiques (15 caisses, mises à jour rares côté
+    // admin). Réduit drastiquement le Fast Origin Transfer Vercel
+    // (quota Hobby 10 GB) — la page Caisses principales touche un
+    // referentiel partagé qui n'a pas besoin d'être re-fetché à chaque
+    // ouverture.
+    res.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=1800');
+    res.set('Vary', 'X-App-Session');
     const records = await queryAll(TABLES.caissesRetraite, { fields: ['nom', 'numero_telephone_contact'] });
     const funds = records
       .map((record) => ({

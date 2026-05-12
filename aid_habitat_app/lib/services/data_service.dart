@@ -284,6 +284,40 @@ class DataService {
     return _retirementFundsRepository.updateLocalFund(fund);
   }
 
+  /// Crée une nouvelle caisse de retraite côté serveur (NocoDB
+  /// `caisses_de_retraite_complementaires`). Demande utilisateur
+  /// 2026-05-12 : bouton « Ajouter une caisse de retraite » dans
+  /// l'écran caisses. Le résultat serveur est ensuite re-pull via
+  /// `refreshRetirementFundsFromRemote()` pour merger dans la liste
+  /// locale.
+  Future<RetirementFund> createRetirementFund({
+    required String name,
+    String phone = '',
+    String audience = '',
+    String requestMethod = '',
+    String requestDelay = '',
+    String aidAmount = '',
+    String therapistNote = '',
+    String website = '',
+  }) async {
+    final created = await _nocodbApiClient.createRetirementFund(
+      name: name,
+      phone: phone,
+      audience: audience,
+      requestMethod: requestMethod,
+      requestDelay: requestDelay,
+      aidAmount: aidAmount,
+      therapistNote: therapistNote,
+      website: website,
+    );
+    // Re-pull la liste complète pour merger en SQLite local et que
+    // l'écran appelant puisse re-fetchAll proprement.
+    try {
+      await refreshRetirementFundsFromRemote();
+    } catch (_) {/* best-effort */}
+    return created;
+  }
+
   /// Pulls the latest admin access list from the server and merges into
   /// SQLite + propagates to `app_users`. Used only for offline login
   /// support — the app no longer exposes any admin UI; all member

@@ -1464,6 +1464,59 @@ class NocodbApiClient {
         .toList();
   }
 
+  /// POST /api/retirement-funds — crée une caisse de retraite
+  /// complémentaire. Demande utilisateur 2026-05-12 : « Fais le même
+  /// type de bouton sur la page caisse de retraite pour pouvoir
+  /// ajouter une caisse de retraite ». Le serveur insère dans
+  /// `caisses_de_retraite_complementaires` (NocoDB) et renvoie le
+  /// fund nouvellement créé avec son id.
+  Future<RetirementFund> createRetirementFund({
+    required String name,
+    String phone = '',
+    String audience = '',
+    String requestMethod = '',
+    String requestDelay = '',
+    String aidAmount = '',
+    String therapistNote = '',
+    String website = '',
+    String logoUrl = '',
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/api/retirement-funds'),
+      headers: _headers,
+      body: jsonEncode({
+        'name': name,
+        'phone': phone,
+        'audience': audience,
+        'requestMethod': requestMethod,
+        'requestDelay': requestDelay,
+        'aidAmount': aidAmount,
+        'therapistNote': therapistNote,
+        'website': website,
+        'logoUrl': logoUrl,
+      }),
+    ).timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote retirement fund create failed (${response.statusCode}): '
+        '${response.body}',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final savedFund = (data['fund'] as Map?)?.cast<String, dynamic>();
+    if (savedFund == null) {
+      throw Exception('Unexpected retirement fund payload (create)');
+    }
+    return _mapRetirementFund(savedFund);
+  }
+
   Future<RetirementFund> updateRetirementFund({
     required String fundId,
     required RetirementFund fund,

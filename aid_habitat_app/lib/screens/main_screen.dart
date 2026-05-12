@@ -11,6 +11,7 @@ import 'documents_screen.dart';
 import 'dossiers_list_screen.dart';
 import 'dossier_screen.dart';
 import 'retirement_funds_screen.dart';
+import 'retirement_funds_principal_screen.dart';
 import 'settings_screen.dart';
 import 'visit_report_screen.dart';
 import 'wiki_screen.dart';
@@ -764,6 +765,8 @@ class _MainScreenState extends State<MainScreen>
         return const WikiScreen();
       case 'precos':
         return const RetirementFundsScreen();
+      case 'precos_principal':
+        return const RetirementFundsPrincipalScreen();
       case 'anah':
         // Le widget est géré par le Stack dans le build() — on renvoie un
         // placeholder transparent pour que l'Offstage visible prenne le focus.

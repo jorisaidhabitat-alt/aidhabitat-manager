@@ -127,6 +127,24 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
     );
   }
 
+  /// Ouvre un dialog de création d'une nouvelle caisse de retraite.
+  /// Demande utilisateur 2026-05-12 : bouton « Ajouter une caisse de
+  /// retraite » sur la page Caisses. Le dialog accepte juste les
+  /// champs essentiels (nom obligatoire + tel + audience + note) ;
+  /// l'ergo peut compléter les autres champs après création via le
+  /// dialog d'édition complet.
+  Future<void> _createFund() async {
+    final created = await showSoftDialog<RetirementFund>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (context) => const _NewRetirementFundDialog(),
+    );
+    if (created == null || !mounted) return;
+    // Refresh : on re-pull la liste et on l'affiche. La nouvelle caisse
+    // est en haut (le serveur tri par CreatedAt DESC).
+    await _refreshFromRemote();
+  }
+
   List<RetirementFund> get _filteredFunds {
     final query = _searchController.text.trim().toLowerCase();
     if (query.isEmpty) return _funds;
@@ -142,6 +160,36 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        _buildContent(),
+        // Bouton « + Ajouter une caisse de retraite » — demande
+        // utilisateur 2026-05-12 : parité avec la bibliothèque
+        // (extended FAB, StadiumBorder, icône + texte).
+        Positioned(
+          right: 24,
+          bottom: 24,
+          child: FloatingActionButton.extended(
+            onPressed: _createFund,
+            backgroundColor: const Color(0xFF7C6DAA),
+            foregroundColor: Colors.white,
+            elevation: 4,
+            shape: const StadiumBorder(),
+            icon: const Icon(LucideIcons.plus, size: 22),
+            label: const Text(
+              'Ajouter une caisse de retraite',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(
