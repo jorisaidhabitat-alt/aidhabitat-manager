@@ -252,7 +252,7 @@ class NocodbSyncService {
         // dans le for-loop principal). On résout puis on continue à
         // pousser les ops suivantes du groupe — utile si l'op
         // suivante est sur un champ différent qui ne conflictera pas.
-        await _autoResolveConflictTakingRemote(operation, e);
+        await _autoResolveConflictForceLocal(operation, e);
         pushed += 1;
       } on TransientRemoteException catch (e) {
         // ignore: avoid_print
@@ -317,66 +317,71 @@ class NocodbSyncService {
     return _GroupResult(pushed: pushed, failed: failed, failures: failures);
   }
 
-  /// Résout automatiquement un conflit 409 en abandonnant la modif
-  /// locale et en faisant gagner la version serveur. Étapes :
+  /// Résout automatiquement un conflit 409 en faisant gagner la
+  /// version LOCALE (last-write-wins). Étapes :
   ///
-  ///   1. Marque l'op courante comme `completed` (sort de la queue).
-  ///   2. Purge TOUTES les ops `pending`/`failed` pour cette entité —
-  ///      sans ce wipe, une 2e op du même genre re-tenterait le push
-  ///      au cycle suivant et re-déclencherait un 409 → boucle.
-  ///   3. Reset le `sync_state` de l'entité à `synced` pour que le
-  ///      `mergeRemoteDossierPayloads` du prochain pull NocoDB ne
-  ///      skip plus cette ligne (le merge guard `sync_state != synced`
-  ///      sautait ces lignes pour ne pas écraser des saisies en
-  ///      cours — mais ici on a JUSTEMENT décidé d'abandonner les
-  ///      saisies en cours).
-  ///   4. Déclenche un pull workspace immédiat (`refreshWorkspaceFromRemote`)
-  ///      pour appliquer la version serveur SANS attendre le prochain
-  ///      tick périodique du SyncEngine. Best-effort : si le pull
-  ///      échoue (offline transitoire), le tick suivant rattrapera.
+  ///   1. Re-process l'op avec `forceWrite=true` → le PATCH est rejoué
+  ///      SANS `expectedUpdatedAt`, donc le serveur accepte la modif
+  ///      locale au lieu de la rejeter en 409.
+  ///   2. Si le retry réussit → modifs préservées, op marquée completed.
+  ///   3. Si le retry échoue (vraie erreur réseau / 5xx / 4xx définitif)
+  ///      → l'op repasse en `failed` pour retry au cycle suivant.
   ///
-  /// Demande utilisateur 2026-04-30 : « il ne faut aucun bouton ni
-  /// intervention tout doit se faire tout seul en backend ».
-  Future<void> _autoResolveConflictTakingRemote(
+  /// Refonte 2026-05-12 — avant cette méthode prenait la version
+  /// remote en abandonnant les modifs locales, ce qui causait :
+  /// « changement de situation familiale pas pris en compte lors de
+  /// la génération PDF ». Désormais on préserve toujours le local
+  /// (l'ergo est solo dev sur 2 devices, le conflit "vraiment
+  /// concurrent" est extrêmement rare).
+  Future<void> _autoResolveConflictForceLocal(
     SyncOperation operation,
     ConflictException exception,
   ) async {
     // ignore: avoid_print
     print(
-      '[sync] auto-resolve conflict ${operation.entityType}:'
-      '${operation.entityLocalId} → take remote (op="${operation.id}", '
+      '[sync] conflict ${operation.entityType}:'
+      '${operation.entityLocalId} → retry force-local (op="${operation.id}", '
       'err="${exception.message}")',
     );
-    // 1) L'op courante est résolue de notre point de vue
-    await _syncRepository.markCompleted(
-      operationId: operation.id,
-      entityType: operation.entityType,
-      entityLocalId: operation.entityLocalId,
-    );
-    // 2) Purge des autres ops pour la même entité (évite la boucle
-    //    de re-conflict).
-    await _syncRepository
-        .clearPendingOperationsForEntity(operation.entityLocalId);
-    // 3) Reset sync_state pour que le pull suivant fasse son merge
-    //    sans skipper l'entité.
-    await _syncRepository.setEntitySyncState(
-      entityType: operation.entityType,
-      entityLocalId: operation.entityLocalId,
-      syncState: SyncState.synced,
-    );
-    // 4) Pull immédiat via le callback injecté par DataService au
-    //    démarrage. Évite le cycle d'imports (DataService importe ce
-    //    service → on ne peut pas l'importer dans l'autre sens). Si
-    //    le callback n'est pas câblé (tests isolés), on tombe sur le
-    //    pull périodique du SyncEngine — ~5-30s plus tard.
-    final pull = onConflictAutoResolved;
-    if (pull != null) {
-      try {
-        // ignore: avoid_print
-        print('[sync] auto-resolve : déclenche pull workspace immédiat');
-        await pull();
-      } catch (_) {
-        // Best-effort — le pull périodique rattrapera.
+    try {
+      await _processOperation(operation, forceWrite: true);
+      // Retry réussi → modifs locales préservées.
+      await _syncRepository.markCompleted(
+        operationId: operation.id,
+        entityType: operation.entityType,
+        entityLocalId: operation.entityLocalId,
+      );
+      // ignore: avoid_print
+      print(
+        '[sync] conflict resolved force-local ${operation.entityType}:'
+        '${operation.entityLocalId} → push OK',
+      );
+    } catch (retryError) {
+      // ignore: avoid_print
+      print(
+        '[sync] retry force-local ÉCHEC ${operation.entityType}:'
+        '${operation.entityLocalId} err=$retryError',
+      );
+      // Retomber sur l'ancien comportement "take remote" en dernier
+      // recours pour ne pas laisser l'op tourner en boucle. Les modifs
+      // locales seront alors perdues, mais c'est mieux que de bloquer.
+      await _syncRepository.markCompleted(
+        operationId: operation.id,
+        entityType: operation.entityType,
+        entityLocalId: operation.entityLocalId,
+      );
+      await _syncRepository
+          .clearPendingOperationsForEntity(operation.entityLocalId);
+      await _syncRepository.setEntitySyncState(
+        entityType: operation.entityType,
+        entityLocalId: operation.entityLocalId,
+        syncState: SyncState.synced,
+      );
+      final pull = onConflictAutoResolved;
+      if (pull != null) {
+        try {
+          await pull();
+        } catch (_) {/* best-effort */}
       }
     }
   }
@@ -721,13 +726,17 @@ class NocodbSyncService {
   /// préconisations », « Observation sur les équipements »).
   Future<void> _processObservationsOperation(
     SyncOperation operation,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    // ignore: unused_element_parameter
+    bool forceWrite = false,
+  }) async {
     if (operation.operationType != 'update') {
       throw Exception(
         'Opération observations non supportée: ${operation.operationType}',
       );
     }
+    // Note : pas d'`expectedUpdatedAt` sur PUT /api/observations
+    // (replace complet), donc forceWrite est ignoré ici.
     final dossierId = payload['dossierId']?.toString();
     final updates = (payload['updates'] as Map?)?.cast<String, dynamic>();
     if (dossierId == null || dossierId.isEmpty || updates == null) {
@@ -982,8 +991,10 @@ class NocodbSyncService {
 
   Future<void> _processDossierOperation(
     SyncOperation operation,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    // ignore: unused_element_parameter
+    bool forceWrite = false,
+  }) async {
     if (operation.operationType == 'create') {
       final firstName = payload['firstName']?.toString() ?? '';
       final lastName = payload['lastName']?.toString() ?? '';
