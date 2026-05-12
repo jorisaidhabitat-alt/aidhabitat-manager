@@ -208,60 +208,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final rawDate = DateFormat('EEEE d MMMM', 'fr_FR').format(now);
-    final dateLabel = rawDate.isEmpty
-        ? rawDate
-        : rawDate.replaceFirst(rawDate[0], rawDate[0].toUpperCase());
+    // Date en uppercase pour le mini-label au-dessus du Bonjour.
+    // Format : "MARDI 21 AVRIL" (maquette 2026-05-12).
+    final dateLabelUpper =
+        DateFormat('EEEE d MMMM', 'fr_FR').format(now).toUpperCase();
 
     // Next upcoming visit = nearest future `visitDate` across all dossiers.
     final nextVisit = _findNextVisit(dossiers, now);
-    // (_buildActivitySeries / _RecentDossiersPanel / _ActivityChart sont
-    // conservés dans le fichier mais plus utilisés depuis la refonte
-    // 2026-05-04 — voir `_TodayVisitsPanel` ci-dessous qui remplace
-    // les deux panneaux côte à côte par un bloc plein largeur.)
+
+    // Stats compactes affichées sous le « Bonjour ».
+    // - Visites cette semaine = dossiers avec `visitDate` dans la
+    //   plage lundi-dimanche en cours.
+    // - Dossiers en cours = dossiers dont le statut N'EST PAS « Visité »
+    //   (mapping basé sur les statuts existants côté NocoDB, sans
+    //   changer le modèle — cf. demande utilisateur 2026-05-12).
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: (now.weekday - 1)));
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    int visitsThisWeek = 0;
+    int activeDossiers = 0;
+    for (final d in dossiers) {
+      final status = d.status.trim().toLowerCase();
+      if (status != 'visité' && status != 'visite' && status.isNotEmpty) {
+        activeDossiers += 1;
+      } else if (status.isEmpty) {
+        // dossiers sans statut explicite → on les compte aussi comme
+        // actifs (état par défaut).
+        activeDossiers += 1;
+      }
+      final raw = d.visitDate;
+      if (raw == null || raw.isEmpty) continue;
+      DateTime? when;
+      try {
+        when = DateTime.parse(raw);
+      } catch (_) {
+        continue;
+      }
+      if (!when.isBefore(weekStart) && when.isBefore(weekEnd)) {
+        visitsThisWeek += 1;
+      }
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ---------- Welcome header ----------
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Bonjour, ${userName ?? 'Ergo'}",
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A), // slate-900
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      "Voici le résumé de votre activité aujourd'hui.",
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF64748B), // slate-500
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                dateLabel,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-            ],
+          // ---------- Welcome header (maquette 2026-05-12) ----------
+          // Date en label compact au-dessus, puis « Bonjour, X. », puis
+          // stats compactes en sous-titre. Plus de date en gros à droite.
+          Text(
+            dateLabelUpper,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+              color: Color(0xFF94A3B8), // slate-400
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            "Bonjour, ${userName ?? 'Ergo'}.",
+            style: const TextStyle(
+              fontSize: 36,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "$visitsThisWeek visite${visitsThisWeek > 1 ? 's' : ''} cette semaine"
+            "  ·  "
+            "$activeDossiers dossier${activeDossiers > 1 ? 's' : ''} en cours",
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF64748B),
+            ),
           ),
           const SizedBox(height: 24),
 
@@ -276,15 +299,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 24),
 
-          // ---------- Mes visites du jour (full width) ----------
-          // Demande utilisateur 2026-05-04 : remplace « Mes rapports en
-          // cours » + « Activité » par une seule section pleine largeur
-          // listant les visites prévues aujourd'hui, avec temps de
-          // trajet entre chaque adresse (1ère = depuis Aid'Habitat).
-          _TodayVisitsPanel(
-            dossiers: dossiers,
-            now: now,
-            onSelect: onSelectDossier,
+          // ---------- 2 panneaux côte à côte ----------
+          // À gauche : rapports en cours (dossiers en statut ≠ Visité)
+          // À droite : agenda de la semaine (visites planifiées)
+          // Demande utilisateur 2026-05-12 : « refais le dashboard en
+          // t'inspirant fortement de cette maquette ».
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 800;
+              final pending = _PendingReportsPanel(
+                dossiers: dossiers,
+                onSelect: onSelectDossier,
+                onSeeAll: onNavigateToDossiers,
+              );
+              final agenda = _WeekAgendaPanel(
+                dossiers: dossiers,
+                now: now,
+                weekEnd: weekEnd,
+                onSelect: onSelectDossier,
+                onSeeAll: onNavigateToDossiers,
+              );
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: pending),
+                    const SizedBox(width: 24),
+                    Expanded(child: agenda),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  pending,
+                  const SizedBox(height: 24),
+                  agenda,
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -813,148 +866,197 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
             ? 'demain'
             : 'dans $daysUntil jours';
 
-    return _PanelCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(24),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: const BoxDecoration(
-              color: Color(0xFFEDE8F5),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(
-              child: Icon(
-                // Variante « visite planifiée » du même Material
-                // `directions_car` (cf. ci-dessus), un cran plus
-                // grand pour la card hero du dashboard.
-                Icons.directions_car,
-                color: Color(0xFF7C6DAA),
-                size: 28,
-              ),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Surtitre compact en violet, tout en majuscules — laisse
-                // la vedette au nom + prénom du bénéficiaire juste en
-                // dessous.
-                const Text(
-                  'PROCHAINE VISITE',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                    color: Color(0xFF7C6DAA),
-                  ),
+    // Nouveau design 2026-05-12 (maquette) : card violet pastel avec
+    // 3 zones — bloc heure/trajet (gauche, fond blanc), info bénéficiaire
+    // (centre), bouton « Démarrer le relevé → » (droite).
+    final time = _visitTimeLabel(nv);
+    final age = _ageFromBirthDate(patient.birthDate);
+    final phone = patient.phone.trim();
+    final hourLabel = time ?? (daysUntil == 0 ? '—' : 'à venir');
+    final dayBadgeLabel = daysUntil == 0
+        ? "AUJOURD'HUI"
+        : daysUntil == 1
+            ? 'DEMAIN'
+            : dayLabel.toUpperCase();
+
+    return Material(
+      color: const Color(0xFFEDE8F5),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // --- Bloc gauche : jour + heure + trajet ---
+              Container(
+                constraints: const BoxConstraints(minWidth: 140),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                const SizedBox(height: 6),
-                // Nom + prénom du bénéficiaire en noir — vedette de la
-                // bannière prochaine visite.
-                Text(
-                  '${patient.lastName} ${patient.firstName}',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (fullAddress.isNotEmpty)
-                  Row(
-                    children: [
-                      const Icon(
-                        LucideIcons.mapPin,
-                        size: 14,
-                        color: Color(0xFF64748B),
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          fullAddress,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF475569),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                // Temps de route depuis Aid'Habitat (16 rue Léo Lagrange,
-                // Chartres-de-Bretagne) — demande utilisateur 2026-05-04.
-                if (_driveTime != null) ...[
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(
-                        LucideIcons.car,
-                        size: 14,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      dayBadgeLabel,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
                         color: Color(0xFF7C6DAA),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${RouteService.formatDuration(_driveTime!)} '
-                        "depuis Aid'Habitat",
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF7C6DAA),
-                        ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      hourLabel,
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _driveTime != null
+                          ? '${RouteService.formatDuration(_driveTime!)} de trajet'
+                          : '— de trajet',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 20),
+              // --- Bloc centre : prochaine visite + bénéficiaire ---
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'PROCHAINE VISITE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      age != null
+                          ? '${patient.firstName} ${patient.lastName}, $age ans'
+                          : '${patient.firstName} ${patient.lastName}',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        height: 1.15,
+                      ),
+                    ),
+                    if (fullAddress.isNotEmpty || phone.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 18,
+                        runSpacing: 6,
+                        children: [
+                          if (fullAddress.isNotEmpty)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(LucideIcons.mapPin,
+                                    size: 14, color: Color(0xFF64748B)),
+                                const SizedBox(width: 6),
+                                ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 360),
+                                  child: Text(
+                                    fullAddress,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          if (phone.isNotEmpty)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(LucideIcons.phone,
+                                    size: 14, color: Color(0xFF64748B)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  phone,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF475569),
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
                     ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 20),
-          // Bloc date à droite — l'horaire est désormais intégré dans
-          // le libellé de la date (« Lundi 4 mai à 14:30 ») au lieu
-          // d'un pill violette séparé en dessous (demande utilisateur
-          // 2026-05-04 : « l'horaire doit être intégré dans la date de
-          // visite pas deux bundles différents »). Si la visit_date
-          // n'a pas d'heure non-triviale, on affiche juste la date.
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Builder(
-                builder: (_) {
-                  final time = _visitTimeLabel(nv);
-                  final label =
-                      time != null ? '$dayLabel à $time' : dayLabel;
-                  return Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 4),
-              Text(
-                distanceLabel,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF7C6DAA),
+                  ],
                 ),
+              ),
+              const SizedBox(width: 16),
+              // --- Bouton « Démarrer le relevé » ---
+              ElevatedButton.icon(
+                onPressed: onTap,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C6DAA),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                icon: const Text(
+                  'Démarrer le relevé',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                label: const Icon(LucideIcons.arrowRight, size: 16),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
+  }
+
+  /// Calcule l'âge en années depuis une date ISO (ex `1942-06-12`).
+  /// null si vide / invalide.
+  int? _ageFromBirthDate(String birthDate) {
+    final s = birthDate.trim();
+    if (s.isEmpty) return null;
+    final d = DateTime.tryParse(s);
+    if (d == null) return null;
+    final now = DateTime.now();
+    var age = now.year - d.year;
+    if (now.month < d.month ||
+        (now.month == d.month && now.day < d.day)) {
+      age -= 1;
+    }
+    return age >= 0 && age < 150 ? age : null;
   }
 }
 
@@ -1472,5 +1574,547 @@ class _SegmentFailed extends _SegmentState {
 class _SegmentDone extends _SegmentState {
   final Duration duration;
   const _SegmentDone(this.duration);
+}
+
+// ---------------------------------------------------------------------------
+// Pending reports panel — « Mes rapports en cours / à relancer »
+// ---------------------------------------------------------------------------
+//
+// Liste compacte (max 3) des dossiers dont le statut n'est pas
+// « Visité ». Reprend les statuts existants côté NocoDB sans en
+// ajouter — demande utilisateur 2026-05-12 (Q1 « ne change pas les
+// statuts qu'on a actuellement »). Le badge coloré est dérivé du
+// statut texte tel quel.
+
+class _PendingReportsPanel extends StatelessWidget {
+  final List<Dossier> dossiers;
+  final void Function(Dossier) onSelect;
+  final VoidCallback? onSeeAll;
+
+  const _PendingReportsPanel({
+    required this.dossiers,
+    required this.onSelect,
+    this.onSeeAll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = dossiers
+        .where((d) {
+          final s = d.status.trim().toLowerCase();
+          return s != 'visité' && s != 'visite';
+        })
+        .toList(growable: false)
+      ..sort((a, b) {
+        // Plus récents d'abord (createdAt desc).
+        final aDt = DateTime.tryParse(a.createdAt) ?? DateTime(2000);
+        final bDt = DateTime.tryParse(b.createdAt) ?? DateTime(2000);
+        return bDt.compareTo(aDt);
+      });
+    final items = pending.take(3).toList(growable: false);
+
+    return _PanelCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'À RELANCER',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Mes rapports en cours',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onSeeAll != null)
+                TextButton(
+                  onPressed: onSeeAll,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                  child: const Text('Voir tout'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'Aucun rapport en cours',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ),
+            )
+          else
+            ...items.map((d) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _PendingReportRow(
+                    dossier: d,
+                    onTap: () => onSelect(d),
+                  ),
+                )),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingReportRow extends StatelessWidget {
+  final Dossier dossier;
+  final VoidCallback onTap;
+
+  const _PendingReportRow({required this.dossier, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = dossier.patient;
+    final initials = _twoInitials(p.firstName, p.lastName);
+    final age = _ageFromBirthDate(p.birthDate);
+    final city = p.city.trim();
+    final subtitle = [
+      if (age != null) '$age ans',
+      if (city.isNotEmpty) city,
+    ].join(' · ');
+    final statusLabel = dossier.status.trim().isEmpty
+        ? 'À traiter'
+        : dossier.status.trim();
+    final statusPalette = _statusPalette(statusLabel);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(
+          children: [
+            // Initiales en rond gris
+            Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initials,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF475569),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Nom + sous-titre
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${p.firstName} ${p.lastName}'.trim(),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle.isNotEmpty)
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Badge statut
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: statusPalette.bg,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: statusPalette.dot,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    statusLabel,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: statusPalette.fg,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(LucideIcons.arrowRight,
+                size: 16, color: Color(0xFFCBD5E1)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _twoInitials(String first, String last) {
+    final f = first.trim();
+    final l = last.trim();
+    if (f.isEmpty && l.isEmpty) return '??';
+    final c1 = f.isNotEmpty ? f.substring(0, 1) : '';
+    final c2 = l.isNotEmpty ? l.substring(0, 1) : '';
+    return (c1 + c2).toUpperCase();
+  }
+
+  int? _ageFromBirthDate(String birthDate) {
+    final s = birthDate.trim();
+    if (s.isEmpty) return null;
+    final d = DateTime.tryParse(s);
+    if (d == null) return null;
+    final now = DateTime.now();
+    var age = now.year - d.year;
+    if (now.month < d.month ||
+        (now.month == d.month && now.day < d.day)) {
+      age -= 1;
+    }
+    return age >= 0 && age < 150 ? age : null;
+  }
+
+  _StatusPalette _statusPalette(String status) {
+    final s = status.toLowerCase();
+    // Palette compacte alignée sur l'esprit de la maquette : ton
+    // pastel + point vif. Les libellés viennent directement du
+    // champ NocoDB `dossiers.status` (À visiter / En cours / etc.).
+    if (s.contains('visit')) {
+      // 'À visiter', 'Visité' (visité ne devrait pas atterrir ici
+      // car filtré côté panel, mais safety).
+      return const _StatusPalette(
+        bg: Color(0xFFFCE7F3),
+        fg: Color(0xFFBE185D),
+        dot: Color(0xFFDB2777),
+      );
+    }
+    if (s.contains('cours')) {
+      return const _StatusPalette(
+        bg: Color(0xFFFFEDD5),
+        fg: Color(0xFFB45309),
+        dot: Color(0xFFD97706),
+      );
+    }
+    return const _StatusPalette(
+      bg: Color(0xFFFEE2E2),
+      fg: Color(0xFFB91C1C),
+      dot: Color(0xFFDC2626),
+    );
+  }
+}
+
+class _StatusPalette {
+  final Color bg;
+  final Color fg;
+  final Color dot;
+  const _StatusPalette({
+    required this.bg,
+    required this.fg,
+    required this.dot,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Week agenda panel — « Cette semaine / Agenda »
+// ---------------------------------------------------------------------------
+//
+// Liste compacte (max 3) des prochaines visites planifiées DANS la
+// semaine en cours. Trié par date croissante. Affiche jour (DD/MOIS
+// court) + nom + ville · sujet + heure à droite.
+
+class _WeekAgendaPanel extends StatelessWidget {
+  final List<Dossier> dossiers;
+  final DateTime now;
+  final DateTime weekEnd;
+  final void Function(Dossier) onSelect;
+  final VoidCallback? onSeeAll;
+
+  const _WeekAgendaPanel({
+    required this.dossiers,
+    required this.now,
+    required this.weekEnd,
+    required this.onSelect,
+    this.onSeeAll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Sélection : visites dont la date est entre maintenant et la fin
+    // de la semaine (dimanche 23:59 inclus).
+    final upcoming = <_AgendaItem>[];
+    for (final d in dossiers) {
+      final raw = d.visitDate;
+      if (raw == null || raw.isEmpty) continue;
+      final when = DateTime.tryParse(raw);
+      if (when == null) continue;
+      if (when.isBefore(DateTime(now.year, now.month, now.day))) continue;
+      if (!when.isBefore(weekEnd)) continue;
+      upcoming.add(_AgendaItem(dossier: d, dateTime: when));
+    }
+    upcoming.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+    final items = upcoming.take(3).toList(growable: false);
+
+    return _PanelCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CETTE SEMAINE',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Agenda',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onSeeAll != null)
+                TextButton(
+                  onPressed: onSeeAll,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                  child: const Text('Voir tout'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'Aucune visite cette semaine',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ),
+            )
+          else
+            ...items.map((it) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _AgendaRow(
+                    item: it,
+                    isHighlighted: _isSameDay(it.dateTime, now),
+                    onTap: () => onSelect(it.dossier),
+                  ),
+                )),
+        ],
+      ),
+    );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+class _AgendaItem {
+  final Dossier dossier;
+  final DateTime dateTime;
+  const _AgendaItem({required this.dossier, required this.dateTime});
+}
+
+class _AgendaRow extends StatelessWidget {
+  final _AgendaItem item;
+  final bool isHighlighted;
+  final VoidCallback onTap;
+
+  const _AgendaRow({
+    required this.item,
+    required this.isHighlighted,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = item.dossier.patient;
+    final dt = item.dateTime;
+    final dayLabel = dt.day.toString().padLeft(2, '0');
+    final monthLabel =
+        DateFormat('MMM', 'fr_FR').format(dt).toUpperCase().replaceAll('.', '');
+    final hasTime = !(dt.hour == 0 && dt.minute == 0);
+    final timeLabel = hasTime
+        ? '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
+        : '—';
+    final city = p.city.trim();
+    final subtitle = city.isNotEmpty
+        ? '$city · ${item.dossier.natureAccompagnement.isNotEmpty
+            ? formatAccompanimentType(item.dossier.natureAccompagnement)
+            : 'Relevé visite'}'
+        : (item.dossier.natureAccompagnement.isNotEmpty
+            ? formatAccompanimentType(item.dossier.natureAccompagnement)
+            : 'Relevé visite');
+
+    return Material(
+      color: isHighlighted ? const Color(0xFFEDE8F5) : Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Row(
+            children: [
+              // Bloc date
+              SizedBox(
+                width: 40,
+                child: Column(
+                  children: [
+                    Text(
+                      dayLabel,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      monthLabel,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.0,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              // Nom + sous-titre
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${p.firstName} ${p.lastName}'.trim(),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                timeLabel,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
