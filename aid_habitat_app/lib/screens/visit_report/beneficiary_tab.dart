@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/data_service.dart';
 import '../../services/dossier_repository.dart';
+import '../../services/nocodb_api_client.dart';
 import '../../services/references_service.dart';
 import '../../services/save_debounce.dart';
 import '../../services/retirement_funds_repository.dart';
+import '../../components/cached_remote_image.dart';
 import '../../components/commune_field_group.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
@@ -149,8 +152,19 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   final ReferencesService _references = ReferencesService();
   StreamSubscription<ReferencesPayload>? _refSub;
   List<CommuneOption> _communeOptions = const [];
-  List<String> _retirementFundNames = const [];
+
+  // Caisses de retraite — version 2026-05-12 : on stocke les objets
+  // complets (logo, audience, montant aide) pour pouvoir alimenter le
+  // picker visuel style cards 3-cols (comme les préconisations).
+  // Demande utilisateur : « pour la caisse de retraite complémentaire
+  // ou la caisse de retraite principale, il faut que ça ouvre une pop
+  // up avec les caisses concernées avec les logos, les titres et les
+  // descriptions sous forme de cards 3 par 3 ».
+  // _retirementFundNames retiré 2026-05-12 : remplacé par _retirementFunds
+  // (objets complets) pour alimenter le picker visuel.
   List<String> _principalFundNames = const [];
+  List<RetirementFund> _retirementFunds = const [];
+  List<Map<String, String>> _principalFunds = const [];
 
   // ANAH options — version 2026-05-04 : 3 statuts seulement, le
   // « Mandat » historique est désormais une question séparée
@@ -231,12 +245,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     try {
       final funds = await RetirementFundsRepository().fetchAllFunds();
       if (!mounted) return;
+      final filtered = funds.where((f) => f.name.trim().isNotEmpty).toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
       setState(() {
-        _retirementFundNames = funds
-            .map((f) => f.name)
-            .where((n) => n.trim().isNotEmpty)
-            .toList()
-          ..sort();
+        _retirementFunds = filtered;
       });
     } catch (_) {
       // silent
@@ -245,13 +257,34 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   Future<void> _loadPrincipalFundNames() async {
     try {
-      final names = await DataService().fetchPrincipalRetirementFundNames();
+      // Récupère les objets complets (avec logoUrl + phone) pour
+      // alimenter le picker visuel. Fallback : si l'endpoint plein
+      // échoue, on retombe sur la liste de noms seule (anciennement
+      // unique source). De cette manière le picker fonctionne sur
+      // device offline ayant déjà cache les noms.
+      final funds = await NocodbApiClient().fetchPrincipalRetirementFunds();
       if (!mounted) return;
+      final sorted = [...funds]
+        ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
       setState(() {
-        _principalFundNames = names.toList()..sort();
+        _principalFunds = sorted;
+        _principalFundNames =
+            sorted.map((f) => f['name'] ?? '').where((n) => n.isNotEmpty).toList();
       });
     } catch (_) {
-      // silent
+      // Fallback historique : juste les noms via l'API legacy.
+      try {
+        final names = await DataService().fetchPrincipalRetirementFundNames();
+        if (!mounted) return;
+        setState(() {
+          _principalFundNames = names.toList()..sort();
+          _principalFunds = _principalFundNames
+              .map((n) => {'name': n, 'logoUrl': '', 'phone': ''})
+              .toList();
+        });
+      } catch (_) {
+        // silent
+      }
     }
   }
 
@@ -1312,47 +1345,43 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               index, occ.copyWith(numeroSecuriteSociale: v)),
         ),
         const SizedBox(height: 14),
-        // Caisse principale + caisse complémentaire sur la même ligne
-        // (demande utilisateur). Chaque dropdown occupe la moitié de
-        // la largeur avec un petit gap au centre.
+        // Caisse principale + caisse complémentaire sur la même ligne.
+        // Refactor 2026-05-12 : remplacement des FormSelectDropdown par
+        // un bouton cliquable qui ouvre un picker visuel style "cards"
+        // (parité avec le picker des préconisations). Chaque card
+        // affiche le logo + le nom + une description courte. L'ergo
+        // peut aussi saisir un nom libre (caisse non listée).
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: FormSelectDropdown<String>(
+              child: _RetirementFundFieldButton(
                 label: 'Caisse princ.',
-                value: _principalFundNames.contains(caissePrinc)
-                    ? caissePrinc
-                    : null,
-                options: _principalFundNames
-                    .map((name) =>
-                        FormSelectOption<String>(value: name, label: name))
-                    .toList(),
+                value: caissePrinc,
                 placeholder: 'Sélectionner...',
-                onChanged: (v) {
+                onTap: () async {
+                  final picked = await _openPrincipalFundPicker(caissePrinc);
+                  if (picked == null) return;
                   _updateOccupant(
                     index,
-                    occ.copyWith(caisseRetraitePrincipale: v ?? ''),
+                    occ.copyWith(caisseRetraitePrincipale: picked),
                   );
                 },
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: FormSelectDropdown<String>(
+              child: _RetirementFundFieldButton(
                 label: 'Caisse complém.',
-                value: _retirementFundNames.contains(caisseCompl)
-                    ? caisseCompl
-                    : null,
-                options: _retirementFundNames
-                    .map((name) =>
-                        FormSelectOption<String>(value: name, label: name))
-                    .toList(),
+                value: caisseCompl,
                 placeholder: 'Sélectionner une caisse',
-                onChanged: (v) {
+                onTap: () async {
+                  final picked =
+                      await _openComplementaryFundPicker(caisseCompl);
+                  if (picked == null) return;
                   _updateOccupant(
                     index,
-                    occ.copyWith(caissesRetraiteComplementaires: v ?? ''),
+                    occ.copyWith(caissesRetraiteComplementaires: picked),
                   );
                 },
               ),
@@ -1590,6 +1619,75 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final m = parsed.month.toString().padLeft(2, '0');
     final d = parsed.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
+  }
+
+  /// Ouvre le picker visuel pour la caisse de retraite PRINCIPALE.
+  /// Source : table NocoDB `caisses_de_retraite` (champ `logoUrl` +
+  /// `phone` disponibles ; pas d'`audience` / `aidAmount` côté
+  /// principal, donc la card affiche logo + nom + téléphone).
+  Future<String?> _openPrincipalFundPicker(String currentValue) async {
+    final items = _principalFunds
+        .map((f) => _RetirementFundPickerItem(
+              name: f['name'] ?? '',
+              logoUrl: f['logoUrl'] ?? '',
+              subtitle: (f['phone'] ?? '').trim(),
+            ))
+        .where((it) => it.name.isNotEmpty)
+        .toList();
+    return _showRetirementFundPicker(
+      title: 'Caisse de retraite principale',
+      items: items,
+      initialSelected: currentValue,
+    );
+  }
+
+  /// Ouvre le picker visuel pour la caisse de retraite COMPLÉMENTAIRE.
+  /// Source : table NocoDB `caisses_de_retraite_complementaires` —
+  /// le modèle `RetirementFund` a `audience` + `aidAmount` qu'on
+  /// concatène en ligne courte (Option 1B utilisateur 2026-05-12).
+  Future<String?> _openComplementaryFundPicker(String currentValue) async {
+    final items = _retirementFunds
+        .map((f) => _RetirementFundPickerItem(
+              name: f.name,
+              logoUrl: f.logoUrl,
+              subtitle: _buildSubtitleForFund(f),
+            ))
+        .where((it) => it.name.isNotEmpty)
+        .toList();
+    return _showRetirementFundPicker(
+      title: 'Caisse de retraite complémentaire',
+      items: items,
+      initialSelected: currentValue,
+    );
+  }
+
+  /// Concatène `audience` + `aidAmount` en une ligne courte affichée
+  /// sous le titre dans chaque card. Sépare par " · " si les deux
+  /// champs sont renseignés, sinon affiche celui qui existe.
+  String _buildSubtitleForFund(RetirementFund f) {
+    final aud = f.audience.trim();
+    final amount = f.aidAmount.trim();
+    if (aud.isNotEmpty && amount.isNotEmpty) {
+      return '$aud · $amount';
+    }
+    return aud.isNotEmpty ? aud : amount;
+  }
+
+  /// Ouvre le dialog picker. Renvoie `null` si l'utilisateur ferme
+  /// sans choisir. Renvoie le nom (existant OU saisi librement) sinon.
+  Future<String?> _showRetirementFundPicker({
+    required String title,
+    required List<_RetirementFundPickerItem> items,
+    required String initialSelected,
+  }) {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => _RetirementFundPickerDialog(
+        title: title,
+        items: items,
+        initialSelected: initialSelected,
+      ),
+    );
   }
 }
 
@@ -2061,6 +2159,447 @@ class _RoundCheckRow extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Caisses de retraite — picker visuel (cards 3 par 3) façon préconisations.
+// Demande utilisateur 2026-05-12.
+// =============================================================================
+
+/// Item simplifié alimentant le picker. Issu soit d'un `RetirementFund`
+/// (complémentaire — table `caisses_de_retraite_complementaires`) soit
+/// d'une `Map<String,String>` (principale — table `caisses_de_retraite`).
+class _RetirementFundPickerItem {
+  final String name;
+  final String logoUrl;
+  final String subtitle;
+  const _RetirementFundPickerItem({
+    required this.name,
+    required this.logoUrl,
+    required this.subtitle,
+  });
+}
+
+/// Bouton d'ouverture du picker. Style cohérent avec `FormSelectDropdown`
+/// (label flottant en haut, valeur en gros dessous, hint si vide) pour
+/// que l'ergo ne ressente pas un changement d'UI brutal — c'est juste
+/// le comportement du tap qui change (popup au lieu de dropdown natif).
+class _RetirementFundFieldButton extends StatelessWidget {
+  final String label;
+  final String value;
+  final String placeholder;
+  final VoidCallback onTap;
+  const _RetirementFundFieldButton({
+    required this.label,
+    required this.value,
+    required this.placeholder,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = value.trim().isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 4),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ),
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      hasValue ? value : placeholder,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            hasValue ? FontWeight.w600 : FontWeight.w400,
+                        color: hasValue
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    LucideIcons.chevronDown,
+                    size: 18,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dialog modal qui présente les caisses de retraite en grille 3-cols.
+/// Recherche par nom (uniquement, demande utilisateur). Tap sur une
+/// card → renvoie le nom de la caisse sélectionnée. En bas, un champ
+/// de saisie libre permet d'ajouter un nom non listé.
+class _RetirementFundPickerDialog extends StatefulWidget {
+  final String title;
+  final List<_RetirementFundPickerItem> items;
+  final String initialSelected;
+  const _RetirementFundPickerDialog({
+    required this.title,
+    required this.items,
+    required this.initialSelected,
+  });
+
+  @override
+  State<_RetirementFundPickerDialog> createState() =>
+      _RetirementFundPickerDialogState();
+}
+
+class _RetirementFundPickerDialogState
+    extends State<_RetirementFundPickerDialog> {
+  String _search = '';
+  late TextEditingController _freeInputController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Hydrate le champ de saisie libre avec la valeur courante UNIQUEMENT
+    // si elle n'existe pas dans la liste — sinon le user voit son choix
+    // existant en saisie libre, ce qui est confusant. La règle : si on
+    // peut retrouver le nom dans la liste, c'est un choix "card", pas
+    // un free-text.
+    final initial = widget.initialSelected.trim();
+    final inList = widget.items.any((it) => it.name == initial);
+    _freeInputController =
+        TextEditingController(text: inList ? '' : initial);
+  }
+
+  @override
+  void dispose() {
+    _freeInputController.dispose();
+    super.dispose();
+  }
+
+  List<_RetirementFundPickerItem> get _filtered {
+    final q = _search.trim().toLowerCase();
+    if (q.isEmpty) return widget.items;
+    // Recherche UNIQUEMENT par nom — demande utilisateur 2026-05-12.
+    return widget.items
+        .where((it) => it.name.toLowerCase().contains(q))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filtered;
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: 800,
+        height: 600,
+        child: Column(
+          children: [
+            // Header + barre de recherche : conteneur opaque pour
+            // masquer le scroll grid en dessous (parité visuelle avec
+            // le picker des préconisations).
+            Material(
+              color: Colors.white,
+              elevation: 1,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 10, 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+                    child: TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher une caisse par nom',
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: const Color(0xFFF7F7FA),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                      ),
+                      onChanged: (v) => setState(() => _search = v),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Grid de cards 3-cols
+            Expanded(
+              child: filtered.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Aucune caisse trouvée.',
+                        style: TextStyle(color: Color(0xFF94A3B8)),
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 0.85,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) =>
+                          _buildTile(filtered[i]),
+                    ),
+            ),
+            // Champ "caisse non listée" — demande utilisateur 2026-05-12
+            // (option 4C). Valider via le bouton "Utiliser" → renvoie
+            // ce texte comme name choisi. Permet à l'ergo de saisir
+            // librement un nom de caisse qui n'est pas encore dans
+            // NocoDB (sera ajouté plus tard via l'écran admin).
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFAFBFC),
+                border: Border(
+                  top: BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _freeInputController,
+                      decoration: InputDecoration(
+                        hintText: 'Ou saisir une caisse non listée…',
+                        prefixIcon:
+                            const Icon(LucideIcons.edit3, size: 18),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                              color: Color(0xFF7C6DAA), width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                      ),
+                      onSubmitted: (v) {
+                        final t = v.trim();
+                        if (t.isNotEmpty) Navigator.pop(context, t);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7C6DAA),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onPressed: () {
+                      final t = _freeInputController.text.trim();
+                      if (t.isNotEmpty) Navigator.pop(context, t);
+                    },
+                    child: const Text(
+                      'Utiliser',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTile(_RetirementFundPickerItem it) {
+    final isSelected = it.name == widget.initialSelected.trim();
+    return InkWell(
+      onTap: () => Navigator.pop(context, it.name),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF7C6DAA)
+                : const Color(0xFFE2E8F0),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Logo en haut — soit l'image distante (CachedRemoteImage),
+            // soit un avatar avec les initiales si pas de logoUrl
+            // (demande utilisateur option 5).
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                color: const Color(0xFFFAFAFC),
+                child: it.logoUrl.trim().isNotEmpty
+                    ? CachedRemoteImage(
+                        key: ValueKey(it.logoUrl),
+                        url: it.logoUrl,
+                        fit: BoxFit.contain,
+                        placeholder: _FundInitialsAvatar(name: it.name),
+                        errorWidget: _FundInitialsAvatar(name: it.name),
+                      )
+                    : _FundInitialsAvatar(name: it.name),
+              ),
+            ),
+            // Titre + sous-titre
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    it.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  if (it.subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      it.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF64748B),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Avatar circulaire avec les initiales du nom de la caisse — utilisé
+/// quand `logoUrl` est vide ou en cas d'erreur de chargement.
+/// Couleurs neutres (mauve clair, palette identifiée 2026-05).
+class _FundInitialsAvatar extends StatelessWidget {
+  final String name;
+  const _FundInitialsAvatar({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    final initials = parts.isEmpty
+        ? '?'
+        : parts.length == 1
+            ? parts.first.substring(0, 1).toUpperCase()
+            : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    return Center(
+      child: Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: const Color(0xFFEEE7F2),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          initials,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF6B567E),
+          ),
         ),
       ),
     );
