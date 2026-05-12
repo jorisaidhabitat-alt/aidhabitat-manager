@@ -345,10 +345,11 @@ class _RetirementFundsPrincipalScreenState
                   maxCrossAxisExtent: 280,
                   mainAxisSpacing: 16,
                   crossAxisSpacing: 16,
-                  // 120 (hero logo) + 12 padding + ~20 nom + 8 + ~30 chip
-                  // téléphone + 12 padding ≈ 230 — parité 1:1 avec les
-                  // cartes caisses complémentaires (`_FundCard`).
-                  mainAxisExtent: 230,
+                  // 130 (hero logo agrandi) + 12 padding + ~20 nom + 8 +
+                  // ~30 chip téléphone + 12 padding ≈ 240. +10 vs
+                  // complémentaires (230) pour laisser plus de place
+                  // aux wordmarks larges — demande user 2026-05-12.
+                  mainAxisExtent: 240,
                 ),
                 itemCount: _filteredFunds.length,
                 itemBuilder: (context, index) {
@@ -432,22 +433,28 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ---------- Hero logo ----------
-              // Fond blanc uni, padding 14, logo en BoxFit.contain centré.
-              // Identique aux cartes caisses complémentaires.
+              // Fond blanc uni, padding réduit (8 vs 14 auparavant) +
+              // suppression du padding horizontal interne — laisse plus
+              // d'espace utile aux wordmarks larges (CPRP SNCF, CNRACL,
+              // SRE, etc.). BoxFit.contain préserve l'aspect ratio donc
+              // les logos carrés ne sont pas déformés. Demande user
+              // 2026-05-12 : « agrandis les logos qui sont facilement
+              // agrandissables sans déborder comme celui de CPRP SNCF ».
               Container(
-                height: 120,
+                height: 130,
                 width: double.infinity,
                 color: Colors.white,
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 10),
                 child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: _PrincipalFundLogo(
-                      logoUrl: fund.logoUrl,
-                      // Le hero alloue ~92 pt utiles (120 - 28 padding) ;
-                      // on borne le logo à cette zone via le size param.
-                      size: 92,
-                    ),
+                  // _PrincipalFundLogo s'étend pour remplir l'espace
+                  // dispo via Expanded — BoxFit.contain fait le reste.
+                  child: _PrincipalFundLogo(
+                    logoUrl: fund.logoUrl,
+                    // Le hero alloue ~110 pt utiles (130 - 20 padding
+                    // vertical). Largeur ~220 (280 - 60 padding/marges
+                    // grid). Le logo s'inscrit dans ce rectangle.
+                    size: 110,
                   ),
                 ),
               ),
