@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../components/beneficiary_badges.dart' show formatAccompanimentType;
+import '../components/beneficiary_badges.dart'
+    show formatAccompanimentType, accompanimentPaletteFor;
 import '../components/beneficiary_palettes.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
@@ -64,6 +65,39 @@ class DashboardScreen extends StatefulWidget {
         .where((s) => s.isNotEmpty)
         .join(' ')
         .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Adresse format bannière prochaine visite : "<numéro et rue>,
+  /// <Ville>" — pas de code postal, ville en Title Case (1ère lettre
+  /// majuscule, reste minuscule). Demande utilisateur 2026-05-12.
+  static String buildAddressForBanner(Patient p) {
+    final street = p.address.trim();
+    final cityTitle = _toTitleCase(p.city.trim());
+    final parts = [street, cityTitle].where((s) => s.isNotEmpty).toList();
+    if (parts.isEmpty) return '';
+    return parts.join(', ').replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Convertit "PLEUMELEUC" / "pleumeleuc" → "Pleumeleuc". Gère les
+  /// noms composés ("SAINT-MALO" → "Saint-Malo") et les espaces
+  /// ("CHARTRES DE BRETAGNE" → "Chartres De Bretagne"). Si la chaîne
+  /// est déjà mixte (un caractère minuscule présent), on la laisse
+  /// telle quelle pour respecter une éventuelle saisie soignée.
+  static String _toTitleCase(String input) {
+    if (input.isEmpty) return input;
+    // Si déjà mixte (≠ all upper / all lower) → respecte la saisie.
+    if (input != input.toUpperCase() && input != input.toLowerCase()) {
+      return input;
+    }
+    return input
+        .toLowerCase()
+        .splitMapJoin(
+          RegExp(r"[ \-']"),
+          onMatch: (m) => m[0]!,
+          onNonMatch: (token) => token.isEmpty
+              ? token
+              : '${token[0].toUpperCase()}${token.substring(1)}',
+        );
   }
 
   /// Adresse courte (CP + ville UPPER) pour les listes du dashboard où
@@ -856,7 +890,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
 
     final nv = nextVisit;
     final patient = nv.dossier.patient;
-    final fullAddress = DashboardScreen.buildFullAddress(patient);
+    final fullAddress = DashboardScreen.buildAddressForBanner(patient);
     final rawDay = DateFormat('EEEE d MMMM', 'fr_FR').format(nv.dateTime);
     final dayLabel = rawDay.isNotEmpty
         ? rawDay.replaceFirst(rawDay[0], rawDay[0].toUpperCase())
@@ -891,27 +925,29 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
             ? 'DEMAIN'
             : dayLabel.toUpperCase();
 
-    return Material(
-      color: const Color(0xFFEDE8F5),
+    // Bannière en 2 colonnes de fond violet distinctes (demande
+    // utilisateur 2026-05-12) : gauche = violet plus saturé pour le
+    // bloc horaire/trajet, droite = violet pastel pour les infos
+    // bénéficiaire + bouton.
+    return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // --- Bloc gauche : jour + heure + trajet ---
-              // Pas de fond blanc translucide — directement sur le
-              // violet pastel de la card (demande utilisateur
-               // 2026-05-12).
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // --- Bloc gauche : jour + heure + trajet (violet saturé) ---
+            Material(
+              color: const Color(0xFFD8CDE9),
+              child: InkWell(
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24, vertical: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                     Text(
                       dayBadgeLabel,
                       style: const TextStyle(
@@ -941,112 +977,131 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                         color: Color(0xFF64748B),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 20),
-              // --- Bloc centre : prochaine visite + bénéficiaire ---
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'PROCHAINE VISITE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.4,
-                        color: Color(0xFF94A3B8),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      age != null
-                          ? '${patient.firstName} ${patient.lastName}, $age ans'
-                          : '${patient.firstName} ${patient.lastName}',
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                        height: 1.15,
-                      ),
-                    ),
-                    if (fullAddress.isNotEmpty || phone.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 18,
-                        runSpacing: 6,
-                        children: [
-                          if (fullAddress.isNotEmpty)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(LucideIcons.mapPin,
-                                    size: 14, color: Color(0xFF64748B)),
-                                const SizedBox(width: 6),
-                                ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(maxWidth: 360),
-                                  child: Text(
-                                    fullAddress,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Color(0xFF475569),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          if (phone.isNotEmpty)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(LucideIcons.phone,
-                                    size: 14, color: Color(0xFF64748B)),
-                                const SizedBox(width: 6),
-                                Text(
-                                  phone,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    color: Color(0xFF475569),
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              // --- Bouton « Démarrer le relevé » ---
-              ElevatedButton.icon(
-                onPressed: onTap,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7C6DAA),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                icon: const Text(
-                  'Démarrer le relevé',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                label: const Icon(LucideIcons.arrowRight, size: 16),
               ),
-            ],
-          ),
+            ),
+            // --- Bloc droit : infos bénéficiaire + bouton (violet clair) ---
+            Expanded(
+              child: Material(
+                color: const Color(0xFFEDE8F5),
+                child: InkWell(
+                  onTap: onTap,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 20),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'PROCHAINE VISITE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.4,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                age != null
+                                    ? '${patient.firstName} ${patient.lastName}, $age ans'
+                                    : '${patient.firstName} ${patient.lastName}',
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                  height: 1.15,
+                                ),
+                              ),
+                              if (fullAddress.isNotEmpty || phone.isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 18,
+                                  runSpacing: 6,
+                                  children: [
+                                    if (fullAddress.isNotEmpty)
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(LucideIcons.mapPin,
+                                              size: 14,
+                                              color: Color(0xFF64748B)),
+                                          const SizedBox(width: 6),
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                                maxWidth: 360),
+                                            child: Text(
+                                              fullAddress,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                color: Color(0xFF475569),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    if (phone.isNotEmpty)
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(LucideIcons.phone,
+                                              size: 14,
+                                              color: Color(0xFF64748B)),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            phone,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Color(0xFF475569),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // --- Bouton « Démarrer le relevé » ---
+                        ElevatedButton.icon(
+                          onPressed: onTap,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF7C6DAA),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          icon: const Text(
+                            'Démarrer le relevé',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          label: const Icon(LucideIcons.arrowRight, size: 16),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1725,6 +1780,12 @@ class _PendingReportRow extends StatelessWidget {
     final statusLabel = dossier.status.label;
     final statusPalette = _statusPalette(dossier.status);
 
+    // Palette d'avatar identique à `DossiersListScreen` (basée sur la
+    // nature d'accompagnement Diag/MPA) — demande utilisateur
+    // 2026-05-12 : « même couleur de fond pour les photos de profil
+    // des rapports en cours que celles présentes dans Mes dossiers ».
+    final avatarPalette =
+        accompanimentPaletteFor(dossier.natureAccompagnement);
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
@@ -1732,22 +1793,22 @@ class _PendingReportRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
         child: Row(
           children: [
-            // Initiales en rond gris (agrandies 36 → 48 — demande
-            // utilisateur 2026-05-12 « photo de profil plus grande »).
+            // Initiales sur fond coloré (palette d'accompagnement,
+            // parité visuelle avec la page Mes dossiers).
             Container(
               width: 48,
               height: 48,
-              decoration: const BoxDecoration(
-                color: Color(0xFFF1F5F9),
+              decoration: BoxDecoration(
+                color: avatarPalette.bg,
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
               child: Text(
                 initials,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF475569),
+                  color: avatarPalette.fg,
                 ),
               ),
             ),
