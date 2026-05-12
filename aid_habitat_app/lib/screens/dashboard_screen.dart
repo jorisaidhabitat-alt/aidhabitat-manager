@@ -325,13 +325,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onSeeAll: onNavigateToDossiers,
               );
               if (isWide) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: pending),
-                    const SizedBox(width: 24),
-                    Expanded(child: agenda),
-                  ],
+                // IntrinsicHeight + stretch garantit que les 2 cards
+                // partagent la même hauteur (= max de leurs hauteurs
+                // intrinsèques). Demande utilisateur 2026-05-12 : « les
+                // deux cadres blancs du bas doivent être à la même
+                // hauteur ».
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: pending),
+                      const SizedBox(width: 24),
+                      Expanded(child: agenda),
+                    ],
+                  ),
                 );
               }
               return Column(
@@ -896,14 +903,11 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // --- Bloc gauche : jour + heure + trajet ---
-              Container(
-                constraints: const BoxConstraints(minWidth: 140),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(14),
-                ),
+              // Pas de fond blanc translucide — directement sur le
+              // violet pastel de la card (demande utilisateur
+               // 2026-05-12).
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -1634,7 +1638,7 @@ class _PendingReportsPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'À RELANCER',
+                      'À RÉALISER',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
@@ -1722,16 +1726,17 @@ class _PendingReportRow extends StatelessWidget {
     final statusPalette = _statusPalette(dossier.status);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
         child: Row(
           children: [
-            // Initiales en rond gris
+            // Initiales en rond gris (agrandies 36 → 48 — demande
+            // utilisateur 2026-05-12 « photo de profil plus grande »).
             Container(
-              width: 36,
-              height: 36,
+              width: 48,
+              height: 48,
               decoration: const BoxDecoration(
                 color: Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
@@ -1740,13 +1745,13 @@ class _PendingReportRow extends StatelessWidget {
               child: Text(
                 initials,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF475569),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
             // Nom + sous-titre
             Expanded(
               child: Column(
@@ -1755,23 +1760,25 @@ class _PendingReportRow extends StatelessWidget {
                   Text(
                     '${p.firstName} ${p.lastName}'.trim(),
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF0F172A),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (subtitle.isNotEmpty)
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         color: Color(0xFF94A3B8),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ],
                 ],
               ),
             ),
@@ -1779,7 +1786,7 @@ class _PendingReportRow extends StatelessWidget {
             // Badge statut
             Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 5),
+                  horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: statusPalette.bg,
                 borderRadius: BorderRadius.circular(999),
@@ -1788,8 +1795,8 @@ class _PendingReportRow extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 6,
-                    height: 6,
+                    width: 7,
+                    height: 7,
                     decoration: BoxDecoration(
                       color: statusPalette.dot,
                       shape: BoxShape.circle,
@@ -1807,9 +1814,9 @@ class _PendingReportRow extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             const Icon(LucideIcons.arrowRight,
-                size: 16, color: Color(0xFFCBD5E1)),
+                size: 18, color: Color(0xFFCBD5E1)),
           ],
         ),
       ),
@@ -2061,34 +2068,36 @@ class _AgendaRow extends StatelessWidget {
 
     return Material(
       color: isHighlighted ? const Color(0xFFEDE8F5) : Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
           padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           child: Row(
             children: [
-              // Bloc date
+              // Bloc date (agrandi pour cohérence avec _PendingReportRow
+              // côté gauche dont l'avatar fait 48 — demande utilisateur
+              // 2026-05-12).
               SizedBox(
-                width: 40,
+                width: 48,
                 child: Column(
                   children: [
                     Text(
                       dayLabel,
                       style: const TextStyle(
-                        fontSize: 22,
+                        fontSize: 26,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF0F172A),
                         height: 1,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       monthLabel,
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.0,
                         color: Color(0xFF94A3B8),
@@ -2097,7 +2106,7 @@ class _AgendaRow extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 16),
               // Nom + sous-titre
               Expanded(
                 child: Column(
@@ -2106,17 +2115,18 @@ class _AgendaRow extends StatelessWidget {
                     Text(
                       '${p.firstName} ${p.lastName}'.trim(),
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF0F172A),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         color: Color(0xFF94A3B8),
                       ),
                       maxLines: 1,
@@ -2129,7 +2139,7 @@ class _AgendaRow extends StatelessWidget {
               Text(
                 timeLabel,
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF0F172A),
                 ),
