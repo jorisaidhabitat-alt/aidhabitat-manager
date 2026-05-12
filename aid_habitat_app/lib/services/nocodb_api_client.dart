@@ -1464,6 +1464,38 @@ class NocodbApiClient {
         .toList();
   }
 
+  /// Variante qui renvoie les caisses principales complètes
+  /// ({id, name, phone}) — utilisée par `RetirementFundsPrincipalScreen`
+  /// (page dédiée). Réutilise l'auth/headers/timeout du client pour
+  /// éviter les soucis de session que mon premier essai en
+  /// `http.Client` brut rencontrait. Demande utilisateur 2026-05-12.
+  Future<List<Map<String, String>>> fetchPrincipalRetirementFunds() async {
+    if (!AppConfig.hasRemoteConfig) return const [];
+
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/api/retirement-funds-principal'),
+      headers: _headers,
+    ).timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote principal retirement funds fetch failed (${response.statusCode})',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ((data['funds'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => {
+              'id': (item['id'] ?? '').toString(),
+              'name': (item['name'] ?? '').toString().trim(),
+              'phone': (item['phone'] ?? '').toString().trim(),
+            })
+        .where((m) => (m['name'] ?? '').isNotEmpty)
+        .toList();
+  }
+
   /// POST /api/retirement-funds — crée une caisse de retraite
   /// complémentaire. Demande utilisateur 2026-05-12 : « Fais le même
   /// type de bouton sur la page caisse de retraite pour pouvoir

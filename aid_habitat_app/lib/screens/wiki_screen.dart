@@ -1345,3 +1345,68 @@ class _WikiCardState extends State<_WikiCard> {
     );
   }
 }
+
+/// Champ texte labelisé pour le dialog de création wiki. Parité 1:1
+/// avec `_LabeledField` (caisses complémentaires) et
+/// `_PrincipalLabeledField` (caisses principales) — label violet
+/// 12px bold au-dessus, TextField avec OutlineInputBorder radius 10.
+class _WikiLabeledField extends StatelessWidget {
+  const _WikiLabeledField({
+    required this.label,
+    required this.controller,
+    this.hint,
+    this.maxLines = 1,
+    this.autofocus = false,
+    this.enabled = true,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final String? hint;
+  final int maxLines;
+  final bool autofocus;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF7C6DAA),
+          ),
+        ),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          autofocus: autofocus,
+          enabled: enabled,
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+            isDense: true,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.4),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

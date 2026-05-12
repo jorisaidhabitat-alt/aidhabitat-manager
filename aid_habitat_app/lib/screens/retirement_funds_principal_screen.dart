@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/app_config.dart';
+import '../services/nocodb_api_client.dart';
 
 /// Page « Caisses de retraite principales » — référentiel partagé.
 ///
@@ -32,7 +33,10 @@ class RetirementFundsPrincipalScreen extends StatefulWidget {
 class _RetirementFundsPrincipalScreenState
     extends State<RetirementFundsPrincipalScreen> {
   final TextEditingController _searchController = TextEditingController();
+  // Conservé pour le dialog `_NewPrincipalFundDialog` qui fait son
+  // POST direct avec ses propres headers.
   final http.Client _client = http.Client();
+  final NocodbApiClient _api = NocodbApiClient();
 
   List<_PrincipalFund> _funds = const [];
   bool _isLoading = true;
@@ -57,24 +61,19 @@ class _RetirementFundsPrincipalScreenState
       _error = null;
     });
     try {
-      final base = AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
-      final response = await _client.get(
-        Uri.parse('$base/api/retirement-funds-principal'),
-        headers: {
-          'X-App-Session': AppConfig.appSessionToken,
-          'Accept': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 20));
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('HTTP ${response.statusCode}');
-      }
-      final payload = jsonDecode(response.body) as Map<String, dynamic>;
-      final data = payload['data'] as Map<String, dynamic>?;
-      final list = (data?['funds'] as List?) ?? const [];
-      final funds = list
-          .whereType<Map<String, dynamic>>()
-          .map(_PrincipalFund.fromJson)
+      // Utilise `NocodbApiClient.fetchPrincipalRetirementFunds()` qui
+      // partage la même logique d'auth (headers + timeout + retry
+      // transient guard) que les autres endpoints de l'app. Ma
+      // tentative précédente en `http.Client` brut renvoyait 401
+      // (probablement `appSessionToken` pas encore set au boot ou
+      // headers mal formés).
+      final raw = await _api.fetchPrincipalRetirementFunds();
+      final funds = raw
+          .map((m) => _PrincipalFund(
+                id: m['id'] ?? '',
+                name: m['name'] ?? '',
+                phone: m['phone'] ?? '',
+              ))
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
