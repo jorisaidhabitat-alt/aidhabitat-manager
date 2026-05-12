@@ -1,0 +1,164 @@
+# ---------------------------------------------------------------------------
+# GitHub Actions — build & deploy du frontend Flutter web (PWA iPad/Mac).
+#
+# Déclenché à chaque push sur `main` qui touche au code Flutter / nginx / Docker
+# du frontend. Compile le bundle Flutter web, build l'image Docker via
+# Dockerfile.web, push sur GitHub Container Registry (ghcr.io), puis trigger
+# un webhook Easypanel pour redéployer le service "aidhabitat-web".
+#
+# Secrets requis (à configurer sur GitHub → repo → Settings → Secrets):
+#   - AIDHABITAT_API_BASE_URL : URL publique de l'API (ex. https://api.aidhabitat.fr).
+#       Injectée dans le bundle Flutter au build (--dart-define).
+#   - EASYPANEL_WEB_WEBHOOK   : URL de webhook Easypanel pour redéployer le
+#       service "aidhabitat-web" (récupérée dans Easypanel UI → service →
+#       Deploy → "Deploy webhook URL"). Optionnel : si absent, le push image
+#       réussit et Easypanel devra re-pull manuellement.
+#
+# Permissions : `packages: write` pour push sur ghcr.io.
+# ---------------------------------------------------------------------------
+
+name: Build & Deploy Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # On ne rebuild QUE quand le frontend Flutter ou ses dépendances
+      # changent. Une modif sur server/ ne déclenche pas un re-build inutile.
+      - 'aid_habitat_app/**'
+      - '!aid_habitat_app/build/**'   # ignore les build artifacts si committés
+      - '.github/workflows/build-deploy-web.yml'
+  workflow_dispatch:                  # bouton "Run workflow" manuel
+
+# Concurrence : si plusieurs pushes arrivent en rafale (typique des sessions
+# multi-agents Claude), on annule les builds en cours pour ne garder que le
+# dernier. Économie de minutes GH Actions + on évite de pousser des images
+# obsolètes sur ghcr.io.
+concurrency:
+  group: web-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # push sur ghcr.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------------------
+      # 1. Installation Flutter SDK (channel stable)
+      # --------------------------------------------------------------
+      # `subosito/flutter-action` clone Flutter avec cache → 30s la 1ère
+      # fois, ~5s les suivantes grâce au cache cross-runs.
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+        working-directory: aid_habitat_app
+
+      # --------------------------------------------------------------
+      # 2. Pull deps Flutter
+      # --------------------------------------------------------------
+      - name: Flutter pub get
+        run: flutter pub get
+        working-directory: aid_habitat_app
+
+      # --------------------------------------------------------------
+      # 3. Build web release
+      # --------------------------------------------------------------
+      # AIDHABITAT_API_BASE_URL est injecté comme constante compile-time
+      # via --dart-define (cf. AppConfig._apiBaseUrlBuild).
+      - name: Build Flutter web
+        env:
+          AIDHABITAT_API_BASE_URL: ${{ secrets.AIDHABITAT_API_BASE_URL }}
+        run: |
+          if [ -z "$AIDHABITAT_API_BASE_URL" ]; then
+            echo "::error::Secret AIDHABITAT_API_BASE_URL manquant — configure-le dans GitHub Settings → Secrets"
+            exit 1
+          fi
+          flutter build web \
+            --release \
+            --dart-define=AIDHABITAT_API_BASE_URL="$AIDHABITAT_API_BASE_URL"
+        working-directory: aid_habitat_app
+
+      # --------------------------------------------------------------
+      # 4. Login sur GitHub Container Registry (ghcr.io)
+      # --------------------------------------------------------------
+      # GITHUB_TOKEN est auto-injecté par GitHub Actions, pas besoin de
+      # PAT supplémentaire pour pousser sur le registry du même repo.
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --------------------------------------------------------------
+      # 5. Métadonnées : tags + labels OCI
+      # --------------------------------------------------------------
+      # Génère 2 tags : `latest` (toujours la dernière version main) et
+      # `sha-<git_sha_short>` (immuable pour rollback / debug).
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/aidhabitat-web
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      # --------------------------------------------------------------
+      # 6. Build & push image Docker
+      # --------------------------------------------------------------
+      # Context = aid_habitat_app/ (le Dockerfile.web copie build/web/
+      # et nginx.conf depuis là). Cache GH Actions activé pour les
+      # couches Docker → ~2 min de gain sur les builds suivants.
+      - name: Build & push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: aid_habitat_app
+          file: aid_habitat_app/Dockerfile.web
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+      # --------------------------------------------------------------
+      # 7. Trigger redéploiement Easypanel
+      # --------------------------------------------------------------
+      # Easypanel expose un webhook par service (Settings → Deploy →
+      # "Webhook URL"). Le POST trigger un git pull + restart. Si le
+      # secret n'est pas configuré, on skip (l'image est sur ghcr.io
+      # et Easypanel peut la pull manuellement).
+      - name: Trigger Easypanel redeploy
+        if: ${{ env.EASYPANEL_WEBHOOK != '' }}
+        env:
+          EASYPANEL_WEBHOOK: ${{ secrets.EASYPANEL_WEB_WEBHOOK }}
+        run: |
+          echo "Triggering Easypanel redeploy…"
+          response=$(curl -sS -o /tmp/easypanel-resp -w "%{http_code}" \
+            -X POST "$EASYPANEL_WEBHOOK")
+          echo "Easypanel response: HTTP $response"
+          cat /tmp/easypanel-resp || true
+          if [ "$response" -lt 200 ] || [ "$response" -ge 300 ]; then
+            echo "::warning::Easypanel webhook returned non-2xx — déploiement à vérifier manuellement"
+          fi
+
+      # --------------------------------------------------------------
+      # 8. Résumé pour le job log
+      # --------------------------------------------------------------
+      - name: Summary
+        run: |
+          echo "## ✅ Web deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`ghcr.io/${{ github.repository_owner }}/aidhabitat-web:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Tags: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
