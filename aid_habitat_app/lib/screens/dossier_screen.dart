@@ -15,7 +15,6 @@ import '../services/data_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/references_service.dart';
 import '../services/save_debounce.dart';
-import '../services/sync_engine.dart';
 import 'conflict_resolution_screen.dart';
 import 'documents_screen.dart';
 import 'visit_report_screen.dart';

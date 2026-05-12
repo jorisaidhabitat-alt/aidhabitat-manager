@@ -80,29 +80,10 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     super.dispose();
   }
 
-  // _pollRefresh supprimé 2026-05-12 (refactor sync à la (re)connexion).
-  // Le pull workspace se charge de rafraîchir les recommandations au
-  // foreground return / reconnect / login.
-
-  /// Compare deux listes d'items recommandation. Renvoie true si
-  /// strictement identiques (mêmes ids dans le même ordre, mêmes
-  /// champs serializables). Utilisé pour skipper les setState
-  /// no-op côté polling.
-  bool _recommendationListsEqual(
-    List<VisitRecommendationItem> a,
-    List<VisitRecommendationItem> b,
-  ) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i += 1) {
-      final x = a[i];
-      final y = b[i];
-      if (x.id != y.id) return false;
-      if (x.wikiItemId != y.wikiItemId) return false;
-      if (x.customTitle != y.customTitle) return false;
-      if (x.note != y.note) return false;
-    }
-    return true;
-  }
+  // _pollRefresh + _recommendationListsEqual supprimés 2026-05-12
+  // (refactor sync à la (re)connexion). Le pull workspace se charge de
+  // rafraîchir les recommandations au foreground return / reconnect /
+  // login.
 
   Future<void> _load() async {
     // PURE LOCAL : on affiche ce qui est en SQLite, point. Les éditions
