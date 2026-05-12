@@ -80,11 +80,17 @@ class _RetirementFundsPrincipalScreenState
         _funds = funds;
         _isLoading = false;
       });
-    } catch (error) {
+    } catch (error, stack) {
+      // ignore: avoid_print
+      print('[retirement_principal] fetch error: $error');
+      // ignore: avoid_print
+      print(stack);
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = _funds.isEmpty ? 'Chargement impossible' : null;
+        _error = _funds.isEmpty
+            ? 'Chargement impossible — $error'
+            : null;
       });
     }
   }
