@@ -855,46 +855,88 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Design refondu 2026-05-12 : parité avec les dialogs « Nouvelle
+    // caisse de retraite » (header icône + titre + X, champs labelisés
+    // violet 12px avec OutlineInputBorder radius 10, bouton X de close).
     return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       insetPadding: const EdgeInsets.all(24),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Nouvel élément',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7C6DAA).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      LucideIcons.plus,
+                      color: Color(0xFF7C6DAA),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Nouvel élément',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(LucideIcons.x, size: 20),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               _buildImageSection(),
               const SizedBox(height: 16),
-              TextField(
+              _WikiLabeledField(
+                label: 'Titre *',
                 controller: _titleController,
-                decoration: _decoration('Titre'),
+                hint: 'ex. Barre d\'appui salle de bain',
                 autofocus: true,
                 enabled: !_submitting,
               ),
               const SizedBox(height: 12),
-              TextField(
+              _WikiLabeledField(
+                label: 'Description',
                 controller: _descriptionController,
-                decoration: _decoration('Description'),
+                hint: 'Détails de l\'aménagement, dimensions, conseils…',
                 maxLines: 4,
                 enabled: !_submitting,
               ),
               const SizedBox(height: 12),
-              TextField(
+              _WikiLabeledField(
+                label: 'Catégorie',
                 controller: _categoryController,
-                decoration: _decoration('Catégorie'),
+                hint: 'ex. Salle de bain, WC, Cuisine, Chambre…',
                 enabled: !_submitting,
               ),
               const SizedBox(height: 16),
               const Text(
                 'Tags',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF7C6DAA),
+                ),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -932,11 +974,11 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: _submitting ? null : _submit,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF7C6DAA),
                       foregroundColor: Colors.white,
                     ),
+                    onPressed: _submitting ? null : _submit,
                     child: _submitting
                         ? const SizedBox(
                             width: 18,
@@ -954,16 +996,6 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
           ),
         ),
       ),
-    );
-  }
-
-  InputDecoration _decoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      filled: true,
-      fillColor: const Color(0xFFF7F7FA),
-      border: InputBorder.none,
-      enabledBorder: InputBorder.none,
     );
   }
 
