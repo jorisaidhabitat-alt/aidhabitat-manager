@@ -749,6 +749,17 @@ class _MainScreenState extends State<MainScreen>
               _lastDossierTreeSelected = null;
             });
           },
+          // Bouton « Démarrer le relevé » de la bannière dashboard →
+          // ouvre directement la VAD (visit_report) du bénéficiaire
+          // sans étape intermédiaire par l'écran dossier détail.
+          // Demande utilisateur 2026-05-12.
+          onStartReport: (dossier) {
+            _pushHistory();
+            setState(() {
+              _selectedDossier = dossier;
+              _activeView = 'visit_report';
+            });
+          },
         );
       case 'create_beneficiary':
         return CreateBeneficiaryScreen(

@@ -343,6 +343,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onTap: nextVisit == null
                 ? null
                 : () => onSelectDossier(nextVisit.dossier),
+            onStartReport: nextVisit == null
+                ? null
+                : () => (onStartReport ?? onSelectDossier)(nextVisit.dossier),
           ),
           const SizedBox(height: 24),
 
@@ -1092,8 +1095,11 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                         ),
                         const SizedBox(width: 16),
                         // --- Bouton « Démarrer le relevé » ---
+                        // Navigation directe VAD (visit_report_screen),
+                        // pas l'écran dossier (qui est sur le tap général
+                        // de la card). Demande utilisateur 2026-05-12.
                         ElevatedButton.icon(
-                          onPressed: onTap,
+                          onPressed: widget.onStartReport ?? onTap,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF7C6DAA),
                             foregroundColor: Colors.white,
@@ -1668,6 +1674,24 @@ class _SegmentDone extends _SegmentState {
 // statuts qu'on a actuellement »). Le badge coloré est dérivé du
 // statut texte tel quel.
 
+/// Helper local pour reproduire la logique de bascule auto « visite
+/// passée → rapport à faire » de DossiersListScreen sans dépendre
+/// d'un export privé. Vrai si la `visitDate` est strictement
+/// antérieure à aujourd'hui (date civile, pas l'heure).
+bool _isVisitInPast(Dossier d) {
+  final raw = d.visitDate;
+  if (raw == null || raw.trim().isEmpty) return false;
+  try {
+    final dt = DateTime.parse(raw);
+    final today = DateTime.now();
+    final dtDay = DateTime(dt.year, dt.month, dt.day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    return dtDay.isBefore(todayDay);
+  } catch (_) {
+    return false;
+  }
+}
+
 class _PendingReportsPanel extends StatelessWidget {
   final List<Dossier> dossiers;
   final void Function(Dossier) onSelect;
@@ -1681,14 +1705,17 @@ class _PendingReportsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // « En cours » = pas encore visité ni clôturé / archivé.
-    const closedStates = {
-      DossierStatus.VISITED,
-      DossierStatus.CLOSED,
-      DossierStatus.ARCHIVED,
-    };
+    // Filtre identique au bucket « Rapport à faire » de
+    // DossiersListScreen (cf. _matchesBucket) — demande utilisateur
+    // 2026-05-12 : « Les bénéficiaires qu'on voit dans rapports en
+    // cours doivent être ceux qu'on retrouve dans rapport à faire
+    // dans mes dossiers ». Critère :
+    //   • status == VISITED (visite réalisée, rapport pas envoyé)
+    //   • OU status == TO_VISIT && date de visite passée (bascule
+    //     auto quand l'ergo a oublié de marquer la visite).
     final pending = dossiers
-        .where((d) => !closedStates.contains(d.status))
+        .where((d) => d.status == DossierStatus.VISITED
+            || (d.status == DossierStatus.TO_VISIT && _isVisitInPast(d)))
         .toList(growable: false)
       ..sort((a, b) {
         // Plus récents d'abord (createdAt desc).
@@ -2008,10 +2035,18 @@ class _WeekAgendaPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Sélection : visites dont la date est entre maintenant et la fin
-    // de la semaine (dimanche 23:59 inclus).
+    // Sélection : visites à faire DE LA SEMAINE — demande utilisateur
+    // 2026-05-12 : « ceux qu'on voit dans agenda sont les visites à
+    // faire de la semaine ». Critère identique au bucket « Visite à
+    // faire » de DossiersListScreen :
+    //   • status == TO_VISIT
+    //   • date de visite >= aujourd'hui (pas dans le passé, sinon
+    //     bascule auto vers "Rapport à faire")
+    //   • date de visite dans la semaine en cours
     final upcoming = <_AgendaItem>[];
     for (final d in dossiers) {
+      if (d.status != DossierStatus.TO_VISIT) continue;
+      if (_isVisitInPast(d)) continue;
       final raw = d.visitDate;
       if (raw == null || raw.isEmpty) continue;
       final when = DateTime.tryParse(raw);
