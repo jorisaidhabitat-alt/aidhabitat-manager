@@ -851,60 +851,84 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
   Widget build(BuildContext context) {
     final nextVisit = widget.nextVisit;
     final onTap = widget.onTap;
-    // Placeholder quand aucune visite n'est planifiée.
+    // Placeholder quand aucune visite n'est planifiée — on garde le
+    // même format 2 colonnes que la version "avec visite" pour ne pas
+    // casser la disposition globale du dashboard (demande utilisateur
+    // 2026-05-12).
     if (nextVisit == null) {
-      return _PanelCard(
-        padding: const EdgeInsets.all(24),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: const BoxDecoration(
-                color: Color(0xFFEDE8F5),
-                shape: BoxShape.circle,
-              ),
-              child: const Center(
-                child: Icon(
-                  // Icône Material `directions_car` — style « filled »
-                  // visuellement plus dense que le Lucide outline qu'on
-                  // utilisait avant. Demande utilisateur 2026-04-28
-                  // (« change l'icon voiture pour un autre icon
-                  // voiture »).
-                  Icons.directions_car,
-                  color: Color(0xFF7C6DAA),
-                  size: 26,
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                color: const Color(0xFFD8CDE9),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 24),
+                constraints: const BoxConstraints(minWidth: 180),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.directions_car,
+                        color: Color(0xFF7C6DAA), size: 28),
+                    SizedBox(height: 8),
+                    Text(
+                      'AGENDA',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                        color: Color(0xFF7C6DAA),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Titre compact en violet, tout en majuscules — même
-                  // hiérarchie que la version "avec visite" ci-dessous.
-                  Text(
-                    'PROCHAINE VISITE',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                      color: Color(0xFF7C6DAA),
-                    ),
+              Expanded(
+                child: Container(
+                  color: const Color(0xFFEDE8F5),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24, vertical: 24),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'PROCHAINE VISITE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.4,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Aucun rendez-vous planifié',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Tout est à jour côté agenda.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 6),
-                  Text(
-                    'Aucune visite planifiée pour le moment.',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -1780,17 +1804,10 @@ class _PendingReportsPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (items.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: Text(
-                  'Aucun rapport en cours',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-              ),
+            const _EmptyStatePlaceholder(
+              icon: LucideIcons.check,
+              text: 'Tout est à jour',
+              subText: 'Aucun rapport à réaliser pour le moment.',
             )
           else
             ...items.map((d) => Padding(
@@ -1826,11 +1843,14 @@ class _PendingReportRow extends StatelessWidget {
     final statusPalette = _statusPalette(dossier.status);
 
     // Palette d'avatar identique à `DossiersListScreen` (basée sur la
-    // nature d'accompagnement Diag/MPA) — demande utilisateur
-    // 2026-05-12 : « même couleur de fond pour les photos de profil
-    // des rapports en cours que celles présentes dans Mes dossiers ».
+    // nature d'accompagnement Diag/MPA) + contour vert/jaune selon le
+    // flag `beneficiaryPrepared` — parité totale avec Mes dossiers.
+    // Demande utilisateur 2026-05-12.
     final avatarPalette =
         accompanimentPaletteFor(dossier.natureAccompagnement);
+    final borderColor = dossier.beneficiaryPrepared
+        ? const Color(0xFF86EFAC) // green-300, bénéficiaire prêt
+        : const Color(0xFFFDE047); // yellow-300, en attente
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
@@ -1838,14 +1858,15 @@ class _PendingReportRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
         child: Row(
           children: [
-            // Initiales sur fond coloré (palette d'accompagnement,
-            // parité visuelle avec la page Mes dossiers).
+            // Initiales sur fond coloré (palette d'accompagnement) +
+            // bordure vert/jaune comme dans Mes dossiers.
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
                 color: avatarPalette.bg,
                 shape: BoxShape.circle,
+                border: Border.all(color: borderColor, width: 1.8),
               ),
               alignment: Alignment.center,
               child: Text(
@@ -2010,6 +2031,70 @@ class _StatusPalette {
   });
 }
 
+/// Placeholder « empty state » réutilisé par les 2 panneaux du
+/// dashboard (rapports en cours / agenda). On garde la disposition
+/// globale (cards à la même hauteur côte à côte) — demande
+/// utilisateur 2026-05-12 : « s'il n'y a pas de prochaine visite, ou
+/// de visite de la semaine ou de rapport en cours, garde tout de
+/// même cette disposition et indique simplement un texte de
+/// remplacement ».
+class _EmptyStatePlaceholder extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final String? subText;
+
+  const _EmptyStatePlaceholder({
+    required this.icon,
+    required this.text,
+    this.subText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 26, color: const Color(0xFF94A3B8)),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF475569),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (subText != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                subText!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF94A3B8),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Week agenda panel — « Cette semaine / Agenda »
 // ---------------------------------------------------------------------------
@@ -2113,17 +2198,10 @@ class _WeekAgendaPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (items.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: Text(
-                  'Aucune visite cette semaine',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-              ),
+            const _EmptyStatePlaceholder(
+              icon: LucideIcons.calendar,
+              text: 'Aucune visite cette semaine',
+              subText: 'Profite d\'une semaine plus calme.',
             )
           else
             ...items.map((it) => Padding(
