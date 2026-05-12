@@ -58,7 +58,8 @@ class _PhotosTabState extends State<PhotosTab>
   static const Color _kPurple = Color(0xFF7C6DAA);
   static const Color _kPurpleLight = Color(0xFFEDE8F5);
   static const Color _kSlate = Color(0xFF334155);
-  static const Color _kSlateMuted = Color(0xFF64748B);
+  // _kSlateMuted retiré le 2026-05-12 (servait au badge count
+  // supprimé, cf. _buildCountBadge également retiré).
 
   /// Compression cible — `image_picker` accepte directement ces
   /// paramètres et applique le redimensionnement + ré-encodage JPEG
@@ -1272,48 +1273,10 @@ class _PhotosTabState extends State<PhotosTab>
     );
   }
 
-  Widget _buildCountBadge({
-    required int count,
-    required int max,
-    required bool full,
-    required bool over,
-  }) {
-    final bg = over
-        ? const Color(0xFFFEE2E2)
-        : full
-            ? const Color(0xFFDCFCE7)
-            : const Color(0xFFF1F5F9);
-    final fg = over
-        ? const Color(0xFFB91C1C)
-        : full
-            ? const Color(0xFF15803D)
-            : _kSlateMuted;
-    final label = over ? '$count / $max +' : '$count / $max';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (full && !over) ...[
-            Icon(LucideIcons.check, size: 12, color: fg),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: fg,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // _buildCountBadge supprimé le 2026-05-12 — demande utilisateur :
+  // pas de badge "X / max" dans le header, on garde uniquement les
+  // emplacements de base affichés dans la grille (+1 slot vide
+  // toujours disponible cf. _buildSlotsGrid).
 
   // _buildEmptyState supprimé : remplacé par les slots gris vides
   // de _buildSlotsGrid (chaque slot tappable + DragTarget). Demande
