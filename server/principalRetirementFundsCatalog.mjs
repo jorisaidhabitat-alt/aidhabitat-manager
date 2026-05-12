@@ -86,7 +86,7 @@ export const PRINCIPAL_FUNDS_CATALOG = {
   },
   'crp ratp': {
     displayName: 'CRP RATP',
-    logoUrl: '/retirement-logos/principal/crp-ratp.svg',
+    logoUrl: '/retirement-logos/principal/crp-ratp.png',
     primary: '#5BC047',
     secondary: '#2B7E27',
   },
