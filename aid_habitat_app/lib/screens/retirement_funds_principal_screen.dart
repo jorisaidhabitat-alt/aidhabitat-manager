@@ -193,6 +193,21 @@ class _RetirementFundsPrincipalScreenState
     }
   }
 
+  /// Ouvre une popup détail de la caisse (logo + nom + bouton Appeler).
+  /// Demande utilisateur 2026-05-12 : tap sur une carte doit ouvrir une
+  /// popup et NON déclencher l'appel direct — parité avec le dialog
+  /// `_RetirementFundDialog` des caisses complémentaires.
+  Future<void> _openFund(_PrincipalFund fund) async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (context) => _PrincipalFundDialog(
+        fund: fund,
+        onCallPhone: () => _callPhone(fund.phone),
+      ),
+    );
+  }
+
   /// Ouvre un dialog de création (nom + téléphone). Demande utilisateur
   /// 2026-05-12 : parité avec Caisses complémentaires.
   Future<void> _createFund() async {
@@ -340,7 +355,7 @@ class _RetirementFundsPrincipalScreenState
                   final fund = _filteredFunds[index];
                   return _PrincipalFundCard(
                     fund: fund,
-                    onCallPhone: () => _callPhone(fund.phone),
+                    onOpen: () => _openFund(fund),
                   );
                 },
               ),
@@ -355,16 +370,16 @@ class _RetirementFundsPrincipalScreenState
 ///
 /// Design 2026-05-12 : parité 1:1 avec `_FundCard` (caisses
 /// complémentaires) — logo 120 pt full-width au top (BoxFit.contain,
-/// fond blanc), nom 16 pt w800, chip téléphone sous le nom. Demande
-/// utilisateur : « ajoute les logos des caisses de retraite principale
-/// comme ce que tu as fait pour les caisses de retraite complémentaire ».
+/// fond blanc), nom 16 pt w800, chip téléphone sous le nom. Le tap
+/// ouvre une popup détail (cf. `_PrincipalFundDialog`), il NE déclenche
+/// PAS l'appel direct — demande utilisateur 2026-05-12.
 class _PrincipalFundCard extends StatefulWidget {
   final _PrincipalFund fund;
-  final VoidCallback onCallPhone;
+  final VoidCallback onOpen;
 
   const _PrincipalFundCard({
     required this.fund,
-    required this.onCallPhone,
+    required this.onOpen,
   });
 
   @override
@@ -379,7 +394,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
     final fund = widget.fund;
     final hasPhone = fund.phone.trim().isNotEmpty;
     return MouseRegion(
-      cursor: hasPhone ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: AnimatedContainer(
@@ -408,7 +423,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: hasPhone ? widget.onCallPhone : null,
+          onTap: widget.onOpen,
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
           hoverColor: Colors.transparent,
@@ -650,6 +665,244 @@ class _PrincipalFund {
         phone: json['phone']?.toString() ?? '',
         logoUrl: json['logoUrl']?.toString() ?? '',
       );
+}
+
+/// Popup détail d'une caisse principale.
+///
+/// Demande utilisateur 2026-05-12 : « quand je clique dessus cela doit
+/// ouvrir une pop up pas appeler direct ». Pattern dérivé de
+/// `_RetirementFundDialog` (caisses complémentaires) mais simplifié :
+/// la table source n'a que `nom` + `numero_telephone_contact`, donc
+/// pas de sections À propos / Note ergo / Site web. On garde juste :
+///  • Header : logo carré + nom + bouton fermer
+///  • Section Contact : gros bouton « Appeler » tappable (si téléphone)
+class _PrincipalFundDialog extends StatelessWidget {
+  const _PrincipalFundDialog({
+    required this.fund,
+    required this.onCallPhone,
+  });
+
+  final _PrincipalFund fund;
+  final Future<void> Function() onCallPhone;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhone = fund.phone.trim().isNotEmpty;
+    return Dialog(
+      insetPadding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      backgroundColor: Colors.white,
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ---------- Header ----------
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFF8F4FB), Color(0xFFFDFCFE)],
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Logo carré 64×64 (laisse aussi respirer les wordmarks
+                  // larges grâce au padding interne + BoxFit.contain dans
+                  // _PrincipalFundLogo).
+                  Container(
+                    height: 64,
+                    width: 84,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: _PrincipalFundLogo(
+                      logoUrl: fund.logoUrl,
+                      size: 64,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      fund.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Bouton fermer — rond gris clair, parité avec le
+                  // dialog des caisses complémentaires.
+                  Tooltip(
+                    message: 'Fermer',
+                    child: Material(
+                      color: const Color(0xFFF1F5F9),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).pop(),
+                        customBorder: const CircleBorder(),
+                        child: const SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Icon(
+                            LucideIcons.x,
+                            size: 18,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ---------- Body : Contact ----------
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE8F5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          LucideIcons.phoneCall,
+                          size: 15,
+                          color: Color(0xFF7C6DAA),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Contact',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Container(
+                          height: 1,
+                          color: const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Bouton Appeler — violet plein si téléphone, gris
+                  // disabled sinon. Tap déclenche `launchUrl(tel:...)`.
+                  Opacity(
+                    opacity: hasPhone ? 1.0 : 0.5,
+                    child: Material(
+                      color: hasPhone
+                          ? const Color(0xFF7C6DAA)
+                          : const Color(0xFFE2E8F0),
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        onTap: hasPhone ? () => onCallPhone() : null,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 16),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  LucideIcons.phone,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      'Appeler',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      hasPhone
+                                          ? fund.phone
+                                          : 'Aucun numéro renseigné',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.85),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (hasPhone)
+                                Icon(
+                                  LucideIcons.arrowUpRight,
+                                  size: 16,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Dialog de création d'une caisse principale. Demande utilisateur
