@@ -958,9 +958,6 @@ class _PhotosTabState extends State<PhotosTab>
     VoidCallback? onRemove,
   }) {
     final photos = _photosForCategory(tag);
-    final count = photos.length;
-    final isFull = count >= maxSlots;
-    final overCapacity = count > maxSlots;
     final shortLabel = titleOverride ??
         visitPhotoTagShortLabel(_parseSectionTag(tag)?.baseTag ?? tag);
 
@@ -1008,7 +1005,10 @@ class _PhotosTabState extends State<PhotosTab>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // En-tête : icône + nom + compteur "X / max"
+          // En-tête : icône + nom (compteur "X / max" retiré le
+          // 2026-05-12 — demande utilisateur : on garde seulement le
+          // nombre d'emplacements de base par catégorie via `maxSlots`,
+          // pas de badge pollue le header).
           Row(
             children: [
               Container(
@@ -1030,12 +1030,6 @@ class _PhotosTabState extends State<PhotosTab>
                     color: _kSlate,
                   ),
                 ),
-              ),
-              _buildCountBadge(
-                count: count,
-                max: maxSlots,
-                full: isFull && !overCapacity,
-                over: overCapacity,
               ),
               // Bouton X de suppression — visible uniquement pour les
               // sections supplémentaires (cf. demande 2026-05-04 :
@@ -1101,10 +1095,20 @@ class _PhotosTabState extends State<PhotosTab>
     required int maxSlots,
   }) {
     const spacing = 6.0;
-    // Nombre total d'emplacements visibles : au moins maxSlots, et
-    // au moins le nombre de photos existantes (mode « surplus »).
-    final totalSlots =
-        photos.length > maxSlots ? photos.length : maxSlots;
+    // Nombre total d'emplacements visibles :
+    //   - au moins `maxSlots` (les emplacements de base attendus)
+    //   - au moins `photos.length + 1` → garantit qu'il y a TOUJOURS
+    //     un cadre drag-and-drop vide après la dernière photo pour
+    //     que l'ergo puisse en ajouter à l'infini (demande utilisateur
+    //     2026-05-12 : "des que j'ai upload la dernière photo d'une
+    //     partie, un nouveau cadre drag and drop doit toujours
+    //     apparaitre après pour que je puisse en ajouter autant que
+    //     j'en veux"). La grille reste à 3 colonnes max (cf. la
+    //     boucle ci-dessous) → la taille des images ne change pas,
+    //     ça passe simplement à la ligne suivante.
+    final totalSlots = photos.length + 1 > maxSlots
+        ? photos.length + 1
+        : maxSlots;
     final cells = <Widget>[];
     for (var i = 0; i < totalSlots; i++) {
       if (i < photos.length) {
