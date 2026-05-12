@@ -63,7 +63,16 @@ class _SidebarState extends State<Sidebar> {
     },
     {'id': 'dossiers', 'label': 'Dossiers', 'icon': LucideIcons.folderOpen},
     {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.bookOpen},
-    {'id': 'precos', 'label': 'Caisses', 'icon': LucideIcons.heart},
+    {
+      'id': 'precos_principal',
+      'label': 'Caisses principales',
+      'icon': LucideIcons.building,
+    },
+    {
+      'id': 'precos',
+      'label': 'Caisses complémentaires',
+      'icon': LucideIcons.heart,
+    },
     // Item ANAH : on n'utilise plus une icône Lucide mais le vrai logo
     // de l'Anah (asset embarqué `assets/logos/anah.png` → toujours
     // disponible offline). Le rendu est géré dans le `build` ci-dessous
@@ -150,27 +159,9 @@ class _SidebarState extends State<Sidebar> {
           Column(
             mainAxisSize: MainAxisSize.min,
             children: _menuItems.map((item) {
-              // L'item "Caisses" (precos) reste actif visuellement
-              // lorsque la sous-page Principales ou Complémentaires est
-              // ouverte (cf. sous-menu plus bas).
               final bool isActive =
                   widget.currentView == item['id'] ||
-                  (widget.currentView == 'visit' && item['id'] == 'dossiers') ||
-                  (item['id'] == 'precos' &&
-                      widget.currentView == 'precos_principal');
-
-              // Cas "precos" : sous-menu au lieu de navigation directe.
-              // PopupMenuButton ouvre 2 options (Principales /
-              // Complémentaires) cf. demande utilisateur 2026-05-12.
-              if (item['id'] == 'precos') {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12.0),
-                  child: _CaissesSubMenuButton(
-                    isActive: isActive,
-                    onSelect: widget.onNavigate,
-                  ),
-                );
-              }
+                  (widget.currentView == 'visit' && item['id'] == 'dossiers');
 
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12.0),
@@ -404,86 +395,6 @@ class _SidebarState extends State<Sidebar> {
   }
 }
 
-/// Bouton sidebar « Caisses » avec sous-menu déroulant (demande
-/// utilisateur 2026-05-12, Q2c regroupement). Au tap, ouvre un
-/// PopupMenu Material qui propose :
-///   - Caisses principales   (vue `precos_principal`)
-///   - Caisses complémentaires (vue `precos`)
-///
-/// Reproduit visuellement le SoftTapScale + AnimatedContainer rond
-/// des autres items pour rester homogène avec le reste de la sidebar.
-class _CaissesSubMenuButton extends StatelessWidget {
-  final bool isActive;
-  final ValueChanged<String> onSelect;
-
-  const _CaissesSubMenuButton({
-    required this.isActive,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Caisses',
-      preferBelow: false,
-      margin: const EdgeInsets.only(left: 80),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      textStyle: const TextStyle(color: Colors.white, fontSize: 12),
-      child: PopupMenuButton<String>(
-        tooltip: '',
-        position: PopupMenuPosition.under,
-        offset: const Offset(56, -16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        onSelected: onSelect,
-        itemBuilder: (context) => const [
-          PopupMenuItem<String>(
-            value: 'precos_principal',
-            child: Row(
-              children: [
-                Icon(LucideIcons.building,
-                    size: 18, color: Color(0xFF7C6DAA)),
-                SizedBox(width: 10),
-                Text('Caisses principales'),
-              ],
-            ),
-          ),
-          PopupMenuItem<String>(
-            value: 'precos',
-            child: Row(
-              children: [
-                Icon(LucideIcons.heart,
-                    size: 18, color: Color(0xFF7C6DAA)),
-                SizedBox(width: 10),
-                Text('Caisses complémentaires'),
-              ],
-            ),
-          ),
-        ],
-        child: AnimatedContainer(
-          duration: kSoftMedium,
-          curve: kSoftCurve,
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: isActive
-                ? const Color(0xFFEDE8F5)
-                : const Color(0x00EDE8F5),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            LucideIcons.heart,
-            size: 22,
-            color: isActive
-                ? const Color(0xFF7C6DAA)
-                : const Color(0xFF8D94A3),
-          ),
-        ),
-      ),
-    );
-  }
-}
+// _CaissesSubMenuButton retiré le 2026-05-12 — l'utilisateur préfère
+// 2 boutons distincts directs dans la sidebar (cf. _menuItems) plutôt
+// qu'un sous-menu Popup. Plus de double-clic, navigation immédiate.
