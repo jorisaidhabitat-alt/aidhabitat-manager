@@ -127,13 +127,10 @@ class _DossierScreenState extends State<DossierScreen> {
     _repository = widget.repository ?? DossierRepository();
     _loadFromDossier();
 
-    // Active le mode pull « ultra-actif » (1 s) tant que la fiche
-    // bénéficiaire est ouverte — parité avec VAD / Documents /
-    // Dashboard. Les modifs faites depuis l'autre device (champs
-    // patient, logement, occupants…) apparaissent quasi-instantanément.
-    // Équilibré dans `dispose()` via `leaveActiveContext`. Demande
-    // utilisateur 2026-05-07.
-    SyncEngine().enterActiveContext();
+    // Refactor 2026-05-12 : suppression de `enterActiveContext` (mode
+    // pull ultra-actif retiré). La fiche bénéficiaire affiche l'état
+    // au moment de l'ouverture ; les modifs distantes sont récupérées
+    // au prochain événement (foreground/reconnexion/login).
 
     _references.ensureLoaded();
     _communeOptions = _mapCommunes();
@@ -236,9 +233,6 @@ class _DossierScreenState extends State<DossierScreen> {
   @override
   void dispose() {
     _refSub?.cancel();
-    // Relâche le mode ultra-actif activé dans `initState`. Le SyncEngine
-    // repasse sur l'intervalle adaptatif normal (5 s actif / 30 s idle).
-    SyncEngine().leaveActiveContext();
     // Flush last-shot synchrone si une saisie attendait le debounce.
     // dispose() ne peut pas await, mais _save() écrit en SQLite avec
     // une promesse qu'on laisse partir — au pire elle complète après le

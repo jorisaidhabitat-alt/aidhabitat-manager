@@ -140,35 +140,15 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDocuments();
-    // Active le mode pull « ultra-actif » (1 s) du SyncEngine tant
-    // que l'écran Documents est ouvert — parité avec VisitReportScreen.
-    // Sans ça, le device qui regarde sans interagir bascule en idle
-    // au bout d'1 min et le pull workspace tombe à 30 s ; les
-    // documents importés depuis l'autre device pouvaient mettre
-    // jusqu'à 30 s à apparaître. Équilibré dans `dispose()` via
-    // `leaveActiveContext`. Demande utilisateur 2026-05-07 :
-    // « ajouter enterActiveContext aux écrans sensibles ».
-    SyncEngine().enterActiveContext();
-    // Polling silencieux toutes les 2 secondes — accéléré 2026-05-06
-    // pour parité avec PhotosTab (« la synchronisation est plus lente
-    // dans Documents »). Avec le push debounce ~200ms côté émetteur +
-    // 2s pull côté récepteur → latence ~2-3s. La requête est légère
-    // (SELECT documents WHERE patient_id), pas de binaire transféré
-    // tant que `_warmDocumentBinaryCache` ne le demande pas pour les
-    // nouveaux docs uniquement (cf. cache idempotent).
-    //
-    // Skip si offline (2026-05-07) — sinon chaque tick tente un fetch
-    // HTTP qui échoue immédiatement (DNS / SocketException), gaspille
-    // CPU + batterie iPad. Le ConnectivityService re-déclenche un
-    // sync immédiat au retour réseau via `onConnectivityBack`.
-    //
-    // Polling 1s (au lieu de 2s) — demande utilisateur 2026-05-07 :
-    // sync Mac→iPad doit être quasi instantanée (< 3s).
-    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      if (ConnectivityService().isOffline) return;
-      _loadDocuments(silent: true);
-    });
+    // Refactor 2026-05-12 : suppression du polling 1 s + de
+    // `enterActiveContext`. L'écran Documents charge sa grille à
+    // l'ouverture et la garde stable pendant toute la session sur
+    // l'écran. Les imports faits depuis l'autre device apparaîtront :
+    //  - au retour foreground (changement d'app puis retour)
+    //  - à la reconnexion réseau
+    //  - à la re-connexion utilisateur (logout/login)
+    //  - au prochain `_loadDocuments` déclenché par une action locale
+    //    (ajout, suppression, etc.)
   }
 
   @override
@@ -1586,10 +1566,6 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _refreshTimer?.cancel();
-    // Relâche le mode ultra-actif activé dans `initState`. Le SyncEngine
-    // repasse sur l'intervalle adaptatif normal (5 s actif / 30 s idle)
-    // une fois qu'on quitte l'écran Documents.
-    SyncEngine().leaveActiveContext();
     _keyboardFocus.dispose();
     super.dispose();
   }

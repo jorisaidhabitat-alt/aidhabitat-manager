@@ -54,68 +54,38 @@ class SyncEngine {
   /// pour un dactylo rapide) sans ajouter de lag perceptible.
   static const Duration _notifyDebounce = Duration(milliseconds: 50);
 
-  /// Periodic background check interval when idle and online. Short safety net
-  /// — push-on-mutation should handle most cases.
-  static const Duration _periodicInterval = Duration(seconds: 60);
+  /// Périodicité du `_periodicTimer` — relance le drain de la queue
+  /// `sync_operations` si des opérations sont restées en `failed` après
+  /// un échec réseau. Ne pousse PAS de pull (cf. refactor 2026-05-12 :
+  /// suppression du polling adaptatif pour soulager NocoDB Easypanel).
+  /// 5 min = compromis "retry tardif mais pas oublié" sans charge constante.
+  static const Duration _periodicInterval = Duration(minutes: 5);
 
   // ---------------------------------------------------------------------------
-  // Adaptive pull (cross-device sync) — demande utilisateur 2026-04-29
-  // « tout ce que je fais sur macOS s'actualise sur iPad et inversement
-  // en moins de 5 secondes » (Option B : polling adaptatif).
+  // Sync model — refactor 2026-05-12
   // ---------------------------------------------------------------------------
-
-  /// Délai entre 2 pulls quand l'utilisateur est ACTIF (a sauvegardé
-  /// quelque chose dans la dernière minute). Cible la sensation
-  /// « instant » sur le device qui regarde — l'autre device pousse à
-  /// NocoDB en ~500ms, le poll de 2s récupère à 2500ms max.
-  ///
-  /// 5 s (revert depuis 2 s) — fix 2026-05-11 budget Vercel : on
-  /// avait atteint 83 % du quota Fast Origin Transfer (8.3/10 GB du
-  /// free tier Hobby) en 4 jours d'optimisations 1-2 s. Pour tenir
-  /// jusqu'au reset mensuel sans upgrade Pro, on revient sur 5 s
-  /// (la valeur historique) qui reste sub-6 s end-to-end — OK pour
-  /// la sync cross-device tant qu'on est en mode actif.
-  static const Duration _pullIntervalActive = Duration(seconds: 5);
-
-  /// Délai entre 2 pulls quand un écran « focus haute fréquence » est
-  /// ouvert (ex. VisitReportScreen via [enterActiveContext]). Note :
-  /// pour la note écrite courante, le NotesWidget a SON PROPRE timer
-  /// 1 s qui hit directement `/api/note-pages/:patientId` (endpoint
-  /// léger, ~1 row). Ce pull workspace ultra-actif (1 s) couvre les
-  /// AUTRES champs du dossier (date naissance, cases à cocher, etc.)
-  /// — endpoint plus lourd (`/api/dossiers`) mais 1 s reste tenable.
-  ///
-  /// 2 s (revert depuis 500 ms) — fix 2026-05-11 budget Vercel : la
-  /// valeur 500 ms avait fait sauter le quota Fast Origin Transfer
-  /// (8.3/10 GB en 4 jours sur free tier Hobby). À 2 s on conserve
-  /// une sensation "rapide" (push iPad ~1 s + pull max 2 s = ≤ 3 s
-  /// end-to-end) sans saturer la bande passante Vercel.
-  ///
-  /// Note : la note écrite courante a SON PROPRE timer 1 s dédié
-  /// dans NotesWidget qui hit `/api/note-pages` (endpoint léger,
-  /// 1 row), pas le pull workspace lourd. Donc cette valeur ne
-  /// dégrade PAS la sync des notes — seulement la sync des autres
-  /// champs du dossier (date naissance, cases à cocher) qui peut
-  /// rester à 3 s sans gêner l'usage.
-  static const Duration _pullIntervalUltraActive = Duration(seconds: 2);
-
-  /// 30 s (revert depuis 3 s) — fix 2026-05-11 budget Vercel : avec
-  /// la valeur 3 s, l'app iPad ouverte sans interaction consommait
-  /// 1 200 requêtes/heure inutiles (rien à syncer mais on poll quand
-  /// même). À 30 s, on diviser par 10 la conso idle tout en gardant
-  /// une latence acceptable pour un device au repos : si tu veux
-  /// reprendre l'activité, n'importe quelle saisie te repasse en
-  /// active (5 s) le temps que tu interagisses.
-  static const Duration _pullIntervalIdle = Duration(seconds: 30);
-
-  /// Délai entre 2 pulls quand l'app est en arrière-plan. Préserve la
-  /// batterie + le quota cellulaire — au retour foreground on
-  /// déclenche un pull immédiat dans `setAppLifecycleState`.
-  static const Duration _pullIntervalBackground = Duration(minutes: 5);
-
-  /// Seuil au-delà duquel on bascule de "active" à "idle" (mesuré
-  /// depuis la dernière mutation `notify()`).
-  static const Duration _idleThreshold = Duration(minutes: 1);
+  //
+  // Avant : polling adaptatif (2s / 5s / 30s / 5min) qui consommait
+  // ~9 000 calls/h/ergo vers NocoDB → saturation CPU NocoDB Easypanel
+  // et explosion du quota Vercel Fast Origin Transfer.
+  //
+  // Maintenant : pull "à la (re)connexion" UNIQUEMENT. Aucun timer
+  // récurrent. Les pulls sont déclenchés par 4 événements :
+  //   1. Boot de l'app (`start()`)
+  //   2. Retour foreground (`setAppLifecycleState(resumed)`)
+  //   3. Retour réseau (`onConnectivityBack()`)
+  //   4. Demande explicite (`requestPull()` exposé pour pull-to-refresh)
+  //
+  // Le PUSH (drain queue `sync_operations`) reste immédiat sur chaque
+  // mutation via `notify()` (debounce 50 ms) + safety retry toutes les
+  // 5 min via `_periodicTimer` pour les opérations échouées.
+  //
+  // Conséquence UX : sync cross-device Mac↔iPad n'est plus
+  // automatique. L'utilisateur voit les modifs de l'autre device au
+  // foreground return ou à la déconnexion/reconnexion. Workflow validé
+  // par l'utilisateur 2026-05-12 : « on annule sync engine, il ne faut
+  // pas augmenter le délai simplement actualisé à la reconnexion sur
+  // l'appli ».
 
   // ---------------------------------------------------------------------------
   // State
@@ -135,33 +105,29 @@ class SyncEngine {
   bool _rerunRequested = false;
   int _consecutiveFailures = 0;
 
-  // Pull adaptatif (cross-device).
-  Timer? _pullTimer;
+  // Pull (manuel, événementiel — plus de polling depuis 2026-05-12).
   bool _pullRunning = false;
-  DateTime _lastInteractionAt = DateTime.now();
   AppLifecycleState _appLifecycle = AppLifecycleState.resumed;
-
-  /// Compteur d'écrans ayant déclaré un focus haute fréquence via
-  /// [enterActiveContext]. Tant qu'il est > 0, [_currentPullInterval]
-  /// renvoie [_pullIntervalUltraActive] (2 s) au lieu de 5 s/30 s.
-  /// Ref-counted pour gérer plusieurs écrans empilés (ex. VAD ouvre
-  /// le NotesWindow → 2 demandes, 1 seule vraiment active).
-  int _activeContextRefCount = 0;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
-  /// Start the engine: run an initial sync attempt and schedule periodic checks.
+  /// Start the engine: run an initial sync + pull, and arm the safety net
+  /// retry timer (5 min) pour rejouer les ops `failed` de la queue.
   void start() {
     _periodicTimer?.cancel();
     _periodicTimer = Timer.periodic(_periodicInterval, (_) {
+      // Safety net : on rejoue les `sync_operations` en attente (push
+      // uniquement, pas de pull) au cas où une mutation aurait échoué
+      // depuis le dernier `notify()`. Pas de pull ici — il faut un
+      // événement explicite (boot/foreground/reconnect/pull-to-refresh).
       requestSync();
     });
-    // Kick off immediately.
+    // Boot : sync push + pull initial pour rattraper l'état serveur.
     requestSync();
-    // Lance le pull adaptatif (cross-device sync).
-    _schedulePull();
+    // ignore: discarded_futures
+    _runPullSafe();
   }
 
   void dispose() {
@@ -169,7 +135,6 @@ class SyncEngine {
     _retryTimer?.cancel();
     _periodicTimer?.cancel();
     _debounceTimer?.cancel();
-    _pullTimer?.cancel();
     _stateController.close();
   }
 
@@ -187,11 +152,12 @@ class SyncEngine {
   /// Push-on-mutation entry point. Called by repositories right after they
   /// enqueue a `sync_operations` row. Debounces rapid bursts so the engine
   /// fires exactly one sync cycle shortly after a flurry of edits.
+  ///
+  /// NB : ne déclenche PAS de pull. Le push immédiat suffit côté écrivain ;
+  /// le device qui LIT (autre Mac/iPad) verra les modifs au prochain
+  /// événement de (re)connexion ou pull-to-refresh.
   void notify() {
     if (_disposed) return;
-    // Marque l'utilisateur comme "actif" — utilisé par le pull adaptatif
-    // pour passer en intervalle 5s (au lieu de 30s idle).
-    _lastInteractionAt = DateTime.now();
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_notifyDebounce, () {
       _scheduleImmediate();
@@ -202,6 +168,9 @@ class SyncEngine {
   /// pour informer le SyncEngine de l'état foreground / background. Au
   /// retour en foreground on force un pull immédiat (le device a peut-être
   /// raté plusieurs minutes de modifs côté autre client).
+  ///
+  /// Refactor 2026-05-12 : c'est désormais l'UN DES SEULS moments où le pull
+  /// se déclenche (avec boot, reconnexion réseau, et pull-to-refresh).
   void setAppLifecycleState(AppLifecycleState state) {
     if (_disposed) return;
     final wasBackground = _appLifecycle != AppLifecycleState.resumed;
@@ -210,79 +179,17 @@ class SyncEngine {
     if (wasBackground && isResumed) {
       // Reprend l'app après une mise en arrière-plan → pull immédiat
       // pour rattraper d'éventuelles modifs distantes.
-      _runPullSafe();
-    }
-    // Dans tous les cas, re-planifie le prochain pull avec le bon
-    // intervalle (active 5s / idle 30s / background 5min).
-    _schedulePull();
-  }
-
-  /// Déclare qu'un écran sensible aux modifs distantes vient d'être
-  /// ouvert — tant qu'il y a au moins un appelant en cours, le pull
-  /// passe en mode ultra-actif (2 s) pour donner une sensation
-  /// quasi-instantanée Mac↔iPad. À appeler dans `initState`, à
-  /// équilibrer avec [leaveActiveContext] dans `dispose`.
-  ///
-  /// Idempotent côté ref-count, mais chaque enter doit avoir son leave
-  /// pour ne pas figer le mode ultra-actif quand l'écran disparait.
-  /// Re-planifie immédiatement le prochain pull avec le nouvel
-  /// intervalle (sinon on attend la fin du timer 30 s en cours).
-  void enterActiveContext() {
-    if (_disposed) return;
-    _activeContextRefCount += 1;
-    if (_activeContextRefCount == 1) {
-      // Fire un pull IMMÉDIAT à l'entrée d'un écran ultra-actif (VAD)
-      // pour ne pas faire patienter l'utilisateur jusqu'au prochain
-      // tick du timer. Sans ça, l'ouverture de la VAD pouvait avoir un
-      // décalage 0-2s entre le moment où l'écran s'affiche et où il
-      // contient les données fraîches du serveur. Demande utilisateur
-      // 2026-05-06 : « la sync entre Mac et iPad doit être bien plus
-      // rapide ». Avec ce kick immédiat, l'écran VAD reflète l'état
-      // serveur en ~500 ms (le temps du round-trip HTTP) au lieu
-      // d'attendre potentiellement 1-2 s.
       // ignore: discarded_futures
       _runPullSafe();
-      _schedulePull();
     }
   }
 
-  /// Pendant inverse de [enterActiveContext]. Le compteur ne descend
-  /// jamais en dessous de 0 (sécurité contre un dispose() appelé sans
-  /// initState() correspondant — ex. hot reload qui rejoue dispose).
-  void leaveActiveContext() {
-    if (_disposed) return;
-    if (_activeContextRefCount > 0) {
-      _activeContextRefCount -= 1;
-    }
-    if (_activeContextRefCount == 0) {
-      _schedulePull();
-    }
-  }
-
-  /// Calcule l'intervalle entre 2 pulls en fonction de l'état courant :
-  ///   - background → 5min
-  ///   - écran « focus haute fréquence » ouvert → 2s (ultra-actif)
-  ///   - foreground actif (save < 1min) → 5s
-  ///   - foreground idle → 30s
-  Duration _currentPullInterval() {
-    if (_appLifecycle != AppLifecycleState.resumed) {
-      return _pullIntervalBackground;
-    }
-    if (_activeContextRefCount > 0) return _pullIntervalUltraActive;
-    final idle = DateTime.now().difference(_lastInteractionAt);
-    if (idle < _idleThreshold) return _pullIntervalActive;
-    return _pullIntervalIdle;
-  }
-
-  /// (Re)planifie le prochain pull. Pattern récursif (pas Timer.periodic)
-  /// pour pouvoir adapter l'intervalle à chaque tick selon l'état actif/idle.
-  void _schedulePull() {
-    if (_disposed) return;
-    _pullTimer?.cancel();
-    _pullTimer = Timer(_currentPullInterval(), () async {
-      await _runPullSafe();
-      _schedulePull();
-    });
+  /// Pull explicite — déclenché par un pull-to-refresh utilisateur ou
+  /// par tout autre point d'entrée qui veut forcer une lecture serveur.
+  /// Best-effort, retourne `true` si le pull a abouti.
+  Future<bool> requestPull() async {
+    if (_disposed) return false;
+    return _runPullSafe();
   }
 
   /// Exécute un pull workspace si online + non disposé + pas déjà en cours.
@@ -297,17 +204,20 @@ class SyncEngine {
   /// rendre le snapshot du moment de l'ouverture (symptôme reporté :
   /// date de naissance + notes BALS Joris non synchronisées entre Mac
   /// et iPad sur l'écran VAD).
-  Future<void> _runPullSafe() async {
-    if (_disposed || _pullRunning) return;
-    if (ConnectivityService().isOffline) return;
+  Future<bool> _runPullSafe() async {
+    if (_disposed || _pullRunning) return false;
+    if (ConnectivityService().isOffline) return false;
     _pullRunning = true;
     try {
       final didRefresh = await DataService().refreshWorkspaceFromRemote();
       if (didRefresh && !_disposed) {
         _emitState(lastSyncAt: DateTime.now());
       }
+      return didRefresh;
     } catch (_) {
-      // Best-effort — un échec ne bloque pas, on retente au prochain tick.
+      // Best-effort — un échec ne bloque pas. Le prochain événement
+      // (foreground/reconnect/pull-to-refresh) retentera.
+      return false;
     } finally {
       _pullRunning = false;
     }
@@ -353,14 +263,22 @@ class SyncEngine {
     return removed;
   }
 
-  /// Called when network connectivity is restored. Resets backoff and triggers
-  /// a sync.
+  /// Called when network connectivity is restored. Resets backoff,
+  /// drains the push queue, AND pulls workspace pour rattraper les
+  /// modifs distantes pendant l'offline.
+  ///
+  /// Refactor 2026-05-12 : ajout explicite du pull (avant, seul le push
+  /// était relancé — on aurait pu rester avec des données stales jusqu'au
+  /// prochain foreground return).
   void onConnectivityBack() {
     if (_disposed) return;
     _consecutiveFailures = 0;
     _retryTimer?.cancel();
     _retryTimer = null;
     _scheduleImmediate();
+    // Pull aussi pour rattraper les modifs distantes (autre Mac/iPad).
+    // ignore: discarded_futures
+    _runPullSafe();
   }
 
   // ---------------------------------------------------------------------------

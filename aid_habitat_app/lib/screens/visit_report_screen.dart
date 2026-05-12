@@ -290,14 +290,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // ignore: discarded_futures
     _kickInitialNotesBulkPull();
 
-    // Active le mode pull « ultra-actif » (2 s) tant que l'écran VAD
-    // est ouvert. Sans ça, le device qui REGARDE (sans taper) bascule
-    // en idle au bout d'1 min et le pull tombe à 30 s — les notes
-    // écrites depuis l'autre appareil pouvaient mettre jusqu'à 30 s
-    // à s'afficher (symptôme rapporté 2026-05-06 : « j'ai ajouté un
-    // m sur iPad et 1 min après je ne le vois toujours pas sur Mac »).
-    // Équilibré dans `dispose()` via `leaveActiveContext`.
-    SyncEngine().enterActiveContext();
+    // Refactor 2026-05-12 : suppression de `enterActiveContext` (le mode
+    // pull ultra-actif n'existe plus). L'écran VAD reflète l'état au
+    // moment de l'ouverture ; les modifs distantes sont récupérées au
+    // prochain événement (foreground/reconnexion/login).
 
     // Auto-refresh quand un pull workspace arrive depuis l'autre
     // device — sinon les modifs faites sur Mac n'apparaissent pas sur
@@ -617,10 +613,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     _syncSubscription = null;
     _reportGenSubscription?.cancel();
     _reportGenSubscription = null;
-    // Relâche le mode ultra-actif activé dans `initState`. Re-bascule
-    // le SyncEngine sur l'intervalle adaptatif normal (5 s actif /
-    // 30 s idle) une fois qu'on quitte l'écran VAD.
-    SyncEngine().leaveActiveContext();
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     super.dispose();

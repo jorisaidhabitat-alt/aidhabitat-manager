@@ -117,22 +117,14 @@ class _PhotosTabState extends State<PhotosTab>
   void initState() {
     super.initState();
     _refresh();
-    // Polling 1s (était 2s) — tick agressif pendant que l'utilisateur
-    // regarde l'onglet Photos. En combinaison avec l'écoute du
-    // SyncEngine ci-dessous, la latence Mac→iPad devrait passer sous
-    // 3-5s en conditions normales.
-    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      if (ConnectivityService().isOffline) return;
-      _refresh(silent: true);
-    });
-
-    // Active le mode pull "ultra-actif" (1s) sur le SyncEngine tant
-    // que l'onglet Photos est ouvert — équilibré dans dispose().
-    SyncEngine().enterActiveContext();
-
-    // À chaque pull workspace réussi, on re-pousse aussi un refresh
-    // photos. Sans attendre le tick de 1s ci-dessus.
+    // Refactor 2026-05-12 : suppression du polling 1 s + de
+    // `enterActiveContext`. Les photos sont chargées au mount + à
+    // chaque pull workspace déclenché par un événement (foreground
+    // return, reconnexion réseau, login). Les actions locales (ajout,
+    // suppression, retag) déclenchent un `_refresh` direct via les
+    // callbacks d'édition — donc l'utilisateur voit ses propres
+    // modifications instantanément ; il ne voit celles de l'autre
+    // device qu'au prochain événement de (re)connexion.
     _syncSubscription = SyncEngine().stateStream.listen((state) {
       if (!mounted) return;
       final at = state.lastSyncAt;
@@ -149,7 +141,6 @@ class _PhotosTabState extends State<PhotosTab>
   void dispose() {
     _refreshTimer?.cancel();
     _syncSubscription?.cancel();
-    SyncEngine().leaveActiveContext();
     super.dispose();
   }
 

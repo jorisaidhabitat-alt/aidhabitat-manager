@@ -133,15 +133,9 @@ class _BathroomTabState extends State<BathroomTab>
   void initState() {
     super.initState();
     _load();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted) return;
-      // Skip offline (2026-05-07) — cf. wc_tab.dart pour le rationale.
-      if (ConnectivityService().isOffline) return;
-      if (_saveTimer?.isActive == true) return;
-      if (_saving) return;
-      // ignore: discarded_futures
-      _load();
-    });
+    // Refactor 2026-05-12 : suppression du polling 2 s. Sanitaires
+    // charge au mount + à chaque changement d'onglet. Modifs distantes
+    // visibles au prochain événement de (re)connexion.
   }
 
   @override

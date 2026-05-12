@@ -473,8 +473,15 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// Demande utilisateur 2026-05-06 : « la synchronisation entre les
   /// deux supports doit être bien plus rapide ». Endpoint très léger
   /// (1 row par patient/tab/page, ~quelques Ko).
+  ///
+  /// Refactor 2026-05-12 : polling supprimé. Le re-fetch est désormais
+  /// déclenché par les événements de (re)connexion via le listener
+  /// `_syncSubscription` sur SyncEngine.stateStream. Les déclarations
+  /// `_notePollTimer` et `_notePollRunning` sont conservées pour
+  /// rétro-compatibilité avec un cancel défensif dans `dispose` —
+  /// elles ne sont plus écrites nulle part.
+  // ignore: unused_field
   Timer? _notePollTimer;
-  bool _notePollRunning = false;
 
   @override
   void initState() {
@@ -501,32 +508,12 @@ class _NotesWidgetState extends State<NotesWidget> {
       _refreshCurrentPageFromRemoteAfterPull();
     });
 
-    _startNotePolling();
-  }
-
-  /// Démarre le timer périodique 1 s qui re-tire la note courante
-  /// depuis NocoDB (endpoint léger `/api/note-pages/:patientId`). Ce
-  /// poll est INDÉPENDANT du pull workspace (qui hit `/api/dossiers`,
-  /// plus lourd) — donc même si le workspace est en cold start ou
-  /// freeze sous queryAll, la note écrite reste sub-2 s.
-  ///
-  /// Garde-fous :
-  ///  - `_notePollRunning` empêche d'empiler des requêtes si NocoDB
-  ///    répond plus lentement que 1 s (cold start Vercel par ex.).
-  ///  - `_isDirty` skip le pull pendant la frappe locale pour ne pas
-  ///    écraser ce que l'utilisateur est en train de taper.
-  void _startNotePolling() {
-    _notePollTimer?.cancel();
-    _notePollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      // Skip offline (2026-05-07) — la note partagée se rafraîchira
-      // toute seule au retour réseau via le sync engine.
-      if (ConnectivityService().isOffline) return;
-      if (_isDirty) return;
-      if (_notePollRunning) return;
-      // ignore: discarded_futures
-      _runNotePoll();
-    });
+    // Refactor 2026-05-12 : suppression du polling 1 s. La note est
+    // chargée au mount + re-fetchée à chaque pull workspace réussi
+    // (déclenché par foreground return / reconnexion / login) via le
+    // listener `_syncSubscription` plus haut. Les modifs distantes ne
+    // sont plus visibles en temps réel — il faut un événement de
+    // (re)connexion pour les voir.
   }
 
   Future<void> _runNotePoll() async {

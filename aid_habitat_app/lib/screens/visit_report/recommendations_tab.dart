@@ -65,16 +65,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   void initState() {
     super.initState();
     _load();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted) return;
-      if (ConnectivityService().isOffline) return;
-      // Skip si saisie en cours côté local — évite d'écraser un title
-      // ou un customTitle que l'utilisateur est en train de taper.
-      if (_saveDebounce?.isActive == true) return;
-      if (_saving) return;
-      // ignore: discarded_futures
-      _pollRefresh();
-    });
+    // Refactor 2026-05-12 : suppression du polling 2 s. Recommandations
+    // chargées au mount. Modifs distantes visibles au prochain
+    // événement de (re)connexion (foreground/reconnect/login).
   }
 
   @override

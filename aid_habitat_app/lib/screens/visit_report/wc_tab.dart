@@ -63,19 +63,11 @@ class _WcTabState extends State<WcTab>
   void initState() {
     super.initState();
     _load();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted) return;
-      // Skip offline (2026-05-07) — pas de tentative HTTP qui
-      // échouerait silencieusement et gaspillerait CPU/batterie.
-      if (ConnectivityService().isOffline) return;
-      // Skip si une saisie est en cours côté local (debounce save actif
-      // ou save HTTP en flight) → on ne touche pas à _diagnostic pour
-      // ne pas écraser la valeur que l'utilisateur tape.
-      if (_saveTimer?.isActive == true) return;
-      if (_saving) return;
-      // ignore: discarded_futures
-      _load();
-    });
+    // Refactor 2026-05-12 : suppression du polling 2 s. L'onglet WC
+    // charge ses données au mount + à chaque changement d'onglet
+    // (didChangeDependencies/`setState` upstream). Les modifs faites
+    // depuis l'autre device apparaîtront au prochain événement de
+    // (re)connexion (foreground/reconnexion/login).
   }
 
   @override
