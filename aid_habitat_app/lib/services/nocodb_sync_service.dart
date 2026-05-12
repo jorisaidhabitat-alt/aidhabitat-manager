@@ -387,18 +387,34 @@ class NocodbSyncService {
   /// (ce qui créerait un cycle d'imports). Cf. `DataService.initialize`.
   Future<void> Function()? onConflictAutoResolved;
 
-  Future<void> _processOperation(SyncOperation operation) async {
+  /// Traite une `sync_operation`.
+  ///
+  /// [forceWrite] (par défaut `false`) : si `true`, court-circuite
+  /// l'optimistic locking (`expectedUpdatedAt`) côté push pour faire
+  /// gagner la version locale en cas de conflit 409 antérieur. Utilisé
+  /// par `_autoResolveConflictForceLocal` qui réinjecte une op après
+  /// un 409 — sans ce flag, le retry retomberait sur le même 409 et
+  /// on perdrait définitivement les modifs locales (rapporté
+  /// 2026-05-12 : « changement de situation familiale pas pris en
+  /// compte lors de la génération PDF »).
+  Future<void> _processOperation(
+    SyncOperation operation, {
+    bool forceWrite = false,
+  }) async {
     final payload = jsonDecode(operation.payloadJson) as Map<String, dynamic>;
 
     switch (operation.entityType) {
       case 'dossier':
-        await _processDossierOperation(operation, payload);
+        await _processDossierOperation(operation, payload,
+            forceWrite: forceWrite);
         return;
       case 'patient':
-        await _processPatientOperation(operation, payload);
+        await _processPatientOperation(operation, payload,
+            forceWrite: forceWrite);
         return;
       case 'housing':
-        await _processHousingOperation(operation, payload);
+        await _processHousingOperation(operation, payload,
+            forceWrite: forceWrite);
         return;
       case 'document':
         await _processDocumentOperation(operation, payload);
@@ -407,16 +423,19 @@ class NocodbSyncService {
         await _processNotePageOperation(operation, payload);
         return;
       case 'contexte_de_vie':
-        await _processContexteDeVieOperation(operation, payload);
+        await _processContexteDeVieOperation(operation, payload,
+            forceWrite: forceWrite);
         return;
       case 'diagnostic_sanitaires':
         await _processDiagnosticSanitairesOperation(operation, payload);
         return;
       case 'mesures_anthropometriques':
-        await _processMesuresOperation(operation, payload);
+        await _processMesuresOperation(operation, payload,
+            forceWrite: forceWrite);
         return;
       case 'observations_synthese':
-        await _processObservationsOperation(operation, payload);
+        await _processObservationsOperation(operation, payload,
+            forceWrite: forceWrite);
         return;
       case 'visit_recommendations':
         await _processVisitRecommendationsOperation(operation, payload);
@@ -611,8 +630,9 @@ class NocodbSyncService {
   /// and writes them into the NocoDB context table.
   Future<void> _processContexteDeVieOperation(
     SyncOperation operation,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    bool forceWrite = false,
+  }) async {
     if (operation.operationType != 'update') {
       throw Exception(
         'Opération contexte de vie non supportée: ${operation.operationType}',
@@ -627,11 +647,14 @@ class NocodbSyncService {
     // localement. Le serveur (sendConflictIfStale) renvoie 409 si la
     // ligne a été modifiée depuis — l'op est alors marquée `conflict`
     // et l'écran de résolution est proposé à l'utilisateur.
-    final expected = await _readRemoteUpdatedAt(
-      table: 'dossiers',
-      idColumn: 'local_id',
-      idValue: dossierId,
-    );
+    // Skip si `forceWrite=true` (retry après 409, cf. _processOperation).
+    final expected = forceWrite
+        ? null
+        : await _readRemoteUpdatedAt(
+            table: 'dossiers',
+            idColumn: 'local_id',
+            idValue: dossierId,
+          );
     final updatesWithGuard = <String, dynamic>{
       ...updates,
       if (expected != null) 'expectedUpdatedAt': expected,
@@ -639,7 +662,7 @@ class NocodbSyncService {
     // ignore: avoid_print
     print('[sync] PATCH /api/dossiers/$dossierId (contexte) '
         'keys=${updates.keys.toList()} '
-        'expectedUpdatedAt=${expected ?? "null"}');
+        'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}');
     await _apiClient.updateDossier(
       dossierId: dossierId,
       updates: updatesWithGuard,
@@ -660,13 +683,17 @@ class NocodbSyncService {
   /// `upsertMesures` n'enqueueait pas de sync_op.
   Future<void> _processMesuresOperation(
     SyncOperation operation,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    // ignore: unused_element_parameter
+    bool forceWrite = false,
+  }) async {
     if (operation.operationType != 'update') {
       throw Exception(
         'Opération mesures non supportée: ${operation.operationType}',
       );
     }
+    // Note : pas d'`expectedUpdatedAt` sur PUT /api/mesures (replace
+    // complet, pas PATCH partiel), donc forceWrite est ignoré ici.
     final dossierId = payload['dossierId']?.toString();
     final updates = (payload['updates'] as Map?)?.cast<String, dynamic>();
     if (dossierId == null || dossierId.isEmpty || updates == null) {
@@ -810,8 +837,9 @@ class NocodbSyncService {
   /// via linked records.
   Future<void> _processPatientOperation(
     SyncOperation operation,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    bool forceWrite = false,
+  }) async {
     if (operation.operationType != 'update') {
       throw Exception(
         'Opération patient non supportée: ${operation.operationType}',
@@ -824,11 +852,15 @@ class NocodbSyncService {
     }
     final remoteId = await _resolveRemotePatientId(localId) ?? localId;
     // Optimistic concurrency (cf. _processContexteDeVieOperation).
-    final expected = await _readRemoteUpdatedAt(
-      table: 'patients',
-      idColumn: 'local_id',
-      idValue: localId,
-    );
+    // Skip `expectedUpdatedAt` quand `forceWrite=true` : le retry après
+    // un 409 ne doit pas retomber sur le même conflit, last-write-wins.
+    final expected = forceWrite
+        ? null
+        : await _readRemoteUpdatedAt(
+            table: 'patients',
+            idColumn: 'local_id',
+            idValue: localId,
+          );
     final updatesWithGuard = <String, dynamic>{
       ...updates,
       if (expected != null) 'expectedUpdatedAt': expected,
@@ -836,7 +868,7 @@ class NocodbSyncService {
     // ignore: avoid_print
     print('[sync] PATCH /api/beneficiaires/$remoteId '
         'updates=${updates.keys.toList()} '
-        'expectedUpdatedAt=${expected ?? "null"}');
+        'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}');
     await _apiClient.updateBeneficiary(
       patientId: remoteId,
       updates: updatesWithGuard,
@@ -855,8 +887,9 @@ class NocodbSyncService {
   /// beneficiary remote ID by joining `dossiers` and `patients`.
   Future<void> _processHousingOperation(
     SyncOperation operation,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    bool forceWrite = false,
+  }) async {
     if (operation.operationType != 'update') {
       throw Exception(
         'Opération housing non supportée: ${operation.operationType}',
@@ -875,6 +908,7 @@ class NocodbSyncService {
     // Optimistic concurrency : on s'appuie sur la `housing_local_id`
     // référencée par le dossier pour récupérer le timestamp serveur du
     // logement (le `local_id` du logement est `housing_<dossierId>`).
+    // Skip si `forceWrite=true` (cf. _processPatientOperation).
     final db = await LocalDatabase.instance.database;
     final dRows = await db.query(
       'dossiers',
@@ -886,7 +920,7 @@ class NocodbSyncService {
     final housingLocalId = dRows.isEmpty
         ? null
         : dRows.first['housing_local_id'] as String?;
-    final expected = housingLocalId == null
+    final expected = (forceWrite || housingLocalId == null)
         ? null
         : await _readRemoteUpdatedAt(
             table: 'housings',
@@ -900,7 +934,7 @@ class NocodbSyncService {
     // ignore: avoid_print
     print('[sync] PATCH /api/logements/by-beneficiary/$remoteId '
         'updates=${updates.keys.toList()} '
-        'expectedUpdatedAt=${expected ?? "null"}');
+        'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}');
     await _apiClient.updateLogement(
       beneficiaryId: remoteId,
       updates: updatesWithGuard,
