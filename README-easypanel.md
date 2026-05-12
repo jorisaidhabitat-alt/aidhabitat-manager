@@ -121,23 +121,80 @@ Dans Easypanel UI :
 ### 3b. Service "aidhabitat-web"
 
 1. **Create Service** → **App** → nom : `aidhabitat-web`
-2. **Source** : Build from Git, Dockerfile path : `aid_habitat_app/Dockerfile.web`
-   - ⚠️ **Important** : Easypanel doit avoir accès au répertoire
-     `aid_habitat_app/build/web/`. Vu que cette directory est gitignorée
-     (build artifact), 2 options :
-     - **(recommandé)** Modifier `.gitignore` pour committer `build/web/`,
-       mais ça pollue le repo
-     - **(plus propre)** Builder le frontend en GitHub Actions et
-       publier l'image sur un registry. Si tu veux, je peux te
-       préparer le workflow `.github/workflows/build-web.yml`
-     - **(le plus simple pour démarrer)** Build en local, taguer
-       l'image, la pusher manuellement sur le registry intégré
-       Easypanel
+2. **Source** : 2 options selon le workflow :
+   - **(recommandé) Pull depuis GitHub Container Registry** :
+     - Source type : `Docker image`
+     - Image : `ghcr.io/jorisaidhabitat-alt/aidhabitat-web:latest`
+     - Authentification au registry : si ton repo GitHub est privé, crée
+       un Personal Access Token avec scope `read:packages` et configure-le
+       comme credentials Docker registry dans Easypanel UI
+     - Le workflow GitHub Actions (cf. § 4) build et push l'image à chaque
+       push sur main → tu n'as rien à faire manuellement
+   - **(alternative) Build from Git** : Easypanel clone ton repo et build.
+     ⚠️ nécessite que Easypanel ait Flutter SDK dans son environment de
+     build (peu probable par défaut → préférer l'option ghcr.io ci-dessus)
 3. **Port** : `80`
 4. **Domains** : ajoute `app.aidhabitat.fr`
 5. Pas de volume nécessaire (frontend 100 % statique)
 6. Pas de variables d'env
 7. **Resources** : 128 MB RAM, 0.1 CPU (nginx est ultra-léger)
+8. **Deploy webhook** : dans Settings → Deploy, **copie l'URL du webhook**
+   et garde-la pour la configurer côté GitHub (§ 4).
+
+## Étape 3c — GitHub Actions (CI/CD automatique)
+
+Deux workflows sont préparés dans `.github/workflows/` :
+
+| Workflow | Trigger | Que fait |
+|---|---|---|
+| `build-deploy-web.yml` | push sur main qui touche `aid_habitat_app/**` | Build Flutter web + push image Docker `aidhabitat-web` sur ghcr.io + trigger redéploiement Easypanel |
+| `build-deploy-api.yml` | push sur main qui touche `server/**` ou `shared/**` | Build image Docker `aidhabitat-api` sur ghcr.io + trigger redéploiement Easypanel |
+
+### Secrets GitHub à configurer
+
+Va sur **GitHub repo → Settings → Secrets and variables → Actions → New repository secret**.
+
+| Secret | Valeur | Description |
+|---|---|---|
+| `AIDHABITAT_API_BASE_URL` | `https://api.aidhabitat.fr` | URL publique de l'API, injectée comme `--dart-define` au build Flutter |
+| `EASYPANEL_WEB_WEBHOOK` | (URL fournie par Easypanel UI) | Webhook trigger redéploiement du service `aidhabitat-web` (Settings → Deploy → Webhook URL) |
+| `EASYPANEL_API_WEBHOOK` | (URL fournie par Easypanel UI) | Webhook trigger redéploiement du service `aidhabitat-api` (idem côté service api) |
+
+Si tu omets les 2 webhooks Easypanel, le build/push réussit quand même —
+tu devras juste cliquer "Deploy" manuellement dans Easypanel UI pour pull
+la dernière image. Avec les webhooks, c'est full auto.
+
+### Visibilité du package ghcr.io
+
+Par défaut les packages ghcr.io sont **privés** (héritent de la visibilité
+du repo). Si ton repo est privé, Easypanel doit avoir des credentials pour
+pull. 2 options :
+
+1. **Rendre le package public** (le code reste privé, juste l'image binaire
+   est publique — pas de secrets dedans, juste le bundle Flutter compilé) :
+   GitHub → Profile → Packages → `aidhabitat-web` → Settings → Change
+   visibility → Public.
+2. **Garder privé** + configurer Easypanel avec un Personal Access Token :
+   Generate un PAT avec scope `read:packages`, ajouter dans Easypanel UI
+   → Settings → Registries → `ghcr.io` username `<ton-username>` password
+   `<PAT>`.
+
+L'option 1 est plus simple ; l'option 2 plus sécurisée.
+
+### Vérifier que tout marche
+
+1. Configure les 3 secrets ci-dessus dans GitHub
+2. Push un commit sur main qui touche `aid_habitat_app/` (ex. modifie un
+   commentaire) → vérifie sur GitHub → Actions que le workflow tourne
+3. Une fois fini (~5-7 min), check sur Easypanel que le service a redéployé
+4. Ouvre `https://app.aidhabitat.fr` → ta modif devrait être visible
+
+### Trigger manuel (sans push)
+
+Si tu veux re-déployer sans commit : GitHub → Actions → choisis le workflow
+→ bouton **Run workflow** sur la branche main.
+
+---
 
 ## Étape 4 — DNS
 

@@ -1,0 +1,129 @@
+# ---------------------------------------------------------------------------
+# GitHub Actions — build & deploy du backend Express (API + génération PDF).
+#
+# Déclenché à chaque push sur `main` qui touche au code serveur. Build
+# l'image Docker via Dockerfile.api, push sur ghcr.io, puis trigger un
+# webhook Easypanel pour redéployer le service "aidhabitat-api".
+#
+# Beaucoup plus rapide que le build web (pas de Flutter SDK à installer)
+# — typiquement ~1 min avec cache, ~3 min cold.
+#
+# Secrets requis (à configurer sur GitHub → repo → Settings → Secrets):
+#   - EASYPANEL_API_WEBHOOK : URL de webhook Easypanel pour redéployer
+#       le service "aidhabitat-api". Optionnel.
+#
+# Permissions : `packages: write` pour push sur ghcr.io.
+# ---------------------------------------------------------------------------
+
+name: Build & Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile.api'
+      - '.dockerignore'
+      - '.github/workflows/build-deploy-api.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: api-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------------------
+      # 1. Sanity check : `node --check` sur le serveur avant de builder
+      # --------------------------------------------------------------
+      # Évite de pousser une image avec une erreur de syntaxe — économise
+      # un cycle complet build/push/deploy pour rien.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax check server
+        run: |
+          for f in server/index.mjs server/helpers.mjs server/nocodbMcpClient.mjs server/mobileSyncStore.mjs; do
+            echo "Checking $f…"
+            node --check "$f"
+          done
+
+      # --------------------------------------------------------------
+      # 2. Login sur GitHub Container Registry (ghcr.io)
+      # --------------------------------------------------------------
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --------------------------------------------------------------
+      # 3. Métadonnées : tags + labels OCI
+      # --------------------------------------------------------------
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/aidhabitat-api
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      # --------------------------------------------------------------
+      # 4. Build & push image Docker
+      # --------------------------------------------------------------
+      # Context = racine du repo (le Dockerfile.api a besoin de server/
+      # + shared/ + package*.json). `.dockerignore` racine exclut
+      # node_modules, aid_habitat_app/, etc.
+      - name: Build & push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      # --------------------------------------------------------------
+      # 5. Trigger redéploiement Easypanel
+      # --------------------------------------------------------------
+      - name: Trigger Easypanel redeploy
+        if: ${{ env.EASYPANEL_WEBHOOK != '' }}
+        env:
+          EASYPANEL_WEBHOOK: ${{ secrets.EASYPANEL_API_WEBHOOK }}
+        run: |
+          echo "Triggering Easypanel redeploy…"
+          response=$(curl -sS -o /tmp/easypanel-resp -w "%{http_code}" \
+            -X POST "$EASYPANEL_WEBHOOK")
+          echo "Easypanel response: HTTP $response"
+          cat /tmp/easypanel-resp || true
+          if [ "$response" -lt 200 ] || [ "$response" -ge 300 ]; then
+            echo "::warning::Easypanel webhook returned non-2xx — déploiement à vérifier manuellement"
+          fi
+
+      # --------------------------------------------------------------
+      # 6. Résumé pour le job log
+      # --------------------------------------------------------------
+      - name: Summary
+        run: |
+          echo "## ✅ API deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`ghcr.io/${{ github.repository_owner }}/aidhabitat-api:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Tags: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
