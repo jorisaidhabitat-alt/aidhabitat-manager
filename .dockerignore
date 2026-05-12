@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# .dockerignore racine — utilisé par Dockerfile.api.
+# Évite de copier dans l'image les répertoires lourds / sensibles.
+# Sans ce fichier : `COPY . .` aspire node_modules (centaines de MB),
+# build artifacts Flutter (1+ GB), data locale, credentials, etc.
+# ---------------------------------------------------------------------------
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Vercel local state (ne pas embarquer dans l'image Easypanel)
+.vercel/
+vercel.json
+
+# Build artifacts (le serveur n'a pas besoin du build frontend)
+aid_habitat_app/
+dist/
+build/
+
+# Données runtime locales (l'image utilise un volume monté à /data)
+server/data/auth-store.json
+server/data/profile-photos/
+server/data/documents/
+server/data/visit-plans/
+
+# Tests / docs
+**/*.test.*
+**/*.spec.*
+**/test/
+**/__tests__/
+README.md
+docs/
+
+# Scripts one-shot d'inspection / migration (pas runtime)
+scripts/
+
+# Caches
+.npm-cache/
+.cache/

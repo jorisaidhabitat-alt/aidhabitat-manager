@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# Dockerfile pour le frontend Flutter web (PWA iPad + Mac browser).
+#
+# Stratégie : build Flutter en local (ou en CI GitHub Actions), puis on
+# packe le résultat statique dans une image nginx:alpine ultra-légère.
+# Pas de Flutter dans l'image runtime → image finale ~10 MB.
+#
+# Build :
+#   # 1. Compile le bundle Flutter web en local AVANT de builder l'image :
+#   ./tool/build_web.sh   # ou AIDHABITAT_API_BASE_URL=https://api.aidhabitat.fr ./tool/build_web.sh
+#   # 2. Build l'image (depuis aid_habitat_app/) :
+#   docker build -f Dockerfile.web -t aidhabitat-web:latest .
+#
+# Run (local test) :
+#   docker run -p 8080:80 aidhabitat-web:latest
+#   # → ouvre http://localhost:8080
+#
+# Sur Easypanel : push l'image, ajoute le domaine app.aidhabitat.fr,
+# active TLS auto (Let's Encrypt).
+# ---------------------------------------------------------------------------
+
+FROM nginx:alpine
+
+# Copie du bundle Flutter web pré-compilé.
+# Le `build/web/` doit avoir été généré avant via `tool/build_web.sh`
+# (avec --release et le bon AIDHABITAT_API_BASE_URL injecté).
+COPY build/web/ /usr/share/nginx/html/
+
+# Conf nginx custom : COOP/COEP headers (requis pour sqflite WASM),
+# fallback SPA vers /index.html (Flutter web routing), gzip, cache.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1
+
+# nginx:alpine définit déjà le CMD qui lance nginx en foreground.

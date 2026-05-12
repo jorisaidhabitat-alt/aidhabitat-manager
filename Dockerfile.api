@@ -1,0 +1,69 @@
+# ---------------------------------------------------------------------------
+# Dockerfile pour le backend Express (API + génération PDF).
+#
+# Cible : déploiement Easypanel / Docker / Coolify / VPS générique.
+# Le code reste 100 % compatible Vercel (le `process.env.VERCEL` continue
+# à être détecté quand on déploie sur Vercel) — ce Dockerfile sert
+# uniquement à packager le serveur pour un hébergeur container.
+#
+# Build :
+#   docker build -f Dockerfile.api -t aidhabitat-api:latest .
+#
+# Run (local test) :
+#   docker run -p 3001:3001 \
+#     -e NOCODB_API_URL=https://apps-nocodb.z5avx1.easypanel.host/ \
+#     -e NOCODB_API_TOKEN=xxx \
+#     -e NOCODB_FORCE_REST=1 \
+#     -e MOBILE_SYNC_REQUIRE_NOCODB=1 \
+#     -e AUTH_SESSION_SECRET=xxx \
+#     -e JWT_SECRET=xxx \
+#     -e AIDHABITAT_DATA_DIR_PATH=/data \
+#     -e APP_PUBLIC_BASE_URL=https://api.aidhabitat.fr \
+#     -e CORS_EXTRA_ORIGIN=https://app.aidhabitat.fr \
+#     -v aidhabitat-data:/data \
+#     aidhabitat-api:latest
+#
+# ---------------------------------------------------------------------------
+
+# Node.js 20 LTS (compat avec la stack actuelle — Vercel utilise aussi Node 20).
+# Image alpine = ~50 MB, économe en RAM. Si problème de compatibilité native
+# (rare), passer à `node:20-bookworm-slim` qui pèse ~80 MB.
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Installation des deps en couche séparée pour bénéficier du cache Docker
+# (si package.json ne change pas, on ne re-télécharge pas npm).
+COPY package*.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && \
+    npm cache clean --force
+
+# Code serveur uniquement (le frontend a son propre Dockerfile).
+# On copie aussi `shared/` pour les types partagés serveur/Flutter.
+COPY server/ ./server/
+COPY shared/ ./shared/
+
+# Volume pour la persistence des données serveur (auth-store.json,
+# profile-photos/, etc.). Sur Easypanel, monte un volume à /data.
+# Ce VOLUME instruction est informatif — Easypanel/Docker utilisera
+# la conf -v passée au runtime de toute façon.
+VOLUME /data
+
+# Variables d'env par défaut. À surcharger via Easypanel UI.
+ENV NODE_ENV=production \
+    API_PORT=3001 \
+    AIDHABITAT_DATA_DIR_PATH=/data \
+    NOCODB_FORCE_REST=1 \
+    MOBILE_SYNC_REQUIRE_NOCODB=1
+
+EXPOSE 3001
+
+# Healthcheck simple : le serveur répond OK sur GET / (sert l'index ou
+# une 404, l'important c'est qu'il réponde un statut < 500).
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/ || exit 1
+
+# Point d'entrée : le serveur Express.
+# `node server/index.mjs` détecte qu'il est en exécution directe (isDirectExecution)
+# → appelle app.listen(port) automatiquement.
+CMD ["node", "server/index.mjs"]
