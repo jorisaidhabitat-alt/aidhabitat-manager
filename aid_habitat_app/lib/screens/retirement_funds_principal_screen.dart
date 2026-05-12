@@ -446,17 +446,12 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
                 color: Colors.white,
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 10),
-                child: Center(
-                  // _PrincipalFundLogo s'étend pour remplir l'espace
-                  // dispo via Expanded — BoxFit.contain fait le reste.
-                  child: _PrincipalFundLogo(
-                    logoUrl: fund.logoUrl,
-                    // Le hero alloue ~110 pt utiles (130 - 20 padding
-                    // vertical). Largeur ~220 (280 - 60 padding/marges
-                    // grid). Le logo s'inscrit dans ce rectangle.
-                    size: 110,
-                  ),
-                ),
+                // _PrincipalFundLogo sans `size` → SizedBox.expand →
+                // remplit toute la zone padded (~110 h × ~220 w). Avec
+                // BoxFit.contain, les wordmarks larges (CPRP SNCF,
+                // CNRACL) prennent toute la largeur disponible au lieu
+                // d'être bornés à un carré 110×110.
+                child: _PrincipalFundLogo(logoUrl: fund.logoUrl),
               ),
               // ---------- Text content ----------
               Expanded(
@@ -544,15 +539,27 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
 ///  • Vide → placeholder gris.
 ///
 /// `BoxFit.contain` partout (les logos brandés ont du whitespace interne
-/// et doivent respirer dans le hero plutôt qu'être rognés).
+/// et doivent respirer dans le hero plutôt qu'être rognés). Si `size`
+/// est fourni, on fixe une boîte carrée — sinon le widget remplit son
+/// parent (pour permettre aux wordmarks larges d'utiliser toute la
+/// largeur du hero, demande user 2026-05-12).
 class _PrincipalFundLogo extends StatelessWidget {
   final String logoUrl;
-  final double size;
+  final double? size;
 
-  const _PrincipalFundLogo({required this.logoUrl, this.size = 80});
+  const _PrincipalFundLogo({required this.logoUrl, this.size});
 
   @override
   Widget build(BuildContext context) {
+    final child = _buildContent();
+    if (size != null) {
+      return SizedBox(width: size, height: size, child: child);
+    }
+    // Pas de size fixée → on remplit l'espace dispo du parent.
+    return SizedBox.expand(child: child);
+  }
+
+  Widget _buildContent() {
     if (logoUrl.isEmpty) {
       return _placeholder();
     }
@@ -560,27 +567,16 @@ class _PrincipalFundLogo extends StatelessWidget {
       // SVG inline — décode et rend avec flutter_svg.
       final svgString = _decodeSvgDataUri(logoUrl);
       if (svgString == null) return _placeholder();
-      return SizedBox(
-        width: size,
-        height: size,
-        child: SvgPicture.string(
-          svgString,
-          fit: BoxFit.contain,
-        ),
-      );
+      return SvgPicture.string(svgString, fit: BoxFit.contain);
     }
     if (logoUrl.startsWith('data:image/')) {
       // Bitmap inline (PNG / JPEG base64).
       final bytes = _decodeBitmapDataUri(logoUrl);
       if (bytes == null) return _placeholder();
-      return SizedBox(
-        width: size,
-        height: size,
-        child: Image.memory(
-          bytes,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _placeholder(),
-        ),
+      return Image.memory(
+        bytes,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _placeholder(),
       );
     }
     // URL HTTP — si .svg utilise flutter_svg.network (Image.network
@@ -588,30 +584,20 @@ class _PrincipalFundLogo extends StatelessWidget {
     final lowerUrl = logoUrl.toLowerCase();
     final isSvgUrl = lowerUrl.endsWith('.svg') || lowerUrl.contains('.svg?');
     if (isSvgUrl) {
-      return SizedBox(
-        width: size,
-        height: size,
-        child: SvgPicture.network(
-          logoUrl,
-          fit: BoxFit.contain,
-          placeholderBuilder: (_) => _placeholder(),
-        ),
-      );
-    }
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Image.network(
+      return SvgPicture.network(
         logoUrl,
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => _placeholder(),
-      ),
+        placeholderBuilder: (_) => _placeholder(),
+      );
+    }
+    return Image.network(
+      logoUrl,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => _placeholder(),
     );
   }
 
   Widget _placeholder() => Container(
-        width: size,
-        height: size,
         decoration: BoxDecoration(
           color: const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(16),

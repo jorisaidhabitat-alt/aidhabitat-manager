@@ -1,19 +1,21 @@
 // Exporté pour pouvoir générer à la volée un logo SVG pour les caisses
 // principales (sans entrée dédiée dans ce catalog) — cf.
 // `/api/retirement-funds-principal` dans server/index.mjs.
-export const buildLogoDataUri = ({ initials, primary, secondary, name }) => {
+//
+// MAJ 2026-05-12 : suppression du gradient (qui causait des collisions
+// d'ID `g` quand plusieurs SVG inline étaient montés simultanément dans
+// flutter_svg) → fond uni `primary`. `rgba(...)` remplacé par
+// `fill="#ffffff" fill-opacity="x"` (compatible flutter_svg, contrairement
+// à `rgba()` qui était parfois ignoré côté Flutter). `font-family` ne
+// liste plus que Helvetica/Arial standard (pas de « Arial Black » qui
+// n'existe pas sur toutes les plateformes).
+export const buildLogoDataUri = ({ initials, primary, name }) => {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img" aria-label="${name}">
-      <defs>
-        <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="${primary}" />
-          <stop offset="100%" stop-color="${secondary}" />
-        </linearGradient>
-      </defs>
-      <rect width="240" height="240" rx="44" fill="url(#g)" />
-      <circle cx="188" cy="52" r="18" fill="rgba(255,255,255,0.18)" />
-      <circle cx="48" cy="194" r="24" fill="rgba(255,255,255,0.12)" />
-      <text x="120" y="134" text-anchor="middle" font-family="Arial, sans-serif" font-size="72" font-weight="700" fill="#ffffff">${initials}</text>
+      <rect width="240" height="240" rx="44" fill="${primary}" />
+      <circle cx="188" cy="52" r="18" fill="#ffffff" fill-opacity="0.18" />
+      <circle cx="48" cy="194" r="24" fill="#ffffff" fill-opacity="0.12" />
+      <text x="120" y="134" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#ffffff">${initials}</text>
     </svg>
   `.trim();
 
