@@ -52,13 +52,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   ///  - skip si `existingSyncState == pendingSync` (modifs locales en
   ///    cours pas encore poussées)
   ///  - merge `[...remoteItems, ...localDrafts]` où localDrafts =
-  ///    items sans `wikiItemId` (= picker pas encore validé) — ne
-  ///    sont jamais écrasés par le remote
-  ///
-  /// On ajoute un garde-fou supplémentaire ici : skip si l'utilisateur
-  /// a un save en attente (`_saveDebounce.isActive`) ou en flight
-  /// (`_saving`) → on ne touche pas à `_items` pendant qu'il édite.
-  Timer? _refreshTimer;
+  // _refreshTimer supprimé 2026-05-12 (refactor sync à la (re)connexion).
 
   @override
   void initState() {
@@ -71,7 +65,6 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
     // Flush immédiat si un save était en attente (debounce non tiré).
     // Sinon, toute modif dans les 2 dernières secondes avant fermeture
     // de l'onglet / app était perdue.

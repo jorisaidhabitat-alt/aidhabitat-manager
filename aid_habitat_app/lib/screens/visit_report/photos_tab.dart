@@ -97,12 +97,7 @@ class _PhotosTabState extends State<PhotosTab>
   /// d'environ 2,5s. Coût serveur : ~30 GET/min par utilisateur actif
   /// dans cet onglet, mais la requête est légère (SELECT documents
   /// where patient_local_id, pas de binaire transféré tant que les
-  /// bytes ne sont pas demandés).
-  ///
-  /// Polling pause quand l'app passe en background ou quand l'onglet
-  /// Photos n'est plus visible (cf. `wantKeepAlive` Flutter — le state
-  /// est détruit si pas keep-alive).
-  Timer? _refreshTimer;
+  // _refreshTimer supprimé 2026-05-12 (refactor sync à la (re)connexion).
 
   /// Subscription au stream du SyncEngine — déclenche un refresh
   /// immédiat de la liste des photos quand un pull workspace réussit
@@ -139,7 +134,6 @@ class _PhotosTabState extends State<PhotosTab>
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
     _syncSubscription?.cancel();
     super.dispose();
   }

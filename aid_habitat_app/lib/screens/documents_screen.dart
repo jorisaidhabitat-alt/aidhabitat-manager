@@ -23,7 +23,6 @@ import '../components/file_drop_zone.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
-import '../services/connectivity_service.dart';
 import '../services/file_drop_listener.dart' show DroppedFile;
 import '../services/image_compressor.dart';
 import '../services/web_file_picker.dart';
@@ -32,7 +31,6 @@ import '../services/app_config.dart';
 import '../services/data_service.dart';
 import '../services/document_repository.dart';
 import '../services/media_cache_service.dart';
-import '../services/sync_engine.dart';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -130,8 +128,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   /// toute la zone. Géré par `FileDropZone.onHighlight`.
   bool _dragHighlight = false;
 
-  // Auto-refresh : polling toutes les 10 s + refresh au retour focus app.
-  Timer? _refreshTimer;
+  // _refreshTimer supprimé 2026-05-12 (refactor sync à la (re)connexion).
 
   String get _patientId => widget.dossier.patient.id;
 
@@ -1565,7 +1562,6 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _refreshTimer?.cancel();
     _keyboardFocus.dispose();
     super.dispose();
   }
