@@ -8,7 +8,10 @@ import 'package:http/http.dart' as http;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:sqflite/sqflite.dart';
+
 import '../services/app_config.dart';
+import '../services/local_database.dart';
 import '../services/nocodb_api_client.dart';
 
 /// Page « Caisses de retraite principales » — référentiel partagé.
@@ -39,6 +42,11 @@ class _RetirementFundsPrincipalScreenState
   // POST direct avec ses propres headers.
   final http.Client _client = http.Client();
   final NocodbApiClient _api = NocodbApiClient();
+  final LocalDatabase _localDb = LocalDatabase.instance;
+
+  /// Clé du cache `kv_store` pour la liste des caisses principales.
+  /// Pattern identique à `references_service.dart` (`refs_payload_v1`).
+  static const String _cacheKey = 'principal_retirement_funds_v1';
 
   List<_PrincipalFund> _funds = const [];
   bool _isLoading = true;
@@ -57,18 +65,32 @@ class _RetirementFundsPrincipalScreenState
     super.dispose();
   }
 
+  /// Stratégie offline-first identique à `RetirementFundsScreen` (caisses
+  /// complémentaires) :
+  ///   1. Lit le cache local `kv_store` → affichage INSTANTANÉ (pas de
+  ///      spinner si on a déjà visité la page une fois).
+  ///   2. Refresh remote en arrière-plan → met à jour l'UI quand la
+  ///      réponse arrive.
+  ///   3. Persiste la réponse remote pour le prochain cold start.
+  ///
+  /// Demande utilisateur 2026-05-12 : « les caisses de retraite
+  /// principales chargent à l'affichage alors que ça devrait être
+  /// instantané comme caisse de retraite complémentaire ».
   Future<void> _loadFunds() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    // 1. Lecture cache local — instantané.
+    final cached = await _readFromCache();
+    if (cached != null && cached.isNotEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _funds = cached;
+        _isLoading = false;
+        _error = null;
+      });
+    }
+
+    // 2. Refresh remote en arrière-plan (pas de spinner si on a déjà
+    // affiché le cache).
     try {
-      // Utilise `NocodbApiClient.fetchPrincipalRetirementFunds()` qui
-      // partage la même logique d'auth (headers + timeout + retry
-      // transient guard) que les autres endpoints de l'app. Ma
-      // tentative précédente en `http.Client` brut renvoyait 401
-      // (probablement `appSessionToken` pas encore set au boot ou
-      // headers mal formés).
       final raw = await _api.fetchPrincipalRetirementFunds();
       final funds = raw
           .map((m) => _PrincipalFund(
@@ -82,7 +104,10 @@ class _RetirementFundsPrincipalScreenState
       setState(() {
         _funds = funds;
         _isLoading = false;
+        _error = null;
       });
+      // 3. Persiste pour le prochain cold start. Fire-and-forget.
+      unawaited(_writeToCache(funds));
     } catch (error, stack) {
       // ignore: avoid_print
       print('[retirement_principal] fetch error: $error');
@@ -91,10 +116,62 @@ class _RetirementFundsPrincipalScreenState
       if (!mounted) return;
       setState(() {
         _isLoading = false;
+        // N'affiche d'erreur que si on n'a RIEN à montrer (ni cache, ni
+        // remote). Sinon on garde l'affichage cache silencieusement.
         _error = _funds.isEmpty
             ? 'Chargement impossible — $error'
             : null;
       });
+    }
+  }
+
+  Future<List<_PrincipalFund>?> _readFromCache() async {
+    try {
+      final db = await _localDb.database;
+      final rows = await db.query(
+        'kv_store',
+        where: 'key = ?',
+        whereArgs: [_cacheKey],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      final raw = rows.first['value'] as String?;
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return null;
+      return decoded
+          .whereType<Map>()
+          .map((e) => _PrincipalFund.fromJson(e.cast<String, dynamic>()))
+          .toList(growable: false);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeToCache(List<_PrincipalFund> funds) async {
+    try {
+      final db = await _localDb.database;
+      final encoded = jsonEncode(
+        funds
+            .map((f) => {
+                  'id': f.id,
+                  'name': f.name,
+                  'phone': f.phone,
+                  'logoUrl': f.logoUrl,
+                })
+            .toList(),
+      );
+      await db.insert(
+        'kv_store',
+        {
+          'key': _cacheKey,
+          'value': encoded,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {
+      // Silent — un cache absent n'est pas fatal.
     }
   }
 
