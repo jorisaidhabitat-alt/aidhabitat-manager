@@ -3962,19 +3962,30 @@ app.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) 
     const funds = records
       .map((record) => {
         const name = String(field(record, 'nom') || '').trim();
-        // Logo auto-généré (data URI SVG) : initiales + dégradé
-        // couleur déterministe basé sur le hash du nom. Permet
-        // d'avoir un visuel reconnaissable par caisse sans avoir
-        // à uploader des assets (charte CNAV, MSA, CNRACL, etc.).
-        const palette = PRINCIPAL_FUND_PALETTES[
-          hashStringToIndex(name, PRINCIPAL_FUND_PALETTES.length)
-        ];
-        const logoUrl = buildLogoDataUri({
-          initials: fundNameToInitials(name),
-          primary: palette.primary,
-          secondary: palette.secondary,
-          name,
-        });
+        // Priorité 1 : catalog des caisses principales (SVG brandés
+        // statiques avec couleurs institutionnelles, cf.
+        // principalRetirementFundsCatalog.mjs). Demande utilisateur
+        // 2026-05-12 : parité avec les caisses complémentaires qui
+        // ont déjà des logos brandés (Klésia, AG2R, Pro BTP…).
+        const branded = getPrincipalFundBranding(name);
+        let logoUrl;
+        if (branded?.logoUrl) {
+          logoUrl = absoluteUrl(branded.logoUrl);
+        } else {
+          // Priorité 2 : SVG auto-généré (data URI). Initiales +
+          // dégradé déterministe basé sur le hash du nom — fallback
+          // pour les caisses non encore catalogées (ex. « Caisse
+          // Retraite A » test).
+          const palette = PRINCIPAL_FUND_PALETTES[
+            hashStringToIndex(name, PRINCIPAL_FUND_PALETTES.length)
+          ];
+          logoUrl = buildLogoDataUri({
+            initials: fundNameToInitials(name),
+            primary: palette.primary,
+            secondary: palette.secondary,
+            name,
+          });
+        }
         return {
           id: String(record.id),
           name,

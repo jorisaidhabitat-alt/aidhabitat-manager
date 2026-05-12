@@ -253,10 +253,10 @@ class _RetirementFundsPrincipalScreenState
                   maxCrossAxisExtent: 280,
                   mainAxisSpacing: 16,
                   crossAxisSpacing: 16,
-                  // 80 (logo) + 12 padding + 12 spacing + ~36 (nom 2
-                  // lignes) + 8 spacing + 32 (chip téléphone) + 16
-                  // padding = ~196. On met 210 pour confort.
-                  mainAxisExtent: 210,
+                  // 120 (hero logo) + 12 padding + ~20 nom + 8 + ~30 chip
+                  // téléphone + 12 padding ≈ 230 — parité 1:1 avec les
+                  // cartes caisses complémentaires (`_FundCard`).
+                  mainAxisExtent: 230,
                 ),
                 itemCount: _filteredFunds.length,
                 itemBuilder: (context, index) {
