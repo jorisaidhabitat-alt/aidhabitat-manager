@@ -1,4 +1,7 @@
-const buildLogoDataUri = ({ initials, primary, secondary, name }) => {
+// Exporté pour pouvoir générer à la volée un logo SVG pour les caisses
+// principales (sans entrée dédiée dans ce catalog) — cf.
+// `/api/retirement-funds-principal` dans server/index.mjs.
+export const buildLogoDataUri = ({ initials, primary, secondary, name }) => {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img" aria-label="${name}">
       <defs>

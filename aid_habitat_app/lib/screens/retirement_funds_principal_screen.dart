@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -73,6 +75,7 @@ class _RetirementFundsPrincipalScreenState
                 id: m['id'] ?? '',
                 name: m['name'] ?? '',
                 phone: m['phone'] ?? '',
+                logoUrl: m['logoUrl'] ?? '',
               ))
           .toList(growable: false);
       if (!mounted) return;
@@ -250,9 +253,10 @@ class _RetirementFundsPrincipalScreenState
                   maxCrossAxisExtent: 280,
                   mainAxisSpacing: 16,
                   crossAxisSpacing: 16,
-                  // Hauteur réduite (230 → 140) puisqu'on n'affiche
-                  // que nom + téléphone (pas de logo / dates / etc.).
-                  mainAxisExtent: 140,
+                  // 80 (logo) + 12 padding + 12 spacing + ~36 (nom 2
+                  // lignes) + 8 spacing + 32 (chip téléphone) + 16
+                  // padding = ~196. On met 210 pour confort.
+                  mainAxisExtent: 210,
                 ),
                 itemCount: _filteredFunds.length,
                 itemBuilder: (context, index) {
@@ -270,7 +274,7 @@ class _RetirementFundsPrincipalScreenState
   }
 }
 
-/// Carte compacte : nom + chip téléphone tappable.
+/// Carte avec logo en hero + nom + chip téléphone tappable.
 class _PrincipalFundCard extends StatelessWidget {
   final _PrincipalFund fund;
   final VoidCallback onCallPhone;
@@ -289,22 +293,28 @@ class _PrincipalFundCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          // Logo hero — square 80×80, dégradé + initiales (généré
+          // côté serveur en SVG data URI).
+          Center(
+            child: _PrincipalFundLogo(logoUrl: fund.logoUrl, size: 80),
+          ),
+          const SizedBox(height: 12),
           Text(
             fund.name,
             style: const TextStyle(
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
               color: Color(0xFF0F172A),
               height: 1.25,
             ),
-            maxLines: 3,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
+          const SizedBox(height: 8),
           if (hasPhone)
             GestureDetector(
               onTap: onCallPhone,
@@ -321,12 +331,15 @@ class _PrincipalFundCard extends StatelessWidget {
                     const Icon(LucideIcons.phone,
                         size: 14, color: Color(0xFF7C6DAA)),
                     const SizedBox(width: 6),
-                    Text(
-                      fund.phone,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF7C6DAA),
+                    Flexible(
+                      child: Text(
+                        fund.phone,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF7C6DAA),
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -348,15 +361,116 @@ class _PrincipalFundCard extends StatelessWidget {
   }
 }
 
+/// Logo carré pour la card. Accepte un data URI `data:image/svg+xml`
+/// (encodé URL ou base64), data URI bitmap (`data:image/png;base64,...`)
+/// ou une URL HTTP standard. Vide → placeholder gris.
+class _PrincipalFundLogo extends StatelessWidget {
+  final String logoUrl;
+  final double size;
+
+  const _PrincipalFundLogo({required this.logoUrl, this.size = 80});
+
+  @override
+  Widget build(BuildContext context) {
+    if (logoUrl.isEmpty) {
+      return _placeholder();
+    }
+    if (logoUrl.startsWith('data:image/svg+xml')) {
+      // SVG inline — décode et rend avec flutter_svg.
+      final svgString = _decodeSvgDataUri(logoUrl);
+      if (svgString == null) return _placeholder();
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SvgPicture.string(
+          svgString,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+    if (logoUrl.startsWith('data:image/')) {
+      // Bitmap inline (PNG / JPEG base64).
+      final bytes = _decodeBitmapDataUri(logoUrl);
+      if (bytes == null) return _placeholder();
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Image.memory(
+          bytes,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _placeholder(),
+        ),
+      );
+    }
+    // URL HTTP standard
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Image.network(
+        logoUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _placeholder(),
+      ),
+    );
+  }
+
+  Widget _placeholder() => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(LucideIcons.building,
+            size: 32, color: Color(0xFF94A3B8)),
+      );
+
+  String? _decodeSvgDataUri(String dataUri) {
+    final commaIdx = dataUri.indexOf(',');
+    if (commaIdx < 0) return null;
+    final meta = dataUri.substring(0, commaIdx);
+    final payload = dataUri.substring(commaIdx + 1);
+    try {
+      if (meta.contains(';base64')) {
+        return utf8.decode(base64Decode(payload));
+      }
+      // sinon URL-encoded (cas du serveur : encodeURIComponent).
+      return Uri.decodeComponent(payload);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Uint8List? _decodeBitmapDataUri(String dataUri) {
+    final commaIdx = dataUri.indexOf(',');
+    if (commaIdx < 0) return null;
+    final payload = dataUri.substring(commaIdx + 1);
+    try {
+      return base64Decode(payload);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class _PrincipalFund {
   final String id;
   final String name;
   final String phone;
+  // Data URI SVG (logo auto-généré côté serveur : initiales +
+  // dégradé déterministe). Vide si non fourni — la card affiche
+  // un placeholder dans ce cas.
+  final String logoUrl;
 
   const _PrincipalFund({
     required this.id,
     required this.name,
     required this.phone,
+    this.logoUrl = '',
   });
 
   factory _PrincipalFund.fromJson(Map<String, dynamic> json) =>
@@ -364,6 +478,7 @@ class _PrincipalFund {
         id: json['id']?.toString() ?? '',
         name: json['name']?.toString() ?? '',
         phone: json['phone']?.toString() ?? '',
+        logoUrl: json['logoUrl']?.toString() ?? '',
       );
 }
 

@@ -1465,10 +1465,10 @@ class NocodbApiClient {
   }
 
   /// Variante qui renvoie les caisses principales complètes
-  /// ({id, name, phone}) — utilisée par `RetirementFundsPrincipalScreen`
-  /// (page dédiée). Réutilise l'auth/headers/timeout du client pour
-  /// éviter les soucis de session que mon premier essai en
-  /// `http.Client` brut rencontrait. Demande utilisateur 2026-05-12.
+  /// ({id, name, phone, logoUrl}) — utilisée par
+  /// `RetirementFundsPrincipalScreen`. Le `logoUrl` est un data URI
+  /// SVG généré côté serveur (initiales + dégradé couleur basé sur
+  /// le hash du nom). Demande utilisateur 2026-05-12.
   Future<List<Map<String, String>>> fetchPrincipalRetirementFunds() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
@@ -1491,6 +1491,7 @@ class NocodbApiClient {
               'id': (item['id'] ?? '').toString(),
               'name': (item['name'] ?? '').toString().trim(),
               'phone': (item['phone'] ?? '').toString().trim(),
+              'logoUrl': (item['logoUrl'] ?? '').toString(),
             })
         .where((m) => (m['name'] ?? '').isNotEmpty)
         .toList();

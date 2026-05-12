@@ -11,7 +11,7 @@ import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import {
   resyncBeneficiaireDenormalizedNames,
 } from './resyncLegacyNames.mjs';
-import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
+import { getRetirementFundMeta, buildLogoDataUri } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
 // 2026-05-06 — Vercel Blob entièrement éliminé. Seuls les helpers
@@ -3903,6 +3903,50 @@ app.get('/api/retirement-funds', requireAuth, async (_req, res, next) => {
   }
 });
 
+// Palette de gradients pour les logos auto-générés des caisses
+// principales — chaque caisse récupère une paire (primary, secondary)
+// dérivée d'un hash stable de son nom (couleur déterministe). Tirée
+// du même style que les complémentaires (cf. retirementFundsCatalog
+// `buildLogoDataUri`). Demande utilisateur 2026-05-12.
+const PRINCIPAL_FUND_PALETTES = [
+  { primary: '#7C6DAA', secondary: '#3F2D69' }, // violet (charte app)
+  { primary: '#0E7C86', secondary: '#123C5A' }, // teal
+  { primary: '#2563EB', secondary: '#1E3A8A' }, // bleu profond
+  { primary: '#DC2626', secondary: '#7F1D1D' }, // rouge bordeaux
+  { primary: '#059669', secondary: '#064E3B' }, // vert forêt
+  { primary: '#D97706', secondary: '#78350F' }, // ambre
+  { primary: '#DB2777', secondary: '#831843' }, // rose magenta
+  { primary: '#0891B2', secondary: '#164E63' }, // cyan
+];
+
+const fundNameToInitials = (name) => {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return '?';
+  // Si le nom contient des parenthèses, on prend ce qu'il y a avant.
+  const head = trimmed.split('(')[0].trim() || trimmed;
+  // Sépare sur espaces, tirets, apostrophes — garde les "tokens" non
+  // vides commençant par une lettre/chiffre.
+  const tokens = head
+    .split(/[\s\-']+/)
+    .filter((t) => /[A-Za-z0-9]/.test(t));
+  if (tokens.length === 0) return trimmed.substring(0, 2).toUpperCase();
+  if (tokens.length === 1) {
+    // Un seul mot → on prend les 4 premiers caractères majuscules
+    // (CNRACL, CNAVPL, etc.).
+    return tokens[0].substring(0, 4).toUpperCase();
+  }
+  // Plusieurs mots → 1ère lettre de chaque, max 4 caractères.
+  return tokens.map((t) => t.charAt(0)).slice(0, 4).join('').toUpperCase();
+};
+
+const hashStringToIndex = (str, modulo) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return hash % modulo;
+};
+
 app.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) => {
   try {
     // Cache HTTP per-user : 5 min fresh + 30 min stale-while-revalidate.
@@ -3915,11 +3959,28 @@ app.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) 
     res.set('Vary', 'X-App-Session');
     const records = await queryAll(TABLES.caissesRetraite, { fields: ['nom', 'numero_telephone_contact'] });
     const funds = records
-      .map((record) => ({
-        id: String(record.id),
-        name: String(field(record, 'nom') || '').trim(),
-        phone: String(field(record, 'numero_telephone_contact') || '').trim(),
-      }))
+      .map((record) => {
+        const name = String(field(record, 'nom') || '').trim();
+        // Logo auto-généré (data URI SVG) : initiales + dégradé
+        // couleur déterministe basé sur le hash du nom. Permet
+        // d'avoir un visuel reconnaissable par caisse sans avoir
+        // à uploader des assets (charte CNAV, MSA, CNRACL, etc.).
+        const palette = PRINCIPAL_FUND_PALETTES[
+          hashStringToIndex(name, PRINCIPAL_FUND_PALETTES.length)
+        ];
+        const logoUrl = buildLogoDataUri({
+          initials: fundNameToInitials(name),
+          primary: palette.primary,
+          secondary: palette.secondary,
+          name,
+        });
+        return {
+          id: String(record.id),
+          name,
+          phone: String(field(record, 'numero_telephone_contact') || '').trim(),
+          logoUrl,
+        };
+      })
       .filter((fund) => fund.name)
       .sort((a, b) => a.name.localeCompare(b.name));
 
