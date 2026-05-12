@@ -275,7 +275,13 @@ class _RetirementFundsPrincipalScreenState
 }
 
 /// Carte avec logo en hero + nom + chip téléphone tappable.
-class _PrincipalFundCard extends StatelessWidget {
+///
+/// Design 2026-05-12 : parité 1:1 avec `_FundCard` (caisses
+/// complémentaires) — logo 120 pt full-width au top (BoxFit.contain,
+/// fond blanc), nom 16 pt w800, chip téléphone sous le nom. Demande
+/// utilisateur : « ajoute les logos des caisses de retraite principale
+/// comme ce que tu as fait pour les caisses de retraite complémentaire ».
+class _PrincipalFundCard extends StatefulWidget {
   final _PrincipalFund fund;
   final VoidCallback onCallPhone;
 
@@ -285,85 +291,161 @@ class _PrincipalFundCard extends StatelessWidget {
   });
 
   @override
+  State<_PrincipalFundCard> createState() => _PrincipalFundCardState();
+}
+
+class _PrincipalFundCardState extends State<_PrincipalFundCard> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
+    final fund = widget.fund;
     final hasPhone = fund.phone.trim().isNotEmpty;
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Logo hero — square 80×80, dégradé + initiales (généré
-          // côté serveur en SVG data URI).
-          Center(
-            child: _PrincipalFundLogo(logoUrl: fund.logoUrl, size: 80),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            fund.name,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
-              height: 1.25,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 8),
-          if (hasPhone)
-            GestureDetector(
-              onTap: onCallPhone,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDE8F5),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(LucideIcons.phone,
-                        size: 14, color: Color(0xFF7C6DAA)),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        fund.phone,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF7C6DAA),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+    return MouseRegion(
+      cursor: hasPhone ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        transform: _hover
+            ? (Matrix4.identity()..translateByDouble(0.0, -3.0, 0.0, 1.0))
+            : Matrix4.identity(),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: _hover
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF7C6DAA).withValues(alpha: 0.18),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: hasPhone ? widget.onCallPhone : null,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ---------- Hero logo ----------
+              // Fond blanc uni, padding 14, logo en BoxFit.contain centré.
+              // Identique aux cartes caisses complémentaires.
+              Container(
+                height: 120,
+                width: double.infinity,
+                color: Colors.white,
+                padding: const EdgeInsets.all(14),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: _PrincipalFundLogo(
+                      logoUrl: fund.logoUrl,
+                      // Le hero alloue ~92 pt utiles (120 - 28 padding) ;
+                      // on borne le logo à cette zone via le size param.
+                      size: 92,
                     ),
-                  ],
+                  ),
                 ),
               ),
-            )
-          else
-            const Text(
-              'Téléphone non renseigné',
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF94A3B8),
-                fontStyle: FontStyle.italic,
+              // ---------- Text content ----------
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        fund.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (hasPhone)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(50),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  LucideIcons.phone,
+                                  size: 12,
+                                  color: Color(0xFF475569),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    fund.phone,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        const Text(
+                          'Téléphone non renseigné',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF94A3B8),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-/// Logo carré pour la card. Accepte un data URI `data:image/svg+xml`
-/// (encodé URL ou base64), data URI bitmap (`data:image/png;base64,...`)
-/// ou une URL HTTP standard. Vide → placeholder gris.
+/// Logo pour la card / dialog. Accepte :
+///  • Un data URI `data:image/svg+xml` (encodé URL ou base64) → SVG inline
+///    rendu via flutter_svg.
+///  • Un data URI bitmap (`data:image/png;base64,...`) → Image.memory.
+///  • Une URL HTTP terminant par `.svg` → `SvgPicture.network` (flutter_svg
+///    supporte le téléchargement direct).
+///  • Une URL HTTP bitmap → `Image.network`.
+///  • Vide → placeholder gris.
+///
+/// `BoxFit.contain` partout (les logos brandés ont du whitespace interne
+/// et doivent respirer dans le hero plutôt qu'être rognés).
 class _PrincipalFundLogo extends StatelessWidget {
   final String logoUrl;
   final double size;
@@ -379,13 +461,12 @@ class _PrincipalFundLogo extends StatelessWidget {
       // SVG inline — décode et rend avec flutter_svg.
       final svgString = _decodeSvgDataUri(logoUrl);
       if (svgString == null) return _placeholder();
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+      return SizedBox(
+        width: size,
+        height: size,
         child: SvgPicture.string(
           svgString,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
         ),
       );
     }
@@ -393,25 +474,37 @@ class _PrincipalFundLogo extends StatelessWidget {
       // Bitmap inline (PNG / JPEG base64).
       final bytes = _decodeBitmapDataUri(logoUrl);
       if (bytes == null) return _placeholder();
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+      return SizedBox(
+        width: size,
+        height: size,
         child: Image.memory(
           bytes,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => _placeholder(),
         ),
       );
     }
-    // URL HTTP standard
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Image.network(
-        logoUrl,
+    // URL HTTP — si .svg utilise flutter_svg.network (Image.network
+    // ne décode pas le SVG), sinon Image.network classique.
+    final lowerUrl = logoUrl.toLowerCase();
+    final isSvgUrl = lowerUrl.endsWith('.svg') || lowerUrl.contains('.svg?');
+    if (isSvgUrl) {
+      return SizedBox(
         width: size,
         height: size,
-        fit: BoxFit.cover,
+        child: SvgPicture.network(
+          logoUrl,
+          fit: BoxFit.contain,
+          placeholderBuilder: (_) => _placeholder(),
+        ),
+      );
+    }
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Image.network(
+        logoUrl,
+        fit: BoxFit.contain,
         errorBuilder: (_, __, ___) => _placeholder(),
       ),
     );
