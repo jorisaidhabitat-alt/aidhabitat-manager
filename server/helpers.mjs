@@ -24,9 +24,21 @@ export const SERVER_DIR_PATH = path.dirname(fileURLToPath(import.meta.url));
 export const DIST_DIR_PATH = path.resolve(SERVER_DIR_PATH, '../dist');
 export const DIST_INDEX_PATH = path.join(DIST_DIR_PATH, 'index.html');
 export const LOCAL_DATA_DIR_PATH = fileURLToPath(new URL('./data/', import.meta.url));
-export const DATA_DIR_PATH = process.env.VERCEL
-  ? path.join('/tmp', 'aidhabitat-data')
-  : LOCAL_DATA_DIR_PATH;
+// Ordre de priorité pour déterminer où le serveur écrit les fichiers
+// runtime (auth-store.json, profile-photos/, documents/, chunks…) :
+//   1. `AIDHABITAT_DATA_DIR_PATH` env var explicite → utilisé sur
+//      Easypanel / Docker / VPS où on monte un volume persistant
+//      (ex. `AIDHABITAT_DATA_DIR_PATH=/data/aidhabitat`).
+//   2. `process.env.VERCEL` détecté → `/tmp/aidhabitat-data` (filesystem
+//      éphémère, recréé à chaque cold start). On reste sur ce fallback
+//      pour conserver la rétrocompat tant que la migration Easypanel
+//      n'est pas finalisée.
+//   3. Sinon → `LOCAL_DATA_DIR_PATH` (dev local sur ton Mac).
+export const DATA_DIR_PATH = process.env.AIDHABITAT_DATA_DIR_PATH
+  ? String(process.env.AIDHABITAT_DATA_DIR_PATH).trim()
+  : process.env.VERCEL
+    ? path.join('/tmp', 'aidhabitat-data')
+    : LOCAL_DATA_DIR_PATH;
 export const DATA_DIR_URL = pathToFileURL(DATA_DIR_PATH.endsWith(path.sep) ? DATA_DIR_PATH : `${DATA_DIR_PATH}${path.sep}`);
 export const dataFileUrl = (relativePath) => new URL(relativePath, DATA_DIR_URL);
 export const AUTH_STORE_URL = dataFileUrl('auth-store.json');

@@ -1561,3 +1561,250 @@ class _FundInitials extends StatelessWidget {
     );
   }
 }
+
+/// Dialog simple de création d'une caisse de retraite. Demande
+/// utilisateur 2026-05-12 : « Fais le même type de bouton sur la page
+/// caisse de retraite pour pouvoir ajouter une caisse de retraite ».
+///
+/// Champs : nom (obligatoire) + téléphone + audience + note ergo.
+/// Les autres champs (méthode demande, délai, montant aide, site web)
+/// peuvent être complétés ensuite via le dialog d'édition `_RetirementFundDialog`.
+class _NewRetirementFundDialog extends StatefulWidget {
+  const _NewRetirementFundDialog();
+
+  @override
+  State<_NewRetirementFundDialog> createState() =>
+      _NewRetirementFundDialogState();
+}
+
+class _NewRetirementFundDialogState extends State<_NewRetirementFundDialog> {
+  final DataService _dataService = DataService();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _audienceController = TextEditingController();
+  final TextEditingController _therapistNoteController = TextEditingController();
+
+  bool _isSubmitting = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _audienceController.dispose();
+    _therapistNoteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Le nom est obligatoire');
+      return;
+    }
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+    try {
+      final created = await _dataService.createRetirementFund(
+        name: name,
+        phone: _phoneController.text.trim(),
+        audience: _audienceController.text.trim(),
+        therapistNote: _therapistNoteController.text.trim(),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(created);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmitting = false;
+        _errorMessage = 'Création impossible : $error';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7C6DAA).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      LucideIcons.plus,
+                      color: Color(0xFF7C6DAA),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Nouvelle caisse de retraite',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(LucideIcons.x, size: 20),
+                    onPressed: _isSubmitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _LabeledField(
+                label: 'Nom *',
+                controller: _nameController,
+                hint: 'ex. Klésia, AG2R, Pro BTP…',
+                autofocus: true,
+                enabled: !_isSubmitting,
+              ),
+              const SizedBox(height: 12),
+              _LabeledField(
+                label: 'Téléphone',
+                controller: _phoneController,
+                hint: 'ex. 01 23 45 67 89',
+                enabled: !_isSubmitting,
+              ),
+              const SizedBox(height: 12),
+              _LabeledField(
+                label: 'Public concerné',
+                controller: _audienceController,
+                hint: 'ex. Salariés du BTP, fonction publique…',
+                enabled: !_isSubmitting,
+              ),
+              const SizedBox(height: 12),
+              _LabeledField(
+                label: 'Note ergo (commentaire libre)',
+                controller: _therapistNoteController,
+                hint: 'optionnel',
+                maxLines: 3,
+                enabled: !_isSubmitting,
+              ),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    color: Color(0xFFB91C1C),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _isSubmitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: const Text('Annuler'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF7C6DAA),
+                    ),
+                    onPressed: _isSubmitting ? null : _submit,
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Créer'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LabeledField extends StatelessWidget {
+  const _LabeledField({
+    required this.label,
+    required this.controller,
+    this.hint,
+    this.maxLines = 1,
+    this.autofocus = false,
+    this.enabled = true,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final String? hint;
+  final int maxLines;
+  final bool autofocus;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF7C6DAA),
+          ),
+        ),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          autofocus: autofocus,
+          enabled: enabled,
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+            isDense: true,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.4),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

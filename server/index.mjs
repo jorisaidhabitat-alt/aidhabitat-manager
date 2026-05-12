@@ -39,9 +39,14 @@ const SERVER_DIR_PATH = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR_PATH = path.resolve(SERVER_DIR_PATH, '../dist');
 const DIST_INDEX_PATH = path.join(DIST_DIR_PATH, 'index.html');
 const LOCAL_DATA_DIR_PATH = fileURLToPath(new URL('./data/', import.meta.url));
-const DATA_DIR_PATH = process.env.VERCEL
-  ? path.join('/tmp', 'aidhabitat-data')
-  : LOCAL_DATA_DIR_PATH;
+// Cf. helpers.mjs:DATA_DIR_PATH pour le détail des priorités.
+// Sur Easypanel / Docker : set `AIDHABITAT_DATA_DIR_PATH=/data/aidhabitat`
+// (avec un volume monté à `/data` pour la persistence).
+const DATA_DIR_PATH = process.env.AIDHABITAT_DATA_DIR_PATH
+  ? String(process.env.AIDHABITAT_DATA_DIR_PATH).trim()
+  : process.env.VERCEL
+    ? path.join('/tmp', 'aidhabitat-data')
+    : LOCAL_DATA_DIR_PATH;
 const DATA_DIR_URL = pathToFileURL(DATA_DIR_PATH.endsWith(path.sep) ? DATA_DIR_PATH : `${DATA_DIR_PATH}${path.sep}`);
 const dataFileUrl = (relativePath) => new URL(relativePath, DATA_DIR_URL);
 const AUTH_STORE_URL = dataFileUrl('auth-store.json');
