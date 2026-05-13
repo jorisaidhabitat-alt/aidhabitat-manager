@@ -617,7 +617,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                   children: [
                     Icon(
                       items[i].icon,
-                      size: 20,
+                      // 20 → 18 (demande user 2026-05-13 : icons
+                      // « légèrement plus petits »).
+                      size: 18,
                       color: labelColor,
                     ),
                     const SizedBox(height: 2),

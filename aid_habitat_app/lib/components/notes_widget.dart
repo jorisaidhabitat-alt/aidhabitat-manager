@@ -2315,15 +2315,15 @@ class _NotesWidgetState extends State<NotesWidget> {
     // Save
     if (widget.showSaveButton) buttons.add(_saveButton());
 
-    // Refonte 2026-05-13 : container pill avec backdrop blur soft +
-    // shadow plus diffuse + border ink-200 subtile (cf. design system
-    // README « NotesCanvas toolbar: bg-white/95 backdrop-blur »).
+    // Refonte 2026-05-12 : container pill flottant — pas de border
+    // (demande utilisateur), juste un shadow doux pour le décoller
+    // du fond. Cohérent avec la maquette `.vp-palette-switch` qui
+    // utilise uniquement une shadow + backdrop blur, sans border.
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE4E7EB)), // ink-200
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -2506,16 +2506,27 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   Widget _buildColorPalettePopover() {
+    // Couleur active selon l'outil courant — sert au feedback visuel
+    // "ring" de la swatch sélectionnée (parité maquette
+    // `.vp-palette-swatch.on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor; }`).
+    final activeColor = _activeTool == NoteTool.highlighter
+        ? _highlighterColor
+        : _penColor;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      // Padding élargi (verticale → 8) pour donner de l'air au ring
+      // de 4 px qui apparaît autour de la swatch active.
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(999),
+        // Shadow douce (parité `.vp-palette-switch` de la maquette :
+        // `box-shadow: 0 4px 14px -4px rgba(0,0,0,.12)`).
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
             offset: const Offset(0, 4),
+            spreadRadius: -4,
           ),
         ],
       ),
@@ -2524,8 +2535,12 @@ class _NotesWidgetState extends State<NotesWidget> {
         children: [
           for (final preset in _kColorPresets)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: GestureDetector(
+              // Padding horizontal 6 (au lieu de 3) pour que le ring
+              // 4 px ne soit pas tronqué par la swatch voisine.
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: _PaletteSwatch(
+                color: Color(preset),
+                isActive: preset == activeColor,
                 onTap: () {
                   setState(() {
                     if (_activeTool == NoteTool.highlighter) {
@@ -2537,14 +2552,6 @@ class _NotesWidgetState extends State<NotesWidget> {
                   });
                   _markDirty();
                 },
-                child: Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: Color(preset),
-                    shape: BoxShape.circle,
-                  ),
-                ),
               ),
             ),
         ],
