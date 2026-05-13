@@ -178,9 +178,12 @@ class _SwitchSegment extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Center(
+        // Demande utilisateur 2026-05-13 : « pareil pour les caisses de
+        // retraite » → segments "Complémentaires / Principales" en
+        // Nunito (alignés sur le titre + les tags bibliothèque).
         child: Text(
           label,
-          style: const TextStyle(
+          style: GoogleFonts.nunito(
             fontSize: 13,
             fontWeight: FontWeight.w700,
             color: _CaissesSwitch._textColor,

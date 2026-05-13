@@ -2052,14 +2052,16 @@ class _DocCardState extends State<_DocCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Inline editable title
+                        // Inline editable title — Nunito (parité avec
+                        // les autres titres de l'app, demande user
+                        // 2026-05-13).
                         _isEditingTitle
                             ? TextField(
                                 controller: _titleCtrl,
                                 focusNode: _titleFocus,
                                 maxLines: 1,
                                 textInputAction: TextInputAction.done,
-                                style: const TextStyle(
+                                style: GoogleFonts.nunito(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 13,
                                   color: Colors.black87,
@@ -2084,7 +2086,7 @@ class _DocCardState extends State<_DocCard> {
                                   doc.title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: GoogleFonts.nunito(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 13,
                                     color: Colors.black87,
@@ -2094,7 +2096,7 @@ class _DocCardState extends State<_DocCard> {
                         const SizedBox(height: 2),
                         Text(
                           dateLabel,
-                          style: const TextStyle(
+                          style: GoogleFonts.nunito(
                             fontSize: 10,
                             color: Colors.grey,
                           ),
