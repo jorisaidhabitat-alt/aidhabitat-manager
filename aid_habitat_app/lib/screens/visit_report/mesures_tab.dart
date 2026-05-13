@@ -54,6 +54,11 @@ class _MesuresTabState extends State<MesuresTab>
     final hasMultiple = _occupantCount > 1;
     final idx = _safeIndex;
 
+    // Refonte 2026-05-12 : la bannière occupant est désormais injectée
+    // dans le NotesWidget via `leadingNavWidget` — elle apparaît sur
+    // LA MÊME LIGNE que les flèches undo/redo internes du widget.
+    // Demande utilisateur : « met cette bannière sur la même ligne que
+    // les flèches ». Plus de header séparé au-dessus du canvas.
     final notesWidget = NotesWidget(
       key: ValueKey('mesures-${widget.dossier.patient.id}-$idx'),
       patientId: widget.dossier.patient.id,
@@ -68,36 +73,15 @@ class _MesuresTabState extends State<MesuresTab>
       fillParentHeight: true,
       embedded: false,
       backgroundContent: const _MesuresBackground(),
+      // Bannière occupant uniquement quand il y en a plusieurs —
+      // sinon on évite d'encombrer la barre de navigation pour rien.
+      leadingNavWidget: hasMultiple ? _buildOccupantHeader(idx) : null,
     );
 
-    // Mono-occupant → canvas plein écran (rien à ajouter).
-    if (!hasMultiple) return notesWidget;
-
-    // Multi-occupants : header avec le nom en haut + canvas au milieu
-    // + points de pagination en bas du cadre (parité Bénéficiaire).
-    // Pas de swipe horizontal ici : cela entrerait en conflit avec les
-    // gestures de dessin. L'utilisateur navigue via les points tappables.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Header sticky : fond blanc opaque pour parité avec Bénéficiaire
-        // et Contexte de vie (le NotesWidget en dessous ne défile pas
-        // mais on garde le même traitement visuel).
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-          // Centre la bannière horizontalement — la largeur de la
-          // bannière s'adapte au contenu (intrinsic width via
-          // `mainAxisSize: MainAxisSize.min` dans le Row interne).
-          // Demande utilisateur 2026-05-12 : « ne met pas sur toute
-          // la largeur, adapte au contenu et centre ».
-          child: Center(child: _buildOccupantHeader(idx)),
-        ),
-        Expanded(child: notesWidget),
-        // Dots déplacés dans la bannière (refonte 2026-05-12 — demande
-        // utilisateur « met sur la même ligne que les flèches »).
-      ],
-    );
+    // Plus de Column wrapper — le NotesWidget gère lui-même le layout
+    // header (avec leadingNavWidget) + canvas. Mono ou multi-occupant,
+    // c'est le même retour direct.
+    return notesWidget;
   }
 
   void _occupantPrev() {
