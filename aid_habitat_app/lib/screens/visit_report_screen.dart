@@ -1057,12 +1057,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       color: Colors.transparent,
       child: InkWell(
         onTap: widget.onBack,
-        borderRadius: BorderRadius.circular(8),
+        // Refonte 2026-05-13 : pill radius 999 uniforme.
+        borderRadius: BorderRadius.circular(999),
         child: Container(
           width: 30,
           height: 30,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            borderRadius: BorderRadius.circular(999),
           ),
           alignment: Alignment.center,
           child: const Icon(
@@ -1126,11 +1128,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     ),
                   )
                 else
-                  const Text(
+                  Text(
                     'Générer',
-                    style: TextStyle(
+                    // Refonte 2026-05-13 : Nunito w700 pour matcher
+                    // l'épaisseur des badges du header.
+                    style: GoogleFonts.nunito(
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
                       color: Colors.white,
                     ),
                   ),
@@ -2601,10 +2606,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                         Expanded(
                           child: Text(
                             addressLine,
-                            style: const TextStyle(
+                            // Refonte 2026-05-13 : Nunito w700 pour
+                            // matcher l'épaisseur des badges du header.
+                            style: GoogleFonts.nunito(
                               fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF5C6670), // ink-500
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                              color: const Color(0xFF5C6670), // ink-500
                             ),
                             overflow: TextOverflow.ellipsis,
                             softWrap: false,

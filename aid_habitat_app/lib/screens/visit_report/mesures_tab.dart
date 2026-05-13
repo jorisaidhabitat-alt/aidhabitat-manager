@@ -148,13 +148,15 @@ class _MesuresTabState extends State<MesuresTab>
           color: Colors.transparent,
           child: InkWell(
             onTap: hasNav ? action : null,
-            borderRadius: BorderRadius.circular(8),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            borderRadius: BorderRadius.circular(999),
             child: Container(
               width: 30,
               height: 30,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
+                // Refonte 2026-05-13 : pill radius 999 uniforme.
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
             ),
