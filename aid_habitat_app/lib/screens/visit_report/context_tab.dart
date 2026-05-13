@@ -788,20 +788,15 @@ class _ContextTabState extends State<ContextTab>
 
   Widget _buildNavBtn(IconData icon, String label, int index) {
     final active = _subSection == index;
-    // Sur fond violet clair (#EDE8F5), texte + trait actifs passent en
-    // violet foncé (#7C6DAA) pour contraster sans être agressif. Inactif
-    // : pastel lilas #AE9DB3. Layout vertical (icône au-dessus du texte)
-    // pour parité visuelle avec les sous-sections de Bénéficiaire.
-    const activeColor = Color(0xFF8B6FA0);
-    const inactiveColor = Color(0xFFA98DBE);
-    // SoftTapScale → zoom/dezoom à l'appui, même effet que les boutons
-    // de la sidebar et des tabs du relevé de visite.
+    // Refonte 2026-05-13 (maquette user) : icon + texte en NOIR dans
+    // les 2 états. Violet (#8B6FA0) uniquement sur le trait fin sous
+    // l'item actif — seul différenciateur visuel. Parité avec
+    // Bénéficiaire et Accessibilité.
+    const labelColor = Color(0xFF0E1116); // ink-900
+    const underlineColor = Color(0xFF8B6FA0); // mauve-500
     return SoftTapScale(
       onTap: () => _setSubSection(index),
       child: Container(
-        // Fond transparent garanti sur toute la largeur de l'Expanded
-        // pour que la zone de tap reste identique au GestureDetector
-        // précédent (HitTestBehavior.opaque).
         color: Colors.transparent,
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Column(
@@ -811,28 +806,24 @@ class _ContextTabState extends State<ContextTab>
             Icon(
               icon,
               size: 20,
-              color: active ? activeColor : inactiveColor,
+              color: labelColor,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
-                color: active ? activeColor : inactiveColor,
+                color: labelColor,
               ),
             ),
-            // Trait fin centré sous le texte, visible uniquement pour la
-            // sous-section active. Largeur fixe 28 px (revert demande
-            // utilisateur 2026-04-29 : le trait pleine largeur est
-            // réservé à la barre de navigation principale).
             const SizedBox(height: 6),
             Container(
               height: 1.5,
               width: 28,
               decoration: BoxDecoration(
-                color: active ? activeColor : Colors.transparent,
+                color: active ? underlineColor : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),
               ),
             ),

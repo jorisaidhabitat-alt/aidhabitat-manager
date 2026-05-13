@@ -640,14 +640,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         children: [
           ...List.generate(items.length, (i) {
             final active = i == _subSection;
-            // Violet foncé #7C6DAA pour la sous-section active, lilas
-            // pastel #AE9DB3 pour les inactives — parité avec Contexte
-            // de vie et Bénéficiaire.
-            const activeColor = Color(0xFF8B6FA0);
-            const inactiveColor = Color(0xFFA98DBE);
+            // Refonte 2026-05-13 (maquette user) : icon + texte en NOIR
+            // dans les 2 états. Violet (#8B6FA0) uniquement sur le trait
+            // sous l'item actif — parité avec Bénéficiaire et Contexte
+            // de vie.
+            const labelColor = Color(0xFF0E1116); // ink-900
+            const underlineColor = Color(0xFF8B6FA0); // mauve-500
             return Expanded(
               child: SoftTapScale(
-                // Zoom/dezoom au tap — mêmes sensations que la sidebar.
                 onTap: () {
                   setState(() => _subSection = i);
                   widget.onSubSectionChanged?.call(i);
@@ -657,22 +657,20 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Column(
                     children: [
-                      Icon(items[i].icon,
-                          size: 20,
-                          color: active ? activeColor : inactiveColor),
+                      Icon(items[i].icon, size: 20, color: labelColor),
                       const SizedBox(height: 2),
                       Text(items[i].label,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
-                            color: active ? activeColor : inactiveColor,
+                            color: labelColor,
                           )),
                       const SizedBox(height: 6),
                       Container(
                         height: 1.5,
                         width: 28,
                         decoration: BoxDecoration(
-                          color: active ? activeColor : Colors.transparent,
+                          color: active ? underlineColor : Colors.transparent,
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),

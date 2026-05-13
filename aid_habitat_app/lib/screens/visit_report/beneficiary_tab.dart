@@ -596,14 +596,15 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;
-          // Sur fond violet clair : icon/texte/trait en violet foncé
-          // (#7C6DAA). Inactif : pastel lilas.
-          const activeColor = Color(0xFF8B6FA0);
-          const inactiveColor = Color(0xFFA98DBE);
+          // Refonte 2026-05-13 (maquette user) : icons et texte en NOIR
+          // dans les 2 états. Le violet (#8B6FA0) ne subsiste que sur
+          // le trait sous le label de l'item actif. Inactive = même
+          // couleur que active, juste pas de trait → comportement type
+          // tab indicator moderne.
+          const labelColor = Color(0xFF0E1116); // ink-900
+          const underlineColor = Color(0xFF8B6FA0); // mauve-500
           return Expanded(
             child: SoftTapScale(
-              // Zoom/dezoom au tap — mêmes sensations que les boutons
-              // de la sidebar.
               onTap: () => _setSubSection(i),
               child: Container(
                 color: Colors.transparent,
@@ -614,22 +615,19 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     Icon(
                       items[i].icon,
                       size: 20,
-                      color: active ? activeColor : inactiveColor,
+                      color: labelColor,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       items[i].label,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 10,
-                        // Légèrement plus bold sur demande utilisateur
-                        // 2026-05-13 : w700 → w800.
                         fontWeight: FontWeight.w800,
-                        color: active ? activeColor : inactiveColor,
+                        color: labelColor,
                       ),
                     ),
-                    // Trait fin centré sous le texte, plus étroit que le
-                    // label, visible uniquement pour l'item actif.
-                    // Largeur dynamique calée sur la longueur du label.
+                    // Trait fin violet uniquement sous l'item actif —
+                    // seul élément différenciateur visuel.
                     const SizedBox(height: 6),
                     Container(
                       height: 1.5,
@@ -637,7 +635,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                           .clamp(18.0, 50.0),
                       decoration: BoxDecoration(
                         color:
-                            active ? activeColor : Colors.transparent,
+                            active ? underlineColor : Colors.transparent,
                         borderRadius: BorderRadius.circular(999),
                       ),
                     ),
