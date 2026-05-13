@@ -917,7 +917,14 @@ class FormMultiToggleGroup extends StatelessWidget {
           onChanged?.call(next);
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          // Alignement 2026-05-13 sur FormToggleGroup (Occupation) :
+          // height 32 fixe + padding horizontal 14 (pas de vertical),
+          // fontSize 14, fontWeight w500/w400 — demande utilisateur :
+          // « dans envoi du rapport, le texte est plus fin que celui
+          // dans les boutons d'occupation et ils ont une hauteur plus
+          // importante par rapport aux boutons d'occupation ».
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
@@ -933,9 +940,11 @@ class FormMultiToggleGroup extends StatelessWidget {
             opt,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.black87,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              color: isSelected
+                  ? Colors.white
+                  : const Color(0xFF2B323A), // ink-700 (idem Occupation)
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
             ),
           ),
         ),
