@@ -315,9 +315,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Text(
             dateLabelUpper,
             style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.5, // ≈ 0.14em à 11px
+              // Bump 2026-05-13 : 11→13, w600→w700.
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
               color: Color(0xFF8B6FA0), // mauve-500
             ),
           ),
@@ -338,7 +339,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             "  ·  "
             "$activeDossiers dossier${activeDossiers > 1 ? 's' : ''} en cours",
             style: const TextStyle(
-              fontSize: 14,
+              // Bump 2026-05-13 : 14→16, ajout w600.
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
               color: Color(0xFF5C6670), // ink-500
             ),
           ),
@@ -904,8 +907,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                     Text(
                       'AGENDA',
                       style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                        // Bump 2026-05-13 : 11→13, w600→w700.
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 1.5,
                         color: Color(0xFF554265), // mauve-700
                       ),

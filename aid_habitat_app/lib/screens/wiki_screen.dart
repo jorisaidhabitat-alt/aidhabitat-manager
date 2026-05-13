@@ -1132,23 +1132,45 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Refonte 2026-05-13 : animation de transition entre tags + border
+    // sur les tags inactifs (demande utilisateur : « fais une animation
+    // de transition de remplissage entre les tags (fade in et fade
+    // out) et ajoute des border aux tags qui ne sont pas sélectionnés »).
+    //
+    // - AnimatedContainer : interpole `color` (white ↔ mauve-500) et
+    //   `border` (slate-200 ↔ transparent) sur 220 ms ease-out cubic.
+    //   Visuellement équivalent à un cross-fade du fond entre les deux
+    //   tags concernés (ancien actif s'éclaircit, nouveau actif se
+    //   teinte).
+    // - AnimatedDefaultTextStyle : interpole la couleur de texte
+    //   (slate-600 ↔ blanc) sur le même tempo. On part de
+    //   `GoogleFonts.nunito(...)` pour conserver la fontFamily Nunito
+    //   (pas de retombée Roboto).
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isActive ? const Color(0xFF8B6FA0) : Colors.white,
           borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: isActive
+                ? Colors.transparent
+                : const Color(0xFFE2E8F0), // slate-200
+            width: 1,
+          ),
         ),
-        child: Text(
-          label,
-          // Demande utilisateur 2026-05-13 : « tous les tags de
-          // bibliothèque doivent passer en Nunito ».
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
           style: GoogleFonts.nunito(
             color: isActive ? Colors.white : const Color(0xFF475569),
             fontWeight: FontWeight.w600,
           ),
+          child: Text(label),
         ),
       ),
     );
