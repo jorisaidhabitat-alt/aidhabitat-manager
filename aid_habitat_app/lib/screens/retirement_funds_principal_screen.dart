@@ -245,7 +245,12 @@ class _RetirementFundsPrincipalScreenState
             onPressed: _createFund,
             backgroundColor: const Color(0xFF7C6DAA),
             foregroundColor: Colors.white,
-            elevation: 4,
+            // Ombre désactivée (demande user 2026-05-12) — toutes les
+            // variantes à 0 pour rester plat même au hover/tap.
+            elevation: 0,
+            hoverElevation: 0,
+            focusElevation: 0,
+            highlightElevation: 0,
             shape: const StadiumBorder(),
             icon: const Icon(LucideIcons.plus, size: 22),
             label: const Text(

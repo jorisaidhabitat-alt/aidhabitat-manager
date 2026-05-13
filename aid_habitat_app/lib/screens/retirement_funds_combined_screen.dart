@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'retirement_funds_principal_screen.dart';
@@ -8,9 +7,8 @@ import 'retirement_funds_screen.dart';
 ///   - Titre changeant selon le mode :
 ///       • Complémentaires : "Caisses de retraite complémentaires"
 ///       • Principales     : "Caisses de retraite principales"
-///   - À droite : `CupertinoSlidingSegmentedControl` qui bascule
-///     entre les 2 modes (mode par défaut = Complémentaires —
-///     demande utilisateur 2026-05-12).
+///   - À droite : switch « bundle » maison (radius forts, fond violet
+///     clair, pas d'ombre — demande utilisateur 2026-05-13).
 ///
 /// Sous le header : on embarque l'un des 2 écrans existants en mode
 /// `showHeader: false` pour ne pas dupliquer le titre. Chaque écran
@@ -56,46 +54,14 @@ class _RetirementFundsCombinedScreenState
                 ),
               ),
               const SizedBox(width: 24),
-              // CupertinoSlidingSegmentedControl : segment sélectionné
-              // glisse avec animation, style iOS — demande utilisateur
-              // 2026-05-12 (Q1b).
+              // Switch « bundle » maison : radius forts (pill), fond
+              // violet clair pastel, pas d'ombre sur le thumb — demande
+              // utilisateur 2026-05-13. Animé avec AnimatedAlign.
               SizedBox(
                 width: 360,
-                child: CupertinoSlidingSegmentedControl<_CaisseMode>(
-                  groupValue: _mode,
-                  backgroundColor: const Color(0xFFF1F5F9),
-                  thumbColor: Colors.white,
-                  padding: const EdgeInsets.all(4),
-                  children: const {
-                    _CaisseMode.complementaires: Padding(
-                      padding: EdgeInsets.symmetric(
-                          vertical: 8, horizontal: 4),
-                      child: Text(
-                        'Complémentaires',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ),
-                    _CaisseMode.principales: Padding(
-                      padding: EdgeInsets.symmetric(
-                          vertical: 8, horizontal: 4),
-                      child: Text(
-                        'Principales',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ),
-                  },
-                  onValueChanged: (next) {
-                    if (next == null) return;
-                    setState(() => _mode = next);
-                  },
+                child: _CaissesSwitch(
+                  value: _mode,
+                  onChanged: (next) => setState(() => _mode = next),
                 ),
               ),
             ],

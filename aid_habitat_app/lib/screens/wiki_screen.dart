@@ -340,7 +340,13 @@ class _WikiScreenState extends State<WikiScreen> {
             onPressed: _createItem,
             backgroundColor: const Color(0xFF7C6DAA),
             foregroundColor: Colors.white,
-            elevation: 4,
+            // Demande user 2026-05-12 : retire l'ombre du FAB. On force
+            // toutes les variantes d'élévation à 0 (idle/hover/focus/
+            // highlight) pour qu'aucun shadow ne réapparaisse au tap.
+            elevation: 0,
+            hoverElevation: 0,
+            focusElevation: 0,
+            highlightElevation: 0,
             shape: const StadiumBorder(),
             icon: const Icon(LucideIcons.plus, size: 22),
             label: const Text(
