@@ -258,7 +258,13 @@ class NocodbApiClient {
   /// `nocodb_sync_service` route l'op vers `markConflict` au lieu de
   /// `markFailed`. Cohérence avec `updateDossier` / `updateMesures` /
   /// `updateObservations` qui font déjà ça.
-  Future<void> updateBeneficiary({
+  /// Retourne le nouvel `updatedAt` du bénéficiaire après PATCH (renvoyé
+  /// par le serveur depuis le fix 2026-05-13). Permet au caller de
+  /// rafraîchir `patients.remote_updated_at` en local et d'éviter qu'une
+  /// édition consécutive (avant le prochain pull) tombe sur un 409.
+  /// Renvoie `null` si le serveur ne renvoie pas le champ (ancien
+  /// déploiement, autre raison).
+  Future<String?> updateBeneficiary({
     required String patientId,
     required Map<String, dynamic> updates,
   }) async {
@@ -297,6 +303,20 @@ class NocodbApiClient {
         'Remote beneficiary update failed (${response.statusCode}): ${response.body}',
       );
     }
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map) {
+        final data = body['data'];
+        if (data is Map) {
+          final v = data['updatedAt'];
+          if (v is String && v.isNotEmpty) return v;
+        }
+      }
+    } catch (_) {
+      // Réponse non JSON ou champ absent : on tombe sur null, le caller
+      // gardera l'ancien `remote_updated_at` jusqu'au prochain pull.
+    }
+    return null;
   }
 
   /// PATCH /api/logements/by-beneficiary/:beneficiaryId — updates a housing
