@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 // Desktop only (macOS/Windows/Linux). Sur web + mobile, un stub vide est
 // importé — les appels sont shuntés par un garde `kIsWeb` avant exécution.
 import '../services/multi_window_stub.dart'
@@ -2008,12 +2009,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Champs manquants',
-                  style: TextStyle(
+                  style: GoogleFonts.nunito(
                     fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0E1116),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: const Color(0xFF0E1116),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -2421,10 +2423,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                         constraints: const BoxConstraints(maxWidth: 380),
                         child: Text(
                           '${patient.lastName.toUpperCase()} ${patient.firstName}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0E1116),
+                          // Refonte 2026-05-13 : Nunito w700 sur le nom du
+                          // bénéficiaire affiché dans le header du relevé.
+                          style: GoogleFonts.nunito(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.4,
+                            color: const Color(0xFF0E1116),
                           ),
                           overflow: TextOverflow.ellipsis,
                           softWrap: false,
@@ -2575,9 +2580,9 @@ class _FlagMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       '$number -',
-      style: const TextStyle(
+      style: GoogleFonts.nunito(
         fontSize: 28,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         color: Colors.black,
         height: 1.0,
       ),

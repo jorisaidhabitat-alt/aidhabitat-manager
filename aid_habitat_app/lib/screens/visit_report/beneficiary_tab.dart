@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/data_service.dart';
@@ -1001,11 +1002,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         : [first, last.toUpperCase()].where((s) => s.isNotEmpty).join(' ');
     return Text(
       display,
-      style: const TextStyle(
+      // Refonte 2026-05-13 : Nunito w700 sur le nom de l'occupant
+      // affiché en bas de la card profile bénéficiaire.
+      style: GoogleFonts.nunito(
         fontSize: 16,
-        fontWeight: FontWeight.w800,
-        color: Color(0xFF0E1116),
-        letterSpacing: -0.2,
+        fontWeight: FontWeight.w700,
+        color: const Color(0xFF0E1116),
+        letterSpacing: -0.25,
       ),
     );
   }
@@ -1826,10 +1829,12 @@ class _DateOfBirthField extends StatelessWidget {
             surfaceTintColor: Colors.white,
             title: Text(
               title,
-              style: const TextStyle(
+              // Refonte 2026-05-13 : Nunito w700 sur les titres dialog.
+              style: GoogleFonts.nunito(
                 fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0E1116),
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.25,
+                color: const Color(0xFF0E1116),
               ),
             ),
             contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -1948,10 +1953,12 @@ class _DateOfBirthField extends StatelessWidget {
         surfaceTintColor: Colors.white,
         title: Text(
           '${monthFullNames[month - 1]} $year',
-          style: const TextStyle(
+          // Refonte 2026-05-13 : Nunito w700.
+          style: GoogleFonts.nunito(
             fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF0E1116),
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.25,
+            color: const Color(0xFF0E1116),
           ),
         ),
         contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -2345,10 +2352,12 @@ class _RetirementFundPickerDialogState
                         Expanded(
                           child: Text(
                             widget.title,
-                            style: const TextStyle(
+                            // Refonte 2026-05-13 : Nunito w700.
+                            style: GoogleFonts.nunito(
                               fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF2B323A),
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.25,
+                              color: const Color(0xFF2B323A),
                             ),
                           ),
                         ),
