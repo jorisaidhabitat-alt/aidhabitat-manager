@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -1321,10 +1322,13 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                   constraints: const BoxConstraints(maxWidth: 380),
                   child: Text(
                     '${patient.lastName.toUpperCase()} ${patient.firstName}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+                    // Refonte 2026-05-13 : Nunito w600 — style uniforme
+                    // avec les autres titres de page.
+                    style: GoogleFonts.nunito(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.4,
+                      color: const Color(0xFF0E1116),
                     ),
                     overflow: TextOverflow.ellipsis,
                     softWrap: false,
