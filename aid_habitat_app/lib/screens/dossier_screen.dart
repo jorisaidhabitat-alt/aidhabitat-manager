@@ -487,9 +487,14 @@ class _DossierScreenState extends State<DossierScreen> {
               Flexible(
                 child: Text(
                   '${_lastName.toUpperCase()} $_firstName',
+                  // Bumpé w600 → w700 pour alignement « textes du dossier
+                  // légèrement plus épais que par défaut » (demande
+                  // utilisateur 2026-05-13 : « met l'épaisseur de tout
+                  // les textes légèrement plus importante comme dans
+                  // le relevé de visite »).
                   style: const TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: Color(0xFF0F172A),
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -524,8 +529,12 @@ class _DossierScreenState extends State<DossierScreen> {
             ),
             Text(
               _formatDate(widget.dossier.createdAt),
+              // Date « créé le » bumpée w400 → w600 pour rester
+              // alignée avec l'épaisseur générale du dossier (demande
+              // utilisateur 2026-05-13).
               style: const TextStyle(
                 fontSize: 16,
+                fontWeight: FontWeight.w600,
                 color: Colors.black87,
               ),
             ),
@@ -948,6 +957,8 @@ class _DossierScreenState extends State<DossierScreen> {
                           '—',
                           style: TextStyle(
                             fontSize: 14,
+                            // Bumpé w400 → w500 (uniformisation 2026-05-13).
+                            fontWeight: FontWeight.w500,
                             color: Color(0xFF94A3B8),
                           ),
                         ),
@@ -1148,8 +1159,10 @@ class _DossierScreenState extends State<DossierScreen> {
           // Bénéficiaire (FormTextField.labelSize = 14, valueSize = 14
           // pour matcher la preview où libellé violet et valeur noire
           // ont la même taille).
+          // Bumpé w600 → w700 pour uniformiser avec les labels du
+          // relevé de visite (demande utilisateur 2026-05-13).
           style: TextStyle(
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             fontSize: 14,
             color: Color(0xFF8B6FA0),
           ),
@@ -1172,7 +1185,13 @@ class _DossierScreenState extends State<DossierScreen> {
                         value: opt,
                         child: Text(
                           opt == '1' ? '1 occupant' : '$opt occupants',
-                          style: const TextStyle(fontSize: 14),
+                          // Bumpé w400 (défaut) → w600 pour rester
+                          // aligné sur l'épaisseur des autres valeurs
+                          // du bloc Bénéficiaire (demande user 2026-05-13).
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ))
                   .toList(),
@@ -1332,7 +1351,14 @@ class _QuickActionButton extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               subLabel,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              // Sub-label des quick action buttons bumpé w400 → w500
+              // pour rester lisible avec l'épaisseur générale du
+              // dossier (demande user 2026-05-13).
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+              ),
             ),
           ],
         ),
