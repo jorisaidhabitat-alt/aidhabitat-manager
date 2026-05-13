@@ -1014,7 +1014,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: const Color(0xFFF2ECF5),
-          borderRadius: BorderRadius.circular(12),
+          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
         ),
         child: const Row(
