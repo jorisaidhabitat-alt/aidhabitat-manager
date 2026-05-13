@@ -1339,6 +1339,10 @@ class _QuickActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          // Contour slate-200 1 px (demande user 2026-05-13 : « met des
+          // contours autour de VAD et Documents »). Parité avec le bloc
+          // Bénéficiaire et le formCard du relevé de visite.
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
