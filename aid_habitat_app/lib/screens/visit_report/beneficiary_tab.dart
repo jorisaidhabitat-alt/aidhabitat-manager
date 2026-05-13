@@ -1061,7 +1061,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 display,
                 style: GoogleFonts.nunito(
                   fontSize: 17,
-                  fontWeight: FontWeight.w700,
+                  // w700 → w600 (demande user 2026-05-13 : nom occupant
+                  // « moins épais »).
+                  fontWeight: FontWeight.w600,
                   letterSpacing: -0.25,
                   height: 1.15,
                   color: const Color(0xFF0E1116),

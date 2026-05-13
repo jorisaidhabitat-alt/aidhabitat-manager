@@ -2324,7 +2324,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     // « ajoute du padding entre les éléments et les bords ». Les boutons
     // de 36 px respirent mieux contre la bordure interne du pill.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(999),
@@ -2342,9 +2342,9 @@ class _NotesWidgetState extends State<NotesWidget> {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 0; i < buttons.length; i++) ...[
-              // Espace inter-boutons 6 px (vs 4 historique) — aération
-              // entre les outils stylo / surligneur / gomme / palette.
-              if (i > 0) const SizedBox(width: 6),
+              // Espace inter-boutons 8 px — aération maximale entre
+              // les outils stylo / surligneur / gomme / palette.
+              if (i > 0) const SizedBox(width: 8),
               buttons[i],
             ],
           ],
@@ -2524,7 +2524,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       // demande utilisateur 2026-05-12 « ajoute du padding entre les
       // éléments et les bords ». Le ring de 4 px autour de la swatch
       // active a aussi besoin de marge pour ne pas toucher le bord.
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(999),
