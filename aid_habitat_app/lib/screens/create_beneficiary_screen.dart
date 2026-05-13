@@ -173,20 +173,26 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
           // Header with back button
           Row(
             children: [
-              InkWell(
-                onTap: widget.onCancel,
-                borderRadius: BorderRadius.circular(50),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    LucideIcons.arrowLeft,
-                    size: 20,
-                    color: Colors.black87,
+              // Bouton retour aligné sur celui du VAD (uniformisation
+              // 2026-05-13) : 44×44 transparent, chevronLeft 24px
+              // ink-700.
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: widget.onCancel,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      LucideIcons.chevronLeft,
+                      size: 24,
+                      color: Color(0xFF2B323A), // ink-700
+                    ),
                   ),
                 ),
               ),

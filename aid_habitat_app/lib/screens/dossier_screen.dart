@@ -467,19 +467,27 @@ class _DossierScreenState extends State<DossierScreen> {
         Expanded(
           child: Row(
             children: [
-              InkWell(
-                onTap: widget.onBack,
-                borderRadius: BorderRadius.circular(50),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    LucideIcons.arrowLeft,
-                    color: Colors.black87,
+              // Bouton retour aligné sur celui du VAD (visit_report_screen
+              // `_buildBackButton`). Demande utilisateur 2026-05-13 :
+              // « fais la meme flèche pour les autres pages ».
+              // 44×44 transparent, chevronLeft 24px ink-700.
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: widget.onBack,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      LucideIcons.chevronLeft,
+                      size: 24,
+                      color: Color(0xFF2B323A), // ink-700
+                    ),
                   ),
                 ),
               ),
@@ -534,7 +542,7 @@ class _DossierScreenState extends State<DossierScreen> {
               // utilisateur 2026-05-13).
               style: const TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: Colors.black87,
               ),
             ),
@@ -958,7 +966,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           style: TextStyle(
                             fontSize: 14,
                             // Bumpé w400 → w500 (uniformisation 2026-05-13).
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                             color: Color(0xFF94A3B8),
                           ),
                         ),
@@ -1190,7 +1198,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           // du bloc Bénéficiaire (demande user 2026-05-13).
                           style: const TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ))
@@ -1281,7 +1289,7 @@ class _PlainField extends StatelessWidget {
           overflow: multiline ? TextOverflow.visible : TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 14,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             color: const Color(0xFF0F172A),
             height: multiline ? 1.4 : 1.2,
           ),
@@ -1356,7 +1364,7 @@ class _QuickActionButton extends StatelessWidget {
               // dossier (demande user 2026-05-13).
               style: const TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 color: Colors.grey,
               ),
             ),

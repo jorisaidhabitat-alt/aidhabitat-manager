@@ -1252,23 +1252,28 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
-  /// Bouton retour rond — copie du `_buildBackButton` du
-  /// `VisitReportScreen` pour que l'aspect visuel soit identique
-  /// (cercle blanc 48 px, icône arrowLeft).
+  /// Bouton retour aligné sur celui du VAD (visit_report_screen
+  /// `_buildBackButton`). Demande utilisateur 2026-05-13 : « fais la
+  /// meme flèche pour les autres pages ». 44×44 transparent,
+  /// chevronLeft 24px ink-700.
   Widget _buildBackButton() {
-    return InkWell(
-      onTap: widget.onBack,
-      borderRadius: BorderRadius.circular(50),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          LucideIcons.arrowLeft,
-          color: Colors.black87,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: widget.onBack,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            LucideIcons.chevronLeft,
+            size: 24,
+            color: Color(0xFF2B323A), // ink-700
+          ),
         ),
       ),
     );

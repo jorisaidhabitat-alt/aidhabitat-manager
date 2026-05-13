@@ -24,12 +24,27 @@ class StartVisitScreen extends StatelessWidget {
             left: 32,
             child: Row(
               children: [
-                IconButton(
-                  onPressed: onBack,
-                  icon: const Icon(LucideIcons.arrowLeft),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    shape: const CircleBorder(),
+                // Bouton retour aligné sur celui du VAD (uniformisation
+                // 2026-05-13) : 44×44 transparent, chevronLeft 24px
+                // ink-700.
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onBack,
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        LucideIcons.chevronLeft,
+                        size: 24,
+                        color: Color(0xFF2B323A), // ink-700
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),

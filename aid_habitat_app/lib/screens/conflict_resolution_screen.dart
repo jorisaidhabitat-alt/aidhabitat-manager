@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
 import '../services/data_service.dart';
@@ -91,18 +92,26 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
     final patient = widget.localDossier.patient;
     return Row(
       children: [
-        InkWell(
-          onTap: _resolving ? null : () => Navigator.pop(context),
-          borderRadius: BorderRadius.circular(50),
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.grey.shade200),
+        // Bouton retour aligné sur celui du VAD (uniformisation
+        // 2026-05-13) : 44×44 transparent, chevronLeft 24px ink-700.
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _resolving ? null : () => Navigator.pop(context),
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                LucideIcons.chevronLeft,
+                size: 24,
+                color: Color(0xFF2B323A), // ink-700
+              ),
             ),
-            child: const Icon(Icons.arrow_back, color: Colors.black87),
           ),
         ),
         const SizedBox(width: 16),
