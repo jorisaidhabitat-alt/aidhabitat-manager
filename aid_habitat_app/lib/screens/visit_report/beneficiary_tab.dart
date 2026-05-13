@@ -617,9 +617,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                   children: [
                     Icon(
                       items[i].icon,
-                      // 20 → 18 (demande user 2026-05-13 : icons
-                      // « légèrement plus petits »).
-                      size: 18,
+                      // 20 → 18 → 16 (demande user 2026-05-13 : icons
+                      // plus petits + strokes paraissent plus fins).
+                      // `lucide_icons` est un font icon → stroke fixe,
+                      // pas de strokeWidth dispo ; réduire la taille est
+                      // la façon native d'amincir visuellement.
+                      size: 16,
                       color: labelColor,
                     ),
                     const SizedBox(height: 2),

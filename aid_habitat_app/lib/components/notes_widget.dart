@@ -2319,8 +2319,12 @@ class _NotesWidgetState extends State<NotesWidget> {
     // (demande utilisateur), juste un shadow doux pour le décoller
     // du fond. Cohérent avec la maquette `.vp-palette-switch` qui
     // utilise uniquement une shadow + backdrop blur, sans border.
+    //
+    // Padding 8px (vs 4px historique) — demande utilisateur 2026-05-12 :
+    // « ajoute du padding entre les éléments et les bords ». Les boutons
+    // de 36 px respirent mieux contre la bordure interne du pill.
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(999),
@@ -2338,7 +2342,9 @@ class _NotesWidgetState extends State<NotesWidget> {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 0; i < buttons.length; i++) ...[
-              if (i > 0) const SizedBox(width: 4),
+              // Espace inter-boutons 6 px (vs 4 historique) — aération
+              // entre les outils stylo / surligneur / gomme / palette.
+              if (i > 0) const SizedBox(width: 6),
               buttons[i],
             ],
           ],
@@ -2513,9 +2519,12 @@ class _NotesWidgetState extends State<NotesWidget> {
         ? _highlighterColor
         : _penColor;
     return Container(
-      // Padding élargi (verticale → 8) pour donner de l'air au ring
-      // de 4 px qui apparaît autour de la swatch active.
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      // Padding élargi pour donner de l'air aux swatches contre les
+      // bords du container — cohérent avec la toolbar (8/6) et la
+      // demande utilisateur 2026-05-12 « ajoute du padding entre les
+      // éléments et les bords ». Le ring de 4 px autour de la swatch
+      // active a aussi besoin de marge pour ne pas toucher le bord.
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(999),

@@ -660,8 +660,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Column(
                     children: [
-                      // 20 → 18 (demande user 2026-05-13 : icons « légèrement plus petits »).
-                      Icon(items[i].icon, size: 18, color: labelColor),
+                      // 20 → 18 → 16 (demande user 2026-05-13).
+                      Icon(items[i].icon, size: 16, color: labelColor),
                       const SizedBox(height: 2),
                       Text(items[i].label,
                           style: const TextStyle(

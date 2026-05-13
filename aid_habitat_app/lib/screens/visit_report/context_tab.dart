@@ -805,9 +805,8 @@ class _ContextTabState extends State<ContextTab>
           children: [
             Icon(
               icon,
-              // 20 → 18 (demande user 2026-05-13 : icons « légèrement
-              // plus petits »).
-              size: 18,
+              // 20 → 18 → 16 (demande user 2026-05-13).
+              size: 16,
               color: labelColor,
             ),
             const SizedBox(height: 2),
