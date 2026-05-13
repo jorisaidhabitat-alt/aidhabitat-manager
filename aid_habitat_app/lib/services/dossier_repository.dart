@@ -1778,7 +1778,46 @@ class DossierRepository {
       String patientId, Map<String, dynamic> fields) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
-    final localFields = Map<String, dynamic>.from(fields);
+
+    // Optimisation 2026-05-13 : diff avec la row SQLite existante pour
+    // ne pousser au serveur QUE les champs réellement modifiés. Avant
+    // ce changement, chaque save de BeneficiaryTab envoyait les 24+
+    // champs du Patient à PATCH /api/beneficiaires/:id même si
+    // l'utilisateur n'avait modifié qu'un seul champ — bande passante
+    // gaspillée + risque de race condition sur des champs intacts
+    // (les `*_json` collections sérialisaient un objet ré-encodé qui
+    // pouvait diverger d'une frame à l'autre sans changement
+    // utilisateur). Demande utilisateur 2026-05-13.
+    final existingRows = await db.query(
+      'patients',
+      where: 'local_id = ?',
+      whereArgs: [patientId],
+      limit: 1,
+    );
+    final Map<String, dynamic> changedFields;
+    if (existingRows.isEmpty) {
+      // Cas rare : row inexistante (création concurrente ?). On push
+      // tous les champs pour être sûr.
+      changedFields = fields;
+    } else {
+      final existing = existingRows.first;
+      final diff = <String, dynamic>{};
+      fields.forEach((key, value) {
+        if (_patientFieldChanged(existing[key], value)) {
+          diff[key] = value;
+        }
+      });
+      changedFields = diff;
+    }
+
+    if (changedFields.isEmpty) {
+      // Aucun champ n'a changé — on évite l'écriture locale, la mise
+      // à jour de `updated_at`, et le push serveur. Idempotent : si
+      // l'utilisateur tape un caractère puis efface, on ne fait rien.
+      return;
+    }
+
+    final localFields = Map<String, dynamic>.from(changedFields);
     localFields['updated_at'] = now;
     localFields['sync_state'] = SyncState.pendingSync.name;
     await db.update('patients', localFields,
@@ -1786,7 +1825,7 @@ class DossierRepository {
 
     // Translate to API-friendly payload and enqueue a sync op. We merge with
     // any existing pending op so rapid edits collapse into a single push.
-    final apiUpdates = _mapPatientFieldsToApi(fields);
+    final apiUpdates = _mapPatientFieldsToApi(changedFields);
     if (apiUpdates.isEmpty) return;
 
     final opId = 'patient_update_$patientId';
@@ -1834,6 +1873,37 @@ class DossierRepository {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
     SyncEngine().notify();
+  }
+
+  /// Compare une valeur existante (lue depuis SQLite) avec une nouvelle
+  /// valeur candidate (issue du form Flutter). Renvoie `true` si elles
+  /// sont fonctionnellement différentes du point de vue d'un push API.
+  ///
+  /// Normalise quelques cas piégeux :
+  ///   - Booléen Dart vs INT SQLite 0/1 : `false` == `0` et `true` == `1`
+  ///   - Nombres : `12000` (int) == `12000.0` (double) — pas de mismatch
+  ///     type spurious quand SQLite stocke en REAL ce que Dart envoie
+  ///     en int et inversement
+  ///   - `null` vs `""` : considérés équivalents — l'utilisateur qui
+  ///     efface un champ vide ne déclenche pas un push inutile
+  ///   - Tout le reste : comparaison `.toString()` (couvre les String,
+  ///     les JSON encoded `*_json`, etc.)
+  static bool _patientFieldChanged(dynamic existing, dynamic candidate) {
+    // Bool Dart côté candidate, INT 0/1 côté SQLite
+    if (candidate is bool) {
+      if (existing is int) return existing != (candidate ? 1 : 0);
+      if (existing is bool) return existing != candidate;
+      // type mismatch → on considère différent par sécurité
+      return existing != null;
+    }
+    // Nombres : compare en double pour absorber int<->double
+    if (candidate is num && existing is num) {
+      return candidate.toDouble() != existing.toDouble();
+    }
+    // Normalize null/empty → '' pour traiter les deux comme équivalents
+    final a = existing == null ? '' : existing.toString();
+    final b = candidate == null ? '' : candidate.toString();
+    return a != b;
   }
 
   /// Maps SQL column names (snake_case) used by the visit-report tabs to
