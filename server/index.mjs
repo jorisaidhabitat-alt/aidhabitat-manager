@@ -6008,10 +6008,17 @@ app.patch('/api/beneficiaires/:patientId', requireAuth, async (req, res, next) =
         );
       }
     }
+    // Fix 2026-05-13 : on renvoie le nouvel `updatedAt` du bénéficiaire
+    // pour que le client puisse mettre à jour son `remote_updated_at`
+    // local. Sans ça, le client garde l'ancien timestamp jusqu'au
+    // prochain pull → toute édition consécutive (avant pull) tombe sur
+    // un 409 et passe en force-local (bruyant mais fonctionnel).
     res.json({
       success: true,
       error: null,
-      data: {},
+      data: {
+        updatedAt: refreshedDossier?.patient?.updatedAt || null,
+      },
     });
   } catch (error) {
     next(error);
