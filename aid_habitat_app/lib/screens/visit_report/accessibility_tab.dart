@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
@@ -624,10 +625,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
 
   Widget _buildQuickNav() {
     const items = [
-      _QuickNavItem(icon: Icons.home_outlined, label: 'Général'),
-      _QuickNavItem(icon: Icons.layers_outlined, label: 'Niveaux'),
-      _QuickNavItem(icon: Icons.tune, label: 'Équipements'),
-      _QuickNavItem(icon: Icons.place_outlined, label: 'Extérieur'),
+      // Refonte 2026-05-13 (maquette user) : Material outlined → Lucide
+      // (stroke fin, moins « bold »).
+      _QuickNavItem(icon: LucideIcons.home, label: 'Général'),
+      _QuickNavItem(icon: LucideIcons.layers, label: 'Niveaux'),
+      _QuickNavItem(icon: LucideIcons.settings, label: 'Équipements'),
+      _QuickNavItem(icon: LucideIcons.mapPin, label: 'Extérieur'),
     ];
     return Container(
       // Fond violet pâle restauré (demande utilisateur 2026-04-29 :

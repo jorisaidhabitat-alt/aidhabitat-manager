@@ -581,10 +581,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   Widget _buildQuickNav() {
     final items = const <_QuickNavItem>[
-      _QuickNavItem(icon: Icons.person_outline, label: 'Profil'),
-      _QuickNavItem(icon: Icons.home_outlined, label: 'Foyer'),
-      _QuickNavItem(icon: Icons.favorite_outline, label: 'Santé'),
-      _QuickNavItem(icon: Icons.folder_open_outlined, label: 'Admin'),
+      // Refonte 2026-05-13 (maquette user) : icônes Material outlined
+      // remplacées par leurs équivalents LucideIcons (stroke fin,
+      // moins « bold », parité avec le reste de l'app).
+      _QuickNavItem(icon: LucideIcons.user, label: 'Profil'),
+      _QuickNavItem(icon: LucideIcons.home, label: 'Foyer'),
+      _QuickNavItem(icon: LucideIcons.heart, label: 'Santé'),
+      _QuickNavItem(icon: LucideIcons.folderOpen, label: 'Admin'),
     ];
     // Bandeau full-width violet pâle restauré (demande utilisateur
     // 2026-04-29 : les changements « pas de fond + trait pleine
@@ -621,7 +624,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     Text(
                       items[i].label,
                       style: const TextStyle(
-                        fontSize: 10,
+                        // 10 → 12 (demande user 2026-05-13 : « 2px plus
+                        // grand »).
+                        fontSize: 12,
                         fontWeight: FontWeight.w800,
                         color: labelColor,
                       ),

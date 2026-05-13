@@ -2478,15 +2478,15 @@ class _NotesWidgetState extends State<NotesWidget> {
               // & VAD du dossier. Demande utilisateur 2026-04-28 :
               // « la couleur de fond des outils de note quand je les
               // selectionne doit être le meme violet clair que celui
-              // qui est présent dans toute l'application ». L'ancien
-              // `_kAccentSoft = 0xFFD8D0DC` (lavande terne) n'était
-              // utilisé qu'ici — supprimé pour éviter toute dérive.
-              // Refonte 2026-05-13 : actif = mauve-100 + icône mauve-700,
-              // inactif = ink-100 + icône ink-700 (vs grey.shade100/700
-              // qui sont des gris froids non alignés avec la palette).
-              color: isActive
-                  ? _kStackedVioletSoft
-                  : const Color(0xFFF2F4F6), // ink-100
+              // qui est présent dans toute l'application ».
+              //
+              // Fond INACTIF = transparent (refonte 2026-05-12). Avant :
+              // `ink-100` (gris très clair) qui surchargeait visuellement
+              // la toolbar pour rien. Demande utilisateur : « retire le
+              // fond gris pour les boutons inactifs ». L'icône ink-700
+              // (foncée) reste parfaitement lisible sur fond blanc /
+              // light de la toolbar. Le ripple Material apparaît au tap.
+              color: isActive ? _kStackedVioletSoft : Colors.transparent,
               shape: BoxShape.circle,
             ),
             child: Opacity(
