@@ -1548,41 +1548,42 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Aucun container visible : pas de Card, pas de border, pas de
-    // background. Juste l'image clipée en coins arrondis légers (pour
-    // les bords nets sur fond blanc) + un overlay border violet
-    // optionnel quand un drag passe au-dessus.
-    //
-    // Aspect ratio = 1:1 pour matcher les cadres `_buildEmptySlot`
-    // (qui sont carrés). Demande utilisateur 2026-04-29 : « les
-    // images doivent être de la même taille que les cadres drag and
-    // drop ». Le BoxFit.cover de `_PhotoThumbnail` rogne le surplus
-    // pour remplir le carré sans déformer.
-    return AspectRatio(
-      aspectRatio: 1,
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: _PhotoThumbnail(doc: doc),
+    // Refonte 2026-05-13 (visit-pages.js `.vp-poly` lignes 265-280) :
+    //  - Style polaroid : fond blanc, padding 9px (top/sides) 0 (bottom),
+    //    radius très petit (2px), shadow douce double couche
+    //  - Photo clipée en quasi-rectangle (radius 1px)
+    //  - Aspect ratio 1:1 préservé pour matcher les cadres vides
+    //  - Highlight au drag : border mauve-500 1.5px sur l'extérieur
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(2),
+          border: highlight
+              ? Border.all(color: const Color(0xFF8B6FA0), width: 1.5)
+              : null,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0x141F1E14).withValues(alpha: 0.08),
+              blurRadius: 22,
+              offset: const Offset(0, 8),
             ),
-            if (highlight)
-              IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: const Color(0xFF8B6FA0),
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
+            BoxShadow(
+              color: const Color(0x141F1E14).withValues(alpha: 0.06),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
+            ),
           ],
+        ),
+        padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(1),
+            child: _PhotoThumbnail(doc: doc),
+          ),
         ),
       ),
     );
