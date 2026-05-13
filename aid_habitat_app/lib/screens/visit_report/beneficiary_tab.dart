@@ -2112,14 +2112,13 @@ class _DateOfBirthField extends StatelessWidget {
       children: [
         if (showLabel) ...[
           // Refonte 2026-05-13 — aligné sur FormTextField (vp-label) :
-          // fontWeight w500, fontSize 14, color #2B323A. Avant ce
-          // changement, le label "Date de naissance" sortait du lot
-          // (plus petit, plus gras, plus gris) à cause d'un widget
-          // custom non-mis à jour lors de la refonte design.
+          // fontWeight w600, fontSize 14, color #2B323A. Avant la
+          // refonte, ce label sortait du lot (plus petit, plus gras,
+          // plus gris) à cause d'un widget custom non-mis à jour.
           const Text(
             'Date de naissance',
             style: TextStyle(
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w700,
               fontSize: 14,
               color: Color(0xFF2B323A),
             ),

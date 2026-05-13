@@ -314,11 +314,13 @@ class _FormTextFieldState extends State<FormTextField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Refonte 2026-05-13 (visit-pages.js .vp-label) :
-        // 14px w500 ink-700, sans uppercase.
+        // 14px w600 ink-700, sans uppercase. (w500 → w600 le 2026-05-13
+        // sur demande utilisateur : « rendre légèrement plus bold les
+        // titres de section et de sous-section ».)
         Text(
           widget.label,
           style: TextStyle(
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w700,
             fontSize: widget.labelSize ?? 14,
             color: widget.labelColor ?? const Color(0xFF2B323A),
           ),
@@ -459,10 +461,11 @@ class _FormNumberFieldState extends State<FormNumberField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Refonte 2026-05-13 (vp-label) — cf. FormTextField.
+        // w600 le 2026-05-13 sur demande utilisateur.
         Text(
           widget.label,
           style: TextStyle(
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w700,
             fontSize: widget.labelSize ?? 14,
             color: widget.labelColor ?? const Color(0xFF2B323A),
           ),
@@ -789,12 +792,13 @@ class FormToggleGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (label.isNotEmpty) ...[
-          // Refonte 2026-05-13 : label de section en 14px w500 ink-700
-          // (au lieu de 13px w600 slate-500), sans uppercase.
+          // Refonte 2026-05-13 : label de section en 14px w600 ink-700.
+          // (w500 → w600 le 2026-05-13 sur demande utilisateur : « rendre
+          // légèrement plus bold les titres de section et de sous-section ».)
           Text(
             label,
             style: const TextStyle(
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w700,
               fontSize: 14,
               color: Color(0xFF2B323A), // ink-700
             ),
@@ -1190,10 +1194,11 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Refonte 2026-05-13 (vp-label).
+        // w600 le 2026-05-13 sur demande utilisateur.
         Text(
           widget.label,
           style: const TextStyle(
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w700,
             fontSize: 14,
             color: Color(0xFF2B323A),
           ),
