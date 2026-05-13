@@ -578,7 +578,8 @@ class _BathroomTabState extends State<BathroomTab>
               color: a.sdbSolGlissant
                   ? const Color(0xFF8B6FA0)
                   : Colors.white,
-              borderRadius: BorderRadius.circular(10),
+              // Refonte 2026-05-13 : pill radius 999 uniforme.
+              borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: a.sdbSolGlissant
                     ? const Color(0xFF8B6FA0)
@@ -866,7 +867,8 @@ class _WetZoneButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? const Color(0xFF8B6FA0) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: active
                 ? const Color(0xFF8B6FA0)

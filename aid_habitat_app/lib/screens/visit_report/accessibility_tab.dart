@@ -629,7 +629,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       // (stroke fin, moins « bold »).
       _QuickNavItem(icon: LucideIcons.home, label: 'Général'),
       _QuickNavItem(icon: LucideIcons.layers, label: 'Niveaux'),
-      _QuickNavItem(icon: LucideIcons.settings, label: 'Équipements'),
+      // Demande user 2026-05-13 : icon « 3 lignes les unes en dessous
+      // des autres » → menu (hamburger Lucide, 3 traits horizontaux).
+      _QuickNavItem(icon: LucideIcons.menu, label: 'Équipements'),
       _QuickNavItem(icon: LucideIcons.mapPin, label: 'Extérieur'),
     ];
     return Container(
@@ -1105,7 +1107,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 // picker, qui n'a aucune donnée à supprimer.
                 InkWell(
                   onTap: () => setState(() => _addLevelMode = false),
-                  borderRadius: BorderRadius.circular(20),
+                  // Refonte 2026-05-13 : pill radius 999 uniforme.
+                  borderRadius: BorderRadius.circular(999),
                   child: const Padding(
                     padding: EdgeInsets.all(4),
                     child: Icon(Icons.expand_less,
@@ -1241,7 +1244,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           // Même violet que FormToggleGroup (#907CA1) pour unifier tous
           // les pills multi-select avec les autres boutons du relevé.
           color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF8B6FA0)
@@ -1466,7 +1470,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   });
                   _scheduleSave();
                 },
-                borderRadius: BorderRadius.circular(20),
+                // Refonte 2026-05-13 : pill radius 999 uniforme.
+                borderRadius: BorderRadius.circular(999),
                 child: Padding(
                   padding: EdgeInsets.all(
                     _pendingLevelField == cfg.field ? 4 : 12,
@@ -1559,7 +1564,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   decoration: InputDecoration(
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+                        horizontal: 14, vertical: 10),
                     hintText: 'Ajouter une pièce',
                     hintStyle: const TextStyle(
                         color: Color(0xFF8A939D), fontSize: 12),
@@ -1568,16 +1573,19 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     // Refonte 2026-05-13 (demande user) — border gris léger
                     // partout, focus violet, parité avec FormTextField et
                     // le champ Ville du dossier.
+                    // Refonte 2026-05-13 : pill radius 999 uniforme.
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(999),
                       borderSide: BorderSide(color: Colors.grey.shade300),
                     ),
+                    // Refonte 2026-05-13 : pill radius 999 uniforme.
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(999),
                       borderSide: BorderSide(color: Colors.grey.shade300),
                     ),
+                    // Refonte 2026-05-13 : pill radius 999 uniforme.
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(999),
                       borderSide: const BorderSide(
                           color: Color(0xFF8B6FA0), width: 1.5),
                     ),
