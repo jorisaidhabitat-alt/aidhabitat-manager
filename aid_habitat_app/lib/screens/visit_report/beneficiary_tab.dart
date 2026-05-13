@@ -621,7 +621,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                       items[i].label,
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
+                        // Légèrement plus bold sur demande utilisateur
+                        // 2026-05-13 : w700 → w800.
+                        fontWeight: FontWeight.w800,
                         color: active ? activeColor : inactiveColor,
                       ),
                     ),

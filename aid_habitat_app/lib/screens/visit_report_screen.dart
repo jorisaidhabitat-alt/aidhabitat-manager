@@ -950,9 +950,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               // les inactifs (tokens du nouveau design).
               labelColor: const Color(0xFF554265), // mauve-700
               unselectedLabelColor: const Color(0xFF5C6670), // ink-500
-              labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+              // « Légèrement plus bold » sur demande utilisateur 2026-05-13 :
+              // actif w600 → w700, inactif w500 → w600.
+              labelStyle: const TextStyle(fontWeight: FontWeight.w700),
               unselectedLabelStyle:
-                  const TextStyle(fontWeight: FontWeight.w500),
+                  const TextStyle(fontWeight: FontWeight.w600),
               labelPadding: const EdgeInsets.symmetric(horizontal: 16),
               tabs: List.generate(_tabs.length, (i) {
                 final label = _tabs[i];
