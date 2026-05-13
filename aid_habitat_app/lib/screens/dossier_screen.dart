@@ -502,7 +502,7 @@ class _DossierScreenState extends State<DossierScreen> {
                   // le relevé de visite »).
                   style: const TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     color: Color(0xFF0F172A),
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -542,7 +542,7 @@ class _DossierScreenState extends State<DossierScreen> {
               // utilisateur 2026-05-13).
               style: const TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 color: Colors.black87,
               ),
             ),
@@ -939,7 +939,7 @@ class _DossierScreenState extends State<DossierScreen> {
                         'Communauté de communes',
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                           color: Color(0xFF8B6FA0),
                           letterSpacing: 0.2,
                         ),
@@ -966,7 +966,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           style: TextStyle(
                             fontSize: 14,
                             // Bumpé w400 → w500 (uniformisation 2026-05-13).
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             color: Color(0xFF94A3B8),
                           ),
                         ),
@@ -1170,7 +1170,7 @@ class _DossierScreenState extends State<DossierScreen> {
           // Bumpé w600 → w700 pour uniformiser avec les labels du
           // relevé de visite (demande utilisateur 2026-05-13).
           style: TextStyle(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             fontSize: 14,
             color: Color(0xFF8B6FA0),
           ),
@@ -1198,7 +1198,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           // du bloc Bénéficiaire (demande user 2026-05-13).
                           style: const TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ))
@@ -1275,7 +1275,7 @@ class _PlainField extends StatelessWidget {
           // preview — demande utilisateur.
           style: const TextStyle(
             fontSize: 14,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             color: Color(0xFF8B6FA0),
             letterSpacing: 0.2,
           ),
@@ -1289,7 +1289,7 @@ class _PlainField extends StatelessWidget {
           overflow: multiline ? TextOverflow.visible : TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 14,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             color: const Color(0xFF0F172A),
             height: multiline ? 1.4 : 1.2,
           ),
@@ -1364,7 +1364,7 @@ class _QuickActionButton extends StatelessWidget {
               // dossier (demande user 2026-05-13).
               style: const TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: Colors.grey,
               ),
             ),
