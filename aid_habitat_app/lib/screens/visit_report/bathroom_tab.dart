@@ -565,11 +565,18 @@ class _BathroomTabState extends State<BathroomTab>
         const SizedBox(height: 18),
         // Sol glissant — déplacé tout en bas de l'onglet Salle de bain à
         // la demande de l'utilisateur (après la section Porte).
-        // Refonte 2026-05-13 : aligné sur FormToggleGroup.buildPill
-        // (Occupation) — AnimatedContainer 220ms, height 32, padding
-        // h:14, bg mauve-50 → mauve-500. Demande utilisateur :
-        // « conceptionne ... vraiment pareil que les autres boutons,
-        // avec fond de couleur de base, animation de remplissage ».
+        // Refonte 2026-05-13 : pill basé sur FormToggleGroup.buildPill
+        // (220ms ease-out cubic, height 32, padding h:14) MAIS avec
+        // palette « warning » quand sélectionné — alignée sur le bouton
+        // « Aide à domicile » jaune (`_ActionButton.humanHelp`) :
+        // bg amber-100 #FEF3C7, texte + icône amber-800 #B45309.
+        // Inactif : mauve-50 + ink-700 (look standard). Une icône
+        // ⚠ (alertTriangle) est ajoutée à gauche du libellé pour
+        // souligner le risque.
+        // Demande utilisateur : « pour sol glissant ajoute un icon
+        // warning et met le sur fond jaune clair comme aide à
+        // domicile s'il est sélectionné et l'ecriture en orange
+        // foncé ».
         GestureDetector(
           onTap: () =>
               _updateActive(_copy(a, sdbSolGlissant: !a.sdbSolGlissant)),
@@ -581,27 +588,41 @@ class _BathroomTabState extends State<BathroomTab>
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: a.sdbSolGlissant
-                  ? const Color(0xFF8B6FA0) // mauve-500
-                  : const Color(0xFFFAF7FB), // mauve-50
+                  ? const Color(0xFFFEF3C7) // amber-100 (idem Aide à domicile)
+                  : const Color(0xFFFAF7FB), // mauve-50 (repos standard)
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: a.sdbSolGlissant
-                    ? const Color(0xFF8B6FA0)
+                    ? const Color(0xFFFEF3C7)
                     : Colors.transparent,
               ),
             ),
-            child: Text(
-              'Sol glissant',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: a.sdbSolGlissant
-                    ? FontWeight.w500
-                    : FontWeight.w400,
-                color: a.sdbSolGlissant
-                    ? Colors.white
-                    : const Color(0xFF2B323A), // ink-700
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  LucideIcons.alertTriangle,
+                  size: 14,
+                  color: a.sdbSolGlissant
+                      ? const Color(0xFFB45309) // amber-800 (orange foncé)
+                      : const Color(0xFF2B323A), // ink-700 au repos
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Sol glissant',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: a.sdbSolGlissant
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                    color: a.sdbSolGlissant
+                        ? const Color(0xFFB45309) // amber-800
+                        : const Color(0xFF2B323A), // ink-700
+                  ),
+                ),
+              ],
             ),
           ),
         ),

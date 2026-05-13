@@ -10,6 +10,7 @@ import '../services/connectivity_service.dart';
 import '../services/data_service.dart';
 import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
+import 'soft_transitions.dart';
 
 // =============================================================================
 // Enums & constantes — équivalents directs du composant React NotesCanvas.tsx
@@ -253,6 +254,7 @@ class NotesWidget extends StatefulWidget {
     this.medicalFlags,
     this.onMedicalFlagsChanged,
     this.stackedCards = false,
+    this.canvasSlideIndex,
   });
 
   // Identifiants / titre
@@ -285,6 +287,23 @@ class NotesWidget extends StatefulWidget {
   /// (même ligne que les flèches undo/redo). Utilisé par ex. par
   /// MesuresTab pour injecter le sélecteur d'occupant.
   final Widget? leadingNavWidget;
+
+  /// Index optionnel utilisé pour wrapper UNIQUEMENT la zone canvas
+  /// (dessin + toolbar) dans un [HorizontalSlideSwitcher]. Quand cet
+  /// index change, le canvas glisse latéralement (entrée par la droite
+  /// si croissant, par la gauche si décroissant) tandis que la barre
+  /// de navigation (incluant `leadingNavWidget` + undo/redo) reste
+  /// fixe. Utilisé par MesuresTab pour faire glisser le dessin lors
+  /// d'un changement d'occupant sans bouger la bannière.
+  ///
+  /// Pour que la transition soit visuellement correcte, la State du
+  /// NotesWidget doit être *réutilisée* entre les valeurs successives
+  /// de `canvasSlideIndex` (pas de clé externe qui change), et le
+  /// `tabKey` doit varier d'un index à l'autre (didUpdateWidget
+  /// recharge alors les pages). L'ancien arbre canvas reste alors
+  /// rendu par l'AnimatedSwitcher pendant la transition, peignant la
+  /// référence stroke capturée à l'ancien build.
+  final int? canvasSlideIndex;
 
   // Contenu initial
   final String initialText;
