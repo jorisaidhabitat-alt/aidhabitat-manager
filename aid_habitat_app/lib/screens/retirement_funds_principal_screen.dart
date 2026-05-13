@@ -267,8 +267,13 @@ class _RetirementFundsPrincipalScreenState
   }
 
   Widget _buildContent() {
+    // Quand embarqué (showHeader=false) dans `RetirementFundsCombinedScreen`,
+    // le parent fournit déjà son padding horizontal de 32 — on met 0 ici
+    // pour que la grid s'aligne sur le bundle du switch en haut à droite
+    // (demande user 2026-05-13). En standalone, padding 32 conservé.
+    final double hPad = widget.showHeader ? 32 : 0;
     return Padding(
-      padding: EdgeInsets.fromLTRB(32, widget.showHeader ? 32 : 0, 32, 32),
+      padding: EdgeInsets.fromLTRB(hPad, widget.showHeader ? 32 : 0, hPad, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
