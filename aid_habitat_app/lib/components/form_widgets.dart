@@ -461,13 +461,13 @@ class _FormNumberFieldState extends State<FormNumberField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Refonte 2026-05-13 (vp-label) — cf. FormTextField.
-        // w600 le 2026-05-13 sur demande utilisateur.
+        // Uniformisé en w700 14px ink-900 noir le 2026-05-13.
         Text(
           widget.label,
           style: TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: widget.labelSize ?? 14,
-            color: widget.labelColor ?? const Color(0xFF2B323A),
+            color: widget.labelColor ?? const Color(0xFF0E1116),
           ),
         ),
         SizedBox(height: widget.labelSpacing ?? 5),

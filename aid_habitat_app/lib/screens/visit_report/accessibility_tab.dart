@@ -1557,12 +1557,23 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     hintText: 'Ajouter une pièce',
                     hintStyle: const TextStyle(
                         color: Color(0xFF8A939D), fontSize: 12),
-                    border: InputBorder.none,
                     filled: true,
                     fillColor: Colors.white,
+                    // Refonte 2026-05-13 (demande user) — border gris léger
+                    // partout, focus violet, parité avec FormTextField et
+                    // le champ Ville du dossier.
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(
+                          color: Color(0xFF8B6FA0), width: 1.5),
                     ),
                   ),
                   onSubmitted: (_) => _addCustomRoom(cfg),
