@@ -1009,10 +1009,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
-  /// Bouton retour aligné sur le style des chevrons prev/next du
-  /// occupant header (refonte 2026-05-13) : 30×30, rounded-8,
-  /// transparent, icône ink-700. Cohérence visuelle entre les
-  /// boutons de navigation du header et ceux de la bannière occupant.
+  /// Bouton retour. Bumpé de 30×30 / icône 16 → 44×44 / icône 24 sur
+  /// demande utilisateur 2026-05-13 (« met la flèche retour de VAD
+  /// plus grande »). Reste transparent, pill radius 999, icône ink-700.
   Widget _buildBackButton() {
     return Material(
       color: Colors.transparent,
@@ -1021,8 +1020,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         // Refonte 2026-05-13 : pill radius 999 uniforme.
         borderRadius: BorderRadius.circular(999),
         child: Container(
-          width: 30,
-          height: 30,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             borderRadius: BorderRadius.circular(999),
@@ -1030,7 +1029,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           alignment: Alignment.center,
           child: const Icon(
             LucideIcons.chevronLeft,
-            size: 16,
+            size: 24,
             color: Color(0xFF2B323A), // ink-700
           ),
         ),
