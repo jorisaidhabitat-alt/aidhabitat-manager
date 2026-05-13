@@ -633,8 +633,9 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                     Text(
                       "${patient.lastName} ${patient.firstName}",
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        // Bump 2026-05-13 : 15→17, bold→w800.
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
                         color: _hover
                             ? const Color(0xFF8B6FA0)
                             : const Color(0xFF1E293B),
@@ -654,7 +655,9 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                             shortAddress.isEmpty ? '—' : shortAddress,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 12,
+                              // Bump 2026-05-13 : 12→14, ajout w600.
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                               color: Color(0xFF64748B),
                             ),
                           ),

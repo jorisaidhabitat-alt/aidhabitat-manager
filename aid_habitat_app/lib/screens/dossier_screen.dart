@@ -531,20 +531,23 @@ class _DossierScreenState extends State<DossierScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Text(
+            // Refonte 2026-05-13 : la date « Créé le » est alignée sur
+            // le style de la date des cartes Documents — Nunito 13px
+            // w300 grey, sobre et discrète (au lieu de 16px w600 black).
+            Text(
               'Créé le',
-              style:
-                  TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+              style: GoogleFonts.nunito(
+                fontSize: 13,
+                fontWeight: FontWeight.w300,
+                color: Colors.grey,
+              ),
             ),
             Text(
               _formatDate(widget.dossier.createdAt),
-              // Date « créé le » bumpée w400 → w600 pour rester
-              // alignée avec l'épaisseur générale du dossier (demande
-              // utilisateur 2026-05-13).
               style: GoogleFonts.nunito(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.w300,
+                color: Colors.grey,
               ),
             ),
           ],
