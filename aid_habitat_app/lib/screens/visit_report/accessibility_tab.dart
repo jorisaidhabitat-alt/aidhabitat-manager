@@ -1289,9 +1289,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 child: Text.rich(
                   TextSpan(
                     style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF5C6670),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF2B323A),
                     ),
                     children: [
                       TextSpan(text: cfg.label),

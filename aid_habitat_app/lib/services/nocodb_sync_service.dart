@@ -965,14 +965,22 @@ class NocodbSyncService {
     print('[sync] PATCH /api/logements/by-beneficiary/$remoteId '
         'updates=${updates.keys.toList()} '
         'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}');
-    await _apiClient.updateLogement(
+    final newUpdatedAt = await _apiClient.updateLogement(
       beneficiaryId: remoteId,
       updates: updatesWithGuard,
     );
     if (housingLocalId != null) {
+      // Fix 2026-05-13 : on persiste aussi le nouveau `remote_updated_at`
+      // renvoyé par le serveur. Sans ça, le 2e save consécutif (avant
+      // le prochain pull) renvoie l'ancien `expectedUpdatedAt` → 409
+      // garanti → retry force-local bruyant à chaque save. Cf. fix
+      // identique dans _processPatientOperation et _processContexteDeVie.
       await db.update(
         'housings',
-        {'sync_state': SyncState.synced.name},
+        {
+          'sync_state': SyncState.synced.name,
+          if (newUpdatedAt != null) 'remote_updated_at': newUpdatedAt,
+        },
         where: 'local_id = ?',
         whereArgs: [housingLocalId],
       );

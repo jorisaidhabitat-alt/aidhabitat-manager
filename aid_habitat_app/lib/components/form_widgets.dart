@@ -575,37 +575,54 @@ class FormToggleGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Refonte 2026-05-13 (visit-pages.js `.vp-chip`) :
+    //  - Pill 32px de haut (padding vertical 4)
+    //  - Inactive : bg mauve-50, border transparent, texte ink-700
+    //  - Active   : bg mauve-500, border mauve-500, texte blanc
+    //  - Radius 9999 (pill complet)
+    //  - Animation 220ms ease (background + color)
     Widget buildPill(String opt) {
       final isSelected = opt == selected;
       return GestureDetector(
         onTap: () {
-          // Tap sur la pill déjà sélectionnée → désélection (retour à
-          // l'état « non renseigné »). Sinon → sélection normale.
           if (isSelected && allowDeselect) {
             onChanged?.call('');
           } else {
             onChanged?.call(opt);
           }
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF7C6DAA) : Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            color: isSelected
+                ? const Color(0xFF8B6FA0) // mauve-500
+                : const Color(0xFFFAF7FB), // mauve-50
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: isSelected
-                  ? const Color(0xFF7C6DAA)
-                  : Colors.grey.shade300,
+                  ? const Color(0xFF8B6FA0)
+                  : Colors.transparent,
             ),
           ),
-          child: Text(
-            opt,
-            textAlign: TextAlign.center,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.black87,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              color: isSelected
+                  ? Colors.white
+                  : const Color(0xFF2B323A), // ink-700
+              fontSize: 14,
+              fontWeight: isSelected
+                  ? FontWeight.w500
+                  : FontWeight.w400,
+            ),
+            child: Text(
+              opt,
+              textAlign: TextAlign.center,
             ),
           ),
         ),
@@ -616,15 +633,17 @@ class FormToggleGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (label.isNotEmpty) ...[
+          // Refonte 2026-05-13 : label de section en 14px w500 ink-700
+          // (au lieu de 13px w600 slate-500), sans uppercase.
           Text(
             label,
             style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+              color: Color(0xFF2B323A), // ink-700
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
         ],
         if (columns != null && columns! > 0)
           _buildGridRows(options, columns!, buildPill)

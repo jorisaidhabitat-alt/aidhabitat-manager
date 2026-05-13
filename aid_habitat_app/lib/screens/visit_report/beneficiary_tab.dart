@@ -1002,7 +1002,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         : [first, last.toUpperCase()].where((s) => s.isNotEmpty).join(' ');
     final total = _occupants.length;
     final hasNav = total > 1;
-    final role = idx == 0 ? 'BÉNÉFICIAIRE PRINCIPAL' : 'CONJOINT·E';
+    // `role` (BÉNÉFICIAIRE PRINCIPAL / CONJOINT·E) retiré sur demande user
+    // 2026-05-13 — le prénom NOM seul suffit, le rôle est redondant avec
+    // la navigation prev/next + les dots de pagination.
 
     Widget arrow(IconData icon, VoidCallback action) {
       return Opacity(
@@ -1037,32 +1039,19 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         children: [
           arrow(LucideIcons.chevronLeft, _occupantPrev),
           Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  role,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.0,
-                    color: Color(0xFF8B6FA0), // mauve-500
-                  ),
+            child: Center(
+              child: Text(
+                display,
+                style: GoogleFonts.nunito(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.25,
+                  height: 1.15,
+                  color: const Color(0xFF0E1116),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  display,
-                  style: GoogleFonts.nunito(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.25,
-                    height: 1.15,
-                    color: const Color(0xFF0E1116),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
           arrow(LucideIcons.chevronRight, _occupantNext),

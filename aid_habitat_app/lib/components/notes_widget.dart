@@ -180,7 +180,10 @@ const double _kDefaultPenSize = 2.0;
 const double _kDefaultHighlighterSize = 10.0;
 const double _kDefaultEraserSize = 18.0;
 const Color _kAccentColor = Color(0xFF7C6DAA);
-const Color _kActiveText = Color(0xFF554A63);
+// Refonte 2026-05-13 : couleurs alignées sur le nouveau design system.
+//  - _kActiveText : mauve-700 (#554265, légère nuance plus chaude)
+//  - _kStackedVioletSoft : mauve-100 (#F2ECF5)
+const Color _kActiveText = Color(0xFF554265);
 const double _kGridCell = 24.0;
 
 // Constantes de la mise en page "deux cartes empilées" (parité maquette).
@@ -189,7 +192,7 @@ const Color _kStackedBorder = Color(0xFFEDE9EF);
 // l'écran dossier (cohérence visuelle — demande utilisateur).
 const Color _kStackedSplitterBg = Color(0xFFEDE8F5);
 const Color _kStackedViolet = Color(0xFF7C6DAA);
-const Color _kStackedVioletSoft = Color(0xFFEDE8F5);
+const Color _kStackedVioletSoft = Color(0xFFF2ECF5); // mauve-100
 const Color _kStackedPinkSoft = Color(0xFFE8A4B0);
 
 List<NoteTool> _availableToolsFor(NoteToolset toolset) {
@@ -2474,7 +2477,12 @@ class _NotesWidgetState extends State<NotesWidget> {
               // qui est présent dans toute l'application ». L'ancien
               // `_kAccentSoft = 0xFFD8D0DC` (lavande terne) n'était
               // utilisé qu'ici — supprimé pour éviter toute dérive.
-              color: isActive ? _kStackedVioletSoft : Colors.grey.shade100,
+              // Refonte 2026-05-13 : actif = mauve-100 + icône mauve-700,
+              // inactif = ink-100 + icône ink-700 (vs grey.shade100/700
+              // qui sont des gris froids non alignés avec la palette).
+              color: isActive
+                  ? _kStackedVioletSoft
+                  : const Color(0xFFF2F4F6), // ink-100
               shape: BoxShape.circle,
             ),
             child: Opacity(
@@ -2482,7 +2490,9 @@ class _NotesWidgetState extends State<NotesWidget> {
               child: Icon(
                 icon,
                 size: 18,
-                color: isActive ? _kActiveText : Colors.grey.shade700,
+                color: isActive
+                    ? _kActiveText
+                    : const Color(0xFF2B323A), // ink-700
               ),
             ),
           ),

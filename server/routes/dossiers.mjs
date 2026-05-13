@@ -275,14 +275,52 @@ router.patch('/api/logements/by-beneficiary/:beneficiaryId', requireAuth, async 
       portail_id1: portail ? Number(portail.id) : undefined,
     });
 
+    // Helper inline pour extraire le UpdatedAt d'un record NocoDB.
+    // `getRecordUpdatedAt` existe dans index.mjs mais n'est pas exporté
+    // depuis helpers.mjs — on inline pour éviter de chambouler les imports.
+    const extractUpdatedAt = (record) => {
+      const raw = field(record, 'updated_at') ||
+          field(record, 'UpdatedAt') ||
+          field(record, 'created_at') ||
+          field(record, 'CreatedAt');
+      return raw ? new Date(raw).toISOString() : null;
+    };
+
     if (existingHousing) {
       await updateRecord(TABLES.logements, existingHousing.id, fields);
-      res.json({ success: true, error: null, data: { id: field(existingHousing, 'uuid_source') || `nocodb-housing-${existingHousing.id}` } });
+      // Fix 2026-05-13 : on renvoie le nouvel `updatedAt` du logement
+      // pour que le client puisse mettre à jour son `remote_updated_at`
+      // local. Sans ça, le 2e save consécutif envoie l'ancien
+      // `expectedUpdatedAt` → 409 conflit garanti → retry force-local
+      // bruyant à chaque save. Cf. fix identique sur PATCH beneficiaires.
+      let refreshedUpdatedAt = null;
+      try {
+        const refreshedLogements = await queryAll(TABLES.logements, { fields: FIELD_SETS.logements });
+        const refreshed = refreshedLogements.find((r) => String(r.id) === String(existingHousing.id));
+        if (refreshed) refreshedUpdatedAt = extractUpdatedAt(refreshed);
+      } catch (_) {
+        // best-effort : client gardera son ancien remote_updated_at
+      }
+      res.json({
+        success: true,
+        error: null,
+        data: {
+          id: field(existingHousing, 'uuid_source') || `nocodb-housing-${existingHousing.id}`,
+          updatedAt: refreshedUpdatedAt,
+        },
+      });
       return;
     }
 
     const created = await createRecord(TABLES.logements, fields);
-    res.json({ success: true, error: null, data: { id: field(created, 'uuid_source') || `nocodb-housing-${created.id}` } });
+    res.json({
+      success: true,
+      error: null,
+      data: {
+        id: field(created, 'uuid_source') || `nocodb-housing-${created.id}`,
+        updatedAt: extractUpdatedAt(created),
+      },
+    });
   } catch (error) {
     next(error);
   }

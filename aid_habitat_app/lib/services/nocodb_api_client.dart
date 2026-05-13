@@ -343,7 +343,7 @@ class NocodbApiClient {
   ///
   /// Idem [updateBeneficiary] : sur 409 on lève [ConflictException]
   /// pour que la sync engine route vers `markConflict`.
-  Future<void> updateLogement({
+  Future<String?> updateLogement({
     required String beneficiaryId,
     required Map<String, dynamic> updates,
   }) async {
@@ -382,6 +382,28 @@ class NocodbApiClient {
         'Remote logement update failed (${response.statusCode}): ${response.body}',
       );
     }
+    // Fix 2026-05-13 : extraire le nouveau `updatedAt` renvoyé par le
+    // serveur pour que `_processHousingOperation` puisse l'écrire en
+    // SQLite local. Sans ça, le prochain save lit l'ancien
+    // `remote_updated_at` (figé) → 409 conflit garanti → retry
+    // force-local bruyant à chaque save. Symptôme reporté
+    // 2026-05-13 : « 4 saves Accessibilité = 8 PATCH (1 fail + 1 retry
+    // chacun) ».
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map) {
+        final data = body['data'];
+        if (data is Map) {
+          final v = data['updatedAt'];
+          if (v is String && v.isNotEmpty) return v;
+        }
+      }
+    } catch (_) {
+      // Si le serveur ne renvoie pas le champ (ancien déploiement) ou
+      // si la réponse n'est pas JSON, on retourne null. Le caller
+      // gardera l'ancien `remote_updated_at` jusqu'au prochain pull.
+    }
+    return null;
   }
 
   /// PUT /api/mesures/:dossierId — upsert mesures anthropométriques.

@@ -1023,30 +1023,36 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Refonte 2026-05-13 : aligné sur FormToggleGroup.buildPill (pill 32px
+    // mauve-50 → mauve-500).
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          // Même violet que FormToggleGroup (#907CA1) pour unifier tous
-          // les pills multi-select avec les autres boutons du relevé.
-          color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected
+              ? const Color(0xFF8B6FA0) // mauve-500
+              : const Color(0xFFFAF7FB), // mauve-50
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF8B6FA0)
-                : Colors.grey.shade300,
-            width: 1.2,
+                : Colors.transparent,
           ),
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+            color: isSelected
+                ? Colors.white
+                : const Color(0xFF2B323A), // ink-700
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
           ),
         ),
       ),

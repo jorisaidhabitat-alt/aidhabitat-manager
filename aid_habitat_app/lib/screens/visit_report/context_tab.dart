@@ -646,7 +646,9 @@ class _ContextTabState extends State<ContextTab>
             .join(' ');
     final total = _contextOccupants.length;
     final hasNav = total > 1;
-    final role = idx == 0 ? 'BÉNÉFICIAIRE PRINCIPAL' : 'CONJOINT·E';
+    // `role` (BÉNÉFICIAIRE PRINCIPAL / CONJOINT·E) retiré sur demande user
+    // 2026-05-13 — le prénom NOM seul suffit, le rôle est redondant avec
+    // la navigation prev/next + les dots de pagination.
 
     void prev() {
       if (!hasNav) return;
@@ -693,32 +695,19 @@ class _ContextTabState extends State<ContextTab>
         children: [
           arrow(LucideIcons.chevronLeft, prev),
           Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  role,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.0, // 0.1em
-                    color: Color(0xFF8B6FA0), // mauve-500
-                  ),
+            child: Center(
+              child: Text(
+                display,
+                style: GoogleFonts.nunito(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.25,
+                  height: 1.15,
+                  color: const Color(0xFF0E1116),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  display,
-                  style: GoogleFonts.nunito(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.25,
-                    height: 1.15,
-                    color: const Color(0xFF0E1116),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
           arrow(LucideIcons.chevronRight, next),
@@ -1149,28 +1138,10 @@ class _MedicalFlagRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
         child: Row(
           children: [
-            // Square checkbox with visible border
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color:
-                    completed ? const Color(0xFF8B6FA0) : Colors.white,
-                borderRadius: BorderRadius.circular(5),
-                border: Border.all(
-                  color: completed
-                      ? const Color(0xFF8B6FA0)
-                      : const Color(0xFFB9C0C7),
-                  width: 1.5,
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.check,
-                size: 12,
-                color: completed ? Colors.white : Colors.transparent,
-              ),
-            ),
+            // Animated square checkbox (refonte 2026-05-13, vp-sq-fill) :
+            // bg blanc→mauve-500 + scale pop 0.85 → 1.12 → 1.0 quand l'item
+            // bascule sur "completed".
+            _AnimatedSquareCheckbox(completed: completed),
             const SizedBox(width: 10),
             // Numbered circle
             Container(
@@ -1391,6 +1362,67 @@ class _ActionButton extends StatelessWidget {
           child: Icon(icon, size: 16, color: iconColor),
         ),
       ),
+    );
+  }
+}
+
+/// Checkbox carrée animée (refonte 2026-05-13, visit-pages.js `vp-sq-fill`).
+///
+/// Animation au passage `false → true` :
+///   1. bg blanc → mauve-500 sur 320 ms cubic-bezier(.2,.7,.2,1)
+///   2. scale 0.85 → 1.12 → 1.0 (pop)
+///   3. ✓ apparait avec opacity 0 → 1 + scale 0.4 → 1.0 (80 ms de retard)
+///
+/// Passage `true → false` : transition simple inverse (sans le pop).
+class _AnimatedSquareCheckbox extends StatelessWidget {
+  final bool completed;
+  const _AnimatedSquareCheckbox({required this.completed});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(completed),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      tween: Tween(begin: completed ? 0.0 : 1.0, end: 1.0),
+      builder: (context, t, _) {
+        // Scale curve : pop in à 0.55 du progrès puis retombe à 1.0.
+        final double scale = completed
+            ? (t < 0.55
+                ? (0.85 + (1.12 - 0.85) * (t / 0.55))
+                : (1.12 - (1.12 - 1.0) * ((t - 0.55) / 0.45)))
+            : 1.0;
+        return Transform.scale(
+          scale: scale,
+          child: Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: completed
+                  ? const Color(0xFF8B6FA0) // mauve-500
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: completed
+                    ? const Color(0xFF8B6FA0)
+                    : const Color(0xFFB9C0C7), // ink-300
+                width: 1.5,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: AnimatedOpacity(
+              opacity: completed ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              child: const Icon(
+                Icons.check,
+                size: 12,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
