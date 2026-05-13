@@ -793,12 +793,17 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           //   3. Création mandat (Oui/Non) → Nous/Autre → champ texte
           // Toutes les valeurs sont sérialisées en JSON dans la colonne
           // `compte_anah` (cf. _parseAnahData / _serializeAnahData).
-          // Refonte 2026-05-13 (visit-pages.js `.vp-anah` lignes 230-235) :
-          // les 3 statuts ANAH ont chacun leur couleur (todo rouge pâle /
-          // check orange pâle / done vert pâle) au lieu du mauve générique.
-          _AnahStatusToggle(
+          // Refonte 2026-05-13 (visit-pages.js l.488-492) : pour le
+          // formulaire « Création compte ANAH », ce sont des pills
+          // mauves normales (FormToggleGroup). Les couleurs sémantiques
+          // (todo rouge / check orange / done vert du `.vp-anah`) sont
+          // utilisées UNIQUEMENT pour le badge status du header en haut
+          // à droite — cf. `VisitReportScreen._buildAnahStatusBadge`.
+          FormToggleGroup(
             label: 'Création compte ANAH',
+            options: _anahStatusOptions,
             selected: anah['status'] ?? '',
+            columns: 3,
             onChanged: (v) {
               final next = Map<String, String>.from(anah);
               next['status'] = v;
