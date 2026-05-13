@@ -2292,11 +2292,15 @@ class _RetirementFundFieldButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             onTap: onTap,
             child: Container(
-              // Hauteur alignée sur le bouton "Envoi du rapport"
-              // (FormMultiToggleGroup) — padding h:12 v:10, fontSize 12.
-              // Demande utilisateur 2026-05-13.
+              // Taille de texte alignée sur Occupation (FormToggleGroup
+              // pill : fontSize 14, height 32, padding h:14). Demande
+              // utilisateur 2026-05-13 : « la taille de texte de ces
+              // deux parties de boutons doit être la même que celle
+              // d'Occupation ». On garde le pill radius 999 et on
+              // ajuste le padding vertical (7) pour reproduire la
+              // hauteur ~32 px du pill Occupation.
               padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 10),
+                  horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
                 // Refonte 2026-05-13 : pill radius 999 uniforme.
                 borderRadius: BorderRadius.circular(999),
@@ -2310,7 +2314,9 @@ class _RetirementFundFieldButton extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
+                        // 12 → 14 : aligné sur la fontSize des pills
+                        // Occupation (FormToggleGroup).
+                        fontSize: 14,
                         fontWeight:
                             hasValue ? FontWeight.w600 : FontWeight.w400,
                         color: hasValue
@@ -2321,9 +2327,9 @@ class _RetirementFundFieldButton extends StatelessWidget {
                   ),
                   const Icon(
                     LucideIcons.chevronDown,
-                    // 18 → 16 pour rester compact avec fontSize 12 du
-                    // texte (hauteur bouton alignée sur Envoi du rapport).
-                    size: 16,
+                    // 16 → 18 : ré-augmenté pour rester proportionnel
+                    // à la fontSize 14 du texte (alignement Occupation).
+                    size: 18,
                     color: Color(0xFF8A939D),
                   ),
                 ],
