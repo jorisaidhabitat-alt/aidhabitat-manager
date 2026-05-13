@@ -6061,10 +6061,24 @@ app.patch('/api/dossiers/:dossierId', requireAuth, async (req, res, next) => {
       });
     }
 
+    // Fix 2026-05-13 : on renvoie le nouvel `updatedAt` du dossier
+    // (idem PATCH /api/beneficiaires/:id). Sans ça, le client garde
+    // l'ancien timestamp jusqu'au prochain pull → toute édition
+    // consécutive (avant pull) tombe sur un 409. On refetch le record
+    // pour obtenir le `UpdatedAt` actuel après nos écritures.
+    let refreshedUpdatedAt = null;
+    try {
+      const refreshedDossierRecord = await ensureDossierRecord(req.params.dossierId);
+      refreshedUpdatedAt = getRecordUpdatedAt(refreshedDossierRecord);
+    } catch (_) {
+      // Best-effort : si le refetch échoue, on renvoie null — le client
+      // gardera l'ancien `remote_updated_at` jusqu'au prochain pull.
+    }
+
     res.json({
       success: true,
       error: null,
-      data: { id: dossierUuid },
+      data: { id: dossierUuid, updatedAt: refreshedUpdatedAt },
     });
   } catch (error) {
     next(error);

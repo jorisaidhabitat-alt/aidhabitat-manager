@@ -668,7 +668,7 @@ class NocodbSyncService {
     print('[sync] PATCH /api/dossiers/$dossierId (contexte) '
         'keys=${updates.keys.toList()} '
         'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}');
-    await _apiClient.updateDossier(
+    final newUpdatedAt = await _apiClient.updateDossier(
       dossierId: dossierId,
       updates: updatesWithGuard,
     );
@@ -680,6 +680,18 @@ class NocodbSyncService {
       where: 'dossier_local_id = ?',
       whereArgs: [dossierId],
     );
+    // Fix 2026-05-13 : on persiste aussi le nouveau `remote_updated_at`
+    // sur la table `dossiers` (la garde optimiste lit ce champ via
+    // `_readRemoteUpdatedAt`). Sans ça, une 2ème édition consécutive
+    // du contexte renvoyait l'ancien `expectedUpdatedAt` → 409 garanti.
+    if (newUpdatedAt != null) {
+      await db.update(
+        'dossiers',
+        {'remote_updated_at': newUpdatedAt},
+        where: 'local_id = ?',
+        whereArgs: [dossierId],
+      );
+    }
   }
 
   /// Push des mesures anthropométriques via `PUT /api/mesures/:dossierId`.
@@ -1111,7 +1123,24 @@ class NocodbSyncService {
           );
         }
       }
-      await _apiClient.updateDossier(dossierId: urlDossierId, updates: updates);
+      final newUpdatedAt = await _apiClient.updateDossier(
+        dossierId: urlDossierId,
+        updates: updates,
+      );
+      // Fix 2026-05-13 : on persiste le nouveau `remote_updated_at` du
+      // dossier (idem _processContexteDeVieOperation / _processPatientOp).
+      // Évite qu'une PATCH contexte consécutive ne tape un 409 fictif
+      // parce que cette opération métadonnées vient de bump l'updatedAt
+      // serveur sans que le cache local le sache.
+      if (newUpdatedAt != null) {
+        final db = await LocalDatabase.instance.database;
+        await db.update(
+          'dossiers',
+          {'remote_updated_at': newUpdatedAt},
+          where: 'local_id = ?',
+          whereArgs: [dossierId],
+        );
+      }
       return;
     }
 

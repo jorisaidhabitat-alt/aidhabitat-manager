@@ -199,7 +199,12 @@ class NocodbApiClient {
     return data;
   }
 
-  Future<void> updateDossier({
+  /// Retourne le nouvel `updatedAt` du dossier après PATCH (renvoyé par
+  /// le serveur depuis le fix 2026-05-13). Permet au caller de
+  /// rafraîchir `dossiers.remote_updated_at` en local et d'éviter qu'une
+  /// édition consécutive (avant le prochain pull) tombe sur un 409.
+  /// Renvoie `null` si le serveur ne renvoie pas le champ.
+  Future<String?> updateDossier({
     required String dossierId,
     required Map<String, dynamic> updates,
   }) async {
@@ -244,6 +249,20 @@ class NocodbApiClient {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote dossier update failed (${response.statusCode})');
     }
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map) {
+        final data = body['data'];
+        if (data is Map) {
+          final v = data['updatedAt'];
+          if (v is String && v.isNotEmpty) return v;
+        }
+      }
+    } catch (_) {
+      // Réponse non JSON ou champ absent : on tombe sur null, le caller
+      // gardera l'ancien `remote_updated_at` jusqu'au prochain pull.
+    }
+    return null;
   }
 
   /// PATCH /api/beneficiaires/:patientId — updates a beneficiary record.
