@@ -3245,3 +3245,82 @@ class _VioletHeaderIconButton extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// _PaletteSwatch — pastille de couleur de la palette de dessin.
+//
+// Parité avec la maquette `.vp-palette-swatch` :
+//   - 22×22 ronde
+//   - PAS de border par défaut
+//   - Hover : scale 1.12 (`transition: transform .18s ease`)
+//   - Active : double-ring `box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor`
+//     (anneau blanc 2 px + anneau color 2 px supplémentaires autour)
+//
+// En Flutter, le double-ring est reproduit via 2 `BoxShadow` avec
+// `spreadRadius` croissant et `blurRadius` = 0. L'ordre des shadows
+// est INVERSE de CSS : la 1ère shadow est rendue en ARRIÈRE-PLAN.
+// Donc on met d'abord la color (4 px), puis le blanc (2 px) par-dessus.
+// ---------------------------------------------------------------------------
+class _PaletteSwatch extends StatefulWidget {
+  const _PaletteSwatch({
+    required this.color,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  State<_PaletteSwatch> createState() => _PaletteSwatchState();
+}
+
+class _PaletteSwatchState extends State<_PaletteSwatch> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = _hovering ? 1.12 : 1.0;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: widget.color,
+              shape: BoxShape.circle,
+              boxShadow: widget.isActive
+                  ? [
+                      // Ring color extérieur (rendu en premier =
+                      // arrière-plan en Flutter).
+                      BoxShadow(
+                        color: widget.color,
+                        blurRadius: 0,
+                        spreadRadius: 4,
+                      ),
+                      // Ring blanc intermédiaire (rendu par-dessus,
+                      // couvre la partie interne du ring color → ne
+                      // laisse visible que les 2 px externes).
+                      const BoxShadow(
+                        color: Colors.white,
+                        blurRadius: 0,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
