@@ -168,7 +168,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   static const Map<String, List<String>> _tabSubsections = {
     'Bénéficiaire': ['Profil', 'Foyer', 'Santé', 'Admin'],
     'Contexte de vie': ['Médical', 'Autonomie'],
-    'Accessibilité': ['Général', 'Extérieur'],
+    // Refonte 2026-05-13 : 4 sous-sections au lieu de 2, alignées avec
+    // celles déclarées dans accessibility_tab.dart `_buildQuickNav`.
+    // Sans ça, les notes de droite ne pouvaient afficher que 2 layers et
+    // l'index venant du tab (0-3) était clampé à 1 → tous les clicks
+    // tombaient sur la même note panel (effet « ils apparaissent tous
+    // partout » rapporté user).
+    'Accessibilité': ['Général', 'Niveaux', 'Équipements', 'Extérieur'],
     'Salle de bain': ['Équipements'],
     'WC': ['Config. & équipements'],
   };
@@ -960,16 +966,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               // les inactifs (tokens du nouveau design).
               labelColor: const Color(0xFF554265), // mauve-700
               unselectedLabelColor: const Color(0xFF5C6670), // ink-500
-              // Refonte 2026-05-13 : Nunito sur les labels TabBar pour
-              // matcher le poids visible des badges du header (Quicksand
-              // plafonne à w700, donc bump non visible). Active w700,
-              // inactive w600.
+              // Refonte 2026-05-13 : Nunito sur les labels TabBar.
+              // w600 actif / w500 inactif (légèrement réduit depuis
+              // w700/w600 sur demande utilisateur).
               labelStyle: GoogleFonts.nunito(
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0.1,
               ),
               unselectedLabelStyle: GoogleFonts.nunito(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
                 letterSpacing: 0.1,
               ),
               labelPadding: const EdgeInsets.symmetric(horizontal: 16),
