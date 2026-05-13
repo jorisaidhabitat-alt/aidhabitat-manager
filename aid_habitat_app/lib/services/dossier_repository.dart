@@ -1794,21 +1794,10 @@ class DossierRepository {
       whereArgs: [patientId],
       limit: 1,
     );
-    final Map<String, dynamic> changedFields;
-    if (existingRows.isEmpty) {
-      // Cas rare : row inexistante (création concurrente ?). On push
-      // tous les champs pour être sûr.
-      changedFields = fields;
-    } else {
-      final existing = existingRows.first;
-      final diff = <String, dynamic>{};
-      fields.forEach((key, value) {
-        if (_patientFieldChanged(existing[key], value)) {
-          diff[key] = value;
-        }
-      });
-      changedFields = diff;
-    }
+    final changedFields = _diffAgainstRow(
+      existingRows.isEmpty ? null : existingRows.first,
+      fields,
+    );
 
     if (changedFields.isEmpty) {
       // Aucun champ n'a changé — on évite l'écriture locale, la mise
@@ -1888,7 +1877,12 @@ class DossierRepository {
   ///     efface un champ vide ne déclenche pas un push inutile
   ///   - Tout le reste : comparaison `.toString()` (couvre les String,
   ///     les JSON encoded `*_json`, etc.)
-  static bool _patientFieldChanged(dynamic existing, dynamic candidate) {
+  ///
+  /// Helper générique partagé entre updatePatient / updateHousing /
+  /// updateMesures / updateObservations / updateContexteDeVie — chacun
+  /// appelle ce helper pour ne pousser que les champs qui ont vraiment
+  /// changé depuis la dernière écriture SQLite.
+  static bool _fieldChanged(dynamic existing, dynamic candidate) {
     // Bool Dart côté candidate, INT 0/1 côté SQLite
     if (candidate is bool) {
       if (existing is int) return existing != (candidate ? 1 : 0);
@@ -1904,6 +1898,24 @@ class DossierRepository {
     final a = existing == null ? '' : existing.toString();
     final b = candidate == null ? '' : candidate.toString();
     return a != b;
+  }
+
+  /// Filtre [candidateFields] en ne gardant que les clés dont la valeur
+  /// diffère de la row [existing] (lue depuis SQLite). Utilisé par tous
+  /// les update* du repository pour éviter de pousser des champs intacts
+  /// vers le serveur.
+  static Map<String, dynamic> _diffAgainstRow(
+    Map<String, dynamic>? existing,
+    Map<String, dynamic> candidateFields,
+  ) {
+    if (existing == null) return candidateFields;
+    final diff = <String, dynamic>{};
+    candidateFields.forEach((key, value) {
+      if (_fieldChanged(existing[key], value)) {
+        diff[key] = value;
+      }
+    });
+    return diff;
   }
 
   /// Maps SQL column names (snake_case) used by the visit-report tabs to
