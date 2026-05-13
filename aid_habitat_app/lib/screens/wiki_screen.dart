@@ -353,9 +353,12 @@ class _WikiScreenState extends State<WikiScreen> {
             highlightElevation: 0,
             shape: const StadiumBorder(),
             icon: const Icon(LucideIcons.plus, size: 22),
-            label: const Text(
+            // Demande utilisateur 2026-05-13 : « le texte de ajouter
+            // un élément également » (passage en Nunito comme les tags
+            // de bibliothèque).
+            label: Text(
               'Ajouter un élément',
-              style: TextStyle(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -1140,7 +1143,9 @@ class _FilterChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: TextStyle(
+          // Demande utilisateur 2026-05-13 : « tous les tags de
+          // bibliothèque doivent passer en Nunito ».
+          style: GoogleFonts.nunito(
             color: isActive ? Colors.white : const Color(0xFF475569),
             fontWeight: FontWeight.w600,
           ),

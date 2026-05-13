@@ -1816,9 +1816,9 @@ class _PendingReportsPanel extends StatelessWidget {
                     Text(
                       'Mes rapports en cours',
                       style: GoogleFonts.nunito(
-                        fontSize: 16,
-                        // w700 → w600 (demande user 2026-05-13 : « réduis
-                        // l'épaisseur de Agenda et Mes rapports en cours »).
+                        // 16 → 19 (demande user 2026-05-13 : titres plus
+                        // gros maintenant que le poids a baissé à w600).
+                        fontSize: 19,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.4,
                         color: const Color(0xFF0E1116), // ink-900
@@ -2200,8 +2200,8 @@ class _WeekAgendaPanel extends StatelessWidget {
                     Text(
                       'Agenda',
                       style: GoogleFonts.nunito(
-                        fontSize: 16,
-                        // w700 → w600 (demande user 2026-05-13).
+                        // 16 → 19 (demande user 2026-05-13).
+                        fontSize: 19,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.4,
                         color: const Color(0xFF0E1116),

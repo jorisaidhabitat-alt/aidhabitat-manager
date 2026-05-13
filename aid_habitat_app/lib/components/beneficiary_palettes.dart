@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Palettes pastel partagées entre `DossiersListScreen` et
 /// `DashboardScreen` — le même bénéficiaire (via hash de ses initiales) et
@@ -116,9 +117,12 @@ class EpciBadge extends StatelessWidget {
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
+          // Refonte 2026-05-13 : Nunito w600 — aligné sur les autres
+          // titres / badges de page de l'app.
+          style: GoogleFonts.nunito(
             fontSize: large ? 14 : 12,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
             color: palette.fg,
           ),
         ),
