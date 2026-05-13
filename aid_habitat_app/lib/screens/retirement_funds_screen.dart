@@ -188,9 +188,12 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
             highlightElevation: 0,
             shape: const StadiumBorder(),
             icon: const Icon(LucideIcons.plus, size: 22),
-            label: const Text(
+            // Demande utilisateur 2026-05-13 : « pareil pour les caisses
+            // de retraite » → texte du bouton « Ajouter une caisse de
+            // retraite » en Nunito, comme la bibliothèque.
+            label: Text(
               'Ajouter une caisse de retraite',
-              style: TextStyle(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
