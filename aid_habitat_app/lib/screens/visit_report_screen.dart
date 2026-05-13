@@ -1075,11 +1075,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 else
                   Text(
                     'Générer',
-                    // Refonte 2026-05-13 : Nunito w700 pour matcher
-                    // l'épaisseur des badges du header.
+                    // Refonte 2026-05-13 : Nunito w600 (légèrement réduit
+                    // depuis w700 sur demande utilisateur).
                     style: GoogleFonts.nunito(
                       fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       letterSpacing: 0.2,
                       color: Colors.white,
                     ),
@@ -2551,11 +2551,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                         Expanded(
                           child: Text(
                             addressLine,
-                            // Refonte 2026-05-13 : Nunito w700 pour
-                            // matcher l'épaisseur des badges du header.
+                            // Refonte 2026-05-13 : Nunito w600 (légèrement
+                            // réduit depuis w700 sur demande utilisateur).
                             style: GoogleFonts.nunito(
                               fontSize: 13,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                               letterSpacing: 0.2,
                               color: const Color(0xFF5C6670), // ink-500
                             ),
