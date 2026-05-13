@@ -86,3 +86,104 @@ class _RetirementFundsCombinedScreenState
     );
   }
 }
+
+/// Switch « bundle » 2 positions, sans dépendance Cupertino, pour
+/// pouvoir contrôler radius / couleur de fond / absence d'ombre.
+/// — Fond violet pastel (#EDE8F5)
+/// — Thumb blanc avec radius forts (pill)
+/// — Aucune ombre (BoxShadow vide)
+/// — Animation 220 ms en easeOutCubic via AnimatedAlign.
+class _CaissesSwitch extends StatelessWidget {
+  const _CaissesSwitch({required this.value, required this.onChanged});
+
+  final _CaisseMode value;
+  final ValueChanged<_CaisseMode> onChanged;
+
+  static const Color _bgColor = Color(0xFFEDE8F5); // violet clair pastel
+  static const Color _thumbColor = Colors.white;
+  static const Color _textColor = Color(0xFF0F172A);
+
+  @override
+  Widget build(BuildContext context) {
+    const double height = 44;
+    const double innerPadding = 4;
+    const double innerHeight = height - innerPadding * 2; // 36
+
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: _bgColor,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      padding: const EdgeInsets.all(innerPadding),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double thumbWidth = constraints.maxWidth / 2;
+          return Stack(
+            children: [
+              // Thumb animé — pas d'ombre.
+              AnimatedAlign(
+                alignment: value == _CaisseMode.complementaires
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                child: Container(
+                  width: thumbWidth,
+                  height: innerHeight,
+                  decoration: BoxDecoration(
+                    color: _thumbColor,
+                    borderRadius: BorderRadius.circular(18),
+                    // Pas de boxShadow — demande utilisateur.
+                  ),
+                ),
+              ),
+              // Labels cliquables.
+              Row(
+                children: [
+                  Expanded(
+                    child: _SwitchSegment(
+                      label: 'Complémentaires',
+                      onTap: () => onChanged(_CaisseMode.complementaires),
+                    ),
+                  ),
+                  Expanded(
+                    child: _SwitchSegment(
+                      label: 'Principales',
+                      onTap: () => onChanged(_CaisseMode.principales),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SwitchSegment extends StatelessWidget {
+  const _SwitchSegment({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Center(
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: _CaissesSwitch._textColor,
+          ),
+        ),
+      ),
+    );
+  }
+}
