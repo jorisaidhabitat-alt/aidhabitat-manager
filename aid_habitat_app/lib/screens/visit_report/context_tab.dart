@@ -950,34 +950,29 @@ class _ContextTabState extends State<ContextTab>
         // items passent en ✓ d'un coup ; décoché : tous repassent à
         // none. État dérivé de `allAutonomous`. Demande utilisateur
         // 2026-04-29.
+        // Refonte 2026-05-13 (visit-pages.js l.625-635) :
+        //   - Plus de container gris autour des rows (style flat)
+        //   - Les rows actifs (ok/warn) ont leur propre fond tinté
+        //   - « Tout valider » garde sa ligne dédiée en attendant qu'on
+        //     le déplace dans le occupant header (TODO)
         _AutonomyValidateAllRow(
           checked: allAutonomous,
           onTap: () => _setAllAutonomyItems(!allAutonomous),
         ),
-        const SizedBox(height: 8),
-        // Liste des 11 items avec 2 ou 3 boutons par ligne (✓ / ! / 👥).
-        // Un seul état possible par ligne (mutex). Quand 👥 (aide humaine)
-        // est coché pour une ligne, les boutons ✓ et ! sont désactivés.
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7FA),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            children: List.generate(occ.autonomy.length, (i) {
-              final state = _itemState(i);
-              return _NumberedCheckRow(
-                index: i + 1,
-                label: occ.autonomy[i].name,
-                state: state,
-                showHumanHelp: homeHelpEnabled,
-                onToggleAutonomous: () => _toggleAutonomyItem(i),
-                onToggleAttention: () => _toggleAttentionItem(i),
-                onToggleHumanHelp: () => _toggleHumanHelpItem(i),
-              );
-            }),
-          ),
+        const SizedBox(height: 4),
+        Column(
+          children: List.generate(occ.autonomy.length, (i) {
+            final state = _itemState(i);
+            return _NumberedCheckRow(
+              index: i + 1,
+              label: occ.autonomy[i].name,
+              state: state,
+              showHumanHelp: homeHelpEnabled,
+              onToggleAutonomous: () => _toggleAutonomyItem(i),
+              onToggleAttention: () => _toggleAttentionItem(i),
+              onToggleHumanHelp: () => _toggleHumanHelpItem(i),
+            );
+          }),
         ),
         // Texte de synthèse : "diagnostic complet" dès que chaque ligne
         // a reçu une coche ; devient "profil considéré comme autonome"
@@ -1218,41 +1213,60 @@ class _NumberedCheckRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+    // Refonte 2026-05-13 (visit-pages.js l.629-634) :
+    //  - Plus de cercle lilas autour du numéro : juste un Text 12px
+    //    mauve-600 tabular-nums centré sur 22 pt
+    //  - Label 13.5px ink-800 prend l'espace restant
+    //  - Boutons ✓ / ! ronds 28×28 (border-radius 9999)
+    //  - Tint du row quand actif : mauve-tint si ok, red-tint si warn
+    Color? rowBg;
+    if (state.autonomous) {
+      // color-mix(in oklab, mauve-500 8% white) ≈ mauve-50 saturé
+      rowBg = const Color(0xFFF2EDF5);
+    } else if (state.attention) {
+      // color-mix(in oklab, #D85C42 8% white) ≈ red-50 saturé
+      rowBg = const Color(0xFFFDEFEA);
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      margin: const EdgeInsets.symmetric(vertical: 1),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+      decoration: BoxDecoration(
+        color: rowBg,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
         children: [
-          // Numéro dans un cercle lilas.
-          Container(
-            width: 28,
-            height: 28,
-            decoration: const BoxDecoration(
-              color: Color(0xFFF2ECF5),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
+          // Numéro sans pastille — juste du texte mauve-600 12px.
+          SizedBox(
+            width: 22,
             child: Text(
               index.toString(),
+              textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF554265),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF6E5583), // mauve-600
+                fontFeatures: [FontFeature.tabularFigures()],
               ),
             ),
           ),
           const SizedBox(width: 12),
-          // Libellé de l'item (prend l'espace restant).
+          // Libellé de l'item.
           Expanded(
             child: Text(
               label,
               style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF2B323A),
+                fontSize: 13.5,
+                height: 1.25,
+                color: Color(0xFF1A1E24), // ink-800
                 fontWeight: FontWeight.w500,
               ),
             ),
           ),
-          // Bouton ✓ "autonome".
+          // Bouton ✓ rond — mauve-500 quand actif, blanc avec border ink-200 sinon.
           _ActionButton(
             kind: _ActionButtonKind.autonomous,
             active: state.autonomous,
@@ -1260,15 +1274,15 @@ class _NumberedCheckRow extends StatelessWidget {
             onTap: onToggleAutonomous,
           ),
           const SizedBox(width: 6),
-          // Bouton ! "à revoir".
+          // Bouton ! rond — red #D85C42 quand actif.
           _ActionButton(
             kind: _ActionButtonKind.attention,
             active: state.attention,
             disabled: false,
             onTap: onToggleAttention,
           ),
-          // Bouton 👥 "aide humaine" — visible uniquement quand "Aide
-          // à domicile" est activée pour cet occupant.
+          // Bouton 👥 "aide humaine" — feature legacy de l'app, non présente
+          // dans la maquette. Affiché uniquement si Aide à domicile activée.
           if (showHumanHelp) ...[
             const SizedBox(width: 6),
             _ActionButton(
@@ -1301,44 +1315,51 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Palette par type :
-    //   • autonomous (✓) : violet foncé #7C6DAA
-    //   • attention (!)  : pêche #F5D6B8 / #C2410C
-    //   • humanHelp (👥) : ambre #F59E0B
+    // Refonte 2026-05-13 (visit-pages.js l.632-633) :
+    //   • Boutons ronds 28×28 (border-radius 9999, plus 8)
+    //   • autonomous (✓) : actif mauve-500 #8B6FA0 / blanc avec border ink-200
+    //   • attention (!) : actif red #D85C42 / blanc avec border ink-200,
+    //     texte ! red foncé quand inactif
+    //   • humanHelp (👥) : feature legacy hors-maquette, gardé en ambre
     Color activeFill;
     Color activeBorder;
     Color activeIcon;
+    Color inactiveBg;
     Color inactiveBorder;
     Color inactiveIcon;
-    IconData icon;
+    IconData? icon;
+    String? labelChar; // pour le ! (rendu en texte plutôt qu'icône)
     switch (kind) {
       case _ActionButtonKind.autonomous:
         activeFill = const Color(0xFF8B6FA0);
         activeBorder = const Color(0xFF8B6FA0);
         activeIcon = Colors.white;
-        inactiveBorder = const Color(0xFFD8CFE0);
-        inactiveIcon = const Color(0xFF8B6FA0);
+        inactiveBg = Colors.white;
+        inactiveBorder = const Color(0xFFE4E7EB); // ink-200
+        inactiveIcon = const Color(0xFF8A939D); // ink-400
         icon = Icons.check;
         break;
       case _ActionButtonKind.attention:
-        activeFill = const Color(0xFFF5D6B8);
-        activeBorder = const Color(0xFFF5D6B8);
-        activeIcon = const Color(0xFFC2410C);
-        inactiveBorder = const Color(0xFFD8CFE0);
-        inactiveIcon = const Color(0xFFC2410C);
-        icon = Icons.priority_high;
+        activeFill = const Color(0xFFD85C42);
+        activeBorder = const Color(0xFFD85C42);
+        activeIcon = Colors.white;
+        inactiveBg = Colors.white;
+        inactiveBorder = const Color(0xFFE4E7EB);
+        inactiveIcon = const Color(0xFFD85C42);
+        labelChar = '!';
         break;
       case _ActionButtonKind.humanHelp:
         activeFill = const Color(0xFFFEF3C7);
         activeBorder = const Color(0xFFF59E0B);
         activeIcon = const Color(0xFFB45309);
+        inactiveBg = Colors.white;
         inactiveBorder = const Color(0xFFFCD34D);
         inactiveIcon = const Color(0xFFB45309);
         icon = Icons.accessibility_new;
         break;
     }
 
-    final bg = active ? activeFill : Colors.white;
+    final bg = active ? activeFill : inactiveBg;
     final border = active ? activeBorder : inactiveBorder;
     final iconColor = active ? activeIcon : inactiveIcon;
     final opacity = disabled ? 0.35 : 1.0;
@@ -1348,16 +1369,28 @@ class _ActionButton extends StatelessWidget {
       onTap: disabled ? null : onTap,
       child: Opacity(
         opacity: opacity,
-        child: Container(
-          width: 32,
-          height: 32,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          width: 28,
+          height: 28,
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: border, width: 1.5),
+            shape: BoxShape.circle,
+            border: Border.all(color: border, width: 1),
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 16, color: iconColor),
+          child: labelChar != null
+              ? Text(
+                  labelChar,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: iconColor,
+                    height: 1,
+                  ),
+                )
+              : Icon(icon!, size: 14, color: iconColor),
         ),
       ),
     );
