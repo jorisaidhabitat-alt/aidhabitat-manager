@@ -1045,7 +1045,8 @@ class _PhotosTabState extends State<PhotosTab>
                     height: 24,
                     decoration: BoxDecoration(
                       color: const Color(0xFFFEE2E2),
-                      borderRadius: BorderRadius.circular(8),
+                      // Refonte 2026-05-13 : pill radius 999 uniforme.
+                      borderRadius: BorderRadius.circular(999),
                     ),
                     alignment: Alignment.center,
                     child: const Icon(
