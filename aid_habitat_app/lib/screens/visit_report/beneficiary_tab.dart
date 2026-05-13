@@ -2257,13 +2257,15 @@ class _RetirementFundFieldButton extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 6, left: 4),
+          padding: const EdgeInsets.only(bottom: 5, left: 0),
           child: Text(
             label,
+            // Uniformisé 2026-05-13 : w700 14px ink-900 noir, aligné
+            // sur les autres labels de champ (Téléphone, etc.).
             style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF5C6670),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0E1116),
             ),
           ),
         ),
