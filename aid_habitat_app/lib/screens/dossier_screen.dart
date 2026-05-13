@@ -503,7 +503,7 @@ class _DossierScreenState extends State<DossierScreen> {
                   // le relevé de visite »).
                   style: GoogleFonts.nunito(
                     fontSize: 22,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFF0F172A),
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -543,7 +543,7 @@ class _DossierScreenState extends State<DossierScreen> {
               // utilisateur 2026-05-13).
               style: GoogleFonts.nunito(
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 color: Colors.black87,
               ),
             ),
@@ -745,6 +745,10 @@ class _DossierScreenState extends State<DossierScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        // Contour slate-200 1 px (demande user 2026-05-13 : « met des
+        // contours autour du bloc bénéficiaire »). Parité avec les
+        // cards Documents / VAD et le formCard du relevé de visite.
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -940,7 +944,7 @@ class _DossierScreenState extends State<DossierScreen> {
                         'Communauté de communes',
                         style: GoogleFonts.nunito(
                           fontSize: 14,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           color: const Color(0xFF8B6FA0),
                           letterSpacing: 0.2,
                         ),
@@ -1171,7 +1175,7 @@ class _DossierScreenState extends State<DossierScreen> {
           // Bumpé w600 → w700 pour uniformiser avec les labels du
           // relevé de visite (demande utilisateur 2026-05-13).
           style: GoogleFonts.nunito(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             fontSize: 14,
             color: const Color(0xFF8B6FA0),
           ),
@@ -1199,7 +1203,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           // du bloc Bénéficiaire (demande user 2026-05-13).
                           style: GoogleFonts.nunito(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ))
@@ -1276,7 +1280,7 @@ class _PlainField extends StatelessWidget {
           // preview — demande utilisateur.
           style: GoogleFonts.nunito(
             fontSize: 14,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: Color(0xFF8B6FA0),
             letterSpacing: 0.2,
           ),
@@ -1290,7 +1294,7 @@ class _PlainField extends StatelessWidget {
           overflow: multiline ? TextOverflow.visible : TextOverflow.ellipsis,
           style: GoogleFonts.nunito(
             fontSize: 14,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: const Color(0xFF0F172A),
             height: multiline ? 1.4 : 1.2,
           ),
