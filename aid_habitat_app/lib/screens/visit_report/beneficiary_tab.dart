@@ -2111,27 +2111,33 @@ class _DateOfBirthField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (showLabel) ...[
+          // Refonte 2026-05-13 — aligné sur FormTextField (vp-label) :
+          // fontWeight w500, fontSize 14, color #2B323A. Avant ce
+          // changement, le label "Date de naissance" sortait du lot
+          // (plus petit, plus gras, plus gris) à cause d'un widget
+          // custom non-mis à jour lors de la refonte design.
           const Text(
             'Date de naissance',
             style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: Color(0xFF5C6670),
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+              color: Color(0xFF2B323A),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
         ],
-        // fontSize 12 + padding vertical 10 → aligné sur le pill
-        // "Vasque suspendue" (référence de tous les champs du relevé).
+        // Refonte 2026-05-13 — aligné sur FormTextField (vp-input) :
+        // border-radius pill (999), padding h:14 v:8, fontSize 14.
         InkWell(
           onTap: () => _pickDate(context),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(999),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
               children: [
@@ -2139,10 +2145,10 @@ class _DateOfBirthField extends StatelessWidget {
                   child: Text(
                     display.isEmpty ? 'JJ / MM / AAAA' : display,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 14,
                       color: display.isEmpty
                           ? const Color(0xFF8A939D)
-                          : const Color(0xFF0E1116),
+                          : const Color(0xFF2B323A),
                     ),
                   ),
                 ),
