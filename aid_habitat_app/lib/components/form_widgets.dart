@@ -201,7 +201,11 @@ class FormSubSectionChips extends StatelessWidget {
           return GestureDetector(
             onTap: () => onChanged(i),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              // Padding vertical 7 → 8 pour garder la pill équilibrée
+              // avec la fontSize bumpée (demande user 2026-05-13 :
+              // « les titres des sous-sections sont légèrement trop
+              // petits »).
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: selected ? const Color(0xFF8B6FA0) : Colors.white,
                 borderRadius: BorderRadius.circular(20),
@@ -210,8 +214,10 @@ class FormSubSectionChips extends StatelessWidget {
                 labels[i],
                 style: TextStyle(
                   color: selected ? Colors.white : Colors.black87,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  // 13 → 15, w600 → w700 : lisibilité accrue sans
+                  // déséquilibrer la hauteur de la pill.
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
