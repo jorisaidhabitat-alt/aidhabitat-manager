@@ -566,21 +566,22 @@ class _ContextTabState extends State<ContextTab>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (hasMultiple)
-                          Container(
-                            color: Colors.white,
-                            padding:
-                                const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                            // Sur Autonomie : on injecte le bouton « Tout
-                            // valider » comme petit rond dans le header
-                            // (visit-pages.js l.622-626).
-                            child: _buildOccupantHeader(
-                              idx,
-                              extra: _subSection == 1
-                                  ? _buildValidateAllSmallButton()
-                                  : null,
-                            ),
+                        // Header occupant TOUJOURS visible (visit-pages.js
+                        // l.452-465 : ne masque pas le bandeau pour 1
+                        // occupant, désactive juste les chevrons).
+                        // Sur Autonomie : injecte le bouton « Tout valider »
+                        // comme petit rond dans le header.
+                        Container(
+                          color: Colors.white,
+                          padding:
+                              const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                          child: _buildOccupantHeader(
+                            idx,
+                            extra: _subSection == 1
+                                ? _buildValidateAllSmallButton()
+                                : null,
                           ),
+                        ),
                         Expanded(
                           // Légère animation entre Médicale ↔ Autonomie —
                           // fade + apparition vers le haut, identique
@@ -928,6 +929,56 @@ class _ContextTabState extends State<ContextTab>
   // Autonomy section
   // ---------------------------------------------------------------------------
 
+  /// Petit bouton rond « Tout valider — usager autonome » destiné au
+  /// slot `extra` du occupant header (refonte 2026-05-13, visit-pages.js
+  /// l.622-626). 26×26, border-radius 9999, mauve-500 plein quand actif,
+  /// transparent + border mauve-400 sinon. Tap = bascule tous les items
+  /// d'autonomie sur ✓ (ou tous sur none si déjà tous validés).
+  Widget _buildValidateAllSmallButton() {
+    final occ = _active;
+    final total = kAutonomyItemNames.length;
+    var allAutonomous = occ.autonomy.length == total;
+    for (var i = 0; i < total && allAutonomous; i++) {
+      if (!_itemState(i).autonomous) allAutonomous = false;
+    }
+    return Tooltip(
+      message: 'Tout valider — usager autonome',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _setAllAutonomyItems(!allAutonomous),
+          borderRadius: BorderRadius.circular(999),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: allAutonomous
+                  ? const Color(0xFF8B6FA0) // mauve-500
+                  : Colors.transparent,
+              border: Border.all(
+                color: allAutonomous
+                    ? const Color(0xFF8B6FA0)
+                    : const Color(0xFFA98DBE), // mauve-400
+                width: 1.5,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.check,
+              size: 13,
+              color: allAutonomous
+                  ? Colors.white
+                  : const Color(0xFF8B6FA0),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAutonomy() {
     final occ = _active;
     final homeHelpEnabled = _occupantHomeHelpEnabled(_safeIndex);
@@ -968,13 +1019,9 @@ class _ContextTabState extends State<ContextTab>
         // Refonte 2026-05-13 (visit-pages.js l.625-635) :
         //   - Plus de container gris autour des rows (style flat)
         //   - Les rows actifs (ok/warn) ont leur propre fond tinté
-        //   - « Tout valider » garde sa ligne dédiée en attendant qu'on
-        //     le déplace dans le occupant header (TODO)
-        _AutonomyValidateAllRow(
-          checked: allAutonomous,
-          onTap: () => _setAllAutonomyItems(!allAutonomous),
-        ),
-        const SizedBox(height: 4),
+        //   - « Tout valider — usager autonome » est désormais un petit
+        //     rond 26×26 dans le occupant header (cf.
+        //     `_buildValidateAllSmallButton`)
         Column(
           children: List.generate(occ.autonomy.length, (i) {
             final state = _itemState(i);
@@ -1043,76 +1090,9 @@ class _AutonomyItemState {
   bool get isEmpty => !autonomous && !attention && !humanHelp;
 }
 
-/// Raccourci « Tout valider — usager autonome » posé au-dessus de la
-/// liste des 11 items. Tap → bascule TOUS les items entre `autonomous`
-/// et `none` d'un seul geste. Visuellement c'est une pill avec un
-/// rond ✓ à gauche, le label au centre. Coché = fond violet foncé +
-/// texte blanc ; décoché = fond violet pâle + texte violet foncé.
-class _AutonomyValidateAllRow extends StatelessWidget {
-  final bool checked;
-  final VoidCallback onTap;
-
-  const _AutonomyValidateAllRow({
-    required this.checked,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const activeColor = Color(0xFF8B6FA0);
-    const lightColor = Color(0xFFF2ECF5);
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: checked ? activeColor : lightColor,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            // Checkbox visuelle (cercle avec ✓)
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 22,
-              height: 22,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: checked ? Colors.white : Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: checked ? Colors.white : activeColor,
-                  width: 1.5,
-                ),
-              ),
-              child: checked
-                  ? const Icon(
-                      Icons.check,
-                      size: 14,
-                      color: activeColor,
-                      weight: 700,
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Tout valider — usager autonome',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: checked ? Colors.white : activeColor,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// `_AutonomyValidateAllRow` retiré 2026-05-13 — remplacé par un petit
+// bouton rond 26×26 injecté dans le occupant header via
+// `_buildValidateAllSmallButton()` (cf. maquette visit-pages.js l.622-626).
 
 // =============================================================================
 // Sub-widgets

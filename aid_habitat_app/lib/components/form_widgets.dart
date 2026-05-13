@@ -314,15 +314,15 @@ class _FormTextFieldState extends State<FormTextField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Refonte 2026-05-13 (visit-pages.js .vp-label) :
-        // 14px w600 ink-700, sans uppercase. (w500 → w600 le 2026-05-13
-        // sur demande utilisateur : « rendre légèrement plus bold les
-        // titres de section et de sous-section ».)
+        // 14px w700 ink-900 (noir), sans uppercase. Demande utilisateur
+        // 2026-05-13 : « uniformise absolument tout les titres de champs
+        // avec police noir à la même taille que téléphone ».
         Text(
           widget.label,
           style: TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: widget.labelSize ?? 14,
-            color: widget.labelColor ?? const Color(0xFF2B323A),
+            color: widget.labelColor ?? const Color(0xFF0E1116),
           ),
         ),
         SizedBox(height: widget.labelSpacing ?? 5),
@@ -1211,25 +1211,27 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
           keyboardType: widget.keyboardType,
           style: const TextStyle(fontSize: 14, color: Color(0xFF2B323A)),
           stylusHandwritingEnabled: true,
-          // Refonte 2026-05-13 (vp-input + warning state).
+          // Refonte 2026-05-13 (demande user) — cf. FormTextField :
+          // fond blanc, border gris léger, radius 10. État warning =
+          // border ambre 1.5px (au lieu de gris). Focus violet 1.5px.
           decoration: InputDecoration(
             isDense: true,
             filled: true,
-            fillColor: const Color(0xFFFAF7FB), // mauve-50
+            fillColor: Colors.white,
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide.none,
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(10),
               borderSide: widget.showWarning
                   ? const BorderSide(color: Color(0xFFC48429), width: 1.5)
-                  : BorderSide.none,
+                  : BorderSide(color: Colors.grey.shade300),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(
                 color: Color(0xFF8B6FA0),
                 width: 1.5,
