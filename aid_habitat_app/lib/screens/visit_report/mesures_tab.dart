@@ -178,10 +178,10 @@ class _MesuresTabState extends State<MesuresTab>
       // Le nom est protégé par un `ConstrainedBox` (max 300 pt) pour
       // gérer le cas de noms très longs sans déborder.
       //
-      // Refonte 2026-05-12 : dots de pagination intégrés à la suite du
-      // chevron droit (demande utilisateur « met sur la même ligne que
-      // les flèches »). Plus de Padding séparé en bas du canvas — toute
-      // la navigation occupant tient dans cette pill unique.
+      // Note 2026-05-12 : les dots de pagination ont été retirés de
+      // cette bannière (demande utilisateur — ils existent déjà en bas
+      // de la page via le NotesWidget intégré). La bannière garde
+      // uniquement la nav nom + chevrons.
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -205,49 +205,17 @@ class _MesuresTabState extends State<MesuresTab>
           ),
           const SizedBox(width: 4),
           arrow(LucideIcons.chevronRight, _occupantNext),
-          // Séparateur visuel léger entre les chevrons (nav) et les
-          // dots (indicateur de position). Espace 12 pour bien
-          // distinguer les 2 zones fonctionnelles.
-          const SizedBox(width: 12),
-          _buildOccupantDots(idx),
-          // Petite marge à droite pour que le dernier dot ne colle pas
-          // au bord interne du pill.
-          const SizedBox(width: 4),
         ],
       ),
     );
   }
 
-  /// Points de pagination — un par occupant. Actif = pill 18×5 mauve-500,
-  /// inactif = dot 5×5 ink-200. Parité avec beneficiary_tab pour que les
-  /// 2 onglets aient EXACTEMENT le même visuel de navigation occupant.
-  Widget _buildOccupantDots(int currentIdx) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(_occupantCount, (i) {
-        final isActive = i == currentIdx;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _activeOccupantIndex = i),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              width: isActive ? 18 : 5,
-              height: 5,
-              decoration: BoxDecoration(
-                color: isActive
-                    ? const Color(0xFF8B6FA0) // mauve-500
-                    : const Color(0xFFE4E7EB), // ink-200
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
+  // `_buildOccupantDots` retiré (refonte 2026-05-12). Les dots étaient
+  // d'abord déplacés dans la bannière, puis retirés sur demande
+  // utilisateur (« ils sont déjà en bas de la page »). La navigation
+  // entre occupants se fait désormais uniquement via les chevrons
+  // gauche/droite de la bannière. Si un autre dots-style indicateur
+  // est nécessaire plus tard, le NotesWidget intégré le fournit déjà.
 }
 
 class _MesuresBackground extends StatelessWidget {
