@@ -94,10 +94,8 @@ class _MesuresTabState extends State<MesuresTab>
           child: Center(child: _buildOccupantHeader(idx)),
         ),
         Expanded(child: notesWidget),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 14, top: 6),
-          child: Center(child: _buildOccupantDots(idx)),
-        ),
+        // Dots déplacés dans la bannière (refonte 2026-05-12 — demande
+        // utilisateur « met sur la même ligne que les flèches »).
       ],
     );
   }
@@ -170,13 +168,20 @@ class _MesuresTabState extends State<MesuresTab>
       decoration: BoxDecoration(
         color: const Color(0xFFFAF7FB), // mauve-50
         border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
-        borderRadius: BorderRadius.circular(12),
+        // Radius pill complet (refonte 2026-05-12) — demande utilisateur
+        // « met un radius plus fort ». 999 = pill, cohérent avec les
+        // chips/inputs et la palette de couleurs de la note.
+        borderRadius: BorderRadius.circular(999),
       ),
       // Largeur adaptée au contenu via `mainAxisSize: MainAxisSize.min`
       // — la bannière ne s'étire plus sur toute la largeur du parent.
       // Le nom est protégé par un `ConstrainedBox` (max 300 pt) pour
-      // gérer le cas de noms très longs sans déborder vers la zone
-      // canvas dessous.
+      // gérer le cas de noms très longs sans déborder.
+      //
+      // Refonte 2026-05-12 : dots de pagination intégrés à la suite du
+      // chevron droit (demande utilisateur « met sur la même ligne que
+      // les flèches »). Plus de Padding séparé en bas du canvas — toute
+      // la navigation occupant tient dans cette pill unique.
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -200,6 +205,14 @@ class _MesuresTabState extends State<MesuresTab>
           ),
           const SizedBox(width: 4),
           arrow(LucideIcons.chevronRight, _occupantNext),
+          // Séparateur visuel léger entre les chevrons (nav) et les
+          // dots (indicateur de position). Espace 12 pour bien
+          // distinguer les 2 zones fonctionnelles.
+          const SizedBox(width: 12),
+          _buildOccupantDots(idx),
+          // Petite marge à droite pour que le dernier dot ne colle pas
+          // au bord interne du pill.
+          const SizedBox(width: 4),
         ],
       ),
     );

@@ -816,70 +816,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final activeIdx = _activeSubsectionByTab[activeTab] ?? 0;
     final safeIdx = activeIdx.clamp(0, subsections.length - 1);
 
-    // ── Cas spécial Accessibilité ────────────────────────────────────
-    // Demande utilisateur 2026-05-13 : « note dessin par sous-section
-    // mais même note écrite pour les 4 ».
-    //
-    // Avant : `List.generate` créait 4 `NotesWidget` empilés avec la
-    // MÊME `ValueKey` (`tabKey` partagé) → conflit Element/State Flutter,
-    // les strokes du `GestureDetector` actif étaient parfois bindés sur
-    // un Element invisible et le dessin n'apparaissait pas (cf. logs
-    // user 2026-05-13 « j'ai dessiné et ça n'a pas ajouté de ligne »).
-    //
-    // Maintenant : UN SEUL `NotesWidget` avec
-    //   • `totalPages = subsections.length` (4 pages internes)
-    //   • `sharedText: true` (le texte se mirror sur les 4 pages →
-    //     même observation écrite peu importe la sous-section, pour
-    //     alimenter le champ PDF « Observations sur l'accessibilité »
-    //     page 5)
-    //   • `currentPage: safeIdx` (la page active suit la sous-section
-    //     que l'user sélectionne dans le panneau de gauche)
-    //   • `onPageChange` (si l'user swipe entre pages dans le widget,
-    //     on synchronise la sous-section active à gauche)
-    //
-    // Effet : 1 texte global + 4 dessins distincts. Plus de bug de
-    // ValueKey dupliquée, plus de race condition à l'autosave.
-    if (activeTab == 'Accessibilité') {
-      final tabKey = _kSharedAccessibiliteNotesTabKey;
-      final liveKey = '${_dossier.patient.id}::$tabKey';
-      final pdfPlaceholder = _resolvePlaceholderForTabKey(tabKey);
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: NotesWidget(
-              key: ValueKey(liveKey),
-              patientId: _dossier.patient.id,
-              tabKey: tabKey,
-              // Titre dynamique : on affiche le nom de la sous-section
-              // active (« Général », « Niveaux »…) pour que l'user voie
-              // sur quelle page de dessin il est.
-              title: subsections[safeIdx],
-              placeholder: pdfPlaceholder ?? subsections[safeIdx],
-              liveText: _liveText[liveKey],
-              externalRefreshToken: _notesBulkPullToken,
-              onDraftChange: (draft) =>
-                  _pushDraftToOpenWindow(tabKey, draft.text),
-              onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
-              showSaveButton: false,
-              embedded: false,
-              fillParentHeight: true,
-              allowPagination: true,
-              stackedCards: true,
-              totalPages: subsections.length,
-              sharedText: true,
-              currentPage: safeIdx,
-              onPageChange: (page) {
-                if (!mounted) return;
-                final clamped = page.clamp(0, subsections.length - 1);
-                if (_activeSubsectionByTab[activeTab] == clamped) return;
-                setState(() => _activeSubsectionByTab[activeTab] = clamped);
-              },
-            ),
-          ),
-        ],
-      );
-    }
+    // Special case Accessibilité (totalPages=4 + sharedText) retiré
+    // 2026-05-13 — demande user : « la partie note de accessibilité est
+    // cassé, reprend comme dans bénéficiaire ». On revient à la parité
+    // Bénéficiaire : chaque sous-section a son propre NotesWidget avec
+    // tabKey unique (texte + dessin indépendants par sous-section). Le
+    // collapse correspondant dans `_resolveNotesTabKey` a été aussi
+    // retiré → `Accessibilité-Général`, `Accessibilité-Niveaux`,
+    // `Accessibilité-Équipements`, `Accessibilité-Extérieur` sont
+    // désormais 4 notes totalement distinctes.
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
