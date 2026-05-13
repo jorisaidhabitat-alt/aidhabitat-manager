@@ -504,24 +504,40 @@ class _CuvettePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Refonte 2026-05-13 : aligné sur FormToggleGroup.buildPill
+    // (Occupation) — AnimatedContainer 220ms ease-out cubic, height
+    // 32, padding h:14, bg mauve-50 → mauve-500, border transparent →
+    // mauve-500, texte fontSize 14 w400/w500. Demande utilisateur :
+    // « conceptionne ... vraiment pareil que les autres boutons, avec
+    // fond de couleur de base, animation de remplissage » → Cuvette.
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        height: 40,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF8B6FA0) : const Color(0xFFF1F1F4),
-          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          color: active
+              ? const Color(0xFF8B6FA0) // mauve-500
+              : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: active
+                ? const Color(0xFF8B6FA0)
+                : Colors.transparent,
+          ),
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: active ? Colors.white : const Color(0xFF2B323A),
+            fontSize: 14,
+            fontWeight: active ? FontWeight.w500 : FontWeight.w400,
+            color: active
+                ? Colors.white
+                : const Color(0xFF2B323A), // ink-700
           ),
         ),
       ),

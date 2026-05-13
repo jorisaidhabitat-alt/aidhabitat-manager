@@ -1235,31 +1235,43 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     required bool isSelected,
     required VoidCallback onTap,
   }) {
+    // Refonte 2026-05-13 : aligné sur FormToggleGroup.buildPill
+    // (Occupation) — AnimatedContainer 220ms, height 32, padding h:14,
+    // bg mauve-50 → mauve-500, border transparent → mauve-500, texte
+    // fontSize 14 w400/w500 (Quicksand hérité du thème).
+    // Demande utilisateur : « conceptionne … vraiment pareil que les
+    // autres boutons, avec fond de couleur de base, animation de
+    // remplissage » → s'applique ici à Chauffage et Annexes.
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          // Même violet que FormToggleGroup (#907CA1) pour unifier tous
-          // les pills multi-select avec les autres boutons du relevé.
-          color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
-          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          color: isSelected
+              ? const Color(0xFF8B6FA0) // mauve-500
+              : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF8B6FA0)
-                : Colors.grey.shade300,
-            width: 1.2,
+                : Colors.transparent,
           ),
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+            color: isSelected
+                ? Colors.white
+                : const Color(0xFF2B323A), // ink-700
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
           ),
         ),
       ),

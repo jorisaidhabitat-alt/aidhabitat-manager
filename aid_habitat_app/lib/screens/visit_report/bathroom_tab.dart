@@ -565,37 +565,42 @@ class _BathroomTabState extends State<BathroomTab>
         const SizedBox(height: 18),
         // Sol glissant — déplacé tout en bas de l'onglet Salle de bain à
         // la demande de l'utilisateur (après la section Porte).
+        // Refonte 2026-05-13 : aligné sur FormToggleGroup.buildPill
+        // (Occupation) — AnimatedContainer 220ms, height 32, padding
+        // h:14, bg mauve-50 → mauve-500. Demande utilisateur :
+        // « conceptionne ... vraiment pareil que les autres boutons,
+        // avec fond de couleur de base, animation de remplissage ».
         GestureDetector(
           onTap: () =>
               _updateActive(_copy(a, sdbSolGlissant: !a.sdbSolGlissant)),
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              // Violet #907CA1 pour aligner ce pill toggle « Sol
-              // glissant » avec tous les autres boutons du relevé.
               color: a.sdbSolGlissant
-                  ? const Color(0xFF8B6FA0)
-                  : Colors.white,
-              // Refonte 2026-05-13 : pill radius 999 uniforme.
+                  ? const Color(0xFF8B6FA0) // mauve-500
+                  : const Color(0xFFFAF7FB), // mauve-50
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: a.sdbSolGlissant
                     ? const Color(0xFF8B6FA0)
-                    : Colors.grey.shade300,
-                width: 1.2,
+                    : Colors.transparent,
               ),
             ),
             child: Text(
               'Sol glissant',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                fontWeight: a.sdbSolGlissant
+                    ? FontWeight.w500
+                    : FontWeight.w400,
                 color: a.sdbSolGlissant
                     ? Colors.white
-                    : Colors.black87,
+                    : const Color(0xFF2B323A), // ink-700
               ),
             ),
           ),
@@ -860,28 +865,40 @@ class _WetZoneButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Refonte 2026-05-13 : aligné sur FormToggleGroup.buildPill
+    // (Occupation) — AnimatedContainer 220ms, height 32, padding h:14,
+    // bg mauve-50 → mauve-500. Demande utilisateur :
+    // « conceptionne ... vraiment pareil que les autres boutons, avec
+    // fond de couleur de base, animation de remplissage » → Douche
+    // et Baignoire.
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF8B6FA0) : Colors.white,
-          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          color: active
+              ? const Color(0xFF8B6FA0) // mauve-500
+              : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: active
                 ? const Color(0xFF8B6FA0)
-                : Colors.grey.shade300,
+                : Colors.transparent,
           ),
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: active ? Colors.white : Colors.black87,
+            fontSize: 14,
+            fontWeight: active ? FontWeight.w500 : FontWeight.w400,
+            color: active
+                ? Colors.white
+                : const Color(0xFF2B323A), // ink-700
           ),
         ),
       ),
