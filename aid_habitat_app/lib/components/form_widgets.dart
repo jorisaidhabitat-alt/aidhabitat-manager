@@ -345,32 +345,32 @@ class _FormTextFieldState extends State<FormTextField> {
                   _focusNode.unfocus();
                   widget.onTapOutside!();
                 },
-          // Refonte 2026-05-13 (visit-pages.js .vp-input) :
-          //  - fond mauve-50 #FAF7FB
-          //  - radius 9999 (pill complet)
-          //  - border transparent normal, mauve-500 au focus
-          //  - hauteur min 32, padding horizontal 14
+          // Refonte 2026-05-13 (demande user) : style aligné sur le
+          // champ Ville en mode édition du dossier — fond blanc, border
+          // gris léger (grey.shade300), radius 10, focus violet 1.5px.
+          // En readonly : fond mauve-100 conservé pour différencier
+          // visuellement les champs non éditables.
           decoration: InputDecoration(
             isDense: true,
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide.none,
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide.none,
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(10),
               borderSide:
                   const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
             ),
             filled: true,
             fillColor: widget.readOnly
                 ? const Color(0xFFF2ECF5) // mauve-100 (readonly accent)
-                : const Color(0xFFFAF7FB), // mauve-50 (normal)
+                : Colors.white,
             suffixText: widget.suffix,
             suffixStyle:
                 const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
@@ -491,26 +491,27 @@ class _FormNumberFieldState extends State<FormNumberField> {
                   _focusNode.unfocus();
                   widget.onTapOutside!();
                 },
-          // Refonte 2026-05-13 (vp-input) — cf. FormTextField.
+          // Refonte 2026-05-13 (demande user) — cf. FormTextField :
+          // fond blanc, border gris léger, radius 10, focus violet.
           decoration: InputDecoration(
             isDense: true,
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide.none,
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide.none,
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(10),
               borderSide:
                   const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
             ),
             filled: true,
-            fillColor: const Color(0xFFFAF7FB), // mauve-50
+            fillColor: Colors.white,
             suffixText: widget.unit,
             suffixStyle:
                 const TextStyle(color: Color(0xFF8A939D), fontSize: 13),

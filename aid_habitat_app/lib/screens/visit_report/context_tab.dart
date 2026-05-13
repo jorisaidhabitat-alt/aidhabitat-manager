@@ -571,7 +571,15 @@ class _ContextTabState extends State<ContextTab>
                             color: Colors.white,
                             padding:
                                 const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                            child: _buildOccupantHeader(idx),
+                            // Sur Autonomie : on injecte le bouton « Tout
+                            // valider » comme petit rond dans le header
+                            // (visit-pages.js l.622-626).
+                            child: _buildOccupantHeader(
+                              idx,
+                              extra: _subSection == 1
+                                  ? _buildValidateAllSmallButton()
+                                  : null,
+                            ),
                           ),
                         Expanded(
                           // Légère animation entre Médicale ↔ Autonomie —
@@ -628,7 +636,7 @@ class _ContextTabState extends State<ContextTab>
   ///   - Nom occupant Nunito 17px w700 ink-900 centré
   ///   - Boutons prev/next 30×30 rounded-8 (transparents, désactivés si
   ///     un seul occupant)
-  Widget _buildOccupantHeader(int idx) {
+  Widget _buildOccupantHeader(int idx, {Widget? extra}) {
     final p = widget.dossier.patient;
     String first = '';
     String last = '';
@@ -710,6 +718,13 @@ class _ContextTabState extends State<ContextTab>
               ),
             ),
           ),
+          // Slot `extra` (cf. maquette visit-pages.js l.461-462) : permet
+          // d'injecter un widget compact entre le nom et le chevron next.
+          // Utilisé par Autonomie pour le bouton « Tout valider ».
+          if (extra != null) ...[
+            extra,
+            const SizedBox(width: 4),
+          ],
           arrow(LucideIcons.chevronRight, next),
         ],
       ),
