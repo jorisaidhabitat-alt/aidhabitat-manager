@@ -2054,7 +2054,10 @@ class _DocCardState extends State<_DocCard> {
                       children: [
                         // Inline editable title — Nunito (parité avec
                         // les autres titres de l'app, demande user
-                        // 2026-05-13).
+                        // 2026-05-13). Taille bumpée 13 → 16, weight
+                        // allégé bold (w700) → w500 (demande user
+                        // 2026-05-13 : « augmente la taille et reduis
+                        // l'epaisseur »).
                         _isEditingTitle
                             ? TextField(
                                 controller: _titleCtrl,
@@ -2062,8 +2065,8 @@ class _DocCardState extends State<_DocCard> {
                                 maxLines: 1,
                                 textInputAction: TextInputAction.done,
                                 style: GoogleFonts.nunito(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 16,
                                   color: Colors.black87,
                                 ),
                                 decoration: InputDecoration(
@@ -2087,17 +2090,20 @@ class _DocCardState extends State<_DocCard> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 16,
                                     color: Colors.black87,
                                   ),
                                 ),
                               ),
                         const SizedBox(height: 2),
+                        // Date : 10 → 13, weight light (w300) — discret
+                        // et lisible avec un peu plus d'air sous le titre.
                         Text(
                           dateLabel,
                           style: GoogleFonts.nunito(
-                            fontSize: 10,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w300,
                             color: Colors.grey,
                           ),
                         ),

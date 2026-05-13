@@ -469,17 +469,14 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     final state = _bucketStates[bucket]!;
     final dossiers = _dossiersForBucket(bucket);
     final title = _bucketTitle(bucket);
+    // Refonte 2026-05-13 : border ink-200 1px autour de chaque section
+    // (Visite à faire / Rapport à faire / Rapport envoyé) — au lieu
+    // d'une simple shadow. Donne un look plus card / contour propre.
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: const Color(0xFFE4E7EB)), // ink-200
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -612,24 +609,26 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildNewDossierButton() {
+    // Refonte 2026-05-13 : radius pill complet (999) au lieu de 16.
     return Material(
       color: const Color(0xFF8B6FA0),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(999),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(999),
         onTap: widget.onCreateNew,
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(LucideIcons.plus, size: 18, color: Colors.white),
-              SizedBox(width: 8),
+              const Icon(LucideIcons.plus, size: 18, color: Colors.white),
+              const SizedBox(width: 8),
               Text(
                 'Nouveau dossier',
-                style: TextStyle(
+                style: GoogleFonts.nunito(
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
               ),
