@@ -1157,13 +1157,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       children: [
         const Text(
           'Chauffage',
+          // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
           style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF5C6670),
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: Color(0xFF0E1116),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 5),
         _buildMultiSelectGrid(
           options: _heatingOptions,
           selected: _heatingTypes,
@@ -1676,11 +1677,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Accès depuis la rue',
+                // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
                 style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: Color(0xFF5C6670))),
-            const SizedBox(height: 8),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: Color(0xFF0E1116))),
+            const SizedBox(height: 5),
             FormToggleGroup(
               label: '',
               options: const ['Facile', 'À revoir'],
@@ -1707,11 +1709,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text('Annexes',
+                // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
                 style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: Color(0xFF5C6670))),
-            const SizedBox(height: 8),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: Color(0xFF0E1116))),
+            const SizedBox(height: 5),
             _buildMultiSelectGrid(
               options: annexItems,
               selected: selectedAnnexes,

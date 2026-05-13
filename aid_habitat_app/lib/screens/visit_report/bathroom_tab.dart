@@ -616,13 +616,14 @@ class _BathroomTabState extends State<BathroomTab>
       children: [
         const Text(
           'Équipements complémentaires',
+          // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
           style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF5C6670),
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: Color(0xFF0E1116),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 5),
         _EquipPillGrid(
           items: commonItems,
           selected: selectedCommon,

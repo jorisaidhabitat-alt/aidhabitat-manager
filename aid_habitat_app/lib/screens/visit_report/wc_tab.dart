@@ -406,13 +406,14 @@ class _WcTabState extends State<WcTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.only(bottom: 8.0),
+          padding: EdgeInsets.only(bottom: 5.0),
           child: Text(
             'Cuvette',
+            // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
             style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF2B323A),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0E1116),
             ),
           ),
         ),
