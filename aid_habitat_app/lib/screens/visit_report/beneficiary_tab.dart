@@ -694,13 +694,14 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       children: [
         const Text(
           'Date de naissance',
+          // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
           style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF5C6670),
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: Color(0xFF0E1116),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 5),
         Builder(
           builder: (context) {
             final ageLabel = _computeAgeLabel(occ.birthDate);
@@ -2114,15 +2115,15 @@ class _DateOfBirthField extends StatelessWidget {
       children: [
         if (showLabel) ...[
           // Refonte 2026-05-13 — aligné sur FormTextField (vp-label) :
-          // fontWeight w600, fontSize 14, color #2B323A. Avant la
-          // refonte, ce label sortait du lot (plus petit, plus gras,
-          // plus gris) à cause d'un widget custom non-mis à jour.
+          // w700 14px ink-900 (noir). Demande utilisateur 2026-05-13 :
+          // « uniformise absolument tout les titres de champs avec
+          // police noir à la même taille que téléphone ».
           const Text(
             'Date de naissance',
             style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 14,
-              color: Color(0xFF2B323A),
+              color: Color(0xFF0E1116),
             ),
           ),
           const SizedBox(height: 5),

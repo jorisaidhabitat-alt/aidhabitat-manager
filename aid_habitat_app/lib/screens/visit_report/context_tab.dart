@@ -1223,7 +1223,13 @@ class _NumberedCheckRow extends StatelessWidget {
       rowBg = const Color(0xFFFDEFEA);
     }
 
-    return AnimatedContainer(
+    // Refonte 2026-05-13 (visit-pages.js l.1451-1456) : tap sur la ligne
+    // entière = toggle ✓ « ok ». Les boutons internes (✓/!/👥) ont leur
+    // propre GestureDetector qui intercepte le tap avant qu'il remonte.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggleAutonomous,
+      child: AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       margin: const EdgeInsets.symmetric(vertical: 1),
@@ -1288,6 +1294,7 @@ class _NumberedCheckRow extends StatelessWidget {
             ),
           ],
         ],
+      ),
       ),
     );
   }
