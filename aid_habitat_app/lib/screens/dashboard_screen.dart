@@ -1362,14 +1362,10 @@ class _PanelCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)), // slate-200
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        // Refonte 2026-05-13 : border ink-200 + suppression de la
+        // shadow (le nouveau design system préfère des cards plates
+        // avec uniquement un border 1px).
+        border: Border.all(color: const Color(0xFFE4E7EB)), // ink-200
       ),
       child: child,
     );
@@ -1801,26 +1797,28 @@ class _PendingReportsPanel extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
+              // Refonte 2026-05-13 : eyebrow ink-400 + title en Nunito.
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'À RÉALISER',
+                    const Text(
+                      'À RELANCER',
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.4,
-                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.2, // 0.12em à 10px
+                        color: Color(0xFF8A939D), // ink-400
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       'Mes rapports en cours',
-                      style: TextStyle(
+                      style: GoogleFonts.nunito(
                         fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.4,
+                        color: const Color(0xFF0E1116), // ink-900
                       ),
                     ),
                   ],
@@ -1830,16 +1828,16 @@ class _PendingReportsPanel extends StatelessWidget {
                 TextButton(
                   onPressed: onSeeAll,
                   style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF475569),
+                    foregroundColor: const Color(0xFF2B323A), // ink-700
                     textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                        horizontal: 12, vertical: 4),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(10),
+                      side: const BorderSide(color: Color(0xFFE4E7EB)),
                     ),
                   ),
                   child: const Text('Voir tout'),
@@ -1938,9 +1936,9 @@ class _PendingReportRow extends StatelessWidget {
                   Text(
                     '${p.firstName} ${p.lastName}'.trim(),
                     style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF0E1116), // ink-900
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1950,8 +1948,8 @@ class _PendingReportRow extends StatelessWidget {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF94A3B8),
+                        fontSize: 12,
+                        color: Color(0xFF5C6670), // ink-500
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1970,7 +1968,7 @@ class _PendingReportRow extends StatelessWidget {
               ),
             const SizedBox(width: 10),
             const Icon(LucideIcons.arrowRight,
-                size: 18, color: Color(0xFFCBD5E1)),
+                size: 18, color: Color(0xFFB9C0C7)), // ink-300
           ],
         ),
       ),
@@ -2181,26 +2179,28 @@ class _WeekAgendaPanel extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
+              // Refonte 2026-05-13 : eyebrow ink-400 + title Nunito.
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'CETTE SEMAINE',
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.4,
-                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.2,
+                        color: Color(0xFF8A939D), // ink-400
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       'Agenda',
-                      style: TextStyle(
+                      style: GoogleFonts.nunito(
                         fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.4,
+                        color: const Color(0xFF0E1116),
                       ),
                     ),
                   ],
@@ -2210,16 +2210,16 @@ class _WeekAgendaPanel extends StatelessWidget {
                 TextButton(
                   onPressed: onSeeAll,
                   style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF475569),
+                    foregroundColor: const Color(0xFF2B323A), // ink-700
                     textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                        horizontal: 12, vertical: 4),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(10),
+                      side: const BorderSide(color: Color(0xFFE4E7EB)),
                     ),
                   ),
                   child: const Text('Voir tout'),
