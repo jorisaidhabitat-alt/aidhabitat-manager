@@ -664,7 +664,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                       const SizedBox(height: 2),
                       Text(items[i].label,
                           style: const TextStyle(
-                            fontSize: 10,
+                            // 10 → 12 (demande user 2026-05-13).
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: labelColor,
                           )),

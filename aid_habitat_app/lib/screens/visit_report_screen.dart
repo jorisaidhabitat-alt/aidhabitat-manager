@@ -1048,20 +1048,28 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
+  /// Bouton retour aligné sur le style des chevrons prev/next du
+  /// occupant header (refonte 2026-05-13) : 30×30, rounded-8,
+  /// transparent, icône ink-700. Cohérence visuelle entre les
+  /// boutons de navigation du header et ceux de la bannière occupant.
   Widget _buildBackButton() {
-    return InkWell(
-      onTap: widget.onBack,
-      borderRadius: BorderRadius.circular(50),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          LucideIcons.arrowLeft,
-          color: Colors.black87,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: widget.onBack,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            LucideIcons.chevronLeft,
+            size: 16,
+            color: Color(0xFF2B323A), // ink-700
+          ),
         ),
       ),
     );
