@@ -468,16 +468,16 @@ class _AuthRootState extends State<AuthRoot> {
 // Typographie globale Aid'Habitat — refonte 2026-05-13
 // =============================================================================
 //
-// 3 polices Google Fonts, chargées à la volée par le package google_fonts :
+// 2 polices Google Fonts, chargées à la volée par le package google_fonts :
 //
 //   - Quicksand (400/500/600/700) → body / labels / boutons / inputs
 //     (signature « warm, friendly » du nouveau design system)
-//   - Nunito    (700/800)         → titres display / headline
-//     (plus condensé, lisible sur grands tailles)
-//   - Fraunces  (500/600)         → utilisé explicitement dans les écrans
-//     dashboard / relevé de visite pour les très grands titres serif
-//     (ex. nom du bénéficiaire, heure de visite). Pas dans le textTheme
-//     global parce que ce n'est pas un défaut à appliquer partout.
+//   - Nunito    (700/800)         → titres display / headline + tous les
+//     grands titres dans dashboard et relevé de visite (« Bonjour, X. »,
+//     nom bénéficiaire, heure de visite, etc.).
+//
+// Fraunces (serif) a été testé puis retiré sur demande utilisateur
+// 2026-05-13 — l'utilisateur préférait Nunito partout.
 //
 // On part de Quicksand sur toute la baseline (body + label + title),
 // puis on override les niveaux display/headline pour basculer en Nunito.
