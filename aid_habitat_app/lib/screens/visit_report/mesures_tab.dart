@@ -86,7 +86,12 @@ class _MesuresTabState extends State<MesuresTab>
         Container(
           color: Colors.white,
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-          child: _buildOccupantHeader(idx),
+          // Centre la bannière horizontalement — la largeur de la
+          // bannière s'adapte au contenu (intrinsic width via
+          // `mainAxisSize: MainAxisSize.min` dans le Row interne).
+          // Demande utilisateur 2026-05-12 : « ne met pas sur toute
+          // la largeur, adapte au contenu et centre ».
+          child: Center(child: _buildOccupantHeader(idx)),
         ),
         Expanded(child: notesWidget),
         Padding(
@@ -165,25 +170,33 @@ class _MesuresTabState extends State<MesuresTab>
         border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
         borderRadius: BorderRadius.circular(12),
       ),
+      // Largeur adaptée au contenu via `mainAxisSize: MainAxisSize.min`
+      // — la bannière ne s'étire plus sur toute la largeur du parent.
+      // Le nom est protégé par un `ConstrainedBox` (max 300 pt) pour
+      // gérer le cas de noms très longs sans déborder vers la zone
+      // canvas dessous.
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           arrow(LucideIcons.chevronLeft, _occupantPrev),
-          Expanded(
-            child: Center(
-              child: Text(
-                display,
-                style: GoogleFonts.nunito(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.25,
-                  height: 1.15,
-                  color: const Color(0xFF0E1116),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Text(
+              display,
+              style: GoogleFonts.nunito(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.25,
+                height: 1.15,
+                color: const Color(0xFF0E1116),
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
             ),
           ),
+          const SizedBox(width: 4),
           arrow(LucideIcons.chevronRight, _occupantNext),
         ],
       ),

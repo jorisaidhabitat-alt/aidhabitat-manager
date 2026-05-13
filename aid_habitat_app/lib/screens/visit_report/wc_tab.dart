@@ -512,7 +512,8 @@ class _CuvettePill extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? const Color(0xFF8B6FA0) : const Color(0xFFF1F1F4),
-          borderRadius: BorderRadius.circular(12),
+          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
           label,
