@@ -973,20 +973,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               splashFactory: NoSplash.splashFactory,
             ),
           ),
-          // Séparateur visuel discret entre les onglets et l'action
-          // « Générer le rapport ». Trait fin slate-200 vertical.
-          Container(
-            width: 1,
-            height: 28,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            color: const Color(0xFFE4E7EB), // ink-200
-          ),
-          // Bouton d'action en bout de barre — dernière entrée, intégré
-          // dans le même pill blanc que les onglets.
-          Padding(
-            padding: const EdgeInsets.only(left: 4, right: 6),
-            child: _buildGenerateReportButton(),
-          ),
+          // Refonte 2026-05-13 : bouton « Générer le rapport » retiré de
+          // la tab bar, remonté dans le header en haut à droite (à côté
+          // du badge Anah) pour matcher la maquette du design system.
         ],
       ),
     );
@@ -1025,42 +1014,54 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// utilisateur 2026-05-04 : « change le texte génerer dans le
   /// bouton pour un icon téléchargement ». État loading : spinner
   /// blanc à la place de l'icône, le tap est neutralisé.
+  /// Bouton « Générer » dans le header en haut à droite (refonte
+  /// 2026-05-13). Pill mauve-500 avec label texte + icône download,
+  /// hauteur 36 px alignée sur les autres badges du header.
   Widget _buildGenerateReportButton() {
+    final disabled = _isGeneratingReport;
     return Tooltip(
-      message: _isGeneratingReport
-          ? 'Génération en cours…'
-          : 'Générer le rapport',
-      child: InkWell(
-        onTap: _isGeneratingReport ? null : _generateReport,
-        borderRadius: BorderRadius.circular(999),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          // Carré ~44×44 (= hauteur de l'ancienne pill) pour rester
-          // tactile-friendly sur iPad. Centre l'icône dans la pastille
-          // ronde violette.
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: _isGeneratingReport
-                ? const Color(0xFFA98DBE) // mauve-400 (état désactivé)
-                : const Color(0xFF8B6FA0), // mauve-500
-            borderRadius: BorderRadius.circular(999),
-          ),
-          alignment: Alignment.center,
-          child: _isGeneratingReport
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      message: disabled ? 'Génération en cours…' : 'Générer le rapport',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: disabled ? null : _generateReport,
+          borderRadius: BorderRadius.circular(999),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: disabled
+                  ? const Color(0xFFA98DBE) // mauve-400 (désactivé)
+                  : const Color(0xFF8B6FA0), // mauve-500
+              borderRadius: BorderRadius.circular(999),
+            ),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (disabled)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                else
+                  const Text(
+                    'Générer',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
-                )
-              : const Icon(
-                  LucideIcons.download,
-                  size: 20,
-                  color: Colors.white,
-                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -2503,10 +2504,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   const SizedBox(width: 12),
                   AnahStatusBadge(status: anahStatus, large: true),
                 ],
-                // Le bouton « Générer le rapport » est désormais
-                // intégré comme dernière entrée de la barre de
-                // navigation des onglets (cf. `_buildTabBar`) — plus
-                // de pill flottant à droite de l'entête VAD.
+                // Refonte 2026-05-13 : bouton « Générer » remonté dans
+                // le header (à côté du badge Anah) pour matcher la
+                // maquette du design system, au lieu d'être noyé dans
+                // la tab bar.
+                const SizedBox(width: 12),
+                _buildGenerateReportButton(),
               ],
             ),
             const SizedBox(height: 12),

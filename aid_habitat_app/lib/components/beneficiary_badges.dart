@@ -280,29 +280,30 @@ class AnahStatusBadge extends StatelessWidget {
     Color bg;
     Color fg;
     String label;
+    // Refonte 2026-05-13 (visit-pages.js `.vp-anah` lignes 230-235) :
+    // couleurs sémantiques canoniques du design system.
     if (v == 'déjà fait' || v == 'deja fait') {
-      bg = const Color(0xFFD1F4DC); // vert clair
-      fg = const Color(0xFF137333); // vert foncé
-      label = 'ANAH déjà fait';
+      bg = const Color(0xFFE6F4EA); // done : vert pâle
+      fg = const Color(0xFF1F7A3A); // done : vert texte
+      label = 'Anah · déjà fait';
     } else if (v == 'a vérifier' || v == 'a verifier') {
-      bg = const Color(0xFFFEF3C7); // ambre clair
-      fg = const Color(0xFFB45309); // ambre foncé
-      label = 'ANAH à vérifier';
+      bg = const Color(0xFFFFF4E2); // check : orange pâle
+      fg = const Color(0xFFA66700); // check : orange texte
+      label = 'Anah · à vérifier';
     } else if (v == 'a faire') {
-      bg = const Color(0xFFFEE2E2); // rouge clair
-      fg = const Color(0xFFB91C1C); // rouge foncé
-      label = 'ANAH à faire';
+      bg = const Color(0xFFFDEAEA); // todo : rouge pâle
+      fg = const Color(0xFFA6371F); // todo : rouge texte
+      label = 'Anah · à faire';
     } else {
-      // Statut inconnu — affichage neutre (rare, mais on évite un
-      // crash silencieux si la donnée est corrompue).
-      bg = const Color(0xFFF1F5F9);
-      fg = const Color(0xFF334155);
-      label = 'ANAH ${status.trim()}';
+      // Statut inconnu — affichage neutre.
+      bg = const Color(0xFFF2F4F6); // ink-100
+      fg = const Color(0xFF2B323A); // ink-700
+      label = 'Anah · ${status.trim()}';
     }
     return Container(
       padding: large
-          ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
-          : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          ? const EdgeInsets.symmetric(horizontal: 14, vertical: 6)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
@@ -310,8 +311,9 @@ class AnahStatusBadge extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          fontSize: large ? 14 : 12,
-          fontWeight: FontWeight.w700,
+          fontSize: large ? 13 : 12,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
           color: fg,
         ),
       ),
