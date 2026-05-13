@@ -811,11 +811,7 @@ class DataService {
       // are persisted to SQLite. UPDATE semantics inside
       // mergeRemoteDossierPayloads also preserve local-only columns that
       // the server doesn't know about.
-      // ignore: avoid_print
-      print('[refreshWorkspace] fetching dossier payloads…');
       final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
-      // ignore: avoid_print
-      print('[refreshWorkspace] received ${rawPayloads.length} dossier payloads');
       if (rawPayloads.isEmpty) return false;
       await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);
       // Pull aussi les entités GLOBALES qui n'étaient rafraîchies
@@ -846,7 +842,7 @@ class DataService {
       // ignore: discarded_futures
       _nocodbApiClient.fetchAnahStatus().catchError((_) => <String, dynamic>{});
       return true;
-    } catch (e, st) {
+    } catch (e) {
       // Avant : `catch (_) { return false; }` → impossible de diagnostiquer
       // un état "pages vides" causé par 401 / 500 / timeout serveur. On
       // logue désormais l'erreur (visible dans `flutter run`) tout en
@@ -854,8 +850,6 @@ class DataService {
       // utilisable en mode offline-first sur le cache local).
       // ignore: avoid_print
       print('[refreshWorkspace] ERROR: $e');
-      // ignore: avoid_print
-      print('[refreshWorkspace] stack: $st');
       return false;
     }
   }
