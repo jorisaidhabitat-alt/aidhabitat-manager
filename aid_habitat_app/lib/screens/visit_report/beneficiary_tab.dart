@@ -1030,13 +1030,15 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           color: Colors.transparent,
           child: InkWell(
             onTap: hasNav ? action : null,
-            borderRadius: BorderRadius.circular(8),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            borderRadius: BorderRadius.circular(999),
             child: Container(
               width: 30,
               height: 30,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
+                // Refonte 2026-05-13 : pill radius 999 uniforme.
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
             ),
@@ -1195,10 +1197,11 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         const SizedBox(height: 6),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
             color: const Color(0xFFF7F7FA),
-            borderRadius: BorderRadius.circular(14),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            borderRadius: BorderRadius.circular(999),
           ),
           child: Text(
             value,
@@ -2282,15 +2285,18 @@ class _RetirementFundFieldButton extends StatelessWidget {
         ),
         Material(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          borderRadius: BorderRadius.circular(999),
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            borderRadius: BorderRadius.circular(999),
             onTap: onTap,
             child: Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 14),
+                  horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
+                // Refonte 2026-05-13 : pill radius 999 uniforme.
+                borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: const Color(0xFFE4E7EB)),
               ),
               child: Row(

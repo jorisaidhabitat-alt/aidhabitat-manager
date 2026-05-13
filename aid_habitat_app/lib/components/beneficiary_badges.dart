@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Canonicalise la valeur brute du champ `natureAccompagnement` (stocké
 /// en minuscules côté NocoDB) vers une forme affichable. Les libellés
@@ -136,9 +137,11 @@ class AccompanimentBadge extends StatelessWidget {
       ),
       child: Text(
         value,
-        style: TextStyle(
+        // Refonte 2026-05-13 : Nunito w800 pour plus de poids visuel
+        // sur les badges du header (Quicksand plafonne à w700).
+        style: GoogleFonts.nunito(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           letterSpacing: 0.2,
           color: palette.fg,
         ),
@@ -249,9 +252,10 @@ class IncomeCategoryBadge extends StatelessWidget {
       ),
       child: Text(
         value,
-        style: TextStyle(
+        // Refonte 2026-05-13 : Nunito w800 (cf. AccompanimentBadge).
+        style: GoogleFonts.nunito(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           letterSpacing: 0.2,
           color: fg,
         ),
@@ -316,9 +320,10 @@ class AnahStatusBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
+        // Refonte 2026-05-13 : Nunito w800 (cf. AccompanimentBadge).
+        style: GoogleFonts.nunito(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           letterSpacing: 0.2,
           color: fg,
         ),

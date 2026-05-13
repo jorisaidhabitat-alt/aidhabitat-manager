@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../components/notes_widget.dart';
@@ -95,8 +97,27 @@ class _MesuresTabState extends State<MesuresTab>
     );
   }
 
-  /// Nom + NOM de l'occupant courant — change quand l'utilisateur tape
-  /// un point de pagination (pas de swipe ici, conflit avec le dessin).
+  void _occupantPrev() {
+    if (_occupantCount <= 1) return;
+    setState(() {
+      _activeOccupantIndex = (_safeIndex - 1 + _occupantCount) % _occupantCount;
+    });
+  }
+
+  void _occupantNext() {
+    if (_occupantCount <= 1) return;
+    setState(() {
+      _activeOccupantIndex = (_safeIndex + 1) % _occupantCount;
+    });
+  }
+
+  /// Bannière occupant — parité avec beneficiary_tab._buildOccupantHeader
+  /// (refonte 2026-05-13). Container fond mauve-50 + chevrons gauche/droite
+  /// + nom centré (Nunito w600). Demande utilisateur 2026-05-12 :
+  /// « dans mesures tu dois egalement mettre la banniere de chaque
+  /// occupant avec le nombre de pages dessin qui correspond au nombre
+  /// d'occupant » → on aligne l'onglet Mesures sur le même pattern banner
+  /// que Bénéficiaire et Contexte de vie.
   Widget _buildOccupantHeader(int idx) {
     final p = widget.dossier.patient;
     String first = '';
@@ -113,38 +134,85 @@ class _MesuresTabState extends State<MesuresTab>
         : [first, last.toUpperCase()]
             .where((s) => s.isNotEmpty)
             .join(' ');
-    return Text(
-      display,
-      style: const TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF0E1116),
-        letterSpacing: -0.2,
+    final hasNav = _occupantCount > 1;
+
+    Widget arrow(IconData icon, VoidCallback action) {
+      return Opacity(
+        opacity: hasNav ? 1 : 0.35,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: hasNav ? action : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF7FB), // mauve-50
+        border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          arrow(LucideIcons.chevronLeft, _occupantPrev),
+          Expanded(
+            child: Center(
+              child: Text(
+                display,
+                style: GoogleFonts.nunito(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.25,
+                  height: 1.15,
+                  color: const Color(0xFF0E1116),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          arrow(LucideIcons.chevronRight, _occupantNext),
+        ],
       ),
     );
   }
 
-  /// Rangée de points centrée — un par occupant, le courant violet plein.
-  /// Tap direct pour sauter à un occupant (pas de swipe sur cet onglet).
+  /// Points de pagination — un par occupant. Actif = pill 18×5 mauve-500,
+  /// inactif = dot 5×5 ink-200. Parité avec beneficiary_tab pour que les
+  /// 2 onglets aient EXACTEMENT le même visuel de navigation occupant.
   Widget _buildOccupantDots(int currentIdx) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(_occupantCount, (i) {
         final isActive = i == currentIdx;
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 3),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _activeOccupantIndex = i),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: isActive ? 10 : 8,
-              height: isActive ? 10 : 8,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              width: isActive ? 18 : 5,
+              height: 5,
               decoration: BoxDecoration(
                 color: isActive
-                    ? const Color(0xFF8B6FA0)
-                    : const Color(0xFFD8CFE0),
-                shape: BoxShape.circle,
+                    ? const Color(0xFF8B6FA0) // mauve-500
+                    : const Color(0xFFE4E7EB), // ink-200
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
           ),

@@ -740,7 +740,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     _markChanged();
                   }
                 },
-                borderRadius: BorderRadius.circular(20),
+                // Refonte 2026-05-13 : pill radius 999 uniforme.
+                borderRadius: BorderRadius.circular(999),
                 child: Container(
                   width: 32,
                   height: 32,

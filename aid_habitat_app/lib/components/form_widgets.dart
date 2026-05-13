@@ -588,7 +588,8 @@ class TogglePillButton extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: active ? const Color(0xFF8B6FA0) : Colors.white,
-              borderRadius: BorderRadius.circular(10),
+              // Refonte 2026-05-13 : pill radius 999 uniforme.
+              borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: active
                     ? const Color(0xFF8B6FA0)
@@ -920,7 +921,8 @@ class FormMultiToggleGroup extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: isSelected
                   ? const Color(0xFF8B6FA0)
@@ -1232,19 +1234,22 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
             filled: true,
             fillColor: Colors.white,
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide: BorderSide(color: Colors.grey.shade300),
             ),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide: widget.showWarning
                   ? const BorderSide(color: Color(0xFFC48429), width: 1.5)
                   : BorderSide(color: Colors.grey.shade300),
             ),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide: const BorderSide(
                 color: Color(0xFF8B6FA0),
                 width: 1.5,
@@ -1324,10 +1329,11 @@ class FormSelectDropdown<T> extends StatelessWidget {
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(color: Colors.grey.shade300),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<T>(
               value: value,
@@ -1415,14 +1421,16 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
         // Padding vertical 10 + fontSize 12 → ~34 px, aligné sur le pill
         // "Vasque suspendue" (référence visuelle du relevé de visite).
         InkWell(
-          borderRadius: BorderRadius.circular(10),
+          // Refonte 2026-05-13 : pill radius 999 uniforme.
+          borderRadius: BorderRadius.circular(999),
           onTap: () => setState(() => _open = !_open),
           child: Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
+              // Refonte 2026-05-13 : pill radius 999 uniforme.
+              borderRadius: BorderRadius.circular(999),
               border: Border.all(color: Colors.grey.shade300),
             ),
             child: Row(
