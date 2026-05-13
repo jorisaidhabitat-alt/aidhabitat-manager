@@ -219,7 +219,16 @@ class MyApp extends StatelessWidget {
           surface: Colors.white,
           background: const Color(0xFFF7F7FA),
         ),
-        textTheme: GoogleFonts.interTextTheme(),
+        // ----- Typographie Aid'Habitat (2026-05-13) -----
+        // Refonte du design system : Quicksand (500) pour body/labels,
+        // Nunito (700) pour les titres display, Fraunces utilisé
+        // explicitement où il faut un grand serif élégant
+        // (titres dashboard, blocs horaires, noms de bénéficiaires).
+        //
+        // GoogleFonts.quicksandTextTheme() applique Quicksand sur
+        // toutes les variantes (body/label/title), puis on surcharge
+        // display/headline pour utiliser Nunito.
+        textTheme: _buildAppTextTheme(),
         cardTheme: CardThemeData(
           color: Colors.white,
           elevation: 0,
@@ -452,4 +461,52 @@ class _AuthRootState extends State<AuthRoot> {
 
     return MainScreen(currentUser: _currentUser!, onLogout: _handleLogout);
   }
+}
+
+// =============================================================================
+// Typographie globale Aid'Habitat — refonte 2026-05-13
+// =============================================================================
+//
+// 3 polices Google Fonts, chargées à la volée par le package google_fonts :
+//
+//   - Quicksand (400/500/600/700) → body / labels / boutons / inputs
+//     (signature « warm, friendly » du nouveau design system)
+//   - Nunito    (700/800)         → titres display / headline
+//     (plus condensé, lisible sur grands tailles)
+//   - Fraunces  (500/600)         → utilisé explicitement dans les écrans
+//     dashboard / relevé de visite pour les très grands titres serif
+//     (ex. nom du bénéficiaire, heure de visite). Pas dans le textTheme
+//     global parce que ce n'est pas un défaut à appliquer partout.
+//
+// On part de Quicksand sur toute la baseline (body + label + title),
+// puis on override les niveaux display/headline pour basculer en Nunito.
+// Les letter-spacing reproduisent ceux du mockup `Refonte.html`
+// (-0.025em sur les grands titres, +0.018em sur le body Quicksand).
+TextTheme _buildAppTextTheme() {
+  final base = ThemeData.light().textTheme;
+  // Quicksand sur tout — body / label / title héritent.
+  final quicksand = GoogleFonts.quicksandTextTheme(base);
+
+  // Helper Nunito avec letter-spacing négatif (typique des display).
+  TextStyle nunito(TextStyle? source, {FontWeight weight = FontWeight.w700}) {
+    return GoogleFonts.nunito(
+      textStyle: (source ?? const TextStyle()).copyWith(
+        fontWeight: weight,
+        letterSpacing: -0.5,
+        height: 1.1,
+      ),
+    );
+  }
+
+  return quicksand.copyWith(
+    displayLarge: nunito(quicksand.displayLarge),
+    displayMedium: nunito(quicksand.displayMedium),
+    displaySmall: nunito(quicksand.displaySmall),
+    headlineLarge: nunito(quicksand.headlineLarge),
+    headlineMedium: nunito(quicksand.headlineMedium),
+    headlineSmall: nunito(quicksand.headlineSmall),
+    // titleLarge garde Quicksand (utilisé partout pour AppBar / cards).
+    // bodyLarge / bodyMedium / bodySmall : Quicksand 500.
+    // labelLarge / labelMedium / labelSmall : Quicksand 600.
+  );
 }
