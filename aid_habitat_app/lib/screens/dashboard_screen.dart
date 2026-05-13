@@ -2370,14 +2370,16 @@ class _AgendaRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              // Heure en JetBrains Mono tabular-nums (Refonte.html:1054).
+              // Heure — Quicksand (police par défaut du theme) avec
+              // tabular figures pour que les chiffres ne sautent pas en
+              // largeur (demande user 2026-05-13 : retirer JetBrains Mono).
               Text(
                 timeLabel,
-                style: GoogleFonts.jetBrainsMono(
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  color: const Color(0xFF2B323A), // ink-700
+                  fontFeatures: [FontFeature.tabularFigures()],
+                  color: Color(0xFF2B323A), // ink-700
                 ),
               ),
             ],

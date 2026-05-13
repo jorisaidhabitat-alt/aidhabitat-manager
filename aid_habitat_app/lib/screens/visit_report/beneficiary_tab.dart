@@ -793,11 +793,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           //   3. Création mandat (Oui/Non) → Nous/Autre → champ texte
           // Toutes les valeurs sont sérialisées en JSON dans la colonne
           // `compte_anah` (cf. _parseAnahData / _serializeAnahData).
-          FormToggleGroup(
+          // Refonte 2026-05-13 (visit-pages.js `.vp-anah` lignes 230-235) :
+          // les 3 statuts ANAH ont chacun leur couleur (todo rouge pâle /
+          // check orange pâle / done vert pâle) au lieu du mauve générique.
+          _AnahStatusToggle(
             label: 'Création compte ANAH',
-            options: _anahStatusOptions,
             selected: anah['status'] ?? '',
-            columns: 3,
             onChanged: (v) {
               final next = Map<String, String>.from(anah);
               next['status'] = v;
@@ -2181,28 +2182,8 @@ class _RoundCheckRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
-            // Cercle de check 20×20 — violet plein si coché, contour
-            // gris-lilas sinon.
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: checked ? const Color(0xFF8B6FA0) : Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: checked
-                      ? const Color(0xFF8B6FA0)
-                      : const Color(0xFFB9C0C7),
-                  width: 1.5,
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.check,
-                size: 12,
-                color: checked ? Colors.white : Colors.transparent,
-              ),
-            ),
+            // Cercle de check 20×20 animé (refonte 2026-05-13, vp-dot-fill).
+            VpCheckboxDot(completed: checked, size: 20),
             const SizedBox(width: 10),
             Flexible(
               child: Text(
@@ -2660,6 +2641,110 @@ class _FundInitialsAvatar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Toggle ANAH 3 statuts colorés (refonte 2026-05-13, visit-pages.js
+/// `.vp-anah.todo/check/done`).
+///
+/// Au lieu du mauve générique de FormToggleGroup, chaque pill arbore la
+/// couleur sémantique de son état :
+///   - « A faire »     → rouge pâle  (todo  : bg #FDEAEA, fg #A6371F)
+///   - « A vérifier »  → orange pâle (check : bg #FFF4E2, fg #A66700)
+///   - « Déjà fait »   → vert pâle   (done  : bg #E6F4EA, fg #1F7A3A)
+///
+/// État non sélectionné : pill mauve-50 + texte ink-700 (comme un chip
+/// normal). Tap sur la pill active la désélectionne (retour à l'état
+/// « non renseigné »).
+class _AnahStatusToggle extends StatelessWidget {
+  final String label;
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  const _AnahStatusToggle({
+    required this.label,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  // Couleurs alignées sur le design system visit-pages.js l.230-235.
+  static const _anahPalette = <String, ({Color bg, Color fg})>{
+    'A faire':    (bg: Color(0xFFFDEAEA), fg: Color(0xFFA6371F)),
+    'A vérifier': (bg: Color(0xFFFFF4E2), fg: Color(0xFFA66700)),
+    'Déjà fait':  (bg: Color(0xFFE6F4EA), fg: Color(0xFF1F7A3A)),
+  };
+
+  static const _options = ['A faire', 'A vérifier', 'Déjà fait'];
+
+  @override
+  Widget build(BuildContext context) {
+    Widget buildPill(String opt) {
+      final isSelected = opt == selected;
+      final palette = _anahPalette[opt];
+      return Expanded(
+        child: GestureDetector(
+          onTap: () {
+            // Tap sur la pill déjà sélectionnée → désélection.
+            onChanged(isSelected ? '' : opt);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? (palette?.bg ?? const Color(0xFFFAF7FB))
+                  : const Color(0xFFFAF7FB),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: isSelected
+                    ? (palette?.fg.withValues(alpha: 0.25) ??
+                        Colors.transparent)
+                    : Colors.transparent,
+              ),
+            ),
+            child: Text(
+              opt,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: isSelected
+                    ? (palette?.fg ?? const Color(0xFF2B323A))
+                    : const Color(0xFF2B323A),
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (label.isNotEmpty) ...[
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+              color: Color(0xFF2B323A),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        Row(
+          children: [
+            for (var i = 0; i < _options.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              buildPill(_options[i]),
+            ],
+          ],
+        ),
+      ],
     );
   }
 }

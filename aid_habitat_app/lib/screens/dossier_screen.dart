@@ -525,7 +525,6 @@ class _DossierScreenState extends State<DossierScreen> {
             Text(
               _formatDate(widget.dossier.createdAt),
               style: const TextStyle(
-                fontFamily: 'monospace',
                 fontSize: 16,
                 color: Colors.black87,
               ),

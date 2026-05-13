@@ -299,7 +299,7 @@ const FIELD_SETS = {
   ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'mot_de_passe', 'profile_photo_base64'],
   communes: ['nom', 'code_postal', 'epci_id1', 'epci'],
   baremesAnah: ['libelle', 'nombre_personnes', 'annee_plafond'],
-  caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire', 'a_une_aide_specifique'],
+  caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire', 'a_une_aide_specifique', 'metadata_json'],
   wikiTags: ['uuid_source', 'tags'],
   wiki: ['uuid_source', 'titre', 'photos', 'photo_base64', 'contenu', 'wiki_tags_id', 'wiki_tags'],
 };
@@ -3931,19 +3931,35 @@ app.get('/api/retirement-funds', requireAuth, async (_req, res, next) => {
       .filter((record) => normalizeEmail(field(record, 'nom')).replace(/\s+/g, ' ') !== 'humanis')
       .map((record) => {
       const name = field(record, 'nom') || '';
+      // Bug fix 2026-05-13 — lecture des champs étendus depuis NocoDB
+      // en priorité (colonne `metadata_json` ajoutée ce jour). Avant
+      // ce changement, les champs `audience`, `requestMethod`,
+      // `requestDelay`, `aidAmount`, `website`, `logoUrl` étaient
+      // stockés UNIQUEMENT dans le filesystem `/tmp/.../retirement-
+      // funds.json` (éphémère sur Vercel) — ils disparaissaient au
+      // prochain cold start. Maintenant NocoDB est la source primaire,
+      // avec fallback filesystem pour rétrocompatibilité.
+      let metadata = {};
+      try {
+        const rawMeta = field(record, 'metadata_json');
+        if (rawMeta && typeof rawMeta === 'string' && rawMeta.trim().startsWith('{')) {
+          metadata = JSON.parse(rawMeta);
+        }
+      } catch (_) {/* JSON invalide : on retombe sur fallback filesystem */}
       const override = store.funds[String(record.id)] || {};
+      // Priorité : metadata NocoDB > override filesystem > colonne NocoDB raw > ''
       return buildRetirementFundResponse({
         id: String(record.id),
-        name: override.name || name,
-        phone: override.phone || field(record, 'numero_telephone_contact') || '',
-        audience: override.audience || '',
-        requestMethod: override.requestMethod || '',
-        requestDelay: override.requestDelay || '',
-        aidAmount: override.aidAmount || '',
-        therapistNote: override.therapistNote || field(record, 'aide_complementaire') || '',
-        website: override.website || '',
-        logoUrl: override.logoUrl || '',
-        lastEditedAt: override.lastEditedAt || field(record, 'UpdatedAt') || field(record, 'CreatedAt') || null,
+        name: metadata.name || override.name || name,
+        phone: metadata.phone || override.phone || field(record, 'numero_telephone_contact') || '',
+        audience: metadata.audience || override.audience || '',
+        requestMethod: metadata.requestMethod || override.requestMethod || '',
+        requestDelay: metadata.requestDelay || override.requestDelay || '',
+        aidAmount: metadata.aidAmount || override.aidAmount || '',
+        therapistNote: metadata.therapistNote || override.therapistNote || field(record, 'aide_complementaire') || '',
+        website: metadata.website || override.website || '',
+        logoUrl: metadata.logoUrl || override.logoUrl || '',
+        lastEditedAt: metadata.lastEditedAt || override.lastEditedAt || field(record, 'UpdatedAt') || field(record, 'CreatedAt') || null,
       });
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -4359,10 +4375,16 @@ app.post('/api/retirement-funds', requireAuth, async (req, res, next) => {
 
     let createdId = null;
     try {
+      // Bug fix 2026-05-13 — on persiste les champs étendus dans la
+      // nouvelle colonne `metadata_json` côté NocoDB pour qu'ils
+      // survivent au cold start Vercel. Avant : tous les extras
+      // (audience, requestMethod, aidAmount, etc.) étaient en /tmp
+      // uniquement → perdus à chaque cold start.
       const created = await createRecord(TABLES.caissesRetraiteComplementaires, {
         nom: nullableString(name),
         numero_telephone_contact: nullableString(phone),
         aide_complementaire: nullableString(therapistNote),
+        metadata_json: JSON.stringify(storePayload),
       });
       createdId = String(created?.id || '').trim() || null;
     } catch (createError) {
@@ -4469,14 +4491,7 @@ app.put('/api/retirement-funds/:fundId', requireAuth, async (req, res, next) => 
     const nextLogoUrl = String(updates.logoUrl || '').trim();
     const lastEditedAt = new Date().toISOString();
 
-    await updateRecord(TABLES.caissesRetraiteComplementaires, fundId, {
-      nom: nullableString(nextName),
-      numero_telephone_contact: nullableString(nextPhone),
-      aide_complementaire: nullableString(nextTherapistNote),
-    });
-
-    store.funds[fundId] = {
-      ...(store.funds[fundId] || {}),
+    const metadata = {
       name: nextName,
       phone: nextPhone,
       audience: nextAudience,
@@ -4488,6 +4503,20 @@ app.put('/api/retirement-funds/:fundId', requireAuth, async (req, res, next) => 
       logoUrl: nextLogoUrl,
       lastEditedAt,
       lastEditedBy: req.appUser?.displayName || req.appUser?.email || '',
+    };
+    // Bug fix 2026-05-13 — on persiste les champs étendus dans NocoDB
+    // `metadata_json` (avant : uniquement filesystem `/tmp` éphémère
+    // → perdus à chaque cold start Vercel).
+    await updateRecord(TABLES.caissesRetraiteComplementaires, fundId, {
+      nom: nullableString(nextName),
+      numero_telephone_contact: nullableString(nextPhone),
+      aide_complementaire: nullableString(nextTherapistNote),
+      metadata_json: JSON.stringify(metadata),
+    });
+
+    store.funds[fundId] = {
+      ...(store.funds[fundId] || {}),
+      ...metadata,
     };
     await writeRetirementFundsStore(store);
 

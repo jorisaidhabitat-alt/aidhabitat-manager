@@ -412,7 +412,6 @@ class _AnahScreenState extends State<AnahScreen> {
                     style: TextStyle(
                       color: Colors.grey.shade700,
                       fontSize: 12,
-                      fontFamily: 'monospace',
                     ),
                   ),
                 ),

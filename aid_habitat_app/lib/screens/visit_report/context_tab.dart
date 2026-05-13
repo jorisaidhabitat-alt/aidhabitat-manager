@@ -1138,10 +1138,8 @@ class _MedicalFlagRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
         child: Row(
           children: [
-            // Animated square checkbox (refonte 2026-05-13, vp-sq-fill) :
-            // bg blanc→mauve-500 + scale pop 0.85 → 1.12 → 1.0 quand l'item
-            // bascule sur "completed".
-            _AnimatedSquareCheckbox(completed: completed),
+            // Animated square checkbox (refonte 2026-05-13, vp-sq-fill).
+            VpCheckboxSquare(completed: completed),
             const SizedBox(width: 10),
             // Numbered circle
             Container(
@@ -1366,63 +1364,6 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-/// Checkbox carrée animée (refonte 2026-05-13, visit-pages.js `vp-sq-fill`).
-///
-/// Animation au passage `false → true` :
-///   1. bg blanc → mauve-500 sur 320 ms cubic-bezier(.2,.7,.2,1)
-///   2. scale 0.85 → 1.12 → 1.0 (pop)
-///   3. ✓ apparait avec opacity 0 → 1 + scale 0.4 → 1.0 (80 ms de retard)
-///
-/// Passage `true → false` : transition simple inverse (sans le pop).
-class _AnimatedSquareCheckbox extends StatelessWidget {
-  final bool completed;
-  const _AnimatedSquareCheckbox({required this.completed});
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      key: ValueKey(completed),
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
-      tween: Tween(begin: completed ? 0.0 : 1.0, end: 1.0),
-      builder: (context, t, _) {
-        // Scale curve : pop in à 0.55 du progrès puis retombe à 1.0.
-        final double scale = completed
-            ? (t < 0.55
-                ? (0.85 + (1.12 - 0.85) * (t / 0.55))
-                : (1.12 - (1.12 - 1.0) * ((t - 0.55) / 0.45)))
-            : 1.0;
-        return Transform.scale(
-          scale: scale,
-          child: Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: completed
-                  ? const Color(0xFF8B6FA0) // mauve-500
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(
-                color: completed
-                    ? const Color(0xFF8B6FA0)
-                    : const Color(0xFFB9C0C7), // ink-300
-                width: 1.5,
-              ),
-            ),
-            alignment: Alignment.center,
-            child: AnimatedOpacity(
-              opacity: completed ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              child: const Icon(
-                Icons.check,
-                size: 12,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
+// _AnimatedSquareCheckbox retiré 2026-05-13 — promu en `VpCheckboxSquare`
+// partagé dans `lib/components/form_widgets.dart` pour pouvoir être
+// réutilisé dans les autres tabs du relevé.

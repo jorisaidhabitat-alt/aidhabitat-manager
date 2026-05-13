@@ -61,8 +61,10 @@ class _SidebarState extends State<Sidebar> {
       'label': 'Accueil',
       'icon': LucideIcons.home,
     },
-    {'id': 'dossiers', 'label': 'Dossiers', 'icon': LucideIcons.folderOpen},
-    {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.bookOpen},
+    // Refonte 2026-05-13 : icônes fermées (folder/book) au lieu de
+    // folderOpen/bookOpen pour matcher la maquette Refonte.html l.870-871.
+    {'id': 'dossiers', 'label': 'Dossiers', 'icon': LucideIcons.folder},
+    {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.book},
     // Item « Caisses » unifié — la page interne propose un switch
     // Complémentaires ↔ Principales (cf.
     // RetirementFundsCombinedScreen). Demande utilisateur 2026-05-12 :
@@ -133,9 +135,21 @@ class _SidebarState extends State<Sidebar> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      // Mauve-500 dot positionné en haut à droite —
-                      // signature visuelle de la marque App'Ergo.
+                      // Cercle blanc outline — signature App'Ergo
+                      // (cf. favicon.svg : cercle 5px stroke autour du
+                      // centre + dot top-right). Ici en négatif sur
+                      // fond noir.
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                      // Mauve-500 dot top-right.
                       Positioned(
                         top: 6,
                         right: 6,

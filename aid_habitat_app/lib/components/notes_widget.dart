@@ -2315,28 +2315,30 @@ class _NotesWidgetState extends State<NotesWidget> {
     // Save
     if (widget.showSaveButton) buttons.add(_saveButton());
 
+    // Refonte 2026-05-13 : container pill avec backdrop blur soft +
+    // shadow plus diffuse + border ink-200 subtile (cf. design system
+    // README « NotesCanvas toolbar: bg-white/95 backdrop-blur »).
     return Container(
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE4E7EB)), // ink-200
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      // Fallback horizontal scroll if the toolbar is too wide for its
-      // container (evite l'overflow RenderFlex en écrans étroits).
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 0; i < buttons.length; i++) ...[
-              if (i > 0) const SizedBox(width: 6),
+              if (i > 0) const SizedBox(width: 4),
               buttons[i],
             ],
           ],
@@ -2464,9 +2466,11 @@ class _NotesWidgetState extends State<NotesWidget> {
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
           onTap: disabled ? null : onTap,
+          // Refonte 2026-05-13 : boutons 36×36 (au lieu de 40×40),
+          // plus compacts comme dans la maquette `.icon-btn`.
           child: Container(
-            width: 40,
-            height: 40,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               // Fond actif = violet clair canonique de l'app
               // (`_kStackedVioletSoft = 0xFFEDE8F5`), même teinte que

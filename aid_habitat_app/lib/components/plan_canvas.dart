@@ -2595,7 +2595,7 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
             const SizedBox(height: 8),
             Text(
               '#${_color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              style: const TextStyle(fontSize: 12),
             ),
           ],
         ),

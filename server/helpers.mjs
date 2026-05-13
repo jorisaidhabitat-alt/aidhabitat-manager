@@ -164,7 +164,7 @@ export const FIELD_SETS = {
   ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'profile_photo_base64'],
   communes: ['nom', 'code_postal', 'epci_id1', 'epci'],
   baremesAnah: ['libelle', 'nombre_personnes', 'annee_plafond'],
-  caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire'],
+  caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire', 'metadata_json'],
   wikiTags: ['uuid_source', 'tags'],
   wiki: ['uuid_source', 'titre', 'photos', 'photo_base64', 'contenu', 'wiki_tags_id', 'wiki_tags'],
 };
@@ -1604,6 +1604,15 @@ export const mapHousing = (housingRecord) => {
     easyAccess: toBoolOrNull(field(housingRecord, 'acces_facile_rue')),
     comments: stringValue(field(housingRecord, 'commentaire')),
     accessObservation: stringValue(field(housingRecord, 'observation_accessibilite')),
+    // Fix 2026-05-13 — on remonte l'`updatedAt` NocoDB pour que le
+    // client puisse l'aligner avec son `remote_updated_at` local au
+    // pull workspace. Sans ce champ, `_extractRemoteUpdatedAt` côté
+    // Flutter retournait null → `remote_updated_at` était mis à
+    // l'heure client → désynchronisé avec NocoDB → 1er save de
+    // session housing déclenchait toujours un conflit (signalé par
+    // l'utilisateur 2026-05-13 : « tous les PATCH déclenchent un
+    // conflit avec expectedUpdatedAt figé à 09:29:13 »).
+    updatedAt: field(housingRecord, 'UpdatedAt') || field(housingRecord, 'CreatedAt') || null,
   };
 };
 

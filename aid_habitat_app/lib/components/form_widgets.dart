@@ -32,6 +32,150 @@ class FormSectionHeader extends StatelessWidget {
   }
 }
 
+/// Divider 1px ink-100 (refonte 2026-05-13, visit-pages.js `.vp-divider`).
+/// Utilisé pour séparer des sections internes dans une card du relevé.
+/// Margin vertical 4px de chaque côté (= 8px total entre 2 sections).
+class VpDivider extends StatelessWidget {
+  const VpDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      color: const Color(0xFFF2F4F6), // ink-100
+    );
+  }
+}
+
+/// Checkbox carrée animée (refonte 2026-05-13, visit-pages.js
+/// `.vp-check-sq` + animation `vp-sq-fill` lignes 208-220).
+///
+/// Animation au passage `false → true` :
+///   1. bg blanc → mauve-500 sur 320 ms cubic-bezier(.2,.7,.2,1)
+///   2. scale pop 0.85 → 1.12 → 1.0
+///   3. ✓ apparait avec opacity 0 → 1
+///
+/// Passage `true → false` : transition simple inverse (sans pop).
+class VpCheckboxSquare extends StatelessWidget {
+  final bool completed;
+  final double size;
+  const VpCheckboxSquare({
+    super.key,
+    required this.completed,
+    this.size = 20,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(completed),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      tween: Tween(begin: completed ? 0.0 : 1.0, end: 1.0),
+      builder: (context, t, _) {
+        final double scale = completed
+            ? (t < 0.55
+                ? (0.85 + (1.12 - 0.85) * (t / 0.55))
+                : (1.12 - (1.12 - 1.0) * ((t - 0.55) / 0.45)))
+            : 1.0;
+        return Transform.scale(
+          scale: scale,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: completed
+                  ? const Color(0xFF8B6FA0) // mauve-500
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: completed
+                    ? const Color(0xFF8B6FA0)
+                    : const Color(0xFFB9C0C7), // ink-300
+                width: 1.5,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: AnimatedOpacity(
+              opacity: completed ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              child: Icon(
+                Icons.check,
+                size: size * 0.6,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Checkbox ronde (point) animée (refonte 2026-05-13, visit-pages.js
+/// `.vp-row .vp-dot` + animation `vp-dot-fill` lignes 195-205).
+///
+/// Animation au passage `false → true` : scale pop 0.55 → 1.08 → 1.0
+/// + bg blanc → mauve-500. Le ✓ apparait avec un fade-in décalé de 80ms.
+class VpCheckboxDot extends StatelessWidget {
+  final bool completed;
+  final double size;
+  const VpCheckboxDot({
+    super.key,
+    required this.completed,
+    this.size = 18,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(completed),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      tween: Tween(begin: completed ? 0.0 : 1.0, end: 1.0),
+      builder: (context, t, _) {
+        final double scale = completed
+            ? (t < 0.55
+                ? (0.55 + (1.08 - 0.55) * (t / 0.55))
+                : (1.08 - (1.08 - 1.0) * ((t - 0.55) / 0.45)))
+            : 1.0;
+        return Transform.scale(
+          scale: scale,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: completed
+                  ? const Color(0xFF8B6FA0) // mauve-500
+                  : Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: completed
+                    ? const Color(0xFF8B6FA0)
+                    : const Color(0xFFB9C0C7), // ink-300
+                width: 1.5,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: AnimatedOpacity(
+              opacity: completed ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              child: Icon(
+                Icons.check,
+                size: size * 0.55,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Sub-section navigation chips (Profile / Finance / Santé / Admin)
 class FormSubSectionChips extends StatelessWidget {
   final List<String> labels;
@@ -169,15 +313,17 @@ class _FormTextFieldState extends State<FormTextField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Refonte 2026-05-13 (visit-pages.js .vp-label) :
+        // 14px w500 ink-700, sans uppercase.
         Text(
           widget.label,
           style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: widget.labelSize ?? 13,
-            color: widget.labelColor ?? const Color(0xFF64748B),
+            fontWeight: FontWeight.w500,
+            fontSize: widget.labelSize ?? 14,
+            color: widget.labelColor ?? const Color(0xFF2B323A),
           ),
         ),
-        SizedBox(height: widget.labelSpacing ?? 6),
+        SizedBox(height: widget.labelSpacing ?? 5),
         TextFormField(
           controller: _controller,
           focusNode: _focusNode,
@@ -185,14 +331,10 @@ class _FormTextFieldState extends State<FormTextField> {
           autofocus: widget.autofocus,
           keyboardType: widget.keyboardType,
           maxLines: widget.maxLines,
-          // fontSize par défaut 12 (référence pill toggle "Vasque
-          // suspendue" du relevé) — surchargée à 14 dans le bloc
-          // Informations Bénéficiaire pour matcher la preview.
-          style: TextStyle(fontSize: widget.valueSize ?? 12),
-          // iPadOS Scribble — permet d'écrire directement avec l'Apple
-          // Pencil sans taper le champ d'abord. Défaut Flutter = true
-          // sur iOS, on le force explicitement pour documenter l'intention.
-          // Ne prend effet que sur app native (PWA web : pas supporté).
+          style: TextStyle(
+            fontSize: widget.valueSize ?? 14,
+            color: const Color(0xFF2B323A), // ink-700
+          ),
           stylusHandwritingEnabled: true,
           onFieldSubmitted: widget.onSubmitted,
           onTapOutside: widget.onTapOutside == null
@@ -201,25 +343,35 @@ class _FormTextFieldState extends State<FormTextField> {
                   _focusNode.unfocus();
                   widget.onTapOutside!();
                 },
+          // Refonte 2026-05-13 (visit-pages.js .vp-input) :
+          //  - fond mauve-50 #FAF7FB
+          //  - radius 9999 (pill complet)
+          //  - border transparent normal, mauve-500 au focus
+          //  - hauteur min 32, padding horizontal 14
           decoration: InputDecoration(
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(999),
+              borderSide: BorderSide.none,
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(999),
+              borderSide: BorderSide.none,
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.5),
+              borderRadius: BorderRadius.circular(999),
+              borderSide:
+                  const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
             ),
             filled: true,
-            fillColor: widget.readOnly ? const Color(0xFFF7F7FA) : Colors.white,
+            fillColor: widget.readOnly
+                ? const Color(0xFFF2ECF5) // mauve-100 (readonly accent)
+                : const Color(0xFFFAF7FB), // mauve-50 (normal)
             suffixText: widget.suffix,
-            suffixStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+            suffixStyle:
+                const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
           ),
           onChanged: widget.onChanged,
         ),
@@ -306,26 +458,26 @@ class _FormNumberFieldState extends State<FormNumberField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Refonte 2026-05-13 (vp-label) — cf. FormTextField.
         Text(
           widget.label,
           style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: widget.labelSize ?? 13,
-            color: widget.labelColor ?? const Color(0xFF64748B),
+            fontWeight: FontWeight.w500,
+            fontSize: widget.labelSize ?? 14,
+            color: widget.labelColor ?? const Color(0xFF2B323A),
           ),
         ),
-        SizedBox(height: widget.labelSpacing ?? 6),
+        SizedBox(height: widget.labelSpacing ?? 5),
         TextFormField(
           controller: _controller,
           focusNode: _focusNode,
           autofocus: widget.autofocus,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
-          // fontSize par défaut 12 (référence pill toggle "Vasque
-          // suspendue" du relevé) — surchargée à 14 dans le bloc
-          // Informations Bénéficiaire pour matcher la preview.
-          style: TextStyle(fontSize: widget.valueSize ?? 12),
-          // Scribble (Apple Pencil) — voir FormTextField au-dessus.
+          style: TextStyle(
+            fontSize: widget.valueSize ?? 14,
+            color: const Color(0xFF2B323A),
+          ),
           stylusHandwritingEnabled: true,
           onFieldSubmitted: widget.onSubmitted == null
               ? null
@@ -336,25 +488,29 @@ class _FormNumberFieldState extends State<FormNumberField> {
                   _focusNode.unfocus();
                   widget.onTapOutside!();
                 },
+          // Refonte 2026-05-13 (vp-input) — cf. FormTextField.
           decoration: InputDecoration(
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(999),
+              borderSide: BorderSide.none,
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(999),
+              borderSide: BorderSide.none,
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.5),
+              borderRadius: BorderRadius.circular(999),
+              borderSide:
+                  const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
             ),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: const Color(0xFFFAF7FB), // mauve-50
             suffixText: widget.unit,
-            suffixStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+            suffixStyle:
+                const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
           ),
           onChanged: (text) {
             final parsed = double.tryParse(text.replaceAll(',', '.'));
@@ -1033,50 +1189,49 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Refonte 2026-05-13 (vp-label).
         Text(
           widget.label,
           style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF64748B),
+            fontWeight: FontWeight.w500,
+            fontSize: 14,
+            color: Color(0xFF2B323A),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 5),
         TextFormField(
           controller: _controller,
           focusNode: _focusNode,
           keyboardType: widget.keyboardType,
-          // fontSize 12 → aligné sur la hauteur du pill "Vasque suspendue".
-          style: const TextStyle(fontSize: 12),
-          // Scribble (Apple Pencil) — voir FormTextField au-dessus.
+          style: const TextStyle(fontSize: 14, color: Color(0xFF2B323A)),
           stylusHandwritingEnabled: true,
+          // Refonte 2026-05-13 (vp-input + warning state).
           decoration: InputDecoration(
             isDense: true,
             filled: true,
-            fillColor: Colors.white,
+            fillColor: const Color(0xFFFAF7FB), // mauve-50
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+              borderRadius: BorderRadius.circular(999),
+              borderSide: BorderSide.none,
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: widget.showWarning
-                    ? const Color(0xFFF59E0B)
-                    : const Color(0xFFCBD5E1),
-              ),
+              borderRadius: BorderRadius.circular(999),
+              borderSide: widget.showWarning
+                  ? const BorderSide(color: Color(0xFFC48429), width: 1.5)
+                  : BorderSide.none,
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide: const BorderSide(
-                color: Color(0xFF7C6DAA),
+                color: Color(0xFF8B6FA0),
                 width: 1.5,
               ),
             ),
             hintText: widget.placeholder,
-            hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+            hintStyle:
+                const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
             suffixIcon: widget.showWarning
                 ? Tooltip(
                     message: widget.warningText ?? 'Valeur invalide',
