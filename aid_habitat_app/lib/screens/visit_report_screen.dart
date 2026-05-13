@@ -2585,29 +2585,26 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       ],
                       if (addressLine.isNotEmpty) ...[
                         const SizedBox(width: 12),
-                        // Icône localisation discrète (même gris que le
-                        // texte) juste avant l'adresse.
+                        // Icône localisation discrète, alignée taille +
+                        // typo avec les badges du header.
                         const Icon(
                           LucideIcons.mapPin,
-                          size: 18,
-                          color: Color(0xFF64748B),
+                          size: 14,
+                          color: Color(0xFF8A939D), // ink-400
                         ),
                         const SizedBox(width: 6),
-                        // `Expanded` (et plus `Flexible`) : l'adresse
-                        // prend TOUT l'espace restant après le nom +
-                        // badges + icône. Sur iPad paysage cela donne
-                        // 700-900 pt qui suffisent largement pour la
-                        // plupart des adresses françaises sans
-                        // ellipsis. Demande utilisateur : "met sur
-                        // toute la longueur car il y a encore de la
-                        // place mais elle se termine par ...".
+                        // Refonte 2026-05-13 : adresse 13px w500 ink-500
+                        // pour matcher la taille des badges AccompaniBadge
+                        // / IncomeCategoryBadge / AnahStatusBadge / bouton
+                        // Générer (13px) — cohérence horizontale du
+                        // header.
                         Expanded(
                           child: Text(
                             addressLine,
                             style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF64748B),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF5C6670), // ink-500
                             ),
                             overflow: TextOverflow.ellipsis,
                             softWrap: false,

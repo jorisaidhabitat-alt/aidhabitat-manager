@@ -237,10 +237,12 @@ class IncomeCategoryBadge extends StatelessWidget {
     final palette = incomePaletteFor(value);
     final bg = monochrome ? const Color(0xFFF1F5F9) : palette.bg;
     final fg = monochrome ? const Color(0xFF334155) : palette.fg;
+    // Refonte 2026-05-13 : variante `large` alignée sur AnahStatusBadge
+    // et le bouton « Générer » du header (13px w600, padding 14×6).
     return Container(
       padding: large
-          ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
-          : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          ? const EdgeInsets.symmetric(horizontal: 14, vertical: 6)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
@@ -248,8 +250,9 @@ class IncomeCategoryBadge extends StatelessWidget {
       child: Text(
         value,
         style: TextStyle(
-          fontSize: large ? 14 : 12,
-          fontWeight: FontWeight.w700,
+          fontSize: large ? 13 : 12,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
           color: fg,
         ),
       ),
