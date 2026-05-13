@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
@@ -619,13 +620,15 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                     padding: const EdgeInsets.fromLTRB(18, 14, 10, 6),
                     child: Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Bibliothèque wiki',
-                            style: TextStyle(
+                            // Refonte 2026-05-13 : Nunito w700.
+                            style: GoogleFonts.nunito(
                               fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF2B323A),
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.25,
+                              color: const Color(0xFF2B323A),
                             ),
                           ),
                         ),
@@ -973,10 +976,12 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                   Expanded(
                     child: Text(
                       'Choisir les descriptions',
-                      style: const TextStyle(
+                      // Refonte 2026-05-13 : Nunito w700.
+                      style: GoogleFonts.nunito(
                         fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0E1116),
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.25,
+                        color: const Color(0xFF0E1116),
                       ),
                     ),
                   ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
@@ -640,11 +641,12 @@ class _ContextTabState extends State<ContextTab>
             .join(' ');
     return Text(
       display,
-      style: const TextStyle(
+      // Refonte 2026-05-13 : Nunito w700 sur le nom de l'occupant.
+      style: GoogleFonts.nunito(
         fontSize: 16,
-        fontWeight: FontWeight.w800,
-        color: Color(0xFF0E1116),
-        letterSpacing: -0.2,
+        fontWeight: FontWeight.w700,
+        color: const Color(0xFF0E1116),
+        letterSpacing: -0.25,
       ),
     );
   }
