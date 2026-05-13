@@ -138,7 +138,7 @@ class AccompanimentBadge extends StatelessWidget {
         value,
         style: TextStyle(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0.2,
           color: palette.fg,
         ),
@@ -251,7 +251,7 @@ class IncomeCategoryBadge extends StatelessWidget {
         value,
         style: TextStyle(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0.2,
           color: fg,
         ),
@@ -318,7 +318,7 @@ class AnahStatusBadge extends StatelessWidget {
         label,
         style: TextStyle(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0.2,
           color: fg,
         ),
