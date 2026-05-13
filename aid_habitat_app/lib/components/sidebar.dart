@@ -84,16 +84,22 @@ class _SidebarState extends State<Sidebar> {
 
   @override
   Widget build(BuildContext context) {
+    // Refonte 2026-05-13 (design system Refonte.html `.rail`) :
+    //  - Background warm-cream #F8F6F3 (au lieu du blanc)
+    //  - Border-right ink-200 droit (plus de rounded-r 2rem)
+    //  - Top mark : carré 36×36 rounded-10 noir + mauve-500 dot top-right
+    //  - Nav items : 48×48 rounded-12 carrés, fond ink-100 au hover,
+    //    fond mauve-100 + icône mauve-700 quand actif, indicator stripe
+    //    mauve-500 3px à gauche
+    //  - Avatar bottom : 36×36 rounded-10 mauve-200
     return Container(
-      width: 96, // w-24
+      width: 72,
       height: double.infinity,
       decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(32), // rounded-r-[2rem]
-          bottomRight: Radius.circular(32),
+        color: Color(0xFFF8F6F3), // warm cream
+        border: Border(
+          right: BorderSide(color: Color(0xFFE4E7EB), width: 1), // ink-200
         ),
-// border-slate-100
       ),
       child: SingleChildScrollView(
         child: ConstrainedBox(
@@ -104,13 +110,13 @@ class _SidebarState extends State<Sidebar> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-          // Logo Area — click to return to dashboard
+          // App'Ergo mark — square noir avec mauve dot, retour dashboard
           Padding(
-            padding: const EdgeInsets.only(top: 32.0),
+            padding: const EdgeInsets.only(top: 16.0),
             child: Tooltip(
               message: 'Accueil',
               preferBelow: false,
-              margin: const EdgeInsets.only(left: 80),
+              margin: const EdgeInsets.only(left: 60),
               decoration: BoxDecoration(
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(4),
@@ -118,27 +124,26 @@ class _SidebarState extends State<Sidebar> {
               textStyle: const TextStyle(color: Colors.white, fontSize: 12),
               child: InkWell(
                 onTap: () => widget.onNavigate('dashboard'),
-                borderRadius: BorderRadius.circular(50),
+                borderRadius: BorderRadius.circular(10),
                 child: Container(
-                  width: 48,
-                  height: 48,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: const Color(0xFFCBD5E1), // slate-300
-                      width: 1.5,
-                    ),
+                    color: const Color(0xFF0E1116), // ink-900
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Stack(
                     children: [
+                      // Mauve-500 dot positionné en haut à droite —
+                      // signature visuelle de la marque App'Ergo.
                       Positioned(
-                        top: 8,
-                        right: 8,
+                        top: 6,
+                        right: 6,
                         child: Container(
-                          width: 12,
-                          height: 12,
+                          width: 6,
+                          height: 6,
                           decoration: const BoxDecoration(
-                            color: Colors.black,
+                            color: Color(0xFF8B6FA0), // mauve-500
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -150,7 +155,7 @@ class _SidebarState extends State<Sidebar> {
             ),
           ),
 
-          // Navigation
+          // Navigation — items carrés rounded-12 + indicator stripe à gauche.
           Column(
             mainAxisSize: MainAxisSize.min,
             children: _menuItems.map((item) {
@@ -159,11 +164,11 @@ class _SidebarState extends State<Sidebar> {
                   (widget.currentView == 'visit' && item['id'] == 'dossiers');
 
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
                 child: Tooltip(
                   message: item['label'],
                   preferBelow: false,
-                  margin: const EdgeInsets.only(left: 80),
+                  margin: const EdgeInsets.only(left: 60),
                   decoration: BoxDecoration(
                     color: Colors.black,
                     borderRadius: BorderRadius.circular(4),
@@ -171,95 +176,91 @@ class _SidebarState extends State<Sidebar> {
                   textStyle: const TextStyle(color: Colors.white, fontSize: 12),
                   child: SoftTapScale(
                     onTap: () => widget.onNavigate(item['id']),
-                    // Un seul rond : pas d'InkWell autour pour éviter
-                    // le halo/splash Material qui dessinait un 2e fond
-                    // circulaire par-dessus l'AnimatedContainer.
-                    //   • Actif   : fond violet clair #EDE8F5 + icône
-                    //     violet foncé #7C6DAA.
-                    //   • Inactif : violet clair en alpha 0 (= invisible
-                    //     visuellement, identique au fond blanc).
-                    //
-                    // Subtilité (demande utilisateur 2026-04-29) : on
-                    // utilise `Color(0x00EDE8F5)` (alpha=0 du violet
-                    // actif) plutôt que `Colors.transparent` parce que
-                    // ce dernier est en réalité un NOIR transparent
-                    // (#00000000). Pendant l'animation
-                    // `AnimatedContainer` qui interpole entre les deux
-                    // états, le passage noir-transparent → violet-opaque
-                    // traverse des gris foncés visibles à l'œil — d'où
-                    // le « flash gris rapide » remonté par l'ergo. En
-                    // partant du même hue (violet) avec juste une
-                    // variation d'alpha, l'interpolation reste violet
-                    // tout au long → pas de flash.
-                    child: AnimatedContainer(
-                      duration: kSoftMedium,
-                      curve: kSoftCurve,
-                      width: 48,
+                    // Stack pour superposer l'indicator stripe gauche
+                    // mauve-500 (visible quand actif) au bouton carré.
+                    child: SizedBox(
+                      width: 60,
                       height: 48,
-                      decoration: BoxDecoration(
-                        // Pour les logos de marque (ex. ANAH), fond
-                        // blanc constant pour respecter la charte du
-                        // logo (pas de halo coloré qui vient salir
-                        // l'image officielle).
-                        color: item['assetLogo'] != null
-                            ? Colors.white
-                            : (isActive
-                                ? const Color(0xFFEDE8F5)
-                                : const Color(0x00EDE8F5)),
-                        shape: BoxShape.circle,
-                        // Léger contour gris quand l'item logo n'est
-                        // pas actif, sinon le rond blanc disparaît dans
-                        // la sidebar blanche.
-                        border: item['assetLogo'] != null
-                            ? Border.all(
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Indicator stripe gauche (3px × 32px) — mauve-500
+                          // visible quand l'item est actif, sinon invisible
+                          // via alpha 0 (interpolation propre, cf. note
+                          // 2026-04-29 sur le « flash gris »).
+                          Positioned(
+                            left: 0,
+                            top: 8,
+                            bottom: 8,
+                            child: AnimatedContainer(
+                              duration: kSoftMedium,
+                              curve: kSoftCurve,
+                              width: 3,
+                              decoration: BoxDecoration(
                                 color: isActive
-                                    ? const Color(0xFF7C6DAA)
-                                    : const Color(0xFFDDE1E8),
-                                width: 1.5,
-                              )
-                            : null,
-                      ),
-                      // Pour les items "logo de marque" (ex. ANAH), on
-                      // affiche l'image embarquée à la place de l'icône
-                      // Lucide. L'image conserve ses couleurs d'origine
-                      // (pas de teinte) pour que la charte de l'Anah
-                      // reste reconnaissable. Disponible offline (asset
-                      // empaqueté dans le bundle).
-                      //
-                      // Netteté : le PNG source est en 1190×1024 mais
-                      // l'emplacement final fait ~32 px (48 - 2×8 px de
-                      // padding). Sans hint, Flutter applique un
-                      // resampling « low quality » → effet pixelisé. On
-                      // force `FilterQuality.high` (bicubique) +
-                      // `cacheWidth: 96` (≈ 32 × 3 pour les écrans HiDPI
-                      // type Retina) pour que le décodage donne une
-                      // vignette pré-resamplée propre, sans pomper la
-                      // RAM avec le 1190×1024 plein.
-                      child: item['assetLogo'] != null
-                          ? Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Image.asset(
-                                item['assetLogo'] as String,
-                                fit: BoxFit.contain,
-                                filterQuality: FilterQuality.high,
-                                cacheWidth: 96,
-                                isAntiAlias: true,
-                                errorBuilder: (_, __, ___) => Icon(
-                                  item['icon'],
-                                  size: 22,
-                                  color: isActive
-                                      ? const Color(0xFF7C6DAA)
-                                      : const Color(0xFF8D94A3),
+                                    ? const Color(0xFF8B6FA0) // mauve-500
+                                    : const Color(0x008B6FA0), // alpha 0
+                                borderRadius: const BorderRadius.only(
+                                  topRight: Radius.circular(3),
+                                  bottomRight: Radius.circular(3),
                                 ),
                               ),
-                            )
-                          : Icon(
-                              item['icon'],
-                              size: 22,
-                              color: isActive
-                                  ? const Color(0xFF7C6DAA)
-                                  : const Color(0xFF8D94A3),
                             ),
+                          ),
+                          // Bouton carré rounded-12.
+                          AnimatedContainer(
+                            duration: kSoftMedium,
+                            curve: kSoftCurve,
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              // Logo de marque (ANAH) : fond blanc constant.
+                              // Sinon : mauve-100 si actif, transparent
+                              // (alpha 0 du mauve-100 pour éviter le flash
+                              // gris pendant l'interpolation).
+                              color: item['assetLogo'] != null
+                                  ? Colors.white
+                                  : (isActive
+                                      ? const Color(0xFFF2ECF5) // mauve-100
+                                      : const Color(0x00F2ECF5)),
+                              borderRadius: BorderRadius.circular(12),
+                              border: item['assetLogo'] != null
+                                  ? Border.all(
+                                      color: isActive
+                                          ? const Color(0xFF8B6FA0)
+                                          : const Color(0xFFE4E7EB),
+                                      width: 1.5,
+                                    )
+                                  : null,
+                            ),
+                            child: item['assetLogo'] != null
+                                ? Padding(
+                                    padding: const EdgeInsets.all(8),
+                                    child: Image.asset(
+                                      item['assetLogo'] as String,
+                                      fit: BoxFit.contain,
+                                      filterQuality: FilterQuality.high,
+                                      cacheWidth: 96,
+                                      isAntiAlias: true,
+                                      errorBuilder: (_, __, ___) => Icon(
+                                        item['icon'],
+                                        size: 20,
+                                        color: isActive
+                                            ? const Color(0xFF554265)
+                                            : const Color(0xFF8A939D),
+                                      ),
+                                    ),
+                                  )
+                                : Icon(
+                                    item['icon'],
+                                    size: 20,
+                                    color: isActive
+                                        ? const Color(0xFF554265) // mauve-700
+                                        : const Color(0xFF8A939D), // ink-400
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -268,15 +269,15 @@ class _SidebarState extends State<Sidebar> {
           ),
 
 
-          // Profile / Bottom — single avatar button that opens the account
-          // dialog (profile photo, password, logout, admin access).
+          // Profile / Bottom — avatar 36×36 rounded-10 mauve-200 bg
+          // (Refonte.html `.rail .avatar`). Ouvre l'AccountDialog au tap.
           Padding(
-            padding: const EdgeInsets.only(bottom: 32.0),
+            padding: const EdgeInsets.only(bottom: 16.0),
             child: Tooltip(
               message:
                   "${widget.currentUser.displayName} • ${widget.currentUser.role.label}",
               preferBelow: false,
-              margin: const EdgeInsets.only(left: 80),
+              margin: const EdgeInsets.only(left: 60),
               decoration: BoxDecoration(
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(4),
@@ -284,58 +285,56 @@ class _SidebarState extends State<Sidebar> {
               textStyle: const TextStyle(color: Colors.white, fontSize: 12),
               child: InkWell(
                 onTap: _openAccountDialog,
-                customBorder: const CircleBorder(),
+                borderRadius: BorderRadius.circular(10),
                 child: Builder(builder: (_) {
                   // Source vérité avatar : `_effectiveUser` (override
                   // post-dialog → fallback widget.currentUser). Permet
-                  // au rond de refléter immédiatement une nouvelle
+                  // au carré de refléter immédiatement une nouvelle
                   // photo après l'AccountDialog sans attendre que le
                   // parent re-propage le user.
                   final user = _effectiveUser;
                   return Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF7C6DAA),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: (user.profilePhotoUrl.isNotEmpty ||
-                          user.pendingProfilePhotoDataUrl.isNotEmpty)
-                      ? CachedRemoteImage(
-                          url: user.profilePhotoUrl,
-                          pendingDataUrl:
-                              user.pendingProfilePhotoDataUrl,
-                          fit: BoxFit.cover,
-                          width: 48,
-                          height: 48,
-                          errorWidget: Center(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      // Sans photo : fond mauve-200 + texte mauve-700
+                      // (initiales). Avec photo : la photo prend toute
+                      // la place (le fond mauve-200 ne se voit pas).
+                      color: const Color(0xFFE3D9EA), // mauve-200
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: (user.profilePhotoUrl.isNotEmpty ||
+                            user.pendingProfilePhotoDataUrl.isNotEmpty)
+                        ? CachedRemoteImage(
+                            url: user.profilePhotoUrl,
+                            pendingDataUrl:
+                                user.pendingProfilePhotoDataUrl,
+                            fit: BoxFit.cover,
+                            width: 36,
+                            height: 36,
+                            errorWidget: Center(
+                              child: Text(
+                                _initials(user.displayName),
+                                style: const TextStyle(
+                                  color: Color(0xFF554265), // mauve-700
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Center(
                             child: Text(
                               _initials(user.displayName),
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF554265), // mauve-700
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
                               ),
                             ),
                           ),
-                        )
-                      : Center(
-                          child: Text(
-                            _initials(user.displayName),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                );
+                  );
                 }),
               ),
             ),

@@ -211,13 +211,17 @@ class MyApp extends StatelessWidget {
         Locale('en', 'US'),
       ],
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFFF7F7FA), // Slate-50
+        // Refonte 2026-05-13 :
+        //  - scaffoldBackground passé à paper #FDFCFB (warm white du
+        //    design system, au lieu de slate-50 #F7F7FA)
+        //  - primary à mauve-500 #8B6FA0 (au lieu de #7C6DAA)
+        scaffoldBackgroundColor: const Color(0xFFFDFCFB), // paper
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF7C6DAA),
-          primary: const Color(0xFF7C6DAA),
-          secondary: const Color(0xFFC5D2D8), // Accent color
+          seedColor: const Color(0xFF8B6FA0), // mauve-500
+          primary: const Color(0xFF8B6FA0),
+          secondary: const Color(0xFFC5D2D8),
           surface: Colors.white,
-          background: const Color(0xFFF7F7FA),
+          background: const Color(0xFFFDFCFB),
         ),
         // ----- Typographie Aid'Habitat (2026-05-13) -----
         // Refonte du design system : Quicksand (500) pour body/labels,

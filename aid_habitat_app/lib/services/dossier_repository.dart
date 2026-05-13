@@ -2017,13 +2017,34 @@ class DossierRepository {
     if (rows.isEmpty) return;
     final housingId = rows.first['housing_local_id'] as String;
     final now = DateTime.now().toIso8601String();
-    final localFields = Map<String, dynamic>.from(fields);
+
+    // Optimisation 2026-05-13 : diff avec la row SQLite existante pour
+    // ne pousser au serveur QUE les champs réellement modifiés. Avant
+    // ce changement, chaque save Accessibilité / Aménagements / Surfaces
+    // envoyait les 38+ champs du logement à PATCH /api/logements/...
+    // même si l'utilisateur n'avait modifié qu'une seule case à cocher.
+    final existingRows = await db.query(
+      'housings',
+      where: 'local_id = ?',
+      whereArgs: [housingId],
+      limit: 1,
+    );
+    final changedFields = _diffAgainstRow(
+      existingRows.isEmpty ? null : existingRows.first,
+      fields,
+    );
+
+    if (changedFields.isEmpty) {
+      return; // rien n'a vraiment changé → no-op
+    }
+
+    final localFields = Map<String, dynamic>.from(changedFields);
     localFields['updated_at'] = now;
     localFields['sync_state'] = SyncState.pendingSync.name;
     await db.update('housings', localFields,
         where: 'local_id = ?', whereArgs: [housingId]);
 
-    final apiUpdates = _mapHousingFieldsToApi(fields);
+    final apiUpdates = _mapHousingFieldsToApi(changedFields);
     if (apiUpdates.isEmpty) return;
     await _enqueueEntityUpdate(
       db,
@@ -2225,14 +2246,40 @@ class DossierRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final existing = await db.query('contexte_de_vie', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+
+    // Optimisation 2026-05-13 : on compare le JSON encoded des sous-
+    // objets `medicalContext` et `autonomy` avec ce qui est déjà en
+    // SQLite. Si le JSON est identique → on ne push pas. Avant ce
+    // changement, chaque toggle de case Médical ou Autonomie poussait
+    // les 2 objets ENTIERS à NocoDB (objets de 20+ champs chacun).
+    final newMedicalJson = medicalContext != null
+        ? jsonEncode(medicalContext.toJson())
+        : null;
+    final newAutonomyJson =
+        autonomy != null ? jsonEncode(autonomy.toJson()) : null;
+
+    final existingRow = existing.isNotEmpty ? existing.first : null;
+    final existingMedicalJson = existingRow?['medical_context_json'] as String?;
+    final existingAutonomyJson = existingRow?['autonomy_json'] as String?;
+
+    final medicalChanged = newMedicalJson != null &&
+        _fieldChanged(existingMedicalJson, newMedicalJson);
+    final autonomyChanged = newAutonomyJson != null &&
+        _fieldChanged(existingAutonomyJson, newAutonomyJson);
+
+    if (!medicalChanged && !autonomyChanged) {
+      // Aucun des 2 objets n'a vraiment changé → no-op total.
+      return;
+    }
+
     final data = <String, dynamic>{
       'dossier_local_id': dossierId,
       'patient_local_id': patientId,
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
-    if (medicalContext != null) data['medical_context_json'] = jsonEncode(medicalContext.toJson());
-    if (autonomy != null) data['autonomy_json'] = jsonEncode(autonomy.toJson());
+    if (medicalChanged) data['medical_context_json'] = newMedicalJson;
+    if (autonomyChanged) data['autonomy_json'] = newAutonomyJson;
     if (existing.isEmpty) {
       data['local_id'] = 'ctx_${dossierId}_${_uuid()}';
       await db.insert('contexte_de_vie', data);
@@ -2246,10 +2293,10 @@ class DossierRepository {
     // via upsertContexte server-side. Re-entrant updates on the same
     // dossier coalesce into a single op via ConflictAlgorithm.replace.
     final opUpdates = <String, dynamic>{};
-    if (medicalContext != null) {
+    if (medicalChanged && medicalContext != null) {
       opUpdates['medicalContext'] = medicalContext.toJson();
     }
-    if (autonomy != null) {
+    if (autonomyChanged && autonomy != null) {
       opUpdates['autonomy'] = autonomy.toJson();
     }
     if (opUpdates.isEmpty) return;
@@ -2371,33 +2418,66 @@ class DossierRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final existing = await db.query('mesures_anthropometriques', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
-    final data = <String, dynamic>{
-      'dossier_local_id': dossierId,
+
+    // Optimisation 2026-05-13 : diff avec la row existante pour ne
+    // pousser au serveur QUE les champs réellement modifiés. Si l'ergo
+    // tape juste un caractère dans "Hauteur assise" puis stabilise, on
+    // ne push QUE `assisHauteurAssise` au lieu des 5 champs mesures.
+    final fieldCandidates = <String, dynamic>{
       'debout_hauteur_coude': mesures.deboutHauteurCoude,
       'assis_hauteur_assise': mesures.assisHauteurAssise,
       'assis_profondeur_genoux': mesures.assisProfondeurGenoux,
       'assis_hauteur_coudes': mesures.assisHauteurCoudes,
       'observations': mesures.observations,
+    };
+    final changedFields = _diffAgainstRow(
+      existing.isEmpty ? null : existing.first,
+      fieldCandidates,
+    );
+
+    if (changedFields.isEmpty && existing.isNotEmpty) {
+      // Aucun champ modifié, et la row existe déjà → no-op.
+      // (Si la row n'existe pas, on doit créer une row même avec des
+      // valeurs vides pour avoir une cible d'update future.)
+      return;
+    }
+
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      ...changedFields,
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
     if (existing.isEmpty) {
-      data['local_id'] = 'mes_${dossierId}_${_uuid()}';
+      // Insertion : on inclut TOUS les champs (pas juste le diff) pour
+      // ne pas créer une row partielle avec des NULL sur les autres.
+      data
+        ..['debout_hauteur_coude'] = mesures.deboutHauteurCoude
+        ..['assis_hauteur_assise'] = mesures.assisHauteurAssise
+        ..['assis_profondeur_genoux'] = mesures.assisProfondeurGenoux
+        ..['assis_hauteur_coudes'] = mesures.assisHauteurCoudes
+        ..['observations'] = mesures.observations
+        ..['local_id'] = 'mes_${dossierId}_${_uuid()}';
       await db.insert('mesures_anthropometriques', data);
     } else {
       await db.update('mesures_anthropometriques', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
     }
 
-    // Enqueue NocoDB push (manqué dans la version initiale — symptôme
-    // reporté : "les mesures saisies n'arrivent jamais sur NocoDB").
-    // Pattern aligné sur `upsertContexteDeVie`.
-    final updates = <String, dynamic>{
-      'deboutHauteurCoude': mesures.deboutHauteurCoude,
-      'assisHauteurAssise': mesures.assisHauteurAssise,
-      'assisProfondeurGenoux': mesures.assisProfondeurGenoux,
-      'assisHauteurCoudes': mesures.assisHauteurCoudes,
-      'observations': mesures.observations,
+    // Mapping snake→camel pour l'API. On ne push QUE les champs qui
+    // ont changé (cf. `changedFields` ci-dessus).
+    const snakeToCamel = <String, String>{
+      'debout_hauteur_coude': 'deboutHauteurCoude',
+      'assis_hauteur_assise': 'assisHauteurAssise',
+      'assis_profondeur_genoux': 'assisProfondeurGenoux',
+      'assis_hauteur_coudes': 'assisHauteurCoudes',
+      'observations': 'observations',
     };
+    final updates = <String, dynamic>{};
+    changedFields.forEach((snake, value) {
+      final camel = snakeToCamel[snake];
+      if (camel != null) updates[camel] = value;
+    });
+    if (updates.isEmpty) return;
     final opId = 'mesures_update_$dossierId';
     final existingOp = await db.query('sync_operations',
         where: 'id = ?', whereArgs: [opId], limit: 1);
@@ -2452,16 +2532,35 @@ class DossierRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final existing = await db.query('observations_synthese', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
-    final data = <String, dynamic>{
-      'dossier_local_id': dossierId,
+
+    // Optimisation 2026-05-13 : diff pattern aligné sur upsertMesures.
+    final fieldCandidates = <String, dynamic>{
       'observation_equipements': obs.observationEquipements,
       'projet_souhait_usage': obs.projetSouhaitUsage,
       'resume_preconisations': obs.resumePreconisations,
+    };
+    final changedFields = _diffAgainstRow(
+      existing.isEmpty ? null : existing.first,
+      fieldCandidates,
+    );
+
+    if (changedFields.isEmpty && existing.isNotEmpty) {
+      return; // rien changé + row existe → no-op
+    }
+
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      ...changedFields,
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
     if (existing.isEmpty) {
-      data['local_id'] = 'obs_${dossierId}_${_uuid()}';
+      // Insertion : full row pour ne pas créer une row partielle.
+      data
+        ..['observation_equipements'] = obs.observationEquipements
+        ..['projet_souhait_usage'] = obs.projetSouhaitUsage
+        ..['resume_preconisations'] = obs.resumePreconisations
+        ..['local_id'] = 'obs_${dossierId}_${_uuid()}';
       await db.insert('observations_synthese', data);
     } else {
       await db.update('observations_synthese', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
@@ -2470,11 +2569,17 @@ class DossierRepository {
     // Enqueue NocoDB push — débloque les pages 7 (Projet usager + Résumé
     // préconisations) du rapport PDF qui restaient vides faute de sync.
     // Pattern aligné sur `upsertContexteDeVie`.
-    final updates = <String, dynamic>{
-      'observationEquipements': obs.observationEquipements,
-      'projetSouhaitUsage': obs.projetSouhaitUsage,
-      'resumePreconisations': obs.resumePreconisations,
+    const snakeToCamel = <String, String>{
+      'observation_equipements': 'observationEquipements',
+      'projet_souhait_usage': 'projetSouhaitUsage',
+      'resume_preconisations': 'resumePreconisations',
     };
+    final updates = <String, dynamic>{};
+    changedFields.forEach((snake, value) {
+      final camel = snakeToCamel[snake];
+      if (camel != null) updates[camel] = value;
+    });
+    if (updates.isEmpty) return;
     final opId = 'observations_update_$dossierId';
     final existingOp = await db.query('sync_operations',
         where: 'id = ?', whereArgs: [opId], limit: 1);
