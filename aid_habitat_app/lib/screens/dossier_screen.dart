@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -500,7 +501,7 @@ class _DossierScreenState extends State<DossierScreen> {
                   // utilisateur 2026-05-13 : « met l'épaisseur de tout
                   // les textes légèrement plus importante comme dans
                   // le relevé de visite »).
-                  style: const TextStyle(
+                  style: GoogleFonts.nunito(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF0F172A),
@@ -540,7 +541,7 @@ class _DossierScreenState extends State<DossierScreen> {
               // Date « créé le » bumpée w400 → w600 pour rester
               // alignée avec l'épaisseur générale du dossier (demande
               // utilisateur 2026-05-13).
-              style: const TextStyle(
+              style: GoogleFonts.nunito(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: Colors.black87,
@@ -935,12 +936,12 @@ class _DossierScreenState extends State<DossierScreen> {
                       // de label violet que les autres champs du bloc
                       // Bénéficiaire en preview (`_PlainField` → 14 px,
                       // w700) — le badge pastel est juste en dessous.
-                      const Text(
+                      Text(
                         'Communauté de communes',
-                        style: TextStyle(
+                        style: GoogleFonts.nunito(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF8B6FA0),
+                          color: const Color(0xFF8B6FA0),
                           letterSpacing: 0.2,
                         ),
                       ),
@@ -1161,7 +1162,7 @@ class _DossierScreenState extends State<DossierScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Occupants',
           // Libellé violet 14px, aligné sur les autres labels du bloc
           // Bénéficiaire (FormTextField.labelSize = 14, valueSize = 14
@@ -1169,10 +1170,10 @@ class _DossierScreenState extends State<DossierScreen> {
           // ont la même taille).
           // Bumpé w600 → w700 pour uniformiser avec les labels du
           // relevé de visite (demande utilisateur 2026-05-13).
-          style: TextStyle(
+          style: GoogleFonts.nunito(
             fontWeight: FontWeight.w800,
             fontSize: 14,
-            color: Color(0xFF8B6FA0),
+            color: const Color(0xFF8B6FA0),
           ),
         ),
         const SizedBox(height: 6),
@@ -1196,7 +1197,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           // Bumpé w400 (défaut) → w600 pour rester
                           // aligné sur l'épaisseur des autres valeurs
                           // du bloc Bénéficiaire (demande user 2026-05-13).
-                          style: const TextStyle(
+                          style: GoogleFonts.nunito(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
                           ),
@@ -1273,7 +1274,7 @@ class _PlainField extends StatelessWidget {
           // Titre violet à la même taille que la valeur noire dessous
           // (14 px) pour équilibrer la lecture du bloc Bénéficiaire en
           // preview — demande utilisateur.
-          style: const TextStyle(
+          style: GoogleFonts.nunito(
             fontSize: 14,
             fontWeight: FontWeight.w800,
             color: Color(0xFF8B6FA0),
@@ -1287,7 +1288,7 @@ class _PlainField extends StatelessWidget {
           value,
           maxLines: multiline ? null : 1,
           overflow: multiline ? TextOverflow.visible : TextOverflow.ellipsis,
-          style: TextStyle(
+          style: GoogleFonts.nunito(
             fontSize: 14,
             fontWeight: FontWeight.w800,
             color: const Color(0xFF0F172A),
