@@ -2290,48 +2290,57 @@ class _AgendaRow extends StatelessWidget {
             ? formatAccompanimentType(item.dossier.natureAccompagnement)
             : 'Relevé visite');
 
+    // Refonte 2026-05-13 (Refonte.html:1044-1054) :
+    //  - Highlight today : fond mauve-50, day en mauve-700 Fraunces 20px
+    //  - Sinon : pas de fond, day en ink-900 Fraunces
+    //  - Mois en eyebrow uppercase tracked (mauve-700 si today, ink-500 sinon)
+    //  - Time à droite en JetBrains Mono (tabular-nums) ink-700
+    final Color dayColor = isHighlighted
+        ? const Color(0xFF554265) // mauve-700
+        : const Color(0xFF0E1116); // ink-900
+    final Color monthColor = isHighlighted
+        ? const Color(0xFF554265)
+        : const Color(0xFF5C6670); // ink-500
     return Material(
-      color: isHighlighted ? const Color(0xFFEDE8F5) : Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
+      color: isHighlighted ? const Color(0xFFFAF7FB) : Colors.transparent, // mauve-50
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: Padding(
           padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
             children: [
-              // Bloc date (agrandi pour cohérence avec _PendingReportRow
-              // côté gauche dont l'avatar fait 48 — demande utilisateur
-              // 2026-05-12).
               SizedBox(
                 width: 48,
                 child: Column(
                   children: [
                     Text(
                       dayLabel,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                      style: GoogleFonts.fraunces(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w500,
+                        color: dayColor,
                         height: 1,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       monthLabel,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.0,
-                        color: Color(0xFF94A3B8),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: isHighlighted
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        letterSpacing: 1.0, // 0.1em
+                        color: monthColor,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              // Nom + sous-titre
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2339,9 +2348,9 @@ class _AgendaRow extends StatelessWidget {
                     Text(
                       '${p.firstName} ${p.lastName}'.trim(),
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF0E1116),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -2350,8 +2359,8 @@ class _AgendaRow extends StatelessWidget {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF94A3B8),
+                        fontSize: 12,
+                        color: Color(0xFF5C6670),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -2360,12 +2369,14 @@ class _AgendaRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
+              // Heure en JetBrains Mono tabular-nums (Refonte.html:1054).
               Text(
                 timeLabel,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A),
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: const Color(0xFF2B323A), // ink-700
                 ),
               ),
             ],

@@ -934,22 +934,24 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               //    qui couvre exactement la zone cliquable de chaque
               //    onglet, contrairement à .label qui n'aurait couvert
               //    que la largeur du mot.
+              // Refonte 2026-05-13 : indicator mauve-500 du nouveau
+              // design system (au lieu du legacy #7C6DAA).
               indicator: const UnderlineTabIndicator(
                 borderSide: BorderSide(
-                  color: Color(0xFF7C6DAA), // violet foncé
+                  color: Color(0xFF8B6FA0), // mauve-500
                   width: 1.5,
                 ),
                 insets: EdgeInsets.zero,
               ),
               indicatorSize: TabBarIndicatorSize.tab,
               indicatorPadding: EdgeInsets.zero,
-              // Couleur du label : violet foncé pour l'actif, slate
-              // gris pour les inactifs (inchangé).
-              labelColor: const Color(0xFF554A63),
-              unselectedLabelColor: const Color(0xFF334155),
-              labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+              // Couleurs labels : mauve-700 pour l'actif, ink-500 pour
+              // les inactifs (tokens du nouveau design).
+              labelColor: const Color(0xFF554265), // mauve-700
+              unselectedLabelColor: const Color(0xFF5C6670), // ink-500
+              labelStyle: const TextStyle(fontWeight: FontWeight.w600),
               unselectedLabelStyle:
-                  const TextStyle(fontWeight: FontWeight.normal),
+                  const TextStyle(fontWeight: FontWeight.w500),
               labelPadding: const EdgeInsets.symmetric(horizontal: 16),
               tabs: List.generate(_tabs.length, (i) {
                 final label = _tabs[i];
@@ -976,7 +978,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             width: 1,
             height: 28,
             margin: const EdgeInsets.symmetric(horizontal: 4),
-            color: const Color(0xFFE2E8F0),
+            color: const Color(0xFFE4E7EB), // ink-200
           ),
           // Bouton d'action en bout de barre — dernière entrée, intégré
           // dans le même pill blanc que les onglets.
