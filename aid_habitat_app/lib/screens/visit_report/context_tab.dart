@@ -1305,10 +1305,14 @@ class _ActionButton extends StatelessWidget {
         break;
       case _ActionButtonKind.humanHelp:
         activeFill = const Color(0xFFFEF3C7);
-        activeBorder = const Color(0xFFF59E0B);
+        // Borders retirés (demande user 2026-05-13 : « retire le contour
+        // du bouton aide à domicile jaune »). Le bouton garde son fond
+        // ambre actif pour rester reconnaissable, mais sans le cerclage
+        // jaune qui le faisait paraître trop dur.
+        activeBorder = Colors.transparent;
         activeIcon = const Color(0xFFB45309);
         inactiveBg = Colors.white;
-        inactiveBorder = const Color(0xFFFCD34D);
+        inactiveBorder = Colors.transparent;
         inactiveIcon = const Color(0xFFB45309);
         icon = Icons.accessibility_new;
         break;

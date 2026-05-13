@@ -208,7 +208,8 @@ class FormSubSectionChips extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: selected ? const Color(0xFF8B6FA0) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
+                // Refonte 2026-05-13 : pill radius 999 uniforme.
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
                 labels[i],
@@ -359,17 +360,20 @@ class _FormTextFieldState extends State<FormTextField> {
           decoration: InputDecoration(
             isDense: true,
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide: BorderSide(color: Colors.grey.shade300),
             ),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide: BorderSide(color: Colors.grey.shade300),
             ),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide:
                   const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
             ),
@@ -502,17 +506,20 @@ class _FormNumberFieldState extends State<FormNumberField> {
           decoration: InputDecoration(
             isDense: true,
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide: BorderSide(color: Colors.grey.shade300),
             ),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide: BorderSide(color: Colors.grey.shade300),
             ),
+            // Refonte 2026-05-13 : pill radius 999 uniforme.
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(999),
               borderSide:
                   const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
             ),
