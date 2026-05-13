@@ -914,6 +914,9 @@ class FormMultiToggleGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Style ambiant (Quicksand) — repris dans AnimatedDefaultTextStyle
+    // sur chaque pill pour ne pas retomber sur Roboto.
+    final ambientStyle = DefaultTextStyle.of(context).style;
     Widget buildPill(String opt) {
       final isSelected = selected.contains(opt);
       return GestureDetector(
@@ -926,40 +929,47 @@ class FormMultiToggleGroup extends StatelessWidget {
           }
           onChanged?.call(next);
         },
-        child: Container(
-          // Alignement 2026-05-13 sur FormToggleGroup (Occupation) :
-          // height 32 fixe + padding horizontal 14 (pas de vertical),
-          // fontSize 14, fontWeight w500/w400 — demande utilisateur :
-          // « dans envoi du rapport, le texte est plus fin que celui
-          // dans les boutons d'occupation et ils ont une hauteur plus
-          // importante par rapport aux boutons d'occupation ».
+        // Refonte 2026-05-13 : Mail / Courrier doivent être visuellement
+        // identiques aux pills de FormToggleGroup (Occupation, situation
+        // familiale…) — même fond mauve-50 au repos, même animation 220
+        // ms ease-out cubic au remplissage, même typo. Seule différence
+        // logique : multi-select (Mail ET Courrier possibles).
+        // Demande utilisateur : « conceptionne Mail et Courrier vraiment
+        // pareil que les autres boutons, avec fond de couleur de base,
+        // animation de remplissage... ».
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
           height: 32,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            color: isSelected
+                ? const Color(0xFF8B6FA0) // mauve-500
+                : const Color(0xFFFAF7FB), // mauve-50 (idem Occupation)
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: isSelected
                   ? const Color(0xFF8B6FA0)
-                  : Colors.grey.shade300,
+                  : Colors.transparent,
             ),
           ),
-          // Text simple → hérite la fontFamily Quicksand du thème
-          // Material via DefaultTextStyle ambiant. Demande utilisateur
-          // 2026-05-13 : « il ne faut absolument pas de Roboto dans
-          // l'application » — donc pas de DefaultTextStyle wrapper qui
-          // viendrait écraser l'héritage.
-          child: Text(
-            opt,
-            textAlign: TextAlign.center,
-            style: TextStyle(
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            // Merge sur le style ambiant pour préserver Quicksand
+            // (sinon retombée Roboto via AnimatedDefaultTextStyle).
+            style: ambientStyle.copyWith(
               color: isSelected
                   ? Colors.white
-                  : const Color(0xFF2B323A), // ink-700 (idem Occupation)
+                  : const Color(0xFF2B323A), // ink-700
               fontSize: 14,
-              fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
+              fontWeight:
+                  isSelected ? FontWeight.w500 : FontWeight.w400,
+            ),
+            child: Text(
+              opt,
+              textAlign: TextAlign.center,
             ),
           ),
         ),

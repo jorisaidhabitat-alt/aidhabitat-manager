@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../components/notes_widget.dart';
+import '../../components/soft_transitions.dart';
 
 /// Mesures tab — deux silhouettes (assise + debout) sur fond blanc.
 /// Si le foyer compte plusieurs occupants, un sélecteur "Occupant 1 /
@@ -78,10 +79,17 @@ class _MesuresTabState extends State<MesuresTab>
       leadingNavWidget: hasMultiple ? _buildOccupantHeader(idx) : null,
     );
 
-    // Plus de Column wrapper — le NotesWidget gère lui-même le layout
-    // header (avec leadingNavWidget) + canvas. Mono ou multi-occupant,
-    // c'est le même retour direct.
-    return notesWidget;
+    // Animation de swipe horizontal lors du changement d'occupant —
+    // même pattern que beneficiary_tab et context_tab. Le NotesWidget
+    // entier (bannière + canvas) glisse latéralement, la direction
+    // étant déduite du delta d'index (croissant → entrée par la droite,
+    // décroissant → entrée par la gauche). Mono-occupant : pas
+    // d'animation utile, on retourne le widget directement.
+    if (!hasMultiple) return notesWidget;
+    return HorizontalSlideSwitcher(
+      index: idx,
+      child: notesWidget,
+    );
   }
 
   void _occupantPrev() {
