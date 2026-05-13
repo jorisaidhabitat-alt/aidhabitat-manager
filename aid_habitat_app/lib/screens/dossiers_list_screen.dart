@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../components/beneficiary_badges.dart';
@@ -398,11 +399,14 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
+                    Text(
                       'Mes dossiers',
-                      style: TextStyle(
+                      // Refonte 2026-05-13 : Nunito w600 — style
+                      // uniforme avec les autres titres de page.
+                      style: GoogleFonts.nunito(
                         fontSize: 32,
                         fontWeight: FontWeight.w600,
+                        letterSpacing: -0.5,
                         color: Colors.black87,
                       ),
                     ),
