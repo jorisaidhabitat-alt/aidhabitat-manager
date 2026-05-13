@@ -617,7 +617,9 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                   child: Text(
                     initials,
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                      // Bump 2026-05-13 : ajout fontSize 16, bold→w800.
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
                       color: kBeneficiaryAvatarFg,
                     ),
                   ),
@@ -929,8 +931,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                       const Text(
                         'PROCHAINE VISITE',
                         style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          // Bump 2026-05-13 : 11→13, w600→w700.
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 1.5,
                           color: Color(0xFF8B6FA0), // mauve-500
                         ),
@@ -939,9 +942,10 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                       Text(
                         'Aucun rendez-vous planifié',
                         style: GoogleFonts.nunito(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.6, // -0.025em
+                          // Bump 2026-05-13 : 24→26, w600→w700.
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.65,
                           height: 1.1,
                           color: const Color(0xFF0E1116), // ink-900
                         ),
@@ -950,7 +954,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                       const Text(
                         'Tout est à jour côté agenda.',
                         style: TextStyle(
-                          fontSize: 13,
+                          // Bump 2026-05-13 : 13→15, ajout w600.
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
                           color: Color(0xFF5C6670), // ink-500
                         ),
                       ),
@@ -1047,9 +1053,10 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                       Text(
                         dayBadgeLabel,
                         style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.5, // 0.14em
+                          // Bump 2026-05-13 : 11→13, w600→w700.
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.5,
                           color: Color(0xFF554265), // mauve-700
                         ),
                       ),
@@ -1070,7 +1077,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                             ? '${RouteService.formatDuration(_driveTime!)} de trajet'
                             : '— de trajet',
                         style: const TextStyle(
-                          fontSize: 12,
+                          // Bump 2026-05-13 : 12→14, ajout w600.
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                           color: Color(0xFF554265), // mauve-700
                         ),
                       ),
@@ -1096,8 +1105,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                         const Text(
                           'PROCHAINE VISITE',
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                            // Bump 2026-05-13 : 11→13, w600→w700.
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
                             letterSpacing: 1.5,
                             color: Color(0xFF8B6FA0), // mauve-500
                           ),
@@ -1137,8 +1147,10 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Color(0xFF5C6670), // ink-500
+                                          // Bump 2026-05-13 : 13→15, ajout w600.
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF5C6670),
                                         ),
                                       ),
                                     ),
@@ -1155,7 +1167,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                                     Text(
                                       phone,
                                       style: const TextStyle(
-                                        fontSize: 13,
+                                        // Bump 2026-05-13 : 13→15, ajout w600.
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
                                         color: Color(0xFF5C6670),
                                       ),
                                     ),
@@ -1190,8 +1204,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                   icon: const Text(
                     'Démarrer le relevé',
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      // Bump 2026-05-13 : 14→16, w600→w700.
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   label: const Icon(LucideIcons.arrowRight, size: 16),

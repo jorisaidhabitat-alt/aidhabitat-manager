@@ -2965,35 +2965,22 @@ class _SyncBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _syncColor(syncState);
-    return Container(
-      // Padding bumpé (8/3 → 10/5) pour compenser le label 12 px et
-      // garder un badge équilibré visuellement.
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(50),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 6),
-          // Badge sync : même traitement que les titres/dates de
-          // documents (demande user 2026-05-13). Nunito, taille bumpée
-          // 9 → 12, weight allégé bold (w700) → w500.
-          Text(
-            syncState.label,
-            style: GoogleFonts.nunito(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: color,
-            ),
-          ),
-        ],
+    // Refonte 2026-05-13 : on garde uniquement la petite pastille
+    // colorée (suppression du label texte). Tooltip ajouté pour ne pas
+    // perdre l'info d'état au survol.
+    return Tooltip(
+      message: syncState.label,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Container(
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
       ),
     );
   }
