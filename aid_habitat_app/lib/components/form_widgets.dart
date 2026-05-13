@@ -240,7 +240,15 @@ class FormTextField extends StatefulWidget {
   final bool readOnly;
   final TextInputType? keyboardType;
   final String? suffix;
-  final int maxLines;
+  /// Hauteur max en lignes. `null` = pas de limite (le champ grandit
+  /// avec le contenu, toutes les lignes restent visibles). Refonte
+  /// 2026-05-13 : nullable pour permettre l'auto-grow sur les zones
+  /// de texte longues (descriptions préconisations notamment).
+  final int? maxLines;
+
+  /// Hauteur min en lignes (par défaut : 1 si maxLines == 1, sinon
+  /// 2 pour donner un look « text area »). Refonte 2026-05-13.
+  final int? minLines;
 
   /// Couleur du libellé au-dessus du champ (défaut : slate #64748B).
   /// Permet de surcharger ponctuellement — ex. les champs du bloc
@@ -274,6 +282,7 @@ class FormTextField extends StatefulWidget {
     this.keyboardType,
     this.suffix,
     this.maxLines = 1,
+    this.minLines,
     this.labelColor,
     this.labelSize,
     this.labelSpacing,

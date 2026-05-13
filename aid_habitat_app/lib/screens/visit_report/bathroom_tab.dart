@@ -562,28 +562,29 @@ class _BathroomTabState extends State<BathroomTab>
           onChanged: (v) =>
               _updateActive(_copy(a, porteSdbSensAdapte: v == 'Intérieur')),
         ),
-        const SizedBox(height: 18),
+        // Espace augmenté (18 → 32) pour bien dégager le pill warning
+        // « Sol glissant » des contrôles de porte au-dessus. Demande
+        // utilisateur 2026-05-13 : « espace le de sens d'ouverture ».
+        const SizedBox(height: 32),
         // Sol glissant — déplacé tout en bas de l'onglet Salle de bain à
         // la demande de l'utilisateur (après la section Porte).
         // Refonte 2026-05-13 : pill basé sur FormToggleGroup.buildPill
-        // (220ms ease-out cubic, height 32, padding h:14) MAIS avec
-        // palette « warning » quand sélectionné — alignée sur le bouton
-        // « Aide à domicile » jaune (`_ActionButton.humanHelp`) :
-        // bg amber-100 #FEF3C7, texte + icône amber-800 #B45309.
-        // Inactif : mauve-50 + ink-700 (look standard). Une icône
-        // ⚠ (alertTriangle) est ajoutée à gauche du libellé pour
-        // souligner le risque.
-        // Demande utilisateur : « pour sol glissant ajoute un icon
-        // warning et met le sur fond jaune clair comme aide à
-        // domicile s'il est sélectionné et l'ecriture en orange
-        // foncé ».
+        // (220ms ease-out cubic, padding h:14) MAIS avec palette
+        // « warning » quand sélectionné — alignée sur le bouton « Aide
+        // à domicile » jaune (`_ActionButton.humanHelp`) : bg amber-100
+        // #FEF3C7, texte + icône amber-800 #B45309. Inactif : mauve-50
+        // + ink-700 (look standard). Une icône ⚠ (alertTriangle) est
+        // ajoutée à gauche du libellé pour souligner le risque.
+        // Height bumpée de 32 → 40 pour donner plus de présence à ce
+        // pill warning (demande utilisateur 2026-05-13 : « ajoute
+        // légèrement de la hauteur »).
         GestureDetector(
           onTap: () =>
               _updateActive(_copy(a, sdbSolGlissant: !a.sdbSolGlissant)),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            height: 32,
+            height: 40,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.center,
             decoration: BoxDecoration(

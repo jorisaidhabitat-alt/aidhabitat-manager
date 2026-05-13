@@ -617,14 +617,15 @@ class _PhotosTabState extends State<PhotosTab>
         planApresProjectNumbers[planApresSections[i]] = i + 1;
       }
     }
-    // Ajout d'un widget "bouton Ajouter une partie" en dernier élément
-    // de la liste à layouter. Layout : grille manuelle de 3 cellules
-    // par ligne avec `IntrinsicHeight` → toutes les cellules d'une
-    // même ligne s'alignent sur la hauteur de la plus grande
-    // (demande utilisateur 2026-05-04 : « le cadre Ajouter une partie
-    // doit être de la même taille que les autres cards »). Avant :
-    // Wrap → chaque cellule gardait sa hauteur intrinsèque, le bouton
-    // était plus court.
+    // Layout : grille manuelle de 3 cellules par ligne, chaque cellule
+    // garde sa hauteur naturelle. Le `Column` parent stacke les rangées
+    // de manière déterministe — pas de chevauchement quand une card
+    // grandit dynamiquement (ajout de photo).
+    //
+    // Bouton « Ajouter une partie » retiré 2026-05-13 (demande user :
+    // « il sert à rien car on ajoute direct les images supplémentaires
+    // à la suite en drag and drop »). Les sections supplémentaires sont
+    // désormais créées automatiquement quand une catégorie déborde.
     final allCells = <Widget>[
       for (final section in allSections)
         _buildCategorySection(
@@ -642,7 +643,6 @@ class _PhotosTabState extends State<PhotosTab>
               ? null
               : () => _removeExtraSection(section),
         ),
-      _buildAddSectionButton(),
     ];
     const spacing = 14.0;
     final rows = <Widget>[];
@@ -651,30 +651,15 @@ class _PhotosTabState extends State<PhotosTab>
         i,
         i + 3 > allCells.length ? allCells.length : i + 3,
       );
-      // Pad la dernière ligne avec des Expanded vides pour garder
-      // les cellules à 1/3 de la largeur (sinon elles s'étirent).
+      // Pad la dernière ligne avec des Expanded vides pour garder les
+      // cellules à 1/3 de la largeur (sinon elles s'étirent).
       while (rowCells.length < 3) {
         rowCells.add(const SizedBox.shrink());
       }
       if (i > 0) rows.add(const SizedBox(height: spacing));
 
-      // Pour les rangées non-finales : `Row` simple + `crossAxisAlignment
-      // .start`. Chaque cellule garde sa hauteur naturelle, le `Column`
-      // parent stacke les rangées de manière déterministe — pas de
-      // chevauchement même quand une card grandit dynamiquement (ajout
-      // de photo). Bug rapporté 2026-05-05 quand `IntrinsicHeight` était
-      // appliqué partout.
-      //
-      // Pour la DERNIÈRE rangée (qui contient le bouton « Ajouter une
-      // partie ») : on ré-active `IntrinsicHeight` + `stretch` pour que
-      // le bouton fasse la même hauteur que les cards sœurs (demande
-      // utilisateur 2026-05-06). Sécurisé contre le chevauchement
-      // puisqu'il n'y a pas de rangée en dessous à pousser.
-      final isLastRow = i + 3 >= allCells.length;
-      final row = Row(
-        crossAxisAlignment: isLastRow
-            ? CrossAxisAlignment.stretch
-            : CrossAxisAlignment.start,
+      rows.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(child: rowCells[0]),
           const SizedBox(width: spacing),
@@ -682,8 +667,7 @@ class _PhotosTabState extends State<PhotosTab>
           const SizedBox(width: spacing),
           Expanded(child: rowCells[2]),
         ],
-      );
-      rows.add(isLastRow ? IntrinsicHeight(child: row) : row);
+      ));
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
@@ -742,193 +726,12 @@ class _PhotosTabState extends State<PhotosTab>
     await _refresh();
   }
 
-  /// Bouton « Ajouter une partie » — même style visuel que la zone
-  /// « Déposer un fichier » de l'écran Documents (demande utilisateur
-  /// 2026-05-04 : « sur fond violet clair comme le cadre déposer un
-  /// fichier de documents »). Fond violet pâle, bordure pointillée
-  /// violette, cercle plus + label centré.
-  ///
-  /// Le `Container` ne fixe PAS de hauteur. La rangée parente est
-  /// wrapée dans `IntrinsicHeight` + `crossAxisAlignment.stretch`
-  /// (cf. `build`) → le bouton se cale sur la hauteur de la card
-  /// sœur la plus grande (demande utilisateur 2026-05-06 : « le
-  /// cadre Ajouter une partie doit être de la même hauteur que les
-  /// autres cards »).
-  Widget _buildAddSectionButton() {
-    return Builder(
-      builder: (ctx) => MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () => _showAddSectionMenu(ctx),
-          child: Container(
-            decoration: BoxDecoration(
-              color: _kPurple.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: CustomPaint(
-              painter: _PhotoDashedBorderPainter(
-                color: _kPurple.withValues(alpha: 0.8),
-                strokeWidth: 2,
-                radius: 16,
-                dashLength: 8,
-                dashGap: 5,
-              ),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: _kPurple.withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          LucideIcons.plus,
-                          size: 26,
-                          color: _kPurple,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Ajouter une partie',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
-                          color: _kPurple,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Bottom sheet listant les 5 catégories disponibles. La catégorie
-  /// choisie est ajoutée à `_explicitlyAddedCategories` (rendu
-  /// immédiat) — l'ergo peut ensuite y déposer ou capturer des
-  /// photos via les slots vides de la nouvelle section.
-  Future<void> _showAddSectionMenu(BuildContext context) async {
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Type de partie',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _kSlate,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Choisis la catégorie de photos à regrouper dans cette '
-                'nouvelle partie.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 14),
-              for (final tag in kVisitPhotoTags) ...[
-                _addSectionMenuItem(
-                  ctx: ctx,
-                  tag: tag,
-                  icon: _iconForCategory(tag),
-                  label: visitPhotoTagShortLabel(tag),
-                ),
-                const SizedBox(height: 8),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-    if (picked == null || !mounted) return;
-    // Trouve le prochain index libre pour cette catégorie (1, 2, 3…).
-    final usedIndices = _extraSections
-        .where((s) => s.baseTag == picked)
-        .map((s) => s.index)
-        .toSet();
-    var nextIndex = 1;
-    while (usedIndices.contains(nextIndex)) {
-      nextIndex++;
-    }
-    final newSection = _ExtraSection(baseTag: picked, index: nextIndex);
-    setState(() {
-      _extraSections = [..._extraSections, newSection];
-    });
-  }
-
-  Widget _addSectionMenuItem({
-    required BuildContext ctx,
-    required String tag,
-    required IconData icon,
-    required String label,
-  }) {
-    return InkWell(
-      onTap: () => Navigator.pop(ctx, tag),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2F4F6),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE4E7EB)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: _kPurpleLight,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              alignment: Alignment.center,
-              child: Icon(icon, size: 18, color: _kPurple),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: _kSlate,
-                ),
-              ),
-            ),
-            const Icon(
-              LucideIcons.chevronRight,
-              size: 18,
-              color: Color(0xFF8A939D),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // `_buildAddSectionButton`, `_showAddSectionMenu`, `_addSectionMenuItem`
+  // retirés 2026-05-13 (demande user : « la partie ajouter une partie
+  // sert à rien car on ajoute direct les images supplémentaires à la
+  // suite en drag and drop »). Les sections supplémentaires (ex.
+  // Travaux préconisés #2, #3…) sont créées automatiquement par le
+  // pipeline de drop quand une catégorie déborde.
 
   IconData _iconForCategory(String tag) {
     switch (tag) {
