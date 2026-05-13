@@ -1807,12 +1807,15 @@ class _PendingReportsPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (items.isEmpty)
-            const Expanded(
-              child: _EmptyStatePlaceholder(
-                icon: LucideIcons.check,
-                text: 'Tout est à jour',
-                subText: 'Aucun rapport à réaliser pour le moment.',
-              ),
+            // Pas d'Expanded : `IntrinsicHeight` (parent du panel) ne
+            // sait pas calculer la hauteur intrinsèque d'un widget Flex.
+            // Le placeholder s'auto-centre via Center + Column(min) — il
+            // garde la même apparence ; le panel s'aligne ensuite sur la
+            // hauteur du panel non-vide grâce à IntrinsicHeight.
+            const _EmptyStatePlaceholder(
+              icon: LucideIcons.check,
+              text: 'Tout est à jour',
+              subText: 'Aucun rapport à réaliser pour le moment.',
             )
           else
             ...items.map((d) => Padding(
@@ -2184,12 +2187,12 @@ class _WeekAgendaPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (items.isEmpty)
-            const Expanded(
-              child: _EmptyStatePlaceholder(
-                icon: LucideIcons.calendar,
-                text: 'Aucune visite cette semaine',
-                subText: 'Profite d\'une semaine plus calme.',
-              ),
+            // Pas d'Expanded — cf. note dans `_PendingReportsPanel`.
+            // IntrinsicHeight ne peut pas mesurer un Flex enfant.
+            const _EmptyStatePlaceholder(
+              icon: LucideIcons.calendar,
+              text: 'Aucune visite cette semaine',
+              subText: 'Profite d\'une semaine plus calme.',
             )
           else
             ...items.map((it) => Padding(
