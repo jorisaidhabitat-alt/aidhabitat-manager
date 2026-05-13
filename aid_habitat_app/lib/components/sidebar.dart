@@ -70,16 +70,11 @@ class _SidebarState extends State<Sidebar> {
     // RetirementFundsCombinedScreen). Demande utilisateur 2026-05-12 :
     // 1 seul item avec icône cœur, mode par défaut Complémentaires.
     {'id': 'precos', 'label': 'Caisses', 'icon': LucideIcons.heart},
-    // Item ANAH : on n'utilise plus une icône Lucide mais le vrai logo
-    // de l'Anah (asset embarqué `assets/logos/anah.png` → toujours
-    // disponible offline). Le rendu est géré dans le `build` ci-dessous
-    // via la clé `assetLogo`.
-    {
-      'id': 'anah',
-      'label': 'Anah',
-      'icon': LucideIcons.coins, // fallback si l'asset ne charge pas
-      'assetLogo': 'assets/logos/anah.png',
-    },
+    // Item ANAH : icône Lucide `coins` (refonte 2026-05-13). Avant on
+    // utilisait l'asset `assets/logos/anah.png` pour préserver la charte,
+    // mais la maquette du design system aligne ANAH avec les autres
+    // items (icône stylisée uniforme).
+    {'id': 'anah', 'label': 'Anah', 'icon': LucideIcons.coins},
     // Page "Admin" retirée : la gestion des accès se fait sur NocoDB
     // directement (source de vérité unique → pas de conflit de sync).
   ];
@@ -221,57 +216,30 @@ class _SidebarState extends State<Sidebar> {
                               ),
                             ),
                           ),
-                          // Bouton carré rounded-12.
+                          // Bouton carré rounded-12 (uniforme pour tous
+                          // les items, y compris ANAH depuis refonte
+                          // 2026-05-13).
                           AnimatedContainer(
                             duration: kSoftMedium,
                             curve: kSoftCurve,
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                              // Logo de marque (ANAH) : fond blanc constant.
-                              // Sinon : mauve-100 si actif, transparent
-                              // (alpha 0 du mauve-100 pour éviter le flash
-                              // gris pendant l'interpolation).
-                              color: item['assetLogo'] != null
-                                  ? Colors.white
-                                  : (isActive
-                                      ? const Color(0xFFF2ECF5) // mauve-100
-                                      : const Color(0x00F2ECF5)),
+                              // mauve-100 si actif, transparent (alpha 0
+                              // du mauve-100 pour éviter le flash gris
+                              // pendant l'interpolation) si inactif.
+                              color: isActive
+                                  ? const Color(0xFFF2ECF5) // mauve-100
+                                  : const Color(0x00F2ECF5),
                               borderRadius: BorderRadius.circular(12),
-                              border: item['assetLogo'] != null
-                                  ? Border.all(
-                                      color: isActive
-                                          ? const Color(0xFF8B6FA0)
-                                          : const Color(0xFFE4E7EB),
-                                      width: 1.5,
-                                    )
-                                  : null,
                             ),
-                            child: item['assetLogo'] != null
-                                ? Padding(
-                                    padding: const EdgeInsets.all(8),
-                                    child: Image.asset(
-                                      item['assetLogo'] as String,
-                                      fit: BoxFit.contain,
-                                      filterQuality: FilterQuality.high,
-                                      cacheWidth: 96,
-                                      isAntiAlias: true,
-                                      errorBuilder: (_, __, ___) => Icon(
-                                        item['icon'],
-                                        size: 20,
-                                        color: isActive
-                                            ? const Color(0xFF554265)
-                                            : const Color(0xFF8A939D),
-                                      ),
-                                    ),
-                                  )
-                                : Icon(
-                                    item['icon'],
-                                    size: 20,
-                                    color: isActive
-                                        ? const Color(0xFF554265) // mauve-700
-                                        : const Color(0xFF8A939D), // ink-400
-                                  ),
+                            child: Icon(
+                              item['icon'],
+                              size: 20,
+                              color: isActive
+                                  ? const Color(0xFF554265) // mauve-700
+                                  : const Color(0xFF8A939D), // ink-400
+                            ),
                           ),
                         ],
                       ),
