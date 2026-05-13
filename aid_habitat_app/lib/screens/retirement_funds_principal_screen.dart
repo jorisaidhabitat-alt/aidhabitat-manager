@@ -254,9 +254,12 @@ class _RetirementFundsPrincipalScreenState
             highlightElevation: 0,
             shape: const StadiumBorder(),
             icon: const Icon(LucideIcons.plus, size: 22),
-            label: const Text(
+            // Demande utilisateur 2026-05-13 : « pareil pour les caisses
+            // de retraite » → label en Nunito (idem page complémentaires
+            // et bibliothèque).
+            label: Text(
               'Ajouter une caisse de retraite',
-              style: TextStyle(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
