@@ -1107,6 +1107,60 @@ const loadBundledWikiItems = async () => {
 };
 
 const readWikiLibraryStore = async () => {
+  // Bug fix 2026-05-12 — NocoDB devient la SOURCE PRIMAIRE.
+  //
+  // Avant ce changement, le filesystem `/tmp/aidhabitat-data/
+  // wikiLibraryStatic.json` (éphémère sur Vercel) était la source
+  // primaire et NocoDB un mirror "best effort". Conséquence : toute
+  // modification (notamment l'ajout d'une 2e description, format JSON
+  // array dans la colonne `description`) se perdait au premier cold
+  // start Vercel — `/tmp` est purgé entre invocations, et le fallback
+  // `bundledItems` (`server/data/wikiLibraryStatic.json` du repo) ne
+  // contient que des descriptions plain text.
+  //
+  // Maintenant on lit NocoDB en premier (où le push du PUT a bien
+  // persisté), avec fallback filesystem + bundle si NocoDB est
+  // inaccessible. Bonus : on rafraîchit aussi le filesystem en
+  // arrière-plan pour que le fallback futur soit propre.
+  try {
+    const wikiRecords = await queryAll(TABLES.wiki, { fields: FIELD_SETS.wiki });
+    if (Array.isArray(wikiRecords) && wikiRecords.length > 0) {
+      const items = wikiRecords.map((record) => {
+        const item = mapWikiRecordToItem(record);
+        return normalizeWikiItemPayload({
+          id: String(item.id),
+          title: stringValue(item.title),
+          description: stringValue(item.description),
+          imageUrl: stringValue(item.imageUrl),
+          tags: asArray(item.tags).map((tag) => String(tag)),
+          category: stringValue(item.category) || 'Autre',
+          createdAt: item.createdAt || new Date().toISOString(),
+          updatedAt:
+            item.updatedAt || item.createdAt || new Date().toISOString(),
+        });
+      });
+      const normalized = { version: 1, items };
+      // Best-effort : on persiste aussi côté filesystem pour servir
+      // de fallback rapide si NocoDB est temporairement hors service
+      // au prochain cycle. Aucune attente — si l'écriture rate, on s'en
+      // fout, NocoDB reste source primaire.
+      try {
+        await writeJsonStore(WIKI_LIBRARY_STORE_URL, normalized);
+      } catch (_) {
+        // swallow
+      }
+      return normalized;
+    }
+  } catch (err) {
+    console.warn(
+      '[wiki] NocoDB unavailable, fallback to filesystem/bundle:',
+      err?.message || err,
+    );
+  }
+
+  // Fallback : ancien chemin (filesystem + bundle) — préservé pour
+  // les cas où NocoDB est inaccessible OU vide au premier démarrage
+  // (premier déploiement, base fresh, etc.).
   const store = await readJsonStore(WIKI_LIBRARY_STORE_URL, { version: 1, items: [] });
   const bundledItems = await loadBundledWikiItems();
   const storedItems = asArray(store.items);
