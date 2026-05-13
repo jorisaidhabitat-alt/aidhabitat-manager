@@ -47,10 +47,12 @@ class _RetirementFundsCombinedScreenState
               Expanded(
                 child: Text(
                   _titleFor(_mode),
-                  style: const TextStyle(
+                  // Refonte 2026-05-13 : Nunito w600.
+                  style: GoogleFonts.nunito(
                     fontSize: 32,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.5,
+                    color: const Color(0xFF0F172A),
                   ),
                 ),
               ),

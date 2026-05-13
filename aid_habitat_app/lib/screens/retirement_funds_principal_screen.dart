@@ -284,13 +284,15 @@ class _RetirementFundsPrincipalScreenState
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Caisses de retraite principales',
-                    style: TextStyle(
+                    // Refonte 2026-05-13 : Nunito w600.
+                    style: GoogleFonts.nunito(
                       fontSize: 32,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.5,
+                      color: const Color(0xFF0F172A),
                     ),
                   ),
                 ),

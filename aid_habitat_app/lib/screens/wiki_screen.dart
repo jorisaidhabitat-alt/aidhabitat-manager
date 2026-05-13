@@ -208,13 +208,16 @@ class _WikiScreenState extends State<WikiScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Bibliothèque',
-                      style: TextStyle(
+                      // Refonte 2026-05-13 : Nunito w600 — style
+                      // uniforme avec les autres titres de page.
+                      style: GoogleFonts.nunito(
                         fontSize: 32,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.5,
+                        color: const Color(0xFF0F172A),
                       ),
                     ),
                   ),
