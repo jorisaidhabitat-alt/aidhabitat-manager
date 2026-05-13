@@ -145,46 +145,43 @@ class _MesuresTabState extends State<MesuresTab>
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFAF7FB), // mauve-50
-        border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
-        borderRadius: BorderRadius.circular(999),
-      ),
-      // Largeur adaptée au contenu via `mainAxisSize: MainAxisSize.min`
-      // — la bannière ne s'étire plus sur toute la largeur du parent.
-      // Le nom est protégé par un `ConstrainedBox` (max 300 pt) pour
-      // gérer le cas de noms très longs sans déborder.
-      //
-      // Note 2026-05-12 : les dots de pagination ont été retirés de
-      // cette bannière (demande utilisateur — ils existent déjà en bas
-      // de la page via le NotesWidget intégré). La bannière garde
-      // uniquement la nav nom + chevrons.
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          arrow(LucideIcons.chevronLeft, _occupantPrev),
-          const SizedBox(width: 4),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 300),
-            child: Text(
-              display,
-              style: GoogleFonts.nunito(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.25,
-                height: 1.15,
-                color: const Color(0xFF0E1116),
+    // Largeur fixe légèrement plus large que le contenu, contenu centré
+    // (demande utilisateur 2026-05-13). La bannière ne s'adapte plus au
+    // contenu : elle a une largeur constante quelle que soit la longueur
+    // du nom de l'occupant, ce qui évite les sauts visuels en naviguant
+    // entre occupants. Le nom (Text) est lui-même centré dans l'espace
+    // restant grâce à `Expanded` + `textAlign: TextAlign.center`.
+    return Center(
+      child: Container(
+        width: 280,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFAF7FB), // mauve-50
+          border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            arrow(LucideIcons.chevronLeft, _occupantPrev),
+            Expanded(
+              child: Text(
+                display,
+                style: GoogleFonts.nunito(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.25,
+                  height: 1.15,
+                  color: const Color(0xFF0E1116),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
             ),
-          ),
-          const SizedBox(width: 4),
-          arrow(LucideIcons.chevronRight, _occupantNext),
-        ],
+            arrow(LucideIcons.chevronRight, _occupantNext),
+          ],
+        ),
       ),
     );
   }
