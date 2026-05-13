@@ -990,8 +990,8 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     );
   }
 
-  /// Header affichant le prénom + nom de l'occupant courant, en violet
-  /// foncé — change quand l'ergo swipe.
+  /// Bannière occupant (refonte 2026-05-13, visit-pages.js l.453-465).
+  /// Cf. context_tab._buildOccupantHeader pour la spec détaillée.
   Widget _buildOccupantHeader(int idx) {
     final occ = _occupants[idx];
     final first = occ.firstName.trim();
@@ -1000,15 +1000,73 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final display = (first.isEmpty && last.isEmpty)
         ? fallback
         : [first, last.toUpperCase()].where((s) => s.isNotEmpty).join(' ');
-    return Text(
-      display,
-      // Refonte 2026-05-13 : Nunito w700 sur le nom de l'occupant
-      // affiché en bas de la card profile bénéficiaire.
-      style: GoogleFonts.nunito(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        color: const Color(0xFF0E1116),
-        letterSpacing: -0.25,
+    final total = _occupants.length;
+    final hasNav = total > 1;
+    final role = idx == 0 ? 'BÉNÉFICIAIRE PRINCIPAL' : 'CONJOINT·E';
+
+    Widget arrow(IconData icon, VoidCallback action) {
+      return Opacity(
+        opacity: hasNav ? 1 : 0.35,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: hasNav ? action : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF7FB), // mauve-50
+        border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          arrow(LucideIcons.chevronLeft, _occupantPrev),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  role,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.0,
+                    color: Color(0xFF8B6FA0), // mauve-500
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  display,
+                  style: GoogleFonts.nunito(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.25,
+                    height: 1.15,
+                    color: const Color(0xFF0E1116),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          arrow(LucideIcons.chevronRight, _occupantNext),
+        ],
       ),
     );
   }
@@ -1016,25 +1074,27 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// Points de pagination en bas du cadre — un par occupant, le courant
   /// est violet plein, les autres gris clair. Cliquables pour sauter
   /// directement à un occupant sans passer par tous.
+  /// Refonte 2026-05-13 : active = pill 18×5, inactive = dot 5×5.
   Widget _buildOccupantDots(int currentIdx) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(_occupants.length, (i) {
         final isActive = i == currentIdx;
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 3),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _currentOccupantIndex = i),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: isActive ? 10 : 8,
-              height: isActive ? 10 : 8,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              width: isActive ? 18 : 5,
+              height: 5,
               decoration: BoxDecoration(
                 color: isActive
-                    ? const Color(0xFF8B6FA0)
-                    : const Color(0xFFD8CFE0),
-                shape: BoxShape.circle,
+                    ? const Color(0xFF8B6FA0) // mauve-500
+                    : const Color(0xFFE4E7EB), // ink-200
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
           ),

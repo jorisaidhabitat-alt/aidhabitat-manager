@@ -621,8 +621,13 @@ class _ContextTabState extends State<ContextTab>
     );
   }
 
-  /// Header affichant Prénom + NOM de l'occupant courant (violet foncé).
-  /// Mis à jour à chaque swipe / tap sur un point.
+  /// Bannière occupant (refonte 2026-05-13, visit-pages.js l.453-465) :
+  ///   - Fond mauve-50 + border mauve-100 + radius 12
+  ///   - Eyebrow rôle (« BÉNÉFICIAIRE PRINCIPAL » / « CONJOINT·E ») 10px
+  ///     mauve-500 uppercase letter-spacing 0.1em
+  ///   - Nom occupant Nunito 17px w700 ink-900 centré
+  ///   - Boutons prev/next 30×30 rounded-8 (transparents, désactivés si
+  ///     un seul occupant)
   Widget _buildOccupantHeader(int idx) {
     final p = widget.dossier.patient;
     String first = '';
@@ -639,39 +644,111 @@ class _ContextTabState extends State<ContextTab>
         : [first, last.toUpperCase()]
             .where((s) => s.isNotEmpty)
             .join(' ');
-    return Text(
-      display,
-      // Refonte 2026-05-13 : Nunito w700 sur le nom de l'occupant.
-      style: GoogleFonts.nunito(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        color: const Color(0xFF0E1116),
-        letterSpacing: -0.25,
+    final total = _contextOccupants.length;
+    final hasNav = total > 1;
+    final role = idx == 0 ? 'BÉNÉFICIAIRE PRINCIPAL' : 'CONJOINT·E';
+
+    void prev() {
+      if (!hasNav) return;
+      final next = (_activeOccupantIndex - 1 + total) % total;
+      setState(() => _activeOccupantIndex = next);
+    }
+
+    void next() {
+      if (!hasNav) return;
+      final n = (_activeOccupantIndex + 1) % total;
+      setState(() => _activeOccupantIndex = n);
+    }
+
+    Widget arrow(IconData icon, VoidCallback? onTap) {
+      return Opacity(
+        opacity: hasNav ? 1 : 0.35,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: hasNav ? onTap : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF7FB), // mauve-50
+        border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          arrow(LucideIcons.chevronLeft, prev),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  role,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.0, // 0.1em
+                    color: Color(0xFF8B6FA0), // mauve-500
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  display,
+                  style: GoogleFonts.nunito(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.25,
+                    height: 1.15,
+                    color: const Color(0xFF0E1116),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          arrow(LucideIcons.chevronRight, next),
+        ],
       ),
     );
   }
 
-  /// Rangée de points centrée — un point par occupant, le courant en
-  /// violet plein, les autres en gris lilas.
+  /// Rangée de points (refonte 2026-05-13, visit-pages.js l.435-436) :
+  /// active = pill 18×5 mauve-500, inactive = dot 5×5 ink-200.
   Widget _buildOccupantDots(int currentIdx) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(_contextOccupants.length, (i) {
         final isActive = i == currentIdx;
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 3),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _activeOccupantIndex = i),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: isActive ? 10 : 8,
-              height: isActive ? 10 : 8,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              width: isActive ? 18 : 5,
+              height: 5,
               decoration: BoxDecoration(
                 color: isActive
-                    ? const Color(0xFF8B6FA0)
-                    : const Color(0xFFD8CFE0),
-                shape: BoxShape.circle,
+                    ? const Color(0xFF8B6FA0) // mauve-500
+                    : const Color(0xFFE4E7EB), // ink-200
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
           ),
