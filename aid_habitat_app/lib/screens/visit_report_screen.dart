@@ -186,15 +186,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// clés possibles, écriture sur la nouvelle).
   static const String _kSharedSanitairesNotesTabKey = 'Sanitaires-Notes';
 
-  /// TabKey unique pour la note partagée entre les sous-sections de
-  /// l'onglet « Accessibilité » (Général / Niveaux / Équipements /
-  /// Extérieur). Demande utilisateur 2026-04-29 : « la note ecrite
-  /// (comme sanitaire avec wc et salle de bain) doit être associé
-  /// entre chaque page de accessibilité ». Le contenu de cette note
-  /// alimente le champ « Observations sur l'accessibilité »
-  /// (`Observations1`) page 5 du PDF (cf. `fetchVadOverlayNotesForReport`
-  /// côté serveur).
-  static const String _kSharedAccessibiliteNotesTabKey = 'Accessibilité-Notes';
+  // `_kSharedAccessibiliteNotesTabKey` retiré 2026-05-13 — l'onglet
+  // Accessibilité n'a plus de note partagée : chaque sous-section
+  // (Général / Niveaux / Équipements / Extérieur) a sa propre note
+  // avec tabKey unique. Cf. `_tabSubsections['Accessibilité']` et
+  // la nouvelle logique de `_checkAccessibilite` qui valide les 4
+  // sous-sections au lieu d'une note unique partagée.
 
   /// Calcule le tabKey à utiliser pour le panneau notes. Pour la
   /// majorité des onglets c'est `'$tab-$section'`. Cas spéciaux :

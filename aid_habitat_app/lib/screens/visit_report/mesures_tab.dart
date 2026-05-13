@@ -149,39 +149,38 @@ class _MesuresTabState extends State<MesuresTab>
     // (demande utilisateur 2026-05-13). La bannière ne s'adapte plus au
     // contenu : elle a une largeur constante quelle que soit la longueur
     // du nom de l'occupant, ce qui évite les sauts visuels en naviguant
-    // entre occupants. Le nom (Text) est lui-même centré dans l'espace
-    // restant grâce à `Expanded` + `textAlign: TextAlign.center`.
-    return Center(
-      child: Container(
-        width: 280,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFAF7FB), // mauve-50
-          border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            arrow(LucideIcons.chevronLeft, _occupantPrev),
-            Expanded(
-              child: Text(
-                display,
-                style: GoogleFonts.nunito(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.25,
-                  height: 1.15,
-                  color: const Color(0xFF0E1116),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
+    // entre occupants. Le centrage dans la barre de nav est assuré par
+    // le NotesWidget côté parent (Expanded + Center autour du
+    // leadingNavWidget quand `allowPagination` est false).
+    return Container(
+      width: 280,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF7FB), // mauve-50
+        border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          arrow(LucideIcons.chevronLeft, _occupantPrev),
+          Expanded(
+            child: Text(
+              display,
+              style: GoogleFonts.nunito(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.25,
+                height: 1.15,
+                color: const Color(0xFF0E1116),
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
             ),
-            arrow(LucideIcons.chevronRight, _occupantNext),
-          ],
-        ),
+          ),
+          arrow(LucideIcons.chevronRight, _occupantNext),
+        ],
       ),
     );
   }
