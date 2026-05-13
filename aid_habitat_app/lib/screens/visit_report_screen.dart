@@ -2559,11 +2559,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       ],
                       if (addressLine.isNotEmpty) ...[
                         const SizedBox(width: 12),
-                        // Icône localisation discrète, alignée taille +
-                        // typo avec les badges du header.
+                        // Icône localisation 18px (aligné Documents).
                         const Icon(
                           LucideIcons.mapPin,
-                          size: 14,
+                          size: 18,
                           color: Color(0xFF8A939D), // ink-400
                         ),
                         const SizedBox(width: 6),
@@ -2575,12 +2574,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                         Expanded(
                           child: Text(
                             addressLine,
-                            // Refonte 2026-05-13 : Nunito w600 (légèrement
-                            // réduit depuis w700 sur demande utilisateur).
+                            // Refonte 2026-05-13 : adresse 16px w600
+                            // alignée sur l'adresse du header Documents
+                            // (demande user 2026-05-13).
                             style: GoogleFonts.nunito(
-                              fontSize: 13,
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
                               color: const Color(0xFF5C6670), // ink-500
                             ),
                             overflow: TextOverflow.ellipsis,

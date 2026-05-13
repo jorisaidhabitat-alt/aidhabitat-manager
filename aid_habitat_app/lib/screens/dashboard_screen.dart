@@ -1307,8 +1307,9 @@ class _ActivityBarColumn extends StatelessWidget {
         Text(
           bar.value.toString(),
           style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+            // Bump 2026-05-13 : 12→14, w600→w700.
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
             color: Color(0xFF94A3B8), // slate-400
           ),
         ),
@@ -1354,8 +1355,9 @@ class _ActivityBarColumn extends StatelessWidget {
         Text(
           bar.name,
           style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
+            // Bump 2026-05-13 : 12→14, w500→w600.
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
             color: Color(0xFF94A3B8),
           ),
         ),
@@ -1699,7 +1701,9 @@ class _TravelOverline extends StatelessWidget {
                 Text(
                   'Calcul du trajet…',
                   style: TextStyle(
-                    fontSize: 11.5,
+                    // Bump 2026-05-13 : 11.5→13.5, ajout w600.
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFF94A3B8),
                     fontStyle: FontStyle.italic,
                   ),
@@ -1709,8 +1713,9 @@ class _TravelOverline extends StatelessWidget {
           _SegmentFailed() => const Text(
               'Trajet indisponible',
               style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
+                // Bump 2026-05-13 : 11.5→13.5, w600→w700.
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
                 color: Color(0xFF94A3B8),
                 fontStyle: FontStyle.italic,
               ),
@@ -1718,8 +1723,9 @@ class _TravelOverline extends StatelessWidget {
           _SegmentDone(duration: final d) => Text(
               RouteService.formatDuration(d),
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                // Bump 2026-05-13 : 12→14, w700→w800.
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
                 color: Color(0xFF8B6FA0),
                 letterSpacing: 0.2,
               ),
