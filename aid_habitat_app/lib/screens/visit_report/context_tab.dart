@@ -982,29 +982,11 @@ class _ContextTabState extends State<ContextTab>
   Widget _buildAutonomy() {
     final occ = _active;
     final homeHelpEnabled = _occupantHomeHelpEnabled(_safeIndex);
-    // Statuts dérivés :
-    //   • tous les items ont une coche (quelle qu'elle soit) → diagnostic complet
-    //   • tous les items sont spécifiquement en "autonomous" (✓) → profil autonome
-    final total = kAutonomyItemNames.length;
-    var allFilled = occ.autonomy.length == total;
-    var allAutonomous = allFilled;
-    for (var i = 0; i < total; i++) {
-      final state = _itemState(i);
-      // Une ligne est considérée « remplie » dès qu'au moins une des
-      // trois coches est posée (autonomous, attention, ou humanHelp).
-      if (state.isEmpty) {
-        allFilled = false;
-        allAutonomous = false;
-        break;
-      }
-      // Le profil reste « considéré comme autonome » uniquement quand
-      // chaque ligne est en `autonomous` — `humanHelp` seule ne suffit
-      // pas, et `attention` (à revoir) le casse.
-      if (!state.autonomous) {
-        allAutonomous = false;
-      }
-    }
-
+    // Note 2026-05-13 : le texte de synthèse « Profil considéré comme
+    // autonome ! / Diagnostic complet ! » a été retiré → plus besoin
+    // de dériver `allAutonomous` / `allFilled` ici (la logique reste
+    // utilisée par `_buildValidateAllSmallButton()` qui la calcule en
+    // interne).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1036,33 +1018,9 @@ class _ContextTabState extends State<ContextTab>
             );
           }),
         ),
-        // Texte de synthèse : "diagnostic complet" dès que chaque ligne
-        // a reçu une coche ; devient "profil considéré comme autonome"
-        // quand TOUTES les coches sont du type ✓.
-        if (allFilled) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-            decoration: BoxDecoration(
-              color: allAutonomous
-                  ? const Color(0xFF8B6FA0).withValues(alpha: 0.10)
-                  : const Color(0xFFF2ECF5),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              allAutonomous
-                  ? 'Profil considéré comme autonome !'
-                  : 'Diagnostic complet !',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF554265),
-              ),
-            ),
-          ),
-        ],
+        // Texte de synthèse retiré 2026-05-13 sur demande utilisateur —
+        // « Profil considéré comme autonome ! » / « Diagnostic complet ! »
+        // n'apparait plus en bas de la liste (la maquette ne l'a pas).
       ],
     );
   }

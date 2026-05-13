@@ -2254,6 +2254,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// notes latéral quand l'onglet a des sous-sections (cf.
   /// [_tabSubsections]). Sinon retourne juste la carte (Mesures, Plans,
   /// Préconisations occupent toute la largeur).
+  /// Largeur fixe du panneau form gauche (parité maquette). La maquette
+  /// fige cette colonne à 380 pt et laisse le reste de la fenêtre à la
+  /// zone note + croquis libre — peu importe la taille de la fenêtre
+  /// macOS. Demande utilisateur 2026-05-12 : « oui 7 par défaut » avec
+  /// l'option A « Strict 380 px à gauche ».
+  static const double _kLeftPanelFixedWidth = 380.0;
+
+  /// Largeur en dessous de laquelle le layout split (380 + note) ne tient
+  /// plus visuellement. On bascule alors en empilement vertical (form en
+  /// haut, note en bas) pour éviter une zone note de 50 pt de large
+  /// inutilisable. Couvre les cas iPad portrait avec sidebar et fenêtres
+  /// macOS rétrécies à moins d'un mi-écran.
+  static const double _kStackedLayoutBreakpoint = 800.0;
+
   Widget _wrapTabWithNotes(String tabName, Widget formContent) {
     final formCard = Container(
       decoration: BoxDecoration(
@@ -2267,16 +2281,39 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     if (subsections == null || subsections.isEmpty) {
       return formCard;
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(flex: 1, child: formCard),
-        const SizedBox(width: 24),
-        Expanded(
-          flex: 2,
-          child: _buildNotesPanel(tabName, subsections),
-        ),
-      ],
+    final notesPanel = _buildNotesPanel(tabName, subsections);
+
+    // Layout responsive : split 380px à partir d'environ 800px de largeur
+    // utile, sinon fallback empilement vertical. Le `LayoutBuilder` reçoit
+    // les contraintes du parent (qui a déjà retiré le padding 24 du
+    // Scaffold + la TabBar + le header bénéficiaire, donc maxWidth ici
+    // est la largeur vraiment exploitable par le contenu de l'onglet).
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isStacked = constraints.maxWidth < _kStackedLayoutBreakpoint;
+        if (isStacked) {
+          // Empilement : form en haut, note en dessous. Pas de hauteur fixe
+          // sur la note — l'utilisateur scrolle si besoin. La form garde
+          // sa hauteur naturelle.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              formCard,
+              const SizedBox(height: 16),
+              SizedBox(height: 280, child: notesPanel),
+            ],
+          );
+        }
+        // Split desktop / iPad landscape : largeur fixe 380 à gauche.
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: _kLeftPanelFixedWidth, child: formCard),
+            const SizedBox(width: 24),
+            Expanded(child: notesPanel),
+          ],
+        );
+      },
     );
   }
 
