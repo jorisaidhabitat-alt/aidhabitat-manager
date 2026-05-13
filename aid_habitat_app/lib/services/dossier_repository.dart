@@ -1410,7 +1410,27 @@ class DossierRepository {
   ) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
-    final localFields = Map<String, dynamic>.from(fields);
+
+    // Optimisation 2026-05-13 : diff avec la row dossiers existante pour
+    // ne pousser au serveur QUE les champs réellement modifiés. Avant
+    // ce changement, chaque toggle « compte ANAH » / « envoi rapport »
+    // / « personnes présentes » envoyait les 3-7 champs à chaque save.
+    final existingRows = await db.query(
+      'dossiers',
+      where: 'local_id = ?',
+      whereArgs: [dossierLocalId],
+      limit: 1,
+    );
+    final changedFields = _diffAgainstRow(
+      existingRows.isEmpty ? null : existingRows.first,
+      fields,
+    );
+
+    if (changedFields.isEmpty) {
+      return; // rien à pousser, no-op
+    }
+
+    final localFields = Map<String, dynamic>.from(changedFields);
     localFields['updated_at'] = now;
     localFields['sync_state'] = SyncState.pendingSync.name;
     await db.update(
@@ -1420,7 +1440,7 @@ class DossierRepository {
       whereArgs: [dossierLocalId],
     );
 
-    final apiUpdates = _mapDossierFieldsToApi(fields);
+    final apiUpdates = _mapDossierFieldsToApi(changedFields);
     if (apiUpdates.isEmpty) return;
     await _enqueueEntityUpdate(
       db,
