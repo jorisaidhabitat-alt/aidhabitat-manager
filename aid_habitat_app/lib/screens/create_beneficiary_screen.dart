@@ -195,7 +195,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                 'Nouveau dossier',
                 style: TextStyle(
                   fontSize: 28,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                   color: Colors.black87,
                 ),
               ),
@@ -240,7 +240,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                               ),
                               child: const Icon(
                                 LucideIcons.userPlus,
-                                color: Color(0xFF7C6DAA),
+                                color: Color(0xFF8B6FA0),
                                 size: 28,
                               ),
                             ),
@@ -437,7 +437,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                           child: ElevatedButton(
                             onPressed: _isSaving ? null : _handleSubmit,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF7C6DAA),
+                              backgroundColor: const Color(0xFF8B6FA0),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
@@ -569,7 +569,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: selected
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : Colors.transparent,
                 width: 1.5,
               ),
@@ -580,7 +580,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                 fontSize: 14,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 color: selected
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : Colors.black87,
               ),
             ),
@@ -604,7 +604,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
         children: [
           IconButton(
             icon: const Icon(LucideIcons.minus, size: 18),
-            color: const Color(0xFF7C6DAA),
+            color: const Color(0xFF8B6FA0),
             onPressed: _numberPeople > 1
                 ? () => setState(() => _numberPeople--)
                 : null,
@@ -619,7 +619,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
           ),
           IconButton(
             icon: const Icon(LucideIcons.plus, size: 18),
-            color: const Color(0xFF7C6DAA),
+            color: const Color(0xFF8B6FA0),
             onPressed: _numberPeople < 10
                 ? () => setState(() => _numberPeople++)
                 : null,

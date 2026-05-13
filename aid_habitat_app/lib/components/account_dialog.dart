@@ -92,7 +92,7 @@ class _AccountDialogState extends State<AccountDialog> {
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF7C6DAA),
+              backgroundColor: const Color(0xFF8B6FA0),
             ),
             child: const Text('Synchroniser'),
           ),
@@ -110,7 +110,7 @@ class _AccountDialogState extends State<AccountDialog> {
             'Synchronisation lancée — $n entrée(s) locales effacées, '
             're-téléchargement en cours…',
           ),
-          backgroundColor: const Color(0xFF7C6DAA),
+          backgroundColor: const Color(0xFF8B6FA0),
           duration: const Duration(seconds: 4),
         ),
       );
@@ -214,7 +214,7 @@ class _AccountDialogState extends State<AccountDialog> {
           const Expanded(
             child: Text(
               'Compte local',
-              style: TextStyle(fontWeight: FontWeight.w800),
+              style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
           StreamBuilder<bool>(
@@ -298,8 +298,8 @@ class _AccountDialogState extends State<AccountDialog> {
                                           _initials(),
                                           style: const TextStyle(
                                             fontSize: 28,
-                                            fontWeight: FontWeight.w800,
-                                            color: Color(0xFF554A63),
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF554265),
                                           ),
                                         ),
                                       ),
@@ -309,8 +309,8 @@ class _AccountDialogState extends State<AccountDialog> {
                                         _initials(),
                                         style: const TextStyle(
                                           fontSize: 28,
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF554A63),
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF554265),
                                         ),
                                       ),
                                     ),
@@ -319,7 +319,7 @@ class _AccountDialogState extends State<AccountDialog> {
                               right: -4,
                               bottom: -4,
                               child: Material(
-                                color: const Color(0xFF7C6DAA),
+                                color: const Color(0xFF8B6FA0),
                                 shape: const CircleBorder(),
                                 elevation: 2,
                                 child: InkWell(
@@ -358,7 +358,7 @@ class _AccountDialogState extends State<AccountDialog> {
                                 ? 'Ajouter une photo'
                                 : 'Changer la photo',
                             style: const TextStyle(
-                              color: Color(0xFF7C6DAA),
+                              color: Color(0xFF8B6FA0),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -379,7 +379,7 @@ class _AccountDialogState extends State<AccountDialog> {
                     widget.currentUser.displayName,
                     style: const TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -429,7 +429,7 @@ class _AccountDialogState extends State<AccountDialog> {
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
-                                    Color(0xFF7C6DAA),
+                                    Color(0xFF8B6FA0),
                                   ),
                                 ),
                               )
@@ -438,7 +438,7 @@ class _AccountDialogState extends State<AccountDialog> {
                             ? 'Synchronisation…'
                             : 'Forcer la sync'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF7C6DAA),
+                          foregroundColor: const Color(0xFF8B6FA0),
                           side: const BorderSide(color: Color(0xFFD8CFE0)),
                         ),
                       ),

@@ -114,7 +114,7 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
                 '${patient.lastName.toUpperCase()} ${patient.firstName}',
                 style: const TextStyle(
                   fontSize: 22,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                   color: Colors.black87,
                 ),
               ),

@@ -777,7 +777,7 @@ class _ContextTabState extends State<ContextTab>
     // : pastel lilas #AE9DB3. Layout vertical (icône au-dessus du texte)
     // pour parité visuelle avec les sous-sections de Bénéficiaire.
     const activeColor = Color(0xFF8B6FA0);
-    const inactiveColor = Color(0xFFAE9DB3);
+    const inactiveColor = Color(0xFFA98DBE);
     // SoftTapScale → zoom/dezoom à l'appui, même effet que les boutons
     // de la sidebar et des tabs du relevé de visite.
     return SoftTapScale(
@@ -1156,7 +1156,7 @@ class _MedicalFlagRow extends StatelessWidget {
                 index.toString().padLeft(2, '0'),
                 style: const TextStyle(
                   fontSize: 10,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: Color(0xFF554265),
                 ),
               ),
@@ -1235,7 +1235,7 @@ class _NumberedCheckRow extends StatelessWidget {
               index.toString(),
               style: const TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 color: Color(0xFF554265),
               ),
             ),

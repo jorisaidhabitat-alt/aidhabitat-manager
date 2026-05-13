@@ -131,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           "Connexion",
                           style: TextStyle(
                             fontSize: 30,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                             color: Color(0xFF0F172A),
                           ),
                         ),
@@ -199,7 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: FilledButton(
                             onPressed: _isSubmitting ? null : _submit,
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF7C6DAA),
+                              backgroundColor: const Color(0xFF8B6FA0),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 18),
                               shape: RoundedRectangleBorder(
@@ -241,7 +241,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
     );

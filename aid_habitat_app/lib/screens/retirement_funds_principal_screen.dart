@@ -243,7 +243,7 @@ class _RetirementFundsPrincipalScreenState
           bottom: 24,
           child: FloatingActionButton.extended(
             onPressed: _createFund,
-            backgroundColor: const Color(0xFF7C6DAA),
+            backgroundColor: const Color(0xFF8B6FA0),
             foregroundColor: Colors.white,
             // Ombre désactivée (demande user 2026-05-12) — toutes les
             // variantes à 0 pour rester plat même au hover/tap.
@@ -288,7 +288,7 @@ class _RetirementFundsPrincipalScreenState
                     'Caisses de retraite principales',
                     style: TextStyle(
                       fontSize: 32,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -428,7 +428,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
           boxShadow: _hover
               ? [
                   BoxShadow(
-                    color: const Color(0xFF7C6DAA).withValues(alpha: 0.18),
+                    color: const Color(0xFF8B6FA0).withValues(alpha: 0.18),
                     blurRadius: 24,
                     offset: const Offset(0, 10),
                   ),
@@ -485,7 +485,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           color: Color(0xFF0F172A),
                           letterSpacing: -0.3,
                         ),
@@ -758,7 +758,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 20,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         color: Color(0xFF0F172A),
                         letterSpacing: -0.3,
                       ),
@@ -809,7 +809,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                         child: const Icon(
                           LucideIcons.phoneCall,
                           size: 15,
-                          color: Color(0xFF7C6DAA),
+                          color: Color(0xFF8B6FA0),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -817,7 +817,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                         'Contact',
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           color: Color(0xFF0F172A),
                           letterSpacing: -0.2,
                         ),
@@ -838,7 +838,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                     opacity: hasPhone ? 1.0 : 0.5,
                     child: Material(
                       color: hasPhone
-                          ? const Color(0xFF7C6DAA)
+                          ? const Color(0xFF8B6FA0)
                           : const Color(0xFFE2E8F0),
                       borderRadius: BorderRadius.circular(16),
                       child: InkWell(
@@ -873,7 +873,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                                       'Appeler',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w700,
                                         color: Colors.white,
                                         letterSpacing: 0.2,
                                       ),
@@ -1008,13 +1008,13 @@ class _NewPrincipalFundDialogState extends State<_NewPrincipalFundDialog> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7C6DAA).withValues(alpha: 0.12),
+                      color: const Color(0xFF8B6FA0).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
                     child: const Icon(
                       LucideIcons.plus,
-                      color: Color(0xFF7C6DAA),
+                      color: Color(0xFF8B6FA0),
                       size: 22,
                     ),
                   ),
@@ -1024,7 +1024,7 @@ class _NewPrincipalFundDialogState extends State<_NewPrincipalFundDialog> {
                       'Nouvelle caisse de retraite',
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         color: Color(0xFF0F172A),
                       ),
                     ),
@@ -1075,7 +1075,7 @@ class _NewPrincipalFundDialogState extends State<_NewPrincipalFundDialog> {
                   const SizedBox(width: 8),
                   FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C6DAA),
+                      backgroundColor: const Color(0xFF8B6FA0),
                     ),
                     onPressed: _isSubmitting ? null : _submit,
                     child: _isSubmitting
@@ -1124,7 +1124,7 @@ class _PrincipalLabeledField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF7C6DAA),
+            color: Color(0xFF8B6FA0),
           ),
         ),
         const SizedBox(height: 4),
@@ -1148,7 +1148,7 @@ class _PrincipalLabeledField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.4),
+              borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.4),
             ),
           ),
         ),

@@ -192,7 +192,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: selected
-                                      ? const Color(0xFF554A63)
+                                      ? const Color(0xFF554265)
                                       : Colors.black87,
                                   fontWeight: selected
                                       ? FontWeight.w600
@@ -371,7 +371,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide:
-                    const BorderSide(color: Color(0xFF7C6DAA), width: 1.5),
+                    const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
               ),
             ),
           ),

@@ -55,7 +55,7 @@ const List<String> _kAvailableTags = [
   'Autre',
 ];
 
-const Color _kPurple = Color(0xFF7C6DAA);
+const Color _kPurple = Color(0xFF8B6FA0);
 const Color _kDarkPurple = Color(0xFF554a63);
 
 /// Nombre maximum de fetches binaires en parallèle dans
@@ -1318,7 +1318,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                     '${patient.lastName.toUpperCase()} ${patient.firstName}',
                     style: const TextStyle(
                       fontSize: 20,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: Color(0xFF0F172A),
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -1398,7 +1398,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
             Text(
               '${_selectedIds.length} sélectionné${_selectedIds.length > 1 ? 's' : ''}',
               style: const TextStyle(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 color: _kDarkPurple,
                 fontSize: 15,
               ),
@@ -5346,7 +5346,7 @@ class _ToolButton extends StatelessWidget {
                 icon,
                 size: 18,
                 color: selected
-                    ? const Color(0xFF554A63) // _kActiveText
+                    ? const Color(0xFF554265) // _kActiveText
                     : Colors.grey.shade700,
               ),
             ),

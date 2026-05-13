@@ -864,7 +864,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                 '${widget.currentPage! + 1}/${widget.totalPages}',
                 style: const TextStyle(
                   fontSize: 13,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: Color(0xFF334155),
                 ),
               ),

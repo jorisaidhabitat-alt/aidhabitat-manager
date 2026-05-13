@@ -15,7 +15,7 @@ const List<Color> kBeneficiaryAvatarBgs = [
   Color(0xFFCFE3F0), // ciel
 ];
 
-const Color kBeneficiaryAvatarFg = Color(0xFF554A63);
+const Color kBeneficiaryAvatarFg = Color(0xFF554265);
 
 Color beneficiaryAvatarBgFor(String seed) {
   if (seed.isEmpty) return kBeneficiaryAvatarBgs.first;

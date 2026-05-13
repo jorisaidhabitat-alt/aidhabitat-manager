@@ -98,7 +98,7 @@ class _ReportGenerationOverlayState extends State<ReportGenerationOverlay> {
     if (messenger == null) return;
     messenger.clearSnackBars();
     final bgColor = failure.deferred
-        ? const Color(0xFF7C6DAA) // violet — différé, pas une erreur dure
+        ? const Color(0xFF8B6FA0) // violet — différé, pas une erreur dure
         : const Color(0xFFB91C1C); // rouge — erreur sèche
     final icon = failure.deferred
         ? LucideIcons.clock
@@ -141,7 +141,7 @@ class _ReportGenerationOverlayState extends State<ReportGenerationOverlay> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF7C6DAA),
+                    color: const Color(0xFF8B6FA0),
                     borderRadius: BorderRadius.circular(999),
                     boxShadow: [
                       BoxShadow(

@@ -15,7 +15,7 @@ class FormSectionHeader extends StatelessWidget {
       child: Row(
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 18, color: const Color(0xFF7C6DAA)),
+            Icon(icon, size: 18, color: const Color(0xFF8B6FA0)),
             const SizedBox(width: 8),
           ],
           Text(
@@ -203,7 +203,7 @@ class FormSubSectionChips extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
-                color: selected ? const Color(0xFF7C6DAA) : Colors.white,
+                color: selected ? const Color(0xFF8B6FA0) : Colors.white,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -570,11 +570,11 @@ class TogglePillButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: active ? const Color(0xFF7C6DAA) : Colors.white,
+              color: active ? const Color(0xFF8B6FA0) : Colors.white,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: active
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : Colors.grey.shade300,
                 width: 1.2,
               ),
@@ -601,7 +601,7 @@ class TogglePillButton extends StatelessWidget {
                   color: Colors.white,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: const Color(0xFF7C6DAA),
+                    color: const Color(0xFF8B6FA0),
                     width: 1.4,
                   ),
                   boxShadow: [
@@ -616,9 +616,9 @@ class TogglePillButton extends StatelessWidget {
                   '$countBadge',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: Color(0xFF7C6DAA),
+                    color: Color(0xFF8B6FA0),
                     fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     height: 1.0,
                   ),
                 ),
@@ -685,7 +685,7 @@ class CollapsedValueRow extends StatelessWidget {
             const Icon(
               Icons.edit_outlined,
               size: 14,
-              color: Color(0xFF7C6DAA),
+              color: Color(0xFF8B6FA0),
             ),
           ],
         ),
@@ -901,11 +901,11 @@ class FormMultiToggleGroup extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF7C6DAA) : Colors.white,
+            color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: isSelected
-                  ? const Color(0xFF7C6DAA)
+                  ? const Color(0xFF8B6FA0)
                   : Colors.grey.shade300,
             ),
           ),
@@ -987,11 +987,11 @@ class FormCheckbox extends StatelessWidget {
               width: 20,
               height: 20,
               decoration: BoxDecoration(
-                color: value ? const Color(0xFF7C6DAA) : Colors.white,
+                color: value ? const Color(0xFF8B6FA0) : Colors.white,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
                   color: value
-                      ? const Color(0xFF7C6DAA)
+                      ? const Color(0xFF8B6FA0)
                       : Colors.grey.shade400,
                   width: 1.5,
                 ),
@@ -1094,7 +1094,7 @@ class FormSection extends StatelessWidget {
         titleText,
         style: const TextStyle(
           fontSize: 13,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           color: Color(0xFF334155),
           letterSpacing: 0.2,
         ),
@@ -1469,7 +1469,7 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
                             height: 18,
                             decoration: BoxDecoration(
                               color: checked
-                                  ? const Color(0xFF7C6DAA)
+                                  ? const Color(0xFF8B6FA0)
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -1525,7 +1525,7 @@ class OccupantSwitcher extends StatelessWidget {
           title,
           style: const TextStyle(
             fontSize: 13,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             color: Color(0xFF334155),
             letterSpacing: 0.2,
           ),
@@ -1552,10 +1552,10 @@ class OccupantSwitcher extends StatelessWidget {
                     occupantLabels[i],
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0.2,
                       color: active
-                          ? const Color(0xFF554A63)
+                          ? const Color(0xFF554265)
                           : const Color(0xFF475569),
                     ),
                   ),

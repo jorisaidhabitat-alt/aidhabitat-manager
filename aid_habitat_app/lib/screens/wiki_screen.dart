@@ -212,7 +212,7 @@ class _WikiScreenState extends State<WikiScreen> {
                       'Bibliothèque',
                       style: TextStyle(
                         fontSize: 32,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         color: Color(0xFF0F172A),
                       ),
                     ),
@@ -338,7 +338,7 @@ class _WikiScreenState extends State<WikiScreen> {
           // icône `+` à gauche + label.
           child: FloatingActionButton.extended(
             onPressed: _createItem,
-            backgroundColor: const Color(0xFF7C6DAA),
+            backgroundColor: const Color(0xFF8B6FA0),
             foregroundColor: Colors.white,
             // Demande user 2026-05-12 : retire l'ombre du FAB. On force
             // toutes les variantes d'élévation à 0 (idle/hover/focus/
@@ -591,7 +591,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                   child: Icon(
                                     Icons.add,
                                     size: 18,
-                                    color: Color(0xFF7C6DAA),
+                                    color: Color(0xFF8B6FA0),
                                     semanticLabel: 'Ajouter une description',
                                   ),
                                 ),
@@ -663,7 +663,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                               );
                             },
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF7C6DAA),
+                              backgroundColor: const Color(0xFF8B6FA0),
                               foregroundColor: Colors.white,
                               padding:
                                   const EdgeInsets.symmetric(vertical: 16),
@@ -727,7 +727,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
       ),
     );
   }
@@ -881,13 +881,13 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7C6DAA).withValues(alpha: 0.12),
+                      color: const Color(0xFF8B6FA0).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
                     child: const Icon(
                       LucideIcons.plus,
-                      color: Color(0xFF7C6DAA),
+                      color: Color(0xFF8B6FA0),
                       size: 22,
                     ),
                   ),
@@ -897,7 +897,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                       'Nouvel élément',
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         color: Color(0xFF0F172A),
                       ),
                     ),
@@ -941,7 +941,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF7C6DAA),
+                  color: Color(0xFF8B6FA0),
                 ),
               ),
               const SizedBox(height: 8),
@@ -981,7 +981,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                   const SizedBox(width: 8),
                   FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C6DAA),
+                      backgroundColor: const Color(0xFF8B6FA0),
                       foregroundColor: Colors.white,
                     ),
                     onPressed: _submitting ? null : _submit,
@@ -1044,7 +1044,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                       icon: const Icon(LucideIcons.refreshCw, size: 14),
                       label: const Text('Changer'),
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF7C6DAA),
+                        foregroundColor: const Color(0xFF8B6FA0),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -1091,7 +1091,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF7C6DAA),
+                  color: Color(0xFF8B6FA0),
                 ),
               )
             else
@@ -1131,7 +1131,7 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF7C6DAA) : Colors.white,
+          color: isActive ? const Color(0xFF8B6FA0) : Colors.white,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
@@ -1221,7 +1221,7 @@ class _WikiCardState extends State<_WikiCard> {
           boxShadow: _hover
               ? [
                   BoxShadow(
-                    color: const Color(0xFF7C6DAA).withValues(alpha: 0.18),
+                    color: const Color(0xFF8B6FA0).withValues(alpha: 0.18),
                     blurRadius: 24,
                     offset: const Offset(0, 10),
                   ),
@@ -1292,7 +1292,7 @@ class _WikiCardState extends State<_WikiCard> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           color: Color(0xFF0F172A),
                           letterSpacing: -0.3,
                         ),
@@ -1383,7 +1383,7 @@ class _WikiLabeledField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF7C6DAA),
+            color: Color(0xFF8B6FA0),
           ),
         ),
         const SizedBox(height: 4),
@@ -1408,7 +1408,7 @@ class _WikiLabeledField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF7C6DAA), width: 1.4),
+              borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.4),
             ),
           ),
         ),

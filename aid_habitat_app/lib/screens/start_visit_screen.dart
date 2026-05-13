@@ -67,7 +67,7 @@ class StartVisitScreen extends StatelessWidget {
                   const SizedBox(height: 32),
                   Text(
                     "${dossier.patient.lastName.toUpperCase()} ${dossier.patient.firstName}",
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -90,7 +90,7 @@ class StartVisitScreen extends StatelessWidget {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C6DAA),
+                      backgroundColor: const Color(0xFF8B6FA0),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
                       textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

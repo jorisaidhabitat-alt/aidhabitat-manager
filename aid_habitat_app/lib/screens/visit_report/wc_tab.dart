@@ -267,7 +267,7 @@ class _WcTabState extends State<WcTab>
                   // 10 → 12 (demande utilisateur 2026-04-28 : "met les
                   // en taille légèrement plus grande").
                   fontSize: 12,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0.4,
                   color: _activeLevelIndex == i
                       ? const Color(0xFF554265)

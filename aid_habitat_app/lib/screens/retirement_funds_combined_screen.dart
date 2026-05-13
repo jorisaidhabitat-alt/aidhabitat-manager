@@ -48,7 +48,7 @@ class _RetirementFundsCombinedScreenState
                   _titleFor(_mode),
                   style: const TextStyle(
                     fontSize: 32,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFF0F172A),
                   ),
                 ),

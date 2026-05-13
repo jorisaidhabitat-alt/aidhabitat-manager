@@ -201,7 +201,7 @@ IncomeCategoryPalette incomePaletteFor(String value) {
   // corriger côté NocoDB mais l'UI ne montre jamais d'« inconnue ».
   return const IncomeCategoryPalette(
     bg: Color(0xFFEDE8F5),
-    fg: Color(0xFF554A63),
+    fg: Color(0xFF554265),
   );
 }
 

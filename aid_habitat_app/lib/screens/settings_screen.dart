@@ -201,7 +201,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Paramètres du compte',
               style: TextStyle(
                 fontSize: 28,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 color: Colors.black,
               ),
             ),
@@ -352,7 +352,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value,
                 style: TextStyle(
                   fontSize: 13,
-                  color: isLink ? const Color(0xFF7C6DAA) : Colors.black87,
+                  color: isLink ? const Color(0xFF8B6FA0) : Colors.black87,
                   decoration: isLink ? TextDecoration.underline : null,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -396,7 +396,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   widget.user.displayName,
                   style: const TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
                     color: Colors.black87,
                   ),
                 ),
@@ -456,7 +456,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           height: 96,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFF7C6DAA),
+            color: const Color(0xFF8B6FA0),
           ),
           clipBehavior: Clip.antiAlias,
           child: _photoFile != null
@@ -511,7 +511,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         style: const TextStyle(
           color: Colors.white,
           fontSize: 28,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

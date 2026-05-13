@@ -232,10 +232,10 @@ class _OccupantSwitcher extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: selected ? const Color(0xFF7C6DAA) : Colors.white,
+              color: selected ? const Color(0xFF8B6FA0) : Colors.white,
               border: Border.all(
                 color: selected
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : const Color(0xFFCBD5E1),
                 width: 1.5,
               ),

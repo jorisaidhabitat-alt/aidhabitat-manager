@@ -163,7 +163,7 @@ class _CommuneAutocompleteState extends State<CommuneAutocomplete> {
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF554A63),
+                                color: Color(0xFF554265),
                               ),
                             ),
                           ),

@@ -117,7 +117,7 @@ class _MesuresTabState extends State<MesuresTab>
       display,
       style: const TextStyle(
         fontSize: 16,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         color: Color(0xFF0E1116),
         letterSpacing: -0.2,
       ),

@@ -179,7 +179,7 @@ const int _kDefaultHighlighterColor = 0xffFDE047; // yellow-300
 const double _kDefaultPenSize = 2.0;
 const double _kDefaultHighlighterSize = 10.0;
 const double _kDefaultEraserSize = 18.0;
-const Color _kAccentColor = Color(0xFF7C6DAA);
+const Color _kAccentColor = Color(0xFF8B6FA0);
 // Refonte 2026-05-13 : couleurs alignées sur le nouveau design system.
 //  - _kActiveText : mauve-700 (#554265, légère nuance plus chaude)
 //  - _kStackedVioletSoft : mauve-100 (#F2ECF5)
@@ -191,7 +191,7 @@ const Color _kStackedBorder = Color(0xFFEDE9EF);
 // Fond splitter = même violet clair que les icônes Documents / VAD sur
 // l'écran dossier (cohérence visuelle — demande utilisateur).
 const Color _kStackedSplitterBg = Color(0xFFEDE8F5);
-const Color _kStackedViolet = Color(0xFF7C6DAA);
+const Color _kStackedViolet = Color(0xFF8B6FA0);
 const Color _kStackedVioletSoft = Color(0xFFF2ECF5); // mauve-100
 const Color _kStackedPinkSoft = Color(0xFFE8A4B0);
 
@@ -1929,7 +1929,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                 '${_currentPage + 1}/${math.max(_totalPages, 1)}',
                 style: const TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0.4,
                 ),
               ),
@@ -2215,7 +2215,7 @@ class _NotesWidgetState extends State<NotesWidget> {
               '${_currentPage + 1}/${math.max(_totalPages, 1)}',
               style: const TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 0.4,
               ),
             ),

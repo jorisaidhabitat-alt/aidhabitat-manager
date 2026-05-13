@@ -599,7 +599,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           // Sur fond violet clair : icon/texte/trait en violet foncé
           // (#7C6DAA). Inactif : pastel lilas.
           const activeColor = Color(0xFF8B6FA0);
-          const inactiveColor = Color(0xFFAE9DB3);
+          const inactiveColor = Color(0xFFA98DBE);
           return Expanded(
             child: SoftTapScale(
               // Zoom/dezoom au tap — mêmes sensations que les boutons
@@ -724,7 +724,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     ageLabel,
                     style: const TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: Color(0xFF554265),
                     ),
                   ),
@@ -2581,7 +2581,7 @@ class _RetirementFundPickerDialogState
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: Color(0xFF1E293B),
                     ),
                   ),
@@ -2636,8 +2636,8 @@ class _FundInitialsAvatar extends StatelessWidget {
           initials,
           style: const TextStyle(
             fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF6B567E),
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF554265),
           ),
         ),
       ),

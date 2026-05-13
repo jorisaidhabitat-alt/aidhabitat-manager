@@ -326,7 +326,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             "Bonjour, ${userName ?? 'Ergo'}.",
             style: GoogleFonts.nunito(
               fontSize: 42,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               letterSpacing: -1.05, // -0.025em à 42px (Nunito plus serré)
               color: const Color(0xFF0E1116), // ink-900
               height: 1.05,
@@ -455,7 +455,7 @@ class _RecentDossiersPanel extends StatelessWidget {
                     "Voir tout",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF7C6DAA),
+                      color: Color(0xFF8B6FA0),
                     ),
                   ),
                 ),
@@ -631,7 +631,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
                         color: _hover
-                            ? const Color(0xFF7C6DAA)
+                            ? const Color(0xFF8B6FA0)
                             : const Color(0xFF1E293B),
                       ),
                     ),
@@ -676,7 +676,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF7C6DAA),
+                    color: const Color(0xFF8B6FA0),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Row(
@@ -692,7 +692,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         visitTimeHighlight,
                         style: const TextStyle(
                           fontSize: 13,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           color: Colors.white,
                           letterSpacing: 0.3,
                         ),
@@ -720,7 +720,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         size: 13,
                         color: visitLabel.isEmpty
                             ? const Color(0xFF94A3B8)
-                            : const Color(0xFF7C6DAA),
+                            : const Color(0xFF8B6FA0),
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -730,7 +730,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                           fontWeight: FontWeight.bold,
                           color: visitLabel.isEmpty
                               ? const Color(0xFF64748B)
-                              : const Color(0xFF7C6DAA),
+                              : const Color(0xFF8B6FA0),
                         ),
                       ),
                     ],
@@ -741,7 +741,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 LucideIcons.arrowRight,
                 size: 18,
                 color: _hover
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : const Color(0xFFCBD5E1), // slate-300
               ),
                 ],
@@ -936,7 +936,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                         'Aucun rendez-vous planifié',
                         style: GoogleFonts.nunito(
                           fontSize: 24,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           letterSpacing: -0.6, // -0.025em
                           height: 1.1,
                           color: const Color(0xFF0E1116), // ink-900
@@ -1054,7 +1054,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                         hourLabel,
                         style: GoogleFonts.nunito(
                           fontSize: 42,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           letterSpacing: -1.05, // -0.025em
                           height: 1,
                           color: const Color(0xFF2A1F35), // mauve-900
@@ -1105,7 +1105,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                               : '${patient.firstName} ${patient.lastName}',
                           style: GoogleFonts.nunito(
                             fontSize: 30,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             letterSpacing: -0.75, // -0.025em
                             height: 1.1,
                             color: const Color(0xFF0E1116), // ink-900
@@ -1316,7 +1316,7 @@ class _ActivityBarColumn extends StatelessWidget {
                     height: height,
                     decoration: BoxDecoration(
                       color: isHighlighted
-                          ? const Color(0xFF7C6DAA)
+                          ? const Color(0xFF8B6FA0)
                           : const Color(0xFFE2E8F0), // slate-200
                       borderRadius: BorderRadius.circular(999),
                     ),
@@ -1653,7 +1653,7 @@ class _TravelOverline extends StatelessWidget {
         const Icon(
           LucideIcons.car,
           size: 13,
-          color: Color(0xFF7C6DAA),
+          color: Color(0xFF8B6FA0),
         ),
         const SizedBox(width: 6),
         switch (state) {
@@ -1666,7 +1666,7 @@ class _TravelOverline extends StatelessWidget {
                   child: CircularProgressIndicator(
                     strokeWidth: 1.4,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      Color(0xFF7C6DAA),
+                      Color(0xFF8B6FA0),
                     ),
                   ),
                 ),
@@ -1694,8 +1694,8 @@ class _TravelOverline extends StatelessWidget {
               RouteService.formatDuration(d),
               style: const TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF7C6DAA),
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF8B6FA0),
                 letterSpacing: 0.2,
               ),
             ),

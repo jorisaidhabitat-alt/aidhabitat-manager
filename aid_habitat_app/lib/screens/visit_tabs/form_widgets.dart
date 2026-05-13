@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-const _kPurple = Color(0xFF7C6DAA);
+const _kPurple = Color(0xFF8B6FA0);
 const _kDarkPurple = Color(0xFF554a63);
 const _kTeal = Color(0xFF597E8D);
 const _kLightGray = Color(0xFFD8D0DC);

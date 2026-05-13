@@ -515,7 +515,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                           'Note — $sourceTab',
                           style: const TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             color: Color(0xFF2B323A),
                           ),
                         ),
@@ -1042,8 +1042,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           height: 44,
           decoration: BoxDecoration(
             color: _isGeneratingReport
-                ? const Color(0xFF9888B5)
-                : const Color(0xFF8B6FA0),
+                ? const Color(0xFFA98DBE) // mauve-400 (état désactivé)
+                : const Color(0xFF8B6FA0), // mauve-500
             borderRadius: BorderRadius.circular(999),
           ),
           alignment: Alignment.center,
@@ -2427,7 +2427,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                           // bénéficiaire affiché dans le header du relevé.
                           style: GoogleFonts.nunito(
                             fontSize: 22,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             letterSpacing: -0.4,
                             color: const Color(0xFF0E1116),
                           ),
@@ -2582,7 +2582,7 @@ class _FlagMarker extends StatelessWidget {
       '$number -',
       style: GoogleFonts.nunito(
         fontSize: 28,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         color: Colors.black,
         height: 1.0,
       ),

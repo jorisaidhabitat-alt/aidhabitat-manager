@@ -644,7 +644,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             // pastel #AE9DB3 pour les inactives — parité avec Contexte
             // de vie et Bénéficiaire.
             const activeColor = Color(0xFF8B6FA0);
-            const inactiveColor = Color(0xFFAE9DB3);
+            const inactiveColor = Color(0xFFA98DBE);
             return Expanded(
               child: SoftTapScale(
                 // Zoom/dezoom au tap — mêmes sensations que la sidebar.
@@ -1374,7 +1374,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 cfg.label.toUpperCase(),
                 style: const TextStyle(
                   fontSize: 10,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: Color(0xFF8A939D),
                   letterSpacing: 0.5,
                 ),

@@ -158,7 +158,7 @@ class _AnahScreenState extends State<AnahScreen> {
                   child: const Icon(
                     LucideIcons.home,
                     size: 44,
-                    color: Color(0xFF7C6DAA),
+                    color: Color(0xFF8B6FA0),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -166,7 +166,7 @@ class _AnahScreenState extends State<AnahScreen> {
                   "MaPrimeAdapt'",
                   style: TextStyle(
                     fontSize: 24,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFF0F172A),
                   ),
                   textAlign: TextAlign.center,
@@ -200,7 +200,7 @@ class _AnahScreenState extends State<AnahScreen> {
                       ),
                     ),
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C6DAA),
+                      backgroundColor: const Color(0xFF8B6FA0),
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -320,7 +320,7 @@ class _AnahScreenState extends State<AnahScreen> {
               height: 12,
               child: CircularProgressIndicator(
                 strokeWidth: 1.5,
-                color: Color(0xFF7C6DAA),
+                color: Color(0xFF8B6FA0),
               ),
             ),
             const SizedBox(width: 8),
@@ -423,7 +423,7 @@ class _AnahScreenState extends State<AnahScreen> {
             LinearProgressIndicator(
               value: _webProgress == 0 ? null : _webProgress,
               minHeight: 2,
-              color: const Color(0xFF7C6DAA),
+              color: const Color(0xFF8B6FA0),
               backgroundColor: Colors.transparent,
             ),
           // WebView
@@ -529,7 +529,7 @@ class _AnahScreenState extends State<AnahScreen> {
                     icon: const Icon(LucideIcons.externalLink, size: 16),
                     label: const Text('Ouvrir dans Safari'),
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C6DAA),
+                      backgroundColor: const Color(0xFF8B6FA0),
                     ),
                   ),
                 ],

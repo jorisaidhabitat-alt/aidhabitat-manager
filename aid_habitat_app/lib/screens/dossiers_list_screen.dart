@@ -402,7 +402,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                       'Mes dossiers',
                       style: TextStyle(
                         fontSize: 32,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                         color: Colors.black87,
                       ),
                     ),
@@ -502,7 +502,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                           title,
                           style: const TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             color: Color(0xFF0F172A),
                           ),
                         ),
@@ -609,7 +609,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
 
   Widget _buildNewDossierButton() {
     return Material(
-      color: const Color(0xFF7C6DAA),
+      color: const Color(0xFF8B6FA0),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -775,7 +775,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 ? Icons.arrow_drop_up
                 : Icons.arrow_drop_down,
             size: 18,
-            color: const Color(0xFF7C6DAA),
+            color: const Color(0xFF8B6FA0),
           )
         : null;
 
@@ -788,7 +788,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.6,
-        color: isActive ? const Color(0xFF7C6DAA) : const Color(0xFF94A3B8),
+        color: isActive ? const Color(0xFF8B6FA0) : const Color(0xFF94A3B8),
       ),
     );
 

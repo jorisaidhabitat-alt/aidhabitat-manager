@@ -489,7 +489,7 @@ class _DossierScreenState extends State<DossierScreen> {
                   '${_lastName.toUpperCase()} $_firstName',
                   style: const TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFF0F172A),
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -714,14 +714,14 @@ class _DossierScreenState extends State<DossierScreen> {
     // Quand non coché : fond violet clair + texte/icônes en violet
     // foncé (look historique).
     final bannerBg = _beneficiaryPrepared
-        ? const Color(0xFF554A63) // violet foncé
+        ? const Color(0xFF554265) // violet foncé
         : const Color(0xFFEDE8F5); // violet clair
     final bannerFg = _beneficiaryPrepared
         ? const Color(0xFFEDE8F5) // violet clair (texte sur fond foncé)
-        : const Color(0xFF554A63); // violet foncé (texte sur fond clair)
+        : const Color(0xFF554265); // violet foncé (texte sur fond clair)
     final bannerAccent = _beneficiaryPrepared
         ? const Color(0xFFEDE8F5)
-        : const Color(0xFF7C6DAA);
+        : const Color(0xFF8B6FA0);
 
     return Container(
       decoration: BoxDecoration(
@@ -917,7 +917,7 @@ class _DossierScreenState extends State<DossierScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF7C6DAA),
+                          color: Color(0xFF8B6FA0),
                           letterSpacing: 0.2,
                         ),
                       ),
@@ -961,7 +961,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           child: FormTextField(
                             label: 'Nom',
                             value: _lastName,
-                            labelColor: const Color(0xFF7C6DAA),
+                            labelColor: const Color(0xFF8B6FA0),
                             labelSize: 14,
                             valueSize: 14,
                             onChanged: (v) {
@@ -975,7 +975,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           child: FormTextField(
                             label: 'Prénom',
                             value: _firstName,
-                            labelColor: const Color(0xFF7C6DAA),
+                            labelColor: const Color(0xFF8B6FA0),
                             labelSize: 14,
                             valueSize: 14,
                             onChanged: (v) {
@@ -1001,7 +1001,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             label: 'RFR du foyer',
                             value: _fiscalRevenue,
                             unit: '€',
-                            labelColor: const Color(0xFF7C6DAA),
+                            labelColor: const Color(0xFF8B6FA0),
                             labelSize: 14,
                             valueSize: 14,
                             onChanged: (v) {
@@ -1019,7 +1019,7 @@ class _DossierScreenState extends State<DossierScreen> {
                     FormTextField(
                       label: 'Adresse',
                       value: _address,
-                      labelColor: const Color(0xFF7C6DAA),
+                      labelColor: const Color(0xFF8B6FA0),
                       labelSize: 14,
                       valueSize: 14,
                       onChanged: (v) {
@@ -1037,7 +1037,7 @@ class _DossierScreenState extends State<DossierScreen> {
                       // corriger une commune mal résolue sans repasser
                       // par le relevé de visite.
                       showZipField: true,
-                      labelColor: const Color(0xFF7C6DAA),
+                      labelColor: const Color(0xFF8B6FA0),
                       labelSize: 14,
                       valueSize: 14,
                       onChanged: (update) {
@@ -1145,7 +1145,7 @@ class _DossierScreenState extends State<DossierScreen> {
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 14,
-            color: Color(0xFF7C6DAA),
+            color: Color(0xFF8B6FA0),
           ),
         ),
         const SizedBox(height: 6),
@@ -1243,7 +1243,7 @@ class _PlainField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF7C6DAA),
+            color: Color(0xFF8B6FA0),
             letterSpacing: 0.2,
           ),
         ),
@@ -1312,7 +1312,7 @@ class _QuickActionButton extends StatelessWidget {
                 color: const Color(0xFFEDE8F5),
                 borderRadius: BorderRadius.circular(50),
               ),
-              child: Icon(icon, color: const Color(0xFF7C6DAA)),
+              child: Icon(icon, color: const Color(0xFF8B6FA0)),
             ),
             const SizedBox(height: 16),
             Text(
