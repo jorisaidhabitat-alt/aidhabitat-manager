@@ -2273,6 +2273,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        // Bordure du panneau gauche (parité maquette) — 1 px slate-200
+        // tout autour. Sépare visuellement la card 380 pt de la zone
+        // note/canvas à droite, surtout quand les 2 sont sur fond clair.
+        // Demande utilisateur 2026-05-12.
+        border: Border.all(
+          color: const Color(0xFFE2E8F0), // slate-200
+          width: 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: formContent,
