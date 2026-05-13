@@ -635,7 +635,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       // concernent QUE la barre de navigation principale du relevé,
       // pas les sous-sections internes des onglets).
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: const Color(0xFFEDE8F5),
+      color: const Color(0xFFF2ECF5),
       child: Row(
         children: [
           ...List.generate(items.length, (i) {
@@ -643,7 +643,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             // Violet foncé #7C6DAA pour la sous-section active, lilas
             // pastel #AE9DB3 pour les inactives — parité avec Contexte
             // de vie et Bénéficiaire.
-            const activeColor = Color(0xFF7C6DAA);
+            const activeColor = Color(0xFF8B6FA0);
             const inactiveColor = Color(0xFFAE9DB3);
             return Expanded(
               child: SoftTapScale(
@@ -743,11 +743,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   height: 32,
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFEDE8F5),
+                    color: Color(0xFFF2ECF5),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.arrow_forward,
-                      size: 16, color: Color(0xFF554A63)),
+                      size: 16, color: Color(0xFF554265)),
                 ),
               ),
             ),
@@ -1009,7 +1009,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFEDE8F5),
+          color: const Color(0xFFF2ECF5),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
         ),
@@ -1017,11 +1017,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           mainAxisSize: MainAxisSize.max,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add, size: 16, color: Color(0xFF554A63)),
+            Icon(Icons.add, size: 16, color: Color(0xFF554265)),
             SizedBox(width: 8),
             Text('Ajouter un niveau',
                 style: TextStyle(
-                  color: Color(0xFF554A63),
+                  color: Color(0xFF554265),
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
                 )),
@@ -1064,7 +1064,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFEDE8F5),
+          color: const Color(0xFFF2ECF5),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
         ),
@@ -1075,13 +1075,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               children: [
                 const SizedBox(width: 4),
                 const Icon(Icons.layers_outlined,
-                    size: 16, color: Color(0xFF554A63)),
+                    size: 16, color: Color(0xFF554265)),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
                     'Choisir un niveau',
                     style: TextStyle(
-                      color: Color(0xFF554A63),
+                      color: Color(0xFF554265),
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
@@ -1104,7 +1104,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   child: const Padding(
                     padding: EdgeInsets.all(4),
                     child: Icon(Icons.expand_less,
-                        size: 20, color: Color(0xFF554A63)),
+                        size: 20, color: Color(0xFF554265)),
                   ),
                 ),
               ],
@@ -1160,7 +1160,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: Color(0xFF5C6670),
           ),
         ),
         const SizedBox(height: 8),
@@ -1234,11 +1234,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         decoration: BoxDecoration(
           // Même violet que FormToggleGroup (#907CA1) pour unifier tous
           // les pills multi-select avec les autres boutons du relevé.
-          color: isSelected ? const Color(0xFF7C6DAA) : Colors.white,
+          color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF7C6DAA)
+                ? const Color(0xFF8B6FA0)
                 : Colors.grey.shade300,
             width: 1.2,
           ),
@@ -1291,7 +1291,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
+                      color: Color(0xFF5C6670),
                     ),
                     children: [
                       TextSpan(text: cfg.label),
@@ -1299,7 +1299,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                         text: ' ($displayRooms)',
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF334155),
+                          color: Color(0xFF2B323A),
                         ),
                       ),
                     ],
@@ -1310,7 +1310,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               const Icon(
                 Icons.expand_more,
                 size: 20,
-                color: Color(0xFF64748B),
+                color: Color(0xFF5C6670),
               ),
             ],
           ),
@@ -1346,7 +1346,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFEDE8F5),
+        color: const Color(0xFFF2ECF5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1375,7 +1375,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF94A3B8),
+                  color: Color(0xFF8A939D),
                   letterSpacing: 0.5,
                 ),
               ),
@@ -1470,7 +1470,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                         ? Icons.expand_less
                         : Icons.close,
                     size: _pendingLevelField == cfg.field ? 20 : 18,
-                    color: const Color(0xFF94A3B8),
+                    color: const Color(0xFF8A939D),
                   ),
                 ),
               ),
@@ -1556,7 +1556,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                         horizontal: 12, vertical: 10),
                     hintText: 'Ajouter une pièce',
                     hintStyle: const TextStyle(
-                        color: Color(0xFF94A3B8), fontSize: 12),
+                        color: Color(0xFF8A939D), fontSize: 12),
                     border: InputBorder.none,
                     filled: true,
                     fillColor: Colors.white,
@@ -1575,9 +1575,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   width: 34,
                   height: 34,
                   decoration: const BoxDecoration(
-                      color: Color(0xFFEDE8F5), shape: BoxShape.circle),
+                      color: Color(0xFFF2ECF5), shape: BoxShape.circle),
                   child: const Icon(Icons.add,
-                      color: Color(0xFF554A63), size: 18),
+                      color: Color(0xFF554265), size: 18),
                 ),
               ),
             ],
@@ -1668,7 +1668,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
-                    color: Color(0xFF64748B))),
+                    color: Color(0xFF5C6670))),
             const SizedBox(height: 8),
             FormToggleGroup(
               label: '',
@@ -1699,7 +1699,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
-                    color: Color(0xFF64748B))),
+                    color: Color(0xFF5C6670))),
             const SizedBox(height: 8),
             _buildMultiSelectGrid(
               options: annexItems,

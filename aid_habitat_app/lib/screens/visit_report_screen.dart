@@ -515,7 +515,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF334155),
+                            color: Color(0xFF2B323A),
                           ),
                         ),
                       ),
@@ -1042,7 +1042,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           decoration: BoxDecoration(
             color: _isGeneratingReport
                 ? const Color(0xFF9888B5)
-                : const Color(0xFF7C6DAA),
+                : const Color(0xFF8B6FA0),
             borderRadius: BorderRadius.circular(999),
           ),
           alignment: Alignment.center,
@@ -2013,7 +2013,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: Color(0xFF0E1116),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -2082,7 +2082,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     FilledButton(
                       onPressed: () => Navigator.pop(ctx, true),
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF7C6DAA),
+                        backgroundColor: const Color(0xFF8B6FA0),
                       ),
                       child: const Text('Valider'),
                     ),
@@ -2127,7 +2127,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('📄 Rapport en attente — $reason'),
-          backgroundColor: const Color(0xFF7C6DAA),
+          backgroundColor: const Color(0xFF8B6FA0),
           duration: const Duration(seconds: 6),
         ),
       );
@@ -2424,7 +2424,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: Color(0xFF0E1116),
                           ),
                           overflow: TextOverflow.ellipsis,
                           softWrap: false,

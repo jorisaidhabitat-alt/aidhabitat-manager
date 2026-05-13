@@ -55,9 +55,9 @@ class PhotosTab extends StatefulWidget {
 
 class _PhotosTabState extends State<PhotosTab>
     with AutomaticKeepAliveClientMixin {
-  static const Color _kPurple = Color(0xFF7C6DAA);
-  static const Color _kPurpleLight = Color(0xFFEDE8F5);
-  static const Color _kSlate = Color(0xFF334155);
+  static const Color _kPurple = Color(0xFF8B6FA0);
+  static const Color _kPurpleLight = Color(0xFFF2ECF5);
+  static const Color _kSlate = Color(0xFF2B323A);
   // _kSlateMuted retiré le 2026-05-12 (servait au badge count
   // supprimé, cf. _buildCountBadge également retiré).
 
@@ -892,9 +892,9 @@ class _PhotosTabState extends State<PhotosTab>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: const Color(0xFFF2F4F6),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: const Color(0xFFE4E7EB)),
         ),
         child: Row(
           children: [
@@ -922,7 +922,7 @@ class _PhotosTabState extends State<PhotosTab>
             const Icon(
               LucideIcons.chevronRight,
               size: 18,
-              color: Color(0xFF94A3B8),
+              color: Color(0xFF8A939D),
             ),
           ],
         ),
@@ -992,13 +992,13 @@ class _PhotosTabState extends State<PhotosTab>
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
             color: hovering
-                ? const Color(0xFFEDE8F5)
+                ? const Color(0xFFF2ECF5)
                 : Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: hovering
                   ? _kPurple
-                  : const Color(0xFFE2E8F0),
+                  : const Color(0xFFE4E7EB),
               width: hovering ? 2 : 1,
             ),
           ),
@@ -1251,13 +1251,13 @@ class _PhotosTabState extends State<PhotosTab>
             duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(
               color: hovering
-                  ? const Color(0xFFEDE8F5)
-                  : const Color(0xFFF1F5F9),
+                  ? const Color(0xFFF2ECF5)
+                  : const Color(0xFFF2F4F6),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: hovering
                     ? _kPurple
-                    : const Color(0xFFCBD5E1),
+                    : const Color(0xFFB9C0C7),
                 width: hovering ? 2 : 1,
               ),
             ),
@@ -1388,10 +1388,10 @@ class _PhotoSectionDropWrapperState extends State<_PhotoSectionDropWrapper> {
               child: IgnorePointer(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEDE8F5).withValues(alpha: 0.85),
+                    color: const Color(0xFFF2ECF5).withValues(alpha: 0.85),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: const Color(0xFF7C6DAA),
+                      color: const Color(0xFF8B6FA0),
                       width: 2,
                     ),
                   ),
@@ -1417,13 +1417,13 @@ class _PhotoSectionDropWrapperState extends State<_PhotoSectionDropWrapper> {
                         Icon(
                           LucideIcons.imagePlus,
                           size: 16,
-                          color: Color(0xFF554A63),
+                          color: Color(0xFF554265),
                         ),
                         SizedBox(width: 8),
                         Text(
                           'Déposer ici',
                           style: TextStyle(
-                            color: Color(0xFF554A63),
+                            color: Color(0xFF554265),
                             fontWeight: FontWeight.w700,
                             fontSize: 13,
                           ),
@@ -1576,7 +1576,7 @@ class _PhotoTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color(0xFF7C6DAA),
+                      color: const Color(0xFF8B6FA0),
                       width: 2,
                     ),
                   ),
@@ -1846,12 +1846,12 @@ class _PhotoThumbnailState extends State<_PhotoThumbnail> {
   }
 
   Widget _placeholder() => Container(
-        color: const Color(0xFFF1F5F9),
+        color: const Color(0xFFF2F4F6),
         alignment: Alignment.center,
         child: const Icon(
           LucideIcons.imageOff,
           size: 18,
-          color: Color(0xFF94A3B8),
+          color: Color(0xFF8A939D),
         ),
       );
 }
@@ -2181,7 +2181,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
                                 value: _showLabelOnPdf,
                                 onChanged:
                                     _isSaving ? null : _toggleShowLabel,
-                                activeThumbColor: const Color(0xFF7C6DAA),
+                                activeThumbColor: const Color(0xFF8B6FA0),
                               ),
                             ],
                           ),

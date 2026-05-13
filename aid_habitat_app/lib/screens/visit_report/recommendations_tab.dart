@@ -296,7 +296,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Ajouter une préconisation'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C6DAA),
+                      backgroundColor: const Color(0xFF8B6FA0),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
@@ -377,11 +377,11 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       child: const Column(
         children: [
           Icon(Icons.auto_awesome_outlined,
-              size: 36, color: Color(0xFF94A3B8)),
+              size: 36, color: Color(0xFF8A939D)),
           SizedBox(height: 8),
           Text(
             'Aucune préconisation pour l\'instant.',
-            style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
           ),
         ],
       ),
@@ -426,7 +426,7 @@ class _RecommendationCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFFE2E8F0),
+          color: const Color(0xFFE4E7EB),
           width: 1,
         ),
         boxShadow: [
@@ -471,14 +471,14 @@ class _RecommendationCard extends StatelessWidget {
                             errorWidget: const Center(
                               child: Icon(
                                 Icons.image_outlined,
-                                color: Color(0xFF94A3B8),
+                                color: Color(0xFF8A939D),
                               ),
                             ),
                           )
                         : const Center(
                             child: Icon(
                               Icons.add_photo_alternate_outlined,
-                              color: Color(0xFF7C6DAA),
+                              color: Color(0xFF8B6FA0),
                               size: 40,
                             ),
                           ),
@@ -492,7 +492,7 @@ class _RecommendationCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Material(
-                      color: const Color(0xFFEDE8F5),
+                      color: const Color(0xFFF2ECF5),
                       shape: const CircleBorder(),
                       child: InkWell(
                         onTap: onPickWiki,
@@ -502,7 +502,7 @@ class _RecommendationCard extends StatelessWidget {
                           child: Icon(
                             Icons.cached,
                             size: 20,
-                            color: const Color(0xFF7C6DAA),
+                            color: const Color(0xFF8B6FA0),
                             semanticLabel: hasWiki
                                 ? 'Changer la fiche wiki'
                                 : 'Choisir une fiche wiki',
@@ -512,7 +512,7 @@ class _RecommendationCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Material(
-                      color: const Color(0xFFEDE8F5),
+                      color: const Color(0xFFF2ECF5),
                       shape: const CircleBorder(),
                       child: InkWell(
                         onTap: onRemove,
@@ -522,7 +522,7 @@ class _RecommendationCard extends StatelessWidget {
                           child: Icon(
                             Icons.close,
                             size: 20,
-                            color: Color(0xFF7C6DAA),
+                            color: Color(0xFF8B6FA0),
                             semanticLabel: 'Supprimer',
                           ),
                         ),
@@ -625,7 +625,7 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF334155),
+                              color: Color(0xFF2B323A),
                             ),
                           ),
                         ),
@@ -668,7 +668,7 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                   ? const Center(
                       child: Text(
                         'Aucun résultat.',
-                        style: TextStyle(color: Color(0xFF94A3B8)),
+                        style: TextStyle(color: Color(0xFF8A939D)),
                       ),
                     )
                   : GridView.builder(
@@ -714,19 +714,19 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
             Expanded(
               child: Container(
                 width: double.infinity,
-                color: const Color(0xFFF1F5F9),
+                color: const Color(0xFFF2F4F6),
                 child: it.imageUrl.isNotEmpty
                     ? CachedRemoteImage(
                         url: resolveMediaUrl(it.imageUrl),
                         fit: BoxFit.cover,
                         errorWidget: const Center(
                           child: Icon(Icons.image_outlined,
-                              color: Color(0xFF94A3B8)),
+                              color: Color(0xFF8A939D)),
                         ),
                       )
                     : const Center(
                         child: Icon(Icons.image_outlined,
-                            color: Color(0xFF94A3B8)),
+                            color: Color(0xFF8A939D)),
                       ),
               ),
             ),
@@ -740,7 +740,7 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: Color(0xFF2B323A),
                 ),
               ),
             ),
@@ -811,7 +811,7 @@ class _InlineTitleFieldState extends State<_InlineTitleField> {
       style: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w700,
-        color: Color(0xFF334155),
+        color: Color(0xFF2B323A),
       ),
       decoration: InputDecoration(
         isDense: true,
@@ -823,7 +823,7 @@ class _InlineTitleFieldState extends State<_InlineTitleField> {
         hintStyle: const TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w700,
-          color: Color(0xFF94A3B8),
+          color: Color(0xFF8A939D),
         ),
       ),
       onChanged: widget.onChanged,
@@ -884,7 +884,7 @@ class _DraggableRecoSlot extends StatelessWidget {
           decoration: isHovered
               ? BoxDecoration(
                   border: Border.all(
-                    color: const Color(0xFF7C6DAA),
+                    color: const Color(0xFF8B6FA0),
                     width: 2,
                   ),
                   borderRadius: BorderRadius.circular(16),
@@ -976,7 +976,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: Color(0xFF0E1116),
                       ),
                     ),
                   ),
@@ -991,7 +991,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                 widget.title,
                 style: const TextStyle(
                   fontSize: 13,
-                  color: Color(0xFF64748B),
+                  color: Color(0xFF5C6670),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1022,7 +1022,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: selected
-                                ? const Color(0xFF7C6DAA)
+                                ? const Color(0xFF8B6FA0)
                                 : Colors.grey.shade300,
                           ),
                         ),
@@ -1035,12 +1035,12 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                               margin: const EdgeInsets.only(top: 1),
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? const Color(0xFF7C6DAA)
+                                    ? const Color(0xFF8B6FA0)
                                     : Colors.white,
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
                                   color: selected
-                                      ? const Color(0xFF7C6DAA)
+                                      ? const Color(0xFF8B6FA0)
                                       : Colors.grey.shade400,
                                   width: 1.5,
                                 ),
@@ -1056,7 +1056,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                                 widget.descriptions[i],
                                 style: const TextStyle(
                                   fontSize: 14,
-                                  color: Color(0xFF334155),
+                                  color: Color(0xFF2B323A),
                                   height: 1.4,
                                 ),
                               ),
@@ -1079,7 +1079,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                   const SizedBox(width: 8),
                   FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C6DAA),
+                      backgroundColor: const Color(0xFF8B6FA0),
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () {

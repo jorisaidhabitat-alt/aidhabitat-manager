@@ -591,13 +591,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // relevé, pas les sous-sections internes des onglets).
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: const Color(0xFFEDE8F5),
+      color: const Color(0xFFF2ECF5),
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;
           // Sur fond violet clair : icon/texte/trait en violet foncé
           // (#7C6DAA). Inactif : pastel lilas.
-          const activeColor = Color(0xFF7C6DAA);
+          const activeColor = Color(0xFF8B6FA0);
           const inactiveColor = Color(0xFFAE9DB3);
           return Expanded(
             child: SoftTapScale(
@@ -694,7 +694,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: Color(0xFF5C6670),
           ),
         ),
         const SizedBox(height: 6),
@@ -724,7 +724,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF554A63),
+                      color: Color(0xFF554265),
                     ),
                   ),
                 ),
@@ -1004,7 +1004,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       style: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w800,
-        color: Color(0xFF0F172A),
+        color: Color(0xFF0E1116),
         letterSpacing: -0.2,
       ),
     );
@@ -1029,7 +1029,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               height: isActive ? 10 : 8,
               decoration: BoxDecoration(
                 color: isActive
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : const Color(0xFFD8CFE0),
                 shape: BoxShape.circle,
               ),
@@ -1118,7 +1118,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           style: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: Color(0xFF5C6670),
           ),
         ),
         const SizedBox(height: 6),
@@ -1133,7 +1133,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             value,
             style: const TextStyle(
               fontSize: 14,
-              color: Color(0xFF334155),
+              color: Color(0xFF2B323A),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1142,7 +1142,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           const SizedBox(height: 4),
           Text(
             hint,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+            style: const TextStyle(fontSize: 11, color: Color(0xFF8A939D)),
           ),
         ],
       ],
@@ -1264,7 +1264,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: Color(0xFF5C6670),
           ),
         ),
         const SizedBox(height: 8),
@@ -1829,7 +1829,7 @@ class _DateOfBirthField extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
+                color: Color(0xFF0E1116),
               ),
             ),
             contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -1875,8 +1875,8 @@ class _DateOfBirthField extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? const Color(0xFF0F172A)
-                              : const Color(0xFFF1F5F9),
+                              ? const Color(0xFF0E1116)
+                              : const Color(0xFFF2F4F6),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: AnimatedDefaultTextStyle(
@@ -1887,7 +1887,7 @@ class _DateOfBirthField extends StatelessWidget {
                             fontWeight: FontWeight.w400,
                             color: isSelected
                                 ? Colors.white
-                                : const Color(0xFF0F172A),
+                                : const Color(0xFF0E1116),
                           ),
                           child: Text(labels[i]),
                         ),
@@ -1906,7 +1906,7 @@ class _DateOfBirthField extends StatelessWidget {
                 child: const Text(
                   'Annuler',
                   style: TextStyle(
-                    color: Color(0xFF64748B),
+                    color: Color(0xFF5C6670),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1951,7 +1951,7 @@ class _DateOfBirthField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF0F172A),
+            color: Color(0xFF0E1116),
           ),
         ),
         contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -1973,7 +1973,7 @@ class _DateOfBirthField extends StatelessWidget {
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF64748B),
+                              color: Color(0xFF5C6670),
                             ),
                           ),
                         ),
@@ -2003,7 +2003,7 @@ class _DateOfBirthField extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? const Color(0xFF0F172A)
+                              ? const Color(0xFF0E1116)
                               : Colors.transparent,
                           shape: BoxShape.circle,
                         ),
@@ -2014,7 +2014,7 @@ class _DateOfBirthField extends StatelessWidget {
                             fontWeight: FontWeight.w400,
                             color: isSelected
                                 ? Colors.white
-                                : const Color(0xFF0F172A),
+                                : const Color(0xFF0E1116),
                           ),
                         ),
                       ),
@@ -2032,7 +2032,7 @@ class _DateOfBirthField extends StatelessWidget {
             child: const Text(
               'Annuler',
               style: TextStyle(
-                color: Color(0xFF64748B),
+                color: Color(0xFF5C6670),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2054,7 +2054,7 @@ class _DateOfBirthField extends StatelessWidget {
             style: TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 13,
-              color: Color(0xFF64748B),
+              color: Color(0xFF5C6670),
             ),
           ),
           const SizedBox(height: 6),
@@ -2079,15 +2079,15 @@ class _DateOfBirthField extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       color: display.isEmpty
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF0F172A),
+                          ? const Color(0xFF8A939D)
+                          : const Color(0xFF0E1116),
                     ),
                   ),
                 ),
                 const Icon(
                   Icons.calendar_today_outlined,
                   size: 16,
-                  color: Color(0xFF64748B),
+                  color: Color(0xFF5C6670),
                 ),
               ],
             ),
@@ -2131,12 +2131,12 @@ class _RoundCheckRow extends StatelessWidget {
               width: 20,
               height: 20,
               decoration: BoxDecoration(
-                color: checked ? const Color(0xFF7C6DAA) : Colors.white,
+                color: checked ? const Color(0xFF8B6FA0) : Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: checked
-                      ? const Color(0xFF7C6DAA)
-                      : const Color(0xFFCBD5E1),
+                      ? const Color(0xFF8B6FA0)
+                      : const Color(0xFFB9C0C7),
                   width: 1.5,
                 ),
               ),
@@ -2153,7 +2153,7 @@ class _RoundCheckRow extends StatelessWidget {
                 label,
                 style: const TextStyle(
                   fontSize: 13,
-                  color: Color(0xFF334155),
+                  color: Color(0xFF2B323A),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -2213,7 +2213,7 @@ class _RetirementFundFieldButton extends StatelessWidget {
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: Color(0xFF5C6670),
             ),
           ),
         ),
@@ -2228,7 +2228,7 @@ class _RetirementFundFieldButton extends StatelessWidget {
                   horizontal: 14, vertical: 14),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: const Color(0xFFE4E7EB)),
               ),
               child: Row(
                 children: [
@@ -2243,14 +2243,14 @@ class _RetirementFundFieldButton extends StatelessWidget {
                             hasValue ? FontWeight.w600 : FontWeight.w400,
                         color: hasValue
                             ? const Color(0xFF1E293B)
-                            : const Color(0xFF94A3B8),
+                            : const Color(0xFF8A939D),
                       ),
                     ),
                   ),
                   const Icon(
                     LucideIcons.chevronDown,
                     size: 18,
-                    color: Color(0xFF94A3B8),
+                    color: Color(0xFF8A939D),
                   ),
                 ],
               ),
@@ -2348,7 +2348,7 @@ class _RetirementFundPickerDialogState
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF334155),
+                              color: Color(0xFF2B323A),
                             ),
                           ),
                         ),
@@ -2390,7 +2390,7 @@ class _RetirementFundPickerDialogState
                   ? const Center(
                       child: Text(
                         'Aucune caisse trouvée.',
-                        style: TextStyle(color: Color(0xFF94A3B8)),
+                        style: TextStyle(color: Color(0xFF8A939D)),
                       ),
                     )
                   : GridView.builder(
@@ -2417,7 +2417,7 @@ class _RetirementFundPickerDialogState
               decoration: const BoxDecoration(
                 color: Color(0xFFFAFBFC),
                 border: Border(
-                  top: BorderSide(color: Color(0xFFE2E8F0)),
+                  top: BorderSide(color: Color(0xFFE4E7EB)),
                 ),
               ),
               child: Row(
@@ -2434,17 +2434,17 @@ class _RetirementFundPickerDialogState
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide:
-                              const BorderSide(color: Color(0xFFE2E8F0)),
+                              const BorderSide(color: Color(0xFFE4E7EB)),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide:
-                              const BorderSide(color: Color(0xFFE2E8F0)),
+                              const BorderSide(color: Color(0xFFE4E7EB)),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(
-                              color: Color(0xFF7C6DAA), width: 1.5),
+                              color: Color(0xFF8B6FA0), width: 1.5),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 10),
@@ -2458,7 +2458,7 @@ class _RetirementFundPickerDialogState
                   const SizedBox(width: 10),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C6DAA),
+                      backgroundColor: const Color(0xFF8B6FA0),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 14),
@@ -2495,8 +2495,8 @@ class _RetirementFundPickerDialogState
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF7C6DAA)
-                : const Color(0xFFE2E8F0),
+                ? const Color(0xFF8B6FA0)
+                : const Color(0xFFE4E7EB),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
@@ -2554,7 +2554,7 @@ class _RetirementFundPickerDialogState
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF64748B),
+                        color: Color(0xFF5C6670),
                         height: 1.3,
                       ),
                     ),

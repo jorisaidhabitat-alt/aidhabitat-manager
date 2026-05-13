@@ -228,14 +228,14 @@ class _WcTabState extends State<WcTab>
       child: const Column(
         children: [
           Icon(LucideIcons.squareAsterisk,
-              size: 38, color: Color(0xFF94A3B8)),
+              size: 38, color: Color(0xFF8A939D)),
           SizedBox(height: 10),
           Text(
             "Aucun WC renseigné pour ce logement.\n"
             "Cochez « WC » dans Accessibilité › Intérieur › Niveaux & pièces "
             "pour afficher les sections correspondantes ici.",
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
           ),
         ],
       ),
@@ -257,7 +257,7 @@ class _WcTabState extends State<WcTab>
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: _activeLevelIndex == i
-                    ? const Color(0xFFEDE8F5)
+                    ? const Color(0xFFF2ECF5)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -270,8 +270,8 @@ class _WcTabState extends State<WcTab>
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.4,
                   color: _activeLevelIndex == i
-                      ? const Color(0xFF554A63)
-                      : const Color(0xFF94A3B8),
+                      ? const Color(0xFF554265)
+                      : const Color(0xFF8A939D),
                 ),
               ),
             ),
@@ -412,7 +412,7 @@ class _WcTabState extends State<WcTab>
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF334155),
+              color: Color(0xFF2B323A),
             ),
           ),
         ),
@@ -510,7 +510,7 @@ class _CuvettePill extends StatelessWidget {
         height: 40,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF7C6DAA) : const Color(0xFFF1F1F4),
+          color: active ? const Color(0xFF8B6FA0) : const Color(0xFFF1F1F4),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
@@ -519,7 +519,7 @@ class _CuvettePill extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: active ? Colors.white : const Color(0xFF334155),
+            color: active ? Colors.white : const Color(0xFF2B323A),
           ),
         ),
       ),

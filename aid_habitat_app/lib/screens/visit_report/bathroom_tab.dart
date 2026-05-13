@@ -379,14 +379,14 @@ class _BathroomTabState extends State<BathroomTab>
       child: const Column(
         children: [
           Icon(Icons.bathtub_outlined,
-              size: 40, color: Color(0xFF94A3B8)),
+              size: 40, color: Color(0xFF8A939D)),
           SizedBox(height: 10),
           Text(
             "Aucune salle de bain renseignée pour ce logement.\n"
             "Cochez « Salle de bain » dans Accessibilité › Intérieur › Niveaux & pièces "
             "pour afficher les sections correspondantes ici.",
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
           ),
         ],
       ),
@@ -408,7 +408,7 @@ class _BathroomTabState extends State<BathroomTab>
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: _activeLevelIndex == i
-                    ? const Color(0xFFEDE8F5)
+                    ? const Color(0xFFF2ECF5)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -421,8 +421,8 @@ class _BathroomTabState extends State<BathroomTab>
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.4,
                   color: _activeLevelIndex == i
-                      ? const Color(0xFF554A63)
-                      : const Color(0xFF94A3B8),
+                      ? const Color(0xFF554265)
+                      : const Color(0xFF8A939D),
                 ),
               ),
             ),
@@ -576,12 +576,12 @@ class _BathroomTabState extends State<BathroomTab>
               // Violet #907CA1 pour aligner ce pill toggle « Sol
               // glissant » avec tous les autres boutons du relevé.
               color: a.sdbSolGlissant
-                  ? const Color(0xFF7C6DAA)
+                  ? const Color(0xFF8B6FA0)
                   : Colors.white,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: a.sdbSolGlissant
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : Colors.grey.shade300,
                 width: 1.2,
               ),
@@ -619,7 +619,7 @@ class _BathroomTabState extends State<BathroomTab>
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: Color(0xFF5C6670),
           ),
         ),
         const SizedBox(height: 8),
@@ -864,11 +864,11 @@ class _WetZoneButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF7C6DAA) : Colors.white,
+          color: active ? const Color(0xFF8B6FA0) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: active
-                ? const Color(0xFF7C6DAA)
+                ? const Color(0xFF8B6FA0)
                 : Colors.grey.shade300,
           ),
         ),
@@ -907,7 +907,7 @@ class _MeasuredOptionCard extends StatelessWidget {
       padding:
           const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: checked ? const Color(0xFFEDE8F5) : Colors.white,
+        color: checked ? const Color(0xFFF2ECF5) : Colors.white,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -922,7 +922,7 @@ class _MeasuredOptionCard extends StatelessWidget {
                   height: 20,
                   decoration: BoxDecoration(
                     color: checked
-                        ? const Color(0xFF7C6DAA)
+                        ? const Color(0xFF8B6FA0)
                         : Colors.white,
                     borderRadius: BorderRadius.circular(5),
                   ),
@@ -941,8 +941,8 @@ class _MeasuredOptionCard extends StatelessWidget {
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: checked
-                          ? const Color(0xFF554A63)
-                          : const Color(0xFF334155),
+                          ? const Color(0xFF554265)
+                          : const Color(0xFF2B323A),
                     ),
                   ),
                 ),
@@ -1031,11 +1031,11 @@ class _Pill extends StatelessWidget {
         decoration: BoxDecoration(
           // Même violet que FormToggleGroup (#907CA1) pour unifier tous
           // les pills multi-select avec les autres boutons du relevé.
-          color: isSelected ? const Color(0xFF7C6DAA) : Colors.white,
+          color: isSelected ? const Color(0xFF8B6FA0) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF7C6DAA)
+                ? const Color(0xFF8B6FA0)
                 : Colors.grey.shade300,
             width: 1.2,
           ),

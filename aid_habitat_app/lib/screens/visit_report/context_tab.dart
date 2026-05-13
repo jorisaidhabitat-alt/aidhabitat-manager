@@ -643,7 +643,7 @@ class _ContextTabState extends State<ContextTab>
       style: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w800,
-        color: Color(0xFF0F172A),
+        color: Color(0xFF0E1116),
         letterSpacing: -0.2,
       ),
     );
@@ -667,7 +667,7 @@ class _ContextTabState extends State<ContextTab>
               height: isActive ? 10 : 8,
               decoration: BoxDecoration(
                 color: isActive
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : const Color(0xFFD8CFE0),
                 shape: BoxShape.circle,
               ),
@@ -685,7 +685,7 @@ class _ContextTabState extends State<ContextTab>
       // concernent QUE la barre de navigation principale du relevé,
       // pas les sous-sections internes des onglets).
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: const Color(0xFFEDE8F5),
+      color: const Color(0xFFF2ECF5),
       child: Row(
         children: [
           Expanded(
@@ -708,7 +708,7 @@ class _ContextTabState extends State<ContextTab>
     // violet foncé (#7C6DAA) pour contraster sans être agressif. Inactif
     // : pastel lilas #AE9DB3. Layout vertical (icône au-dessus du texte)
     // pour parité visuelle avec les sous-sections de Bénéficiaire.
-    const activeColor = Color(0xFF7C6DAA);
+    const activeColor = Color(0xFF8B6FA0);
     const inactiveColor = Color(0xFFAE9DB3);
     // SoftTapScale → zoom/dezoom à l'appui, même effet que les boutons
     // de la sidebar et des tabs du relevé de visite.
@@ -921,8 +921,8 @@ class _ContextTabState extends State<ContextTab>
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
             decoration: BoxDecoration(
               color: allAutonomous
-                  ? const Color(0xFF7C6DAA).withValues(alpha: 0.10)
-                  : const Color(0xFFEDE8F5),
+                  ? const Color(0xFF8B6FA0).withValues(alpha: 0.10)
+                  : const Color(0xFFF2ECF5),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
@@ -933,7 +933,7 @@ class _ContextTabState extends State<ContextTab>
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF554A63),
+                color: Color(0xFF554265),
               ),
             ),
           ),
@@ -981,8 +981,8 @@ class _AutonomyValidateAllRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const activeColor = Color(0xFF7C6DAA);
-    const lightColor = Color(0xFFEDE8F5);
+    const activeColor = Color(0xFF8B6FA0);
+    const lightColor = Color(0xFFF2ECF5);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -1076,12 +1076,12 @@ class _MedicalFlagRow extends StatelessWidget {
               height: 20,
               decoration: BoxDecoration(
                 color:
-                    completed ? const Color(0xFF7C6DAA) : Colors.white,
+                    completed ? const Color(0xFF8B6FA0) : Colors.white,
                 borderRadius: BorderRadius.circular(5),
                 border: Border.all(
                   color: completed
-                      ? const Color(0xFF7C6DAA)
-                      : const Color(0xFFCBD5E1),
+                      ? const Color(0xFF8B6FA0)
+                      : const Color(0xFFB9C0C7),
                   width: 1.5,
                 ),
               ),
@@ -1100,7 +1100,7 @@ class _MedicalFlagRow extends StatelessWidget {
               decoration: BoxDecoration(
                 color: completed
                     ? const Color(0xFFE9DFF0)
-                    : const Color(0xFFEDE8F5),
+                    : const Color(0xFFF2ECF5),
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
@@ -1109,7 +1109,7 @@ class _MedicalFlagRow extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF554A63),
+                  color: Color(0xFF554265),
                 ),
               ),
             ),
@@ -1121,8 +1121,8 @@ class _MedicalFlagRow extends StatelessWidget {
                   fontSize: 13,
                   fontWeight: completed ? FontWeight.w500 : FontWeight.w600,
                   color: completed
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF334155),
+                      ? const Color(0xFF8A939D)
+                      : const Color(0xFF2B323A),
                   decoration:
                       completed ? TextDecoration.lineThrough : null,
                 ),
@@ -1179,7 +1179,7 @@ class _NumberedCheckRow extends StatelessWidget {
             width: 28,
             height: 28,
             decoration: const BoxDecoration(
-              color: Color(0xFFEDE8F5),
+              color: Color(0xFFF2ECF5),
               shape: BoxShape.circle,
             ),
             alignment: Alignment.center,
@@ -1188,7 +1188,7 @@ class _NumberedCheckRow extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF554A63),
+                color: Color(0xFF554265),
               ),
             ),
           ),
@@ -1199,7 +1199,7 @@ class _NumberedCheckRow extends StatelessWidget {
               label,
               style: const TextStyle(
                 fontSize: 13,
-                color: Color(0xFF334155),
+                color: Color(0xFF2B323A),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1265,11 +1265,11 @@ class _ActionButton extends StatelessWidget {
     IconData icon;
     switch (kind) {
       case _ActionButtonKind.autonomous:
-        activeFill = const Color(0xFF7C6DAA);
-        activeBorder = const Color(0xFF7C6DAA);
+        activeFill = const Color(0xFF8B6FA0);
+        activeBorder = const Color(0xFF8B6FA0);
         activeIcon = Colors.white;
         inactiveBorder = const Color(0xFFD8CFE0);
-        inactiveIcon = const Color(0xFF7C6DAA);
+        inactiveIcon = const Color(0xFF8B6FA0);
         icon = Icons.check;
         break;
       case _ActionButtonKind.attention:

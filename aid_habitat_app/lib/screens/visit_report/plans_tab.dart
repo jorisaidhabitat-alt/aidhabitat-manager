@@ -299,7 +299,7 @@ class _PlansTabState extends State<PlansTab> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: Color(0xFF2B323A),
                 ),
               ),
               const SizedBox(height: 4),
@@ -337,8 +337,8 @@ class _PlansTabState extends State<PlansTab> {
                 ctx: ctx,
                 phase: null,
                 icon: LucideIcons.minusCircle,
-                bg: const Color(0xFFF1F5F9),
-                fg: const Color(0xFF475569),
+                bg: const Color(0xFFF2F4F6),
+                fg: const Color(0xFF2B323A),
                 title: 'Retirer la classification',
                 subtitle: 'La page ne sera pas insérée dans le rapport',
               ),
@@ -370,7 +370,7 @@ class _PlansTabState extends State<PlansTab> {
           color: isCurrent ? bg.withValues(alpha: 0.6) : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isCurrent ? fg.withValues(alpha: 0.4) : const Color(0xFFE2E8F0),
+            color: isCurrent ? fg.withValues(alpha: 0.4) : const Color(0xFFE4E7EB),
             width: isCurrent ? 1.5 : 1,
           ),
         ),
@@ -396,7 +396,7 @@ class _PlansTabState extends State<PlansTab> {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: isCurrent ? fg : const Color(0xFF334155),
+                      color: isCurrent ? fg : const Color(0xFF2B323A),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -503,8 +503,8 @@ class _PhasePill extends StatelessWidget {
         return const _PhasePalette(
           icon: LucideIcons.tag,
           label: 'Choisir la phase',
-          bg: Color(0xFFF1F5F9),
-          fg: Color(0xFF475569),
+          bg: Color(0xFFF2F4F6),
+          fg: Color(0xFF2B323A),
         );
     }
   }

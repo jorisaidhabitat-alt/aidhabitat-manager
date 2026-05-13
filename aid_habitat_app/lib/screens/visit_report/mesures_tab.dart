@@ -118,7 +118,7 @@ class _MesuresTabState extends State<MesuresTab>
       style: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w800,
-        color: Color(0xFF0F172A),
+        color: Color(0xFF0E1116),
         letterSpacing: -0.2,
       ),
     );
@@ -142,7 +142,7 @@ class _MesuresTabState extends State<MesuresTab>
               height: isActive ? 10 : 8,
               decoration: BoxDecoration(
                 color: isActive
-                    ? const Color(0xFF7C6DAA)
+                    ? const Color(0xFF8B6FA0)
                     : const Color(0xFFD8CFE0),
                 shape: BoxShape.circle,
               ),

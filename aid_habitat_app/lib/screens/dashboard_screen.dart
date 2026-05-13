@@ -585,7 +585,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: _hover
-                ? const Color(0xFFF1F5F9) // slate-100
+                ? const Color(0xFFF2F4F6) // slate-100
                 : const Color(0xFFF7F7FA), // slate-50
             borderRadius: BorderRadius.circular(16),
           ),
@@ -707,7 +707,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                   ),
                   decoration: BoxDecoration(
                     color: visitLabel.isEmpty
-                        ? const Color(0xFFF1F5F9)
+                        ? const Color(0xFFF2F4F6)
                         : const Color(0xFFEDE8F5),
                     borderRadius: BorderRadius.circular(999),
                   ),
@@ -1240,7 +1240,7 @@ class _ActivityChart extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: Color(0xFFF1F5F9)), // slate-100
+          bottom: BorderSide(color: Color(0xFFF2F4F6)), // slate-100
         ),
       ),
       padding: const EdgeInsets.only(bottom: 24),
@@ -2037,7 +2037,7 @@ class _PendingReportRow extends StatelessWidget {
       case DossierStatus.CLOSED:
       case DossierStatus.ARCHIVED:
         return const _StatusPalette(
-          bg: Color(0xFFF1F5F9),
+          bg: Color(0xFFF2F4F6),
           fg: Color(0xFF475569),
           dot: Color(0xFF94A3B8),
         );
@@ -2089,7 +2089,7 @@ class _EmptyStatePlaceholder extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: const BoxDecoration(
-                color: Color(0xFFF1F5F9),
+                color: Color(0xFFF2F4F6),
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
