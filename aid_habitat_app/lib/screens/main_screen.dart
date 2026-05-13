@@ -635,8 +635,19 @@ class _MainScreenState extends State<MainScreen>
         // relevé de visite, que je change situation familiale, ça
         // rechange direct le nom à celui initial ».
         onOpenVisitReport: () async {
-          final fresh =
-              await _dataService.fetchDossierById(_selectedDossier!.id);
+          // Guard 2026-05-13 : `_selectedDossier` peut être `null` si le
+          // widget tree est dans un état transitoire (ex. hot-reload
+          // concurrent pendant qu'un autre agent modifie le code, ou
+          // race condition de navigation). Avant ce guard, le `!` crashait
+          // avec "Null check operator used on a null value" et l'UI
+          // devenait inutilisable.
+          final selected = _selectedDossier;
+          if (selected == null) {
+            // ignore: avoid_print
+            print('[main] onOpenVisitReport ignoré: _selectedDossier=null');
+            return;
+          }
+          final fresh = await _dataService.fetchDossierById(selected.id);
           if (!mounted) return;
           _pushHistory();
           setState(() {
@@ -654,8 +665,14 @@ class _MainScreenState extends State<MainScreen>
         // sidebar et la masquerait. Refresh dossier identique au
         // VAD pour ne pas afficher des données stale.
         onOpenDocuments: () async {
-          final fresh =
-              await _dataService.fetchDossierById(_selectedDossier!.id);
+          // Même guard que onOpenVisitReport (cf. ci-dessus).
+          final selected = _selectedDossier;
+          if (selected == null) {
+            // ignore: avoid_print
+            print('[main] onOpenDocuments ignoré: _selectedDossier=null');
+            return;
+          }
+          final fresh = await _dataService.fetchDossierById(selected.id);
           if (!mounted) return;
           _pushHistory();
           setState(() {
@@ -694,8 +711,15 @@ class _MainScreenState extends State<MainScreen>
           // Re-fetch le dossier au retour pour que dossier_detail
           // voie les éventuelles modifs (rares — Documents écrit peu
           // de champs patient, mais ça reste cohérent avec VAD).
-          final fresh =
-              await _dataService.fetchDossierById(_selectedDossier!.id);
+          // Guard 2026-05-13 : capturer la valeur AVANT l'await pour
+          // éviter le crash si `_selectedDossier` est devenu null
+          // pendant le round-trip async (widget tree transitoire).
+          final selected = _selectedDossier;
+          if (selected == null) {
+            _goBack();
+            return;
+          }
+          final fresh = await _dataService.fetchDossierById(selected.id);
           if (!mounted) return;
           if (fresh != null) {
             setState(() => _selectedDossier = fresh);
@@ -711,8 +735,13 @@ class _MainScreenState extends State<MainScreen>
         onBack: () async {
           // Re-fetch the dossier pour que l'écran précédent voit les
           // éventuelles modifs (nom, ville…) faites dans le rapport.
-          final fresh =
-              await _dataService.fetchDossierById(_selectedDossier!.id);
+          // Même guard que onBack Documents (cf. ci-dessus).
+          final selected = _selectedDossier;
+          if (selected == null) {
+            _goBack();
+            return;
+          }
+          final fresh = await _dataService.fetchDossierById(selected.id);
           if (!mounted) return;
           if (fresh != null) {
             setState(() => _selectedDossier = fresh);

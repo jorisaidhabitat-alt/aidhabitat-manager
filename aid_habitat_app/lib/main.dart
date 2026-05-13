@@ -221,9 +221,10 @@ class MyApp extends StatelessWidget {
         ),
         // ----- Typographie Aid'Habitat (2026-05-13) -----
         // Refonte du design system : Quicksand (500) pour body/labels,
-        // Nunito (700) pour les titres display, Fraunces utilisé
-        // explicitement où il faut un grand serif élégant
-        // (titres dashboard, blocs horaires, noms de bénéficiaires).
+        // Nunito (700) pour tous les titres (display / headline / grands
+        // titres serif comme « Bonjour, X. », nom bénéficiaire, heure
+        // de visite). Fraunces a été tenté puis retiré sur demande
+        // utilisateur 2026-05-13.
         //
         // GoogleFonts.quicksandTextTheme() applique Quicksand sur
         // toutes les variantes (body/label/title), puis on surcharge

@@ -308,8 +308,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // ---------- Welcome header (refonte 2026-05-13) ----------
           // Design system Refonte.html:959-1062 :
           //  - Page-eyebrow date en mauve-500 (#8B6FA0)
-          //  - Page-title « Bonjour, X. » en Fraunces serif 42px,
-          //    weight 500, letter-spacing -0.03em
+          //  - Page-title « Bonjour, X. » en Nunito 42px weight 700
+          //    (Fraunces remplacé par Nunito sur demande utilisateur
+          //    2026-05-13)
           //  - Subtitle ink-500 (#5C6670)
           Text(
             dateLabelUpper,
@@ -323,10 +324,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 10),
           Text(
             "Bonjour, ${userName ?? 'Ergo'}.",
-            style: GoogleFonts.fraunces(
+            style: GoogleFonts.nunito(
               fontSize: 42,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -1.26, // -0.03em à 42px
+              fontWeight: FontWeight.w700,
+              letterSpacing: -1.05, // -0.025em à 42px (Nunito plus serré)
               color: const Color(0xFF0E1116), // ink-900
               height: 1.05,
             ),
@@ -933,10 +934,10 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                       const SizedBox(height: 10),
                       Text(
                         'Aucun rendez-vous planifié',
-                        style: GoogleFonts.fraunces(
+                        style: GoogleFonts.nunito(
                           fontSize: 24,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -0.72,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.6, // -0.025em
                           height: 1.1,
                           color: const Color(0xFF0E1116), // ink-900
                         ),
@@ -1051,10 +1052,10 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                       const SizedBox(height: 8),
                       Text(
                         hourLabel,
-                        style: GoogleFonts.fraunces(
+                        style: GoogleFonts.nunito(
                           fontSize: 42,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -1.26, // -0.03em
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -1.05, // -0.025em
                           height: 1,
                           color: const Color(0xFF2A1F35), // mauve-900
                         ),
@@ -1102,10 +1103,10 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                           age != null
                               ? '${patient.firstName} ${patient.lastName}, $age ans'
                               : '${patient.firstName} ${patient.lastName}',
-                          style: GoogleFonts.fraunces(
+                          style: GoogleFonts.nunito(
                             fontSize: 30,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: -0.9, // -0.03em
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.75, // -0.025em
                             height: 1.1,
                             color: const Color(0xFF0E1116), // ink-900
                           ),
@@ -2318,9 +2319,9 @@ class _AgendaRow extends StatelessWidget {
                   children: [
                     Text(
                       dayLabel,
-                      style: GoogleFonts.fraunces(
+                      style: GoogleFonts.nunito(
                         fontSize: 20,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w700,
                         color: dayColor,
                         height: 1,
                       ),
