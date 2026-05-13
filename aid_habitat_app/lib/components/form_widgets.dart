@@ -936,15 +936,27 @@ class FormMultiToggleGroup extends StatelessWidget {
                   : Colors.grey.shade300,
             ),
           ),
-          child: Text(
-            opt,
-            textAlign: TextAlign.center,
+          // On enveloppe le Text dans un DefaultTextStyle pour
+          // reproduire EXACTEMENT le rendu de FormToggleGroup
+          // (Occupation), qui utilise AnimatedDefaultTextStyle. Sans
+          // ce wrapping, le Text hérite de la police Quicksand du
+          // thème via Material → texte visiblement plus fin que celui
+          // de Occupation qui, lui, rend en Roboto (la police par
+          // défaut de Flutter, le DefaultTextStyle d'Animated…
+          // remplaçant la fontFamily Quicksand héritée).
+          // Demande utilisateur 2026-05-13 : « pourquoi l'épaisseur
+          // est encore différente ? ».
+          child: DefaultTextStyle(
             style: TextStyle(
               color: isSelected
                   ? Colors.white
                   : const Color(0xFF2B323A), // ink-700 (idem Occupation)
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
+            ),
+            child: Text(
+              opt,
+              textAlign: TextAlign.center,
             ),
           ),
         ),

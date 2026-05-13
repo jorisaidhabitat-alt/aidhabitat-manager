@@ -237,8 +237,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         return 'Environnement';
       case 'Contexte de vie-Autonomie':
         return 'Habitudes de vie';
-      case _kSharedAccessibiliteNotesTabKey:
-        return "Observations sur l'accessibilité";
+      // Legacy `Accessibilité-Notes` placeholder retiré 2026-05-13 :
+      // les 4 sous-sections d'Accessibilité ont maintenant chacune leur
+      // tabKey propre (`Accessibilité-Général`, `Accessibilité-Niveaux`,
+      // `Accessibilité-Équipements`, `Accessibilité-Extérieur`). Le
+      // placeholder par défaut (= libellé de la sous-section) sera
+      // utilisé pour chaque NotesWidget — plus de référence au tabKey
+      // partagé qui causait l'effet « 2 panneaux affichés en même
+      // temps » (un avec le placeholder section, un avec le placeholder
+      // shared).
       case _kSharedSanitairesNotesTabKey:
         return 'Observations sur les équipements et utilisation';
       default:
@@ -1980,10 +1987,19 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         subSectionIndex: 1,
       ));
     }
-    // 3) Accessibilité (note partagée toutes sous-sections)
-    if (!await _hasNoteText('Accessibilité-Notes')) {
+    // 3) Accessibilité — 4 notes par sous-section (Refonte 2026-05-13).
+    // On considère qu'au moins UNE des 4 doit être saisie pour ne pas
+    // bloquer la validation. L'utilisateur peut compléter les autres
+    // au besoin via la navigation interne.
+    final hasAnyAccessibility = await Future.wait([
+      _hasNoteText('Accessibilité-Général'),
+      _hasNoteText('Accessibilité-Niveaux'),
+      _hasNoteText('Accessibilité-Équipements'),
+      _hasNoteText('Accessibilité-Extérieur'),
+    ]).then((results) => results.any((b) => b));
+    if (!hasAnyAccessibility) {
       missing.add(_MissingField(
-        label: 'Note Accessibilité (panneau de droite)',
+        label: 'Note Accessibilité (au moins une sous-section)',
         tabIndex: _tabs.indexOf('Accessibilité'),
       ));
     }
