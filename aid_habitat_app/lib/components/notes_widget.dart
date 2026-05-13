@@ -1583,12 +1583,21 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (!widget.embedded) const Divider(height: 1),
         // Parité React : réserver au moins ~88px au canvas quand le texte est
         // visible (espace nécessaire pour que la toolbar reste en place).
+        // Quand `canvasSlideIndex` est fourni, le canvas est wrappé dans
+        // un HorizontalSlideSwitcher : ça permet de faire glisser
+        // *seulement* le canvas lors d'un changement d'occupant, sans
+        // animer la barre de navigation au-dessus (cf. MesuresTab).
         Expanded(
           child: ConstrainedBox(
             constraints: BoxConstraints(
               minHeight: widget.showText ? 88.0 : 340.0,
             ),
-            child: _buildCanvasArea(),
+            child: widget.canvasSlideIndex != null
+                ? HorizontalSlideSwitcher(
+                    index: widget.canvasSlideIndex!,
+                    child: _buildCanvasArea(),
+                  )
+                : _buildCanvasArea(),
           ),
         ),
         if (widget.toolbarInFooter) _buildFooterToolbar(),

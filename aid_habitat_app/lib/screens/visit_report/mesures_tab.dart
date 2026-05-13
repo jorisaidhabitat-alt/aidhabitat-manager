@@ -4,7 +4,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../components/notes_widget.dart';
-import '../../components/soft_transitions.dart';
 
 /// Mesures tab — deux silhouettes (assise + debout) sur fond blanc.
 /// Si le foyer compte plusieurs occupants, un sélecteur "Occupant 1 /
@@ -60,8 +59,18 @@ class _MesuresTabState extends State<MesuresTab>
     // LA MÊME LIGNE que les flèches undo/redo internes du widget.
     // Demande utilisateur : « met cette bannière sur la même ligne que
     // les flèches ». Plus de header séparé au-dessus du canvas.
-    final notesWidget = NotesWidget(
-      key: ValueKey('mesures-${widget.dossier.patient.id}-$idx'),
+    // Note clé importante : la `key` du NotesWidget NE doit PAS varier
+    // avec `idx`. Si elle changeait, Flutter détruirait/recréerait la
+    // State à chaque switch d'occupant et l'ancien arbre canvas (qui
+    // devrait glisser dehors) n'existerait plus → pas d'animation
+    // possible. En gardant la même `key`, on réutilise la même State
+    // et c'est `didUpdateWidget` (déclenché par la variation du
+    // `tabKey`) qui recharge les pages du nouvel occupant. Pendant la
+    // transition, l'ancien sous-arbre canvas reste vivant via
+    // AnimatedSwitcher et peint encore les anciens strokes (les
+    // peintres capturent les références au moment du build).
+    return NotesWidget(
+      key: ValueKey('mesures-${widget.dossier.patient.id}'),
       patientId: widget.dossier.patient.id,
       tabKey: _tabKeyFor(idx),
       title: 'Mesures anthropométriques',
@@ -77,18 +86,10 @@ class _MesuresTabState extends State<MesuresTab>
       // Bannière occupant uniquement quand il y en a plusieurs —
       // sinon on évite d'encombrer la barre de navigation pour rien.
       leadingNavWidget: hasMultiple ? _buildOccupantHeader(idx) : null,
-    );
-
-    // Animation de swipe horizontal lors du changement d'occupant —
-    // même pattern que beneficiary_tab et context_tab. Le NotesWidget
-    // entier (bannière + canvas) glisse latéralement, la direction
-    // étant déduite du delta d'index (croissant → entrée par la droite,
-    // décroissant → entrée par la gauche). Mono-occupant : pas
-    // d'animation utile, on retourne le widget directement.
-    if (!hasMultiple) return notesWidget;
-    return HorizontalSlideSwitcher(
-      index: idx,
-      child: notesWidget,
+      // Slide horizontal uniquement sur la zone canvas (dessin).
+      // La bannière + flèches undo/redo restent fixes dans la barre
+      // de nav au-dessus. Mono-occupant : pas d'animation utile.
+      canvasSlideIndex: hasMultiple ? idx : null,
     );
   }
 
