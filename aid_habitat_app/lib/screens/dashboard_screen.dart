@@ -1837,9 +1837,10 @@ class _PendingReportsPanel extends StatelessWidget {
                     const Text(
                       'À RELANCER',
                       style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.2, // 0.12em à 10px
+                        // Bump 2026-05-13 : 10→12, w600→w700.
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
                         color: Color(0xFF8A939D), // ink-400
                       ),
                     ),
@@ -1864,8 +1865,9 @@ class _PendingReportsPanel extends StatelessWidget {
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF2B323A), // ink-700
                     textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      // Bump 2026-05-13 : 12→14, w500→w600.
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 4),
@@ -1955,8 +1957,9 @@ class _PendingReportRow extends StatelessWidget {
               child: Text(
                 initials,
                 style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
+                  // Bump 2026-05-13 : 15→17, w700→w800.
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
                   color: avatarPalette.fg,
                 ),
               ),
@@ -1970,8 +1973,9 @@ class _PendingReportRow extends StatelessWidget {
                   Text(
                     '${p.firstName} ${p.lastName}'.trim(),
                     style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                      // Bump 2026-05-13 : 14→16, w500→w600.
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                       color: Color(0xFF0E1116), // ink-900
                     ),
                     maxLines: 1,
@@ -1982,7 +1986,9 @@ class _PendingReportRow extends StatelessWidget {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        fontSize: 12,
+                        // Bump 2026-05-13 : 12→14, ajout w600.
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                         color: Color(0xFF5C6670), // ink-500
                       ),
                       maxLines: 1,
@@ -2133,8 +2139,9 @@ class _EmptyStatePlaceholder extends StatelessWidget {
             Text(
               text,
               style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+                // Bump 2026-05-13 : 14→16, w700→w800.
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
                 color: Color(0xFF475569),
               ),
               textAlign: TextAlign.center,
@@ -2144,7 +2151,9 @@ class _EmptyStatePlaceholder extends StatelessWidget {
               Text(
                 subText!,
                 style: const TextStyle(
-                  fontSize: 12,
+                  // Bump 2026-05-13 : 12→14, ajout w600.
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: Color(0xFF94A3B8),
                 ),
                 textAlign: TextAlign.center,
@@ -2221,8 +2230,9 @@ class _WeekAgendaPanel extends StatelessWidget {
                     const Text(
                       'CETTE SEMAINE',
                       style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
+                        // Bump 2026-05-13 : 10→12, w600→w700.
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 1.2,
                         color: Color(0xFF8A939D), // ink-400
                       ),
@@ -2247,8 +2257,9 @@ class _WeekAgendaPanel extends StatelessWidget {
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF2B323A), // ink-700
                     textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      // Bump 2026-05-13 : 12→14, w500→w600.
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 4),
@@ -2354,8 +2365,9 @@ class _AgendaRow extends StatelessWidget {
                     Text(
                       dayLabel,
                       style: GoogleFonts.nunito(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
+                        // Bump 2026-05-13 : 20→22, w700→w800.
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
                         color: dayColor,
                         height: 1,
                       ),
@@ -2364,11 +2376,12 @@ class _AgendaRow extends StatelessWidget {
                     Text(
                       monthLabel,
                       style: TextStyle(
-                        fontSize: 10,
+                        // Bump 2026-05-13 : 10→12, w600→w700 / w400→w600.
+                        fontSize: 12,
                         fontWeight: isHighlighted
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        letterSpacing: 1.0, // 0.1em
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                        letterSpacing: 1.0,
                         color: monthColor,
                       ),
                     ),
@@ -2383,8 +2396,9 @@ class _AgendaRow extends StatelessWidget {
                     Text(
                       '${p.firstName} ${p.lastName}'.trim(),
                       style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                        // Bump 2026-05-13 : 13→15, w500→w600.
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                         color: Color(0xFF0E1116),
                       ),
                       maxLines: 1,
@@ -2394,7 +2408,9 @@ class _AgendaRow extends StatelessWidget {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        fontSize: 12,
+                        // Bump 2026-05-13 : 12→14, ajout w600.
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                         color: Color(0xFF5C6670),
                       ),
                       maxLines: 1,
@@ -2410,8 +2426,9 @@ class _AgendaRow extends StatelessWidget {
               Text(
                 timeLabel,
                 style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                  // Bump 2026-05-13 : 12→14, w500→w600.
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   fontFeatures: [FontFeature.tabularFigures()],
                   color: Color(0xFF2B323A), // ink-700
                 ),
