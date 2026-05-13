@@ -141,7 +141,7 @@ class AccompanimentBadge extends StatelessWidget {
         // sur les badges du header (Quicksand plafonne à w700).
         style: GoogleFonts.nunito(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: 0.2,
           color: palette.fg,
         ),
@@ -255,7 +255,7 @@ class IncomeCategoryBadge extends StatelessWidget {
         // Refonte 2026-05-13 : Nunito w800 (cf. AccompanimentBadge).
         style: GoogleFonts.nunito(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: 0.2,
           color: fg,
         ),
@@ -323,7 +323,7 @@ class AnahStatusBadge extends StatelessWidget {
         // Refonte 2026-05-13 : Nunito w800 (cf. AccompanimentBadge).
         style: GoogleFonts.nunito(
           fontSize: large ? 13 : 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: 0.2,
           color: fg,
         ),

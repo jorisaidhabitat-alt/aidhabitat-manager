@@ -193,13 +193,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// Calcule le tabKey à utiliser pour le panneau notes. Pour la
   /// majorité des onglets c'est `'$tab-$section'`. Cas spéciaux :
   ///   - Sanitaires (Salle de bain / WC) → [_kSharedSanitairesNotesTabKey]
-  ///   - Accessibilité (toutes sous-sections) → [_kSharedAccessibiliteNotesTabKey]
+  ///   - Accessibilité : collapse retiré 2026-05-13 (demande user :
+  ///     « reprend comme dans bénéficiaire ») → chaque sous-section a
+  ///     son propre tabKey unique : `Accessibilité-Général`,
+  ///     `Accessibilité-Niveaux`, etc.
   static String _resolveNotesTabKey(String activeTab, String section) {
     if (activeTab == 'Salle de bain' || activeTab == 'WC') {
       return _kSharedSanitairesNotesTabKey;
-    }
-    if (activeTab == 'Accessibilité') {
-      return _kSharedAccessibiliteNotesTabKey;
     }
     return '$activeTab-$section';
   }
