@@ -699,8 +699,9 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                       Text(
                         visitTimeHighlight,
                         style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                          // Bump 2026-05-13 : 13→15, w700→w800.
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
                           color: Colors.white,
                           letterSpacing: 0.3,
                         ),
@@ -734,8 +735,9 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                       Text(
                         visitLabel.isEmpty ? 'À planifier' : visitLabel,
                         style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
+                          // Bump 2026-05-13 : 12→14, bold→w800.
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
                           color: visitLabel.isEmpty
                               ? const Color(0xFF64748B)
                               : const Color(0xFF8B6FA0),
@@ -1615,8 +1617,9 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
           const Text(
             'Mes visites du jour',
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              // Bump 2026-05-13 : 18→20, bold→w800.
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
               color: Color(0xFF1E293B),
             ),
           ),

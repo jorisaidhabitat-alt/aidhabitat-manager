@@ -1132,20 +1132,20 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Refonte 2026-05-13 : animation de transition entre tags + border
-    // sur les tags inactifs (demande utilisateur : « fais une animation
-    // de transition de remplissage entre les tags (fade in et fade
-    // out) et ajoute des border aux tags qui ne sont pas sélectionnés »).
+    // Refonte 2026-05-13 : palette + animation strictement alignées sur
+    // FormToggleGroup (pills VAD/Occupation) — demande utilisateur :
+    // « non c'est trop brutal encore, fais la meme animation que celle
+    // des boutons de relevé de visite (VAD) ».
     //
-    // - AnimatedContainer : interpole `color` (white ↔ mauve-500) et
-    //   `border` (slate-200 ↔ transparent) sur 220 ms ease-out cubic.
-    //   Visuellement équivalent à un cross-fade du fond entre les deux
-    //   tags concernés (ancien actif s'éclaircit, nouveau actif se
-    //   teinte).
-    // - AnimatedDefaultTextStyle : interpole la couleur de texte
-    //   (slate-600 ↔ blanc) sur le même tempo. On part de
-    //   `GoogleFonts.nunito(...)` pour conserver la fontFamily Nunito
-    //   (pas de retombée Roboto).
+    // Avant : transition white → mauve-500, delta trop fort → effet
+    // brutal même avec 220 ms d'easing.
+    // Maintenant : mauve-50 (#FAF7FB) → mauve-500 (#8B6FA0) sur 220 ms
+    // ease-out cubic. Le repos est déjà légèrement teinté → transition
+    // douce, lue comme un « remplissage » progressif (idem Occupation).
+    //
+    // Border slate-200 conservée sur les tags inactifs (demande user
+    // précédente) — visible sur le fond mauve-50, disparait quand le
+    // tag devient actif (border → mauve-500 = se confond avec le fond).
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
@@ -1154,12 +1154,14 @@ class _FilterChip extends StatelessWidget {
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF8B6FA0) : Colors.white,
+          color: isActive
+              ? const Color(0xFF8B6FA0) // mauve-500
+              : const Color(0xFFFAF7FB), // mauve-50 (idem VAD inactif)
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isActive
-                ? Colors.transparent
-                : const Color(0xFFE2E8F0), // slate-200
+                ? const Color(0xFF8B6FA0) // fusionnée avec le fond actif
+                : const Color(0xFFE2E8F0), // slate-200 (border inactive)
             width: 1,
           ),
         ),
