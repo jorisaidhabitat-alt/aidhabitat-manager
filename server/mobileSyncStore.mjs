@@ -1,8 +1,56 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import process from 'node:process';
+import { gzipSync, gunzipSync } from 'node:zlib';
 
 import { callNocoTool } from './nocodbMcpClient.mjs';
+
+// ----- Compression du `drawing_json` au-delà de la limite NocoDB -----
+//
+// NocoDB plafonne le type `LongText` à 100 000 caractères. Les dessins
+// riches (croquis « Contexte de vie → Médical », plans avant/après…)
+// produisent un JSON `{strokes:[…], text:"…"}` qui dépasse 100k dès
+// qu'on a beaucoup de traits → 422 ERR_INVALID_VALUE_FOR_FIELD.
+//
+// Stratégie : on gzip+base64 le contenu si sa longueur dépasse 80 000
+// (marge), et on préfixe la chaîne stockée par `GZIP:` pour pouvoir la
+// détecter à la lecture. Le préfixe est unique (un JSON valide ne
+// commence pas par `GZIP:`), donc la détection est sans ambiguïté et
+// rétrocompatible avec les enregistrements legacy non compressés.
+//
+// Côté client : zéro changement — `buildNotePagePayload` renvoie
+// toujours du JSON clair (on décompresse avant d'envoyer).
+const DRAWING_GZIP_PREFIX = 'GZIP:';
+const DRAWING_COMPRESS_THRESHOLD = 80_000;
+
+const compressDrawingForStorage = (drawingJson) => {
+  const raw = drawingJson == null ? '' : String(drawingJson);
+  if (raw.length <= DRAWING_COMPRESS_THRESHOLD) return raw;
+  try {
+    const compressed = gzipSync(Buffer.from(raw, 'utf8'));
+    return DRAWING_GZIP_PREFIX + compressed.toString('base64');
+  } catch (err) {
+    // Si gzip échoue (improbable), on renvoie le brut — NocoDB peut
+    // ensuite refuser avec 422, mais c'est moins pire qu'une corruption
+    // silencieuse.
+    console.warn('[drawing-compress] gzip échoué, fallback brut :', err?.message || err);
+    return raw;
+  }
+};
+
+const decompressDrawingForRead = (stored) => {
+  const raw = stored == null ? '' : String(stored);
+  if (!raw.startsWith(DRAWING_GZIP_PREFIX)) return raw;
+  try {
+    const base64 = raw.slice(DRAWING_GZIP_PREFIX.length);
+    return gunzipSync(Buffer.from(base64, 'base64')).toString('utf8');
+  } catch (err) {
+    // Donnée corrompue : on logue + renvoie une chaîne vide pour ne
+    // pas planter le rendu côté client (mieux qu'une exception).
+    console.warn('[drawing-compress] gunzip échoué :', err?.message || err);
+    return '';
+  }
+};
 
 const DATA_DIR_URL = new URL('./data/', import.meta.url);
 const DOCUMENTS_DIR_URL = new URL('./data/documents/', import.meta.url);
@@ -929,7 +977,9 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     LEGACY_NOTE_TAB_KEYS.has(stringValue(tab).trim().toLowerCase());
 
   const isEmptyNotePageRecord = (record) => {
-    const drawingRaw = stringValue(field(record, 'drawing_json')).trim();
+    // Décompresser si gzippé (cf. compressDrawingForStorage) avant
+    // d'essayer de parser le JSON pour décider si la note est vide.
+    const drawingRaw = decompressDrawingForRead(stringValue(field(record, 'drawing_json'))).trim();
     if (drawingRaw) {
       try {
         const parsed = JSON.parse(drawingRaw);
@@ -1313,7 +1363,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         subTabKey: stringValue(field(record, 'sub_tab_key')),
         pageNumber: Number(field(record, 'page_number')) || 0,
         textContent: stringValue(field(record, 'text_content')),
-        drawingJson: stringValue(field(record, 'drawing_json')),
+        drawingJson: decompressDrawingForRead(stringValue(field(record, 'drawing_json'))),
         previewDataUrl: stringValue(field(record, 'preview_data_url')),
         previewUrl: stringValue(field(record, 'preview_url')),
         layoutKind: stringValue(field(record, 'layout_kind')) || 'freeform',
@@ -1345,7 +1395,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       subTabKey: stringValue(field(existing, 'sub_tab_key')),
       pageNumber: Number(field(existing, 'page_number')) || 0,
       textContent: stringValue(field(existing, 'text_content')),
-      drawingJson: stringValue(field(existing, 'drawing_json')),
+      drawingJson: decompressDrawingForRead(stringValue(field(existing, 'drawing_json'))),
       previewDataUrl: stringValue(field(existing, 'preview_data_url')),
       previewUrl: stringValue(field(existing, 'preview_url')),
       layoutKind: stringValue(field(existing, 'layout_kind')) || 'freeform',
@@ -1480,7 +1530,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         scope_id: scopeId || dossierId || patientId,
         sub_tab_key: stringValue(subTabKey),
         text_content: stringValue(textContent),
-        drawing_json: drawingJson,
+        drawing_json: compressDrawingForStorage(drawingJson),
         ...(supportsPreviewField ? { preview_data_url: stringValue(previewDataUrl) } : {}),
         ...(supportsPreviewUrlField ? { preview_url: resolvedPreviewUrl } : {}),
         layout_kind: layoutKind || 'freeform',
