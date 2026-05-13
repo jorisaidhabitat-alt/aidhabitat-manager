@@ -543,15 +543,17 @@ class _RecommendationCard extends StatelessWidget {
             onChanged: (v) => onChange(item.copyWith(customTitle: v)),
           ),
           const SizedBox(height: 4),
-          // Description : fontSize 14 (vs 12 par défaut). 4 lignes max
-          // (relevé 2026-05-04 : permet d'afficher 2-3 descriptions
-          // sélectionnées depuis une fiche multi-descriptions sans
-          // troncature visuelle, tout en gardant la grille compacte).
-          // Le contenu reste scroll dans le champ si plus de 4 lignes.
+          // Description multi-ligne : auto-grow (refonte 2026-05-13).
+          // `maxLines: null` = pas de limite haute → toutes les lignes
+          // saisies restent visibles. `minLines: 2` = démarre sur
+          // 2 lignes pour donner un look « text area ». Radius léger
+          // (12px) appliqué automatiquement par FormTextField en mode
+          // multi-ligne (vs pill 999 pour single-line).
           FormTextField(
             label: '',
             value: item.note,
-            maxLines: 4,
+            maxLines: null,
+            minLines: 2,
             valueSize: 14,
             onChanged: (v) => onChange(item.copyWith(note: v)),
           ),

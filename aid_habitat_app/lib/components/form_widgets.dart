@@ -342,60 +342,63 @@ class _FormTextFieldState extends State<FormTextField> {
           ),
         ),
         SizedBox(height: widget.labelSpacing ?? 5),
-        TextFormField(
-          controller: _controller,
-          focusNode: _focusNode,
-          readOnly: widget.readOnly,
-          autofocus: widget.autofocus,
-          keyboardType: widget.keyboardType,
-          maxLines: widget.maxLines,
-          style: TextStyle(
-            fontSize: widget.valueSize ?? 14,
-            color: const Color(0xFF2B323A), // ink-700
-          ),
-          stylusHandwritingEnabled: true,
-          onFieldSubmitted: widget.onSubmitted,
-          onTapOutside: widget.onTapOutside == null
-              ? null
-              : (_) {
-                  _focusNode.unfocus();
-                  widget.onTapOutside!();
-                },
-          // Refonte 2026-05-13 (demande user) : style aligné sur le
-          // champ Ville en mode édition du dossier — fond blanc, border
-          // gris léger (grey.shade300), radius 10, focus violet 1.5px.
-          // En readonly : fond mauve-100 conservé pour différencier
-          // visuellement les champs non éditables.
-          decoration: InputDecoration(
-            isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+        // Refonte 2026-05-13 : mode single-line = pill radius 999 ;
+        // mode multi-line = radius léger 12 + auto-grow (minLines à 2
+        // par défaut pour donner un look « text area »). Toutes les
+        // lignes saisies restent visibles si maxLines=null.
+        Builder(builder: (context) {
+          final isMultiline = widget.maxLines == null || widget.maxLines! > 1;
+          final radius = isMultiline ? 12.0 : 999.0;
+          return TextFormField(
+            controller: _controller,
+            focusNode: _focusNode,
+            readOnly: widget.readOnly,
+            autofocus: widget.autofocus,
+            keyboardType: widget.keyboardType,
+            maxLines: widget.maxLines,
+            minLines: widget.minLines ?? (isMultiline ? 2 : 1),
+            style: TextStyle(
+              fontSize: widget.valueSize ?? 14,
+              color: const Color(0xFF2B323A),
             ),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+            stylusHandwritingEnabled: true,
+            onFieldSubmitted: widget.onSubmitted,
+            onTapOutside: widget.onTapOutside == null
+                ? null
+                : (_) {
+                    _focusNode.unfocus();
+                    widget.onTapOutside!();
+                  },
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: isMultiline ? 12 : 10,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(radius),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(radius),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(radius),
+                borderSide:
+                    const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
+              ),
+              filled: true,
+              fillColor: widget.readOnly
+                  ? const Color(0xFFF2ECF5)
+                  : Colors.white,
+              suffixText: widget.suffix,
+              suffixStyle:
+                  const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
             ),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide:
-                  const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
-            ),
-            filled: true,
-            fillColor: widget.readOnly
-                ? const Color(0xFFF2ECF5) // mauve-100 (readonly accent)
-                : Colors.white,
-            suffixText: widget.suffix,
-            suffixStyle:
-                const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
-          ),
-          onChanged: widget.onChanged,
-        ),
+            onChanged: widget.onChanged,
+          );
+        }),
       ],
     );
   }

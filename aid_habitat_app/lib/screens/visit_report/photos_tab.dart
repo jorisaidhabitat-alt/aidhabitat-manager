@@ -1276,57 +1276,8 @@ class _ExtraSection {
   int get hashCode => Object.hash(baseTag, index);
 }
 
-/// Bordure pointillée autour d'un rectangle arrondi — utilisée par le
-/// bouton « Ajouter une partie » pour matcher la zone « Déposer un
-/// fichier » de DocumentsScreen. Copie locale du painter (pas extrait
-/// dans un composant partagé pour limiter la portée du change).
-class _PhotoDashedBorderPainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-  final double radius;
-  final double dashLength;
-  final double dashGap;
-
-  _PhotoDashedBorderPainter({
-    required this.color,
-    required this.strokeWidth,
-    required this.radius,
-    required this.dashLength,
-    required this.dashGap,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-    final rect =
-        Rect.fromLTWH(0, 0, size.width, size.height).deflate(strokeWidth / 2);
-    final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
-    final metrics = path.computeMetrics().toList();
-    for (final metric in metrics) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final next = distance + dashLength;
-        canvas.drawPath(
-          metric.extractPath(distance, next.clamp(0, metric.length)),
-          paint,
-        );
-        distance = next + dashGap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _PhotoDashedBorderPainter old) =>
-      old.color != color ||
-      old.strokeWidth != strokeWidth ||
-      old.radius != radius ||
-      old.dashLength != dashLength ||
-      old.dashGap != dashGap;
-}
+// `_PhotoDashedBorderPainter` retiré 2026-05-13 — seul utilisé par le
+// bouton « Ajouter une partie » désormais supprimé.
 
 // ---------------------------------------------------------------------------
 // Tile — une photo d'une catégorie visite. Image SEULE, sans badge
