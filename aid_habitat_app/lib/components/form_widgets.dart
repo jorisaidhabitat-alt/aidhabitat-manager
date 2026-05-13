@@ -801,7 +801,7 @@ class FormToggleGroup extends StatelessWidget {
             style: const TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 14,
-              color: Color(0xFF2B323A), // ink-700
+              color: Color(0xFF0E1116), // ink-900 (noir)
             ),
           ),
           const SizedBox(height: 6),
@@ -1201,7 +1201,7 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
           style: const TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 14,
-            color: Color(0xFF2B323A),
+            color: Color(0xFF0E1116),
           ),
         ),
         const SizedBox(height: 5),
