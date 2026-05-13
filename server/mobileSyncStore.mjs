@@ -1595,7 +1595,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       sub_tab_key: stringValue(subTabKey),
       page_number: Number(pageNumber) || 0,
       text_content: stringValue(textContent),
-      drawing_json: drawingJson,
+      drawing_json: compressDrawingForStorage(drawingJson),
       ...(supportsPreviewField ? { preview_data_url: stringValue(previewDataUrl) } : {}),
       ...(supportsPreviewUrlField ? { preview_url: createdPreviewUrl } : {}),
       layout_kind: layoutKind || 'freeform',
