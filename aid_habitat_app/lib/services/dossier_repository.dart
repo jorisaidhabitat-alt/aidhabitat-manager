@@ -2654,9 +2654,24 @@ class DossierRepository {
     // perdue si l'app redémarre avant que l'utilisateur ait choisi
     // l'item bibliothèque.
     final itemsJson = items.map((e) => e.toJson()).toList();
+    final newItemsJsonString = jsonEncode(itemsJson);
+
+    // Optimisation 2026-05-13 : diff avec la liste existante. Si le
+    // JSON sérialisé est strictement identique à ce qui est en SQLite,
+    // c'est un no-op (pas de save SQLite, pas de push serveur). Cas
+    // typique : `recommendations_tab._save()` se déclenche au save
+    // debounce après n'importe quel rebuild même quand rien n'a
+    // vraiment changé (ex. focus/blur sur un champ texte).
+    if (existing.isNotEmpty) {
+      final existingItemsJson = existing.first['items_json'] as String?;
+      if (existingItemsJson == newItemsJsonString) {
+        return; // rien changé → no-op total
+      }
+    }
+
     final data = <String, dynamic>{
       'dossier_local_id': dossierId,
-      'items_json': jsonEncode(itemsJson),
+      'items_json': newItemsJsonString,
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };

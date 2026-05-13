@@ -503,15 +503,31 @@ TextTheme _buildAppTextTheme() {
     );
   }
 
+  // Helper Quicksand forcé en w700 — demande user 2026-05-13 : « pour
+  // Quicksand passe à 700 ». Auparavant le textTheme Material laissait
+  // body/label en w400-w500, label en w600 — désormais tout le texte
+  // courant (titres minor, body, labels) hérite de Quicksand 700.
+  TextStyle q700(TextStyle? source) {
+    return (source ?? const TextStyle()).copyWith(fontWeight: FontWeight.w700);
+  }
+
   return quicksand.copyWith(
+    // ---- Display / Headline : Nunito w700 (inchangé) ----
     displayLarge: nunito(quicksand.displayLarge),
     displayMedium: nunito(quicksand.displayMedium),
     displaySmall: nunito(quicksand.displaySmall),
     headlineLarge: nunito(quicksand.headlineLarge),
     headlineMedium: nunito(quicksand.headlineMedium),
     headlineSmall: nunito(quicksand.headlineSmall),
-    // titleLarge garde Quicksand (utilisé partout pour AppBar / cards).
-    // bodyLarge / bodyMedium / bodySmall : Quicksand 500.
-    // labelLarge / labelMedium / labelSmall : Quicksand 600.
+    // ---- Title / Body / Label : Quicksand FORCÉE en w700 ----
+    titleLarge: q700(quicksand.titleLarge),
+    titleMedium: q700(quicksand.titleMedium),
+    titleSmall: q700(quicksand.titleSmall),
+    bodyLarge: q700(quicksand.bodyLarge),
+    bodyMedium: q700(quicksand.bodyMedium),
+    bodySmall: q700(quicksand.bodySmall),
+    labelLarge: q700(quicksand.labelLarge),
+    labelMedium: q700(quicksand.labelMedium),
+    labelSmall: q700(quicksand.labelSmall),
   );
 }
