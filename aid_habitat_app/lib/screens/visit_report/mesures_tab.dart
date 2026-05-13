@@ -132,17 +132,13 @@ class _MesuresTabState extends State<MesuresTab>
             onTap: hasNav ? action : null,
             borderRadius: BorderRadius.circular(999),
             child: Container(
-              // Boutons agrandis 36×36 (vs 30×30) pour rééquilibrer
-              // visuellement avec le texte du nom et compenser
-              // l'impression « trop petit » dans la barre de nav.
-              width: 36,
-              height: 36,
+              width: 30,
+              height: 30,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(999),
               ),
-              // Icône 18 (vs 16) — légèrement plus présente.
-              child: Icon(icon, size: 18, color: const Color(0xFF2B323A)),
+              child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
             ),
           ),
         ),
@@ -150,10 +146,7 @@ class _MesuresTabState extends State<MesuresTab>
     }
 
     return Container(
-      // Padding vertical 7 (vs 5) — donne plus de hauteur visuelle au
-      // pill pour qu'il n'ait plus l'air écrasé entre les flèches
-      // undo/redo. Padding horizontal 10 (vs 8) pour cohérence.
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: const Color(0xFFFAF7FB), // mauve-50
         border: Border.all(color: const Color(0xFFF2ECF5)), // mauve-100
@@ -178,12 +171,8 @@ class _MesuresTabState extends State<MesuresTab>
             child: Text(
               display,
               style: GoogleFonts.nunito(
-                // Taille bumpée 18 (vs 17) + weight allégé à 500
-                // (vs 600). Demande utilisateur 2026-05-12 : « trop
-                // petit et trop bold » dans le contexte de la barre
-                // de nav. Plus aéré, moins agressif visuellement.
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
                 letterSpacing: -0.25,
                 height: 1.15,
                 color: const Color(0xFF0E1116),
