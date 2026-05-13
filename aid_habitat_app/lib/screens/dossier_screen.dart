@@ -746,11 +746,17 @@ class _DossierScreenState extends State<DossierScreen> {
                   child: AnimatedDefaultTextStyle(
                     duration: const Duration(milliseconds: 280),
                     curve: Curves.easeInOut,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: bannerFg,
-                    ),
+                    // On part du style ambiant pour préserver la
+                    // fontFamily Quicksand héritée du thème. Sans ce
+                    // merge, AnimatedDefaultTextStyle écraserait le
+                    // DefaultTextStyle ambiant et le Text retomberait
+                    // sur Roboto. Demande utilisateur 2026-05-13 : « il
+                    // ne faut absolument pas de Roboto ».
+                    style: DefaultTextStyle.of(context).style.copyWith(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: bannerFg,
+                        ),
                     child: const Text(
                       'Bénéficiaire',
                       overflow: TextOverflow.ellipsis,

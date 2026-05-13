@@ -1907,23 +1907,47 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   Widget _buildPageNavRow() {
+    // Cas centrage strict : `leadingNavWidget` présent + pas de pagination
+    // (cas onglet Mesures). On bascule sur un Stack pour que la bannière
+    // soit centrée par rapport à la pleine largeur de la barre, et pas
+    // par rapport à l'espace restant après undo/redo. Undo/redo sont
+    // posés en `Align(centerRight)` par-dessus.
+    if (widget.leadingNavWidget != null && !widget.allowPagination) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Bannière centrée sur la pleine largeur de la barre.
+            widget.leadingNavWidget!,
+            // Undo/redo collés à droite, par-dessus le stack.
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _HeaderIconButton(
+                    icon: LucideIcons.undo2,
+                    onTap: _undoStack.isEmpty ? null : _undo,
+                    tooltip: 'Annuler',
+                  ),
+                  _HeaderIconButton(
+                    icon: LucideIcons.redo2,
+                    onTap: _redoStack.isEmpty ? null : _redo,
+                    tooltip: 'Rétablir',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
       child: Row(
         children: [
-          // Quand un `leadingNavWidget` est fourni ET qu'il n'y a pas
-          // de pagination (cas onglet Mesures), on l'étire pour occuper
-          // tout l'espace disponible et on centre son contenu. Ça permet
-          // à la bannière occupant d'être visuellement centrée dans la
-          // barre de nav, avec undo/redo qui restent calés à droite.
-          // Sinon on garde l'ancien comportement (collé à gauche +
-          // Spacer en aval).
-          if (widget.leadingNavWidget != null &&
-              !widget.allowPagination) ...[
-            Expanded(
-              child: Center(child: widget.leadingNavWidget!),
-            ),
-          ] else if (widget.leadingNavWidget != null) ...[
+          if (widget.leadingNavWidget != null) ...[
             widget.leadingNavWidget!,
             const SizedBox(width: 8),
           ],
@@ -1969,12 +1993,7 @@ class _NotesWidgetState extends State<NotesWidget> {
               tooltip: 'Supprimer la page',
             ),
           ],
-          // Spacer omis lorsque le leadingNavWidget est déjà Expanded
-          // (cas leading + !pagination) — il prendrait l'espace en
-          // double et désaxerait la bannière. Sinon Spacer normal pour
-          // pousser undo/redo à droite.
-          if (!(widget.leadingNavWidget != null && !widget.allowPagination))
-            const Spacer(),
+          const Spacer(),
           _HeaderIconButton(
             icon: LucideIcons.undo2,
             onTap: _undoStack.isEmpty ? null : _undo,

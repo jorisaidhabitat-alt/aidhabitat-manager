@@ -755,6 +755,14 @@ class FormToggleGroup extends StatelessWidget {
     //  - Active   : bg mauve-500, border mauve-500, texte blanc
     //  - Radius 9999 (pill complet)
     //  - Animation 220ms ease (background + color)
+    // On capture le style ambiant (Quicksand via le thème Material).
+    // Sans ça, `AnimatedDefaultTextStyle` plus bas remplacerait le
+    // DefaultTextStyle hérité et le Text retomberait sur Roboto (police
+    // par défaut de Flutter). Demande utilisateur 2026-05-13 : « il ne
+    // faut absolument pas de Roboto dans l'application » → on
+    // `merge` notre style sur celui du thème pour conserver la
+    // fontFamily Quicksand.
+    final ambientStyle = DefaultTextStyle.of(context).style;
     Widget buildPill(String opt) {
       final isSelected = opt == selected;
       return GestureDetector(
@@ -785,7 +793,9 @@ class FormToggleGroup extends StatelessWidget {
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            style: TextStyle(
+            // On part du style ambiant (Quicksand) puis on surcharge
+            // color/size/weight — préserve la fontFamily du thème.
+            style: ambientStyle.copyWith(
               color: isSelected
                   ? Colors.white
                   : const Color(0xFF2B323A), // ink-700
@@ -936,27 +946,20 @@ class FormMultiToggleGroup extends StatelessWidget {
                   : Colors.grey.shade300,
             ),
           ),
-          // On enveloppe le Text dans un DefaultTextStyle pour
-          // reproduire EXACTEMENT le rendu de FormToggleGroup
-          // (Occupation), qui utilise AnimatedDefaultTextStyle. Sans
-          // ce wrapping, le Text hérite de la police Quicksand du
-          // thème via Material → texte visiblement plus fin que celui
-          // de Occupation qui, lui, rend en Roboto (la police par
-          // défaut de Flutter, le DefaultTextStyle d'Animated…
-          // remplaçant la fontFamily Quicksand héritée).
-          // Demande utilisateur 2026-05-13 : « pourquoi l'épaisseur
-          // est encore différente ? ».
-          child: DefaultTextStyle(
+          // Text simple → hérite la fontFamily Quicksand du thème
+          // Material via DefaultTextStyle ambiant. Demande utilisateur
+          // 2026-05-13 : « il ne faut absolument pas de Roboto dans
+          // l'application » — donc pas de DefaultTextStyle wrapper qui
+          // viendrait écraser l'héritage.
+          child: Text(
+            opt,
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: isSelected
                   ? Colors.white
                   : const Color(0xFF2B323A), // ink-700 (idem Occupation)
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
-            ),
-            child: Text(
-              opt,
-              textAlign: TextAlign.center,
             ),
           ),
         ),

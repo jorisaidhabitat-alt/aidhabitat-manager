@@ -1959,13 +1959,17 @@ class _DateOfBirthField extends StatelessWidget {
                         child: AnimatedDefaultTextStyle(
                           duration: const Duration(milliseconds: 200),
                           curve: Curves.easeOut,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w400,
-                            color: isSelected
-                                ? Colors.white
-                                : const Color(0xFF0E1116),
-                          ),
+                          // Merge sur le style ambiant pour préserver
+                          // la fontFamily Quicksand (sinon retombe sur
+                          // Roboto — interdit, demande utilisateur
+                          // 2026-05-13).
+                          style: DefaultTextStyle.of(ctx).style.copyWith(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w400,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF0E1116),
+                              ),
                           child: Text(labels[i]),
                         ),
                       ),
