@@ -1169,13 +1169,18 @@ class _NumberedCheckRow extends StatelessWidget {
     //  - Label 13.5px ink-800 prend l'espace restant
     //  - Boutons ✓ / ! ronds 28×28 (border-radius 9999)
     //  - Tint du row quand actif : mauve-tint si ok, red-tint si warn
+    // Refonte 2026-05-15 (demande user) : priorité de tint sur le row :
+    //   1. autonomous (✓)    → tint mauve, peu importe les autres
+    //   2. attention (!)     → tint rouge, peu importe les autres
+    //   3. humanHelp (👥) SEUL → tint jaune ambre (#FDF6E3, ambre saturé 8%)
+    //   4. sinon (rien coché, ou combinaisons sans ✓/!) → pas de tint
     Color? rowBg;
     if (state.autonomous) {
-      // color-mix(in oklab, mauve-500 8% white) ≈ mauve-50 saturé
-      rowBg = const Color(0xFFF2EDF5);
+      rowBg = const Color(0xFFF2EDF5); // mauve-50 saturé
     } else if (state.attention) {
-      // color-mix(in oklab, #D85C42 8% white) ≈ red-50 saturé
-      rowBg = const Color(0xFFFDEFEA);
+      rowBg = const Color(0xFFFDEFEA); // red-50 saturé
+    } else if (state.humanHelp) {
+      rowBg = const Color(0xFFFDF6E3); // ambre saturé 8%
     }
 
     // Refonte 2026-05-13 (visit-pages.js l.1451-1456) : tap sur la ligne
@@ -1306,16 +1311,17 @@ class _ActionButton extends StatelessWidget {
         labelChar = '!';
         break;
       case _ActionButtonKind.humanHelp:
-        activeFill = const Color(0xFFFEF3C7);
-        // Borders retirés (demande user 2026-05-13 : « retire le contour
-        // du bouton aide à domicile jaune »). Le bouton garde son fond
-        // ambre actif pour rester reconnaissable, mais sans le cerclage
-        // jaune qui le faisait paraître trop dur.
-        activeBorder = Colors.transparent;
-        activeIcon = const Color(0xFFB45309);
+        // Refonte 2026-05-15 (demande user) : aligné sur ✓/! — border
+        // ink-200 quand inactif, fond ambre saturé + icône blanche
+        // quand actif. Plus de cerclage jaune permanent autour du
+        // bouton — il a la même apparence visuelle « plate » que les
+        // autres pour ne pas attirer l'œil quand il n'est pas coché.
+        activeFill = const Color(0xFFF5C449); // ambre saturé
+        activeBorder = const Color(0xFFF5C449);
+        activeIcon = Colors.white;
         inactiveBg = Colors.white;
-        inactiveBorder = Colors.transparent;
-        inactiveIcon = const Color(0xFFB45309);
+        inactiveBorder = const Color(0xFFE4E7EB); // ink-200
+        inactiveIcon = const Color(0xFF8A939D); // ink-400
         icon = Icons.accessibility_new;
         break;
     }
