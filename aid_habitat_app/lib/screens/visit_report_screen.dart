@@ -186,23 +186,39 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// clés possibles, écriture sur la nouvelle).
   static const String _kSharedSanitairesNotesTabKey = 'Sanitaires-Notes';
 
-  // `_kSharedAccessibiliteNotesTabKey` retiré 2026-05-13 — l'onglet
-  // Accessibilité n'a plus de note partagée : chaque sous-section
-  // (Général / Niveaux / Équipements / Extérieur) a sa propre note
-  // avec tabKey unique. Cf. `_tabSubsections['Accessibilité']` et
-  // la nouvelle logique de `_checkAccessibilite` qui valide les 4
-  // sous-sections au lieu d'une note unique partagée.
+  /// TabKey unique pour la note partagée entre les 4 sous-sections de
+  /// l'onglet « Accessibilité » (Général, Niveaux, Équipements,
+  /// Extérieur). Demande utilisateur 2026-05-15 : « la note écrite
+  /// doit être la même pour les 4 sous-sections, et c'est ce seul et
+  /// unique texte qui passera sur Observations sur l'accessibilité ».
+  ///
+  /// Pattern identique à `_kSharedSanitairesNotesTabKey` (SDB+WC).
+  /// L'écriture dans n'importe quelle sous-section met à jour la même
+  /// page de notes ; toutes les sous-sections affichent le même texte.
+  ///
+  /// Historique : ce tabKey existait jusqu'au 2026-05-13 où il avait
+  /// été retiré au profit de 4 tabKeys séparés. Le 2026-05-15, on
+  /// revient au pattern unifié (demande user explicite). Pour les
+  /// dossiers ayant écrit des notes pendant la fenêtre 13→15, le
+  /// serveur lit les 4 anciens tabKeys en fallback (cf.
+  /// `fetchVadOverlayNotesForReport` dans server/index.mjs) — donc
+  /// rien n'est perdu côté PDF.
+  static const String _kSharedAccessibiliteNotesTabKey =
+      'Accessibilité-Notes';
 
   /// Calcule le tabKey à utiliser pour le panneau notes. Pour la
   /// majorité des onglets c'est `'$tab-$section'`. Cas spéciaux :
   ///   - Sanitaires (Salle de bain / WC) → [_kSharedSanitairesNotesTabKey]
-  ///   - Accessibilité : collapse retiré 2026-05-13 (demande user :
-  ///     « reprend comme dans bénéficiaire ») → chaque sous-section a
-  ///     son propre tabKey unique : `Accessibilité-Général`,
-  ///     `Accessibilité-Niveaux`, etc.
+  ///   - Accessibilité (les 4 sous-sections) →
+  ///     [_kSharedAccessibiliteNotesTabKey] (réintroduit 2026-05-15
+  ///     sur demande user : note unique partagée entre Général /
+  ///     Niveaux / Équipements / Extérieur).
   static String _resolveNotesTabKey(String activeTab, String section) {
     if (activeTab == 'Salle de bain' || activeTab == 'WC') {
       return _kSharedSanitairesNotesTabKey;
+    }
+    if (activeTab == 'Accessibilité') {
+      return _kSharedAccessibiliteNotesTabKey;
     }
     return '$activeTab-$section';
   }
@@ -1981,11 +1997,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         subSectionIndex: 1,
       ));
     }
-    // 3) Accessibilité — 4 notes par sous-section (Refonte 2026-05-13).
-    // On considère qu'au moins UNE des 4 doit être saisie pour ne pas
-    // bloquer la validation. L'utilisateur peut compléter les autres
-    // au besoin via la navigation interne.
+    // 3) Accessibilité — note unique partagée entre les 4 sous-sections
+    // (réintroduit 2026-05-15, cf. _kSharedAccessibiliteNotesTabKey).
+    // En fallback on regarde les 4 anciens tabKeys séparés
+    // (Refonte 2026-05-13 → revert 2026-05-15) pour les dossiers qui
+    // auraient écrit pendant la fenêtre 13→15.
     final hasAnyAccessibility = await Future.wait([
+      _hasNoteText(_kSharedAccessibiliteNotesTabKey),
       _hasNoteText('Accessibilité-Général'),
       _hasNoteText('Accessibilité-Niveaux'),
       _hasNoteText('Accessibilité-Équipements'),
@@ -1993,7 +2011,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     ]).then((results) => results.any((b) => b));
     if (!hasAnyAccessibility) {
       missing.add(_MissingField(
-        label: 'Note Accessibilité (au moins une sous-section)',
+        label: 'Note Accessibilité (panneau de droite)',
         tabIndex: _tabs.indexOf('Accessibilité'),
       ));
     }
