@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../services/connectivity_service.dart';
 import '../services/data_service.dart';
 import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
@@ -439,15 +438,12 @@ class _NotesWidgetState extends State<NotesWidget> {
   late NoteTool _activeTool;
   int _penColor = _kDefaultPenColor;
   int _highlighterColor = _kDefaultHighlighterColor;
-  double _penSize = _kDefaultPenSize;
-  double _highlighterSize = _kDefaultHighlighterSize;
-  double _eraserSize = _kDefaultEraserSize;
+  final double _penSize = _kDefaultPenSize;
+  final double _highlighterSize = _kDefaultHighlighterSize;
+  final double _eraserSize = _kDefaultEraserSize;
 
   // Stroke en cours
   _Stroke? _activeStroke;
-
-  // Dernière position de la gomme (pour interpoler les trous entre deux events)
-  Offset? _lastEraserPos;
 
   // Undo / redo (bonus par rapport à React)
   final List<List<_Stroke>> _undoStack = <List<_Stroke>>[];
@@ -1290,35 +1286,6 @@ class _NotesWidgetState extends State<NotesWidget> {
       }
     }
     return changed ? next : null;
-  }
-
-  // Efface un point unique (utilisé au début du tracé, avant qu'on ait
-  // un segment).
-  void _eraseAt(Offset point) {
-    final hitDistance =
-        _eraserSize / math.max(1.0, _canvasSize.shortestSide);
-    final next = _computeEraseSegment(_strokes, point, point, hitDistance);
-    if (next == null) return;
-    setState(() => _pageStrokes[_currentPage] = next);
-    _markDirty();
-  }
-
-  // Efface la bande balayée entre [from] et [to] en une seule passe.
-  // Précédemment : boucle de jusqu'à 64 itérations, chacune scannant tous
-  // les strokes → saccades visibles quand on efface vite ou avec beaucoup
-  // de traits. Maintenant : un seul `_computeEraseSegment` qui teste la
-  // distance point-segment → O(n) au lieu de O(n×64).
-  void _eraseAlongPath(Offset? from, Offset to) {
-    final hitDistance =
-        _eraserSize / math.max(1.0, _canvasSize.shortestSide);
-    if (from == null) {
-      _eraseAt(to);
-      return;
-    }
-    final next = _computeEraseSegment(_strokes, from, to, hitDistance);
-    if (next == null) return;
-    setState(() => _pageStrokes[_currentPage] = next);
-    _markDirty();
   }
 
   // ---------------------------------------------------------------------------
@@ -2223,79 +2190,6 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
-  Widget _buildPageManagement() {
-    // Toujours visible quand la pagination est active.
-    // Ajout : autorisé jusqu'à `maxPages`.
-    // Suppression : autorisée dès qu'il reste ≥ 2 pages, sauf si un callback
-    // externe pilote la logique (alors on respecte `canDeletePage`).
-    final canAdd = _totalPages < widget.maxPages;
-    final canDelete = widget.onDeletePage != null
-        ? widget.canDeletePage
-        : _totalPages > 1;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.95),
-        border: Border.all(color: _kAccentColor),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _PillIconButton(
-            icon: LucideIcons.plus,
-            onTap: canAdd ? () => _addPage() : null,
-            tooltip: 'Nouvelle page',
-          ),
-          _PillIconButton(
-            icon: LucideIcons.trash2,
-            onTap: canDelete ? () => _deletePage() : null,
-            tooltip: 'Supprimer la page',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPageNav() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _PillIconButton(
-            icon: LucideIcons.chevronLeft,
-            onTap: _currentPage > 0 ? () => _switchPage(_currentPage - 1) : null,
-            tooltip: 'Page précédente',
-          ),
-          Container(
-            constraints: const BoxConstraints(minWidth: 42),
-            alignment: Alignment.center,
-            child: Text(
-              '${_currentPage + 1}/${math.max(_totalPages, 1)}',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.4,
-              ),
-            ),
-          ),
-          _PillIconButton(
-            icon: LucideIcons.chevronRight,
-            onTap: _currentPage < _totalPages - 1
-                ? () => _switchPage(_currentPage + 1)
-                : null,
-            tooltip: 'Page suivante',
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _positionedToolbar() {
     final toolbar = _buildToolbar();
     switch (widget.toolbarPlacement) {
@@ -3116,42 +3010,6 @@ class _HeaderIconButton extends StatelessWidget {
           icon,
           size: 18,
           color: onTap == null ? Color(0xFFB9C0C7) : Color(0xFF2B323A),
-        ),
-      ),
-    );
-    if (tooltip == null) return btn;
-    return Tooltip(message: tooltip!, child: btn);
-  }
-}
-
-class _PillIconButton extends StatelessWidget {
-  const _PillIconButton({
-    required this.icon,
-    required this.onTap,
-    this.tooltip,
-  });
-
-  final IconData icon;
-  final VoidCallback? onTap;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    final btn = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          child: Icon(
-            icon,
-            size: 16,
-            color:
-                onTap == null ? Color(0xFFB9C0C7) : Color(0xFF2B323A),
-          ),
         ),
       ),
     );

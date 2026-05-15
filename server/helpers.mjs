@@ -1999,9 +1999,16 @@ export const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
       createdAt: new Date().toISOString(),
       profilePhotoUrl: '',
     };
+    // SECURITY 2026-05-15 (audit P0 #3) : on NE STOCKE PLUS le password
+    // en clair dans `pendingCredentials`. Avant, il y restait à vie en
+    // RAM et était renvoyé via /api/admin/access-members → tout admin
+    // pouvait voir le mot de passe de tout membre indéfiniment. Désormais
+    // le password n'est révélé qu'UNE FOIS dans la response du POST
+    // /api/auth/provision (resp. /api/admin/access-members) — au caller
+    // de le noter immédiatement. Si l'admin l'oublie → utiliser
+    // « Réinitialiser » qui en génère un nouveau (et le renvoie une fois).
     store.pendingCredentials[member.email] = {
       displayName: member.displayName,
-      password,
       role: member.role,
       createdAt: new Date().toISOString(),
     };
@@ -2118,7 +2125,12 @@ export const getAdminAccessMembers = async () => {
     establishmentLabel: member.establishmentLabel,
     ergoLabel: member.ergoLabel,
     hasPassword: Boolean(store.users[member.email]),
-    generatedPassword: store.pendingCredentials[member.email]?.password || '',
+    // SECURITY 2026-05-15 (audit P0 #3) : on n'expose JAMAIS le password
+    // dans la liste GET (le clair n'est plus stocké en RAM côté serveur).
+    // Le password n'est révélé qu'UNE FOIS dans la response du POST de
+    // création/reset — au caller de le capturer immédiatement (UI admin
+    // affiche un state local le temps que l'admin le copie).
+    generatedPassword: '',
     createdAt: store.users[member.email]?.createdAt || null,
   }));
 };
