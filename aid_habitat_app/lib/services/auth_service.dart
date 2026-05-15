@@ -453,17 +453,14 @@ class AuthService {
       final email = (userRows.first['email'] as String?)?.trim();
       if (email == null || email.isEmpty) return;
       final fallback = _buildLocalAuthToken(email);
-      // On ne stocke PAS ce placeholder dans le secure storage — pas
-      // de point de fuite supplémentaire. Au prochain login remote
-      // réussi, `signIn` écrira le vrai token signé.
-      await db.update(
-        'app_session',
-        {
-          'remote_token': fallback,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        where: 'id = 1',
-      );
+      // Le fallback `local-auth:` reste EN RAM uniquement (`AppConfig`).
+      // P0 #4 (2026-05-15) : on n'écrit plus de token (même placeholder)
+      // dans `app_session.remote_token` SQLite ; la colonne reste vide
+      // pour rester cohérent avec la promesse « aucun token en clair sur
+      // disque ». Le token réel signé est dans Keychain via
+      // `SecureSessionStorage`, le `local-auth:` placeholder se
+      // régénère à chaque cold start tant que `app_users + app_session.
+      // user_local_id` indiquent un user connecté.
       AppConfig.setAppSessionToken(fallback);
       await _maybeInvalidateStaleLocalAuthToken(db, fallback);
     } catch (_) {
