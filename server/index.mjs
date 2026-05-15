@@ -402,7 +402,25 @@ const safeParseJsonArray = (value) => {
   }
 };
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
-const nullableString = (value) => value == null || value === '' ? null : String(value);
+// Fix critique 2026-05-15 : passe-through pour `undefined`.
+//
+// AVANT : `nullableString(undefined)` renvoyait `null`, qui passait
+// `sanitizeUndefined` (filtre uniquement `undefined`) et écrasait le
+// champ en NocoDB à chaque PATCH partiel. Symptôme : dossier Girard
+// Suzanne a perdu année construction, année habitation, surface,
+// niveaux, etc. parce que chaque PATCH partiel les remettait à null.
+//
+// APRÈS : `nullableString(undefined)` renvoie `undefined`, donc
+// `sanitizeUndefined` le strippe et NocoDB n'écrase rien sur les
+// champs absents du payload. Sémantique sain :
+//   - field absent du PATCH      → undefined → skip
+//   - field présent à null/''    → null → effacement explicite
+//   - field présent avec valeur  → string → écriture
+const nullableString = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  return String(value);
+};
 const absoluteUrl = (value) => {
   const stringified = String(value || '').trim();
   if (!stringified) return '';
@@ -484,7 +502,17 @@ const toBoolOrNull = (value) => {
   if (value == null || value === '') return null;
   return toBool(value);
 };
-const boolText = (value) => String(Boolean(value));
+// Fix critique 2026-05-15 — cf. nullableString : passe-through pour
+// `undefined` afin que les PATCH partiels n'écrasent pas les booléens.
+// `boolText(undefined)` renvoyait `"false"` (String(Boolean(undefined)))
+// → tout PATCH partiel mettait tous les booléens absents à false en
+// NocoDB. Symptôme : chauffage gaz coché côté app mais "false" en base
+// parce qu'un PATCH ultérieur sur une autre catégorie a refait passer
+// le champ à false.
+const boolText = (value) => {
+  if (value === undefined) return undefined;
+  return String(Boolean(value));
+};
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 /**
