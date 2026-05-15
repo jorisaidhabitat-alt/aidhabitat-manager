@@ -11,7 +11,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:pdfx/pdfx.dart';
@@ -1354,7 +1353,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
             }
             final doc = docs[i - 1];
             final selected = _selectedIds.contains(doc.id);
-            return _DocCard(
+            return DocCard(
               doc: doc,
               selected: selected,
               selectionMode: _isSelectionMode,

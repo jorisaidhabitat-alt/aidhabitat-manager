@@ -52,6 +52,14 @@ const decompressDrawingForRead = (stored) => {
   }
 };
 
+// Audit 2026-05-16 : `text_content` est un autre champ NocoDB LongText
+// (limite 100k chars) qui peut déborder pour les ergos qui prennent
+// des notes textuelles très longues. Même protection que `drawing_json` :
+// gzip + préfixe au-delà de 80k chars. Helpers exposés en alias pour la
+// clarté côté caller — l'implémentation est strictement identique.
+const compressTextForStorage = compressDrawingForStorage;
+const decompressTextForRead = decompressDrawingForRead;
+
 const DATA_DIR_URL = new URL('./data/', import.meta.url);
 const DOCUMENTS_DIR_URL = new URL('./data/documents/', import.meta.url);
 const DOCUMENT_STORE_URL = new URL('./data/documents-store.json', import.meta.url);
@@ -1529,7 +1537,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         scope_type: scopeType || 'legacy',
         scope_id: scopeId || dossierId || patientId,
         sub_tab_key: stringValue(subTabKey),
-        text_content: stringValue(textContent),
+        text_content: compressTextForStorage(stringValue(textContent)),
         drawing_json: compressDrawingForStorage(drawingJson),
         ...(supportsPreviewField ? { preview_data_url: stringValue(previewDataUrl) } : {}),
         ...(supportsPreviewUrlField ? { preview_url: resolvedPreviewUrl } : {}),

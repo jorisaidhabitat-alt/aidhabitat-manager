@@ -588,16 +588,33 @@ class SyncRepository {
     final now = DateTime.now().toIso8601String();
     // 1) Réhabilite les `failed` → `pending` (au lieu de DELETE qui
     //    perdait les modifs offline pour toujours).
-    final rehab = await db.update(
-      'sync_operations',
-      {
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'updated_at': now,
-      },
-      where: 'status = ?',
-      whereArgs: [SyncOperationStatus.failed.name],
+    //
+    // Exclusion 2026-05-15 : on NE réhabilite PAS les ops dont l'erreur
+    // est PERMANENTE — relancer en boucle ne servira à rien. Cas :
+    //   - 413 (Content Too Large) : payload trop gros pour Vercel
+    //     (limite 4.5 Mo). Ex : photo iPhone brute uploadée avant le
+    //     fix de compression — l'op stocke encore le gros payload et
+    //     re-foirera à chaque boot tant qu'on ne la jette pas.
+    //   - 422 (Unprocessable Entity) : payload malformé / contrainte
+    //     NocoDB violée (ex. colonne LongText >100k).
+    // Ces ops doivent rester `failed` jusqu'à action utilisateur
+    // (Abandonner via le dialog « N opérations en échec » ou refaire
+    // la modif depuis l'UI).
+    final rehab = await db.rawUpdate(
+      '''
+      UPDATE sync_operations
+      SET status = ?, attempt_count = 0, last_error = NULL, updated_at = ?
+      WHERE status = ?
+        AND last_error NOT LIKE '%(413)%'
+        AND last_error NOT LIKE '%(422)%'
+        AND last_error NOT LIKE '%Content Too Large%' COLLATE NOCASE
+        AND last_error NOT LIKE '%Payload Too Large%' COLLATE NOCASE
+      ''',
+      [
+        SyncOperationStatus.pending.name,
+        now,
+        SyncOperationStatus.failed.name,
+      ],
     );
     if (rehab > 0) {
       // ignore: avoid_print
