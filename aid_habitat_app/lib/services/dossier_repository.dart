@@ -2039,20 +2039,45 @@ class DossierRepository {
     final now = DateTime.now().toIso8601String();
 
     // Optimisation 2026-05-13 : diff avec la row SQLite existante pour
-    // ne pousser au serveur QUE les champs réellement modifiés. Avant
-    // ce changement, chaque save Accessibilité / Aménagements / Surfaces
-    // envoyait les 38+ champs du logement à PATCH /api/logements/...
-    // même si l'utilisateur n'avait modifié qu'une seule case à cocher.
+    // ne pousser au serveur QUE les champs réellement modifiés.
+    //
+    // FIX 2026-05-15 (bug Girard Suzanne) : on diff UNIQUEMENT les
+    // champs TEXT (volumineux). Les booléens sont TOUJOURS poussés.
+    // Raison : un bug `boolText(undefined)` serveur a écrasé tous les
+    // booléens absents d'un PATCH partiel à `"false"` côté NocoDB.
+    // Comme le SQLite local conservait les bonnes valeurs, le diff
+    // disait « rien n'a changé » et empêchait toute re-sync — la
+    // donnée locale était correcte mais NocoDB restait corrompu
+    // indéfiniment. En poussant les bool à chaque save, on s'auto-
+    // répare : la 1re modification quelconque sur un dossier
+    // re-pousse l'état complet des cases à cocher. Coût bande
+    // passante : ~40 bool × 5 bytes = 200 B par PATCH, négligeable.
     final existingRows = await db.query(
       'housings',
       where: 'local_id = ?',
       whereArgs: [housingId],
       limit: 1,
     );
-    final changedFields = _diffAgainstRow(
-      existingRows.isEmpty ? null : existingRows.first,
-      fields,
-    );
+    final existingRow = existingRows.isEmpty ? null : existingRows.first;
+    final textFieldsToDiff = <String, dynamic>{};
+    final boolFieldsAlways = <String, dynamic>{};
+    fields.forEach((key, value) {
+      // SQLite stocke les booléens en int 0/1. Le mapping API côté
+      // serveur les retransforme via boolText. On considère qu'un
+      // int 0/1 (ou un bool natif) doit être traité comme booléen.
+      final isBoolLike = value is bool
+          || (value is int && (value == 0 || value == 1));
+      if (isBoolLike) {
+        boolFieldsAlways[key] = value;
+      } else {
+        textFieldsToDiff[key] = value;
+      }
+    });
+    final changedTextFields = _diffAgainstRow(existingRow, textFieldsToDiff);
+    final changedFields = <String, dynamic>{
+      ...boolFieldsAlways,
+      ...changedTextFields,
+    };
 
     if (changedFields.isEmpty) {
       return; // rien n'a vraiment changé → no-op

@@ -1431,6 +1431,19 @@ class NocodbApiClient {
         )
         .timeout(_uploadTimeout);
 
+    // Refonte 2026-05-15 : message clair pour 413 (Content Too Large) —
+    // limite Vercel 4.5 Mo body. Avant ce check, l'utilisateur voyait
+    // « Profile photo upload failed (413) » en boucle (retry x7) sans
+    // savoir que la photo est trop grosse. La compression côté
+    // `DataService.uploadProfilePhotoBytes` (max 1024px JPEG 80) doit
+    // normalement empêcher ce cas, mais on garde le message au cas où
+    // une photo compressée resterait au-dessus de la limite.
+    if (response.statusCode == 413) {
+      throw Exception(
+        'Photo trop volumineuse (>4.5 Mo après compression). '
+        'Choisis une image plus petite.',
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         'Profile photo upload failed (${response.statusCode})',

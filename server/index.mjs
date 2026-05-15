@@ -5260,6 +5260,7 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
       resumePages,
       accSharedPages,
       accGeneralPages,
+      accNiveauxPages,
       accExterieurPages,
       legacyEquipPages,
       sanitairesUnifiedPages,
@@ -5278,10 +5279,19 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Accessibilité-Notes',
       }),
-      // Legacy : anciennes notes par sous-section, conservées pour
-      // les dossiers saisis avant l'unification.
+      // Refonte 2026-05-13 (visit_report_screen.dart) : les 4
+      // sous-sections d'Accessibilité ont chacune leur propre tabKey
+      // (`Général`, `Niveaux`, `Équipements`, `Extérieur`). Avant le
+      // fix 2026-05-15, on lisait Général + Extérieur + Équipements
+      // mais on AVAIT OUBLIÉ « Niveaux » → les notes saisies dans le
+      // panneau latéral de la sous-section Niveaux n'apparaissaient
+      // pas dans le champ « Observations sur l'accessibilité » du
+      // rapport PDF (bug reporté sur Girard Suzanne).
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Accessibilité-Général',
+      }),
+      mobileSyncStore.listNotePagesByPatient(patientId, {
+        tabKey: 'Accessibilité-Niveaux',
       }),
       mobileSyncStore.listNotePagesByPatient(patientId, {
         tabKey: 'Accessibilité-Extérieur',
@@ -5371,11 +5381,21 @@ const fetchVadOverlayNotesForReport = async (patientId, dossierId) => {
     // gagne automatiquement.
     const accSharedText = joinPages(accSharedPages);
     const accGeneralText = joinPages(accGeneralPages);
+    const accNiveauxText = joinPages(accNiveauxPages);
     const accExterieurText = joinPages(accExterieurPages);
     const legacyEquipText = joinPages(legacyEquipPages);
     const accessibilite = (() => {
       if (accSharedText && accSharedText.trim()) return accSharedText;
-      const mergedLegacy = [accGeneralText, accExterieurText, legacyEquipText]
+      // Fix 2026-05-15 : on inclut `accNiveauxText` (tabKey
+      // `Accessibilité-Niveaux`) qui était auparavant omis — la note
+      // saisie dans la sous-section « Niveaux » du panneau
+      // Accessibilité ne remontait pas dans le rapport PDF.
+      const mergedLegacy = [
+        accGeneralText,
+        accNiveauxText,
+        accExterieurText,
+        legacyEquipText,
+      ]
         .filter((s) => typeof s === 'string' && s.trim())
         .join('\n\n');
       return mergedLegacy.trim() ? mergedLegacy : null;

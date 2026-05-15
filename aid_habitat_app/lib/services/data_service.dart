@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:image/image.dart' as img;
+
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
 import 'access_members_repository.dart';
@@ -197,18 +199,16 @@ class DataService {
   /// Returns the data URL so the caller can display it optimistically —
   /// when the sync completes, the server-resolved URL replaces it in the
   /// `profile_photo_url` column.
+  ///
+  /// Refonte 2026-05-15 : on COMPRESSE la photo (max 1024px + JPEG 80)
+  /// AVANT de l'enqueuer. Sans ça, une photo iPhone brut (~5-10 Mo)
+  /// dépassait la limite Vercel de 4.5 Mo body → 413 Content Too Large
+  /// → retry en boucle (« 7 tentatives ») sans aucune chance de
+  /// succès. La compression amène la plupart des photos à <500 Ko,
+  /// largement sous la limite.
   Future<String> uploadProfilePhoto(File imageFile) async {
-    final bytes = await imageFile.readAsBytes();
-    final extension = imageFile.path.split('.').last.toLowerCase();
-    final mimeType = switch (extension) {
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'gif' => 'image/gif',
-      _ => 'image/jpeg',
-    };
-    final base64Data = base64Encode(bytes);
-    final dataUrl = 'data:$mimeType;base64,$base64Data';
+    final rawBytes = await imageFile.readAsBytes();
+    final dataUrl = _compressForUpload(rawBytes);
     await _authService.persistPendingProfilePhoto(dataUrl);
     SyncEngine().notify();
     return dataUrl;
@@ -219,10 +219,57 @@ class DataService {
   /// `account_dialog._pickAndUploadPhoto` qui lit les bytes via
   /// `XFile.readAsBytes()` (fonctionne sur web où `dart:io.File` ne
   /// peut pas ouvrir un blob URL).
+  ///
+  /// Refonte 2026-05-15 : compression aussi appliquée ici (cf.
+  /// `uploadProfilePhoto`). Le data URL passé peut contenir n'importe
+  /// quel format/taille — on décode, resize, ré-encode en JPEG 80.
   Future<String> uploadProfilePhotoBytes(String dataUrl) async {
-    await _authService.persistPendingProfilePhoto(dataUrl);
+    final compressed = _compressDataUrlForUpload(dataUrl);
+    await _authService.persistPendingProfilePhoto(compressed);
     SyncEngine().notify();
-    return dataUrl;
+    return compressed;
+  }
+
+  /// Resize une image (bytes bruts) à `maxDim` pixels max sur le grand
+  /// côté + ré-encode en JPEG quality 80 → renvoie un data URL prêt à
+  /// être uploadé. Si le décodage échoue (format inconnu, fichier
+  /// corrompu), on tombe sur l'envoi brut tel quel.
+  String _compressForUpload(Uint8List rawBytes,
+      {int maxDim = 1024, int quality = 80}) {
+    try {
+      final decoded = img.decodeImage(rawBytes);
+      if (decoded == null) {
+        // Fallback : on n'arrive pas à décoder, on envoie tel quel.
+        return 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
+      }
+      final resized = (decoded.width > maxDim || decoded.height > maxDim)
+          ? img.copyResize(
+              decoded,
+              width: decoded.width >= decoded.height ? maxDim : null,
+              height: decoded.height > decoded.width ? maxDim : null,
+              interpolation: img.Interpolation.average,
+            )
+          : decoded;
+      final jpegBytes = img.encodeJpg(resized, quality: quality);
+      return 'data:image/jpeg;base64,${base64Encode(jpegBytes)}';
+    } catch (_) {
+      return 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
+    }
+  }
+
+  /// Variante qui prend un data URL en entrée (déjà encodé) → décode
+  /// le base64, applique `_compressForUpload`. Utilisé par les call
+  /// sites web (XFile.readAsBytes() → data URL → ici).
+  String _compressDataUrlForUpload(String dataUrl) {
+    try {
+      final commaIdx = dataUrl.indexOf(',');
+      if (commaIdx < 0) return dataUrl;
+      final base64Part = dataUrl.substring(commaIdx + 1);
+      final raw = base64Decode(base64Part);
+      return _compressForUpload(raw);
+    } catch (_) {
+      return dataUrl; // fallback : envoie le data URL tel quel.
+    }
   }
 
   Future<Map<String, dynamic>> fetchAnahStatus() async {
