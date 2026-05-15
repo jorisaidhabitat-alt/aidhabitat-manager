@@ -93,7 +93,7 @@ const Color _kAccentColor = Color(0xFF8B6FA0);
 //  - _kActiveText : mauve-700 (#554265, légère nuance plus chaude)
 //  - _kStackedVioletSoft : mauve-100 (#F2ECF5)
 const Color _kActiveText = Color(0xFF554265);
-const double _kGridCell = 24.0;
+// `kGridCell` est désormais dans `notes_canvas_painters.dart`.
 
 // Constantes de la mise en page "deux cartes empilées" (parité maquette).
 const Color _kStackedBorder = Color(0xFFEDE9EF);
