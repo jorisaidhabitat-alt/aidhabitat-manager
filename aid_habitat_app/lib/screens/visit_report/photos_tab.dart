@@ -369,22 +369,97 @@ class _PhotosTabState extends State<PhotosTab>
       _showError('Seules les images peuvent être déposées dans les Photos.');
       return;
     }
-    setState(() => _isImporting = true);
+
+    // Optimistic UI (fix 2026-05-15) : les tuiles photos s'affichent
+    // INSTANTANÉMENT au drop, sans attendre la compression + l'upload.
+    // Pattern :
+    //   1. Crée un DocItem placeholder par image (id temp_xxx, bytes
+    //      bruts dans `_photoBytesCache` pour rendu immédiat depuis la
+    //      mémoire).
+    //   2. setState une seule fois → toutes les tuiles apparaissent
+    //      dans la milliseconde du drop.
+    //   3. En arrière-plan, pour chaque image : compresse + persiste
+    //      via `_dataService.importDocumentBytes` → quand le vrai
+    //      DocItem revient, on remplace le placeholder par le réel
+    //      (l'utilisateur ne voit rien, les bytes sont identiques).
+    //   4. Si une image échoue : on retire silencieusement son
+    //      placeholder (les autres continuent).
+    final nowIso = DateTime.now().toIso8601String();
+    final stampUs = DateTime.now().microsecondsSinceEpoch;
+    final baseOrder = _nextOrderInCategory(categoryTag);
+    final placeholders = <DocItem>[];
+    for (var i = 0; i < images.length; i++) {
+      final f = images[i];
+      final tempId = 'temp_${stampUs}_$i';
+      final order = baseOrder + i;
+      final simpleTitle = _buildSimplePhotoTitle(categoryTag, order);
+      // Cache des bytes BRUTS (non compressés) sous l'id temporaire →
+      // la tuile rend l'image immédiatement depuis la mémoire.
+      _photoBytesCache[tempId] = f.bytes;
+      placeholders.add(DocItem(
+        id: tempId,
+        type: 'image',
+        name: f.name,
+        title: simpleTitle,
+        date: nowIso,
+        tags: [categoryTag],
+        syncState: SyncState.pendingSync,
+        categoryOrder: order,
+      ));
+    }
+    setState(() {
+      _photos = [..._photos, ...placeholders];
+      _isImporting = true;
+    });
+
     try {
-      for (final f in images) {
+      for (var i = 0; i < images.length; i++) {
+        final f = images[i];
+        final temp = placeholders[i];
         try {
-          await _persistDroppedBytes(
+          final compressed = await compressImageForUpload(
             bytes: f.bytes,
-            originalName: f.name,
-            categoryTag: categoryTag,
+            fileName: f.name,
           );
+          final fileName = _buildPhotoFileName(
+            categoryTag,
+            compressed.fileName,
+            temp.title,
+          );
+          final inserted = await _dataService.importDocumentBytes(
+            patientId: widget.dossier.patient.id,
+            bytes: compressed.bytes,
+            fileName: fileName,
+            title: temp.title,
+            tags: [categoryTag],
+            categoryOrder: temp.categoryOrder,
+          );
+          if (!mounted) return;
+          setState(() {
+            // Swap cache : bytes compressés sous le nouvel id réel, et
+            // on retire l'ancien tempId pour ne pas polluer la mémoire.
+            _photoBytesCache[inserted.id] = compressed.bytes;
+            _photoBytesCache.remove(temp.id);
+            _photos = _photos
+                .map((p) => p.id == temp.id ? inserted : p)
+                .toList(growable: false);
+          });
         } catch (_) {
-          // Continue : un échec d'une photo ne doit pas bloquer le
-          // reste. L'utilisateur verra le résultat partiel via le
-          // refresh suivant.
+          // Échec d'UNE image : retire son placeholder, continue avec
+          // les autres. L'utilisateur peut re-dropper l'image si besoin.
+          if (mounted) {
+            setState(() {
+              _photoBytesCache.remove(temp.id);
+              _photos = _photos
+                  .where((p) => p.id != temp.id)
+                  .toList(growable: false);
+            });
+          }
         }
       }
-      await _refresh();
+      // Pull silencieux pour aligner l'ordre / l'état serveur canonique.
+      // `silent: true` évite tout spinner / flash de loading visible.
+      await _refresh(silent: true);
     } finally {
       if (mounted) setState(() => _isImporting = false);
     }
