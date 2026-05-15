@@ -869,11 +869,23 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   void _emitDraft() {
-    widget.onDraftChange?.call(NoteDraftPayload(
-      text: _textController.text,
-      drawingJson: _currentDrawingJson(),
-      isDirty: _isDirty,
-    ));
+    // Try/catch défensif (fix 2026-05-15) : le callback parent
+    // `onDraftChange` est invoqué sur chaque keystroke via `_markDirty`.
+    // Si le parent throw (ex. `note_window_web.sendNoteIpc` qui appelle
+    // un BroadcastChannel sur web, ou un closing de fenêtre côté natif),
+    // l'erreur remonte au framework Flutter et apparaît dans la console
+    // comme « Uncaught Error » sans message — multiplié par le nombre
+    // de NotesWidget montés (jusqu'à 4 sur Bénéficiaire/Accessibilité).
+    try {
+      widget.onDraftChange?.call(NoteDraftPayload(
+        text: _textController.text,
+        drawingJson: _currentDrawingJson(),
+        isDirty: _isDirty,
+      ));
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('[notes_widget] onDraftChange callback failed: $e\n$st');
+    }
   }
 
   void _scheduleAutoSave() {

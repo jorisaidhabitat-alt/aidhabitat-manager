@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -29,6 +30,37 @@ import 'services/note_window_web_stub.dart'
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── Handlers d'erreurs globaux (fix 2026-05-15) ─────────────────
+  // Avant : les uncaught errors arrivaient dans la console web minifiée
+  // sans message ni stack lisible → impossible de diagnostiquer (« Uncaught
+  // Error\n  at Object.d (main.dart.js:4239:20)\n  ... »).
+  //
+  // Maintenant : on intercepte 2 sources :
+  //  1. `FlutterError.onError`     → erreurs du framework (build/paint/
+  //     gesture/setState). Inclut le widget responsable + library.
+  //  2. `PlatformDispatcher.instance.onError` → erreurs async non capturées
+  //     (Future qui rejette sans catchError, listener Stream qui throw).
+  //
+  // Les deux loguent en clair avec le `exception.toString()` Dart (qui
+  // préserve le message même en build minifié) + la stack. Retournent
+  // `true` pour signaler que l'erreur a été « handled » et ne doit pas
+  // remonter au navigateur en uncaught.
+  FlutterError.onError = (FlutterErrorDetails details) {
+    // ignore: avoid_print
+    print('[flutter-error] ${details.exception}');
+    if (details.library != null) print('  library: ${details.library}');
+    if (details.context != null) print('  context: ${details.context}');
+    // ignore: avoid_print
+    print(details.stack);
+  };
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    // ignore: avoid_print
+    print('[async-error] $error');
+    // ignore: avoid_print
+    print(stack);
+    return true; // marqué comme handled → pas de propagation uncaught
+  };
 
   // Sur web : bascule sqflite sur le backend WASM+IndexedDB pour que les
   // appels existants (`sqflite.openDatabase`, `Database.query`, …)
