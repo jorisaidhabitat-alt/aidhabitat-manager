@@ -475,47 +475,67 @@ class _BathroomTabState extends State<BathroomTab>
           // Hauteur douche / baignoire : sur UNE MÊME ligne quand les
           // deux sont cochées (une colonne chacune), sinon l'unique
           // champ visible occupe toute la largeur.
-          if (hasShower || hasBath) ...[
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (hasShower)
-                  Expanded(
-                    child: FormNumberField(
-                      label: 'Hauteur douche',
-                      value: a.sdbBacDoucheHauteur,
-                      unit: 'cm',
-                      onChanged: (v) => _updateActive(
-                        _setEquipmentOnInstance(
-                          a,
-                          'sdbBacDouche',
-                          height: v,
-                          clearHeight: v == null,
-                        ),
+          //
+          // Refonte 2026-05-15 (demande user) : animation d'entrée fluide
+          // type « menu déroulant » quand le champ apparaît après un
+          // clic sur Douche/Baignoire. `AnimatedSize` interpole la
+          // hauteur (slide vertical de 0 à la hauteur finale) +
+          // `AnimatedOpacity` interpole l'opacité (fade-in). Quand on
+          // décoche, animation inverse (slide-up + fade-out).
+          AnimatedSize(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: AnimatedOpacity(
+              opacity: (hasShower || hasBath) ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              child: (hasShower || hasBath)
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (hasShower)
+                            Expanded(
+                              child: FormNumberField(
+                                label: 'Hauteur douche',
+                                value: a.sdbBacDoucheHauteur,
+                                unit: 'cm',
+                                onChanged: (v) => _updateActive(
+                                  _setEquipmentOnInstance(
+                                    a,
+                                    'sdbBacDouche',
+                                    height: v,
+                                    clearHeight: v == null,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (hasShower && hasBath)
+                            const SizedBox(width: 10),
+                          if (hasBath)
+                            Expanded(
+                              child: FormNumberField(
+                                label: 'Hauteur baignoire',
+                                value: a.sdbBaignoireHauteur,
+                                unit: 'cm',
+                                onChanged: (v) => _updateActive(
+                                  _setEquipmentOnInstance(
+                                    a,
+                                    'sdbBaignoire',
+                                    height: v,
+                                    clearHeight: v == null,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                    ),
-                  ),
-                if (hasShower && hasBath) const SizedBox(width: 10),
-                if (hasBath)
-                  Expanded(
-                    child: FormNumberField(
-                      label: 'Hauteur baignoire',
-                      value: a.sdbBaignoireHauteur,
-                      unit: 'cm',
-                      onChanged: (v) => _updateActive(
-                        _setEquipmentOnInstance(
-                          a,
-                          'sdbBaignoire',
-                          height: v,
-                          clearHeight: v == null,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+                    )
+                  : const SizedBox.shrink(),
             ),
-          ],
+          ),
           const SizedBox(height: 16),
           _buildEquipmentChecklistOrCollapsed(
             instance: a,

@@ -14,6 +14,7 @@ import '../services/multi_window_stub.dart'
 import '../services/note_window_web_stub.dart'
     if (dart.library.html) '../services/note_window_web.dart' as note_window_web;
 import 'package:lucide_icons/lucide_icons.dart';
+import '../components/notes_panel_title_banner.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
 import '../services/app_config.dart';
@@ -925,7 +926,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _NotesPanelTitleBanner(title: bannerTitle),
+                    NotesPanelTitleBanner(title: bannerTitle),
                     const SizedBox(height: 8),
                     Expanded(
                       child: NotesWidget(
