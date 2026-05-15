@@ -2142,7 +2142,19 @@ class DossierRepository {
       return; // rien n'a vraiment changé → no-op
     }
 
-    final localFields = Map<String, dynamic>.from(changedFields);
+    // Conversion bool→int pour SQLite (fix 2026-05-15) : `boolFieldsAlways`
+    // stocke des bool Dart (false/true) car le mapper API les attend bool.
+    // Mais SQLite via sqflite REFUSE le type bool natif et throw « Invalid
+    // sql argument type 'bool' ». Symptôme : « _save failed » sur chaque
+    // saisie dans l'onglet Accessibilité (les champs touchent les colonnes
+    // bool `easy_access`, `garage`, etc.). On convertit ici, juste pour
+    // l'écriture locale — `changedFields` reste avec ses bool intacts pour
+    // le mapper API en ligne 2151.
+    final localFields = <String, dynamic>{};
+    for (final entry in changedFields.entries) {
+      final v = entry.value;
+      localFields[entry.key] = v is bool ? (v ? 1 : 0) : v;
+    }
     localFields['updated_at'] = now;
     localFields['sync_state'] = SyncState.pendingSync.name;
     await db.update('housings', localFields,
