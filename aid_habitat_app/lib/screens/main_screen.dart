@@ -809,3 +809,280 @@ class _NavEntry {
   final Dossier? dossier;
   const _NavEntry({required this.view, required this.dossier});
 }
+
+/// Bottom sheet listant toutes les opérations sync en échec, avec une
+/// action par-op (Réessayer / Abandonner). Hérite d'un état local de la
+/// liste pour pouvoir retirer les ops une à une sans re-fetcher tout.
+class _FailingOpsSheet extends StatefulWidget {
+  final SyncEngine syncEngine;
+  final List<Map<String, String?>> initialFailures;
+  final ScrollController scrollController;
+
+  const _FailingOpsSheet({
+    required this.syncEngine,
+    required this.initialFailures,
+    required this.scrollController,
+  });
+
+  @override
+  State<_FailingOpsSheet> createState() => _FailingOpsSheetState();
+}
+
+class _FailingOpsSheetState extends State<_FailingOpsSheet> {
+  late List<Map<String, String?>> _failures;
+  final Set<String> _busyIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _failures = List.of(widget.initialFailures);
+  }
+
+  Future<void> _refreshList() async {
+    final fresh = await widget.syncEngine.inspectAllFailures();
+    if (!mounted) return;
+    setState(() => _failures = fresh);
+  }
+
+  Future<void> _retry(String opId) async {
+    setState(() => _busyIds.add(opId));
+    final reset = await widget.syncEngine.retrySingleOperation(opId);
+    if (reset > 0) widget.syncEngine.requestSync();
+    await _refreshList();
+    if (!mounted) return;
+    setState(() => _busyIds.remove(opId));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Opération relancée')),
+    );
+  }
+
+  Future<void> _discard(String opId) async {
+    setState(() => _busyIds.add(opId));
+    final removed = await widget.syncEngine.discardSingleOperation(opId);
+    await _refreshList();
+    if (!mounted) return;
+    setState(() => _busyIds.remove(opId));
+    if (removed > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Opération abandonnée')),
+      );
+    }
+    // Auto-close si plus rien en échec — l'utilisateur n'a aucune
+    // raison de garder le drawer ouvert.
+    if (_failures.isEmpty && mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _retryAll() async {
+    final retried = await widget.syncEngine.retryFailedOperations();
+    if (retried > 0) widget.syncEngine.requestSync();
+    await _refreshList();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$retried opération(s) relancée(s)')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Drag handle visuel + titre.
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.error_outline,
+                      color: Color(0xFFDC2626), size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _failures.isEmpty
+                          ? 'Aucune opération en échec'
+                          : '${_failures.length} opération${_failures.length > 1 ? 's' : ''} en échec',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0E1116),
+                      ),
+                    ),
+                  ),
+                  if (_failures.length > 1)
+                    TextButton.icon(
+                      onPressed: _busyIds.isEmpty ? _retryAll : null,
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Tout réessayer'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Réessaye en cas d\'erreur réseau temporaire, abandonne '
+                'seulement si la modification ne pourra jamais aboutir '
+                '(ressource supprimée côté serveur, payload obsolète…).',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _failures.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Tout est synchronisé ✨',
+                      style: TextStyle(color: Color(0xFF64748B)),
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  controller: widget.scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  itemCount: _failures.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (ctx, i) {
+                    final op = _failures[i];
+                    final id = op['id'] ?? '';
+                    final busy = _busyIds.contains(id);
+                    return _FailingOpCard(
+                      entityType: op['entityType'] ?? '?',
+                      operationType: op['operationType'] ?? '?',
+                      entityLocalId: op['entityLocalId'] ?? '',
+                      lastError: op['lastError'] ?? '(aucune)',
+                      attemptCount: op['attemptCount'] ?? '0',
+                      busy: busy,
+                      onRetry: () => _retry(id),
+                      onDiscard: () => _discard(id),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FailingOpCard extends StatelessWidget {
+  final String entityType;
+  final String operationType;
+  final String entityLocalId;
+  final String lastError;
+  final String attemptCount;
+  final bool busy;
+  final VoidCallback onRetry;
+  final VoidCallback onDiscard;
+
+  const _FailingOpCard({
+    required this.entityType,
+    required this.operationType,
+    required this.entityLocalId,
+    required this.lastError,
+    required this.attemptCount,
+    required this.busy,
+    required this.onRetry,
+    required this.onDiscard,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2), // red-50
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFECACA)), // red-200
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$entityType · $operationType',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF7F1D1D), // red-900
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFECACA),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$attemptCount tentative${attemptCount == "1" ? "" : "s"}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF7F1D1D),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (entityLocalId.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              'ID : $entityLocalId',
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color: Color(0xFF991B1B)),
+            ),
+          ],
+          const SizedBox(height: 8),
+          SelectableText(
+            lastError,
+            maxLines: 4,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF7F1D1D)),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: busy ? null : onDiscard,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF7F1D1D),
+                ),
+                child: const Text('Abandonner'),
+              ),
+              const SizedBox(width: 6),
+              FilledButton.tonal(
+                onPressed: busy ? null : onRetry,
+                child: busy
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Réessayer'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
