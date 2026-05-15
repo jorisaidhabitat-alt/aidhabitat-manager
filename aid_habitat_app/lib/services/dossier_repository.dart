@@ -2026,6 +2026,37 @@ class DossierRepository {
     return Map<String, dynamic>.from(housing.first);
   }
 
+  /// Colonnes booléennes du logement (SQLite INTEGER 0/1) qui DOIVENT
+  /// être re-poussées à chaque save pour auto-réparer la corruption
+  /// silencieuse côté NocoDB.
+  ///
+  /// Audit 2026-05-15 (bug Girard Suzanne) : un bug serveur
+  /// `boolText(undefined) = "false"` écrasait tous les booléens absents
+  /// d'un PATCH partiel à `false`. Côté Flutter, le diff comparait avec
+  /// SQLite local (qui avait les bonnes valeurs) → disait « rien n'a
+  /// changé » → ne re-poussait jamais. NocoDB restait corrompu
+  /// indéfiniment. On force le re-push de TOUS ces bool depuis SQLite
+  /// à chaque save, indépendamment de ce que le caller a fourni dans
+  /// `fields`. Coût bande passante : ~22 bool × 8 bytes = ~200 B par
+  /// PATCH, négligeable. `easy_access` et `easy_access_set` sont
+  /// EXCLUS car ils gèrent un état tristate (oui/non/non renseigné)
+  /// dont le mapping serveur passe par `toBoolOrNull` : on n'écrase
+  /// pas le « non renseigné » légitime.
+  static const List<String> _kHousingBoolColumnsToAlwaysPush = [
+    'basement', 'rdc', 'floor', 'second_floor', 'third_floor',
+    'garage', 'veranda', 'balcon', 'terrasse', 'jardin',
+    'volets_roulants_manuels_entier',
+    'volets_roulants_electriques_entier',
+    'volets_persiennes_entier',
+    'cheminement_escalier_exterieur',
+    'cheminement_escalier_interieur',
+    'cheminement_pente_douce',
+    'cheminement_plat',
+    'cheminement_quelques_marches',
+    'cheminement_par_arriere',
+    'cheminement_seuil_porte',
+  ];
+
   Future<void> updateHousing(
       String dossierId, Map<String, dynamic> fields) async {
     final db = await _database.database;
@@ -2038,20 +2069,12 @@ class DossierRepository {
     final housingId = rows.first['housing_local_id'] as String;
     final now = DateTime.now().toIso8601String();
 
-    // Optimisation 2026-05-13 : diff avec la row SQLite existante pour
-    // ne pousser au serveur QUE les champs réellement modifiés.
-    //
-    // FIX 2026-05-15 (bug Girard Suzanne) : on diff UNIQUEMENT les
-    // champs TEXT (volumineux). Les booléens sont TOUJOURS poussés.
-    // Raison : un bug `boolText(undefined)` serveur a écrasé tous les
-    // booléens absents d'un PATCH partiel à `"false"` côté NocoDB.
-    // Comme le SQLite local conservait les bonnes valeurs, le diff
-    // disait « rien n'a changé » et empêchait toute re-sync — la
-    // donnée locale était correcte mais NocoDB restait corrompu
-    // indéfiniment. En poussant les bool à chaque save, on s'auto-
-    // répare : la 1re modification quelconque sur un dossier
-    // re-pousse l'état complet des cases à cocher. Coût bande
-    // passante : ~40 bool × 5 bytes = 200 B par PATCH, négligeable.
+    // Lecture row SQLite locale pour :
+    //  • diff des champs TEXT (volumineux → on évite la re-poussée
+    //    quand rien n'a changé)
+    //  • récupération des bool à RE-PUSHER systématiquement (auto-
+    //    réparation de la corruption serveur évoquée dans la doc de
+    //    `_kHousingBoolColumnsToAlwaysPush`)
     final existingRows = await db.query(
       'housings',
       where: 'local_id = ?',
@@ -2059,21 +2082,57 @@ class DossierRepository {
       limit: 1,
     );
     final existingRow = existingRows.isEmpty ? null : existingRows.first;
-    final textFieldsToDiff = <String, dynamic>{};
+
+    // Bool fields TOUJOURS pushés depuis l'état SQLite local.
+    // Si le caller (`fields`) en surcharge certains (ex: l'utilisateur
+    // vient de cocher/décocher), ses valeurs ont précédence — la row
+    // existante est juste le fallback pour les bool non touchés cette
+    // fois-ci.
     final boolFieldsAlways = <String, dynamic>{};
+    if (existingRow != null) {
+      for (final col in _kHousingBoolColumnsToAlwaysPush) {
+        final localValue = existingRow[col];
+        if (localValue is int) {
+          boolFieldsAlways[col] = localValue == 1;
+        }
+      }
+      // `heating_details_json` (JSON Map<String,bool>) est aussi
+      // toujours re-poussé pour la même raison que les bool : un PATCH
+      // partiel serveur pré-fix 2026-05-15 pouvait écraser silencieuse-
+      // ment les types de chauffage à `false`. On lit le JSON SQLite
+      // local et on le force dans le payload — le mapper plus bas
+      // (`_mapHousingFieldsToApi`) le décodera en `heatingDetails:
+      // { electric, gas, oil, … }`. Si le caller fournit déjà cette
+      // clé, le forEach below l'écrasera donc on conserve la dernière
+      // intention utilisateur.
+      final heatingJson = existingRow['heating_details_json'];
+      if (heatingJson is String && heatingJson.isNotEmpty) {
+        boolFieldsAlways['heating_details_json'] = heatingJson;
+      }
+    }
+    // Override par les bool/heating du caller (action utilisateur fraîche).
     fields.forEach((key, value) {
-      // SQLite stocke les booléens en int 0/1. Le mapping API côté
-      // serveur les retransforme via boolText. On considère qu'un
-      // int 0/1 (ou un bool natif) doit être traité comme booléen.
-      final isBoolLike = value is bool
-          || (value is int && (value == 0 || value == 1));
-      if (isBoolLike) {
+      if (key == 'heating_details_json') {
         boolFieldsAlways[key] = value;
-      } else {
-        textFieldsToDiff[key] = value;
+        return;
+      }
+      if (!_kHousingBoolColumnsToAlwaysPush.contains(key)) return;
+      if (value is bool) {
+        boolFieldsAlways[key] = value;
+      } else if (value is int && (value == 0 || value == 1)) {
+        boolFieldsAlways[key] = value == 1;
       }
     });
+
+    // Diff des champs TEXT/INT-non-bool (économie bande passante).
+    final textFieldsToDiff = <String, dynamic>{};
+    fields.forEach((key, value) {
+      if (_kHousingBoolColumnsToAlwaysPush.contains(key)) return;
+      if (key == 'heating_details_json') return; // déjà géré ci-dessus.
+      textFieldsToDiff[key] = value;
+    });
     final changedTextFields = _diffAgainstRow(existingRow, textFieldsToDiff);
+
     final changedFields = <String, dynamic>{
       ...boolFieldsAlways,
       ...changedTextFields,
