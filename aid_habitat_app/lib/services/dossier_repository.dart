@@ -2683,10 +2683,30 @@ class DossierRepository {
     }
 
     // VERS LE SERVEUR : on ne pousse que les items COMPLETS (wikiItemId
-    // non vide). Le serveur refuse (400) toute préconisation non liée à
-    // une fiche wiki. Si aucun item complet, on skip le sync_op.
+    // non vide ET qui existe encore dans la wiki library locale). Le
+    // serveur refuse (400) toute préconisation non liée à une fiche
+    // wiki existante. Refonte 2026-05-15 (audit P0 #5) : on ajoute la
+    // vérification d'existence dans le cache local `wiki_items`. Sans
+    // ça, un wikiItemId obsolète (fiche wiki renommée/supprimée côté
+    // NocoDB) déclenche un 400 → markFailed → bandeau rouge récurrent.
+    // L'item reste en SQLite local pour que l'ergo le voie et puisse
+    // le re-rattacher manuellement, mais il n'est PAS envoyé au serveur
+    // tant que son lien wiki est cassé.
+    final knownWikiIdRows = await db.query('wiki_items', columns: ['id']);
+    final knownWikiIds = knownWikiIdRows
+        .map((r) => (r['id']?.toString() ?? '').trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
     final syncItems = items
-        .where((item) => item.wikiItemId.trim().isNotEmpty)
+        .where((item) {
+          final id = item.wikiItemId.trim();
+          if (id.isEmpty) return false;
+          // Si la wiki locale est vide (boot frais, jamais synchronisée),
+          // on lui fait confiance et on laisse le serveur trancher —
+          // sinon on bloquerait la sync de l'ergo en attendant le pull.
+          if (knownWikiIds.isEmpty) return true;
+          return knownWikiIds.contains(id);
+        })
         .map((e) => e.toJson())
         .toList();
 
