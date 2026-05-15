@@ -2048,6 +2048,15 @@ export const loadMemberRegistryForAuth = async () => {
     }));
     return { members, store };
   } catch (error) {
+    // SECURITY 2026-05-15 — Audit P0 #5 : si readAuthStore throw parce
+    // que AUTH_SESSION_SECRET manque en prod, on NE DOIT PAS retomber
+    // sur un store de secret aléatoire (signature qui change à chaque
+    // process = tokens jamais valides + auth contournable côté offline).
+    // On relaie l'erreur pour que le handler Express renvoie 500 et que
+    // l'opérateur voie immédiatement qu'il faut poser AUTH_SESSION_SECRET.
+    if (/AUTH_SESSION_SECRET/.test(String(error?.message || ''))) {
+      throw error;
+    }
     console.error('[auth] Impossible de charger le registre local, utilisation du fallback mémoire.', error);
     return {
       members: buildFallbackMembers(),
