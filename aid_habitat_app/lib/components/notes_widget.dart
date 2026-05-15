@@ -9,20 +9,25 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../services/data_service.dart';
 import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
+import 'notes_canvas_painters.dart';
 import 'soft_transitions.dart';
+
+// Re-export des enums déplacés dans `notes_canvas_painters.dart` pour
+// préserver l'API publique consommée par `note_window_screen`,
+// `summary_tab` et `mesures_tab` qui les importent via ce fichier.
+export 'notes_canvas_painters.dart' show NoteTool, NoteCanvasMode;
 
 // =============================================================================
 // Enums & constantes — équivalents directs du composant React NotesCanvas.tsx
+//
+// Note : `NoteTool` et `NoteCanvasMode` sont définis dans
+// `notes_canvas_painters.dart` (et re-exportés ci-dessus pour les
+// consommateurs externes). Les enums propres à l'API du widget hôte
+// restent ici.
 // =============================================================================
-
-/// Outils de dessin disponibles (identiques à la version React).
-enum NoteTool { pen, highlighter, eraser, line, rect }
 
 /// Toolsets qui contrôlent les outils disponibles — voir React prop `toolset`.
 enum NoteToolset { quick, advanced, structured }
-
-/// Mode de fond du canvas — équivalent de la prop `mode`.
-enum NoteCanvasMode { freeform, grid }
 
 /// Emplacement de la toolbar — équivalent de la prop `toolbarPlacement`.
 enum NoteToolbarPlacement { bottomCenter, topRight }
@@ -60,106 +65,10 @@ class NoteDraftPayload {
 }
 
 // =============================================================================
-// Modèle de stroke persisté (format JSON identique à celui de React)
-// =============================================================================
-
-class _Stroke {
-  final NoteTool tool;
-  final int color; // ARGB int
-  final double size;
-  final List<Offset> points; // normalisés 0..1
-
-  _Stroke({
-    required this.tool,
-    required this.color,
-    required this.size,
-    required this.points,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'tool': _toolToString(tool),
-    'color': _colorToHex(color),
-    'size': size,
-    'points': points.map((p) => {'x': p.dx, 'y': p.dy}).toList(),
-  };
-
-  static _Stroke? fromJson(Map<String, dynamic> json) {
-    final tool = _toolFromString(json['tool']?.toString() ?? 'pen');
-    if (tool == null) return null;
-    final color = _colorFromHex(json['color']?.toString() ?? '#111827');
-    final size = (json['size'] as num?)?.toDouble() ?? 2.0;
-    final rawPoints = json['points'] as List?;
-    if (rawPoints == null) return null;
-    final points = rawPoints
-        .whereType<Map>()
-        .map((raw) {
-          final x = (raw['x'] as num?)?.toDouble() ?? 0;
-          final y = (raw['y'] as num?)?.toDouble() ?? 0;
-          return Offset(x, y);
-        })
-        .toList();
-    if (points.isEmpty) return null;
-    // Plafonne à 2000 points par stroke (parité React — ligne 857).
-    if (points.length > 2000) {
-      return _Stroke(
-        tool: tool,
-        color: color,
-        size: size,
-        points: points.sublist(0, 2000),
-      );
-    }
-    return _Stroke(tool: tool, color: color, size: size, points: points);
-  }
-}
-
-String _toolToString(NoteTool tool) {
-  switch (tool) {
-    case NoteTool.pen:
-      return 'pen';
-    case NoteTool.highlighter:
-      return 'highlighter';
-    case NoteTool.eraser:
-      return 'eraser';
-    case NoteTool.line:
-      return 'line';
-    case NoteTool.rect:
-      return 'rect';
-  }
-}
-
-NoteTool? _toolFromString(String value) {
-  switch (value) {
-    case 'pen':
-      return NoteTool.pen;
-    case 'highlighter':
-      return NoteTool.highlighter;
-    case 'eraser':
-      return NoteTool.eraser;
-    case 'line':
-      return NoteTool.line;
-    case 'rect':
-      return NoteTool.rect;
-  }
-  return null;
-}
-
-String _colorToHex(int argb) {
-  final rgb = argb & 0xFFFFFF;
-  return '#${rgb.toRadixString(16).padLeft(6, '0')}';
-}
-
-int _colorFromHex(String hex) {
-  var value = hex.replaceFirst('#', '');
-  if (value.length == 6) {
-    value = 'ff$value';
-  } else if (value.length != 8) {
-    return 0xff111827;
-  }
-  return int.tryParse(value, radix: 16) ?? 0xff111827;
-}
-
-// =============================================================================
 // Presets (1:1 avec React)
+//
+// Le modèle `Stroke` et la sérialisation tool/color sont dans
+// `notes_canvas_painters.dart` — pas de duplication ici.
 // =============================================================================
 
 /// Palette 8 couleurs identique à la version React.

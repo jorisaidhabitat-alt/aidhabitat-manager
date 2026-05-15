@@ -4139,6 +4139,47 @@ const hashStringToIndex = (str, modulo) => {
   return hash % modulo;
 };
 
+/// Cache in-memory des logos de caisses principales encodés en data URI
+/// (SVG/PNG inline base64). Évite de relire les fichiers depuis disk à
+/// chaque requête. Le catalog est petit (~15 entrées), ~kB par logo.
+const _PRINCIPAL_LOGO_DATA_URI_CACHE = new Map();
+
+/// Lit un fichier `/retirement-logos/principal/xxx.{svg,png}` depuis le
+/// dossier `public/` du repo et renvoie un data URI prêt à être servi
+/// dans le JSON. Indispensable en prod Vercel : les fichiers sous
+/// `public/retirement-logos/` ne sont PAS servis (le `vercel.json` du
+/// projet Flutter rewrite tout vers `/index.html`, et le projet API
+/// n'a pas de handler `/retirement-logos/*`). En inlinant le contenu,
+/// on supprime entièrement la dépendance au routing static. Demande
+/// utilisateur 2026-05-15 : « les images n'apparaissent pas des caisses
+/// principales en prod ».
+const readPrincipalLogoAsDataUri = async (relativePath) => {
+  if (!relativePath) return null;
+  if (_PRINCIPAL_LOGO_DATA_URI_CACHE.has(relativePath)) {
+    return _PRINCIPAL_LOGO_DATA_URI_CACHE.get(relativePath);
+  }
+  try {
+    // Le `public/` est à la racine du repo, et `server/index.mjs` y est
+    // dans `server/`. On résout via path.resolve depuis le fichier courant.
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const fullPath = path.resolve(__dirname, '..', 'public', relativePath.replace(/^\//, ''));
+    const buffer = await fs.readFile(fullPath);
+    const ext = path.extname(fullPath).toLowerCase();
+    let mime;
+    if (ext === '.svg') mime = 'image/svg+xml';
+    else if (ext === '.png') mime = 'image/png';
+    else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+    else mime = 'application/octet-stream';
+    const dataUri = `data:${mime};base64,${buffer.toString('base64')}`;
+    _PRINCIPAL_LOGO_DATA_URI_CACHE.set(relativePath, dataUri);
+    return dataUri;
+  } catch (err) {
+    console.warn(`[retirement-logo] failed to inline ${relativePath}:`, err?.message || err);
+    return null;
+  }
+};
+
 app.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) => {
   try {
     // Cache HTTP per-user : 5 min fresh + 30 min stale-while-revalidate.
@@ -4150,40 +4191,42 @@ app.get('/api/retirement-funds-principal', requireAuth, async (_req, res, next) 
     res.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=1800');
     res.set('Vary', 'X-App-Session');
     const records = await queryAll(TABLES.caissesRetraite, { fields: ['nom', 'numero_telephone_contact'] });
-    const funds = records
-      .map((record) => {
-        const name = String(field(record, 'nom') || '').trim();
-        // Priorité 1 : catalog des caisses principales (SVG brandés
-        // statiques avec couleurs institutionnelles, cf.
-        // principalRetirementFundsCatalog.mjs). Demande utilisateur
-        // 2026-05-12 : parité avec les caisses complémentaires qui
-        // ont déjà des logos brandés (Klésia, AG2R, Pro BTP…).
-        const branded = getPrincipalFundBranding(name);
-        let logoUrl;
-        if (branded?.logoUrl) {
-          logoUrl = absoluteUrl(branded.logoUrl);
-        } else {
-          // Priorité 2 : SVG auto-généré (data URI). Initiales +
-          // dégradé déterministe basé sur le hash du nom — fallback
-          // pour les caisses non encore catalogées (ex. « Caisse
-          // Retraite A » test).
-          const palette = PRINCIPAL_FUND_PALETTES[
-            hashStringToIndex(name, PRINCIPAL_FUND_PALETTES.length)
-          ];
-          logoUrl = buildLogoDataUri({
-            initials: fundNameToInitials(name),
-            primary: palette.primary,
-            secondary: palette.secondary,
-            name,
-          });
-        }
-        return {
-          id: String(record.id),
+    // Refonte 2026-05-15 : on inline les logos brandés en data URI
+    // (au lieu de retourner une URL `/retirement-logos/...` qui n'est
+    // pas servie en prod Vercel — cf. note dans
+    // `readPrincipalLogoAsDataUri`). Le mapping passe maintenant en
+    // async pour pouvoir lire les fichiers depuis disk.
+    const fundsRaw = await Promise.all(records.map(async (record) => {
+      const name = String(field(record, 'nom') || '').trim();
+      const branded = getPrincipalFundBranding(name);
+      let logoUrl;
+      if (branded?.logoUrl) {
+        // Priorité 1 : tenter d'inliner le SVG/PNG officiel en data URI.
+        // Si la lecture échoue (asset manquant en prod), on tombe sur
+        // le SVG auto-généré ci-dessous (fallback gracieux).
+        logoUrl = await readPrincipalLogoAsDataUri(branded.logoUrl);
+      }
+      if (!logoUrl) {
+        // Priorité 2 (fallback) : SVG auto-généré (data URI). Initiales
+        // + couleurs déterministes via hash du nom.
+        const palette = PRINCIPAL_FUND_PALETTES[
+          hashStringToIndex(name, PRINCIPAL_FUND_PALETTES.length)
+        ];
+        logoUrl = buildLogoDataUri({
+          initials: fundNameToInitials(name),
+          primary: palette.primary,
+          secondary: palette.secondary,
           name,
-          phone: String(field(record, 'numero_telephone_contact') || '').trim(),
-          logoUrl,
-        };
-      })
+        });
+      }
+      return {
+        id: String(record.id),
+        name,
+        phone: String(field(record, 'numero_telephone_contact') || '').trim(),
+        logoUrl,
+      };
+    }));
+    const funds = fundsRaw
       .filter((fund) => fund.name)
       .sort((a, b) => a.name.localeCompare(b.name));
 
