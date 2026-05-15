@@ -295,7 +295,7 @@ class _RetirementFundsPrincipalScreenState
                       fontSize: 32,
                       fontWeight: FontWeight.w600,
                       letterSpacing: -0.5,
-                      color: const Color(0xFF0F172A),
+                      color: const Color(0xFF0E1116),
                     ),
                   ),
                 ),
@@ -308,12 +308,12 @@ class _RetirementFundsPrincipalScreenState
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: const Color(0xFFE4E7EB)),
                     ),
                     child: Row(
                       children: [
                         const Icon(LucideIcons.search,
-                            size: 18, color: Color(0xFF64748B)),
+                            size: 18, color: Color(0xFF8A939D)),
                         const SizedBox(width: 10),
                         Expanded(
                           child: TextField(
@@ -322,7 +322,7 @@ class _RetirementFundsPrincipalScreenState
                             decoration: const InputDecoration(
                               hintText: 'CARSAT, MSA, CNRACL...',
                               hintStyle:
-                                  TextStyle(color: Color(0xFF94A3B8)),
+                                  TextStyle(color: Color(0xFF8A939D)),
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
@@ -492,7 +492,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0E1116),
                           letterSpacing: -0.3,
                         ),
                       ),
@@ -506,7 +506,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
+                              color: const Color(0xFFF2F4F6),
                               borderRadius: BorderRadius.circular(50),
                             ),
                             child: Row(
@@ -515,7 +515,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
                                 const Icon(
                                   LucideIcons.phone,
                                   size: 12,
-                                  color: Color(0xFF475569),
+                                  color: Color(0xFF5C6670),
                                 ),
                                 const SizedBox(width: 6),
                                 Flexible(
@@ -525,7 +525,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
                                     style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFF475569),
+                                      color: Color(0xFF5C6670),
                                     ),
                                   ),
                                 ),
@@ -538,7 +538,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
                           'Téléphone non renseigné',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Color(0xFF94A3B8),
+                            color: Color(0xFF8A939D),
                             fontStyle: FontStyle.italic,
                           ),
                         ),
@@ -624,12 +624,12 @@ class _PrincipalFundLogo extends StatelessWidget {
 
   Widget _placeholder() => Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+          color: const Color(0xFFF2F4F6),
           borderRadius: BorderRadius.circular(16),
         ),
         alignment: Alignment.center,
         child: const Icon(LucideIcons.building,
-            size: 32, color: Color(0xFF94A3B8)),
+            size: 32, color: Color(0xFF8A939D)),
       );
 
   String? _decodeSvgDataUri(String dataUri) {
@@ -765,7 +765,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: Color(0xFF0E1116),
                         letterSpacing: -0.3,
                       ),
                     ),
@@ -776,7 +776,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                   Tooltip(
                     message: 'Fermer',
                     child: Material(
-                      color: const Color(0xFFF1F5F9),
+                      color: const Color(0xFFF2F4F6),
                       shape: const CircleBorder(),
                       child: InkWell(
                         onTap: () => Navigator.of(context).pop(),
@@ -787,7 +787,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                           child: Icon(
                             LucideIcons.x,
                             size: 18,
-                            color: Color(0xFF475569),
+                            color: Color(0xFF5C6670),
                           ),
                         ),
                       ),
@@ -824,7 +824,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0E1116),
                           letterSpacing: -0.2,
                         ),
                       ),
@@ -832,7 +832,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                       Expanded(
                         child: Container(
                           height: 1,
-                          color: const Color(0xFFE2E8F0),
+                          color: const Color(0xFFE4E7EB),
                         ),
                       ),
                     ],
@@ -845,7 +845,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                     child: Material(
                       color: hasPhone
                           ? const Color(0xFF8B6FA0)
-                          : const Color(0xFFE2E8F0),
+                          : const Color(0xFFE4E7EB),
                       borderRadius: BorderRadius.circular(16),
                       child: InkWell(
                         onTap: hasPhone ? () => onCallPhone() : null,
@@ -1031,7 +1031,7 @@ class _NewPrincipalFundDialogState extends State<_NewPrincipalFundDialog> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: Color(0xFF0E1116),
                       ),
                     ),
                   ),
@@ -1140,17 +1140,17 @@ class _PrincipalLabeledField extends StatelessWidget {
           enabled: enabled,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+            hintStyle: const TextStyle(color: Color(0xFF8A939D)),
             isDense: true,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),

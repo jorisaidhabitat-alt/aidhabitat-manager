@@ -1363,7 +1363,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                     const Icon(
                       LucideIcons.mapPin,
                       size: 18,
-                      color: Color(0xFF64748B),
+                      color: Color(0xFF8A939D),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -1372,7 +1372,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                          color: Color(0xFF8A939D),
                         ),
                         overflow: TextOverflow.ellipsis,
                         softWrap: false,
@@ -1703,7 +1703,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A),
+                  color: Color(0xFF0E1116),
                 ),
               ),
               Text(
@@ -1736,7 +1736,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
             // Fond violet CONSTANT (légère teinte en base, plus foncée au
             // hover). Disabled = gris très clair pour distinguer l'état.
             color: widget.disabled
-                ? const Color(0xFFF1F5F9)
+                ? const Color(0xFFF2F4F6)
                 : _hovering
                     ? _kPurple.withValues(alpha: 0.14)
                     : _kPurple.withValues(alpha: 0.07),
@@ -2118,7 +2118,7 @@ class _DocCardState extends State<_DocCard> {
                       icon: const Icon(
                         LucideIcons.moreVertical,
                         size: 18,
-                        color: Color(0xFF94A3B8),
+                        color: Color(0xFF8A939D),
                       ),
                       padding: EdgeInsets.zero,
                       splashRadius: 18,
@@ -3404,7 +3404,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                 const SizedBox(height: 4),
                 const Text(
                   'Vous avez des annotations en cours. Que souhaitez-vous faire ?',
-                  style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
+                  style: TextStyle(fontSize: 14, color: Color(0xFF5C6670)),
                 ),
                 const SizedBox(height: 20),
                 Row(

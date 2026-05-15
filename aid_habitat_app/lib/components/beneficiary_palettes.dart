@@ -51,7 +51,7 @@ class EpciPalette {
   const EpciPalette({required this.bg, required this.fg});
 }
 
-const Color _kPastelEpciFg = Color(0xFF334155);
+const Color _kPastelEpciFg = Color(0xFF2B323A);
 const double _kEpciSaturation = 0.50;
 const double _kEpciLightness = 0.87;
 
@@ -60,7 +60,7 @@ EpciPalette epciPaletteFor(String label) {
     // Pas de libellé → gris neutre slate-100. Distinct visuellement
     // d'un vrai EPCI pour signaler "non renseigné".
     return const EpciPalette(
-      bg: Color(0xFFF1F5F9),
+      bg: Color(0xFFF2F4F6),
       fg: _kPastelEpciFg,
     );
   }

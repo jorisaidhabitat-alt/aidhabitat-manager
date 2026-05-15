@@ -2681,7 +2681,7 @@ class _BackgroundPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
     if (mode == NoteCanvasMode.grid) {
       final paint = Paint()
-        ..color = const Color(0xFF94A3B8).withValues(alpha: 0.22)
+        ..color = const Color(0xFF8A939D).withValues(alpha: 0.22)
         ..strokeWidth = 1;
       for (double x = _kGridCell; x < size.width; x += _kGridCell) {
         canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);

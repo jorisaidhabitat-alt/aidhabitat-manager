@@ -118,7 +118,7 @@ class _CommuneAutocompleteState extends State<CommuneAutocomplete> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: const Color(0xFFE4E7EB)),
             ),
             child: ListView.builder(
               shrinkWrap: true,
@@ -141,7 +141,7 @@ class _CommuneAutocompleteState extends State<CommuneAutocomplete> {
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF334155),
+                              color: Color(0xFF2B323A),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

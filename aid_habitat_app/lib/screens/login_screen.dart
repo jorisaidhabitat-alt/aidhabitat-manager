@@ -104,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: const Color(0xFFE4E7EB)),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x14000000),
@@ -132,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF0F172A),
+                            color: Color(0xFF0E1116),
                           ),
                         ),
                         const SizedBox(height: 28),
@@ -233,11 +233,11 @@ class _LoginScreenState extends State<LoginScreen> {
       fillColor: const Color(0xFFF7F7FA),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+        borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+        borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),

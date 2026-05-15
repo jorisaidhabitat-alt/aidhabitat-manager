@@ -23,7 +23,7 @@ class FormSectionHeader extends StatelessWidget {
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF334155),
+              color: Color(0xFF2B323A),
             ),
           ),
         ],
@@ -684,7 +684,7 @@ class CollapsedValueRow extends StatelessWidget {
         const TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 13,
-          color: Color(0xFF64748B),
+          color: Color(0xFF8A939D),
         );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -704,7 +704,7 @@ class CollapsedValueRow extends StatelessWidget {
                       text: ' ($displayValue)',
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF334155),
+                        color: Color(0xFF2B323A),
                       ),
                     ),
                   ],
@@ -1015,7 +1015,7 @@ class FormMultiToggleGroup extends StatelessWidget {
             style: const TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 13,
-              color: Color(0xFF64748B),
+              color: Color(0xFF8A939D),
             ),
           ),
           const SizedBox(height: 8),
@@ -1066,7 +1066,7 @@ class FormCheckbox extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Flexible(
-              child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF334155))),
+              child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF2B323A))),
             ),
           ],
         ),
@@ -1095,7 +1095,7 @@ class FormMultiSelect extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF64748B))),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF8A939D))),
         const SizedBox(height: 8),
         ...options.map((opt) {
           final isSelected = selected.contains(opt);
@@ -1161,7 +1161,7 @@ class FormSection extends StatelessWidget {
         style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
-          color: Color(0xFF334155),
+          color: Color(0xFF2B323A),
           letterSpacing: 0.2,
         ),
       ),
@@ -1183,7 +1183,7 @@ class FormSection extends StatelessWidget {
           const SizedBox(height: 8),
           Container(
             height: 1,
-            color: const Color(0xFFE2E8F0),
+            color: const Color(0xFFE4E7EB),
           ),
           const SizedBox(height: 12),
           child,
@@ -1365,7 +1365,7 @@ class FormSelectDropdown<T> extends StatelessWidget {
             style: const TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 13,
-              color: Color(0xFF64748B),
+              color: Color(0xFF8A939D),
             ),
           ),
           const SizedBox(height: 6),
@@ -1387,7 +1387,7 @@ class FormSelectDropdown<T> extends StatelessWidget {
               isDense: true,
               hint: Text(
                 placeholder,
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                style: const TextStyle(color: Color(0xFF8A939D), fontSize: 12),
               ),
               items: options
                   .map(
@@ -1460,7 +1460,7 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
           style: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
-            color: Color(0xFF64748B),
+            color: Color(0xFF8A939D),
           ),
         ),
         const SizedBox(height: 6),
@@ -1487,8 +1487,8 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
                     style: TextStyle(
                       fontSize: 12,
                       color: picked.isNotEmpty
-                          ? const Color(0xFF334155)
-                          : const Color(0xFF94A3B8),
+                          ? const Color(0xFF2B323A)
+                          : const Color(0xFF8A939D),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1496,7 +1496,7 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
                 Icon(
                   _open ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                   size: 18,
-                  color: const Color(0xFF94A3B8),
+                  color: const Color(0xFF8A939D),
                 ),
               ],
             ),
@@ -1601,7 +1601,7 @@ class OccupantSwitcher extends StatelessWidget {
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF334155),
+            color: Color(0xFF2B323A),
             letterSpacing: 0.2,
           ),
         ),
@@ -1620,7 +1620,7 @@ class OccupantSwitcher extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: active
                         ? const Color(0xFFE9DFF0)
-                        : const Color(0xFFF1F5F9),
+                        : const Color(0xFFF2F4F6),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -1631,7 +1631,7 @@ class OccupantSwitcher extends StatelessWidget {
                       letterSpacing: 0.2,
                       color: active
                           ? const Color(0xFF554265)
-                          : const Color(0xFF475569),
+                          : const Color(0xFF5C6670),
                     ),
                   ),
                 ),

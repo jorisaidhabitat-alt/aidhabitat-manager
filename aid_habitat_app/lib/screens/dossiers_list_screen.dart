@@ -395,7 +395,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                       "$total dossier${total > 1 ? 's' : ''} · $thisMonth ce mois-ci",
                       style: const TextStyle(
                         fontSize: 13,
-                        color: Color(0xFF64748B),
+                        color: Color(0xFF8A939D),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -504,7 +504,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
+                            color: Color(0xFF0E1116),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -513,7 +513,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 3),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
+                            color: const Color(0xFFF2F4F6),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
@@ -521,7 +521,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF334155),
+                              color: Color(0xFF2B323A),
                             ),
                           ),
                         ),
@@ -534,7 +534,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     curve: kSoftCurve,
                     child: const Icon(
                       Icons.expand_more,
-                      color: Color(0xFF64748B),
+                      color: Color(0xFF8A939D),
                       size: 24,
                     ),
                   ),
@@ -646,18 +646,18 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE4E7EB)),
       ),
       child: Row(
         children: [
-          const Icon(LucideIcons.search, size: 18, color: Color(0xFF64748B)),
+          const Icon(LucideIcons.search, size: 18, color: Color(0xFF8A939D)),
           const SizedBox(width: 10),
           Expanded(
             child: TextField(
               onChanged: (v) => setState(() => _searchTerm = v),
               decoration: const InputDecoration(
                 hintText: 'Rechercher un nom, une ville…',
-                hintStyle: TextStyle(color: Color(0xFF94A3B8)),
+                hintStyle: TextStyle(color: Color(0xFF8A939D)),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -681,12 +681,12 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: const Color(0xFFE4E7EB)),
         ),
         child: Row(
           children: [
             const Icon(LucideIcons.mapPin,
-                size: 16, color: Color(0xFF64748B)),
+                size: 16, color: Color(0xFF8A939D)),
             const SizedBox(width: 8),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 220),
@@ -791,7 +791,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.6,
-        color: isActive ? const Color(0xFF8B6FA0) : const Color(0xFF94A3B8),
+        color: isActive ? const Color(0xFF8B6FA0) : const Color(0xFF8A939D),
       ),
     );
 
@@ -901,7 +901,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      color: Color(0xFF0F172A),
+                      color: Color(0xFF0E1116),
                     ),
                   ),
                   if (meta.isNotEmpty) ...[
@@ -910,7 +910,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                       meta.join(' · '),
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: Color(0xFF8A939D),
                       ),
                     ),
                   ],
@@ -931,7 +931,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
+                      color: Color(0xFF0E1116),
                     ),
                   ),
                   if (p.zipCode.trim().isNotEmpty) ...[
@@ -940,7 +940,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                       p.zipCode,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: Color(0xFF8A939D),
                       ),
                     ),
                   ],
@@ -986,8 +986,8 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: visitDate.isEmpty
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF0F172A),
+                      ? const Color(0xFF8A939D)
+                      : const Color(0xFF0E1116),
                 ),
               ),
             ),
@@ -997,7 +997,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
               child: Icon(
                 LucideIcons.chevronRight,
                 size: 18,
-                color: Color(0xFF94A3B8),
+                color: Color(0xFF8A939D),
               ),
             ),
           ],
@@ -1052,7 +1052,7 @@ class _VisitDateBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: const Color(0xFFF2F4F6),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -1062,8 +1062,8 @@ class _VisitDateBadge extends StatelessWidget {
             LucideIcons.calendar,
             size: 16,
             color: hasDate
-                ? const Color(0xFF0F172A)
-                : const Color(0xFF94A3B8),
+                ? const Color(0xFF0E1116)
+                : const Color(0xFF8A939D),
           ),
           const SizedBox(width: 6),
           Text(
@@ -1072,8 +1072,8 @@ class _VisitDateBadge extends StatelessWidget {
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: hasDate
-                  ? const Color(0xFF0F172A)
-                  : const Color(0xFF94A3B8),
+                  ? const Color(0xFF0E1116)
+                  : const Color(0xFF8A939D),
             ),
           ),
         ],
@@ -1170,7 +1170,7 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                 height: 44,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: const Color(0xFFF2F4F6),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 // Row defaults to CrossAxisAlignment.center → the loupe
@@ -1180,7 +1180,7 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                     const Icon(
                       LucideIcons.search,
                       size: 16,
-                      color: Color(0xFF64748B),
+                      color: Color(0xFF8A939D),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -1194,7 +1194,7 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                         style: const TextStyle(
                           fontSize: 14,
                           height: 1.0,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0E1116),
                         ),
                         // Slight negative y nudges the text/hint upward so
                         // the optical center of "Rechercher…" matches the
@@ -1203,7 +1203,7 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                         decoration: const InputDecoration(
                           hintText: 'Rechercher…',
                           hintStyle: TextStyle(
-                            color: Color(0xFF94A3B8),
+                            color: Color(0xFF8A939D),
                             height: 1.0,
                           ),
                           isCollapsed: true,
@@ -1228,7 +1228,7 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                         padding: EdgeInsets.all(20),
                         child: Text(
                           'Aucun résultat',
-                          style: TextStyle(color: Color(0xFF94A3B8)),
+                          style: TextStyle(color: Color(0xFF8A939D)),
                         ),
                       ),
                     )
@@ -1272,7 +1272,7 @@ class _EpciMenuTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFF1F5F9) : Colors.transparent,
+          color: selected ? const Color(0xFFF2F4F6) : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -1289,7 +1289,7 @@ class _EpciMenuTile extends StatelessWidget {
             ),
             if (selected)
               const Icon(LucideIcons.check,
-                  size: 18, color: Color(0xFF334155)),
+                  size: 18, color: Color(0xFF2B323A)),
           ],
         ),
       ),

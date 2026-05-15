@@ -236,7 +236,7 @@ class _OccupantSwitcher extends StatelessWidget {
               border: Border.all(
                 color: selected
                     ? const Color(0xFF8B6FA0)
-                    : const Color(0xFFCBD5E1),
+                    : const Color(0xFFB9C0C7),
                 width: 1.5,
               ),
             ),
@@ -246,7 +246,7 @@ class _OccupantSwitcher extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
-                color: selected ? Colors.white : const Color(0xFF334155),
+                color: selected ? Colors.white : const Color(0xFF2B323A),
               ),
             ),
           ),

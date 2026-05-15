@@ -233,14 +233,14 @@ class _DefaultPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFF1F5F9),
+      color: const Color(0xFFF2F4F6),
       alignment: Alignment.center,
       child: const SizedBox(
         width: 24,
         height: 24,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: Color(0xFF94A3B8),
+          color: Color(0xFF8A939D),
         ),
       ),
     );
@@ -252,11 +252,11 @@ class _DefaultError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFF1F5F9),
+      color: const Color(0xFFF2F4F6),
       alignment: Alignment.center,
       child: const Icon(
         Icons.image_not_supported_outlined,
-        color: Color(0xFF94A3B8),
+        color: Color(0xFF8A939D),
       ),
     );
   }

@@ -281,7 +281,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
           overflow: TextOverflow.fade,
           style: TextStyle(
             fontSize: widget.labelSize ?? 13,
-            color: widget.labelColor ?? const Color(0xFF64748B),
+            color: widget.labelColor ?? const Color(0xFF8A939D),
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -319,7 +319,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
           widget.cityLabel,
           style: TextStyle(
             fontSize: widget.labelSize ?? 13,
-            color: widget.labelColor ?? const Color(0xFF64748B),
+            color: widget.labelColor ?? const Color(0xFF8A939D),
             fontWeight: FontWeight.w600,
           ),
         ),

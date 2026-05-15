@@ -52,7 +52,7 @@ class _RetirementFundsCombinedScreenState
                     fontSize: 32,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.5,
-                    color: const Color(0xFF0F172A),
+                    color: const Color(0xFF0E1116),
                   ),
                 ),
               ),
@@ -104,7 +104,7 @@ class _CaissesSwitch extends StatelessWidget {
 
   static const Color _bgColor = Color(0xFFEDE8F5); // violet clair pastel
   static const Color _thumbColor = Colors.white;
-  static const Color _textColor = Color(0xFF0F172A);
+  static const Color _textColor = Color(0xFF0E1116);
 
   @override
   Widget build(BuildContext context) {

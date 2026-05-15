@@ -865,7 +865,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: Color(0xFF2B323A),
                 ),
               ),
             ),
@@ -1061,7 +1061,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
         const PopupMenuItem(
           value: 'download',
           child: Row(children: [
-            Icon(LucideIcons.download, size: 16, color: Color(0xFF334155)),
+            Icon(LucideIcons.download, size: 16, color: Color(0xFF2B323A)),
             SizedBox(width: 10),
             Text('Télécharger le plan'),
           ]),
@@ -1070,7 +1070,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           const PopupMenuItem(
             value: 'addPage',
             child: Row(children: [
-              Icon(LucideIcons.filePlus, size: 16, color: Color(0xFF334155)),
+              Icon(LucideIcons.filePlus, size: 16, color: Color(0xFF2B323A)),
               SizedBox(width: 10),
               Text('Ajouter une page vierge'),
             ]),
@@ -1079,7 +1079,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           const PopupMenuItem(
             value: 'duplicatePage',
             child: Row(children: [
-              Icon(LucideIcons.copy, size: 16, color: Color(0xFF334155)),
+              Icon(LucideIcons.copy, size: 16, color: Color(0xFF2B323A)),
               SizedBox(width: 10),
               Text('Dupliquer la page actuelle'),
             ]),
@@ -1175,7 +1175,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: _penColor == c
-                                    ? const Color(0xFF0F172A)
+                                    ? const Color(0xFF0E1116)
                                     : Colors.grey.shade300,
                                 width: _penColor == c ? 2.5 : 1.5,
                               ),
@@ -1325,15 +1325,15 @@ class _PlanCanvasState extends State<PlanCanvas> {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
+            color: const Color(0xFFF2F4F6),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
             icon,
             size: 14,
             color: enabled
-                ? const Color(0xFF334155)
-                : const Color(0xFFCBD5E1),
+                ? const Color(0xFF2B323A)
+                : const Color(0xFFB9C0C7),
           ),
         ),
       ),
@@ -1407,7 +1407,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
             color: Colors.white,
             shape: BoxShape.circle,
             border: Border.all(
-              color: const Color(0xFFE2E8F0),
+              color: const Color(0xFFE4E7EB),
               width: 1,
             ),
           ),
@@ -1625,7 +1625,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           _floatingAction(
             icon: LucideIcons.moveHorizontal,
             tooltip: 'Inverser gauche / droite',
-            color: const Color(0xFF334155),
+            color: const Color(0xFF2B323A),
             bg: Colors.white,
             onTap: () {
               _pushUndo();
@@ -1637,7 +1637,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           _floatingAction(
             icon: LucideIcons.moveVertical,
             tooltip: 'Inverser haut / bas',
-            color: const Color(0xFF334155),
+            color: const Color(0xFF2B323A),
             bg: Colors.white,
             onTap: () {
               _pushUndo();
@@ -1947,21 +1947,21 @@ class _SymbolGridMenu extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: const Color(0xFFF2F4F6),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(item.icon,
-                          size: 22, color: const Color(0xFF334155)),
+                          size: 22, color: const Color(0xFF2B323A)),
                       const SizedBox(height: 6),
                       Text(
                         item.label,
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0E1116),
                         ),
                       ),
                     ],
@@ -2125,7 +2125,7 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF94A3B8).withValues(alpha: 0.22)
+      ..color = const Color(0xFF8A939D).withValues(alpha: 0.22)
       ..strokeWidth = 1;
     // Lignes verticales
     for (double x = _cellPx; x < size.width; x += _cellPx) {
@@ -2453,7 +2453,7 @@ Uint8List _unusedTypedData() => Uint8List(0);
 // baignoire : on voit immédiatement de quel équipement il s'agit.
 // ---------------------------------------------------------------------------
 class _ToiletPictogram extends StatelessWidget {
-  const _ToiletPictogram({this.size = 22, this.color = const Color(0xFF334155)});
+  const _ToiletPictogram({this.size = 22, this.color = const Color(0xFF2B323A)});
   final double size;
   final Color color;
 

@@ -129,7 +129,7 @@ class _AnahScreenState extends State<AnahScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE4E7EB)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -167,7 +167,7 @@ class _AnahScreenState extends State<AnahScreen> {
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172A),
+                    color: Color(0xFF0E1116),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -219,8 +219,8 @@ class _AnahScreenState extends State<AnahScreen> {
                       ),
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF334155),
-                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      foregroundColor: const Color(0xFF2B323A),
+                      side: const BorderSide(color: Color(0xFFB9C0C7)),
                     ),
                   ),
                 ),
@@ -295,8 +295,8 @@ class _AnahScreenState extends State<AnahScreen> {
             icon: const Icon(LucideIcons.externalLink, size: 16),
             label: const Text('Ouvrir dans Safari'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF334155),
-              side: const BorderSide(color: Color(0xFFCBD5E1)),
+              foregroundColor: const Color(0xFF2B323A),
+              side: const BorderSide(color: Color(0xFFB9C0C7)),
             ),
           ),
         ],
@@ -377,7 +377,7 @@ class _AnahScreenState extends State<AnahScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE4E7EB)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),

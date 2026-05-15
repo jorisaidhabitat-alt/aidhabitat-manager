@@ -323,7 +323,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF334155),
+                          color: Color(0xFF2B323A),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -385,7 +385,7 @@ class _ResizeHintPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF94A3B8) // slate-400
+      ..color = const Color(0xFF8A939D) // slate-400
       ..strokeWidth = 1.2
       ..strokeCap = StrokeCap.round;
 
@@ -452,7 +452,7 @@ class NoteWindowDrawingScreen extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
+                      color: Color(0xFF2B323A),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),

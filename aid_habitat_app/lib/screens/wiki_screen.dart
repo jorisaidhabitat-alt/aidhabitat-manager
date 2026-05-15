@@ -217,7 +217,7 @@ class _WikiScreenState extends State<WikiScreen> {
                         fontSize: 32,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.5,
-                        color: const Color(0xFF0F172A),
+                        color: const Color(0xFF0E1116),
                       ),
                     ),
                   ),
@@ -236,12 +236,12 @@ class _WikiScreenState extends State<WikiScreen> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(999),
                         border:
-                            Border.all(color: const Color(0xFFE2E8F0)),
+                            Border.all(color: const Color(0xFFE4E7EB)),
                       ),
                       child: Row(
                         children: [
                           const Icon(LucideIcons.search,
-                              size: 18, color: Color(0xFF64748B)),
+                              size: 18, color: Color(0xFF8A939D)),
                           const SizedBox(width: 10),
                           Expanded(
                             child: TextField(
@@ -249,7 +249,7 @@ class _WikiScreenState extends State<WikiScreen> {
                               decoration: const InputDecoration(
                                 hintText: 'Rechercher un élément…',
                                 hintStyle: TextStyle(
-                                    color: Color(0xFF94A3B8)),
+                                    color: Color(0xFF8A939D)),
                                 border: InputBorder.none,
                                 enabledBorder: InputBorder.none,
                                 focusedBorder: InputBorder.none,
@@ -477,7 +477,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                 Expanded(
                   flex: 2,
                   child: Container(
-                    color: const Color(0xFFF1F5F9),
+                    color: const Color(0xFFF2F4F6),
                     // BoxFit.cover (au lieu de contain) — demande
                     // utilisateur 2026-04-29 : « aligne bien la hauteur
                     // à l'image sans prendre en compte le blanc autour
@@ -534,7 +534,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
+                            color: Color(0xFF0E1116),
                           ),
                           decoration: _inputDecoration(),
                         ),
@@ -545,7 +545,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            border: Border.all(color: const Color(0xFFE4E7EB)),
                           ),
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           child: DropdownButtonHideUnderline(
@@ -628,7 +628,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                       textAlignVertical: TextAlignVertical.top,
                                       style: const TextStyle(
                                         fontSize: 14,
-                                        color: Color(0xFF475569),
+                                        color: Color(0xFF5C6670),
                                         height: 1.5,
                                       ),
                                       decoration: _inputDecoration(),
@@ -640,7 +640,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                     icon: const Icon(
                                       Icons.delete_outline,
                                       size: 18,
-                                      color: Color(0xFF94A3B8),
+                                      color: Color(0xFF8A939D),
                                     ),
                                     tooltip: 'Supprimer cette description',
                                     visualDensity: VisualDensity.compact,
@@ -726,11 +726,11 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+        borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+        borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
@@ -752,7 +752,7 @@ class _FormLabel extends StatelessWidget {
       style: const TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w700,
-        color: Color(0xFF64748B),
+        color: Color(0xFF8A939D),
         letterSpacing: 1.2,
       ),
     );
@@ -905,7 +905,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: Color(0xFF0E1116),
                       ),
                     ),
                   ),
@@ -1035,7 +1035,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                   'Image sélectionnée',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF334155),
+                    color: Color(0xFF2B323A),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1084,7 +1084,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
           color: const Color(0xFFF7F7FA),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: const Color(0xFFCBD5E1),
+            color: const Color(0xFFB9C0C7),
             style: BorderStyle.solid,
             width: 1,
           ),
@@ -1102,12 +1102,12 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 ),
               )
             else
-              const Icon(LucideIcons.image, size: 18, color: Color(0xFF64748B)),
+              const Icon(LucideIcons.image, size: 18, color: Color(0xFF8A939D)),
             const SizedBox(width: 10),
             Text(
               _pickingImage ? 'Chargement…' : 'Choisir une image (optionnel)',
               style: const TextStyle(
-                color: Color(0xFF64748B),
+                color: Color(0xFF8A939D),
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
@@ -1161,7 +1161,7 @@ class _FilterChip extends StatelessWidget {
           border: Border.all(
             color: isActive
                 ? const Color(0xFF8B6FA0) // fusionnée avec le fond actif
-                : const Color(0xFFE2E8F0), // slate-200 (border inactive)
+                : const Color(0xFFE4E7EB), // slate-200 (border inactive)
             width: 1,
           ),
         ),
@@ -1169,7 +1169,7 @@ class _FilterChip extends StatelessWidget {
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
           style: GoogleFonts.nunito(
-            color: isActive ? Colors.white : const Color(0xFF475569),
+            color: isActive ? Colors.white : const Color(0xFF5C6670),
             fontWeight: FontWeight.w600,
           ),
           child: Text(label),
@@ -1326,7 +1326,7 @@ class _WikiCardState extends State<_WikiCard> {
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0E1116),
                           letterSpacing: -0.3,
                         ),
                       ),
@@ -1340,7 +1340,7 @@ class _WikiCardState extends State<_WikiCard> {
                         style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF94A3B8),
+                          color: Color(0xFF8A939D),
                           letterSpacing: 1.2,
                         ),
                       ),
@@ -1358,7 +1358,7 @@ class _WikiCardState extends State<_WikiCard> {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
+                              color: const Color(0xFFF2F4F6),
                               borderRadius: BorderRadius.circular(50),
                             ),
                             child: Text(
@@ -1367,7 +1367,7 @@ class _WikiCardState extends State<_WikiCard> {
                               style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF475569),
+                                color: Color(0xFF5C6670),
                               ),
                             ),
                           ),
@@ -1427,17 +1427,17 @@ class _WikiLabeledField extends StatelessWidget {
           maxLines: maxLines,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+            hintStyle: const TextStyle(color: Color(0xFF8A939D)),
             isDense: true,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),

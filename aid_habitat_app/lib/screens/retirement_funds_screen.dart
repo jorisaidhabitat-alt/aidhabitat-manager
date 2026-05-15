@@ -230,7 +230,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
                     fontSize: 32,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.5,
-                    color: const Color(0xFF0F172A),
+                    color: const Color(0xFF0E1116),
                   ),
                 ),
               ),
@@ -247,12 +247,12 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: const Color(0xFFE4E7EB)),
                   ),
                   child: Row(
                     children: [
                       const Icon(LucideIcons.search,
-                          size: 18, color: Color(0xFF64748B)),
+                          size: 18, color: Color(0xFF8A939D)),
                       const SizedBox(width: 10),
                       Expanded(
                         child: TextField(
@@ -261,7 +261,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
                           decoration: const InputDecoration(
                             hintText: 'Klésia, AG2R, Pro BTP...',
                             hintStyle:
-                                TextStyle(color: Color(0xFF94A3B8)),
+                                TextStyle(color: Color(0xFF8A939D)),
                             border: InputBorder.none,
                             enabledBorder: InputBorder.none,
                             focusedBorder: InputBorder.none,
@@ -453,7 +453,7 @@ class _FundCardState extends State<_FundCard> {
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0E1116),
                           letterSpacing: -0.3,
                         ),
                       ),
@@ -467,7 +467,7 @@ class _FundCardState extends State<_FundCard> {
                         style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF94A3B8),
+                          color: Color(0xFF8A939D),
                           letterSpacing: 1.2,
                         ),
                       ),
@@ -483,7 +483,7 @@ class _FundCardState extends State<_FundCard> {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
+                              color: const Color(0xFFF2F4F6),
                               borderRadius: BorderRadius.circular(50),
                             ),
                             child: Row(
@@ -492,7 +492,7 @@ class _FundCardState extends State<_FundCard> {
                                 const Icon(
                                   LucideIcons.phone,
                                   size: 12,
-                                  color: Color(0xFF475569),
+                                  color: Color(0xFF5C6670),
                                 ),
                                 const SizedBox(width: 6),
                                 Flexible(
@@ -502,7 +502,7 @@ class _FundCardState extends State<_FundCard> {
                                     style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFF475569),
+                                      color: Color(0xFF5C6670),
                                     ),
                                   ),
                                 ),
@@ -647,7 +647,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
           fontSize: 13,
           fontWeight: FontWeight.w500,
           color:
-              text.isEmpty ? Colors.grey.shade400 : const Color(0xFF0F172A),
+              text.isEmpty ? Colors.grey.shade400 : const Color(0xFF0E1116),
           height: 1.45,
         ),
       ),
@@ -789,7 +789,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
                         style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0E1116),
                           letterSpacing: -0.3,
                         ),
                         decoration: const InputDecoration(
@@ -812,7 +812,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
                         style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0E1116),
                           letterSpacing: -0.3,
                         ),
                       ),
@@ -1076,7 +1076,7 @@ class _SectionTitle extends StatelessWidget {
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF0F172A),
+            color: Color(0xFF0E1116),
             letterSpacing: -0.2,
           ),
         ),
@@ -1084,7 +1084,7 @@ class _SectionTitle extends StatelessWidget {
         Expanded(
           child: Container(
             height: 1,
-            color: const Color(0xFFE2E8F0),
+            color: const Color(0xFFE4E7EB),
           ),
         ),
       ],
@@ -1114,7 +1114,7 @@ class _FieldRow extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(icon, size: 12, color: const Color(0xFF94A3B8)),
+            Icon(icon, size: 12, color: const Color(0xFF8A939D)),
             const SizedBox(width: 6),
             Text(
               label.toUpperCase(),
@@ -1122,7 +1122,7 @@ class _FieldRow extends StatelessWidget {
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.9,
-                color: Color(0xFF64748B),
+                color: Color(0xFF8A939D),
               ),
             ),
           ],
@@ -1235,7 +1235,7 @@ class _Textarea extends StatelessWidget {
       style: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w600,
-        color: Color(0xFF0F172A),
+        color: Color(0xFF0E1116),
         height: 1.35,
       ),
       decoration: InputDecoration(
@@ -1272,7 +1272,7 @@ class _Input extends StatelessWidget {
       style: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w600,
-        color: Color(0xFF0F172A),
+        color: Color(0xFF0E1116),
       ),
       decoration: InputDecoration(
         filled: true,
@@ -1349,8 +1349,8 @@ class _SaveStateIndicator extends StatelessWidget {
         ),
       _ => const _IndicatorConfig(
           bg: Colors.white,
-          border: Color(0xFFE2E8F0),
-          fg: Color(0xFF64748B),
+          border: Color(0xFFE4E7EB),
+          fg: Color(0xFF8A939D),
           label: '',
         ),
     };
@@ -1425,7 +1425,7 @@ class _ContactActionButton extends StatelessWidget {
     return Opacity(
       opacity: enabled ? 1 : 0.5,
       child: Material(
-        color: enabled ? const Color(0xFF8B6FA0) : const Color(0xFFE2E8F0),
+        color: enabled ? const Color(0xFF8B6FA0) : const Color(0xFFE4E7EB),
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: enabled ? onTap : null,
@@ -1508,8 +1508,8 @@ class _IconCircleButton extends StatelessWidget {
       bg = const Color(0xFF8B6FA0);
       fg = Colors.white;
     } else {
-      bg = const Color(0xFFF1F5F9);
-      fg = const Color(0xFF475569);
+      bg = const Color(0xFFF2F4F6);
+      fg = const Color(0xFF5C6670);
     }
     return Tooltip(
       message: tooltip,
@@ -1682,7 +1682,7 @@ class _NewRetirementFundDialogState extends State<_NewRetirementFundDialog> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: Color(0xFF0E1116),
                       ),
                     ),
                   ),
@@ -1809,17 +1809,17 @@ class _LabeledField extends StatelessWidget {
           maxLines: maxLines,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+            hintStyle: const TextStyle(color: Color(0xFF8A939D)),
             isDense: true,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),

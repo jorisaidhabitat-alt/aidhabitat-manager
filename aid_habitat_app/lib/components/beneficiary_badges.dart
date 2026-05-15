@@ -238,8 +238,8 @@ class IncomeCategoryBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = incomePaletteFor(value);
-    final bg = monochrome ? const Color(0xFFF1F5F9) : palette.bg;
-    final fg = monochrome ? const Color(0xFF334155) : palette.fg;
+    final bg = monochrome ? const Color(0xFFF2F4F6) : palette.bg;
+    final fg = monochrome ? const Color(0xFF2B323A) : palette.fg;
     // Refonte 2026-05-13 : variante `large` alignée sur AnahStatusBadge
     // et le bouton « Générer » du header (13px w600, padding 14×6).
     return Container(

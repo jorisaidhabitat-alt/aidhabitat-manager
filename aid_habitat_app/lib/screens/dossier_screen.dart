@@ -504,7 +504,7 @@ class _DossierScreenState extends State<DossierScreen> {
                   style: GoogleFonts.nunito(
                     fontSize: 22,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172A),
+                    color: Color(0xFF0E1116),
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -751,7 +751,7 @@ class _DossierScreenState extends State<DossierScreen> {
         // Contour slate-200 1 px (demande user 2026-05-13 : « met des
         // contours autour du bloc bénéficiaire »). Parité avec les
         // cards Documents / VAD et le formCard du relevé de visite.
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        border: Border.all(color: const Color(0xFFE4E7EB), width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -975,7 +975,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             fontSize: 14,
                             // Bumpé w400 → w500 (uniformisation 2026-05-13).
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF94A3B8),
+                            color: Color(0xFF8A939D),
                           ),
                         ),
                     ],
@@ -1298,7 +1298,7 @@ class _PlainField extends StatelessWidget {
           style: GoogleFonts.nunito(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFF0F172A),
+            color: const Color(0xFF0E1116),
             height: multiline ? 1.4 : 1.2,
           ),
         ),
@@ -1345,7 +1345,7 @@ class _QuickActionButton extends StatelessWidget {
           // Contour slate-200 1 px (demande user 2026-05-13 : « met des
           // contours autour de VAD et Documents »). Parité avec le bloc
           // Bénéficiaire et le formCard du relevé de visite.
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+          border: Border.all(color: const Color(0xFFE4E7EB), width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1403,7 +1403,7 @@ class _EpciBadgeSkeleton extends StatelessWidget {
       // vertical = 35 px. Match `EpciBadge(large: true)`.
       height: 35,
       decoration: BoxDecoration(
-        color: const Color(0xFFE2E8F0),
+        color: const Color(0xFFE4E7EB),
         borderRadius: BorderRadius.circular(999),
       ),
     );

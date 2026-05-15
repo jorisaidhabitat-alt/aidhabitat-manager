@@ -2074,7 +2074,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   'remplies. Tu peux générer le rapport quand même '
                   '(les champs vides seront laissés blancs dans le PDF) '
                   'ou compléter d\'abord :',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+                  style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
                 ),
                 const SizedBox(height: 12),
                 Flexible(
@@ -2260,7 +2260,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         // note/canvas à droite, surtout quand les 2 sont sur fond clair.
         // Demande utilisateur 2026-05-12.
         border: Border.all(
-          color: const Color(0xFFE2E8F0), // slate-200
+          color: const Color(0xFFE4E7EB), // slate-200
           width: 1,
         ),
       ),

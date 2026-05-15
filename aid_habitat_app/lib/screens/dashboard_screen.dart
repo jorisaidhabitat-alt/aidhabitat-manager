@@ -647,7 +647,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         const Icon(
                           LucideIcons.mapPin,
                           size: 12,
-                          color: Color(0xFF94A3B8), // slate-400
+                          color: Color(0xFF8A939D), // slate-400
                         ),
                         const SizedBox(width: 4),
                         Flexible(
@@ -658,7 +658,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                               // Bump 2026-05-13 : 12→14, ajout w600.
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF64748B),
+                              color: Color(0xFF8A939D),
                             ),
                           ),
                         ),
@@ -728,7 +728,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         LucideIcons.calendar,
                         size: 13,
                         color: visitLabel.isEmpty
-                            ? const Color(0xFF94A3B8)
+                            ? const Color(0xFF8A939D)
                             : const Color(0xFF8B6FA0),
                       ),
                       const SizedBox(width: 6),
@@ -739,7 +739,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: visitLabel.isEmpty
-                              ? const Color(0xFF64748B)
+                              ? const Color(0xFF8A939D)
                               : const Color(0xFF8B6FA0),
                         ),
                       ),
@@ -752,7 +752,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 size: 18,
                 color: _hover
                     ? const Color(0xFF8B6FA0)
-                    : const Color(0xFFCBD5E1), // slate-300
+                    : const Color(0xFFB9C0C7), // slate-300
               ),
                 ],
               ),
@@ -1310,7 +1310,7 @@ class _ActivityBarColumn extends StatelessWidget {
             // Bump 2026-05-13 : 12→14, w600→w700.
             fontSize: 14,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF94A3B8), // slate-400
+            color: Color(0xFF8A939D), // slate-400
           ),
         ),
         const SizedBox(height: 12),
@@ -1342,7 +1342,7 @@ class _ActivityBarColumn extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: isHighlighted
                           ? const Color(0xFF8B6FA0)
-                          : const Color(0xFFE2E8F0), // slate-200
+                          : const Color(0xFFE4E7EB), // slate-200
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -1358,7 +1358,7 @@ class _ActivityBarColumn extends StatelessWidget {
             // Bump 2026-05-13 : 12→14, w500→w600.
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF94A3B8),
+            color: Color(0xFF8A939D),
           ),
         ),
       ],
@@ -1632,7 +1632,7 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
               child: Center(
                 child: Text(
                   "Aucune visite prévue aujourd'hui.",
-                  style: TextStyle(color: Color(0xFF94A3B8)),
+                  style: TextStyle(color: Color(0xFF8A939D)),
                 ),
               ),
             )
@@ -1704,7 +1704,7 @@ class _TravelOverline extends StatelessWidget {
                     // Bump 2026-05-13 : 11.5→13.5, ajout w600.
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF94A3B8),
+                    color: Color(0xFF8A939D),
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -1716,7 +1716,7 @@ class _TravelOverline extends StatelessWidget {
                 // Bump 2026-05-13 : 11.5→13.5, w600→w700.
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF94A3B8),
+                color: Color(0xFF8A939D),
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -2078,8 +2078,8 @@ class _PendingReportRow extends StatelessWidget {
       case DossierStatus.ARCHIVED:
         return const _StatusPalette(
           bg: Color(0xFFF2F4F6),
-          fg: Color(0xFF475569),
-          dot: Color(0xFF94A3B8),
+          fg: Color(0xFF5C6670),
+          dot: Color(0xFF8A939D),
         );
     }
   }
@@ -2133,7 +2133,7 @@ class _EmptyStatePlaceholder extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Icon(icon, size: 26, color: const Color(0xFF94A3B8)),
+              child: Icon(icon, size: 26, color: const Color(0xFF8A939D)),
             ),
             const SizedBox(height: 12),
             Text(
@@ -2142,7 +2142,7 @@ class _EmptyStatePlaceholder extends StatelessWidget {
                 // Bump 2026-05-13 : 14→16, w700→w800.
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF475569),
+                color: Color(0xFF5C6670),
               ),
               textAlign: TextAlign.center,
             ),
@@ -2154,7 +2154,7 @@ class _EmptyStatePlaceholder extends StatelessWidget {
                   // Bump 2026-05-13 : 12→14, ajout w600.
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF94A3B8),
+                  color: Color(0xFF8A939D),
                 ),
                 textAlign: TextAlign.center,
               ),
