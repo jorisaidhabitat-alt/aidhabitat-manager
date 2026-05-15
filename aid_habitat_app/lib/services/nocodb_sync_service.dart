@@ -47,6 +47,13 @@ final RegExp _kIpadNetworkErrorPattern = RegExp(
   caseSensitive: false,
 );
 
+/// Match strict des codes HTTP 401/403 entre parenthèses. AVANT
+/// 2026-05-16 on utilisait `s.contains('(401)')` qui matchait aussi
+/// `(4015)`, `(4019)`, etc. — improbable en pratique (les status codes
+/// Dart sortent toujours en 3 chiffres) mais fragile. La regex impose
+/// la fermeture immédiate de la parenthèse.
+final RegExp _kAuthFailureStatusPattern = RegExp(r'\((40[13])\)');
+
 /// Codes HTTP **permanents** dans le sens du sync engine : retry inutile,
 /// l'erreur ne se résoudra pas toute seule. Une op qui contient un de
 /// ces codes dans son message d'erreur DOIT remonter en `markFailed`
@@ -88,8 +95,7 @@ bool isTransientErrorLike(Object error) {
   // `restoreRemoteSession` au boot (et le futur force-relogin sur 401)
   // débloque la situation sans alarmer l'utilisateur entre temps.
   return _kIpadNetworkErrorPattern.hasMatch(s) ||
-      s.contains('(401)') ||
-      s.contains('(403)');
+      _kAuthFailureStatusPattern.hasMatch(s);
 }
 
 /// Indicates that a sync operation was rejected due to a conflict (HTTP 409).

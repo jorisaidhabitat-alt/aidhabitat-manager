@@ -1439,9 +1439,15 @@ class NocodbApiClient {
     // normalement empêcher ce cas, mais on garde le message au cas où
     // une photo compressée resterait au-dessus de la limite.
     if (response.statusCode == 413) {
+      // On garde "(413)" littéral dans le message pour que
+      // `isTransientErrorLike` (nocodb_sync_service.dart) le short-circuit
+      // sur `_kPermanent4xxMarkers` et marque l'op `failed` immédiatement
+      // au lieu de retry en boucle. Sans le code dans la string, l'op
+      // tomberait dans la catch-all qui essaie d'autres patterns et
+      // pourrait passer transient à tort.
       throw Exception(
-        'Photo trop volumineuse (>4.5 Mo après compression). '
-        'Choisis une image plus petite.',
+        'Photo trop volumineuse — limite serveur (413) (>4.5 Mo après '
+        'compression). Choisis une image plus petite.',
       );
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {

@@ -236,6 +236,13 @@ class SyncEngine {
   /// Réinitialise UNE op à `pending` puis kick le sync engine sans
   /// attendre le prochain tick. Utilisé par le bouton « Réessayer »
   /// par-op du drawer.
+  ///
+  /// Fix audit 2026-05-15 : on ne clear l'erreur globale que s'il
+  /// n'y a plus aucune op `failed` résiduelle. Avant : `clearError: true`
+  /// inconditionnel → un utilisateur avec 3 ops en échec qui en
+  /// retentait UNE voyait le bandeau rouge global disparaître alors
+  /// que 2 ops restaient bloquées. Le drawer restait ouvert avec les
+  /// 2 ops visibles, mais sur le reste de l'app plus aucun signal.
   Future<int> retrySingleOperation(String operationId) async {
     final reset =
         await _syncRepository.resetSingleOperationToPending(operationId);
@@ -244,9 +251,10 @@ class SyncEngine {
       _retryTimer?.cancel();
       _retryTimer = null;
       final pending = await _refreshPendingCount();
+      final remaining = await _syncRepository.fetchTopFailingOperation();
       _emitState(
         pendingCount: pending,
-        clearError: true,
+        clearError: remaining == null,
         nextRetryAt: null,
       );
     }

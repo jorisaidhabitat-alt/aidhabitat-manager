@@ -131,6 +131,47 @@ void main() {
       );
     });
 
+    test('Message photo profil formaté "limite serveur (413)" → '
+        'NOT transient (audit code review 2026-05-16)', () {
+      // Le message custom dans `uploadProfilePhoto` (nocodb_api_client)
+      // ne contient pas "Profile photo upload failed (413)" textuel —
+      // il a été reformulé pour l'UI. On vérifie que le `(413)` reste
+      // détectable.
+      expect(
+        isTransientErrorLike(
+          Exception(
+            'Photo trop volumineuse — limite serveur (413) (>4.5 Mo après '
+            'compression). Choisis une image plus petite.',
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('Codes ressemblants à 401/403 mais plus longs → NOT transient '
+        '(audit code review 2026-05-16 : regex strict vs substring)', () {
+      // Avant la regex `_kAuthFailureStatusPattern`, `s.contains("(401)")`
+      // matchait aussi `(4015)`, `(4019)`. Improbable en pratique car les
+      // status HTTP Dart sont à 3 chiffres mais le pattern était fragile.
+      expect(
+        isTransientErrorLike(Exception('Custom error code (4015)')),
+        isFalse,
+      );
+      expect(
+        isTransientErrorLike(Exception('Some message with (40130)')),
+        isFalse,
+      );
+      // Vrais 401/403 → toujours transient.
+      expect(
+        isTransientErrorLike(Exception('Auth check failed (401)')),
+        isTrue,
+      );
+      expect(
+        isTransientErrorLike(Exception('Forbidden (403)')),
+        isTrue,
+      );
+    });
+
     test('HTTP 422 in message → NOT transient (validation NocoDB)', () {
       expect(
         isTransientErrorLike(
