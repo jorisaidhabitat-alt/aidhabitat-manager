@@ -58,6 +58,11 @@ class RemoteLoginResult {
   bool get isUnreachable => token == null && !rejected;
 }
 
+/// Statut d'un token de session vis-à-vis du serveur. Utilisé par
+/// `validateSessionToken()` pour distinguer un rejet explicite (re-login
+/// nécessaire) d'une simple panne réseau (rester offline en attendant).
+enum SessionTokenStatus { valid, rejected, unreachable }
+
 /// True si l'erreur réseau sous-jacente doit être considérée comme
 /// transitoire (retry silencieux plutôt qu'échec remonté à l'UI).
 bool _isTransientNetworkError(Object error) =>
@@ -1237,6 +1242,49 @@ class NocodbApiClient {
       // Timeout / réseau / DNS / TLS — pas un rejet, le serveur est
       // peut-être hors ligne. Permettre le fallback local.
       return const RemoteLoginResult.unreachable();
+    }
+  }
+
+  /// Vérifie qu'un token de session est encore accepté par le serveur via
+  /// `GET /api/auth/session`. Distingue 3 cas (cf. [SessionTokenStatus]) :
+  ///
+  ///   - `valid` → 2xx. Le serveur reconnaît le token.
+  ///   - `rejected` → 401/403. Le serveur a explicitement refusé (ex.
+  ///     security fix 2026-05-15 qui rejette les `local-auth:`).
+  ///   - `unreachable` → timeout / 5xx / réseau / DNS / TLS. Le serveur
+  ///     n'a pas pu répondre — on ne sait rien, on garde le token pour le
+  ///     mode offline.
+  ///
+  /// Utilisé par `AuthService.restoreRemoteSession` pour détecter à
+  /// l'amorçage qu'un `local-auth:` cached est obsolète après déploiement
+  /// d'un serveur strict, et forcer une re-login propre (au lieu de
+  /// laisser le sync engine spammer le bandeau rouge).
+  Future<SessionTokenStatus> validateSessionToken({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    if (AppConfig.apiBaseUrl.trim().isEmpty) {
+      return SessionTokenStatus.unreachable;
+    }
+    if (AppConfig.appSessionToken.trim().isEmpty) {
+      return SessionTokenStatus.rejected;
+    }
+    try {
+      final response = await _client
+          .get(Uri.parse('$_baseUrl/api/auth/session'), headers: _headers)
+          .timeout(timeout);
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        return SessionTokenStatus.rejected;
+      }
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return SessionTokenStatus.valid;
+      }
+      // Autres codes (5xx surtout) → on traite comme injoignable, le
+      // sync engine continuera à retenter en silencieux.
+      return SessionTokenStatus.unreachable;
+    } catch (_) {
+      // Timeout / SocketException / ClientException → le serveur est
+      // peut-être hors ligne. On garde le token en attendant.
+      return SessionTokenStatus.unreachable;
     }
   }
 

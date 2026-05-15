@@ -157,6 +157,15 @@ class _RetirementFundsPrincipalScreenState
   }
 
   Future<void> _writeToCache(List<_PrincipalFund> funds) async {
+    // Garde-fou (demande user 2026-05-15) : la table NocoDB des caisses
+    // principales est un référentiel quasi-statique (13 entrées). Une
+    // réponse vide n'est JAMAIS un état légitime — c'est forcément un
+    // serveur en train de redémarrer, un token expiré ou un fetch foireux.
+    // Refuser d'écraser le cache par du vide évite qu'une seule réponse
+    // dégradée pollue durablement l'affichage de l'utilisateur (incident
+    // 2026-05-15 10:07 : cache écrit avec [], affichage « Aucune caisse
+    // trouvée » jusqu'à intervention manuelle).
+    if (funds.isEmpty) return;
     try {
       final db = await _localDb.database;
       final encoded = jsonEncode(

@@ -118,6 +118,22 @@ class MediaCacheService {
     return {'X-App-Session': token};
   }
 
+  /// Variante **sélective** d'`authHeaders` : retourne les headers d'auth
+  /// uniquement si [targetUrl] pointe vers notre propre serveur Express.
+  /// Pour les URLs externes (CDN, sites tiers comme les logos des caisses
+  /// de retraite, etc.) on retourne `{}` pour ne PAS leaker le token via
+  /// Referer / logs tiers. Utilisé par `CachedRemoteImage` qui sert
+  /// indifféremment des URLs internes (`/uploads/...`) et externes.
+  /// Demande sécurité 2026-05-15 (audit P0 #2 — gating des `/uploads/*`).
+  static Map<String, String> authHeadersFor(String targetUrl) {
+    final apiBase = AppConfig.apiBaseUrl.trim();
+    if (apiBase.isEmpty) return const {};
+    final resolved = resolveMediaUrl(targetUrl);
+    if (resolved.isEmpty) return const {};
+    if (!resolved.startsWith(apiBase)) return const {};
+    return authHeaders();
+  }
+
   Future<File?> _download(
     String url,
     File target, {
@@ -162,8 +178,11 @@ class MediaCacheService {
 
   /// Convenience: returns the raw bytes, downloading + caching on first call.
   /// Useful for SVGs that are rendered via SvgPicture.memory.
-  Future<List<int>?> readBytes(String url) async {
-    final file = await fetch(url);
+  ///
+  /// [headers] propagés à [fetch] pour les URLs qui exigent l'auth
+  /// (`/uploads/*` depuis le gating sécurité 2026-05-15).
+  Future<List<int>?> readBytes(String url, {Map<String, String>? headers}) async {
+    final file = await fetch(url, headers: headers);
     if (file == null) return null;
     try {
       return await file.readAsBytes();

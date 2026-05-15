@@ -195,10 +195,63 @@ const conditionalReportMultipart = (req, res, next) => {
   }
   return next();
 };
-app.use('/uploads/profile-photos', express.static(PROFILE_PHOTOS_DIR_URL.pathname));
-app.use('/uploads/documents', express.static(DOCUMENTS_DIR_URL.pathname));
-app.use('/uploads/visit-plans', express.static(VISIT_PLANS_DIR_URL.pathname));
-app.use('/uploads/wiki-library', express.static(WIKI_LIBRARY_DIR_URL.pathname));
+// SECURITY 2026-05-15 — Audit P0 #2 : on gate tous les `/uploads/*` derrière
+// un middleware d'auth. Avant : `express.static` servait n'importe quel
+// fichier à qui en devinait l'URL (photos profil, documents PII, plans
+// de logement). Maintenant : le token doit être fourni soit dans le
+// header `X-App-Session` (méthode standard, utilisée par
+// `MediaCacheService` côté Flutter), soit en query param `?token=...`
+// (fallback pour les `<img src>` directs où l'on ne peut pas définir
+// de header). La validation réutilise la même logique HMAC que
+// `resolveSessionUser` (mais inlinée pour éviter de muter `req` avant
+// que les autres middlewares puissent y toucher).
+const requireAuthForUploads = async (req, res, next) => {
+  try {
+    const headerToken = String(req.get('x-app-session') || '').trim();
+    const queryToken = String(req.query?.token || '').trim();
+    const token = headerToken || queryToken;
+    if (!token) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    // Tokens local-auth: rejetés (cf. fix P0 #1).
+    if (token.startsWith(LOCAL_SESSION_TOKEN_PREFIX)) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const [encodedPayload, signature] = token.split('.');
+    if (!encodedPayload || !signature) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const { store, members } = await loadMemberRegistryForAuth();
+    const expected = crypto.createHmac('sha256', store.secret)
+      .update(encodedPayload).digest('base64url');
+    if (signature !== expected) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const payload = decodeBase64Url(encodedPayload);
+    if (!payload?.email || Number(payload.exp) < Date.now()) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const email = normalizeEmail(payload.email);
+    const currentSv = Number(store.users[email]?.sessionVersion) || 0;
+    const tokenSv = Number(payload.sv) || 0;
+    if (tokenSv !== currentSv) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const member = members.find((m) => m.email === email);
+    if (!member) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    return next();
+  } catch (error) {
+    console.error('[uploads-auth] erreur middleware', error);
+    return res.status(500).json({ error: 'auth_error' });
+  }
+};
+
+app.use('/uploads/profile-photos', requireAuthForUploads, express.static(PROFILE_PHOTOS_DIR_URL.pathname));
+app.use('/uploads/documents', requireAuthForUploads, express.static(DOCUMENTS_DIR_URL.pathname));
+app.use('/uploads/visit-plans', requireAuthForUploads, express.static(VISIT_PLANS_DIR_URL.pathname));
+app.use('/uploads/wiki-library', requireAuthForUploads, express.static(WIKI_LIBRARY_DIR_URL.pathname));
 
 const TABLES = {
   beneficiaires: 'muvp56d5i9z2qbe',
