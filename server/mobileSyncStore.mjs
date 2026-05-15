@@ -1602,7 +1602,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       tab_key: tabKey,
       sub_tab_key: stringValue(subTabKey),
       page_number: Number(pageNumber) || 0,
-      text_content: stringValue(textContent),
+      text_content: compressTextForStorage(stringValue(textContent)),
       drawing_json: compressDrawingForStorage(drawingJson),
       ...(supportsPreviewField ? { preview_data_url: stringValue(previewDataUrl) } : {}),
       ...(supportsPreviewUrlField ? { preview_url: createdPreviewUrl } : {}),
