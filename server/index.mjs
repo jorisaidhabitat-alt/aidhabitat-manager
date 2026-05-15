@@ -2250,15 +2250,23 @@ const buildMemberFromErgoRecord = (record) => {
   // 2026-05-11 : on ne sert plus les URLs Vercel Blob mortes au
   // client. Elles consommaient le quota Blob Advanced Operations
   // (140% dépassé) à chaque fetch d'un avatar dont le fichier blob
-  // a été purgé. Si on n'a pas de base64 et que la legacy est une
-  // URL blob, on retourne `''` → le client affiche l'avatar par
-  // défaut. L'ergo verra une photo vide jusqu'à ce qu'il en
-  // re-uploade une (qui partira en `profile_photo_base64`).
-  const isDeadBlobUrl = (url) =>
-    typeof url === 'string'
-    && /^https?:\/\/[^/]*blob\.vercel-storage\.com/i.test(url);
+  // a été purgé.
+  //
+  // 2026-05-15 : on étend le filtre aux URLs `/uploads/profile-photos/...`
+  // (anciennes photos écrites sur le filesystem express avant la
+  // migration 2026-05-06). Sur Vercel le FS est éphémère (read-only
+  // sauf /tmp), donc ces fichiers n'existent plus en prod → 404 garanti
+  // côté client. On retourne '' → avatar par défaut. L'ergo réuploade
+  // sa photo (compressée + stockée en data URL via profile_photo_base64).
+  const isDeadLegacyPhotoUrl = (url) => {
+    if (typeof url !== 'string') return false;
+    if (/^https?:\/\/[^/]*blob\.vercel-storage\.com/i.test(url)) return true;
+    // Path style ou URL absolue contenant /uploads/profile-photos/
+    if (/\/uploads\/profile-photos\//i.test(url)) return true;
+    return false;
+  };
   const resolvedPhotoUrl = profilePhotoB64
-      || (isDeadBlobUrl(profilePhotoLegacy)
+      || (isDeadLegacyPhotoUrl(profilePhotoLegacy)
         ? ''
         : resolveClientMediaUrl(profilePhotoLegacy));
   return {
@@ -2296,7 +2304,13 @@ const buildFallbackMembers = () => (
 
 const resolveStoredProfilePhotoUrl = (store, email) => {
   const rawValue = stringValue(store?.users?.[email]?.profilePhotoUrl).trim();
-  return rawValue ? resolveClientMediaUrl(rawValue) : '';
+  if (!rawValue) return '';
+  // 2026-05-15 : filtre legacy URLs mortes (Vercel Blob purgé ou
+  // /uploads/profile-photos/* sur FS éphémère). Cf. note dans
+  // `buildMemberFromErgoRecord` (`isDeadLegacyPhotoUrl`).
+  if (/^https?:\/\/[^/]*blob\.vercel-storage\.com/i.test(rawValue)) return '';
+  if (/\/uploads\/profile-photos\//i.test(rawValue)) return '';
+  return resolveClientMediaUrl(rawValue);
 };
 
 const parseImageDataUrl = (dataUrl) => {
