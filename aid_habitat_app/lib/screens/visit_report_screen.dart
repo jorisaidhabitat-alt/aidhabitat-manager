@@ -865,15 +865,40 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         // à gauche, pour que l'utilisateur sente que le contenu vient
         // de changer.
         Expanded(
-          child: Stack(
-            fit: StackFit.expand,
-            children: List.generate(subsections.length, (i) {
+          child: Builder(builder: (_) {
+            // Dédoublonne les sous-sections par tabKey résolu.
+            // Pour Accessibilité (Refonte 2026-05-15) : les 4
+            // sous-sections partagent le même tabKey
+            // `Accessibilité-Notes` → on collapse à 1 layer (sinon
+            // 4 NotesWidget avec la même ValueKey provoquaient un
+            // throw Flutter sur les keys dupliquées dans le Stack).
+            // Pour Sanitaires : déjà 1 entrée dans `_tabSubsections`,
+            // pas d'impact. Pour les autres tabs : 1 tabKey unique
+            // par sous-section, pas de dédoublonnage.
+            final seenTabKeys = <String>{};
+            final layers = <_NotesLayerSpec>[];
+            for (var i = 0; i < subsections.length; i++) {
               final section = subsections[i];
               final tabKey = _resolveNotesTabKey(activeTab, section);
-              final liveKey = '${_dossier.patient.id}::$tabKey';
-              final isMedical = tabKey == 'Contexte de vie-Médical';
-              final isActive = i == safeIdx;
-              final pdfPlaceholder = _resolvePlaceholderForTabKey(tabKey);
+              if (!seenTabKeys.add(tabKey)) continue;
+              layers.add(_NotesLayerSpec(
+                section: section,
+                tabKey: tabKey,
+                originalIndex: i,
+              ));
+            }
+            // Tabkey actif (selon la sous-section sélectionnée).
+            final activeTabKey =
+                _resolveNotesTabKey(activeTab, subsections[safeIdx]);
+            return Stack(
+              fit: StackFit.expand,
+              children: layers.map((layer) {
+                final section = layer.section;
+                final tabKey = layer.tabKey;
+                final liveKey = '${_dossier.patient.id}::$tabKey';
+                final isMedical = tabKey == 'Contexte de vie-Médical';
+                final isActive = tabKey == activeTabKey;
+                final pdfPlaceholder = _resolvePlaceholderForTabKey(tabKey);
               return _NotesPanelLayer(
                 isActive: isActive,
                 child: NotesWidget(
@@ -926,8 +951,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       isMedical ? _handleMedicalFlagsFromNotes : null,
                 ),
               );
-            }),
-          ),
+              }).toList(),
+            );
+          }),
         ),
       ],
     );
@@ -2645,6 +2671,22 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 /// devient actif/inactif. Mêmes durées et courbes que le `SoftSwitcher`
 /// utilisé pour les autres sous-sections du relevé → l'utilisateur
 /// retrouve la même grammaire d'animation partout.
+/// Spec d'un layer de note dans le Stack du panneau droit. Permet de
+/// dédoublonner les sous-sections par tabKey résolu (cf. fix
+/// 2026-05-15 : pour Accessibilité, les 4 sous-sections partagent
+/// `Accessibilité-Notes` et ne doivent rendre qu'UN seul NotesWidget
+/// — sinon ValueKey dupliquées dans le Stack → Flutter throw).
+class _NotesLayerSpec {
+  final String section;
+  final String tabKey;
+  final int originalIndex;
+  const _NotesLayerSpec({
+    required this.section,
+    required this.tabKey,
+    required this.originalIndex,
+  });
+}
+
 class _NotesPanelLayer extends StatelessWidget {
   const _NotesPanelLayer({
     required this.isActive,
