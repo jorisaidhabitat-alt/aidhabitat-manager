@@ -88,25 +88,55 @@ class LocalDatabase {
       // pas distinguer les deux côté Dart, on tente la migration
       // pragmatique « wipe + recreate ». La perte est limitée car
       // NocoDB est la source de vérité.
+      // Refonte 2026-05-16 (audit P0 #3) : AVANT de supprimer la DB
+      // legacy, on la BACKUP dans un fichier `.bak.<timestamp>` à côté.
+      // Sans ce backup, toutes les modifs offline non encore synchronisées
+      // étaient perdues — le commentaire historique disait « La perte
+      // est limitée car NocoDB est la source de vérité » mais c'est
+      // faux pour les ops `pending` jamais poussées. Désormais, un
+      // support tech peut récupérer manuellement le fichier `.bak`
+      // en cas de drame (corruption WAL, master key invalidée, etc.).
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       debugPrint(
         '[security] SQLCipher openDatabase a échoué : $firstError. '
-        'Suppression du fichier legacy et recréation chiffrée. '
-        'Les données locales seront re-tirées depuis NocoDB.',
+        'Backup du fichier legacy en .bak.$timestamp puis recréation chiffrée.',
       );
       try {
         final legacyFile = File(fullPath);
         if (await legacyFile.exists()) {
-          await legacyFile.delete();
+          // Backup avant suppression. `rename` est atomique sur le même
+          // filesystem — pas de risque de corruption pendant la copie.
+          final backupPath = '$fullPath.bak.$timestamp';
+          await legacyFile.rename(backupPath);
+          debugPrint('[security] DB legacy sauvée → $backupPath');
         }
-        // Supprime aussi les fichiers WAL / SHM qui peuvent traîner.
+        // Les fichiers WAL/SHM contiennent des transactions non commit —
+        // on les déplace aussi (au lieu de delete) pour préserver toute
+        // donnée non encore flushée dans le main file.
         for (final suffix in ['-journal', '-wal', '-shm']) {
           final sideCar = File('$fullPath$suffix');
           if (await sideCar.exists()) {
-            await sideCar.delete();
+            final sideCarBackup = '$fullPath$suffix.bak.$timestamp';
+            await sideCar.rename(sideCarBackup);
           }
         }
-      } catch (deleteError) {
-        debugPrint('[security] suppression DB legacy échouée : $deleteError');
+      } catch (backupError) {
+        debugPrint(
+          '[security] backup DB legacy échoué : $backupError — '
+          'tentative de delete en dernier recours pour débloquer le boot.',
+        );
+        // Si on ne peut pas backup (disk full, permission denied), on
+        // tombe sur l'ancien comportement delete pour ne pas bloquer
+        // l'app au démarrage. Mieux : app utilisable + perte partielle
+        // que app cassée définitivement.
+        try {
+          final legacyFile = File(fullPath);
+          if (await legacyFile.exists()) await legacyFile.delete();
+          for (final suffix in ['-journal', '-wal', '-shm']) {
+            final sideCar = File('$fullPath$suffix');
+            if (await sideCar.exists()) await sideCar.delete();
+          }
+        } catch (_) {/* best-effort */}
       }
       // Deuxième tentative — création fraîche chiffrée.
       return await openWithKey();

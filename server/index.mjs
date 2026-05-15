@@ -3301,30 +3301,65 @@ const upsertContexte = async (
         })),
       }))
     : [];
-  const legacySizeWeight = stringValue(medicalContext?.sizeWeight).replace(',', '.');
-  const legacyHeightMatch = legacySizeWeight.match(/(\d+(?:\.\d+)?)\s*cm/i);
-  const legacyWeightMatch = legacySizeWeight.match(/(\d+(?:\.\d+)?)\s*kg/i);
-  const heightCm = stringValue(medicalContext?.heightCm).trim() || legacyHeightMatch?.[1] || '';
-  const weightKg = stringValue(medicalContext?.weightKg).trim() || legacyWeightMatch?.[1] || '';
+  // Fix critique 2026-05-15 (audit P0) — PATCH partiel :
+  //
+  // Avant : `fields` incluait TOUJOURS toutes les colonnes medical
+  // (`nom_pathologie`, `suivi_medical`, `deficience_auditive_visuelle`,
+  // `taille_approximative`, `poids_exact`) ET toutes les colonnes
+  // autonomy (`aide_technique_deplacement`, `difficultes_escalier`,
+  // `restrictions_conduite`, `autonomie_toilette/repas/menage/demarches`)
+  // + `occupants_json`. Si le caller passait `medicalContext=undefined`
+  // (= save d'autonomy seul), les colonnes medical étaient résolues à
+  // `nullableString(undefined?.pathology)` = `null`/`''` → ÉCRASEMENT
+  // côté NocoDB. Inversement, `autonomy=undefined` faisait que tous
+  // les `checklistMap.get(...) ? 'Oui' : ''` retournaient `''` →
+  // toutes les autonomies écrasées à vide.
+  //
+  // Symptôme typique : « les cases autonomie disparaissent quand je
+  // sauve la taille/poids » et inversement. Pendant des dossiers
+  // déjà corrompus, voir le ré-upsert via l'app (chaque save remet
+  // l'état complet local). Pattern miroir du fix housing
+  // `_kHousingBoolColumnsToAlwaysPush` côté Flutter (audit P0).
+  //
+  // Après : on conditionne l'inclusion par `has(key)`. Si la section
+  // n'est PAS dans le payload, ses colonnes sont absentes du write
+  // → `sanitizeUndefined` les strip → NocoDB ne touche à rien.
+  const hasMedical = medicalContext !== undefined && medicalContext !== null;
+  const hasAutonomy = autonomy !== undefined && autonomy !== null;
+
   const fields = {
     dossier_id: dossierUuid,
     beneficiaire_id: beneficiaryUuid,
     dossiers_id: dossierRecord ? Number(dossierRecord.id) : undefined,
     beneficiaires_id: beneficiaryRecordId != null ? Number(beneficiaryRecordId) : undefined,
-    nom_pathologie: nullableString(medicalContext?.pathology),
-    suivi_medical: nullableString(medicalContext?.followUp),
-    deficience_auditive_visuelle: nullableString(medicalContext?.sensory),
-    taille_approximative: nullableString(heightCm),
-    poids_exact: nullableString(weightKg),
-    aide_technique_deplacement: checklistMap.get('Déplacements/transferts') ? true : false,
-    difficultes_escalier: checklistMap.get('Escaliers') ? 'Oui' : '',
-    restrictions_conduite: checklistMap.get('Conduite automobile') ? 'Oui' : '',
-    autonomie_toilette: checklistMap.get('Toilette/habillage') ? 'Oui' : '',
-    autonomie_repas: checklistMap.get('Repas (y compris courses)') ? 'Oui' : '',
-    autonomie_menage: checklistMap.get('Tâches ménagères.domestiques') ? 'Oui' : '',
-    autonomie_demarches_admin: checklistMap.get('Démarches admin') ? 'Oui' : '',
-    occupants_json: normalizedOccupants.length > 0 ? JSON.stringify(normalizedOccupants) : null,
   };
+
+  if (hasMedical) {
+    const legacySizeWeight = stringValue(medicalContext?.sizeWeight).replace(',', '.');
+    const legacyHeightMatch = legacySizeWeight.match(/(\d+(?:\.\d+)?)\s*cm/i);
+    const legacyWeightMatch = legacySizeWeight.match(/(\d+(?:\.\d+)?)\s*kg/i);
+    const heightCm = stringValue(medicalContext?.heightCm).trim() || legacyHeightMatch?.[1] || '';
+    const weightKg = stringValue(medicalContext?.weightKg).trim() || legacyWeightMatch?.[1] || '';
+    fields.nom_pathologie = nullableString(medicalContext?.pathology);
+    fields.suivi_medical = nullableString(medicalContext?.followUp);
+    fields.deficience_auditive_visuelle = nullableString(medicalContext?.sensory);
+    fields.taille_approximative = nullableString(heightCm);
+    fields.poids_exact = nullableString(weightKg);
+  }
+
+  if (hasAutonomy) {
+    fields.aide_technique_deplacement = checklistMap.get('Déplacements/transferts') ? true : false;
+    fields.difficultes_escalier = checklistMap.get('Escaliers') ? 'Oui' : '';
+    fields.restrictions_conduite = checklistMap.get('Conduite automobile') ? 'Oui' : '';
+    fields.autonomie_toilette = checklistMap.get('Toilette/habillage') ? 'Oui' : '';
+    fields.autonomie_repas = checklistMap.get('Repas (y compris courses)') ? 'Oui' : '';
+    fields.autonomie_menage = checklistMap.get('Tâches ménagères.domestiques') ? 'Oui' : '';
+    fields.autonomie_demarches_admin = checklistMap.get('Démarches admin') ? 'Oui' : '';
+    // `occupants_json` mélange medical + autonomy par occupant. On
+    // ne le push que si autonomy est présent (cas typique : edit des
+    // occupants ou de leur autonomie individuelle).
+    fields.occupants_json = normalizedOccupants.length > 0 ? JSON.stringify(normalizedOccupants) : null;
+  }
 
   if (existing) {
     await updateRecord(TABLES.contexteDeVie, existing.id, fields);
