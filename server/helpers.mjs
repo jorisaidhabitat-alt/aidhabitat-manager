@@ -728,19 +728,38 @@ const AUTH_STORE_KEY = 'auth-store.json';
 
 let _ramAuthStore = null;
 
+const _isProductionEnv = () => {
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+  return vercelEnv === 'production' || nodeEnv === 'production';
+};
+
 const _getStableSecret = () => {
   const fromEnv = String(process.env.AUTH_SESSION_SECRET || '').trim();
   if (fromEnv.length >= 32) return fromEnv;
-  // Fallback déterministe dérivé du token NocoDB (lui-même secret +
-  // stable). Si AUTH_SESSION_SECRET n'est pas set, les sessions
-  // restent valides cross-deploy tant que le token NocoDB ne change
-  // pas. À set proprement en production avec une valeur dédiée.
-  if (!process.env.AUTH_SESSION_SECRET) {
-    console.warn(
-      '[auth] AUTH_SESSION_SECRET non défini — fallback dérivé du token NocoDB. '
-      + 'Définir une env var dédiée pour la prod.',
+
+  // SECURITY 2026-05-15 — Audit P0 #5 : en PRODUCTION, on REFUSE de
+  // démarrer sans `AUTH_SESSION_SECRET` ≥ 32 chars. Avant, le fallback
+  // dérivait le secret HMAC du `NOCODB_API_TOKEN` → quiconque connaissant
+  // ce token (admin NocoDB, fuite logs Easypanel, etc.) pouvait forger
+  // n'importe quel token de session signé. La dérivation déterministe
+  // n'est conservée qu'en environnement de développement local pour ne
+  // pas casser le DX.
+  if (_isProductionEnv()) {
+    const reason = fromEnv
+      ? `AUTH_SESSION_SECRET trop court (${fromEnv.length} chars < 32 requis)`
+      : 'AUTH_SESSION_SECRET non défini';
+    throw new Error(
+      `[auth] ${reason}. `
+      + 'Générer un secret aléatoire de 48+ chars (ex: `openssl rand -base64 48`) '
+      + 'et le poser dans les variables d\'environnement Vercel/Easypanel.',
     );
   }
+
+  console.warn(
+    '[auth] AUTH_SESSION_SECRET non défini — fallback dérivé du token NocoDB. '
+    + 'OK en dev local, INTERDIT en prod (le serveur throw au démarrage).',
+  );
   const seed = String(process.env.NOCODB_API_TOKEN || 'aidhabitat-fallback');
   return crypto.createHmac('sha256', 'aidhabitat-auth-secret-derivation')
     .update(seed)

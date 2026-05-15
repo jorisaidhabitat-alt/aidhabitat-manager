@@ -963,16 +963,34 @@ const STATIC_JWT_SECRET =
 
 let _ramAuthStoreLocal = null;
 
+const _isProductionEnv = () => {
+  const vercelEnv = stringValue(process.env.VERCEL_ENV).trim().toLowerCase();
+  const nodeEnv = stringValue(process.env.NODE_ENV).trim().toLowerCase();
+  return vercelEnv === 'production' || nodeEnv === 'production';
+};
+
 const _resolveAuthSecret = () => {
   if (STATIC_JWT_SECRET && STATIC_JWT_SECRET.length >= 32) {
     return STATIC_JWT_SECRET;
   }
-  if (!STATIC_JWT_SECRET) {
-    console.warn(
-      '[auth] AUTH_SESSION_SECRET non défini — fallback dérivé du token NocoDB. '
-      + 'Définir une env var dédiée pour la prod.',
+  // SECURITY 2026-05-15 — Audit P0 #5 : en PRODUCTION, refus de
+  // démarrer sans `AUTH_SESSION_SECRET` ≥ 32 chars (cf. helpers.mjs
+  // pour le rationale détaillé). Le fallback dérivé du NOCODB_API_TOKEN
+  // reste autorisé en dev local UNIQUEMENT.
+  if (_isProductionEnv()) {
+    const reason = STATIC_JWT_SECRET
+      ? `AUTH_SESSION_SECRET trop court (${STATIC_JWT_SECRET.length} chars < 32 requis)`
+      : 'AUTH_SESSION_SECRET non défini';
+    throw new Error(
+      `[auth] ${reason}. `
+      + 'Générer un secret aléatoire de 48+ chars (ex: `openssl rand -base64 48`) '
+      + 'et le poser dans les variables d\'environnement Vercel/Easypanel.',
     );
   }
+  console.warn(
+    '[auth] AUTH_SESSION_SECRET non défini — fallback dérivé du token NocoDB. '
+    + 'OK en dev local, INTERDIT en prod (le serveur throw au démarrage).',
+  );
   const seed = stringValue(process.env.NOCODB_API_TOKEN || 'aidhabitat-fallback');
   return crypto.createHmac('sha256', 'aidhabitat-auth-secret-derivation')
       .update(seed).digest('base64url');

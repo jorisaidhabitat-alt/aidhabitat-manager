@@ -148,18 +148,22 @@ class NocodbSyncService {
     }
 
     if (!AppConfig.hasRemoteConfig) {
-      for (final operation in operations) {
-        await _syncRepository.markFailed(
-          operationId: operation.id,
-          entityType: operation.entityType,
-          entityLocalId: operation.entityLocalId,
-          error: 'Configuration NocoDB absente',
-        );
-      }
+      // Refonte 2026-05-14 : traiter l'absence de config remote comme
+      // un état TRANSITOIRE (idem offline) au lieu de marquer toutes
+      // les ops `failed`. Avant, ce branch produisait un bandeau rouge
+      // « Synchronisation en échec — Configuration NocoDB absente »
+      // dès qu'une mutation arrivait pendant un état token-vide
+      // (login en cours, session expirée temporairement, démarrage à
+      // froid avant que `restoreRemoteSession` ait fini). Maintenant :
+      // les ops restent en `pending`, pas de marquage `failed`, pas
+      // de bandeau rouge — la prochaine tentative de sync (déclenchée
+      // par le restore du token ou un nouveau login) les retentera.
       return SyncRunResult(
         pushedOperations: 0,
-        failedOperations: operations.length,
-        message: 'Configuration NocoDB absente',
+        failedOperations: 0,
+        message:
+            'Session non initialisée — ${operations.length} '
+            'opération${operations.length > 1 ? 's' : ''} en attente',
       );
     }
 
