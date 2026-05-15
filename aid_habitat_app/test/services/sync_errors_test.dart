@@ -110,26 +110,57 @@ void main() {
     });
 
     test('HTTP 404 in message → NOT transient (ressource disparue)', () {
-      // Note : on évite volontairement les wordings type "upload failed"
-      // ou "download failed" qui contiennent la sous-chaîne "load failed"
-      // → faux-positif transient. La classification textuelle est large
-      // (cf. commentaire `_isTransientErrorLike`), c'est délibéré pour
-      // attraper les iPad PWA "load failed" Safari.
       expect(
         isTransientErrorLike(Exception('Resource not found (404)')),
         isFalse,
       );
     });
 
-    test('Message contenant "upload failed" / "download failed" → '
-        'transient (faux positif assumé : ces verbes apparaissent dans '
-        'les exceptions réseau iPad, prudence > précision)', () {
-      // Documente la limite connue de la classification textuelle.
-      // Tant qu\'on a besoin du fallback Safari "Load failed", ce
-      // pattern reste large.
+    test('HTTP 413 in message → NOT transient (audit P0 #11 refonte '
+        '2026-05-15 17h : upload photo trop grosse, retry inutile)', () {
+      // Bug reproduit en prod : POST /api/profile/photo 413 (image > 95 KB
+      // base64) était reclassé en transient à cause du faux-positif
+      // "upload failed" ⊂ "load failed". Désormais : short-circuit sur
+      // les codes 4xx permanents. L'op doit aller en markFailed et le
+      // user doit la voir dans le bottom sheet des ops en échec.
       expect(
-        isTransientErrorLike(Exception('Doc upload failed (404)')),
-        isTrue,
+        isTransientErrorLike(
+          Exception('Profile photo upload failed (413): too big'),
+        ),
+        isFalse,
+      );
+    });
+
+    test('HTTP 422 in message → NOT transient (validation NocoDB)', () {
+      expect(
+        isTransientErrorLike(
+          Exception('Remote update failed (422): invalid value'),
+        ),
+        isFalse,
+      );
+    });
+
+    test('"upload failed" sans code 4xx → encore considéré transient via '
+        'wording réseau (mais on ne devrait jamais arriver là avec un '
+        'vrai serveur — il met TOUJOURS un code de status)', () {
+      // Cas pathologique : message brut sans status code. On reste
+      // permissif parce qu'on ne peut pas distinguer "upload failed"
+      // ClientException Safari d'un upload qui a vraiment foiré.
+      // Note : avant le fix word-boundary (regex `\bload failed\b`),
+      // "upload failed" matchait `load failed` par sous-chaîne. Plus
+      // maintenant : `\b` exige une frontière de mot avant `load`.
+      expect(
+        isTransientErrorLike(Exception('upload failed mid-flight')),
+        isFalse,
+        reason: '"upload" et "load" partagent leur début, mais \\b '
+            'exclut maintenant ce match',
+      );
+    });
+
+    test('"download failed" → NOT transient (même raison)', () {
+      expect(
+        isTransientErrorLike(Exception('download failed at byte 1234')),
+        isFalse,
       );
     });
 

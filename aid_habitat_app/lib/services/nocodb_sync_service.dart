@@ -36,6 +36,30 @@ import 'sync_repository.dart';
 /// en "Load failed" sur iPad et le bandeau rouge bloquait l'ergo.
 /// Avec ce reclassement, l'op est rejouée au cycle suivant sans aucune
 /// alerte UI.
+/// Regex à mot-frontière pour les patterns Safari iPad PWA. AVANT
+/// 2026-05-15 17h on utilisait `s.contains('load failed')` qui
+/// matchait `"upload failed"` / `"download failed"` (sous-chaîne) → un
+/// 413 (Payload Too Large) sur upload photo était reclassé en transient
+/// et bouclait en retry infini. Le `\b` impose une frontière de mot
+/// avant `load` → exclut les composés `upload`, `download`, `reload`.
+final RegExp _kIpadNetworkErrorPattern = RegExp(
+  r'\bload failed\b|\bfetch failed\b|failed to fetch|clientexception',
+  caseSensitive: false,
+);
+
+/// Codes HTTP **permanents** dans le sens du sync engine : retry inutile,
+/// l'erreur ne se résoudra pas toute seule. Une op qui contient un de
+/// ces codes dans son message d'erreur DOIT remonter en `markFailed`
+/// même si une autre heuristique l'aurait classée transient. Sans ce
+/// short-circuit, un payload 413 (image trop grosse) ou 422 (validation
+/// NocoDB) retry silencieusement en boucle.
+const Set<String> _kPermanent4xxMarkers = {
+  '(400)', // Bad Request
+  '(404)', // Not Found
+  '(413)', // Payload Too Large
+  '(422)', // Unprocessable Entity
+};
+
 /// True si une erreur capturée pendant une op sync doit être considérée
 /// comme **transitoire** (rejouée silencieusement au prochain cycle)
 /// plutôt que comme un échec définitif qui remonte un bandeau rouge.
@@ -50,19 +74,20 @@ bool isTransientErrorLike(Object error) {
   if (error is HttpException) return true;
   if (error is http.ClientException) return true;
   final s = error.toString().toLowerCase();
+  // Short-circuit : si le message porte un code 4xx permanent, on
+  // refuse la classification transient quoi qu'il arrive (sinon le
+  // pattern `clientexception` ou autre pourrait dominer et masquer
+  // un vrai bug fonctionnel — exemple : 413 sur photo trop grosse).
+  for (final marker in _kPermanent4xxMarkers) {
+    if (s.contains(marker)) return false;
+  }
   // Refonte 2026-05-15 (audit P0 #2) : on inclut désormais 401 et 403
   // dans les erreurs transitoires. Avant, un 401 (token expiré / rejeté
   // par le serveur strict `local-auth`) faisait `markFailed` → bandeau
   // rouge spammé. Désormais l'op reste en queue silencieusement ;
   // `restoreRemoteSession` au boot (et le futur force-relogin sur 401)
   // débloque la situation sans alarmer l'utilisateur entre temps.
-  // Note : `rehabilitateTransientFailures` (sync_repository) continue à
-  // capter aussi les anciennes ops qui ont déjà été markFailed avec
-  // ces codes — double sécurité pour la migration des sessions héritées.
-  return s.contains('load failed') ||
-      s.contains('fetch failed') ||
-      s.contains('failed to fetch') ||
-      s.contains('clientexception') ||
+  return _kIpadNetworkErrorPattern.hasMatch(s) ||
       s.contains('(401)') ||
       s.contains('(403)');
 }
