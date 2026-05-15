@@ -1672,7 +1672,27 @@ const syncLocalWikiStoreToNocodb = async () => {
   return { wikiRecords: refreshedWikiRecords, tagRecords };
 };
 
+// Cache module-scope de la wiki library — partagé entre les invocations
+// d'une même lambda. Évite de re-fetcher NocoDB sur CHAQUE PUT
+// visit-recommendations (~100-500 ms par call) alors que la wiki bouge
+// rarement. TTL court (60 s) pour garder une fraîcheur acceptable :
+// quand un admin édite la wiki via /api/wiki, la nouvelle version
+// apparaît côté ergo dans la minute. Si besoin d'une invalidation
+// immédiate, voir `invalidateWikiLibraryCache()`.
+let _wikiLibraryCache = null;
+let _wikiLibraryCacheExpiresAt = 0;
+const _WIKI_LIBRARY_CACHE_TTL_MS = 60_000;
+
+const invalidateWikiLibraryCache = () => {
+  _wikiLibraryCache = null;
+  _wikiLibraryCacheExpiresAt = 0;
+};
+
 const loadWikiLibrary = async () => {
+  if (_wikiLibraryCache && Date.now() < _wikiLibraryCacheExpiresAt) {
+    return _wikiLibraryCache;
+  }
+
   const localStore = await readWikiLibraryStore();
 
   try {
@@ -1681,7 +1701,12 @@ const loadWikiLibrary = async () => {
     console.error('Wiki sync failed, serving local library', error);
   }
 
-  return localStore.items.map(mapWikiLibraryItem).sort((a, b) => a.title.localeCompare(b.title));
+  const items = localStore.items
+    .map(mapWikiLibraryItem)
+    .sort((a, b) => a.title.localeCompare(b.title));
+  _wikiLibraryCache = items;
+  _wikiLibraryCacheExpiresAt = Date.now() + _WIKI_LIBRARY_CACHE_TTL_MS;
+  return items;
 };
 
 const readAnahStatus = async ({ forceRefresh = false } = {}) => {
