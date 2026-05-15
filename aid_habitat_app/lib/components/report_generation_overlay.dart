@@ -166,19 +166,12 @@ class _ReportGenerationOverlayState extends State<ReportGenerationOverlay> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 280),
-                        child: Text(
-                          _state.progressLabel.isNotEmpty
-                              ? _state.progressLabel
-                              : 'Génération du rapport...',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 2,
+                      const Text(
+                        'Génération...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
                         ),
                       ),
                     ],

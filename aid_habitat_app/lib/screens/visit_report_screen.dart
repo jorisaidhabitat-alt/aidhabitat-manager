@@ -2640,38 +2640,10 @@ class _NotesPanelLayer extends StatelessWidget {
   }
 }
 
-/// Bannière titre au-dessus de chaque NotesWidget du panneau notes
-/// (demande user 2026-05-15) : affiche le libellé exact de la section
-/// PDF correspondante (« Observations sur l'accessibilité »,
-/// « Habitudes de vie », « Environnement », « Projet de l'usager »,
-/// « Résumé des préconisations »…) sur un fond mauve clair. Avant ce
-/// fix, le libellé était en hintText du TextField interne — donc
-/// invisible dès que l'ergo commençait à saisir.
-class _NotesPanelTitleBanner extends StatelessWidget {
-  const _NotesPanelTitleBanner({required this.title});
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEDE8F5), // mauve-100, light brand
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF554265), // mauve-700
-          letterSpacing: 0.1,
-        ),
-      ),
-    );
-  }
-}
+// `_NotesPanelTitleBanner` extrait en composant partagé 2026-05-15 :
+// cf. `lib/components/notes_panel_title_banner.dart`. Utilisé aussi
+// par summary_tab.dart pour les cadres compacts « Projet de l'usager »
+// et « Résumé des préconisations ».
 
 // `_MedicalFlagBadges` retiré le 2026-05-04 — remplacé par
 // `_MedicalPageNumberBadge` (badge unique = numéro de page courant).

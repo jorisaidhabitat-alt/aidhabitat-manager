@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/types.dart';
 import '../../components/notes_widget.dart';
+import '../../components/notes_panel_title_banner.dart';
 
 /// Onglet « Résumé » — créé 2026-05-04 à partir du split de l'ancien
 /// onglet Préconisations en deux pages distinctes (demande utilisateur) :
@@ -93,15 +94,26 @@ class _SummaryTabState extends State<SummaryTab>
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
           child: SizedBox(
-            height: 84,
+            // 84 → 138 : libère 50 pt pour la bannière titre (+6 gap)
+            // au-dessus de chaque NotesWidget. Demande user 2026-05-15 :
+            // les libellés (« Projet de l'usager », « Résumé des
+            // préconisations ») passent de hintText en banner permanent
+            // fond mauve clair.
+            height: 138,
             child: Row(
               children: [
                 Expanded(
-                  child: NotesWidget(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const NotesPanelTitleBanner(title: "Projet de l'usager"),
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: NotesWidget(
                     key: ValueKey('summary-note-projet-$patientId'),
                     patientId: patientId,
                     tabKey: 'Préconisations-Projet',
-                    placeholder: 'Projet de l’usager',
+                    placeholder: '',
                     showCanvas: false,
                     embedded: true,
                     showSaveButton: false,
