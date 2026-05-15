@@ -11,7 +11,7 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
-  static const _dbVersion = 17;
+  static const _dbVersion = 18;
 
   Database? _database;
 
@@ -84,6 +84,40 @@ class LocalDatabase {
     }
     if (oldVersion < 17) {
       await _migrateV16ToV17(db);
+    }
+    if (oldVersion < 18) {
+      await _migrateV17ToV18(db);
+    }
+  }
+
+  /// v17 → v18 : sécurité — purge des mots de passe `access_members.
+  /// generated_password` et `app_session.remote_token` qui pouvaient
+  /// traîner en clair sur SQLite depuis des installs pré-fix audit
+  /// 2026-05-15 (P0 #3 + #4 Layer 1).
+  ///
+  /// - `access_members.generated_password` : avant le fix P0 #3, le
+  ///   serveur exposait le password en clair dans /api/admin/access-
+  ///   members → certains comptes Flutter pouvaient en avoir une copie
+  ///   cachée localement. On RAZ par sécurité, l'admin re-génèrera
+  ///   via "Réinitialiser" si besoin (réception dans la response POST).
+  /// - `app_session.remote_token` : avant le fix P0 #4 Layer 1, le
+  ///   token de session était stocké en clair ici. Désormais il est
+  ///   dans Keychain via `SecureSessionStorage`. La purge ici est une
+  ///   double sécurité au-cas-où la migration `restoreRemoteSession`
+  ///   n'aurait pas été appelée (ex: crash entre `openDatabase` et
+  ///   `AuthService.restoreRemoteSession`).
+  ///
+  /// Idempotent : si les colonnes sont déjà vides, l'UPDATE est no-op.
+  Future<void> _migrateV17ToV18(Database db) async {
+    try {
+      await db.update('access_members', {'generated_password': ''});
+    } catch (_) {
+      // Table inexistante (cas edge install fraîche) — ignore.
+    }
+    try {
+      await db.update('app_session', {'remote_token': ''});
+    } catch (_) {
+      // Idem.
     }
   }
 

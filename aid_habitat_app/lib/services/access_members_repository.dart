@@ -66,6 +66,28 @@ class AccessMembersRepository {
             continue; // local mutation in flight
           }
         }
+        // Audit sécu 2026-05-15 (P0 #3) : depuis le fix, le serveur
+        // renvoie TOUJOURS `generatedPassword: ''` dans /api/admin/
+        // access-members (le password n'est plus persisté en RAM côté
+        // serveur). Si on faisait un `replace` aveugle, le password
+        // qu'un admin vient de générer côté Flutter (capturé localement
+        // dans `generated_password` ou `pending_password`) serait
+        // écrasé à `''` à chaque pull. On préserve donc la valeur
+        // locale quand le remote envoie vide.
+        String? incomingPassword = m.generatedPassword;
+        if (incomingPassword.isEmpty) {
+          // Lookup pour conserver l'éventuel password déjà stocké local.
+          final localRow = await txn.query(
+            'access_members',
+            columns: ['generated_password'],
+            where: 'email = ?',
+            whereArgs: [m.email],
+            limit: 1,
+          );
+          if (localRow.isNotEmpty) {
+            incomingPassword = (localRow.first['generated_password'] as String?) ?? '';
+          }
+        }
         await txn.insert('access_members', {
           'email': m.email,
           'display_name': m.displayName,
@@ -74,7 +96,7 @@ class AccessMembersRepository {
           'establishment_label': m.establishmentLabel,
           'ergo_label': m.ergoLabel,
           'has_password': m.hasPassword ? 1 : 0,
-          'generated_password': m.generatedPassword,
+          'generated_password': incomingPassword,
           'created_at': m.createdAt,
           'updated_at': now,
           'last_synced_at': now,

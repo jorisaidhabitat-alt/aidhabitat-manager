@@ -33,13 +33,6 @@ class AppConfig {
     return raw;
   }
 
-  /// Valeur brute du token (sans filtrage). Utilisé UNIQUEMENT par
-  /// `AuthService` pour la persistance SQLite et pour détecter l'état
-  /// « connecté en mode offline » (présence d'un token quelconque, même
-  /// `local-auth:`, signifie qu'un utilisateur a déjà ouvert une session
-  /// localement).
-  static String get rawSessionToken => _appSessionTokenRuntime;
-
   static void setApiBaseUrl(String url) {
     _apiBaseUrlRuntime = url;
   }
