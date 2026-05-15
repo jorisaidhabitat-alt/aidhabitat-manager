@@ -1003,7 +1003,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         return false;
       }
     }
-    if (stringValue(field(record, 'text_content')).trim()) return false;
+    if (decompressTextForRead(stringValue(field(record, 'text_content'))).trim()) return false;
     return true;
   };
 
@@ -1402,7 +1402,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       tabKey: stringValue(field(existing, 'tab_key')),
       subTabKey: stringValue(field(existing, 'sub_tab_key')),
       pageNumber: Number(field(existing, 'page_number')) || 0,
-      textContent: stringValue(field(existing, 'text_content')),
+      textContent: decompressTextForRead(stringValue(field(existing, 'text_content'))),
       drawingJson: decompressDrawingForRead(stringValue(field(existing, 'drawing_json'))),
       previewDataUrl: stringValue(field(existing, 'preview_data_url')),
       previewUrl: stringValue(field(existing, 'preview_url')),
