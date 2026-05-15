@@ -495,6 +495,29 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     }
   }
 
+  /// Valide une saisie d'année avant push NocoDB. Retourne la valeur
+  /// telle quelle si vide (= « non renseigné », autorisé) OU si elle
+  /// matche exactement 4 chiffres dans la plage [1700, année courante
+  /// + 1]. Sinon retourne `''` — la valeur invalide ne part PAS au
+  /// serveur, l'ergo doit re-saisir correctement.
+  ///
+  /// Bug audit 2026-05-15 (Girard Suzanne) : un dossier avait
+  /// `annee_construction = "100"` en NocoDB (saisie probable "100"
+  /// au lieu de "1900"). Sans validation, n'importe quelle chaîne
+  /// numérique passait → corruption silencieuse du dossier + PDF
+  /// incohérent. Avec cette validation, l'ergo doit taper 4 chiffres
+  /// plausibles pour que la valeur soit acceptée.
+  static String _sanitizeYearForSave(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    if (!RegExp(r'^\d{4}$').hasMatch(trimmed)) return '';
+    final year = int.tryParse(trimmed);
+    if (year == null) return '';
+    final maxYear = DateTime.now().year + 1;
+    if (year < 1700 || year > maxYear) return '';
+    return trimmed;
+  }
+
   Future<void> _saveImpl() async {
     if (!mounted) return;
     // Pas de setState(_saving) — voir dossier_screen.dart pour le
@@ -504,8 +527,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     };
 
     final map = <String, dynamic>{
-      'year_construction': _yearConstruction,
-      'year_habitation': _yearHabitation,
+      'year_construction': _sanitizeYearForSave(_yearConstruction),
+      'year_habitation': _sanitizeYearForSave(_yearHabitation),
       'surface': _surface,
       'levels': _orderedLevels.length,
       'typology': _typology,

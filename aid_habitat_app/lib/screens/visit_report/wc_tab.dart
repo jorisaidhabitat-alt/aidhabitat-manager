@@ -331,9 +331,19 @@ class _WcTabState extends State<WcTab>
           fieldName: 'porteWcLargeur',
           label: 'Largeur de porte',
           options: const ['Suffisante', 'À revoir'],
-          selected: a.porteWcLargeurSuffisante ? 'Suffisante' : 'À revoir',
-          onChanged: (v) => _updateActive(
-              _copy(a, porteWcLargeurSuffisante: v == 'Suffisante')),
+          // Tri-state : null → '' (pas de pill highlight), true →
+          // 'Suffisante', false → 'À revoir'. Permet le décochage par
+          // reclic (refonte 2026-05-16, même pattern que bathroom_tab).
+          selected: _boolPillValue(
+            a.porteWcLargeurSuffisante,
+            trueLabel: 'Suffisante',
+            falseLabel: 'À revoir',
+          ),
+          onChanged: (v) => _updateActive(_copy(
+            a,
+            porteWcLargeurSuffisante: v.isEmpty ? null : v == 'Suffisante',
+            porteWcLargeurSuffisanteNull: v.isEmpty,
+          )),
         ),
         const SizedBox(height: 14),
         FormNumberField(
@@ -349,9 +359,16 @@ class _WcTabState extends State<WcTab>
           fieldName: 'porteWcSens',
           label: "Sens d'ouverture",
           options: const ['Intérieur', 'Extérieur'],
-          selected: a.porteWcSensAdapte ? 'Intérieur' : 'Extérieur',
-          onChanged: (v) =>
-              _updateActive(_copy(a, porteWcSensAdapte: v == 'Intérieur')),
+          selected: _boolPillValue(
+            a.porteWcSensAdapte,
+            trueLabel: 'Intérieur',
+            falseLabel: 'Extérieur',
+          ),
+          onChanged: (v) => _updateActive(_copy(
+            a,
+            porteWcSensAdapte: v.isEmpty ? null : v == 'Intérieur',
+            porteWcSensAdapteNull: v.isEmpty,
+          )),
         ),
         const SizedBox(height: 24),
       ],
@@ -386,21 +403,38 @@ class _WcTabState extends State<WcTab>
   ///   ligne 2 : 1 chip pleine largeur en dessous
   /// Mutuellement exclusif : un tap définit l'état actif et désactive
   /// les deux autres.
+  ///
+  /// Refonte 2026-05-16 : si l'ergo recliquait la chip déjà active, le
+  /// state ne changeait pas (no-op) → pas de décochage possible. Fix :
+  /// reclic sur la chip active → toutes les 3 à false (= "non
+  /// renseigné", aucune pill highlight). Aligne le comportement sur
+  /// l'accessibilité (demande utilisateur).
   Widget _buildCuvetteToggle(WcInstance a) {
     String selected;
     if (a.wcCuvetteTropBasse) {
       selected = 'Trop basse';
     } else if (a.wcCuvetteTropHaute) {
       selected = 'Trop haute';
-    } else {
+    } else if (a.wcCuvetteBonneHauteur) {
       selected = 'Bonne hauteur';
+    } else {
+      // Tous à false → aucune chip highlight. Avant la refonte, cet
+      // état était impossible car `wcCuvetteBonneHauteur` était `true`
+      // par défaut côté modèle. Désormais on n'assume plus rien.
+      selected = '';
     }
 
     void selectState(String label) {
-      _updateActive(_copy(a,
-          wcCuvetteTropBasse: label == 'Trop basse',
-          wcCuvetteTropHaute: label == 'Trop haute',
-          wcCuvetteBonneHauteur: label == 'Bonne hauteur'));
+      // Si on reclique la chip déjà active, on désélectionne tout.
+      // Sinon, le label cliqué devient l'unique true (les 2 autres
+      // basculent à false comme avant).
+      final wasActive = label == selected;
+      _updateActive(_copy(
+        a,
+        wcCuvetteTropBasse: !wasActive && label == 'Trop basse',
+        wcCuvetteTropHaute: !wasActive && label == 'Trop haute',
+        wcCuvetteBonneHauteur: !wasActive && label == 'Bonne hauteur',
+      ));
     }
 
     return Column(
@@ -460,9 +494,13 @@ class _WcTabState extends State<WcTab>
     bool wcCuvetteHauteurNull = false,
     bool? wcBarreRelevement,
     bool? porteWcLargeurSuffisante,
+    // Flag `Null` similar à `*HauteurNull` — quand `true`, on set
+    // explicitement `null` (refonte 2026-05-16, bool? au modèle).
+    bool porteWcLargeurSuffisanteNull = false,
     double? porteWcDimension,
     bool porteWcDimensionNull = false,
     bool? porteWcSensAdapte,
+    bool porteWcSensAdapteNull = false,
     String? observationEquipementsUtilisation,
   }) {
     return WcInstance(
@@ -477,15 +515,30 @@ class _WcTabState extends State<WcTab>
           ? null
           : (wcCuvetteHauteur ?? i.wcCuvetteHauteur),
       wcBarreRelevement: wcBarreRelevement ?? i.wcBarreRelevement,
-      porteWcLargeurSuffisante:
-          porteWcLargeurSuffisante ?? i.porteWcLargeurSuffisante,
+      porteWcLargeurSuffisante: porteWcLargeurSuffisanteNull
+          ? null
+          : (porteWcLargeurSuffisante ?? i.porteWcLargeurSuffisante),
       porteWcDimension: porteWcDimensionNull
           ? null
           : (porteWcDimension ?? i.porteWcDimension),
-      porteWcSensAdapte: porteWcSensAdapte ?? i.porteWcSensAdapte,
+      porteWcSensAdapte: porteWcSensAdapteNull
+          ? null
+          : (porteWcSensAdapte ?? i.porteWcSensAdapte),
       observationEquipementsUtilisation: observationEquipementsUtilisation ??
           i.observationEquipementsUtilisation,
     );
+  }
+
+  /// Convertit un `bool?` en label de pill pour `FormToggleGroup` :
+  /// `null` → '' (aucune pill highlight), `true` → [trueLabel], `false`
+  /// → [falseLabel]. Identique à `bathroom_tab._boolPillValue`.
+  String _boolPillValue(
+    bool? value, {
+    required String trueLabel,
+    required String falseLabel,
+  }) {
+    if (value == null) return '';
+    return value ? trueLabel : falseLabel;
   }
 }
 

@@ -589,9 +589,16 @@ class _BathroomTabState extends State<BathroomTab>
           fieldName: 'porteSdbSens',
           label: "Sens d'ouverture",
           options: const ['Intérieur', 'Extérieur'],
-          selected: a.porteSdbSensAdapte ? 'Intérieur' : 'Extérieur',
-          onChanged: (v) =>
-              _updateActive(_copy(a, porteSdbSensAdapte: v == 'Intérieur')),
+          selected: _boolPillValue(
+            a.porteSdbSensAdapte,
+            trueLabel: 'Intérieur',
+            falseLabel: 'Extérieur',
+          ),
+          onChanged: (v) => _updateActive(_copy(
+            a,
+            porteSdbSensAdapte: v.isEmpty ? null : v == 'Intérieur',
+            porteSdbSensAdapteNull: v.isEmpty,
+          )),
         ),
         // Espace augmenté (18 → 32) pour bien dégager le pill warning
         // « Sol glissant » des contrôles de porte au-dessus. Demande
@@ -854,9 +861,16 @@ class _BathroomTabState extends State<BathroomTab>
     double? sdbMachineALaverHauteur,
     bool sdbMachineALaverHauteurNull = false,
     bool? porteSdbLargeurSuffisante,
+    // Flags `Null` (cf. ceux pour `*Hauteur`) — quand `true`, le helper
+    // sait qu'on veut explicitement set à `null` (et non « ne pas changer »).
+    // Indispensable depuis que `porteSdbLargeurSuffisante` est passé en
+    // `bool?` (refonte 2026-05-16) : sans ce flag, passer `null` au
+    // helper signifierait « inchangé », empêchant le décochage.
+    bool porteSdbLargeurSuffisanteNull = false,
     double? porteSdbDimension,
     bool porteSdbDimensionNull = false,
     bool? porteSdbSensAdapte,
+    bool porteSdbSensAdapteNull = false,
   }) {
     return BathroomInstance(
       id: i.id,
@@ -895,13 +909,29 @@ class _BathroomTabState extends State<BathroomTab>
       sdbMachineALaverHauteur: sdbMachineALaverHauteurNull
           ? null
           : (sdbMachineALaverHauteur ?? i.sdbMachineALaverHauteur),
-      porteSdbLargeurSuffisante:
-          porteSdbLargeurSuffisante ?? i.porteSdbLargeurSuffisante,
+      porteSdbLargeurSuffisante: porteSdbLargeurSuffisanteNull
+          ? null
+          : (porteSdbLargeurSuffisante ?? i.porteSdbLargeurSuffisante),
       porteSdbDimension: porteSdbDimensionNull
           ? null
           : (porteSdbDimension ?? i.porteSdbDimension),
-      porteSdbSensAdapte: porteSdbSensAdapte ?? i.porteSdbSensAdapte,
+      porteSdbSensAdapte: porteSdbSensAdapteNull
+          ? null
+          : (porteSdbSensAdapte ?? i.porteSdbSensAdapte),
     );
+  }
+
+  /// Convertit un `bool?` en label de pill pour `FormToggleGroup` :
+  /// `null` → '' (aucune pill highlight), `true` → [trueLabel], `false`
+  /// → [falseLabel]. Pattern aligné sur `accessibility_tab._easyAccess`
+  /// — permet à l'ergo de décocher en recliquant la pill active.
+  String _boolPillValue(
+    bool? value, {
+    required String trueLabel,
+    required String falseLabel,
+  }) {
+    if (value == null) return '';
+    return value ? trueLabel : falseLabel;
   }
 }
 

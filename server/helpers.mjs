@@ -292,7 +292,30 @@ export const toBoolOrNull = (value) => {
   if (value == null || value === '') return null;
   return toBool(value);
 };
-export const boolText = (value) => String(Boolean(value));
+// Audit P0 (2026-05-15) : passe-through pour `undefined` afin que les
+// PATCH partiels n'écrasent pas les booléens absents du payload.
+// AVANT : `boolText(undefined)` retournait `"false"` (Boolean(undefined)
+// === false), ce qui faisait que `sanitizeUndefined` ne strippait pas
+// les champs absents et NocoDB recevait `"false"` pour TOUS les bool
+// non fournis → corruption massive (cf. bug Girard Suzanne). Le fix
+// vit dans `index.mjs:512-515` depuis le 2026-05-15 mais ce duplicat
+// dans `helpers.mjs` était resté à l'ancienne version. Aligné ici
+// pour éviter qu'un futur refactor qui consommerait ce export
+// n'introduise à nouveau le bug.
+export const boolText = (value) => {
+  if (value === undefined) return undefined;
+  return String(Boolean(value));
+};
+// Variante qui préserve `null` (distinct de `undefined` pour
+// `sanitizeUndefined`). Utilisée pour les champs nullables côté
+// Flutter (cf. `acces_facile_rue` + portes SDB/WC depuis le refonte
+// 2026-05-16) : on envoie `null` explicite à NocoDB pour clear la
+// case, vs `undefined` (= "ne pas toucher") vs `"true"`/`"false"`.
+export const boolTextOrNull = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return String(Boolean(value));
+};
 export const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 export const latestRecord = (records) => {
   const sorted = [...records].sort((a, b) => {

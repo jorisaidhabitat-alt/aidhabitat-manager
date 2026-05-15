@@ -1476,8 +1476,13 @@ class DossierRepository {
     return out;
   }
 
+  /// Refonte 2026-05-16 : accepte `DatabaseExecutor` (commun à `Database`
+  /// et `Transaction`) pour permettre aux callers de wrapper le UPDATE
+  /// local + l'INSERT sync_op dans une seule transaction atomique (cf.
+  /// audit P0 #4 — éviter qu'un crash entre les deux writes ne laisse
+  /// une modif locale sans sync_op pour la pousser).
   Future<void> _enqueueEntityUpdate(
-    Database db, {
+    DatabaseExecutor db, {
     required String entityType,
     required String entityLocalId,
     required String payloadKey,
@@ -2148,14 +2153,7 @@ class DossierRepository {
       return; // rien n'a vraiment changé → no-op
     }
 
-    // Conversion bool→int pour SQLite (fix 2026-05-15) : `boolFieldsAlways`
-    // stocke des bool Dart (false/true) car le mapper API les attend bool.
-    // Mais SQLite via sqflite REFUSE le type bool natif et throw « Invalid
-    // sql argument type 'bool' ». Symptôme : « _save failed » sur chaque
-    // saisie dans l'onglet Accessibilité (les champs touchent les colonnes
-    // bool `easy_access`, `garage`, etc.). On convertit ici, juste pour
-    // l'écriture locale — `changedFields` reste avec ses bool intacts pour
-    // le mapper API en ligne 2151.
+    // Conversion bool→int pour SQLite (fix 2026-05-15).
     final localFields = <String, dynamic>{};
     for (final entry in changedFields.entries) {
       final v = entry.value;
@@ -2163,19 +2161,24 @@ class DossierRepository {
     }
     localFields['updated_at'] = now;
     localFields['sync_state'] = SyncState.pendingSync.name;
-    await db.update('housings', localFields,
-        where: 'local_id = ?', whereArgs: [housingId]);
 
+    // Refonte 2026-05-16 (audit P0 #4) : UPDATE + INSERT sync_op
+    // dans une seule transaction atomique. Si l'app crash entre les
+    // deux writes, SQLite rollback complet → pas d'état orphelin.
     final apiUpdates = _mapHousingFieldsToApi(changedFields);
-    if (apiUpdates.isEmpty) return;
-    await _enqueueEntityUpdate(
-      db,
-      entityType: 'housing',
-      entityLocalId: dossierId,
-      payloadKey: 'dossierLocalId',
-      updates: apiUpdates,
-      now: now,
-    );
+    await db.transaction((txn) async {
+      await txn.update('housings', localFields,
+          where: 'local_id = ?', whereArgs: [housingId]);
+      if (apiUpdates.isEmpty) return;
+      await _enqueueEntityUpdate(
+        txn,
+        entityType: 'housing',
+        entityLocalId: dossierId,
+        payloadKey: 'dossierLocalId',
+        updates: apiUpdates,
+        now: now,
+      );
+    });
     SyncEngine().notify();
   }
 
@@ -2402,18 +2405,7 @@ class DossierRepository {
     };
     if (medicalChanged) data['medical_context_json'] = newMedicalJson;
     if (autonomyChanged) data['autonomy_json'] = newAutonomyJson;
-    if (existing.isEmpty) {
-      data['local_id'] = 'ctx_${dossierId}_${_uuid()}';
-      await db.insert('contexte_de_vie', data);
-    } else {
-      await db.update('contexte_de_vie', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
-    }
 
-    // Enqueue a sync operation so the medical context + autonomy reach
-    // NocoDB. We route through the existing /api/dossiers/:id PATCH
-    // endpoint which already knows how to persist medicalContext + autonomy
-    // via upsertContexte server-side. Re-entrant updates on the same
-    // dossier coalesce into a single op via ConflictAlgorithm.replace.
     final opUpdates = <String, dynamic>{};
     if (medicalChanged && medicalContext != null) {
       opUpdates['medicalContext'] = medicalContext.toJson();
@@ -2421,42 +2413,56 @@ class DossierRepository {
     if (autonomyChanged && autonomy != null) {
       opUpdates['autonomy'] = autonomy.toJson();
     }
-    if (opUpdates.isEmpty) return;
 
-    final opId = 'contexte_update_$dossierId';
-    final existingOp = await db.query('sync_operations',
-        where: 'id = ?', whereArgs: [opId], limit: 1);
-    Map<String, dynamic> merged = opUpdates;
-    if (existingOp.isNotEmpty) {
-      try {
-        final prev = jsonDecode(existingOp.first['payload_json'] as String)
-            as Map<String, dynamic>;
-        final prevUpdates =
-            (prev['updates'] as Map?)?.cast<String, dynamic>();
-        if (prevUpdates != null) {
-          merged = {...prevUpdates, ...opUpdates};
-        }
-      } catch (_) {/* fall through */}
-    }
-    await db.insert(
-      'sync_operations',
-      {
-        'id': opId,
-        'entity_type': 'contexte_de_vie',
-        'entity_local_id': dossierId,
-        'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'dossierId': dossierId,
-          'updates': merged,
-        }),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    // Refonte 2026-05-16 (audit P0 #4) : upsert local + enqueue sync_op
+    // dans une seule transaction atomique. Crash entre les deux writes
+    // → rollback complet, pas d'état orphelin.
+    await db.transaction((txn) async {
+      if (existing.isEmpty) {
+        data['local_id'] = 'ctx_${dossierId}_${_uuid()}';
+        await txn.insert('contexte_de_vie', data);
+      } else {
+        await txn.update('contexte_de_vie', data,
+            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+      }
+
+      if (opUpdates.isEmpty) return;
+
+      final opId = 'contexte_update_$dossierId';
+      final existingOp = await txn.query('sync_operations',
+          where: 'id = ?', whereArgs: [opId], limit: 1);
+      Map<String, dynamic> merged = opUpdates;
+      if (existingOp.isNotEmpty) {
+        try {
+          final prev = jsonDecode(existingOp.first['payload_json'] as String)
+              as Map<String, dynamic>;
+          final prevUpdates =
+              (prev['updates'] as Map?)?.cast<String, dynamic>();
+          if (prevUpdates != null) {
+            merged = {...prevUpdates, ...opUpdates};
+          }
+        } catch (_) {/* fall through */}
+      }
+      await txn.insert(
+        'sync_operations',
+        {
+          'id': opId,
+          'entity_type': 'contexte_de_vie',
+          'entity_local_id': dossierId,
+          'operation_type': 'update',
+          'payload_json': jsonEncode({
+            'dossierId': dossierId,
+            'updates': merged,
+          }),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     SyncEngine().notify();
   }
 
