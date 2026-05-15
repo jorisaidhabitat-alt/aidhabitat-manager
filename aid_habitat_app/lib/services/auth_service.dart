@@ -8,6 +8,7 @@ import '../models/types.dart';
 import 'app_config.dart';
 import 'local_database.dart';
 import 'nocodb_api_client.dart';
+import 'secure_session_storage.dart';
 
 class AuthService {
   AuthService._internal();
@@ -325,14 +326,22 @@ class AuthService {
     // reset every time the hashes diverge.
     final effectiveToken = remoteToken ?? _buildLocalAuthToken(normalizedEmail);
 
+    // Audit sécurité P0 #4 (2026-05-15) : le token de session n'est
+    // PLUS stocké dans SQLite (colonne `remote_token` désormais laissée
+    // vide pour rétrocompat). Il est persisté via
+    // `SecureSessionStorage` qui s'appuie sur le Keychain (iOS/macOS),
+    // EncryptedSharedPreferences (Android) ou WebCrypto+IndexedDB
+    // chiffré (Web). La table `app_session` continue de tracker quel
+    // `user_local_id` est connecté (donnée non sensible).
     await db.insert('app_session', {
       'id': 1,
       'user_local_id': row['local_id'],
-      'remote_token': effectiveToken,
+      'remote_token': '',
       'created_at': now,
       'updated_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
+    await SecureSessionStorage.instance.write(effectiveToken);
     AppConfig.setAppSessionToken(effectiveToken);
 
     final scopes = await _fetchScopesByUserId(db);
@@ -344,7 +353,8 @@ class AuthService {
   }
 
   /// Attempt a remote login with a given password (can differ from the local
-  /// one). Stores the token in SQLite and AppConfig if successful.
+  /// one). Stores the token in SecureSessionStorage (P0 #4 hardening) and
+  /// AppConfig if successful.
   Future<bool> linkRemoteSession({
     required String email,
     required String password,
@@ -357,48 +367,79 @@ class AuthService {
     if (token == null) return false;
 
     final db = await _database.database;
+    // `remote_token` reste vide en SQLite — le token est stocké dans
+    // le secure storage uniquement (cf. fix audit P0 #4 du 2026-05-15).
     await db.update(
       'app_session',
       {
-        'remote_token': token,
+        'remote_token': '',
         'updated_at': DateTime.now().toIso8601String(),
       },
       where: 'id = 1',
     );
+    await SecureSessionStorage.instance.write(token);
     AppConfig.setAppSessionToken(token);
     return true;
   }
 
   /// Restore any remote session token persisted from a previous login.
-  /// If the stored token is missing/empty but we still have an active
-  /// local user, synthesize a `local-auth:` fallback token so NocoDB
-  /// sync works without forcing a re-login.
   ///
-  /// **Garde-fou 2026-05-15 (audit P0 #1)** : si le token chargé est de
+  /// Audit sécurité P0 #4 (2026-05-15) : le token est désormais lu en
+  /// priorité depuis `SecureSessionStorage` (Keychain/EncryptedSharedPref/
+  /// IndexedDB chiffré selon la plateforme). Si un ancien token traîne
+  /// encore dans `SQLite app_session.remote_token` (installation
+  /// pré-fix), on le migre vers le secure storage puis on le purge de
+  /// SQLite. Si rien n'est trouvé MAIS qu'un utilisateur est connecté
+  /// localement, on synthétise un fallback `local-auth:` pour maintenir
+  /// l'état « connecté offline » de l'UI (le serveur ne l'honorera pas
+  /// — fix P0 #1 — mais l'UI peut afficher les données locales).
+  ///
+  /// **Garde-fou audit P0 #1 (2026-05-15)** : si le token chargé est de
   /// type `local-auth:` et que le serveur est joignable, on le valide
-  /// via `/api/auth/session`. Si le serveur le rejette (401/403), c'est
-  /// le signal que le fix `c2140d4` (qui rejette les tokens non signés
-  /// HMAC) est déployé → on efface la ligne `app_session` pour forcer
-  /// une re-login propre côté UI **sans perdre les données locales**
-  /// (les tables data sont préservées, contrairement à `signOut`).
-  /// Sans ce garde-fou, l'iPad spammerait le bandeau rouge "erreur de
-  /// sync" indéfiniment puisque chaque PATCH/PUT renvoie 401 et que le
-  /// 401 est rejoué toutes les ~24 h par `rehabilitateTransientFailures`.
+  /// via `/api/auth/session`. Si le serveur le rejette (401/403), on
+  /// efface la ligne `app_session` + le secure storage pour forcer une
+  /// re-login propre **sans perdre les données locales**.
   Future<void> restoreRemoteSession() async {
     final db = await _database.database;
     try {
+      // 1) Source canonique post-fix P0 #4 : secure storage.
+      final secureToken = await SecureSessionStorage.instance.read();
+      if (secureToken != null && secureToken.isNotEmpty) {
+        AppConfig.setAppSessionToken(secureToken);
+        await _maybeInvalidateStaleLocalAuthToken(db, secureToken);
+        return;
+      }
+
       final rows = await db.query(
         'app_session',
         columns: ['remote_token', 'user_local_id'],
         limit: 1,
       );
       if (rows.isEmpty) return;
-      final token = rows.first['remote_token'] as String?;
-      if (token != null && token.isNotEmpty) {
-        AppConfig.setAppSessionToken(token);
-        await _maybeInvalidateStaleLocalAuthToken(db, token);
+
+      // 2) Migration : ancien token en clair dans SQLite (pré-fix P0
+      // #4) → on le bouge vers le secure storage puis on vide la
+      // colonne SQLite. Idempotent : ne tourne qu'une fois par device.
+      final legacyToken = rows.first['remote_token'] as String?;
+      if (legacyToken != null && legacyToken.isNotEmpty) {
+        await SecureSessionStorage.instance.write(legacyToken);
+        await db.update(
+          'app_session',
+          {
+            'remote_token': '',
+            'updated_at': DateTime.now().toIso8601String(),
+          },
+          where: 'id = 1',
+        );
+        AppConfig.setAppSessionToken(legacyToken);
+        await _maybeInvalidateStaleLocalAuthToken(db, legacyToken);
         return;
       }
+
+      // 3) Aucun token nulle part : on synthétise un fallback
+      // `local-auth:` à partir de l'email du user connecté localement
+      // pour conserver l'état UI offline. Le serveur le rejette
+      // (fix P0 #1) — un vrai login est demandé dès retour en ligne.
       final userLocalId = rows.first['user_local_id'] as String?;
       if (userLocalId == null || userLocalId.isEmpty) return;
       final userRows = await db.query(
@@ -412,6 +453,9 @@ class AuthService {
       final email = (userRows.first['email'] as String?)?.trim();
       if (email == null || email.isEmpty) return;
       final fallback = _buildLocalAuthToken(email);
+      // On ne stocke PAS ce placeholder dans le secure storage — pas
+      // de point de fuite supplémentaire. Au prochain login remote
+      // réussi, `signIn` écrira le vrai token signé.
       await db.update(
         'app_session',
         {
@@ -459,13 +503,18 @@ class AuthService {
   /// différence de `signOut()`, ne touche PAS aux tables de données
   /// (dossiers, patients, sync_operations, etc.) — utilisé pour forcer
   /// un re-login sans perdre le travail local en cours.
+  /// P0 #4 (2026-05-15) : purge aussi le secure storage où le token
+  /// réside désormais.
   Future<void> _clearSessionRowOnly(Database db) async {
     await db.delete('app_session');
+    await SecureSessionStorage.instance.clear();
   }
 
   Future<void> signOut() async {
     final db = await _database.database;
     await db.delete('app_session');
+    // P0 #4 (2026-05-15) : purge le secure storage en plus du SQLite.
+    await SecureSessionStorage.instance.clear();
     // Purge complète des données locales — convention « logout = état
     // propre » (demande utilisateur 2026-05-06). Évite les divergences
     // après re-login : le prochain login ré-tire toutes les données

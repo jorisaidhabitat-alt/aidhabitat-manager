@@ -70,6 +70,13 @@ dependencies:
   # versionName Android, .app version macOS, package.json web). Utilisé
   # par l'écran « À propos » pour afficher la version courante.
   package_info_plus: ^8.0.0
+  # Stockage chiffré des secrets de session (audit sécurité 2026-05-15
+  # P0 #4) — Keychain sur iOS/macOS, EncryptedSharedPreferences sur
+  # Android, WebCrypto + IndexedDB chiffré sur Web. Remplace le
+  # stockage en clair du token de session dans SQLite (`app_session.
+  # remote_token`) qui exposait l'auth si l'appareil était perdu/volé
+  # déverrouillé.
+  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:
