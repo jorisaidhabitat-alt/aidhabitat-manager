@@ -1963,12 +1963,20 @@ class _DateOfBirthField extends StatelessWidget {
                           // la fontFamily Quicksand (sinon retombe sur
                           // Roboto — interdit, demande utilisateur
                           // 2026-05-13).
+                          //
+                          // `decoration: TextDecoration.none` forcé pour
+                          // bloquer la fuite d'underline jaune fluo qui
+                          // apparaît parfois en contexte de dialog
+                          // (bug 2026-05-15 : `copyWith` ne reset pas
+                          // `decoration`/`decorationColor`, donc un style
+                          // ambiant avec underline polluait les cellules).
                           style: DefaultTextStyle.of(ctx).style.copyWith(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w400,
                                 color: isSelected
                                     ? Colors.white
                                     : const Color(0xFF0E1116),
+                                decoration: TextDecoration.none,
                               ),
                           child: Text(labels[i]),
                         ),

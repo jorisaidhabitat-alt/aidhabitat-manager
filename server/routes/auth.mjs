@@ -202,9 +202,12 @@ router.post('/api/auth/provision', requireAdmin, async (req, res, next) => {
         passwordHash: hashPassword(password, salt),
         createdAt: new Date().toISOString(),
       };
+      // SECURITY 2026-05-15 (audit P0 #3) : on NE STOCKE PLUS le
+      // password en clair dans pendingCredentials (cf. helpers.mjs pour
+      // le rationale complet). Le password n'est renvoyé qu'UNE FOIS
+      // dans le `generated` array ci-dessous.
       store.pendingCredentials[member.email] = {
         displayName: member.displayName,
-        password,
         role: member.role,
         createdAt: new Date().toISOString(),
       };
@@ -278,9 +281,12 @@ router.post('/api/admin/access-members', requireAdmin, async (req, res, next) =>
       passwordHash: hashPassword(password, salt),
       createdAt: new Date().toISOString(),
     };
+    // SECURITY 2026-05-15 (audit P0 #3) : password retiré du store, ne
+    // sera jamais réexposé via /api/admin/access-members. Renvoyé une
+    // fois dans `data.password` ci-dessous, à charge du caller UI de
+    // l'afficher en state local temporaire.
     store.pendingCredentials[email] = {
       displayName,
-      password,
       role,
       createdAt: new Date().toISOString(),
     };

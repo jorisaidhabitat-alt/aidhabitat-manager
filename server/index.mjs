@@ -2388,9 +2388,11 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
       createdAt: new Date().toISOString(),
       profilePhotoUrl: '',
     };
+    // SECURITY 2026-05-15 (audit P0 #3) : ne plus stocker le password en
+    // clair dans pendingCredentials. Cf. commentaire identique dans
+    // helpers.mjs.
     store.pendingCredentials[member.email] = {
       displayName: member.displayName,
-      password,
       role: member.role,
       createdAt: new Date().toISOString(),
     };
@@ -2587,7 +2589,9 @@ const getAdminAccessMembers = async () => {
     establishmentLabel: member.establishmentLabel,
     ergoLabel: member.ergoLabel,
     hasPassword: Boolean(store.users[member.email]),
-    generatedPassword: store.pendingCredentials[member.email]?.password || '',
+    // SECURITY 2026-05-15 (audit P0 #3) : ne JAMAIS exposer le password
+    // dans la liste GET. Cf. commentaire détaillé dans helpers.mjs.
+    generatedPassword: '',
     createdAt: store.users[member.email]?.createdAt || null,
   }));
 };
@@ -3810,12 +3814,14 @@ app.post('/api/auth/provision', requireAdmin, async (req, res, next) => {
         passwordHash: hashPassword(password, salt),
         createdAt: new Date().toISOString(),
       };
+      // SECURITY 2026-05-15 (audit P0 #3) : password retiré du store.
       store.pendingCredentials[member.email] = {
         displayName: member.displayName,
-        password,
         role: member.role,
         createdAt: new Date().toISOString(),
       };
+      // Le password est renvoyé UNE FOIS au caller via la response,
+      // pas conservé en RAM.
       generated.push({
         email: member.email,
         displayName: member.displayName,
@@ -3863,8 +3869,13 @@ app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
     }));
     // Provision credentials in auth store
     const store = await readAuthStore();
+    // `chosenPassword` est promu au scope externe : vide si le user
+    // existait déjà (pas de nouvelle génération), sinon le password tout
+    // juste créé. Renvoyé une seule fois dans `data.password` côté
+    // response — cf. audit P0 #3.
+    let chosenPassword = '';
     if (!store.users[normalizedEmail]) {
-      const chosenPassword = (password && password.trim()) ? password.trim() : generatePassword(displayName);
+      chosenPassword = (password && password.trim()) ? password.trim() : generatePassword(displayName);
       const salt = randomSecret(16);
       store.users[normalizedEmail] = {
         salt,
@@ -3872,9 +3883,9 @@ app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
         createdAt: new Date().toISOString(),
         profilePhotoUrl: '',
       };
+      // SECURITY 2026-05-15 (audit P0 #3) : password retiré du store.
       store.pendingCredentials[normalizedEmail] = {
         displayName,
-        password: chosenPassword,
         role: role === 'ADMIN' ? 'ADMIN' : 'ERGO',
         createdAt: new Date().toISOString(),
       };
@@ -3890,10 +3901,18 @@ app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
       establishmentLabel: '',
       ergoLabel: displayName,
       hasPassword: Boolean(store.users[normalizedEmail]),
-      generatedPassword: store.pendingCredentials[normalizedEmail]?.password || '',
+      // Le password n'est plus exposé dans `member`. Le caller doit
+      // récupérer le password depuis `data.password` ci-dessous.
+      generatedPassword: '',
       createdAt: store.users[normalizedEmail]?.createdAt || null,
     };
-    res.status(201).json({ success: true, error: null, data: { member } });
+    // Le password généré (lecture unique) est renvoyé séparément à
+    // côté de `member` pour que l'UI puisse l'afficher en state local.
+    res.status(201).json({
+      success: true,
+      error: null,
+      data: { member, password: chosenPassword },
+    });
   } catch (error) {
     next(error);
   }

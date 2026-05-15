@@ -572,6 +572,19 @@ class _NotesWidgetState extends State<NotesWidget> {
     final changedDoc = oldWidget.patientId != widget.patientId ||
         oldWidget.tabKey != widget.tabKey;
     if (changedDoc) {
+      // IMPORTANT pour l'animation de swipe canvas (MesuresTab) :
+      // on appelle `.clear()` sur le Map, ce qui retire les entrées
+      // (paires page→List) mais NE MUTE PAS les Lists elles-mêmes.
+      // Les `_StrokePainter` construits au build précédent ont capturé
+      // une référence vers ces Lists et continueront à peindre les
+      // anciens strokes pendant la transition `HorizontalSlideSwitcher`
+      // (l'AnimatedSwitcher garde l'ancien sous-arbre vivant ~220 ms).
+      // NE PAS remplacer par `for (final l in _pageStrokes.values) l.clear();`
+      // — ça casserait l'animation parce que les peintres verraient
+      // alors leurs Lists vidées en place et peindraient du vide en
+      // sortant. Le `clear()` du Map est suffisant : les nouveaux
+      // strokes du nouvel onglet vont dans des Lists fraîches insérées
+      // par `_loadPages()`.
       _pageStrokes.clear();
       _pageTexts.clear();
       _pageMedicalFlags.clear();
@@ -1204,6 +1217,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   // chaque SEGMENT (paire de points consécutifs) du stroke vs le
   // segment de gomme — pas juste les points isolés — pour un effaçage
   // pixel-précis même quand le stroke a des points très espacés.
+  // ignore: unused_element
   List<_Stroke>? _computeEraseSegment(List<_Stroke> input,
       Offset from, Offset to, double hitDistance) {
     final next = <_Stroke>[];

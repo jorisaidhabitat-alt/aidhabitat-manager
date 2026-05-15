@@ -130,25 +130,23 @@ class _MesuresTabState extends State<MesuresTab>
         : [first, last.toUpperCase()]
             .where((s) => s.isNotEmpty)
             .join(' ');
-    final hasNav = _occupantCount > 1;
-
+    // Note : `_buildOccupantHeader` n'est appelé que quand `hasMultiple`
+    // est vrai (cf. build()), donc l'ancien ternaire `hasNav ? ... : ...`
+    // était toujours dans la branche "vrai". Simplifié 2026-05-15.
     Widget arrow(IconData icon, VoidCallback action) {
-      return Opacity(
-        opacity: hasNav ? 1 : 0.35,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: hasNav ? action : null,
-            borderRadius: BorderRadius.circular(999),
-            child: Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: action,
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
             ),
+            child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
           ),
         ),
       );
