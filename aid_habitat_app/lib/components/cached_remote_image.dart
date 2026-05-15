@@ -105,13 +105,23 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
     }
 
     final svg = isSvgUrl(widget.url);
+    // Audit sécu 2026-05-15 (P0 #2) : depuis le gating de `/uploads/*`
+    // côté serveur, les images internes (profile-photos, documents,
+    // visit-plans, wiki-library) exigent désormais le header
+    // `X-App-Session`. `authHeadersFor` ne renvoie le token QUE pour les
+    // URLs qui pointent vers notre Express (apiBase) — les URLs externes
+    // (logos tiers de caisses retraite, etc.) restent fetch sans auth
+    // pour ne pas leaker le token.
+    final authHeaders = MediaCacheService.authHeadersFor(widget.url);
     try {
       if (kIsWeb) {
         // Web has no filesystem, but MediaCacheService.webCachedFetch
         // persists bytes in SQLite → wiki & retirement logos keep working
         // offline after a single online load.
-        final bytes =
-            await MediaCacheService.instance.webCachedFetch(widget.url);
+        final bytes = await MediaCacheService.instance.webCachedFetch(
+          widget.url,
+          headers: authHeaders.isEmpty ? null : authHeaders,
+        );
         if (!mounted) return;
         if (bytes == null) {
           setState(() {
@@ -132,7 +142,10 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         return;
       }
       if (svg) {
-        final bytes = await MediaCacheService.instance.readBytes(widget.url);
+        final bytes = await MediaCacheService.instance.readBytes(
+          widget.url,
+          headers: authHeaders.isEmpty ? null : authHeaders,
+        );
         if (!mounted) return;
         if (bytes == null) {
           setState(() {
@@ -147,7 +160,10 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
           _loading = false;
         });
       } else {
-        final file = await MediaCacheService.instance.fetch(widget.url);
+        final file = await MediaCacheService.instance.fetch(
+          widget.url,
+          headers: authHeaders.isEmpty ? null : authHeaders,
+        );
         if (!mounted) return;
         if (file == null) {
           setState(() {

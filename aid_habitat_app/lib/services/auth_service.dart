@@ -373,6 +373,17 @@ class AuthService {
   /// If the stored token is missing/empty but we still have an active
   /// local user, synthesize a `local-auth:` fallback token so NocoDB
   /// sync works without forcing a re-login.
+  ///
+  /// **Garde-fou 2026-05-15 (audit P0 #1)** : si le token chargé est de
+  /// type `local-auth:` et que le serveur est joignable, on le valide
+  /// via `/api/auth/session`. Si le serveur le rejette (401/403), c'est
+  /// le signal que le fix `c2140d4` (qui rejette les tokens non signés
+  /// HMAC) est déployé → on efface la ligne `app_session` pour forcer
+  /// une re-login propre côté UI **sans perdre les données locales**
+  /// (les tables data sont préservées, contrairement à `signOut`).
+  /// Sans ce garde-fou, l'iPad spammerait le bandeau rouge "erreur de
+  /// sync" indéfiniment puisque chaque PATCH/PUT renvoie 401 et que le
+  /// 401 est rejoué toutes les ~24 h par `rehabilitateTransientFailures`.
   Future<void> restoreRemoteSession() async {
     final db = await _database.database;
     try {
@@ -385,6 +396,7 @@ class AuthService {
       final token = rows.first['remote_token'] as String?;
       if (token != null && token.isNotEmpty) {
         AppConfig.setAppSessionToken(token);
+        await _maybeInvalidateStaleLocalAuthToken(db, token);
         return;
       }
       final userLocalId = rows.first['user_local_id'] as String?;
@@ -409,9 +421,46 @@ class AuthService {
         where: 'id = 1',
       );
       AppConfig.setAppSessionToken(fallback);
+      await _maybeInvalidateStaleLocalAuthToken(db, fallback);
     } catch (_) {
       // Column may not exist yet on older schemas — ignore.
     }
+  }
+
+  /// Si [token] est un token `local-auth:`, teste-le contre le serveur.
+  /// Quand il est rejeté (401/403), on efface la ligne `app_session`
+  /// pour forcer un re-login. Les autres cas (valide ou injoignable)
+  /// laissent l'état inchangé. Idempotent : pas d'effet si le token
+  /// n'est pas `local-auth:` ou si le serveur n'est pas joignable.
+  Future<void> _maybeInvalidateStaleLocalAuthToken(
+    Database db,
+    String token,
+  ) async {
+    if (!token.startsWith('local-auth:')) return;
+    try {
+      final status = await NocodbApiClient().validateSessionToken();
+      if (status == SessionTokenStatus.rejected) {
+        // ignore: avoid_print
+        print('[auth-root] local-auth token rejected by server — '
+            'clearing session to force re-login (data preserved)');
+        await _clearSessionRowOnly(db);
+        // Plus de token côté AppConfig non plus, sinon les call API
+        // jusqu'au rebuild UI seraient encore signés avec le token mort.
+        AppConfig.setAppSessionToken('');
+      }
+    } catch (_) {
+      // Best-effort : si la validation explose pour une raison
+      // imprévue, on laisse l'utilisateur dans son état actuel plutôt
+      // que de lui faire perdre sa session sur un faux positif.
+    }
+  }
+
+  /// Efface uniquement la ligne `app_session` (token de session). À la
+  /// différence de `signOut()`, ne touche PAS aux tables de données
+  /// (dossiers, patients, sync_operations, etc.) — utilisé pour forcer
+  /// un re-login sans perdre le travail local en cours.
+  Future<void> _clearSessionRowOnly(Database db) async {
+    await db.delete('app_session');
   }
 
   Future<void> signOut() async {
