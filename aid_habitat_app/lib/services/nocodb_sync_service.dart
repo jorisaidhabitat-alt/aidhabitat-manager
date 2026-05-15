@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
@@ -35,7 +36,15 @@ import 'sync_repository.dart';
 /// en "Load failed" sur iPad et le bandeau rouge bloquait l'ergo.
 /// Avec ce reclassement, l'op est rejouée au cycle suivant sans aucune
 /// alerte UI.
-bool _isTransientErrorLike(Object error) {
+/// True si une erreur capturée pendant une op sync doit être considérée
+/// comme **transitoire** (rejouée silencieusement au prochain cycle)
+/// plutôt que comme un échec définitif qui remonte un bandeau rouge.
+///
+/// Exposée publiquement (vs `_`-prefix) avec `@visibleForTesting` pour
+/// que la suite de tests `test/services/sync_errors_test.dart` puisse
+/// vérifier la classification de chaque code/exception.
+@visibleForTesting
+bool isTransientErrorLike(Object error) {
   if (error is TimeoutException) return true;
   if (error is SocketException) return true;
   if (error is HttpException) return true;
@@ -292,7 +301,7 @@ class NocodbSyncService {
         // moindre hoquet Safari iOS (rapporté 2026-05-05 sur
         // housing:update / Accessibilité). Préservé lors du passage
         // en pool de workers parallèles 2026-05-06.
-        if (_isTransientErrorLike(error)) {
+        if (isTransientErrorLike(error)) {
           // ignore: avoid_print
           print('[sync] reclassed-as-transient ${operation.entityType}:'
               '${operation.operationType} id=${operation.entityLocalId} '
@@ -569,7 +578,7 @@ class NocodbSyncService {
         ReportGenerationFailure(
           dossierId: dossierId,
           patientLabel: patientLabel,
-          message: _isTransientErrorLike(error)
+          message: isTransientErrorLike(error)
               ? 'Connexion lente — réessai automatique en arrière-plan.'
               : 'Génération différée — réessai automatique.',
           deferred: true,

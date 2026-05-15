@@ -7633,6 +7633,29 @@ const warmupRuntime = async () => {
 await warmupRuntime();
 
 if (isDirectExecution) {
+  // Fix 2026-05-15 : depuis Node 15+, une `unhandledRejection` ou une
+  // `uncaughtException` crash le process par défaut. Pour le serveur
+  // dev local, on veut au contraire la résilience : logger l'erreur et
+  // garder le process up — sinon une seule promise rejection non
+  // catchée dans un handler (ex: NocoDB timeout pendant un PATCH
+  // logement, gzip échoué sur drawing_json, callNocoTool error) tue
+  // le serveur silencieusement → l'utilisateur voit des bouquets
+  // d'erreurs « Connection closed / Connection refused » côté Flutter
+  // et doit manuellement relancer `node server/index.mjs`.
+  //
+  // En prod (Vercel Fluid), ces handlers ne s'attachent pas (le runtime
+  // gère le cycle de vie ; `isDirectExecution` est false).
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[FATAL] unhandledRejection — process KEPT alive');
+    console.error('  Reason:', reason);
+    console.error('  Promise:', promise);
+  });
+  process.on('uncaughtException', (error) => {
+    console.error('[FATAL] uncaughtException — process KEPT alive');
+    console.error('  Error:', error);
+    if (error?.stack) console.error(error.stack);
+  });
+
   const server = app.listen(port, () => {
     console.log(`[nocodb-api] listening on http://127.0.0.1:${port}`);
   });
