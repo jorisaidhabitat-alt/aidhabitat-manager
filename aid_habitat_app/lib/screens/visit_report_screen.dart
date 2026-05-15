@@ -247,11 +247,23 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   ///                                  et utilisation (page 6, champ `obs`)
   ///   autre                        → null (pas de section PDF dédiée)
   static String? _resolvePlaceholderForTabKey(String tabKey) {
+    // Les 4 sous-sections Accessibilité partagent le même libellé PDF
+    // « Observations sur l'accessibilité » (page 5, champ `Observations1`).
+    // Demande utilisateur 2026-05-15 : la bannière au-dessus du
+    // NotesWidget doit montrer ce libellé peu importe la sous-section
+    // active (Général / Niveaux / Équipements / Extérieur).
+    if (tabKey.startsWith('Accessibilité-')) {
+      return "Observations sur l'accessibilité";
+    }
     switch (tabKey) {
       case 'Contexte de vie-Médical':
         return 'Environnement';
       case 'Contexte de vie-Autonomie':
         return 'Habitudes de vie';
+      case 'Préconisations-Projet':
+        return "Projet de l'usager";
+      case 'Préconisations-Résumé':
+        return 'Résumé des préconisations';
       // Legacy `Accessibilité-Notes` placeholder retiré 2026-05-13 :
       // les 4 sous-sections d'Accessibilité ont maintenant chacune leur
       // tabKey propre (`Accessibilité-Général`, `Accessibilité-Niveaux`,

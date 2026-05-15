@@ -250,7 +250,9 @@ class _RetirementFundsPrincipalScreenState
         // Bouton « + Ajouter une caisse de retraite » — parité 1:1 avec
         // la page Caisses complémentaires.
         Positioned(
-          right: 24,
+          // Refonte 2026-05-15 : right 24 → 32 pour aligner le FAB sur
+          // le bord droit du contenu (padding horizontal 32 du parent).
+          right: 32,
           bottom: 24,
           child: FloatingActionButton.extended(
             onPressed: _createFund,

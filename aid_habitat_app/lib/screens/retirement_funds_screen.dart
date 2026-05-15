@@ -175,7 +175,10 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
         // utilisateur 2026-05-12 : parité avec la bibliothèque
         // (extended FAB, StadiumBorder, icône + texte).
         Positioned(
-          right: 24,
+          // Refonte 2026-05-15 : right 24 → 32 pour aligner le FAB sur
+          // le bord droit du contenu de la grille (qui a un padding
+          // horizontal de 32 px depuis le parent).
+          right: 32,
           bottom: 24,
           child: FloatingActionButton.extended(
             onPressed: _createFund,
