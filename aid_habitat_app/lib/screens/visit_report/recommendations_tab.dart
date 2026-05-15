@@ -652,11 +652,11 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
+                          borderSide: BorderSide(color: Color(0xFFB9C0C7)),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
+                          borderSide: BorderSide(color: Color(0xFFB9C0C7)),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
@@ -704,11 +704,11 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
   Widget _buildTile(WikiItem it) {
     return InkWell(
       onTap: () => Navigator.pop(context, it),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),
@@ -1035,7 +1035,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                           border: Border.all(
                             color: selected
                                 ? const Color(0xFF8B6FA0)
-                                : Colors.grey.shade300,
+                                : Color(0xFFB9C0C7),
                           ),
                         ),
                         child: Row(
@@ -1053,7 +1053,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                                 border: Border.all(
                                   color: selected
                                       ? const Color(0xFF8B6FA0)
-                                      : Colors.grey.shade400,
+                                      : Color(0xFF8A939D),
                                   width: 1.5,
                                 ),
                               ),

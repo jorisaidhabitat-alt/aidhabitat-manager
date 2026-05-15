@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -197,12 +198,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Paramètres du compte',
-              style: TextStyle(
-                fontSize: 28,
+              // Refonte 2026-05-13 : Nunito w600.
+              style: GoogleFonts.nunito(
+                fontSize: 32,
                 fontWeight: FontWeight.w600,
-                color: Colors.black,
+                letterSpacing: -0.5,
+                color: const Color(0xFF0E1116),
               ),
             ),
             const SizedBox(height: 24),
@@ -249,12 +252,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.grey.shade100,
+                  color: Color(0xFFF2F4F6),
                 ),
                 child: Icon(
                   LucideIcons.info,
                   size: 18,
-                  color: Colors.grey.shade700,
+                  color: Color(0xFF2B323A),
                 ),
               ),
               const SizedBox(width: 16),
@@ -306,7 +309,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'd\'accessibilité du logement pour ergothérapeutes.',
             style: TextStyle(
               fontSize: 11,
-              color: Colors.grey.shade600,
+              color: Color(0xFF2B323A),
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -315,7 +318,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             '© 2026 Aid\'Habitat. Tous droits réservés.',
             style: TextStyle(
               fontSize: 11,
-              color: Colors.grey.shade500,
+              color: Color(0xFF5C6670),
             ),
           ),
         ],
@@ -332,7 +335,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     final row = Row(
       children: [
-        Icon(icon, size: 14, color: Colors.grey.shade600),
+        Icon(icon, size: 14, color: Color(0xFF2B323A)),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -343,7 +346,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
+                  color: Color(0xFF2B323A),
                   letterSpacing: 0.3,
                 ),
               ),
@@ -362,7 +365,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         if (onTap != null)
           Icon(LucideIcons.externalLink,
-              size: 14, color: Colors.grey.shade400),
+              size: 14, color: Color(0xFF8A939D)),
       ],
     );
     if (onTap == null) return row;
@@ -405,21 +408,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   widget.user.email,
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.grey.shade600,
+                    color: Color(0xFF2B323A),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Icon(LucideIcons.shield,
-                        size: 14, color: Colors.grey.shade500),
+                        size: 14, color: Color(0xFF5C6670)),
                     const SizedBox(width: 6),
                     Text(
                       _roleLabel.toUpperCase(),
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: Colors.grey.shade600,
+                        color: Color(0xFF2B323A),
                         letterSpacing: 1,
                       ),
                     ),
@@ -434,7 +437,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label: const Text('Se déconnecter'),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.black87,
-              side: BorderSide(color: Colors.grey.shade300),
+              side: BorderSide(color: Color(0xFFB9C0C7)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(50),
               ),
@@ -540,7 +543,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'Choisissez une image pour personnaliser votre compte. Elle sera réutilisée dans la barre latérale et dans l\'espace paramètres.',
             style: TextStyle(
               fontSize: 13,
-              color: Colors.grey.shade700,
+              color: Color(0xFF2B323A),
             ),
           ),
         ],
@@ -584,10 +587,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             height: 40,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.grey.shade100,
+              color: Color(0xFFF2F4F6),
             ),
             child: Icon(LucideIcons.key,
-                size: 18, color: Colors.grey.shade700),
+                size: 18, color: Color(0xFF2B323A)),
           ),
           const SizedBox(width: 16),
           const Expanded(
@@ -614,7 +617,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: _openPasswordDialog,
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.black87,
-              side: BorderSide(color: Colors.grey.shade300),
+              side: BorderSide(color: Color(0xFFB9C0C7)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(50),
               ),

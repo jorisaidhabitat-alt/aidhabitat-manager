@@ -177,7 +177,7 @@ class _AnahScreenState extends State<AnahScreen> {
                   "ne peut pas être affiché directement dans l'application "
                   "(politique de sécurité du site gouv.fr).",
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: Color(0xFF2B323A),
                     fontSize: 14,
                     height: 1.5,
                   ),
@@ -256,7 +256,7 @@ class _AnahScreenState extends State<AnahScreen> {
           children: [
             Text(
               'Portail MaPrimeAdapt\' — Agence nationale de l\'habitat',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              style: TextStyle(color: Color(0xFF2B323A), fontSize: 13),
             ),
           ],
         ),
@@ -309,7 +309,7 @@ class _AnahScreenState extends State<AnahScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
+          color: Color(0xFFF2F4F6),
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
@@ -329,7 +329,7 @@ class _AnahScreenState extends State<AnahScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Colors.grey.shade700,
+                color: Color(0xFF2B323A),
               ),
             ),
           ],
@@ -394,7 +394,7 @@ class _AnahScreenState extends State<AnahScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFFF7F7FA),
               border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200),
+                bottom: BorderSide(color: Color(0xFFE4E7EB)),
               ),
             ),
             child: Row(
@@ -402,7 +402,7 @@ class _AnahScreenState extends State<AnahScreen> {
                 Icon(
                   LucideIcons.lock,
                   size: 12,
-                  color: Colors.grey.shade500,
+                  color: Color(0xFF5C6670),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -410,7 +410,7 @@ class _AnahScreenState extends State<AnahScreen> {
                     _currentUrl.isEmpty ? _registrationUrl : _currentUrl,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.grey.shade700,
+                      color: Color(0xFF2B323A),
                       fontSize: 12,
                     ),
                   ),
@@ -513,7 +513,7 @@ class _AnahScreenState extends State<AnahScreen> {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                style: TextStyle(color: Color(0xFF2B323A), fontSize: 12),
               ),
               const SizedBox(height: 16),
               Row(

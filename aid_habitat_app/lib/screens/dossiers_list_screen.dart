@@ -572,7 +572,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                     'Aucun dossier dans cette catégorie.',
                                     style: TextStyle(
                                       fontSize: 13,
-                                      color: Colors.grey.shade500,
+                                      color: Color(0xFF5C6670),
                                     ),
                                   ),
                                 )
@@ -585,7 +585,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                   separatorBuilder: (_, __) => Divider(
                                     height: 1,
                                     thickness: 1,
-                                    color: Colors.grey.shade100,
+                                    color: Color(0xFFF2F4F6),
                                   ),
                                   itemBuilder: (context, index) =>
                                       _buildTableRow(dossiers[index]),
@@ -1015,12 +1015,12 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
           Icon(
             LucideIcons.search,
             size: 48,
-            color: Colors.grey.shade300,
+            color: Color(0xFFB9C0C7),
           ),
           const SizedBox(height: 16),
           Text(
             'Aucun résultat',
-            style: TextStyle(color: Colors.grey.shade400),
+            style: TextStyle(color: Color(0xFF8A939D)),
           ),
         ],
       ),
@@ -1268,12 +1268,12 @@ class _EpciMenuTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: selected ? const Color(0xFFF2F4F6) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           children: [

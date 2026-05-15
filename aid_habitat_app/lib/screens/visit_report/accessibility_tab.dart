@@ -840,7 +840,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             child: Center(
               child: Text(
                 'Aucun niveau disponible.',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                style: TextStyle(color: Color(0xFF2B323A), fontSize: 13),
               ),
             ),
           ),
@@ -1588,12 +1588,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     // Refonte 2026-05-13 : pill radius 999 uniforme.
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(999),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderSide: BorderSide(color: Color(0xFFB9C0C7)),
                     ),
                     // Refonte 2026-05-13 : pill radius 999 uniforme.
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(999),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderSide: BorderSide(color: Color(0xFFB9C0C7)),
                     ),
                     // Refonte 2026-05-13 : pill radius 999 uniforme.
                     focusedBorder: OutlineInputBorder(

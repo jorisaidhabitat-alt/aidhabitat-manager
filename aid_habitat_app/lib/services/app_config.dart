@@ -19,7 +19,26 @@ class AppConfig {
   static String _appSessionTokenRuntime = _appSessionTokenBuild;
 
   static String get apiBaseUrl => _apiBaseUrlRuntime;
-  static String get appSessionToken => _appSessionTokenRuntime;
+
+  /// Token de session **envoyé au serveur**. Filtre automatiquement les
+  /// tokens `local-auth:<base64-email>` (placeholder offline) qui ne
+  /// sont plus honorés côté serveur depuis le fix audit P0 #1 du
+  /// 2026-05-15. Le but : éviter d'envoyer un token inutile qui
+  /// retournerait 401 systématiquement → meilleur signal pour la
+  /// couche réseau (`hasRemoteConfig` devient `false` en mode offline,
+  /// donc les requêtes sont gatées en amont au lieu d'échouer en aval).
+  static String get appSessionToken {
+    final raw = _appSessionTokenRuntime;
+    if (raw.startsWith('local-auth:')) return '';
+    return raw;
+  }
+
+  /// Valeur brute du token (sans filtrage). Utilisé UNIQUEMENT par
+  /// `AuthService` pour la persistance SQLite et pour détecter l'état
+  /// « connecté en mode offline » (présence d'un token quelconque, même
+  /// `local-auth:`, signifie qu'un utilisateur a déjà ouvert une session
+  /// localement).
+  static String get rawSessionToken => _appSessionTokenRuntime;
 
   static void setApiBaseUrl(String url) {
     _apiBaseUrlRuntime = url;

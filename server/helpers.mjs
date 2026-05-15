@@ -2056,11 +2056,17 @@ export const signSessionToken = async (email) => {
 export const resolveSessionUser = async (req) => {
   const token = getTokenFromRequest(req);
   if (!token) return null;
-  const localAuthEmail = decodeLocalAuthEmail(token);
-  if (localAuthEmail) {
-    const { members } = await loadMemberRegistryForAuth();
-    return members.find((member) => member.email === normalizeEmail(localAuthEmail)) || null;
-  }
+
+  // SECURITY 2026-05-15 — Audit P0 #1 : on REJETTE les tokens
+  // `local-auth:<base64-email>`. Ils n'étaient PAS signés
+  // cryptographiquement, donc quiconque connaissait un email autorisé
+  // (les 3 emails admin sont en dur dans le code Flutter public) pouvait
+  // forger un token valide en base64-encodant l'email — bypass complet
+  // de l'auth. Le client Flutter continue à les générer en mode offline
+  // comme placeholder local, mais le serveur ne les honore plus : un
+  // vrai /api/auth/login signé sera demandé dès le retour en ligne.
+  if (token.startsWith(LOCAL_SESSION_TOKEN_PREFIX)) return null;
+
   const [encodedPayload, signature] = token.split('.');
   if (!encodedPayload || !signature) return null;
 

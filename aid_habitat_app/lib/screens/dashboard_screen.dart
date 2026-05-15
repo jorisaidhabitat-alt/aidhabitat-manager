@@ -471,7 +471,7 @@ class _RecentDossiersPanel extends StatelessWidget {
               child: Center(
                 child: Text(
                   "Aucun dossier pour le moment.",
-                  style: TextStyle(color: Colors.grey.shade500),
+                  style: TextStyle(color: Color(0xFF5C6670)),
                 ),
               ),
             )
@@ -1937,7 +1937,7 @@ class _PendingReportRow extends StatelessWidget {
         ? const Color(0xFF86EFAC) // green-300, bénéficiaire prêt
         : const Color(0xFFFDE047); // yellow-300, en attente
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),

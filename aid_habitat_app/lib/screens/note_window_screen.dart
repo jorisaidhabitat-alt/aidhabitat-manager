@@ -312,7 +312,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border(
-                    bottom: BorderSide(color: Colors.grey.shade200),
+                    bottom: BorderSide(color: Color(0xFFE4E7EB)),
                   ),
                 ),
                 child: Row(
@@ -441,7 +441,7 @@ class NoteWindowDrawingScreen extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200),
+                bottom: BorderSide(color: Color(0xFFE4E7EB)),
               ),
             ),
             child: Row(

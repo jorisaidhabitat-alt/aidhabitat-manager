@@ -204,7 +204,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
                               '(${option.zipCode.isEmpty ? '—' : option.zipCode})',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.grey.shade500,
+                                color: Color(0xFF5C6670),
                               ),
                             ),
                           ],
@@ -290,7 +290,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
           initialValue: widget.zipCode,
           readOnly: true,
           style: TextStyle(
-              fontSize: widget.valueSize ?? 13, color: Colors.grey.shade600),
+              fontSize: widget.valueSize ?? 13, color: Color(0xFF2B323A)),
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF7F7FA),
@@ -299,11 +299,11 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
                 const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(color: Color(0xFFB9C0C7)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(color: Color(0xFFB9C0C7)),
             ),
           ),
         ),
@@ -362,11 +362,11 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
               fillColor: Colors.white,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderSide: BorderSide(color: Color(0xFFB9C0C7)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderSide: BorderSide(color: Color(0xFFB9C0C7)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),

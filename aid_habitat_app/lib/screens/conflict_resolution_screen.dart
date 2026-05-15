@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -160,11 +161,11 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.cloud_off, size: 48, color: Colors.grey.shade400),
+          Icon(Icons.cloud_off, size: 48, color: Color(0xFF8A939D)),
           const SizedBox(height: 16),
           Text(
             _error!,
-            style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 15, color: Color(0xFF2B323A)),
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
@@ -432,7 +433,7 @@ class _VersionCard extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey.shade500,
+                color: Color(0xFF5C6670),
                 fontWeight: FontWeight.w500,
               ),
             ),

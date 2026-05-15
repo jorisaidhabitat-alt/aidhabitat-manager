@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -197,12 +198,14 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              const Text(
+              Text(
                 'Nouveau dossier',
-                style: TextStyle(
-                  fontSize: 28,
+                // Refonte 2026-05-13 : Nunito w600.
+                style: GoogleFonts.nunito(
+                  fontSize: 32,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+                  letterSpacing: -0.5,
+                  color: const Color(0xFF0E1116),
                 ),
               ),
             ],
@@ -269,7 +272,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                                     'Les autres infos s\'éditent dans le dossier.',
                                     style: TextStyle(
                                       fontSize: 13,
-                                      color: Colors.grey.shade500,
+                                      color: Color(0xFF5C6670),
                                     ),
                                   ),
                                 ],

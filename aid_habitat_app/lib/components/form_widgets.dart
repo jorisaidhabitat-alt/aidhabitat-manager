@@ -23,7 +23,7 @@ class FormSectionHeader extends StatelessWidget {
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF2B323A),
+              color: Color(0xFF0E1116), // ink-900
             ),
           ),
         ],
@@ -377,11 +377,11 @@ class _FormTextFieldState extends State<FormTextField> {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(radius),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderSide: BorderSide(color: Color(0xFFB9C0C7)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(radius),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderSide: BorderSide(color: Color(0xFFB9C0C7)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(radius),
@@ -522,12 +522,12 @@ class _FormNumberFieldState extends State<FormNumberField> {
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(color: Color(0xFFB9C0C7)),
             ),
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(color: Color(0xFFB9C0C7)),
             ),
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             focusedBorder: OutlineInputBorder(
@@ -605,7 +605,7 @@ class TogglePillButton extends StatelessWidget {
               border: Border.all(
                 color: active
                     ? const Color(0xFF8B6FA0)
-                    : Colors.grey.shade300,
+                    : Color(0xFFB9C0C7),
                 width: 1.2,
               ),
             ),
@@ -1058,7 +1058,7 @@ class FormCheckbox extends StatelessWidget {
                 border: Border.all(
                   color: value
                       ? const Color(0xFF8B6FA0)
-                      : Colors.grey.shade400,
+                      : Color(0xFF8A939D),
                   width: 1.5,
                 ),
               ),
@@ -1095,8 +1095,17 @@ class FormMultiSelect extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF8A939D))),
-        const SizedBox(height: 8),
+        // Refonte 2026-05-13 : aligné sur FormTextField label (vp-label
+        // canonique : 14px w700 ink-900, sans uppercase).
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: Color(0xFF0E1116),
+          ),
+        ),
+        const SizedBox(height: 6),
         ...options.map((opt) {
           final isSelected = selected.contains(opt);
           return FormCheckbox(
@@ -1284,14 +1293,14 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(color: Color(0xFFB9C0C7)),
             ),
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
               borderSide: widget.showWarning
                   ? const BorderSide(color: Color(0xFFC48429), width: 1.5)
-                  : BorderSide(color: Colors.grey.shade300),
+                  : BorderSide(color: Color(0xFFB9C0C7)),
             ),
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             focusedBorder: OutlineInputBorder(
@@ -1377,7 +1386,7 @@ class FormSelectDropdown<T> extends StatelessWidget {
             color: Colors.white,
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(color: Color(0xFFB9C0C7)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           child: DropdownButtonHideUnderline(
@@ -1477,7 +1486,7 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
               color: Colors.white,
               // Refonte 2026-05-13 : pill radius 999 uniforme.
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.grey.shade300),
+              border: Border.all(color: Color(0xFFB9C0C7)),
             ),
             child: Row(
               children: [
@@ -1508,7 +1517,7 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.06),

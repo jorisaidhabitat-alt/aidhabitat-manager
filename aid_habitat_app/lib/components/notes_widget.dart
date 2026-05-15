@@ -1691,7 +1691,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                       decoration: InputDecoration(
                         border: InputBorder.none,
                         hintText: widget.placeholder,
-                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        hintStyle: TextStyle(color: Color(0xFF5C6670)),
                         isCollapsed: true,
                       ),
                     ),
@@ -1721,7 +1721,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                       child: Icon(
                         LucideIcons.maximize2,
                         size: 14,
-                        color: Colors.grey.shade500,
+                        color: Color(0xFF5C6670),
                       ),
                     ),
                   ),
@@ -2062,7 +2062,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             decoration: InputDecoration(
               border: InputBorder.none,
               hintText: widget.placeholder,
-              hintStyle: TextStyle(color: Colors.grey.shade500),
+              hintStyle: TextStyle(color: Color(0xFF5C6670)),
               isCollapsed: true,
             ),
           ),
@@ -2081,7 +2081,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                 child: Icon(
                   LucideIcons.maximize2,
                   size: 14,
-                  color: Colors.grey.shade500,
+                  color: Color(0xFF5C6670),
                 ),
               ),
             ),
@@ -2092,7 +2092,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     final boxedContainer = Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: Color(0xFFE4E7EB)),
         borderRadius: BorderRadius.circular(16),
       ),
       // En mode texte-seul (fillHeight: true), pas de hauteur intrinsèque
@@ -2138,12 +2138,12 @@ class _NotesWidgetState extends State<NotesWidget> {
         child: Container(
           height: 10,
           alignment: Alignment.center,
-          color: Colors.grey.shade100,
+          color: Color(0xFFF2F4F6),
           child: Container(
             width: 60,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade300,
+              color: Color(0xFFB9C0C7),
               borderRadius: BorderRadius.circular(999),
             ),
           ),
@@ -2459,7 +2459,7 @@ class _NotesWidgetState extends State<NotesWidget> {
               width: 14,
               height: 14,
               decoration: BoxDecoration(
-                color: disabled ? Colors.grey.shade400 : Color(_activeColor),
+                color: disabled ? Color(0xFF8A939D) : Color(_activeColor),
                 shape: BoxShape.circle,
               ),
             ),
@@ -2489,7 +2489,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   ? const Color(0xFFDCFCE7)
                   : (_saveLabel == _SaveLabel.error
                       ? const Color(0xFFFEE2E2)
-                      : Colors.grey.shade100),
+                      : Color(0xFFF2F4F6)),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
@@ -2500,8 +2500,8 @@ class _NotesWidgetState extends State<NotesWidget> {
                   animate: _isSaving,
                   size: 16,
                   color: disabled
-                      ? Colors.grey.shade400
-                      : Colors.grey.shade800,
+                      ? Color(0xFF8A939D)
+                      : Color(0xFF1A1E24),
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -2510,8 +2510,8 @@ class _NotesWidgetState extends State<NotesWidget> {
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: disabled
-                        ? Colors.grey.shade400
-                        : Colors.grey.shade800,
+                        ? Color(0xFF8A939D)
+                        : Color(0xFF1A1E24),
                   ),
                 ),
               ],
@@ -2975,7 +2975,7 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
                       child: Row(
                         children: [
                           Icon(LucideIcons.gripHorizontal,
-                              size: 16, color: Colors.grey.shade500),
+                              size: 16, color: Color(0xFF5C6670)),
                           const SizedBox(width: 8),
                           Text(
                             widget.title,
@@ -3021,7 +3021,7 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
                       decoration: InputDecoration(
                         border: InputBorder.none,
                         hintText: widget.placeholder,
-                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        hintStyle: TextStyle(color: Color(0xFF5C6670)),
                         isCollapsed: true,
                       ),
                     ),
@@ -3049,7 +3049,7 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
                           margin: const EdgeInsets.all(4),
                           child: CustomPaint(
                             painter: _ResizeHandlePainter(
-                                color: Colors.grey.shade400),
+                                color: Color(0xFF8A939D)),
                           ),
                         ),
                       ),
@@ -3115,7 +3115,7 @@ class _HeaderIconButton extends StatelessWidget {
         child: Icon(
           icon,
           size: 18,
-          color: onTap == null ? Colors.grey.shade300 : Colors.grey.shade600,
+          color: onTap == null ? Color(0xFFB9C0C7) : Color(0xFF2B323A),
         ),
       ),
     );
@@ -3150,7 +3150,7 @@ class _PillIconButton extends StatelessWidget {
             icon,
             size: 16,
             color:
-                onTap == null ? Colors.grey.shade300 : Colors.grey.shade700,
+                onTap == null ? Color(0xFFB9C0C7) : Color(0xFF2B323A),
           ),
         ),
       ),

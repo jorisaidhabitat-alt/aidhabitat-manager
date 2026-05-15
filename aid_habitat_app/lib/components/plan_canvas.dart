@@ -898,14 +898,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
           _symbolInsertBtn(
             PlanTool.window,
             Icon(LucideIcons.columns,
-                size: 22, color: Colors.grey.shade700),
+                size: 22, color: Color(0xFF2B323A)),
             'Fenêtre',
           ),
           const SizedBox(width: 8),
           _symbolInsertBtn(
             PlanTool.door,
             Icon(LucideIcons.doorClosed,
-                size: 22, color: Colors.grey.shade700),
+                size: 22, color: Color(0xFF2B323A)),
             'Porte',
           ),
           const SizedBox(width: 8),
@@ -915,21 +915,21 @@ class _PlanCanvasState extends State<PlanCanvas> {
           // baignoire (demande utilisateur).
           _symbolInsertBtn(
             PlanTool.toilet,
-            _ToiletPictogram(size: 22, color: Colors.grey.shade700),
+            _ToiletPictogram(size: 22, color: Color(0xFF2B323A)),
             'WC',
           ),
           const SizedBox(width: 8),
           _symbolInsertBtn(
             PlanTool.shower,
             Icon(LucideIcons.showerHead,
-                size: 22, color: Colors.grey.shade700),
+                size: 22, color: Color(0xFF2B323A)),
             'Douche',
           ),
           const SizedBox(width: 8),
           _symbolInsertBtn(
             PlanTool.bath,
             Icon(LucideIcons.bath,
-                size: 22, color: Colors.grey.shade700),
+                size: 22, color: Color(0xFF2B323A)),
             'Baignoire',
           ),
           const SizedBox(width: 8),
@@ -937,7 +937,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           _symbolInsertBtn(
             PlanTool.sink,
             Icon(LucideIcons.droplets,
-                size: 22, color: Colors.grey.shade700),
+                size: 22, color: Color(0xFF2B323A)),
             'Lavabo',
           ),
         ],
@@ -1124,7 +1124,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                 color: Color(_penColor),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.grey.shade300,
+                  color: Color(0xFFB9C0C7),
                   width: 1.5,
                 ),
               ),
@@ -1176,7 +1176,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                               border: Border.all(
                                 color: _penColor == c
                                     ? const Color(0xFF0E1116)
-                                    : Colors.grey.shade300,
+                                    : Color(0xFFB9C0C7),
                                 width: _penColor == c ? 2.5 : 1.5,
                               ),
                             ),
@@ -1203,7 +1203,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     Color? activeColor,
   }) {
     final enabled = onTap != null;
-    final enabledColor = activeColor ?? Colors.grey.shade700;
+    final enabledColor = activeColor ?? Color(0xFF2B323A);
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -1215,7 +1215,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           child: Icon(
             icon,
             size: 20,
-            color: enabled ? enabledColor : Colors.grey.shade300,
+            color: enabled ? enabledColor : Color(0xFFB9C0C7),
           ),
         ),
       ),
@@ -1382,7 +1382,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           child: Icon(
             icon,
             size: 22,
-            color: active ? Colors.white : Colors.grey.shade600,
+            color: active ? Colors.white : Color(0xFF2B323A),
           ),
         ),
       ),
@@ -1429,7 +1429,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           color: Color(color),
           shape: BoxShape.circle,
           border: active
-              ? Border.all(color: Colors.grey.shade900, width: 2)
+              ? Border.all(color: Color(0xFF0E1116), width: 2)
               : null,
         ),
       ),
@@ -1483,7 +1483,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     return Container(
       width: 1,
       height: 20,
-      color: Colors.grey.shade200,
+      color: Color(0xFFE4E7EB),
       margin: const EdgeInsets.symmetric(horizontal: 4),
     );
   }

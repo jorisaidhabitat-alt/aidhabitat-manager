@@ -2156,7 +2156,7 @@ class _DateOfBirthField extends StatelessWidget {
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white,
-              border: Border.all(color: Colors.grey.shade300),
+              border: Border.all(color: Color(0xFFB9C0C7)),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
@@ -2455,11 +2455,11 @@ class _RetirementFundPickerDialogState
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
+                          borderSide: BorderSide(color: Color(0xFFB9C0C7)),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
+                          borderSide: BorderSide(color: Color(0xFFB9C0C7)),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
@@ -2579,11 +2579,11 @@ class _RetirementFundPickerDialogState
     final isSelected = it.name == widget.initialSelected.trim();
     return InkWell(
       onTap: () => Navigator.pop(context, it.name),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF8B6FA0)

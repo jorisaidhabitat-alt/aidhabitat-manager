@@ -1626,7 +1626,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
       color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.grey.shade200),
+        side: BorderSide(color: Color(0xFFE4E7EB)),
       ),
       elevation: 12,
       items: [
@@ -1710,7 +1710,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
                 subtitle,
                 style: TextStyle(
                   fontSize: 11,
-                  color: Colors.grey.shade500,
+                  color: Color(0xFF5C6670),
                 ),
               ),
             ],
@@ -1745,7 +1745,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
           child: CustomPaint(
             painter: _DashedBorderPainter(
               color: widget.disabled
-                  ? Colors.grey.shade300
+                  ? Color(0xFFB9C0C7)
                   : _kPurple.withValues(alpha: _hovering ? 1 : 0.8),
               strokeWidth: 2,
               radius: 16,
@@ -1766,7 +1766,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
                     child: Icon(
                       LucideIcons.plus,
                       size: 26,
-                      color: widget.disabled ? Colors.grey.shade400 : _kPurple,
+                      color: widget.disabled ? Color(0xFF8A939D) : _kPurple,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1778,7 +1778,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
                       fontWeight: FontWeight.w600,
                       height: 1.35,
                       color: widget.disabled
-                          ? Colors.grey.shade400
+                          ? Color(0xFF8A939D)
                           : _kPurple,
                     ),
                   ),
@@ -2434,10 +2434,10 @@ class _DocThumbnailState extends State<_DocThumbnail> {
         break;
       default:
         icon = LucideIcons.file;
-        color = Colors.grey.shade400;
+        color = Color(0xFF8A939D);
     }
     return Container(
-      color: Colors.grey.shade50,
+      color: Color(0xFFFAFAFA),
       child: Center(
         child: Icon(icon, size: 56, color: color),
       ),
@@ -2515,7 +2515,7 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
   Widget build(BuildContext context) {
     if (_failed) {
       return Container(
-        color: Colors.grey.shade50,
+        color: Color(0xFFFAFAFA),
         child: Center(
           child: Icon(
             LucideIcons.fileText,
@@ -2527,7 +2527,7 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
     }
     if (_bytes == null) {
       return Container(
-        color: Colors.grey.shade50,
+        color: Color(0xFFFAFAFA),
         child: const Center(
           child: SizedBox(
             width: 24,
@@ -2546,7 +2546,7 @@ class _PdfThumbnailState extends State<_PdfThumbnail> {
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (_, _, _) => Container(
-          color: Colors.grey.shade50,
+          color: Color(0xFFFAFAFA),
           child: Center(
             child: Icon(
               LucideIcons.fileText,
@@ -2874,7 +2874,7 @@ class _RemoteImageState extends State<_RemoteImage> {
       );
     }
     return Container(
-      color: Colors.grey.shade100,
+      color: Color(0xFFF2F4F6),
       alignment: Alignment.center,
       child: const SizedBox(
         width: 20,
@@ -3005,20 +3005,20 @@ class _EmptyState extends StatelessWidget {
           Icon(
             hasFilter ? LucideIcons.search : LucideIcons.folderOpen,
             size: 64,
-            color: Colors.grey.shade400,
+            color: Color(0xFF8A939D),
           ),
           const SizedBox(height: 16),
           Text(
             hasFilter
                 ? 'Aucun document ne correspond aux filtres.'
                 : 'Aucun document pour ce dossier.',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+            style: TextStyle(color: Color(0xFF2B323A), fontSize: 14),
           ),
           if (!hasFilter) ...[
             const SizedBox(height: 8),
             Text(
               'Utilisez les boutons ci-dessus pour ajouter un document.',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+              style: TextStyle(color: Color(0xFF5C6670), fontSize: 12),
             ),
           ],
         ],
@@ -3744,7 +3744,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
             padding: const EdgeInsets.all(32),
             margin: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color: Colors.grey.shade900,
+              color: Color(0xFF0E1116),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -3755,7 +3755,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                   size: 96,
                   color: doc.type == 'pdf'
                       ? Colors.red.shade300
-                      : Colors.grey.shade400,
+                      : Color(0xFF8A939D),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -3770,7 +3770,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                 const SizedBox(height: 8),
                 Text(
                   'Prévisualisation non disponible pour ce format.',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                  style: TextStyle(color: Color(0xFF8A939D), fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
@@ -4505,7 +4505,7 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
   Widget build(BuildContext context) {
     if (_error != null) {
       return Container(
-        color: Colors.grey.shade900,
+        color: Color(0xFF0E1116),
         alignment: Alignment.center,
         child: Text(
           _error!,
@@ -4516,7 +4516,7 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
     final pngPath = _pagePngPaths[_currentPage];
     if (pngPath == null) {
       return Container(
-        color: Colors.grey.shade900,
+        color: Color(0xFF0E1116),
         alignment: Alignment.center,
         child: const CircularProgressIndicator(color: Colors.white),
       );
@@ -4770,7 +4770,7 @@ class _RemoteImageAnnotatorWrapperState
     if (_failed) return widget.fallback;
     if (_file == null && _bytes == null) {
       return Container(
-        color: Colors.grey.shade900,
+        color: Color(0xFF0E1116),
         alignment: Alignment.center,
         child: const CircularProgressIndicator(color: Colors.white),
       );
@@ -5078,7 +5078,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
         // Image + annotation overlay inside a RepaintBoundary to export flat.
         Positioned.fill(
           child: Container(
-            color: Colors.grey.shade900,
+            color: Color(0xFF0E1116),
             child: Center(
               child: RepaintBoundary(
                 key: _boundaryKey,
@@ -5346,7 +5346,7 @@ class _ToolButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: selected
                   ? const Color(0xFFD8D0DC) // _kAccentSoft
-                  : Colors.grey.shade100,
+                  : Color(0xFFF2F4F6),
               shape: BoxShape.circle,
             ),
             child: Opacity(
@@ -5356,7 +5356,7 @@ class _ToolButton extends StatelessWidget {
                 size: 18,
                 color: selected
                     ? const Color(0xFF554265) // _kActiveText
-                    : Colors.grey.shade700,
+                    : Color(0xFF2B323A),
               ),
             ),
           ),

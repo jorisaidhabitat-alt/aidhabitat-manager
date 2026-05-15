@@ -13,6 +13,9 @@ dist-ssr
 *.local
 server/data/visit-plans/
 
+# NocoDB backups (peuvent atteindre 60+ MB compressés, jamais committer)
+backups/
+
 # Cache & temp
 .npm-cache
 tmp/

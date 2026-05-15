@@ -24,7 +24,7 @@ class NextVisitCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             "47 Avenue des lorem ipsum 35250 Lorem",
-            style: TextStyle(color: Colors.grey.shade600),
+            style: TextStyle(color: Color(0xFF2B323A)),
           ),
           const SizedBox(height: 24),
           Row(

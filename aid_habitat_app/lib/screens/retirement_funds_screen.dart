@@ -647,7 +647,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
           fontSize: 13,
           fontWeight: FontWeight.w500,
           color:
-              text.isEmpty ? Colors.grey.shade400 : const Color(0xFF0E1116),
+              text.isEmpty ? Color(0xFF8A939D) : const Color(0xFF0E1116),
           height: 1.45,
         ),
       ),
@@ -829,7 +829,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(LucideIcons.clock3,
-                          size: 11, color: Colors.grey.shade500),
+                          size: 11, color: Color(0xFF5C6670)),
                       const SizedBox(width: 5),
                       Flexible(
                         child: Text(
@@ -840,7 +840,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: Colors.grey.shade600,
+                            color: Color(0xFF2B323A),
                           ),
                         ),
                       ),

@@ -1041,7 +1041,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 const SizedBox(height: 4),
                 Text(
                   '.${_pickedImageExt.toUpperCase()}',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(color: Color(0xFF2B323A), fontSize: 12),
                 ),
                 const SizedBox(height: 8),
                 Row(

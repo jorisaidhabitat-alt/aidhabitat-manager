@@ -39,7 +39,7 @@ class _HoverScaleState extends State<HoverScale> {
                   borderRadius: BorderRadius.circular(24), // Match common radius
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),

@@ -385,7 +385,7 @@ class _AccountDialogState extends State<AccountDialog> {
                   const SizedBox(height: 4),
                   Text(
                     widget.currentUser.email,
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: TextStyle(color: Color(0xFF2B323A)),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -403,7 +403,7 @@ class _AccountDialogState extends State<AccountDialog> {
                     widget.currentUser.role == LocalUserRole.ergo
                         ? "Ergothérapeute chez Aid'Habitat"
                         : widget.currentUser.role.label,
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: TextStyle(color: Color(0xFF2B323A)),
                   ),
                   const SizedBox(height: 18),
                   // Quick actions :

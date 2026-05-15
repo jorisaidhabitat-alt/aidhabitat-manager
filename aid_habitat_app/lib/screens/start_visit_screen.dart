@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../models/types.dart';
 import 'visit_report_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -70,7 +71,7 @@ class StartVisitScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(color: Color(0xFFE4E7EB)),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -82,7 +83,13 @@ class StartVisitScreen extends StatelessWidget {
                   const SizedBox(height: 32),
                   Text(
                     "${dossier.patient.lastName.toUpperCase()} ${dossier.patient.firstName}",
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w600),
+                    // Refonte 2026-05-13 : Nunito w600 — uniforme avec
+                    // les autres titres de page.
+                    style: GoogleFonts.nunito(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.5,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(

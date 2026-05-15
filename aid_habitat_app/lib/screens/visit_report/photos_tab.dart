@@ -1069,7 +1069,7 @@ class _PhotosTabState extends State<PhotosTab>
             child: Icon(
               LucideIcons.imagePlus,
               size: 22,
-              color: hovering ? _kPurple : Colors.grey.shade400,
+              color: hovering ? _kPurple : Color(0xFF8A939D),
             ),
           ),
         );

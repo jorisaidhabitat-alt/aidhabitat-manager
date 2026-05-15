@@ -309,7 +309,7 @@ class _PlansTabState extends State<PlansTab> {
                 '(page 10) du rapport PDF.',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.grey.shade600,
+                  color: Color(0xFF2B323A),
                 ),
               ),
               const SizedBox(height: 14),
@@ -404,7 +404,7 @@ class _PlansTabState extends State<PlansTab> {
                     subtitle,
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.grey.shade600,
+                      color: Color(0xFF2B323A),
                     ),
                   ),
                 ],
