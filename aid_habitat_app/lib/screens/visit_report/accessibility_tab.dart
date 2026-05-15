@@ -479,6 +479,24 @@ class _AccessibilityTabState extends State<AccessibilityTab>
 
   Future<void> _save() async {
     if (!mounted) return;
+    // try/catch global défensif (fix 2026-05-15 : reproductible sur
+    // « n'importe quel champ Accessibilité » via la PWA Vercel). Le
+    // Timer de `_scheduleSave` invoque `_save()` SANS await — un throw
+    // ici devient un uncaught Future error qui pollue la console web
+    // avec « Uncaught Error » sans message (3 instances de NotesWidget
+    // attachées au sync engine multiplient le bruit). Cf. pattern
+    // identique sur les autres tabs (recommendations_tab) qui catchent
+    // déjà silencieusement le save async.
+    try {
+      await _saveImpl();
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('[accessibility_tab] _save failed: $e\n$st');
+    }
+  }
+
+  Future<void> _saveImpl() async {
+    if (!mounted) return;
     // Pas de setState(_saving) — voir dossier_screen.dart pour le
     // rationale (rebuild lourd inutile, indicateur visuel toujours vide).
     final heatingJson = <String, bool>{
