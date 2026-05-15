@@ -2760,7 +2760,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     // Image distante → on télécharge via MediaCacheService (fichier sur
     // natif, bytes sur web), puis on active l'annotation dessus.
     if (isImage && doc.url != null && doc.url!.isNotEmpty) {
-      return _RemoteImageAnnotatorWrapper(
+      return RemoteImageAnnotatorWrapper(
         url: doc.url!,
         annotatorKey: _annotatorKey,
         onChanged: () => setState(() {}),
@@ -2882,7 +2882,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     if (doc.url != null && doc.url!.isNotEmpty) {
       return InteractiveViewer(
         child: Center(
-          child: _RemoteImage(
+          child: RemoteImage(
             url: doc.url!,
             fit: BoxFit.contain,
             fallback: const Center(
@@ -3685,13 +3685,13 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
   }
 }
 
-class _RemoteImageAnnotatorWrapper extends StatefulWidget {
+class RemoteImageAnnotatorWrapper extends StatefulWidget {
   final String url;
   final GlobalKey<_ImageAnnotatorState> annotatorKey;
   final VoidCallback onChanged;
   final Widget fallback;
 
-  const _RemoteImageAnnotatorWrapper({
+  const RemoteImageAnnotatorWrapper({
     required this.url,
     required this.annotatorKey,
     required this.onChanged,
@@ -3699,12 +3699,12 @@ class _RemoteImageAnnotatorWrapper extends StatefulWidget {
   });
 
   @override
-  State<_RemoteImageAnnotatorWrapper> createState() =>
-      _RemoteImageAnnotatorWrapperState();
+  State<RemoteImageAnnotatorWrapper> createState() =>
+      RemoteImageAnnotatorWrapperState();
 }
 
-class _RemoteImageAnnotatorWrapperState
-    extends State<_RemoteImageAnnotatorWrapper> {
+class RemoteImageAnnotatorWrapperState
+    extends State<RemoteImageAnnotatorWrapper> {
   /// Mode natif : `File` issu du cache filesystem.
   File? _file;
 
@@ -3720,7 +3720,7 @@ class _RemoteImageAnnotatorWrapperState
   }
 
   @override
-  void didUpdateWidget(covariant _RemoteImageAnnotatorWrapper old) {
+  void didUpdateWidget(covariant RemoteImageAnnotatorWrapper old) {
     super.didUpdateWidget(old);
     if (old.url != widget.url) {
       _file = null;
