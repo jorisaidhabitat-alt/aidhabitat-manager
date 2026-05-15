@@ -166,7 +166,22 @@ export const AdminPanel: React.FC = () => {
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Mot de passe courant</p>
                   <div className={`${uiSoftPanelClass} px-4 py-3 font-mono text-sm text-slate-800 break-all`}>
-                    {member.generatedPassword || 'Aucun mot de passe généré'}
+                    {/*
+                      SECURITY 2026-05-15 (audit P0 #3) : le password
+                      n'est PLUS exposé dans la liste GET — `member.generatedPassword`
+                      est désormais toujours vide. Pour le révéler, l'admin
+                      doit cliquer « Réinitialiser » : la response du POST
+                      stocke alors le nouveau password dans
+                      `revealedPasswords` (state local volatile, perdu au
+                      reload). Le placeholder informe l'admin qu'il faut
+                      passer par le bouton Réinitialiser pour obtenir le
+                      password à communiquer au membre.
+                    */}
+                    {revealedPasswords[member.email] || (
+                      <span className="text-slate-400 italic font-sans text-xs">
+                        Cliquer « Réinitialiser » pour générer un mot de passe à communiquer
+                      </span>
+                    )}
                   </div>
                 </div>
 
