@@ -4322,6 +4322,10 @@ app.post('/api/wiki-library', requireAuth, async (req, res, next) => {
       console.error('Wiki Noco sync failed on create', syncError);
     }
 
+    // Invalide le cache module-scope (cf. loadWikiLibrary) — sinon les
+    // lambdas chaudes continueraient à servir l'ancien set jusqu'à 60 s.
+    invalidateWikiLibraryCache();
+
     res.json({
       success: true,
       error: null,
@@ -4400,6 +4404,8 @@ app.put('/api/wiki-library/:itemId', requireAuth, async (req, res, next) => {
       console.error('Wiki Noco sync failed on update', syncError);
     }
 
+    invalidateWikiLibraryCache();
+
     res.json({
       success: true,
       error: null,
@@ -4435,6 +4441,8 @@ app.delete('/api/wiki-library/:itemId', requireAuth, async (req, res, next) => {
     } catch (syncError) {
       console.error('Wiki Noco sync failed on delete', syncError);
     }
+
+    invalidateWikiLibraryCache();
 
     res.status(204).end();
   } catch (error) {
