@@ -886,9 +886,9 @@ class WcInstance {
     wcCuvetteTropHaute: json['wcCuvetteTropHaute'] as bool? ?? false,
     wcCuvetteHauteur: (json['wcCuvetteHauteur'] as num?)?.toDouble(),
     wcBarreRelevement: json['wcBarreRelevement'] as bool? ?? false,
-    porteWcLargeurSuffisante: json['porteWcLargeurSuffisante'] as bool? ?? true,
+    porteWcLargeurSuffisante: json['porteWcLargeurSuffisante'] as bool?,
     porteWcDimension: (json['porteWcDimension'] as num?)?.toDouble(),
-    porteWcSensAdapte: json['porteWcSensAdapte'] as bool? ?? true,
+    porteWcSensAdapte: json['porteWcSensAdapte'] as bool?,
     observationEquipementsUtilisation: json['observationEquipementsUtilisation'] as String? ?? '',
   );
 

@@ -1826,61 +1826,67 @@ class DossierRepository {
       return;
     }
 
-    final localFields = Map<String, dynamic>.from(changedFields);
-    localFields['updated_at'] = now;
-    localFields['sync_state'] = SyncState.pendingSync.name;
-    await db.update('patients', localFields,
-        where: 'local_id = ?', whereArgs: [patientId]);
-
-    // Translate to API-friendly payload and enqueue a sync op. We merge with
-    // any existing pending op so rapid edits collapse into a single push.
+    // Refonte 2026-05-16 (audit P0 #4) : on wrappe le UPDATE patient
+    // + l'INSERT/UPDATE sync_op dans UNE SEULE transaction SQLite.
+    // Avant ce fix, l'app pouvait être tuée entre les deux writes
+    // (force-quit, crash, batterie critique) → la ligne patient
+    // contenait la nouvelle valeur mais aucune sync_op ne la poussait.
+    // La modif locale était visible côté UI mais jamais propagée au
+    // serveur. `db.transaction` garantit l'atomicité : soit les deux
+    // writes sont commitées ensemble, soit rollback total.
     final apiUpdates = _mapPatientFieldsToApi(changedFields);
-    if (apiUpdates.isEmpty) return;
+    await db.transaction((txn) async {
+      final localFields = Map<String, dynamic>.from(changedFields);
+      localFields['updated_at'] = now;
+      localFields['sync_state'] = SyncState.pendingSync.name;
+      await txn.update('patients', localFields,
+          where: 'local_id = ?', whereArgs: [patientId]);
 
-    final opId = 'patient_update_$patientId';
-    // Ne merge qu'avec une op encore `pending`. Si l'op précédente est
-    // déjà `running`/`completed`/`failed`/`conflict`, le sync engine a
-    // pris le payload en mémoire et le pousse en parallèle — re-merger
-    // par-dessus créerait une race où l'op courante envoie une payload
-    // obsolète. En filtrant, on repart d'une payload propre pour la
-    // prochaine op.
-    final existing = await db.query('sync_operations',
-        where: 'id = ? AND status = ?',
-        whereArgs: [opId, SyncOperationStatus.pending.name],
-        limit: 1);
-    Map<String, dynamic> mergedUpdates = apiUpdates;
-    if (existing.isNotEmpty) {
-      try {
-        final prev = jsonDecode(existing.first['payload_json'] as String)
-            as Map<String, dynamic>;
-        final prevUpdates = (prev['updates'] as Map?)?.cast<String, dynamic>();
-        if (prevUpdates != null) {
-          mergedUpdates = {...prevUpdates, ...apiUpdates};
+      // Si aucun champ ne se traduit en API payload, on saute juste
+      // l'enqueue — le UPDATE local reste committé (cas rare : champ
+      // local-only modifié).
+      if (apiUpdates.isEmpty) return;
+
+      final opId = 'patient_update_$patientId';
+      final existing = await txn.query('sync_operations',
+          where: 'id = ? AND status = ?',
+          whereArgs: [opId, SyncOperationStatus.pending.name],
+          limit: 1);
+      Map<String, dynamic> mergedUpdates = apiUpdates;
+      if (existing.isNotEmpty) {
+        try {
+          final prev = jsonDecode(existing.first['payload_json'] as String)
+              as Map<String, dynamic>;
+          final prevUpdates =
+              (prev['updates'] as Map?)?.cast<String, dynamic>();
+          if (prevUpdates != null) {
+            mergedUpdates = {...prevUpdates, ...apiUpdates};
+          }
+        } catch (_) {
+          // Fall back to the new payload only.
         }
-      } catch (_) {
-        // Fall back to the new payload only.
       }
-    }
 
-    await db.insert(
-      'sync_operations',
-      {
-        'id': opId,
-        'entity_type': 'patient',
-        'entity_local_id': patientId,
-        'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'patientLocalId': patientId,
-          'updates': mergedUpdates,
-        }),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+      await txn.insert(
+        'sync_operations',
+        {
+          'id': opId,
+          'entity_type': 'patient',
+          'entity_local_id': patientId,
+          'operation_type': 'update',
+          'payload_json': jsonEncode({
+            'patientLocalId': patientId,
+            'updates': mergedUpdates,
+          }),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     SyncEngine().notify();
   }
 

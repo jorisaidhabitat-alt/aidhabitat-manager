@@ -561,9 +561,19 @@ class _BathroomTabState extends State<BathroomTab>
           fieldName: 'porteSdbLargeur',
           label: 'Largeur de porte',
           options: const ['Suffisante', 'À revoir'],
-          selected: a.porteSdbLargeurSuffisante ? 'Suffisante' : 'À revoir',
-          onChanged: (v) => _updateActive(
-              _copy(a, porteSdbLargeurSuffisante: v == 'Suffisante')),
+          // Tri-state : null → '' (pas de pill highlight), true → 'Suffisante',
+          // false → 'À revoir'. Permet le décochage par reclic (refonte
+          // 2026-05-16, pattern aligné sur accessibility_tab `_easyAccess`).
+          selected: _boolPillValue(
+            a.porteSdbLargeurSuffisante,
+            trueLabel: 'Suffisante',
+            falseLabel: 'À revoir',
+          ),
+          onChanged: (v) => _updateActive(_copy(
+            a,
+            porteSdbLargeurSuffisante: v.isEmpty ? null : v == 'Suffisante',
+            porteSdbLargeurSuffisanteNull: v.isEmpty,
+          )),
         ),
         const SizedBox(height: 14),
         FormNumberField(
