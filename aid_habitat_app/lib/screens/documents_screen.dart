@@ -17,6 +17,7 @@ import 'package:pdfx/pdfx.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../components/beneficiary_badges.dart';
+import '../components/beneficiary_header.dart';
 import '../components/brand_colors.dart';
 import '../components/dashed_border_painter.dart';
 import '../components/doc_card.dart';
@@ -1101,112 +1102,30 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     );
   }
 
-  /// Entête bénéficiaire — pattern aligné sur `VisitReportScreen`
-  /// (demande utilisateur 2026-04-29 : « Pour la page documents fait
-  /// pareil que pour la VAD »). Affiche :
-  ///
-  ///   [retour]  NOM Prénom  [type accompagnement]  [revenu]  📍 adresse
-  ///
-  /// Quand on entre en mode sélection, badges + pin + adresse sont
-  /// remplacés par la toolbar (téléchargement / suppression / etc.).
-  /// Le slot back + nom reste pour ne pas désorienter l'ergo.
+  /// Entête bénéficiaire — utilise le widget partagé `BeneficiaryHeader`
+  /// (refonte 2026-05-15) pour garantir une identité visuelle stricte
+  /// avec `DossierScreen` et `VisitReportScreen`. Quand l'utilisateur
+  /// passe en mode sélection, on affiche à la place la toolbar de
+  /// sélection — mais le bouton retour + le nom restent à leur place
+  /// pour ne pas désorienter l'ergo.
   Widget _buildPatientHeader() {
-    final patient = widget.dossier.patient;
-    // Adresse complète sur 1 ligne — mêmes règles de formatage que
-    // VisitReportScreen pour la cohérence visuelle entre les 2 écrans.
-    final addressLine = [
-      patient.address.trim(),
-      [patient.zipCode.trim(), patient.city.trim()]
-          .where((s) => s.isNotEmpty)
-          .join(' '),
-    ].where((s) => s.isNotEmpty).join(' · ');
-    final accompanimentLabel =
-        formatAccompanimentType(widget.dossier.natureAccompagnement).trim();
-    final incomeLabel = patient.incomeCategory.trim();
-
-    return SizedBox(
-      // Hauteur fixe = 48 px (taille de la toolbar de sélection) pour
-      // que la grille en dessous ne bouge pas d'un pixel quand on
-      // entre/quitte le mode sélection.
-      height: 48,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          _buildBackButton(),
-          const SizedBox(width: 16),
-          // Bloc nom + (badges + adresse) ou (toolbar de sélection).
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 380),
-                  child: Text(
-                    '${patient.lastName.toUpperCase()} ${patient.firstName}',
-                    // Refonte 2026-05-13 : Nunito w600 — style uniforme
-                    // avec les autres titres de page.
-                    style: GoogleFonts.nunito(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.4,
-                      color: const Color(0xFF0E1116),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false,
-                  ),
-                ),
-                if (_isSelectionMode) ...[
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildSelectionToolbar()),
-                ] else ...[
-                  // Fallback "MPA complet" 2026-05-07 — cf. commentaire
-                  // identique dans visit_report_screen.dart.
-                  const SizedBox(width: 10),
-                  AccompanimentBadge(
-                    value: accompanimentLabel.isNotEmpty
-                        ? accompanimentLabel
-                        : 'MPA complet',
-                    rawType: widget.dossier.natureAccompagnement
-                            .trim().isNotEmpty
-                        ? widget.dossier.natureAccompagnement
-                        : 'complet',
-                    large: true,
-                  ),
-                  if (incomeLabel.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    IncomeCategoryBadge(
-                      value: incomeLabel,
-                      large: true,
-                    ),
-                  ],
-                  if (addressLine.isNotEmpty) ...[
-                    const SizedBox(width: 12),
-                    const Icon(
-                      LucideIcons.mapPin,
-                      size: 18,
-                      color: Color(0xFF8A939D),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        addressLine,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8A939D),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                      ),
-                    ),
-                  ] else
-                    const Spacer(),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+    if (_isSelectionMode) {
+      // Mode sélection : header simplifié avec toolbar à droite.
+      return SizedBox(
+        height: 48,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _buildBackButton(),
+            const SizedBox(width: 16),
+            Expanded(child: _buildSelectionToolbar()),
+          ],
+        ),
+      );
+    }
+    return BeneficiaryHeader(
+      dossier: widget.dossier,
+      onBack: widget.onBack,
     );
   }
 

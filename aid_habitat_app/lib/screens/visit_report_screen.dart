@@ -23,6 +23,7 @@ import '../services/data_service.dart';
 import '../services/report_generation_service.dart';
 import '../services/sync_engine.dart';
 import '../components/beneficiary_badges.dart';
+import '../components/beneficiary_header.dart';
 import '../components/brand_colors.dart';
 import '../components/notes_widget.dart';
 import '../components/soft_transitions.dart';
@@ -2536,133 +2537,25 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            // Ligne 1 : entête bénéficiaire au-dessus de toute la barre de
-            // navigation (NOM Prénom + adresse complète), avec back button
-            // à gauche.
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _buildBackButton(),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Nom borné par `ConstrainedBox(maxWidth: 380)`
-                      // au lieu d'un Flexible — comme ça il prend juste
-                      // sa largeur naturelle (typiquement 150-250 pt
-                      // pour un NOM Prénom standard) et n'occupe pas
-                      // 50 % de l'espace par défaut. Les noms vraiment
-                      // longs (composés, doubles…) sont coupés à
-                      // 380 pt avec une ellipsis. Ça libère le slot
-                      // de l'adresse qui peut désormais se déployer
-                      // sur tout l'espace restant via `Expanded`.
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 380),
-                        child: Text(
-                          '${patient.lastName.toUpperCase()} ${patient.firstName}',
-                          // Refonte 2026-05-13 : Nunito w700 sur le nom du
-                          // bénéficiaire affiché dans le header du relevé.
-                          style: GoogleFonts.nunito(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.4,
-                            color: const Color(0xFF0E1116),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          softWrap: false,
-                        ),
-                      ),
-                      // Badges insérés ENTRE le nom et l'adresse — parité
-                      // avec l'écran dossier (demande utilisateur).
-                      //
-                      // Fallback "MPA complet" 2026-05-07 : si le champ
-                      // `nature_accompagnement` est vide (dossiers legacy
-                      // créés avant que la validation rende le champ
-                      // obligatoire), on affiche quand même le badge avec
-                      // le défaut. Sans ça, le badge disparait sans
-                      // explication. La couleur teal pastel "Complet" est
-                      // déjà le fallback dans `accompanimentPaletteFor`.
-                      const SizedBox(width: 10),
-                      AccompanimentBadge(
-                        value: accompanimentLabel.isNotEmpty
-                            ? accompanimentLabel
-                            : 'MPA complet',
-                        rawType: _dossier.natureAccompagnement.trim().isNotEmpty
-                            ? _dossier.natureAccompagnement
-                            : 'complet',
-                        large: true,
-                      ),
-                      if (incomeLabel.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        IncomeCategoryBadge(
-                          value: incomeLabel,
-                          large: true,
-                        ),
-                      ],
-                      if (addressLine.isNotEmpty) ...[
-                        const SizedBox(width: 12),
-                        // Icône localisation 18px (aligné Documents).
-                        const Icon(
-                          LucideIcons.mapPin,
-                          size: 18,
-                          color: Color(0xFF8A939D), // ink-400
-                        ),
-                        const SizedBox(width: 6),
-                        // Refonte 2026-05-13 : adresse 13px w500 ink-500
-                        // pour matcher la taille des badges AccompaniBadge
-                        // / IncomeCategoryBadge / AnahStatusBadge / bouton
-                        // Générer (13px) — cohérence horizontale du
-                        // header.
-                        Expanded(
-                          child: Text(
-                            addressLine,
-                            // Refonte 2026-05-13 : adresse 16px w600
-                            // alignée sur l'adresse du header Documents
-                            // (demande user 2026-05-13).
-                            style: GoogleFonts.nunito(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF5C6670), // ink-500
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            softWrap: false,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                // Pastille « État du compte ANAH » épinglée à droite
-                // (demande utilisateur 2026-05-04). N'apparaît que si
-                // l'ergo a renseigné le statut (sinon vide → caché).
-                if (anahStatus.isNotEmpty) ...[
-                  const SizedBox(width: 12),
-                  AnahStatusBadge(status: anahStatus, large: true),
-                ],
-                // Refonte 2026-05-13 : bouton « Générer » remonté dans
-                // le header (à côté du badge Anah) pour matcher la
-                // maquette du design system, au lieu d'être noyé dans
-                // la tab bar.
-                const SizedBox(width: 12),
-                _buildGenerateReportButton(),
-              ],
+            // Ligne 1 : header bénéficiaire partagé (refonte 2026-05-15).
+            // Le même widget est utilisé dans DossierScreen et
+            // DocumentsScreen pour garantir une cohérence visuelle stricte
+            // (couleurs, tailles, positions identiques).
+            BeneficiaryHeader(
+              dossier: _dossier,
+              onBack: widget.onBack,
+              trailing: _buildGenerateReportButton(),
             ),
             const SizedBox(height: 12),
-            // Ligne 2 : barre de navigation des onglets + bouton
-            // « Générer le rapport » en dernière position.
             _buildTabBar(),
             const SizedBox(height: 16),
-            // Content area — chaque entrée du TabBarView intègre désormais
-            // son layout 1 colonne (Mesures/Plans/Préconisations) ou 2
-            // colonnes (formulaire + notes), donc le contenu glisse en
-            // bloc lors d'un changement d'onglet.
             Expanded(child: tabView),
           ],
         ),
       ),
     );
   }
+
 }
 
 /// Couche d'un NotesWidget dans le Stack du panneau de droite. Garde

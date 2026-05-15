@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/beneficiary_badges.dart';
+import '../components/beneficiary_header.dart';
 import '../components/beneficiary_palettes.dart';
 import '../components/brand_colors.dart';
 import '../components/commune_field_group.dart';
@@ -452,108 +453,37 @@ class _DossierScreenState extends State<DossierScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Header
+  // Header — utilise le widget partagé `BeneficiaryHeader` (refonte
+  // 2026-05-15) pour garantir une cohérence visuelle stricte avec
+  // `VisitReportScreen` et `DocumentsScreen`. La date « Créé le » est
+  // injectée via le slot `trailing` du widget.
   // ---------------------------------------------------------------------------
   Widget _buildHeader(BuildContext context) {
-    // Nouveau header (parité maquette) : bouton retour + NOM Prénom +
-    // deux badges à droite du titre (type d'accompagnement en violet,
-    // catégorie de revenu en couleur pastel liée à la catégorie).
-    // La date "Créé le" reste à l'extrême droite.
-    final accompanimentLabel =
-        formatAccompanimentType(_natureAccompagnement).trim();
-    final incomeLabel = _incomeCategory.trim();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Row(
-            children: [
-              // Bouton retour aligné sur celui du VAD (visit_report_screen
-              // `_buildBackButton`). Demande utilisateur 2026-05-13 :
-              // « fais la meme flèche pour les autres pages ».
-              // 44×44 transparent, chevronLeft 24px ink-700.
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: widget.onBack,
-                  borderRadius: BorderRadius.circular(999),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      LucideIcons.chevronLeft,
-                      size: 24,
-                      color: Color(0xFF2B323A), // ink-700
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Flexible(
-                child: Text(
-                  '${_lastName.toUpperCase()} $_firstName',
-                  // Bumpé w600 → w700 pour alignement « textes du dossier
-                  // légèrement plus épais que par défaut » (demande
-                  // utilisateur 2026-05-13 : « met l'épaisseur de tout
-                  // les textes légèrement plus importante comme dans
-                  // le relevé de visite »).
-                  style: GoogleFonts.nunito(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0E1116),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              // Fallback "MPA complet" 2026-05-07 : badge toujours
-              // affiché même si le champ est vide (dossiers legacy).
-              const SizedBox(width: 12),
-              AccompanimentBadge(
-                value: accompanimentLabel.isNotEmpty
-                    ? accompanimentLabel
-                    : 'MPA complet',
-                rawType: _natureAccompagnement.trim().isNotEmpty
-                    ? _natureAccompagnement
-                    : 'complet',
-                large: true,
-              ),
-              if (incomeLabel.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                IncomeCategoryBadge(value: incomeLabel, large: true),
-              ],
-            ],
+    return BeneficiaryHeader(
+      dossier: widget.dossier,
+      onBack: widget.onBack,
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Créé le',
+            style: GoogleFonts.nunito(
+              fontSize: 13,
+              fontWeight: FontWeight.w300,
+              color: Colors.grey,
+            ),
           ),
-        ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Refonte 2026-05-13 : la date « Créé le » est alignée sur
-            // le style de la date des cartes Documents — Nunito 13px
-            // w300 grey, sobre et discrète (au lieu de 16px w600 black).
-            Text(
-              'Créé le',
-              style: GoogleFonts.nunito(
-                fontSize: 13,
-                fontWeight: FontWeight.w300,
-                color: Colors.grey,
-              ),
+          Text(
+            _formatDate(widget.dossier.createdAt),
+            style: GoogleFonts.nunito(
+              fontSize: 13,
+              fontWeight: FontWeight.w300,
+              color: Colors.grey,
             ),
-            Text(
-              _formatDate(widget.dossier.createdAt),
-              style: GoogleFonts.nunito(
-                fontSize: 13,
-                fontWeight: FontWeight.w300,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
