@@ -1370,7 +1370,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         tabKey: stringValue(field(record, 'tab_key')),
         subTabKey: stringValue(field(record, 'sub_tab_key')),
         pageNumber: Number(field(record, 'page_number')) || 0,
-        textContent: stringValue(field(record, 'text_content')),
+        textContent: decompressTextForRead(stringValue(field(record, 'text_content'))),
         drawingJson: decompressDrawingForRead(stringValue(field(record, 'drawing_json'))),
         previewDataUrl: stringValue(field(record, 'preview_data_url')),
         previewUrl: stringValue(field(record, 'preview_url')),
