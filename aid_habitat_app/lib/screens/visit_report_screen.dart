@@ -1648,13 +1648,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         subSectionIndex: 2,
       ));
     }
-    if (p.homeHelp && p.homeHelpTxt.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Santé — Aide à domicile cochée mais détails non renseignés',
-        tabIndex: tab,
-        subSectionIndex: 2,
-      ));
-    }
+    // Check « Aide à domicile cochée mais détails non renseignés » retiré
+    // 2026-05-15 sur demande utilisateur : il n'y a pas de zone de texte
+    // dédiée pour les détails d'aide à domicile dans le form actuel
+    // (`homeHelpTxt` reste vide par design), donc cette validation
+    // déclenchait une popup « Champs manquants » impossible à résoudre.
     // Dépendance particulière : skip volontaire (demande utilisateur
     // 2026-04-30). Si l'ergo n'a rien coché, ça vaut implicitement
     // « Aucune » → pas la peine de signaler. Si l'option « Aucune »
