@@ -10,7 +10,9 @@ import {
   nullableString,
   toNumber,
   toBool,
+  toBoolOrNull,
   boolText,
+  boolTextOrNull,
   httpError,
   safeParseJsonArray,
   resolveBeneficiaryAccess,
@@ -548,9 +550,9 @@ router.get('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res
           sdbSolGlissant: toBool(field(record, 'sdb_sol_glissant')),
           sdbMachineALaver: toBool(field(record, 'sdb_machine_a_laver')),
           sdbMachineALaverHauteur: toNumber(field(record, 'sdb_machine_a_laver_hauteur')),
-          porteSdbLargeurSuffisante: toBool(field(record, 'porte_sdb_largeur_suffisante')),
+          porteSdbLargeurSuffisante: toBoolOrNull(field(record, 'porte_sdb_largeur_suffisante')),
           porteSdbDimension: toNumber(field(record, 'porte_sdb_dimension')),
-          porteSdbSensAdapte: toBool(field(record, 'porte_sdb_sens_adapte')),
+          porteSdbSensAdapte: toBoolOrNull(field(record, 'porte_sdb_sens_adapte')),
         });
       })(),
       wcInstances: (() => {
@@ -561,9 +563,9 @@ router.get('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res
           wcCuvetteTropBasse: toBool(field(record, 'wc_cuvette_trop_basse')),
           wcCuvetteHauteur: toNumber(field(record, 'wc_cuvette_hauteur')),
           wcBarreRelevement: toBool(field(record, 'wc_barre_relevement')),
-          porteWcLargeurSuffisante: toBool(field(record, 'porte_wc_largeur_suffisante')),
+          porteWcLargeurSuffisante: toBoolOrNull(field(record, 'porte_wc_largeur_suffisante')),
           porteWcDimension: toNumber(field(record, 'porte_wc_dimension')),
-          porteWcSensAdapte: toBool(field(record, 'porte_wc_sens_adapte')),
+          porteWcSensAdapte: toBoolOrNull(field(record, 'porte_wc_sens_adapte')),
           observationEquipementsUtilisation: stringValue(field(record, 'observation_equipements_utilisation')),
         });
       })(),
@@ -591,12 +593,12 @@ router.get('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res
       wcCuvetteTropBasse: toBool(field(record, 'wc_cuvette_trop_basse')),
       wcCuvetteHauteur: toNumber(field(record, 'wc_cuvette_hauteur')),
       wcBarreRelevement: toBool(field(record, 'wc_barre_relevement')),
-      porteSdbLargeurSuffisante: toBool(field(record, 'porte_sdb_largeur_suffisante')),
+      porteSdbLargeurSuffisante: toBoolOrNull(field(record, 'porte_sdb_largeur_suffisante')),
       porteSdbDimension: toNumber(field(record, 'porte_sdb_dimension')),
-      porteSdbSensAdapte: toBool(field(record, 'porte_sdb_sens_adapte')),
-      porteWcLargeurSuffisante: toBool(field(record, 'porte_wc_largeur_suffisante')),
+      porteSdbSensAdapte: toBoolOrNull(field(record, 'porte_sdb_sens_adapte')),
+      porteWcLargeurSuffisante: toBoolOrNull(field(record, 'porte_wc_largeur_suffisante')),
       porteWcDimension: toNumber(field(record, 'porte_wc_dimension')),
-      porteWcSensAdapte: toBool(field(record, 'porte_wc_sens_adapte')),
+      porteWcSensAdapte: toBoolOrNull(field(record, 'porte_wc_sens_adapte')),
       observationEquipementsUtilisation: stringValue(field(record, 'observation_equipements_utilisation')),
     } : null);
   } catch (error) {
@@ -648,12 +650,17 @@ router.put('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res
       wc_cuvette_trop_basse: boolText(wcInstances.length > 0 ? primaryWc.wcCuvetteTropBasse : payload.wcCuvetteTropBasse),
       wc_cuvette_hauteur: nullableString(wcInstances.length > 0 ? primaryWc.wcCuvetteHauteur : payload.wcCuvetteHauteur),
       wc_barre_relevement: boolText(wcInstances.length > 0 ? primaryWc.wcBarreRelevement : payload.wcBarreRelevement),
-      porte_sdb_largeur_suffisante: boolText(sdbInstances.length > 0 ? primaryBathroom.porteSdbLargeurSuffisante : payload.porteSdbLargeurSuffisante),
+      // Refonte 2026-05-16 : ces 4 champs sont désormais nullables côté
+      // Flutter (bool?) — l'ergo peut décocher en recliquant. On utilise
+      // `boolTextOrNull` pour propager le null vers NocoDB (sinon
+      // `Boolean(null)` = false côté JS, on perdrait l'info « non
+      // renseigné » au prochain pull).
+      porte_sdb_largeur_suffisante: boolTextOrNull(sdbInstances.length > 0 ? primaryBathroom.porteSdbLargeurSuffisante : payload.porteSdbLargeurSuffisante),
       porte_sdb_dimension: nullableString(sdbInstances.length > 0 ? primaryBathroom.porteSdbDimension : payload.porteSdbDimension),
-      porte_sdb_sens_adapte: boolText(sdbInstances.length > 0 ? primaryBathroom.porteSdbSensAdapte : payload.porteSdbSensAdapte),
-      porte_wc_largeur_suffisante: boolText(wcInstances.length > 0 ? primaryWc.porteWcLargeurSuffisante : payload.porteWcLargeurSuffisante),
+      porte_sdb_sens_adapte: boolTextOrNull(sdbInstances.length > 0 ? primaryBathroom.porteSdbSensAdapte : payload.porteSdbSensAdapte),
+      porte_wc_largeur_suffisante: boolTextOrNull(wcInstances.length > 0 ? primaryWc.porteWcLargeurSuffisante : payload.porteWcLargeurSuffisante),
       porte_wc_dimension: nullableString(wcInstances.length > 0 ? primaryWc.porteWcDimension : payload.porteWcDimension),
-      porte_wc_sens_adapte: boolText(wcInstances.length > 0 ? primaryWc.porteWcSensAdapte : payload.porteWcSensAdapte),
+      porte_wc_sens_adapte: boolTextOrNull(wcInstances.length > 0 ? primaryWc.porteWcSensAdapte : payload.porteWcSensAdapte),
       observation_equipements_utilisation: nullableString(wcInstances.length > 0 ? primaryWc.observationEquipementsUtilisation : payload.observationEquipementsUtilisation),
       updated_at: new Date().toISOString(),
     };

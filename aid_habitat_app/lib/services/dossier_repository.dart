@@ -2495,35 +2495,37 @@ class DossierRepository {
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
-    if (existing.isEmpty) {
-      data['local_id'] = 'diag_${dossierId}_${_uuid()}';
-      await db.insert('diagnostic_sanitaires', data);
-    } else {
-      await db.update('diagnostic_sanitaires', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
-    }
 
-    // Enqueue push → PUT /api/diagnostic-sanitaires/:dossierId
-    final opId = 'diag_update_$dossierId';
-    await db.insert(
-      'sync_operations',
-      {
-        'id': opId,
-        'entity_type': 'diagnostic_sanitaires',
-        'entity_local_id': dossierId,
-        'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'dossierId': dossierId,
-          'sdbInstances': sdbJson,
-          'wcInstances': wcJson,
-        }),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    // Refonte 2026-05-16 (audit P0 #4) : upsert + enqueue atomique.
+    await db.transaction((txn) async {
+      if (existing.isEmpty) {
+        data['local_id'] = 'diag_${dossierId}_${_uuid()}';
+        await txn.insert('diagnostic_sanitaires', data);
+      } else {
+        await txn.update('diagnostic_sanitaires', data,
+            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+      }
+      await txn.insert(
+        'sync_operations',
+        {
+          'id': 'diag_update_$dossierId',
+          'entity_type': 'diagnostic_sanitaires',
+          'entity_local_id': dossierId,
+          'operation_type': 'update',
+          'payload_json': jsonEncode({
+            'dossierId': dossierId,
+            'sdbInstances': sdbJson,
+            'wcInstances': wcJson,
+          }),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     SyncEngine().notify();
   }
 
@@ -2576,21 +2578,6 @@ class DossierRepository {
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
-    if (existing.isEmpty) {
-      // Insertion : on inclut TOUS les champs (pas juste le diff) pour
-      // ne pas créer une row partielle avec des NULL sur les autres.
-      data
-        ..['debout_hauteur_coude'] = mesures.deboutHauteurCoude
-        ..['assis_hauteur_assise'] = mesures.assisHauteurAssise
-        ..['assis_profondeur_genoux'] = mesures.assisProfondeurGenoux
-        ..['assis_hauteur_coudes'] = mesures.assisHauteurCoudes
-        ..['observations'] = mesures.observations
-        ..['local_id'] = 'mes_${dossierId}_${_uuid()}';
-      await db.insert('mesures_anthropometriques', data);
-    } else {
-      await db.update('mesures_anthropometriques', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
-    }
-
     // Mapping snake→camel pour l'API. On ne push QUE les champs qui
     // ont changé (cf. `changedFields` ci-dessus).
     const snakeToCamel = <String, String>{
@@ -2605,41 +2592,59 @@ class DossierRepository {
       final camel = snakeToCamel[snake];
       if (camel != null) updates[camel] = value;
     });
-    if (updates.isEmpty) return;
-    final opId = 'mesures_update_$dossierId';
-    final existingOp = await db.query('sync_operations',
-        where: 'id = ?', whereArgs: [opId], limit: 1);
-    Map<String, dynamic> merged = updates;
-    if (existingOp.isNotEmpty) {
-      try {
-        final prev = jsonDecode(existingOp.first['payload_json'] as String)
-            as Map<String, dynamic>;
-        final prevUpdates =
-            (prev['updates'] as Map?)?.cast<String, dynamic>();
-        if (prevUpdates != null) {
-          merged = {...prevUpdates, ...updates};
-        }
-      } catch (_) {/* fall through */}
-    }
-    await db.insert(
-      'sync_operations',
-      {
-        'id': opId,
-        'entity_type': 'mesures_anthropometriques',
-        'entity_local_id': dossierId,
-        'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'dossierId': dossierId,
-          'updates': merged,
-        }),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+
+    // Refonte 2026-05-16 (audit P0 #4) : upsert + enqueue atomique.
+    await db.transaction((txn) async {
+      if (existing.isEmpty) {
+        data
+          ..['debout_hauteur_coude'] = mesures.deboutHauteurCoude
+          ..['assis_hauteur_assise'] = mesures.assisHauteurAssise
+          ..['assis_profondeur_genoux'] = mesures.assisProfondeurGenoux
+          ..['assis_hauteur_coudes'] = mesures.assisHauteurCoudes
+          ..['observations'] = mesures.observations
+          ..['local_id'] = 'mes_${dossierId}_${_uuid()}';
+        await txn.insert('mesures_anthropometriques', data);
+      } else {
+        await txn.update('mesures_anthropometriques', data,
+            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+      }
+
+      if (updates.isEmpty) return;
+      final opId = 'mesures_update_$dossierId';
+      final existingOp = await txn.query('sync_operations',
+          where: 'id = ?', whereArgs: [opId], limit: 1);
+      Map<String, dynamic> merged = updates;
+      if (existingOp.isNotEmpty) {
+        try {
+          final prev = jsonDecode(existingOp.first['payload_json'] as String)
+              as Map<String, dynamic>;
+          final prevUpdates =
+              (prev['updates'] as Map?)?.cast<String, dynamic>();
+          if (prevUpdates != null) {
+            merged = {...prevUpdates, ...updates};
+          }
+        } catch (_) {/* fall through */}
+      }
+      await txn.insert(
+        'sync_operations',
+        {
+          'id': opId,
+          'entity_type': 'mesures_anthropometriques',
+          'entity_local_id': dossierId,
+          'operation_type': 'update',
+          'payload_json': jsonEncode({
+            'dossierId': dossierId,
+            'updates': merged,
+          }),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     SyncEngine().notify();
   }
 
@@ -2682,20 +2687,6 @@ class DossierRepository {
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
-    if (existing.isEmpty) {
-      // Insertion : full row pour ne pas créer une row partielle.
-      data
-        ..['observation_equipements'] = obs.observationEquipements
-        ..['projet_souhait_usage'] = obs.projetSouhaitUsage
-        ..['resume_preconisations'] = obs.resumePreconisations
-        ..['local_id'] = 'obs_${dossierId}_${_uuid()}';
-      await db.insert('observations_synthese', data);
-    } else {
-      await db.update('observations_synthese', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
-    }
-
-    // Enqueue NocoDB push — débloque les pages 7 (Projet usager + Résumé
-    // préconisations) du rapport PDF qui restaient vides faute de sync.
     // Pattern aligné sur `upsertContexteDeVie`.
     const snakeToCamel = <String, String>{
       'observation_equipements': 'observationEquipements',
@@ -2707,41 +2698,57 @@ class DossierRepository {
       final camel = snakeToCamel[snake];
       if (camel != null) updates[camel] = value;
     });
-    if (updates.isEmpty) return;
-    final opId = 'observations_update_$dossierId';
-    final existingOp = await db.query('sync_operations',
-        where: 'id = ?', whereArgs: [opId], limit: 1);
-    Map<String, dynamic> merged = updates;
-    if (existingOp.isNotEmpty) {
-      try {
-        final prev = jsonDecode(existingOp.first['payload_json'] as String)
-            as Map<String, dynamic>;
-        final prevUpdates =
-            (prev['updates'] as Map?)?.cast<String, dynamic>();
-        if (prevUpdates != null) {
-          merged = {...prevUpdates, ...updates};
-        }
-      } catch (_) {/* fall through */}
-    }
-    await db.insert(
-      'sync_operations',
-      {
-        'id': opId,
-        'entity_type': 'observations_synthese',
-        'entity_local_id': dossierId,
-        'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'dossierId': dossierId,
-          'updates': merged,
-        }),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+
+    // Refonte 2026-05-16 (audit P0 #4) : upsert + enqueue atomique.
+    await db.transaction((txn) async {
+      if (existing.isEmpty) {
+        data
+          ..['observation_equipements'] = obs.observationEquipements
+          ..['projet_souhait_usage'] = obs.projetSouhaitUsage
+          ..['resume_preconisations'] = obs.resumePreconisations
+          ..['local_id'] = 'obs_${dossierId}_${_uuid()}';
+        await txn.insert('observations_synthese', data);
+      } else {
+        await txn.update('observations_synthese', data,
+            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+      }
+
+      if (updates.isEmpty) return;
+      final opId = 'observations_update_$dossierId';
+      final existingOp = await txn.query('sync_operations',
+          where: 'id = ?', whereArgs: [opId], limit: 1);
+      Map<String, dynamic> merged = updates;
+      if (existingOp.isNotEmpty) {
+        try {
+          final prev = jsonDecode(existingOp.first['payload_json'] as String)
+              as Map<String, dynamic>;
+          final prevUpdates =
+              (prev['updates'] as Map?)?.cast<String, dynamic>();
+          if (prevUpdates != null) {
+            merged = {...prevUpdates, ...updates};
+          }
+        } catch (_) {/* fall through */}
+      }
+      await txn.insert(
+        'sync_operations',
+        {
+          'id': opId,
+          'entity_type': 'observations_synthese',
+          'entity_local_id': dossierId,
+          'operation_type': 'update',
+          'payload_json': jsonEncode({
+            'dossierId': dossierId,
+            'updates': merged,
+          }),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     SyncEngine().notify();
   }
 
@@ -2783,23 +2790,10 @@ class DossierRepository {
       'updated_at': now,
       'sync_state': SyncState.pendingSync.name,
     };
-    if (existing.isEmpty) {
-      data['local_id'] = 'rec_${dossierId}_${_uuid()}';
-      await db.insert('visit_recommendations', data);
-    } else {
-      await db.update('visit_recommendations', data, where: 'dossier_local_id = ?', whereArgs: [dossierId]);
-    }
 
     // VERS LE SERVEUR : on ne pousse que les items COMPLETS (wikiItemId
-    // non vide ET qui existe encore dans la wiki library locale). Le
-    // serveur refuse (400) toute préconisation non liée à une fiche
-    // wiki existante. Refonte 2026-05-15 (audit P0 #5) : on ajoute la
-    // vérification d'existence dans le cache local `wiki_items`. Sans
-    // ça, un wikiItemId obsolète (fiche wiki renommée/supprimée côté
-    // NocoDB) déclenche un 400 → markFailed → bandeau rouge récurrent.
-    // L'item reste en SQLite local pour que l'ergo le voie et puisse
-    // le re-rattacher manuellement, mais il n'est PAS envoyé au serveur
-    // tant que son lien wiki est cassé.
+    // non vide ET qui existe encore dans la wiki library locale). Cf.
+    // audit P0 #5 (2026-05-15) — wikiItemId obsolète → 400 récurrent.
     final knownWikiIdRows = await db.query('wiki_items', columns: ['id']);
     final knownWikiIds = knownWikiIdRows
         .map((r) => (r['id']?.toString() ?? '').trim())
@@ -2809,45 +2803,54 @@ class DossierRepository {
         .where((item) {
           final id = item.wikiItemId.trim();
           if (id.isEmpty) return false;
-          // Si la wiki locale est vide (boot frais, jamais synchronisée),
-          // on lui fait confiance et on laisse le serveur trancher —
-          // sinon on bloquerait la sync de l'ergo en attendant le pull.
           if (knownWikiIds.isEmpty) return true;
           return knownWikiIds.contains(id);
         })
         .map((e) => e.toJson())
         .toList();
 
-    // Enqueue push → PUT /api/visit-recommendations/:dossierId
+    // Refonte 2026-05-16 (audit P0 #4) : upsert + enqueue atomique.
     final opId = 'visitrec_update_$dossierId';
+    await db.transaction((txn) async {
+      if (existing.isEmpty) {
+        data['local_id'] = 'rec_${dossierId}_${_uuid()}';
+        await txn.insert('visit_recommendations', data);
+      } else {
+        await txn.update('visit_recommendations', data,
+            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+      }
+
+      if (syncItems.isNotEmpty || items.isEmpty) {
+        // `items.isEmpty` = l'utilisateur a tout supprimé, on push la liste
+        // vide pour que le serveur retire ses records. Sinon on attend
+        // qu'au moins un item ait une fiche wiki liée.
+        await txn.insert(
+          'sync_operations',
+          {
+            'id': opId,
+            'entity_type': 'visit_recommendations',
+            'entity_local_id': dossierId,
+            'operation_type': 'update',
+            'payload_json': jsonEncode({
+              'dossierId': dossierId,
+              'items': syncItems,
+            }),
+            'status': SyncOperationStatus.pending.name,
+            'attempt_count': 0,
+            'last_error': null,
+            'created_at': now,
+            'updated_at': now,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } else {
+        // Aucun item complet à pousser. Retire l'éventuelle sync_op
+        // précédente (sinon elle ré-échouerait avec le même 400).
+        await txn.delete('sync_operations', where: 'id = ?', whereArgs: [opId]);
+      }
+    });
     if (syncItems.isNotEmpty || items.isEmpty) {
-      // `items.isEmpty` = l'utilisateur a tout supprimé, on push la liste
-      // vide pour que le serveur retire ses records. Sinon on attend
-      // qu'au moins un item ait une fiche wiki liée.
-      await db.insert(
-        'sync_operations',
-        {
-          'id': opId,
-          'entity_type': 'visit_recommendations',
-          'entity_local_id': dossierId,
-          'operation_type': 'update',
-          'payload_json': jsonEncode({
-            'dossierId': dossierId,
-            'items': syncItems,
-          }),
-          'status': SyncOperationStatus.pending.name,
-          'attempt_count': 0,
-          'last_error': null,
-          'created_at': now,
-          'updated_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
       SyncEngine().notify();
-    } else {
-      // Aucun item complet à pousser. Retire l'éventuelle sync_op
-      // précédente (sinon elle ré-échouerait avec le même 400).
-      await db.delete('sync_operations', where: 'id = ?', whereArgs: [opId]);
     }
   }
 

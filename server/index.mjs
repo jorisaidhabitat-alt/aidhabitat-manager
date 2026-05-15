@@ -513,6 +513,17 @@ const boolText = (value) => {
   if (value === undefined) return undefined;
   return String(Boolean(value));
 };
+// Variante qui préserve `null` (distinct de `undefined` pour
+// `sanitizeUndefined`). Utilisée pour les champs nullables côté
+// Flutter (acces_facile_rue + portes SDB/WC depuis refonte
+// 2026-05-16) : on envoie `null` explicite à NocoDB pour clear la
+// case (= « non renseigné »), vs `undefined` qui = « ne pas
+// toucher », vs `"true"`/`"false"`.
+const boolTextOrNull = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return String(Boolean(value));
+};
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 /**
@@ -4904,7 +4915,7 @@ const fetchSanitairesForDossier = async (dossierId) => {
         sdbSolGlissant: toBool(field(record, 'sdb_sol_glissant')),
         sdbMachineALaver: toBool(field(record, 'sdb_machine_a_laver')),
         sdbMachineALaverHauteur: toNumber(field(record, 'sdb_machine_a_laver_hauteur')),
-        porteSdbLargeurSuffisante: toBool(field(record, 'porte_sdb_largeur_suffisante')),
+        porteSdbLargeurSuffisante: toBoolOrNull(field(record, 'porte_sdb_largeur_suffisante')),
         porteSdbDimension: toNumber(field(record, 'porte_sdb_dimension')),
         porteSdbSensAdapte: toBool(field(record, 'porte_sdb_sens_adapte')),
       }),
@@ -7333,7 +7344,7 @@ app.get('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res, n
           sdbSolGlissant: toBool(field(record, 'sdb_sol_glissant')),
           sdbMachineALaver: toBool(field(record, 'sdb_machine_a_laver')),
           sdbMachineALaverHauteur: toNumber(field(record, 'sdb_machine_a_laver_hauteur')),
-          porteSdbLargeurSuffisante: toBool(field(record, 'porte_sdb_largeur_suffisante')),
+          porteSdbLargeurSuffisante: toBoolOrNull(field(record, 'porte_sdb_largeur_suffisante')),
           porteSdbDimension: toNumber(field(record, 'porte_sdb_dimension')),
           porteSdbSensAdapte: toBool(field(record, 'porte_sdb_sens_adapte')),
         });
@@ -7378,7 +7389,7 @@ app.get('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res, n
       wcCuvetteTropHaute: toBool(field(record, 'wc_cuvette_trop_haute')),
       wcCuvetteHauteur: toNumber(field(record, 'wc_cuvette_hauteur')),
       wcBarreRelevement: toBool(field(record, 'wc_barre_relevement')),
-      porteSdbLargeurSuffisante: toBool(field(record, 'porte_sdb_largeur_suffisante')),
+      porteSdbLargeurSuffisante: toBoolOrNull(field(record, 'porte_sdb_largeur_suffisante')),
       porteSdbDimension: toNumber(field(record, 'porte_sdb_dimension')),
       porteSdbSensAdapte: toBool(field(record, 'porte_sdb_sens_adapte')),
       porteWcLargeurSuffisante: toBool(field(record, 'porte_wc_largeur_suffisante')),
