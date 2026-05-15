@@ -912,18 +912,28 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 final isMedical = tabKey == 'Contexte de vie-Médical';
                 final isActive = tabKey == activeTabKey;
                 final pdfPlaceholder = _resolvePlaceholderForTabKey(tabKey);
+              // Bannière titre 2026-05-15 : auparavant le libellé PDF
+              // (« Observations sur l'accessibilité », « Habitudes de
+              // vie »…) était noyé comme hintText du TextField interne.
+              // Demande user : passer ces libellés en TITRE en haut du
+              // cadre avec fond violet clair, pour qu'ils restent
+              // visibles même quand l'ergo a commencé à saisir. Le
+              // NotesWidget reçoit donc `placeholder: ''` (pas de hint).
+              final bannerTitle = pdfPlaceholder ?? section;
               return _NotesPanelLayer(
                 isActive: isActive,
-                child: NotesWidget(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _NotesPanelTitleBanner(title: bannerTitle),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: NotesWidget(
                   key: ValueKey(liveKey),
                   patientId: _dossier.patient.id,
                   tabKey: tabKey,
                   title: section,
-                  // Placeholder = libellé exact de la section PDF (cf.
-                  // `_resolvePlaceholderForTabKey`). Si la note ne sert
-                  // pas un champ PDF (ex. sous-sections Bénéficiaire),
-                  // on retombe sur le label de la sous-section.
-                  placeholder: pdfPlaceholder ?? section,
+                  placeholder: '',
                   liveText: _liveText[liveKey],
                   // Token incrémenté quand le pull bulk des notes
                   // termine — déclenche `_reloadCurrentPageFromStore`
@@ -962,6 +972,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   medicalFlags: isMedical ? _medicalFlagNumbers : null,
                   onMedicalFlagsChanged:
                       isMedical ? _handleMedicalFlagsFromNotes : null,
+                ),
+                    ),
+                  ],
                 ),
               );
               }).toList(),
@@ -2620,6 +2633,39 @@ class _NotesPanelLayer extends StatelessWidget {
         child: IgnorePointer(
           ignoring: !isActive,
           child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Bannière titre au-dessus de chaque NotesWidget du panneau notes
+/// (demande user 2026-05-15) : affiche le libellé exact de la section
+/// PDF correspondante (« Observations sur l'accessibilité »,
+/// « Habitudes de vie », « Environnement », « Projet de l'usager »,
+/// « Résumé des préconisations »…) sur un fond mauve clair. Avant ce
+/// fix, le libellé était en hintText du TextField interne — donc
+/// invisible dès que l'ergo commençait à saisir.
+class _NotesPanelTitleBanner extends StatelessWidget {
+  const _NotesPanelTitleBanner({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDE8F5), // mauve-100, light brand
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF554265), // mauve-700
+          letterSpacing: 0.1,
         ),
       ),
     );

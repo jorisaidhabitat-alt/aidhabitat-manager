@@ -417,26 +417,32 @@ class NocodbSyncService {
         '[sync] retry force-local ÉCHEC ${operation.entityType}:'
         '${operation.entityLocalId} err=$retryError',
       );
-      // Retomber sur l'ancien comportement "take remote" en dernier
-      // recours pour ne pas laisser l'op tourner en boucle. Les modifs
-      // locales seront alors perdues, mais c'est mieux que de bloquer.
-      await _syncRepository.markCompleted(
-        operationId: operation.id,
-        entityType: operation.entityType,
-        entityLocalId: operation.entityLocalId,
-      );
-      await _syncRepository
-          .clearPendingOperationsForEntity(operation.entityLocalId);
-      await _syncRepository.setEntitySyncState(
-        entityType: operation.entityType,
-        entityLocalId: operation.entityLocalId,
-        syncState: SyncState.synced,
-      );
-      final pull = onConflictAutoResolved;
-      if (pull != null) {
-        try {
-          await pull();
-        } catch (_) {/* best-effort */}
+      // Refonte 2026-05-16 (audit P0 #1) : on NE doit JAMAIS marquer
+      // une op `synced` quand son retry a échoué — les modifs locales
+      // restent en cache local mais le serveur ne les a JAMAIS reçues.
+      // L'ancien comportement « take remote en dernier recours » faisait
+      // silencieusement perdre la saisie de l'ergo (cas typique : timeout
+      // réseau pendant le retry force-local après un 409 — la donnée
+      // locale est correcte, le serveur attend simplement un retry).
+      //
+      // Désormais : on classe l'erreur comme transitoire ou permanente
+      // et on marque l'op en conséquence. Le cycle de sync suivant
+      // re-tentera (via `rehabilitateTransientFailures` si transient,
+      // via action utilisateur explicite si permanent).
+      if (isTransientErrorLike(retryError)) {
+        await _syncRepository.markTransientFailure(
+          operationId: operation.id,
+          entityType: operation.entityType,
+          entityLocalId: operation.entityLocalId,
+          error: 'Retry force-local échoué (transient) : $retryError',
+        );
+      } else {
+        await _syncRepository.markFailed(
+          operationId: operation.id,
+          entityType: operation.entityType,
+          entityLocalId: operation.entityLocalId,
+          error: 'Retry force-local échoué : $retryError',
+        );
       }
     }
   }
