@@ -759,9 +759,16 @@ class BathroomInstance {
   final bool sdbSolGlissant;
   final bool sdbMachineALaver;
   final double? sdbMachineALaverHauteur;
-  final bool porteSdbLargeurSuffisante;
+  /// Largeur de la porte SDB : `true`=suffisante, `false`=à revoir,
+  /// `null`=non renseigné (l'ergo n'a jamais cliqué). Pattern aligné
+  /// sur `Housing.easyAccess` côté accessibility — permet à l'ergo de
+  /// décocher une pill en recliquant dessus sans cocher l'autre.
+  /// Refonte 2026-05-16 : `bool` → `bool?` (demande utilisateur).
+  final bool? porteSdbLargeurSuffisante;
   final double? porteSdbDimension;
-  final bool porteSdbSensAdapte;
+  /// Sens d'ouverture de la porte SDB : `true`=Intérieur, `false`=Extérieur,
+  /// `null`=non renseigné. Même rationale que `porteSdbLargeurSuffisante`.
+  final bool? porteSdbSensAdapte;
 
   const BathroomInstance({
     required this.id,
@@ -784,9 +791,9 @@ class BathroomInstance {
     this.sdbSolGlissant = false,
     this.sdbMachineALaver = false,
     this.sdbMachineALaverHauteur,
-    this.porteSdbLargeurSuffisante = true,
+    this.porteSdbLargeurSuffisante,
     this.porteSdbDimension,
-    this.porteSdbSensAdapte = true,
+    this.porteSdbSensAdapte,
   });
 
   factory BathroomInstance.fromJson(Map<String, dynamic> json) => BathroomInstance(
@@ -810,9 +817,9 @@ class BathroomInstance {
     sdbSolGlissant: json['sdbSolGlissant'] as bool? ?? false,
     sdbMachineALaver: json['sdbMachineALaver'] as bool? ?? false,
     sdbMachineALaverHauteur: (json['sdbMachineALaverHauteur'] as num?)?.toDouble(),
-    porteSdbLargeurSuffisante: json['porteSdbLargeurSuffisante'] as bool? ?? true,
+    porteSdbLargeurSuffisante: json['porteSdbLargeurSuffisante'] as bool?,
     porteSdbDimension: (json['porteSdbDimension'] as num?)?.toDouble(),
-    porteSdbSensAdapte: json['porteSdbSensAdapte'] as bool? ?? true,
+    porteSdbSensAdapte: json['porteSdbSensAdapte'] as bool?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -845,9 +852,14 @@ class WcInstance {
   final bool wcCuvetteTropHaute;
   final double? wcCuvetteHauteur;
   final bool wcBarreRelevement;
-  final bool porteWcLargeurSuffisante;
+  /// Largeur de la porte WC : `true`=suffisante, `false`=à revoir,
+  /// `null`=non renseigné. Même pattern que `porteSdbLargeurSuffisante`,
+  /// refonte 2026-05-16.
+  final bool? porteWcLargeurSuffisante;
   final double? porteWcDimension;
-  final bool porteWcSensAdapte;
+  /// Sens d'ouverture de la porte WC : `true`=Intérieur,
+  /// `false`=Extérieur, `null`=non renseigné.
+  final bool? porteWcSensAdapte;
   final String observationEquipementsUtilisation;
 
   const WcInstance({
@@ -859,9 +871,9 @@ class WcInstance {
     this.wcCuvetteTropHaute = false,
     this.wcCuvetteHauteur,
     this.wcBarreRelevement = false,
-    this.porteWcLargeurSuffisante = true,
+    this.porteWcLargeurSuffisante,
     this.porteWcDimension,
-    this.porteWcSensAdapte = true,
+    this.porteWcSensAdapte,
     this.observationEquipementsUtilisation = '',
   });
 

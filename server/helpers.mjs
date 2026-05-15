@@ -2517,30 +2517,45 @@ export const upsertContexte = async (
         })),
       }))
     : [];
-  const legacySizeWeight = stringValue(medicalContext?.sizeWeight).replace(',', '.');
-  const legacyHeightMatch = legacySizeWeight.match(/(\d+(?:\.\d+)?)\s*cm/i);
-  const legacyWeightMatch = legacySizeWeight.match(/(\d+(?:\.\d+)?)\s*kg/i);
-  const heightCm = stringValue(medicalContext?.heightCm).trim() || legacyHeightMatch?.[1] || '';
-  const weightKg = stringValue(medicalContext?.weightKg).trim() || legacyWeightMatch?.[1] || '';
+  // Fix critique 2026-05-15 — PATCH partiel (idem index.mjs version).
+  // Avant : tous les champs medical + autonomy étaient toujours dans
+  // `fields` → si le caller passait `medicalContext=undefined`, les
+  // colonnes pathology/followUp/sensory/taille/poids étaient écrasées
+  // à null. Idem `autonomy=undefined` → checklists écrasées à `''`.
+  // Maintenant : on conditionne par `has(key)`.
+  const hasMedical = medicalContext !== undefined && medicalContext !== null;
+  const hasAutonomy = autonomy !== undefined && autonomy !== null;
+
   const fields = {
     dossier_id: dossierUuid,
     beneficiaire_id: beneficiaryUuid,
     dossiers_id: dossierRecord ? Number(dossierRecord.id) : undefined,
     beneficiaires_id: beneficiaryRecordId != null ? Number(beneficiaryRecordId) : undefined,
-    nom_pathologie: nullableString(medicalContext?.pathology),
-    suivi_medical: nullableString(medicalContext?.followUp),
-    deficience_auditive_visuelle: nullableString(medicalContext?.sensory),
-    taille_approximative: nullableString(heightCm),
-    poids_exact: nullableString(weightKg),
-    aide_technique_deplacement: checklistMap.get('Déplacements/transferts') ? true : false,
-    difficultes_escalier: checklistMap.get('Escaliers') ? 'Oui' : '',
-    restrictions_conduite: checklistMap.get('Conduite automobile') ? 'Oui' : '',
-    autonomie_toilette: checklistMap.get('Toilette/habillage') ? 'Oui' : '',
-    autonomie_repas: checklistMap.get('Repas (y compris courses)') ? 'Oui' : '',
-    autonomie_menage: checklistMap.get('Tâches ménagères.domestiques') ? 'Oui' : '',
-    autonomie_demarches_admin: checklistMap.get('Démarches admin') ? 'Oui' : '',
-    occupants_json: normalizedOccupants.length > 0 ? JSON.stringify(normalizedOccupants) : null,
   };
+
+  if (hasMedical) {
+    const legacySizeWeight = stringValue(medicalContext?.sizeWeight).replace(',', '.');
+    const legacyHeightMatch = legacySizeWeight.match(/(\d+(?:\.\d+)?)\s*cm/i);
+    const legacyWeightMatch = legacySizeWeight.match(/(\d+(?:\.\d+)?)\s*kg/i);
+    const heightCm = stringValue(medicalContext?.heightCm).trim() || legacyHeightMatch?.[1] || '';
+    const weightKg = stringValue(medicalContext?.weightKg).trim() || legacyWeightMatch?.[1] || '';
+    fields.nom_pathologie = nullableString(medicalContext?.pathology);
+    fields.suivi_medical = nullableString(medicalContext?.followUp);
+    fields.deficience_auditive_visuelle = nullableString(medicalContext?.sensory);
+    fields.taille_approximative = nullableString(heightCm);
+    fields.poids_exact = nullableString(weightKg);
+  }
+
+  if (hasAutonomy) {
+    fields.aide_technique_deplacement = checklistMap.get('Déplacements/transferts') ? true : false;
+    fields.difficultes_escalier = checklistMap.get('Escaliers') ? 'Oui' : '';
+    fields.restrictions_conduite = checklistMap.get('Conduite automobile') ? 'Oui' : '';
+    fields.autonomie_toilette = checklistMap.get('Toilette/habillage') ? 'Oui' : '';
+    fields.autonomie_repas = checklistMap.get('Repas (y compris courses)') ? 'Oui' : '';
+    fields.autonomie_menage = checklistMap.get('Tâches ménagères.domestiques') ? 'Oui' : '';
+    fields.autonomie_demarches_admin = checklistMap.get('Démarches admin') ? 'Oui' : '';
+    fields.occupants_json = normalizedOccupants.length > 0 ? JSON.stringify(normalizedOccupants) : null;
+  }
 
   if (existing) {
     await updateRecord(TABLES.contexteDeVie, existing.id, fields);
