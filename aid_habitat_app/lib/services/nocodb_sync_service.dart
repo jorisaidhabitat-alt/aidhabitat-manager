@@ -41,10 +41,21 @@ bool _isTransientErrorLike(Object error) {
   if (error is HttpException) return true;
   if (error is http.ClientException) return true;
   final s = error.toString().toLowerCase();
+  // Refonte 2026-05-15 (audit P0 #2) : on inclut désormais 401 et 403
+  // dans les erreurs transitoires. Avant, un 401 (token expiré / rejeté
+  // par le serveur strict `local-auth`) faisait `markFailed` → bandeau
+  // rouge spammé. Désormais l'op reste en queue silencieusement ;
+  // `restoreRemoteSession` au boot (et le futur force-relogin sur 401)
+  // débloque la situation sans alarmer l'utilisateur entre temps.
+  // Note : `rehabilitateTransientFailures` (sync_repository) continue à
+  // capter aussi les anciennes ops qui ont déjà été markFailed avec
+  // ces codes — double sécurité pour la migration des sessions héritées.
   return s.contains('load failed') ||
       s.contains('fetch failed') ||
       s.contains('failed to fetch') ||
-      s.contains('clientexception');
+      s.contains('clientexception') ||
+      s.contains('(401)') ||
+      s.contains('(403)');
 }
 
 /// Indicates that a sync operation was rejected due to a conflict (HTTP 409).

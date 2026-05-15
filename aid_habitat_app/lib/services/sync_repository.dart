@@ -717,6 +717,68 @@ class SyncRepository {
     );
   }
 
+  /// Liste TOUTES les opérations en `failed` (résumés courts) — utilisée
+  /// par le drawer "ops en échec" pour permettre une action par op
+  /// (réessayer / abandonner) au lieu d'un batch global.
+  Future<List<Map<String, String?>>> fetchAllFailingOperations() async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'sync_operations',
+      columns: [
+        'id',
+        'entity_type',
+        'operation_type',
+        'entity_local_id',
+        'last_error',
+        'attempt_count',
+        'updated_at',
+      ],
+      where: 'status = ?',
+      whereArgs: [SyncOperationStatus.failed.name],
+      orderBy: 'updated_at DESC',
+    );
+    return rows.map((r) {
+      return {
+        'id': r['id'] as String?,
+        'entityType': r['entity_type'] as String?,
+        'operationType': r['operation_type'] as String?,
+        'entityLocalId': r['entity_local_id'] as String?,
+        'lastError': r['last_error'] as String?,
+        'attemptCount': '${r['attempt_count'] ?? 0}',
+        'updatedAt': r['updated_at'] as String?,
+      };
+    }).toList();
+  }
+
+  /// Réinitialise UNE op à `pending` (attempt_count=0, last_error=null).
+  /// Renvoie le nombre de lignes modifiées (0 ou 1).
+  Future<int> resetSingleOperationToPending(String operationId) async {
+    final db = await _database.database;
+    return db.update(
+      'sync_operations',
+      {
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [operationId],
+    );
+  }
+
+  /// Supprime UNE op de la file (utilisé par "Abandonner" sur une
+  /// modif locale qu'on sait condamnée — payload obsolète, ressource
+  /// distante effacée, etc.).
+  Future<int> discardSingleOperation(String operationId) async {
+    final db = await _database.database;
+    return db.delete(
+      'sync_operations',
+      where: 'id = ?',
+      whereArgs: [operationId],
+    );
+  }
+
   /// Supprime TOUTES les opérations en `failed` — permet à l'utilisateur de
   /// débloquer le bandeau rouge quand une modification ne pourra jamais
   /// aboutir (ex: ressource supprimée côté serveur).

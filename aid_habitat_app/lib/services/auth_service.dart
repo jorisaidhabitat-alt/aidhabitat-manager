@@ -446,7 +446,7 @@ class AuthService {
         await _clearSessionRowOnly(db);
         // Plus de token côté AppConfig non plus, sinon les call API
         // jusqu'au rebuild UI seraient encore signés avec le token mort.
-        AppConfig.setAppSessionToken('');
+        AppConfig.clearAppSessionToken();
       }
     } catch (_) {
       // Best-effort : si la validation explose pour une raison

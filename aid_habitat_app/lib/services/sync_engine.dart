@@ -227,6 +227,52 @@ class SyncEngine {
   Future<Map<String, String?>?> inspectTopFailure() =>
       _syncRepository.fetchTopFailingOperation();
 
+  /// Liste complète des opérations en `failed` — utilisée par le drawer
+  /// "ops en échec" pour offrir une action par op (réessayer /
+  /// abandonner) au lieu d'un batch global.
+  Future<List<Map<String, String?>>> inspectAllFailures() =>
+      _syncRepository.fetchAllFailingOperations();
+
+  /// Réinitialise UNE op à `pending` puis kick le sync engine sans
+  /// attendre le prochain tick. Utilisé par le bouton « Réessayer »
+  /// par-op du drawer.
+  Future<int> retrySingleOperation(String operationId) async {
+    final reset =
+        await _syncRepository.resetSingleOperationToPending(operationId);
+    if (reset > 0) {
+      _consecutiveFailures = 0;
+      _retryTimer?.cancel();
+      _retryTimer = null;
+      final pending = await _refreshPendingCount();
+      _emitState(
+        pendingCount: pending,
+        clearError: true,
+        nextRetryAt: null,
+      );
+    }
+    return reset;
+  }
+
+  /// Supprime UNE op de la file (action « Abandonner » par-op). Met à
+  /// jour le pending count + clear l'erreur globale si plus aucune op
+  /// failed.
+  Future<int> discardSingleOperation(String operationId) async {
+    final removed =
+        await _syncRepository.discardSingleOperation(operationId);
+    if (removed > 0) {
+      final pending = await _refreshPendingCount();
+      // On clear l'erreur globale seulement s'il n'y a plus rien en
+      // échec — sinon le bandeau doit rester pour les autres ops.
+      final remaining = await _syncRepository.fetchTopFailingOperation();
+      _emitState(
+        pendingCount: pending,
+        clearError: remaining == null,
+        nextRetryAt: null,
+      );
+    }
+    return removed;
+  }
+
   /// Re-queue toutes les opérations en `failed` (passe à `pending`,
   /// reset attempt_count) → utilisé par le bouton « Réessayer
   /// maintenant » du dialog d'erreur sync. Le caller appelle
