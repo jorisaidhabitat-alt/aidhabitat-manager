@@ -6,6 +6,7 @@ import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
+import '../../components/brand_colors.dart';
 import '../../components/cached_remote_image.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
@@ -297,7 +298,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Ajouter une préconisation'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
@@ -479,7 +480,7 @@ class _RecommendationCard extends StatelessWidget {
                         : const Center(
                             child: Icon(
                               Icons.add_photo_alternate_outlined,
-                              color: Color(0xFF8B6FA0),
+                              color: kBrandPurple,
                               size: 40,
                             ),
                           ),
@@ -503,7 +504,7 @@ class _RecommendationCard extends StatelessWidget {
                           child: Icon(
                             Icons.cached,
                             size: 20,
-                            color: const Color(0xFF8B6FA0),
+                            color: kBrandPurple,
                             semanticLabel: hasWiki
                                 ? 'Changer la fiche wiki'
                                 : 'Choisir une fiche wiki',
@@ -523,7 +524,7 @@ class _RecommendationCard extends StatelessWidget {
                           child: Icon(
                             Icons.close,
                             size: 20,
-                            color: Color(0xFF8B6FA0),
+                            color: kBrandPurple,
                             semanticLabel: 'Supprimer',
                           ),
                         ),
@@ -661,7 +662,7 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(
-                              color: Color(0xFF8B6FA0), width: 1.5),
+                              color: kBrandPurple, width: 1.5),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 12),
@@ -894,7 +895,7 @@ class _DraggableRecoSlot extends StatelessWidget {
           decoration: isHovered
               ? BoxDecoration(
                   border: Border.all(
-                    color: const Color(0xFF8B6FA0),
+                    color: kBrandPurple,
                     width: 2,
                   ),
                   borderRadius: BorderRadius.circular(16),
@@ -1034,7 +1035,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: selected
-                                ? const Color(0xFF8B6FA0)
+                                ? kBrandPurple
                                 : Color(0xFFB9C0C7),
                           ),
                         ),
@@ -1047,12 +1048,12 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                               margin: const EdgeInsets.only(top: 1),
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? const Color(0xFF8B6FA0)
+                                    ? kBrandPurple
                                     : Colors.white,
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
                                   color: selected
-                                      ? const Color(0xFF8B6FA0)
+                                      ? kBrandPurple
                                       : Color(0xFF8A939D),
                                   width: 1.5,
                                 ),
@@ -1091,7 +1092,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                   const SizedBox(width: 8),
                   FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () {

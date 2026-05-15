@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/brand_colors.dart';
 import '../components/cached_remote_image.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
@@ -342,7 +343,7 @@ class _WikiScreenState extends State<WikiScreen> {
           // icône `+` à gauche + label.
           child: FloatingActionButton.extended(
             onPressed: _createItem,
-            backgroundColor: const Color(0xFF8B6FA0),
+            backgroundColor: kBrandPurple,
             foregroundColor: Colors.white,
             // Demande user 2026-05-12 : retire l'ombre du FAB. On force
             // toutes les variantes d'élévation à 0 (idle/hover/focus/
@@ -598,7 +599,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                   child: Icon(
                                     Icons.add,
                                     size: 18,
-                                    color: Color(0xFF8B6FA0),
+                                    color: kBrandPurple,
                                     semanticLabel: 'Ajouter une description',
                                   ),
                                 ),
@@ -670,7 +671,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                               );
                             },
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B6FA0),
+                              backgroundColor: kBrandPurple,
                               foregroundColor: Colors.white,
                               padding:
                                   const EdgeInsets.symmetric(vertical: 16),
@@ -734,7 +735,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
+        borderSide: const BorderSide(color: kBrandPurple, width: 1.5),
       ),
     );
   }
@@ -888,13 +889,13 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF8B6FA0).withValues(alpha: 0.12),
+                      color: kBrandPurple.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
                     child: const Icon(
                       LucideIcons.plus,
-                      color: Color(0xFF8B6FA0),
+                      color: kBrandPurple,
                       size: 22,
                     ),
                   ),
@@ -948,7 +949,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF8B6FA0),
+                  color: kBrandPurple,
                 ),
               ),
               const SizedBox(height: 8),
@@ -988,7 +989,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                   const SizedBox(width: 8),
                   FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                       foregroundColor: Colors.white,
                     ),
                     onPressed: _submitting ? null : _submit,
@@ -1051,7 +1052,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                       icon: const Icon(LucideIcons.refreshCw, size: 14),
                       label: const Text('Changer'),
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF8B6FA0),
+                        foregroundColor: kBrandPurple,
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -1098,7 +1099,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF8B6FA0),
+                  color: kBrandPurple,
                 ),
               )
             else
@@ -1155,12 +1156,12 @@ class _FilterChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isActive
-              ? const Color(0xFF8B6FA0) // mauve-500
+              ? kBrandPurple // mauve-500
               : const Color(0xFFFAF7FB), // mauve-50 (idem VAD inactif)
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isActive
-                ? const Color(0xFF8B6FA0) // fusionnée avec le fond actif
+                ? kBrandPurple // fusionnée avec le fond actif
                 : const Color(0xFFE4E7EB), // slate-200 (border inactive)
             width: 1,
           ),
@@ -1254,7 +1255,7 @@ class _WikiCardState extends State<_WikiCard> {
           boxShadow: _hover
               ? [
                   BoxShadow(
-                    color: const Color(0xFF8B6FA0).withValues(alpha: 0.18),
+                    color: kBrandPurple.withValues(alpha: 0.18),
                     blurRadius: 24,
                     offset: const Offset(0, 10),
                   ),
@@ -1416,7 +1417,7 @@ class _WikiLabeledField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF8B6FA0),
+            color: kBrandPurple,
           ),
         ),
         const SizedBox(height: 4),
@@ -1441,7 +1442,7 @@ class _WikiLabeledField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.4),
+              borderSide: const BorderSide(color: kBrandPurple, width: 1.4),
             ),
           ),
         ),

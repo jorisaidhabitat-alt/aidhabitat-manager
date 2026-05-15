@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../components/brand_colors.dart';
 import '../../models/types.dart';
 import '../../services/data_service.dart';
 import 'form_widgets.dart';
@@ -109,7 +110,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF554a63),
+                  color: kBrandDarkPurple,
                 ),
               ),
               const Spacer(),
@@ -131,7 +132,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
                     'Aucune pr\u00e9conisation.\nCliquez \u00ab\u00a0Ajouter\u00a0\u00bb pour commencer.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xFF8B6FA0),
+                      color: kBrandPurple,
                       fontSize: 13,
                     ),
                   ),
@@ -160,7 +161,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF554a63),
+                  color: kBrandDarkPurple,
                 ),
               ),
             ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'brand_colors.dart';
+
 /// Section header with optional icon
 class FormSectionHeader extends StatelessWidget {
   final String title;
@@ -15,7 +17,7 @@ class FormSectionHeader extends StatelessWidget {
       child: Row(
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 18, color: const Color(0xFF8B6FA0)),
+            Icon(icon, size: 18, color: kBrandPurple),
             const SizedBox(width: 8),
           ],
           Text(
@@ -86,12 +88,12 @@ class VpCheckboxSquare extends StatelessWidget {
             height: size,
             decoration: BoxDecoration(
               color: completed
-                  ? const Color(0xFF8B6FA0) // mauve-500
+                  ? kBrandPurple // mauve-500
                   : Colors.white,
               borderRadius: BorderRadius.circular(5),
               border: Border.all(
                 color: completed
-                    ? const Color(0xFF8B6FA0)
+                    ? kBrandPurple
                     : const Color(0xFFB9C0C7), // ink-300
                 width: 1.5,
               ),
@@ -148,12 +150,12 @@ class VpCheckboxDot extends StatelessWidget {
             height: size,
             decoration: BoxDecoration(
               color: completed
-                  ? const Color(0xFF8B6FA0) // mauve-500
+                  ? kBrandPurple // mauve-500
                   : Colors.white,
               shape: BoxShape.circle,
               border: Border.all(
                 color: completed
-                    ? const Color(0xFF8B6FA0)
+                    ? kBrandPurple
                     : const Color(0xFFB9C0C7), // ink-300
                 width: 1.5,
               ),
@@ -207,7 +209,7 @@ class FormSubSectionChips extends StatelessWidget {
               // petits »).
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: selected ? const Color(0xFF8B6FA0) : Colors.white,
+                color: selected ? kBrandPurple : Colors.white,
                 // Refonte 2026-05-13 : pill radius 999 uniforme.
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -386,7 +388,7 @@ class _FormTextFieldState extends State<FormTextField> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(radius),
                 borderSide:
-                    const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
+                    const BorderSide(color: kBrandPurple, width: 1.5),
               ),
               filled: true,
               fillColor: widget.readOnly
@@ -533,7 +535,7 @@ class _FormNumberFieldState extends State<FormNumberField> {
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
               borderSide:
-                  const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
+                  const BorderSide(color: kBrandPurple, width: 1.5),
             ),
             filled: true,
             fillColor: Colors.white,
@@ -599,12 +601,12 @@ class TogglePillButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: active ? const Color(0xFF8B6FA0) : Colors.white,
+              color: active ? kBrandPurple : Colors.white,
               // Refonte 2026-05-13 : pill radius 999 uniforme.
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: active
-                    ? const Color(0xFF8B6FA0)
+                    ? kBrandPurple
                     : Color(0xFFB9C0C7),
                 width: 1.2,
               ),
@@ -631,7 +633,7 @@ class TogglePillButton extends StatelessWidget {
                   color: Colors.white,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: const Color(0xFF8B6FA0),
+                    color: kBrandPurple,
                     width: 1.4,
                   ),
                   boxShadow: [
@@ -646,7 +648,7 @@ class TogglePillButton extends StatelessWidget {
                   '$countBadge',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: Color(0xFF8B6FA0),
+                    color: kBrandPurple,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     height: 1.0,
@@ -715,7 +717,7 @@ class CollapsedValueRow extends StatelessWidget {
             const Icon(
               Icons.edit_outlined,
               size: 14,
-              color: Color(0xFF8B6FA0),
+              color: kBrandPurple,
             ),
           ],
         ),
@@ -793,12 +795,12 @@ class FormToggleGroup extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isSelected
-                ? const Color(0xFF8B6FA0) // mauve-500
+                ? kBrandPurple // mauve-500
                 : const Color(0xFFFAF7FB), // mauve-50
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: isSelected
-                  ? const Color(0xFF8B6FA0)
+                  ? kBrandPurple
                   : Colors.transparent,
             ),
           ),
@@ -957,12 +959,12 @@ class FormMultiToggleGroup extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isSelected
-                ? const Color(0xFF8B6FA0) // mauve-500
+                ? kBrandPurple // mauve-500
                 : const Color(0xFFFAF7FB), // mauve-50 (idem Occupation)
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: isSelected
-                  ? const Color(0xFF8B6FA0)
+                  ? kBrandPurple
                   : Colors.transparent,
             ),
           ),
@@ -1053,11 +1055,11 @@ class FormCheckbox extends StatelessWidget {
               width: 20,
               height: 20,
               decoration: BoxDecoration(
-                color: value ? const Color(0xFF8B6FA0) : Colors.white,
+                color: value ? kBrandPurple : Colors.white,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
                   color: value
-                      ? const Color(0xFF8B6FA0)
+                      ? kBrandPurple
                       : Color(0xFF8A939D),
                   width: 1.5,
                 ),
@@ -1306,7 +1308,7 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
               borderSide: const BorderSide(
-                color: Color(0xFF8B6FA0),
+                color: kBrandPurple,
                 width: 1.5,
               ),
             ),
@@ -1553,7 +1555,7 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
                             height: 18,
                             decoration: BoxDecoration(
                               color: checked
-                                  ? const Color(0xFF8B6FA0)
+                                  ? kBrandPurple
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(4),
                             ),

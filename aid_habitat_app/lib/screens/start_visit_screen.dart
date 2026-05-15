@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../components/brand_colors.dart';
 import '../models/types.dart';
 import 'visit_report_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -112,7 +113,7 @@ class StartVisitScreen extends StatelessWidget {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
                       textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

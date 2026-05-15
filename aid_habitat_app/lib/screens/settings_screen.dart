@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../components/account_dialog.dart';
+import '../components/brand_colors.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 
@@ -355,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value,
                 style: TextStyle(
                   fontSize: 13,
-                  color: isLink ? const Color(0xFF8B6FA0) : Colors.black87,
+                  color: isLink ? kBrandPurple : Colors.black87,
                   decoration: isLink ? TextDecoration.underline : null,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -459,7 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           height: 96,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFF8B6FA0),
+            color: kBrandPurple,
           ),
           clipBehavior: Clip.antiAlias,
           child: _photoFile != null

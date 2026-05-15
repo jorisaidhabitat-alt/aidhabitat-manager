@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/brand_colors.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
 
@@ -415,7 +416,7 @@ class _VersionCard extends StatelessWidget {
         style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
-          color: Color(0xFF554a63),
+          color: kBrandDarkPurple,
         ),
       ),
     );

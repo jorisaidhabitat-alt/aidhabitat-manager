@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
+import '../../components/brand_colors.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
 import '../../components/two_threshold_swipe.dart';
@@ -755,7 +756,7 @@ class _ContextTabState extends State<ContextTab>
               height: 5,
               decoration: BoxDecoration(
                 color: isActive
-                    ? const Color(0xFF8B6FA0) // mauve-500
+                    ? kBrandPurple // mauve-500
                     : const Color(0xFFE4E7EB), // ink-200
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -797,7 +798,7 @@ class _ContextTabState extends State<ContextTab>
     // l'item actif — seul différenciateur visuel. Parité avec
     // Bénéficiaire et Accessibilité.
     const labelColor = Color(0xFF0E1116); // ink-900
-    const underlineColor = Color(0xFF8B6FA0); // mauve-500
+    const underlineColor = kBrandPurple; // mauve-500
     return SoftTapScale(
       onTap: () => _setSubSection(index),
       child: Container(
@@ -953,11 +954,11 @@ class _ContextTabState extends State<ContextTab>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: allAutonomous
-                  ? const Color(0xFF8B6FA0) // mauve-500
+                  ? kBrandPurple // mauve-500
                   : Colors.transparent,
               border: Border.all(
                 color: allAutonomous
-                    ? const Color(0xFF8B6FA0)
+                    ? kBrandPurple
                     : const Color(0xFFA98DBE), // mauve-400
                 width: 1.5,
               ),
@@ -968,7 +969,7 @@ class _ContextTabState extends State<ContextTab>
               size: 13,
               color: allAutonomous
                   ? Colors.white
-                  : const Color(0xFF8B6FA0),
+                  : kBrandPurple,
             ),
           ),
         ),
@@ -1293,8 +1294,8 @@ class _ActionButton extends StatelessWidget {
     String? labelChar; // pour le ! (rendu en texte plutôt qu'icône)
     switch (kind) {
       case _ActionButtonKind.autonomous:
-        activeFill = const Color(0xFF8B6FA0);
-        activeBorder = const Color(0xFF8B6FA0);
+        activeFill = kBrandPurple;
+        activeBorder = kBrandPurple;
         activeIcon = Colors.white;
         inactiveBg = Colors.white;
         inactiveBorder = const Color(0xFFE4E7EB); // ink-200

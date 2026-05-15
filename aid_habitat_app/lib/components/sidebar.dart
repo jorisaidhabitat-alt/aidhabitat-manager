@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
 import '../services/auth_service.dart';
 import 'account_dialog.dart';
+import 'brand_colors.dart';
 import 'cached_remote_image.dart';
 import 'soft_transitions.dart';
 
@@ -152,7 +153,7 @@ class _SidebarState extends State<Sidebar> {
                           width: 6,
                           height: 6,
                           decoration: const BoxDecoration(
-                            color: Color(0xFF8B6FA0), // mauve-500
+                            color: kBrandPurple, // mauve-500
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -207,7 +208,7 @@ class _SidebarState extends State<Sidebar> {
                               width: 3,
                               decoration: BoxDecoration(
                                 color: isActive
-                                    ? const Color(0xFF8B6FA0) // mauve-500
+                                    ? kBrandPurple // mauve-500
                                     : const Color(0x008B6FA0), // alpha 0
                                 borderRadius: const BorderRadius.only(
                                   topRight: Radius.circular(3),

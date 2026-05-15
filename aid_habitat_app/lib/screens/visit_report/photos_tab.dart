@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../components/brand_colors.dart';
 import '../../components/file_drop_zone.dart';
 import '../../components/soft_transitions.dart';
 import '../../models/types.dart';
@@ -55,7 +56,6 @@ class PhotosTab extends StatefulWidget {
 
 class _PhotosTabState extends State<PhotosTab>
     with AutomaticKeepAliveClientMixin {
-  static const Color _kPurple = Color(0xFF8B6FA0);
   static const Color _kPurpleLight = Color(0xFFF2ECF5);
   static const Color _kSlate = Color(0xFF2B323A);
   // _kSlateMuted retiré le 2026-05-12 (servait au badge count
@@ -800,7 +800,7 @@ class _PhotosTabState extends State<PhotosTab>
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: hovering
-                  ? _kPurple
+                  ? kBrandPurple
                   : const Color(0xFFE4E7EB),
               width: hovering ? 2 : 1,
             ),
@@ -822,7 +822,7 @@ class _PhotosTabState extends State<PhotosTab>
                   color: _kPurpleLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, size: 18, color: _kPurple),
+                child: Icon(icon, size: 18, color: kBrandPurple),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1060,7 +1060,7 @@ class _PhotosTabState extends State<PhotosTab>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: hovering
-                    ? _kPurple
+                    ? kBrandPurple
                     : const Color(0xFFB9C0C7),
                 width: hovering ? 2 : 1,
               ),
@@ -1069,7 +1069,7 @@ class _PhotosTabState extends State<PhotosTab>
             child: Icon(
               LucideIcons.imagePlus,
               size: 22,
-              color: hovering ? _kPurple : Color(0xFF8A939D),
+              color: hovering ? kBrandPurple : Color(0xFF8A939D),
             ),
           ),
         );
@@ -1195,7 +1195,7 @@ class _PhotoSectionDropWrapperState extends State<_PhotoSectionDropWrapper> {
                     color: const Color(0xFFF2ECF5).withValues(alpha: 0.85),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: const Color(0xFF8B6FA0),
+                      color: kBrandPurple,
                       width: 2,
                     ),
                   ),
@@ -1317,7 +1317,7 @@ class _PhotoTile extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(2),
           border: highlight
-              ? Border.all(color: const Color(0xFF8B6FA0), width: 1.5)
+              ? Border.all(color: kBrandPurple, width: 1.5)
               : null,
           boxShadow: [
             BoxShadow(
@@ -1937,7 +1937,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
                                 value: _showLabelOnPdf,
                                 onChanged:
                                     _isSaving ? null : _toggleShowLabel,
-                                activeThumbColor: const Color(0xFF8B6FA0),
+                                activeThumbColor: kBrandPurple,
                               ),
                             ],
                           ),

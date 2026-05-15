@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../components/brand_colors.dart';
 import '../../models/types.dart';
 import '../../services/data_service.dart';
 import 'form_widgets.dart';
@@ -183,7 +184,7 @@ class _LifeContextTabState extends State<LifeContextTab> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF554a63),
+            color: kBrandDarkPurple,
           ),
         ),
         const SizedBox(height: 4),

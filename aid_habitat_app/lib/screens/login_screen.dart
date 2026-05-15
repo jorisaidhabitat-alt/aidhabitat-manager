@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../components/brand_colors.dart';
 import '../models/types.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
@@ -200,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: FilledButton(
                             onPressed: _isSubmitting ? null : _submit,
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B6FA0),
+                              backgroundColor: kBrandPurple,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 18),
                               shape: RoundedRectangleBorder(
@@ -242,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
+        borderSide: const BorderSide(color: kBrandPurple, width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
     );

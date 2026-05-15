@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/types.dart';
+import 'brand_colors.dart';
 import 'form_widgets.dart';
 
 /// Multi-occupant editor — React parity with the occupant switcher in
@@ -232,10 +233,10 @@ class _OccupantSwitcher extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: selected ? const Color(0xFF8B6FA0) : Colors.white,
+              color: selected ? kBrandPurple : Colors.white,
               border: Border.all(
                 color: selected
-                    ? const Color(0xFF8B6FA0)
+                    ? kBrandPurple
                     : const Color(0xFFB9C0C7),
                 width: 1.5,
               ),

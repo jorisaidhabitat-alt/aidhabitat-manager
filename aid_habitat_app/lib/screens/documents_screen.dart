@@ -17,6 +17,7 @@ import 'package:pdfx/pdfx.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../components/beneficiary_badges.dart';
+import '../components/brand_colors.dart';
 import '../components/dashed_border_painter.dart';
 import '../components/doc_card.dart';
 import '../components/doc_thumbnails.dart';
@@ -56,8 +57,6 @@ const List<String> _kAvailableTags = [
   'Autre',
 ];
 
-const Color _kPurple = Color(0xFF8B6FA0);
-const Color _kDarkPurple = Color(0xFF554a63);
 
 /// Nombre maximum de fetches binaires en parallèle dans
 /// `_warmDocumentBinaryCache`. Calé sur 4 — même valeur que le pool
@@ -972,10 +971,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               child: IgnorePointer(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: _kPurple.withValues(alpha: 0.06),
+                    color: kBrandPurple.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: _kPurple,
+                      color: kBrandPurple,
                       width: 2,
                       style: BorderStyle.solid,
                     ),
@@ -1002,13 +1001,13 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                         Icon(
                           LucideIcons.upload,
                           size: 18,
-                          color: _kDarkPurple,
+                          color: kBrandDarkPurple,
                         ),
                         SizedBox(width: 8),
                         Text(
                           'Déposer pour importer',
                           style: TextStyle(
-                            color: _kDarkPurple,
+                            color: kBrandDarkPurple,
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
                           ),
@@ -1221,7 +1220,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: _kPurple.withValues(alpha: 0.08),
+          color: kBrandPurple.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
@@ -1230,7 +1229,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               '${_selectedIds.length} sélectionné${_selectedIds.length > 1 ? 's' : ''}',
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
-                color: _kDarkPurple,
+                color: kBrandDarkPurple,
                 fontSize: 15,
               ),
             ),
@@ -1239,7 +1238,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               label: allSelected ? 'Tout désélectionner' : 'Tout sélectionner',
               icon: allSelected ? LucideIcons.checkSquare : LucideIcons.square,
               onTap: allSelected ? _exitSelectionMode : _selectAll,
-              color: _kDarkPurple,
+              color: kBrandDarkPurple,
               background: Colors.transparent,
             ),
             const SizedBox(width: 6),
@@ -1250,7 +1249,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                   ? null
                   : _bulkDownload,
               color: Colors.white,
-              background: _kPurple,
+              background: kBrandPurple,
               isLoading: _isBulkDownloading,
             ),
             const SizedBox(width: 6),
@@ -1267,7 +1266,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               borderRadius: BorderRadius.circular(999),
               child: const Padding(
                 padding: EdgeInsets.all(8),
-                child: Icon(LucideIcons.x, size: 20, color: _kDarkPurple),
+                child: Icon(LucideIcons.x, size: 20, color: kBrandDarkPurple),
               ),
             ),
           ],
@@ -1510,10 +1509,10 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: _kPurple.withValues(alpha: 0.12),
+              color: kBrandPurple.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 18, color: _kDarkPurple),
+            child: Icon(icon, size: 18, color: kBrandDarkPurple),
           ),
           const SizedBox(width: 12),
           Column(
@@ -1560,15 +1559,15 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
             color: widget.disabled
                 ? const Color(0xFFF2F4F6)
                 : _hovering
-                    ? _kPurple.withValues(alpha: 0.14)
-                    : _kPurple.withValues(alpha: 0.07),
+                    ? kBrandPurple.withValues(alpha: 0.14)
+                    : kBrandPurple.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(16),
           ),
           child: CustomPaint(
             painter: DashedBorderPainter(
               color: widget.disabled
                   ? Color(0xFFB9C0C7)
-                  : _kPurple.withValues(alpha: _hovering ? 1 : 0.8),
+                  : kBrandPurple.withValues(alpha: _hovering ? 1 : 0.8),
               strokeWidth: 2,
               radius: 16,
               dashLength: 8,
@@ -1582,13 +1581,13 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: _kPurple.withValues(alpha: 0.12),
+                      color: kBrandPurple.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       LucideIcons.plus,
                       size: 26,
-                      color: widget.disabled ? Color(0xFF8A939D) : _kPurple,
+                      color: widget.disabled ? Color(0xFF8A939D) : kBrandPurple,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1601,7 +1600,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
                       height: 1.35,
                       color: widget.disabled
                           ? Color(0xFF8A939D)
-                          : _kPurple,
+                          : kBrandPurple,
                     ),
                   ),
                 ],
@@ -1788,7 +1787,7 @@ class _UploadModalState extends State<_UploadModal> {
             const Text('Titre',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: _kDarkPurple,
+                  color: kBrandDarkPurple,
                 )),
             const SizedBox(height: 8),
             TextField(
@@ -1803,7 +1802,7 @@ class _UploadModalState extends State<_UploadModal> {
             const Text('Catégorie',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: _kDarkPurple,
+                  color: kBrandDarkPurple,
                 )),
             const SizedBox(height: 8),
             Wrap(
@@ -1819,7 +1818,7 @@ class _UploadModalState extends State<_UploadModal> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: active ? _kPurple : Colors.white,
+                      color: active ? kBrandPurple : Colors.white,
                       borderRadius: BorderRadius.circular(50),
                     ),
                     child: Text(
@@ -1827,7 +1826,7 @@ class _UploadModalState extends State<_UploadModal> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: active ? Colors.white : _kDarkPurple,
+                        color: active ? Colors.white : kBrandDarkPurple,
                       ),
                     ),
                   ),
@@ -1843,7 +1842,7 @@ class _UploadModalState extends State<_UploadModal> {
           child: const Text('Annuler'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: _kPurple),
+          style: FilledButton.styleFrom(backgroundColor: kBrandPurple),
           onPressed: () {
             final title = _titleCtrl.text.trim();
             if (title.isEmpty) return;
@@ -2129,7 +2128,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                       icon: const Icon(LucideIcons.save, size: 16),
                       label: const Text('Enregistrer'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: _kPurple,
+                        backgroundColor: kBrandPurple,
                       ),
                     ),
                   ],
@@ -2263,7 +2262,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
-                    cursorColor: _kPurple,
+                    cursorColor: kBrandPurple,
                     decoration: const InputDecoration(
                       isDense: true,
                       contentPadding: EdgeInsets.symmetric(vertical: 6),
@@ -2497,7 +2496,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                       icon: const Icon(LucideIcons.externalLink, size: 16),
                       label: const Text('Ouvrir dans une autre app'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: _kPurple,
+                        backgroundColor: kBrandPurple,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
@@ -2550,7 +2549,7 @@ class _SaveButton extends StatelessWidget {
     return Tooltip(
       message: 'Enregistrer',
       child: Material(
-        color: enabled ? _kPurple : Colors.white.withValues(alpha: 0.1),
+        color: enabled ? kBrandPurple : Colors.white.withValues(alpha: 0.1),
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),

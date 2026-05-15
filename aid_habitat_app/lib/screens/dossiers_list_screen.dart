@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../components/beneficiary_badges.dart';
 import '../components/beneficiary_palettes.dart';
+import '../components/brand_colors.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
@@ -611,7 +612,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   Widget _buildNewDossierButton() {
     // Refonte 2026-05-13 : radius pill complet (999) au lieu de 16.
     return Material(
-      color: const Color(0xFF8B6FA0),
+      color: kBrandPurple,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -778,7 +779,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 ? Icons.arrow_drop_up
                 : Icons.arrow_drop_down,
             size: 18,
-            color: const Color(0xFF8B6FA0),
+            color: kBrandPurple,
           )
         : null;
 
@@ -791,7 +792,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.6,
-        color: isActive ? const Color(0xFF8B6FA0) : const Color(0xFF8A939D),
+        color: isActive ? kBrandPurple : const Color(0xFF8A939D),
       ),
     );
 

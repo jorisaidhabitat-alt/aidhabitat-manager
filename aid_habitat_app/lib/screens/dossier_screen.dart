@@ -8,6 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/beneficiary_badges.dart';
 import '../components/beneficiary_palettes.dart';
+import '../components/brand_colors.dart';
 import '../components/commune_field_group.dart';
 import '../components/form_widgets.dart';
 import '../components/notes_widget.dart';
@@ -742,7 +743,7 @@ class _DossierScreenState extends State<DossierScreen> {
         : const Color(0xFF554265); // violet foncé (texte sur fond clair)
     final bannerAccent = _beneficiaryPrepared
         ? const Color(0xFFEDE8F5)
-        : const Color(0xFF8B6FA0);
+        : kBrandPurple;
 
     return Container(
       decoration: BoxDecoration(
@@ -948,7 +949,7 @@ class _DossierScreenState extends State<DossierScreen> {
                         style: GoogleFonts.nunito(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: const Color(0xFF8B6FA0),
+                          color: kBrandPurple,
                           letterSpacing: 0.2,
                         ),
                       ),
@@ -994,7 +995,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           child: FormTextField(
                             label: 'Nom',
                             value: _lastName,
-                            labelColor: const Color(0xFF8B6FA0),
+                            labelColor: kBrandPurple,
                             labelSize: 14,
                             valueSize: 14,
                             onChanged: (v) {
@@ -1008,7 +1009,7 @@ class _DossierScreenState extends State<DossierScreen> {
                           child: FormTextField(
                             label: 'Prénom',
                             value: _firstName,
-                            labelColor: const Color(0xFF8B6FA0),
+                            labelColor: kBrandPurple,
                             labelSize: 14,
                             valueSize: 14,
                             onChanged: (v) {
@@ -1034,7 +1035,7 @@ class _DossierScreenState extends State<DossierScreen> {
                             label: 'RFR du foyer',
                             value: _fiscalRevenue,
                             unit: '€',
-                            labelColor: const Color(0xFF8B6FA0),
+                            labelColor: kBrandPurple,
                             labelSize: 14,
                             valueSize: 14,
                             onChanged: (v) {
@@ -1052,7 +1053,7 @@ class _DossierScreenState extends State<DossierScreen> {
                     FormTextField(
                       label: 'Adresse',
                       value: _address,
-                      labelColor: const Color(0xFF8B6FA0),
+                      labelColor: kBrandPurple,
                       labelSize: 14,
                       valueSize: 14,
                       onChanged: (v) {
@@ -1070,7 +1071,7 @@ class _DossierScreenState extends State<DossierScreen> {
                       // corriger une commune mal résolue sans repasser
                       // par le relevé de visite.
                       showZipField: true,
-                      labelColor: const Color(0xFF8B6FA0),
+                      labelColor: kBrandPurple,
                       labelSize: 14,
                       valueSize: 14,
                       onChanged: (update) {
@@ -1180,7 +1181,7 @@ class _DossierScreenState extends State<DossierScreen> {
           style: GoogleFonts.nunito(
             fontWeight: FontWeight.w600,
             fontSize: 14,
-            color: const Color(0xFF8B6FA0),
+            color: kBrandPurple,
           ),
         ),
         const SizedBox(height: 6),
@@ -1284,7 +1285,7 @@ class _PlainField extends StatelessWidget {
           style: GoogleFonts.nunito(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF8B6FA0),
+            color: kBrandPurple,
             letterSpacing: 0.2,
           ),
         ),
@@ -1357,7 +1358,7 @@ class _QuickActionButton extends StatelessWidget {
                 color: const Color(0xFFEDE8F5),
                 borderRadius: BorderRadius.circular(50),
               ),
-              child: Icon(icon, color: const Color(0xFF8B6FA0)),
+              child: Icon(icon, color: kBrandPurple),
             ),
             const SizedBox(height: 16),
             Text(

@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../models/types.dart';
 import '../services/connectivity_service.dart';
 import '../services/data_service.dart';
+import 'brand_colors.dart';
 import 'cached_remote_image.dart';
 
 class AccountDialog extends StatefulWidget {
@@ -92,7 +93,7 @@ class _AccountDialogState extends State<AccountDialog> {
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF8B6FA0),
+              backgroundColor: kBrandPurple,
             ),
             child: const Text('Synchroniser'),
           ),
@@ -110,7 +111,7 @@ class _AccountDialogState extends State<AccountDialog> {
             'Synchronisation lancée — $n entrée(s) locales effacées, '
             're-téléchargement en cours…',
           ),
-          backgroundColor: const Color(0xFF8B6FA0),
+          backgroundColor: kBrandPurple,
           duration: const Duration(seconds: 4),
         ),
       );
@@ -326,7 +327,7 @@ class _AccountDialogState extends State<AccountDialog> {
                               right: -4,
                               bottom: -4,
                               child: Material(
-                                color: const Color(0xFF8B6FA0),
+                                color: kBrandPurple,
                                 shape: const CircleBorder(),
                                 elevation: 2,
                                 child: InkWell(
@@ -365,7 +366,7 @@ class _AccountDialogState extends State<AccountDialog> {
                                 ? 'Ajouter une photo'
                                 : 'Changer la photo',
                             style: const TextStyle(
-                              color: Color(0xFF8B6FA0),
+                              color: kBrandPurple,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -436,7 +437,7 @@ class _AccountDialogState extends State<AccountDialog> {
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
-                                    Color(0xFF8B6FA0),
+                                    kBrandPurple,
                                   ),
                                 ),
                               )
@@ -445,7 +446,7 @@ class _AccountDialogState extends State<AccountDialog> {
                             ? 'Synchronisation…'
                             : 'Forcer la sync'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF8B6FA0),
+                          foregroundColor: kBrandPurple,
                           side: const BorderSide(color: Color(0xFFD8CFE0)),
                         ),
                       ),

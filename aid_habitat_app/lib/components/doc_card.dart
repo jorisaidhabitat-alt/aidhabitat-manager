@@ -4,14 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
+import 'brand_colors.dart';
 import 'doc_thumbnails.dart';
-
-/// Couleur primaire (mauve-500) utilisée par la card et ses overlays
-/// de sélection / checkbox. Partagée avec le reste de l'écran documents.
-const Color kDocCardPurple = Color(0xFF8B6FA0);
-
-/// Variante foncée (mauve-700) pour les icônes/textes secondaires.
-const Color kDocCardDarkPurple = Color(0xFF554a63);
 
 // =============================================================================
 // SyncBadge — petite pastille colorée (vert/orange/rouge selon SyncState)
@@ -202,7 +196,7 @@ class _DocCardState extends State<DocCard> {
                           ),
                           child: Container(
                             color: selected
-                                ? kDocCardPurple.withValues(alpha: 0.35)
+                                ? kBrandPurple.withValues(alpha: 0.35)
                                 : Colors.black.withValues(alpha: 0.08),
                           ),
                         ),
@@ -231,7 +225,7 @@ class _DocCardState extends State<DocCard> {
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color:
-                                    selected ? kDocCardPurple : Colors.white,
+                                    selected ? kBrandPurple : Colors.white,
                                 borderRadius: BorderRadius.circular(6),
                                 boxShadow: [
                                   BoxShadow(
@@ -370,7 +364,7 @@ class _DocCardState extends State<DocCard> {
                                 Icon(
                                   LucideIcons.download,
                                   size: 16,
-                                  color: kDocCardDarkPurple,
+                                  color: kBrandDarkPurple,
                                 ),
                                 SizedBox(width: 10),
                                 Text('Télécharger'),

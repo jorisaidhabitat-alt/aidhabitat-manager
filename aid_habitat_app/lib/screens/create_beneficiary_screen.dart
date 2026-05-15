@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/brand_colors.dart';
+
 /// Données capturées par `CreateBeneficiaryScreen` et passées à
 /// `_handleBeneficiaryCreated` côté `main_screen`. On regroupe en
 /// `BeneficiaryDraft` plutôt qu'en 7 paramètres positionnels pour
@@ -249,7 +251,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                               ),
                               child: const Icon(
                                 LucideIcons.userPlus,
-                                color: Color(0xFF8B6FA0),
+                                color: kBrandPurple,
                                 size: 28,
                               ),
                             ),
@@ -446,7 +448,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                           child: ElevatedButton(
                             onPressed: _isSaving ? null : _handleSubmit,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B6FA0),
+                              backgroundColor: kBrandPurple,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
@@ -578,7 +580,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: selected
-                    ? const Color(0xFF8B6FA0)
+                    ? kBrandPurple
                     : Colors.transparent,
                 width: 1.5,
               ),
@@ -589,7 +591,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
                 fontSize: 14,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 color: selected
-                    ? const Color(0xFF8B6FA0)
+                    ? kBrandPurple
                     : Colors.black87,
               ),
             ),
@@ -613,7 +615,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
         children: [
           IconButton(
             icon: const Icon(LucideIcons.minus, size: 18),
-            color: const Color(0xFF8B6FA0),
+            color: kBrandPurple,
             onPressed: _numberPeople > 1
                 ? () => setState(() => _numberPeople--)
                 : null,
@@ -628,7 +630,7 @@ class _CreateBeneficiaryScreenState extends State<CreateBeneficiaryScreen> {
           ),
           IconButton(
             icon: const Icon(LucideIcons.plus, size: 18),
-            color: const Color(0xFF8B6FA0),
+            color: kBrandPurple,
             onPressed: _numberPeople < 10
                 ? () => setState(() => _numberPeople++)
                 : null,

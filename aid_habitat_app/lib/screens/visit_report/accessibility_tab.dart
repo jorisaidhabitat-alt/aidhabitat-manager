@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
+import '../../components/brand_colors.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
 
@@ -650,7 +651,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             // sous l'item actif — parité avec Bénéficiaire et Contexte
             // de vie.
             const labelColor = Color(0xFF0E1116); // ink-900
-            const underlineColor = Color(0xFF8B6FA0); // mauve-500
+            const underlineColor = kBrandPurple; // mauve-500
             return Expanded(
               child: SoftTapScale(
                 onTap: () {
@@ -1252,12 +1253,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFF8B6FA0) // mauve-500
+              ? kBrandPurple // mauve-500
               : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF8B6FA0)
+                ? kBrandPurple
                 : Colors.transparent,
           ),
         ),
@@ -1599,7 +1600,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(999),
                       borderSide: const BorderSide(
-                          color: Color(0xFF8B6FA0), width: 1.5),
+                          color: kBrandPurple, width: 1.5),
                     ),
                   ),
                   onSubmitted: (_) => _addCustomRoom(cfg),

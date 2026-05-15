@@ -11,6 +11,7 @@ import '../components/beneficiary_badges.dart'
         accompanimentPaletteFor,
         IncomeCategoryBadge;
 import '../components/beneficiary_palettes.dart';
+import '../components/brand_colors.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
@@ -319,7 +320,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               fontSize: 13,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.5,
-              color: Color(0xFF8B6FA0), // mauve-500
+              color: kBrandPurple, // mauve-500
             ),
           ),
           const SizedBox(height: 10),
@@ -458,7 +459,7 @@ class _RecentDossiersPanel extends StatelessWidget {
                     "Voir tout",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF8B6FA0),
+                      color: kBrandPurple,
                     ),
                   ),
                 ),
@@ -637,7 +638,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         fontWeight: FontWeight.w800,
                         fontSize: 17,
                         color: _hover
-                            ? const Color(0xFF8B6FA0)
+                            ? kBrandPurple
                             : const Color(0xFF1E293B),
                       ),
                     ),
@@ -684,7 +685,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B6FA0),
+                    color: kBrandPurple,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Row(
@@ -729,7 +730,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                         size: 13,
                         color: visitLabel.isEmpty
                             ? const Color(0xFF8A939D)
-                            : const Color(0xFF8B6FA0),
+                            : kBrandPurple,
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -740,7 +741,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                           fontWeight: FontWeight.w800,
                           color: visitLabel.isEmpty
                               ? const Color(0xFF8A939D)
-                              : const Color(0xFF8B6FA0),
+                              : kBrandPurple,
                         ),
                       ),
                     ],
@@ -751,7 +752,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                 LucideIcons.arrowRight,
                 size: 18,
                 color: _hover
-                    ? const Color(0xFF8B6FA0)
+                    ? kBrandPurple
                     : const Color(0xFFB9C0C7), // slate-300
               ),
                 ],
@@ -940,7 +941,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.5,
-                          color: Color(0xFF8B6FA0), // mauve-500
+                          color: kBrandPurple, // mauve-500
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -1114,7 +1115,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1.5,
-                            color: Color(0xFF8B6FA0), // mauve-500
+                            color: kBrandPurple, // mauve-500
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -1197,7 +1198,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                 child: ElevatedButton.icon(
                   onPressed: widget.onStartReport ?? onTap,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B6FA0), // mauve-500
+                    backgroundColor: kBrandPurple, // mauve-500
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 18, vertical: 14),
@@ -1341,7 +1342,7 @@ class _ActivityBarColumn extends StatelessWidget {
                     height: height,
                     decoration: BoxDecoration(
                       color: isHighlighted
-                          ? const Color(0xFF8B6FA0)
+                          ? kBrandPurple
                           : const Color(0xFFE4E7EB), // slate-200
                       borderRadius: BorderRadius.circular(999),
                     ),
@@ -1680,7 +1681,7 @@ class _TravelOverline extends StatelessWidget {
         const Icon(
           LucideIcons.car,
           size: 13,
-          color: Color(0xFF8B6FA0),
+          color: kBrandPurple,
         ),
         const SizedBox(width: 6),
         switch (state) {
@@ -1693,7 +1694,7 @@ class _TravelOverline extends StatelessWidget {
                   child: CircularProgressIndicator(
                     strokeWidth: 1.4,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      Color(0xFF8B6FA0),
+                      kBrandPurple,
                     ),
                   ),
                 ),
@@ -1726,7 +1727,7 @@ class _TravelOverline extends StatelessWidget {
                 // Bump 2026-05-13 : 12→14, w700→w800.
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF8B6FA0),
+                color: kBrandPurple,
                 letterSpacing: 0.2,
               ),
             ),

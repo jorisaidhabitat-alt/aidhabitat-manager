@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'brand_colors.dart';
+
 /// Reusable commune (city) autocomplete — mirrors the React CommuneFieldGroup.
 ///
 /// Given a list of [CommuneOption]s, presents a city text field with a
@@ -371,7 +373,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide:
-                    const BorderSide(color: Color(0xFF8B6FA0), width: 1.5),
+                    const BorderSide(color: kBrandPurple, width: 1.5),
               ),
             ),
           ),

@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
+import '../../components/brand_colors.dart';
 import '../../components/form_widgets.dart';
 
 /// Ordered level catalog — must match accessibility_tab `_kLevelConfigs`.
@@ -903,12 +904,12 @@ class _WetZoneButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active
-              ? const Color(0xFF8B6FA0) // mauve-500
+              ? kBrandPurple // mauve-500
               : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: active
-                ? const Color(0xFF8B6FA0)
+                ? kBrandPurple
                 : Colors.transparent,
           ),
         ),
@@ -964,7 +965,7 @@ class _MeasuredOptionCard extends StatelessWidget {
                   height: 20,
                   decoration: BoxDecoration(
                     color: checked
-                        ? const Color(0xFF8B6FA0)
+                        ? kBrandPurple
                         : Colors.white,
                     borderRadius: BorderRadius.circular(5),
                   ),
@@ -1077,12 +1078,12 @@ class _Pill extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFF8B6FA0) // mauve-500
+              ? kBrandPurple // mauve-500
               : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF8B6FA0)
+                ? kBrandPurple
                 : Colors.transparent,
           ),
         ),

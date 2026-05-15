@@ -9,6 +9,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../services/data_service.dart';
 import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
+import 'brand_colors.dart';
 import 'notes_canvas_painters.dart';
 import 'soft_transitions.dart';
 
@@ -88,10 +89,9 @@ const int _kDefaultHighlighterColor = 0xffFDE047; // yellow-300
 const double _kDefaultPenSize = 2.0;
 const double _kDefaultHighlighterSize = 10.0;
 const double _kDefaultEraserSize = 18.0;
-const Color _kAccentColor = Color(0xFF8B6FA0);
 // Refonte 2026-05-13 : couleurs alignées sur le nouveau design system.
 //  - _kActiveText : mauve-700 (#554265, légère nuance plus chaude)
-//  - _kStackedVioletSoft : mauve-100 (#F2ECF5)
+//  - kBrandPurpleSoft : mauve-100 (#F2ECF5)
 const Color _kActiveText = Color(0xFF554265);
 // `kGridCell` est désormais dans `notes_canvas_painters.dart`.
 
@@ -100,8 +100,7 @@ const Color _kStackedBorder = Color(0xFFEDE9EF);
 // Fond splitter = même violet clair que les icônes Documents / VAD sur
 // l'écran dossier (cohérence visuelle — demande utilisateur).
 const Color _kStackedSplitterBg = Color(0xFFEDE8F5);
-const Color _kStackedViolet = Color(0xFF8B6FA0);
-const Color _kStackedVioletSoft = Color(0xFFF2ECF5); // mauve-100
+const Color kBrandPurpleSoft = Color(0xFFF2ECF5); // mauve-100
 const Color _kStackedPinkSoft = Color(0xFFE8A4B0);
 
 List<NoteTool> _availableToolsFor(NoteToolset toolset) {
@@ -1653,7 +1652,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           child: const Icon(
             LucideIcons.chevronsDown,
             size: 16,
-            color: _kStackedViolet,
+            color: kBrandPurple,
           ),
         ),
       ),
@@ -1733,7 +1732,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: _kStackedViolet,
+              color: kBrandPurple,
               letterSpacing: 0.2,
             ),
           ),
@@ -1785,7 +1784,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   child: const Icon(
                     LucideIcons.plus,
                     size: 16,
-                    color: _kStackedViolet, // violet foncé #7C6DAA
+                    color: kBrandPurple, // violet foncé #7C6DAA
                   ),
                 ),
               ),
@@ -2360,7 +2359,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             height: 36,
             decoration: BoxDecoration(
               // Fond actif = violet clair canonique de l'app
-              // (`_kStackedVioletSoft = 0xFFEDE8F5`), même teinte que
+              // (`kBrandPurpleSoft = 0xFFEDE8F5`), même teinte que
               // les conteneurs « ajouter un niveau » / icônes Documents
               // & VAD du dossier. Demande utilisateur 2026-04-28 :
               // « la couleur de fond des outils de note quand je les
@@ -2373,7 +2372,7 @@ class _NotesWidgetState extends State<NotesWidget> {
               // fond gris pour les boutons inactifs ». L'icône ink-700
               // (foncée) reste parfaitement lisible sur fond blanc /
               // light de la toolbar. Le ripple Material apparaît au tap.
-              color: isActive ? _kStackedVioletSoft : Colors.transparent,
+              color: isActive ? kBrandPurpleSoft : Colors.transparent,
               shape: BoxShape.circle,
             ),
             child: Opacity(
@@ -2847,7 +2846,7 @@ class _StackedChevronButton extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 22,
-                color: _kStackedViolet,
+                color: kBrandPurple,
               ),
             ),
           ),
@@ -2947,7 +2946,7 @@ class _VioletHeaderIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = onTap != null;
     const bg = Color(0xFFEDE8F5); // violet clair
-    const fg = _kAccentColor; // violet foncé #7C6DAA
+    const fg = kBrandPurple; // violet foncé #7C6DAA
     return Tooltip(
       message: tooltip,
       child: Material(

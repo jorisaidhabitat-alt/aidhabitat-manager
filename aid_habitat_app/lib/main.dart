@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:sqflite/sqflite.dart' show databaseFactory;
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+import 'components/brand_colors.dart';
 import 'components/soft_transitions.dart';
 import 'models/types.dart';
 import 'screens/login_screen.dart';
@@ -217,8 +218,8 @@ class MyApp extends StatelessWidget {
         //  - primary à mauve-500 #8B6FA0 (au lieu de #7C6DAA)
         scaffoldBackgroundColor: const Color(0xFFFDFCFB), // paper
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF8B6FA0), // mauve-500
-          primary: const Color(0xFF8B6FA0),
+          seedColor: kBrandPurple, // mauve-500
+          primary: kBrandPurple,
           secondary: const Color(0xFFC5D2D8),
           surface: Colors.white,
           background: const Color(0xFFFDFCFB),

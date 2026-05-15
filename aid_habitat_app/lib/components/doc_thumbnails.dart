@@ -12,12 +12,7 @@ import 'package:pdfx/pdfx.dart';
 import '../models/types.dart';
 import '../services/app_config.dart';
 import '../services/media_cache_service.dart';
-
-/// Couleur primaire utilisée par les vignettes pour les icônes de fallback
-/// (image manquante / placeholder). Extrait de `documents_screen.dart`
-/// 2026-05-15 (audit P0 #9, suite). Préfixée `k` pour signaler qu'elle
-/// est publique et partagée avec le reste du module documents.
-const Color kDocThumbnailPurple = Color(0xFF8B6FA0);
+import 'brand_colors.dart';
 
 // =============================================================================
 // DocThumbnail — vignette polymorphe selon le type du document
@@ -279,7 +274,7 @@ class _DocThumbnailState extends State<DocThumbnail> {
         break;
       case 'image':
         icon = LucideIcons.image;
-        color = kDocThumbnailPurple;
+        color = kBrandPurple;
         break;
       default:
         icon = LucideIcons.file;

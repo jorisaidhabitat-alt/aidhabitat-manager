@@ -10,6 +10,7 @@ import '../../services/nocodb_api_client.dart';
 import '../../services/references_service.dart';
 import '../../services/save_debounce.dart';
 import '../../services/retirement_funds_repository.dart';
+import '../../components/brand_colors.dart';
 import '../../components/cached_remote_image.dart';
 import '../../components/commune_field_group.dart';
 import '../../components/form_widgets.dart';
@@ -605,7 +606,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           // couleur que active, juste pas de trait → comportement type
           // tab indicator moderne.
           const labelColor = Color(0xFF0E1116); // ink-900
-          const underlineColor = Color(0xFF8B6FA0); // mauve-500
+          const underlineColor = kBrandPurple; // mauve-500
           return Expanded(
             child: SoftTapScale(
               onTap: () => _setSubSection(i),
@@ -1102,7 +1103,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
               height: 5,
               decoration: BoxDecoration(
                 color: isActive
-                    ? const Color(0xFF8B6FA0) // mauve-500
+                    ? kBrandPurple // mauve-500
                     : const Color(0xFFE4E7EB), // ink-200
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -2472,7 +2473,7 @@ class _RetirementFundPickerDialogState
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(
-                              color: Color(0xFF8B6FA0), width: 1.5),
+                              color: kBrandPurple, width: 1.5),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 12),
@@ -2543,7 +2544,7 @@ class _RetirementFundPickerDialogState
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(
-                              color: Color(0xFF8B6FA0), width: 1.5),
+                              color: kBrandPurple, width: 1.5),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 10),
@@ -2557,7 +2558,7 @@ class _RetirementFundPickerDialogState
                   const SizedBox(width: 10),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 14),
@@ -2594,7 +2595,7 @@ class _RetirementFundPickerDialogState
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF8B6FA0)
+                ? kBrandPurple
                 : const Color(0xFFE4E7EB),
             width: isSelected ? 2 : 1,
           ),

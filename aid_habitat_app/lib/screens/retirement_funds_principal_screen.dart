@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:sqflite/sqflite.dart';
 
+import '../components/brand_colors.dart';
 import '../services/app_config.dart';
 import '../services/local_database.dart';
 import '../services/nocodb_api_client.dart';
@@ -253,7 +254,7 @@ class _RetirementFundsPrincipalScreenState
           bottom: 24,
           child: FloatingActionButton.extended(
             onPressed: _createFund,
-            backgroundColor: const Color(0xFF8B6FA0),
+            backgroundColor: kBrandPurple,
             foregroundColor: Colors.white,
             // Ombre désactivée (demande user 2026-05-12) — toutes les
             // variantes à 0 pour rester plat même au hover/tap.
@@ -443,7 +444,7 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
           boxShadow: _hover
               ? [
                   BoxShadow(
-                    color: const Color(0xFF8B6FA0).withValues(alpha: 0.18),
+                    color: kBrandPurple.withValues(alpha: 0.18),
                     blurRadius: 24,
                     offset: const Offset(0, 10),
                   ),
@@ -824,7 +825,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                         child: const Icon(
                           LucideIcons.phoneCall,
                           size: 15,
-                          color: Color(0xFF8B6FA0),
+                          color: kBrandPurple,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -853,7 +854,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                     opacity: hasPhone ? 1.0 : 0.5,
                     child: Material(
                       color: hasPhone
-                          ? const Color(0xFF8B6FA0)
+                          ? kBrandPurple
                           : const Color(0xFFE4E7EB),
                       borderRadius: BorderRadius.circular(16),
                       child: InkWell(
@@ -1023,13 +1024,13 @@ class _NewPrincipalFundDialogState extends State<_NewPrincipalFundDialog> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF8B6FA0).withValues(alpha: 0.12),
+                      color: kBrandPurple.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
                     child: const Icon(
                       LucideIcons.plus,
-                      color: Color(0xFF8B6FA0),
+                      color: kBrandPurple,
                       size: 22,
                     ),
                   ),
@@ -1090,7 +1091,7 @@ class _NewPrincipalFundDialogState extends State<_NewPrincipalFundDialog> {
                   const SizedBox(width: 8),
                   FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                     ),
                     onPressed: _isSubmitting ? null : _submit,
                     child: _isSubmitting
@@ -1139,7 +1140,7 @@ class _PrincipalLabeledField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF8B6FA0),
+            color: kBrandPurple,
           ),
         ),
         const SizedBox(height: 4),
@@ -1163,7 +1164,7 @@ class _PrincipalLabeledField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.4),
+              borderSide: const BorderSide(color: kBrandPurple, width: 1.4),
             ),
           ),
         ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../services/report_generation_service.dart';
+import 'brand_colors.dart';
 
 /// Bandeau global affiché au-dessus de tous les écrans signalant qu'une
 /// génération de rapport PDF est en cours en arrière-plan. Permet à
@@ -98,7 +99,7 @@ class _ReportGenerationOverlayState extends State<ReportGenerationOverlay> {
     if (messenger == null) return;
     messenger.clearSnackBars();
     final bgColor = failure.deferred
-        ? const Color(0xFF8B6FA0) // violet — différé, pas une erreur dure
+        ? kBrandPurple // violet — différé, pas une erreur dure
         : const Color(0xFFB91C1C); // rouge — erreur sèche
     final icon = failure.deferred
         ? LucideIcons.clock
@@ -141,7 +142,7 @@ class _ReportGenerationOverlayState extends State<ReportGenerationOverlay> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B6FA0),
+                    color: kBrandPurple,
                     borderRadius: BorderRadius.circular(999),
                     boxShadow: [
                       BoxShadow(

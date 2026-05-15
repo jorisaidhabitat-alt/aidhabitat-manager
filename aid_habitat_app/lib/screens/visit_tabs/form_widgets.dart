@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-const _kPurple = Color(0xFF8B6FA0);
-const _kDarkPurple = Color(0xFF554a63);
+import '../../components/brand_colors.dart';
+
 const _kTeal = Color(0xFF597E8D);
 const _kLightGray = Color(0xFFD8D0DC);
 
@@ -19,7 +19,7 @@ class VSectionHeader extends StatelessWidget {
         style: const TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w700,
-          color: _kDarkPurple,
+          color: kBrandDarkPurple,
         ),
       ),
     );
@@ -52,10 +52,10 @@ class VSubSectionBar extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
-                color: active ? _kPurple : Colors.white,
+                color: active ? kBrandPurple : Colors.white,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                  color: active ? _kPurple : _kLightGray,
+                  color: active ? kBrandPurple : _kLightGray,
                 ),
               ),
               child: Text(
@@ -63,7 +63,7 @@ class VSubSectionBar extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: active ? Colors.white : _kDarkPurple,
+                  color: active ? Colors.white : kBrandDarkPurple,
                 ),
               ),
             ),
@@ -128,7 +128,7 @@ class _VTextFieldState extends State<VTextField> {
         style: const TextStyle(fontSize: 13),
         decoration: InputDecoration(
           labelText: widget.label,
-          labelStyle: const TextStyle(fontSize: 12, color: _kDarkPurple),
+          labelStyle: const TextStyle(fontSize: 12, color: kBrandDarkPurple),
           suffixText: widget.suffix,
           isDense: true,
           contentPadding:
@@ -201,7 +201,7 @@ class _VNumberFieldState extends State<VNumberField> {
         style: const TextStyle(fontSize: 13),
         decoration: InputDecoration(
           labelText: widget.label,
-          labelStyle: const TextStyle(fontSize: 12, color: _kDarkPurple),
+          labelStyle: const TextStyle(fontSize: 12, color: kBrandDarkPurple),
           suffixText: widget.suffix,
           isDense: true,
           contentPadding:
@@ -245,7 +245,7 @@ class VToggleGroup extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
                 label,
-                style: const TextStyle(fontSize: 12, color: _kDarkPurple),
+                style: const TextStyle(fontSize: 12, color: kBrandDarkPurple),
               ),
             ),
           Wrap(
@@ -270,7 +270,7 @@ class VToggleGroup extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: active ? Colors.white : _kDarkPurple,
+                      color: active ? Colors.white : kBrandDarkPurple,
                     ),
                   ),
                 ),
@@ -321,7 +321,7 @@ class VCheckbox extends StatelessWidget {
               Flexible(
                 child: Text(
                   label,
-                  style: const TextStyle(fontSize: 13, color: _kDarkPurple),
+                  style: const TextStyle(fontSize: 13, color: kBrandDarkPurple),
                 ),
               ),
             ],
@@ -384,7 +384,7 @@ class _VTextAreaState extends State<VTextArea> {
         style: const TextStyle(fontSize: 13),
         decoration: InputDecoration(
           labelText: widget.label,
-          labelStyle: const TextStyle(fontSize: 12, color: _kDarkPurple),
+          labelStyle: const TextStyle(fontSize: 12, color: kBrandDarkPurple),
           isDense: true,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -425,7 +425,7 @@ class VDropdown extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(fontSize: 12, color: _kDarkPurple)),
+              style: const TextStyle(fontSize: 12, color: kBrandDarkPurple)),
           const SizedBox(height: 4),
           DropdownButtonFormField<String>(
             initialValue: options.contains(selected) ? selected : null,

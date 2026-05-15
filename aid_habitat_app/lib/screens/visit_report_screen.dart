@@ -23,6 +23,7 @@ import '../services/data_service.dart';
 import '../services/report_generation_service.dart';
 import '../services/sync_engine.dart';
 import '../components/beneficiary_badges.dart';
+import '../components/brand_colors.dart';
 import '../components/notes_widget.dart';
 import '../components/soft_transitions.dart';
 import 'visit_report/beneficiary_tab.dart';
@@ -975,7 +976,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
               // design system (au lieu du legacy #7C6DAA).
               indicator: const UnderlineTabIndicator(
                 borderSide: BorderSide(
-                  color: Color(0xFF8B6FA0), // mauve-500
+                  color: kBrandPurple, // mauve-500
                   width: 1.5,
                 ),
                 insets: EdgeInsets.zero,
@@ -1086,7 +1087,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             decoration: BoxDecoration(
               color: disabled
                   ? const Color(0xFFA98DBE) // mauve-400 (désactivé)
-                  : const Color(0xFF8B6FA0), // mauve-500
+                  : kBrandPurple, // mauve-500
               borderRadius: BorderRadius.circular(999),
             ),
             alignment: Alignment.center,
@@ -2150,7 +2151,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     FilledButton(
                       onPressed: () => Navigator.pop(ctx, true),
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF8B6FA0),
+                        backgroundColor: kBrandPurple,
                       ),
                       child: const Text('Valider'),
                     ),
@@ -2195,7 +2196,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('📄 Rapport en attente — $reason'),
-          backgroundColor: const Color(0xFF8B6FA0),
+          backgroundColor: kBrandPurple,
           duration: const Duration(seconds: 6),
         ),
       );

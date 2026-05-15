@@ -405,8 +405,7 @@ class AuthService {
       // 1) Source canonique post-fix P0 #4 : secure storage.
       final secureToken = await SecureSessionStorage.instance.read();
       if (secureToken != null && secureToken.isNotEmpty) {
-        AppConfig.setAppSessionToken(secureToken);
-        await _maybeInvalidateStaleLocalAuthToken(db, secureToken);
+        await _activateRestoredToken(db, secureToken);
         return;
       }
 
@@ -431,8 +430,7 @@ class AuthService {
           },
           where: 'id = 1',
         );
-        AppConfig.setAppSessionToken(legacyToken);
-        await _maybeInvalidateStaleLocalAuthToken(db, legacyToken);
+        await _activateRestoredToken(db, legacyToken);
         return;
       }
 
@@ -461,39 +459,75 @@ class AuthService {
       // `SecureSessionStorage`, le `local-auth:` placeholder se
       // régénère à chaque cold start tant que `app_users + app_session.
       // user_local_id` indiquent un user connecté.
-      AppConfig.setAppSessionToken(fallback);
-      await _maybeInvalidateStaleLocalAuthToken(db, fallback);
+      //
+      // Validation passe par `_activateRestoredToken` qui set le token
+      // dans AppConfig + valide contre le serveur si c'est un
+      // `local-auth:` (cf. doc de la méthode). Refactor 2026-05-16.
+      await _activateRestoredToken(db, fallback);
     } catch (_) {
       // Column may not exist yet on older schemas — ignore.
     }
   }
 
-  /// Si [token] est un token `local-auth:`, teste-le contre le serveur.
-  /// Quand il est rejeté (401/403), on efface la ligne `app_session`
-  /// pour forcer un re-login. Les autres cas (valide ou injoignable)
-  /// laissent l'état inchangé. Idempotent : pas d'effet si le token
-  /// n'est pas `local-auth:` ou si le serveur n'est pas joignable.
-  Future<void> _maybeInvalidateStaleLocalAuthToken(
-    Database db,
-    String token,
-  ) async {
-    if (!token.startsWith('local-auth:')) return;
-    try {
-      final status = await NocodbApiClient().validateSessionToken();
-      if (status == SessionTokenStatus.rejected) {
-        // ignore: avoid_print
-        print('[auth-root] local-auth token rejected by server — '
-            'clearing session to force re-login (data preserved)');
-        await _clearSessionRowOnly(db);
-        // Plus de token côté AppConfig non plus, sinon les call API
-        // jusqu'au rebuild UI seraient encore signés avec le token mort.
-        AppConfig.clearAppSessionToken();
-      }
-    } catch (_) {
-      // Best-effort : si la validation explose pour une raison
-      // imprévue, on laisse l'utilisateur dans son état actuel plutôt
-      // que de lui faire perdre sa session sur un faux positif.
+  /// Active un token restauré (depuis secure storage ou migration
+  /// SQLite legacy) dans [AppConfig], avec validation préalable pour
+  /// les tokens `local-auth:`.
+  ///
+  /// **Tokens HMAC signés** (cas normal) : set direct, return. Pas de
+  /// round-trip serveur — le secure storage est notre source de vérité
+  /// jusqu'au prochain 401 in-flight.
+  ///
+  /// **Tokens `local-auth:`** (placeholder pré-fix P0 #4 ou fallback
+  /// offline) : on valide via `/api/auth/session` AVANT de set le
+  /// token. Trois résultats :
+  ///   • `valid` → set le token, on continue.
+  ///   • `rejected` → on PURGE (secure storage + app_session row) sans
+  ///     jamais setter le token côté `AppConfig`. L'UI verra
+  ///     `_currentUser == null` au prochain `getCurrentUser` → login.
+  ///   • `unreachable` (offline / 5xx) → set le token quand même pour
+  ///     que l'app fonctionne en lecture seule depuis le cache local.
+  ///     Si plus tard le réseau revient et que le serveur rejette,
+  ///     le sync engine traitera le 401 comme transient (cf.
+  ///     `nocodb_sync_service.isTransientErrorLike`).
+  ///
+  /// Fix audit code-review 2026-05-16 : avant cette refonte, le token
+  /// était setté immédiatement puis validé en `await`. Pendant les
+  /// quelques secondes de validation, un timer ou un autre service
+  /// pouvait kick une requête API avec un token déjà mort. Maintenant
+  /// le token n'est jamais publié dans `AppConfig` tant qu'on n'a pas
+  /// vérifié sa validité (ou décidé d'un fallback offline assumé).
+  Future<void> _activateRestoredToken(Database db, String token) async {
+    if (!token.startsWith('local-auth:')) {
+      // Cas standard : token HMAC signé venant du secure storage.
+      AppConfig.setAppSessionToken(token);
+      return;
     }
+
+    SessionTokenStatus status;
+    try {
+      // On valide AVANT de publier le token dans AppConfig pour éviter
+      // qu'une requête concurrente parte avec un placeholder rejeté.
+      // `validateSessionToken` lit `AppConfig.appSessionToken` lui-même
+      // — sur web isolé on ne peut pas lui passer le token en
+      // paramètre, donc on le set temporairement puis on l'éclipse si
+      // rejeté avant tout autre await.
+      AppConfig.setAppSessionToken(token);
+      status = await NocodbApiClient().validateSessionToken();
+    } catch (_) {
+      // Si la validation explose (cas pathologique), on traite comme
+      // unreachable pour ne pas faire perdre l'état UI à l'utilisateur
+      // sur une erreur Dart imprévue. Token déjà setté ci-dessus.
+      return;
+    }
+
+    if (status == SessionTokenStatus.rejected) {
+      // ignore: avoid_print
+      print('[auth-root] local-auth token rejected by server — '
+          'clearing session to force re-login (data preserved)');
+      await _clearSessionRowOnly(db);
+      AppConfig.clearAppSessionToken();
+    }
+    // valid / unreachable : on garde le token déjà setté.
   }
 
   /// Efface uniquement la ligne `app_session` (token de session). À la

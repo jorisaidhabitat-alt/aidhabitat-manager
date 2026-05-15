@@ -9,6 +9,7 @@ import '../services/multi_window_stub.dart'
 // Web-only : BroadcastChannel IPC + persistance frame en localStorage.
 import '../services/note_window_web_stub.dart'
     if (dart.library.html) '../services/note_window_web.dart' as note_window_web;
+import '../components/brand_colors.dart';
 import '../components/notes_widget.dart';
 
 /// Dedicated MaterialApp shown in a SECONDARY OS window (launched via
@@ -57,8 +58,8 @@ class NoteWindowApp extends StatelessWidget {
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFFF7F7FA),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF8B6FA0),
-          primary: const Color(0xFF8B6FA0),
+          seedColor: kBrandPurple,
+          primary: kBrandPurple,
         ),
         useMaterial3: true,
       ),

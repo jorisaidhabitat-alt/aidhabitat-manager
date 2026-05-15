@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
+import '../../components/brand_colors.dart';
 import '../../components/form_widgets.dart';
 import 'bathroom_tab.dart' show buildSanitaryLevelSelections;
 
@@ -520,12 +521,12 @@ class _CuvettePill extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active
-              ? const Color(0xFF8B6FA0) // mauve-500
+              ? kBrandPurple // mauve-500
               : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: active
-                ? const Color(0xFF8B6FA0)
+                ? kBrandPurple
                 : Colors.transparent,
           ),
         ),

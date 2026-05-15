@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../components/brand_colors.dart';
 import '../services/data_service.dart';
 import '../services/external_launcher.dart';
 
@@ -158,7 +159,7 @@ class _AnahScreenState extends State<AnahScreen> {
                   child: const Icon(
                     LucideIcons.home,
                     size: 44,
-                    color: Color(0xFF8B6FA0),
+                    color: kBrandPurple,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -200,7 +201,7 @@ class _AnahScreenState extends State<AnahScreen> {
                       ),
                     ),
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -320,7 +321,7 @@ class _AnahScreenState extends State<AnahScreen> {
               height: 12,
               child: CircularProgressIndicator(
                 strokeWidth: 1.5,
-                color: Color(0xFF8B6FA0),
+                color: kBrandPurple,
               ),
             ),
             const SizedBox(width: 8),
@@ -423,7 +424,7 @@ class _AnahScreenState extends State<AnahScreen> {
             LinearProgressIndicator(
               value: _webProgress == 0 ? null : _webProgress,
               minHeight: 2,
-              color: const Color(0xFF8B6FA0),
+              color: kBrandPurple,
               backgroundColor: Colors.transparent,
             ),
           // WebView
@@ -529,7 +530,7 @@ class _AnahScreenState extends State<AnahScreen> {
                     icon: const Icon(LucideIcons.externalLink, size: 16),
                     label: const Text('Ouvrir dans Safari'),
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                     ),
                   ),
                 ],

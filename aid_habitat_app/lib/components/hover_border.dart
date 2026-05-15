@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'brand_colors.dart';
+
 class HoverBorder extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
@@ -11,7 +13,7 @@ class HoverBorder extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
-    this.borderColor = const Color(0xFF8B6FA0), // Primary color
+    this.borderColor = kBrandPurple, // Primary color
     this.borderWidth = 2.0,
     this.borderRadius = 16.0,
   });

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../components/brand_colors.dart';
 import '../components/cached_remote_image.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
@@ -178,7 +179,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
           bottom: 24,
           child: FloatingActionButton.extended(
             onPressed: _createFund,
-            backgroundColor: const Color(0xFF8B6FA0),
+            backgroundColor: kBrandPurple,
             foregroundColor: Colors.white,
             // Ombre désactivée (demande user 2026-05-12) — toutes les
             // variantes à 0 pour rester plat même au hover/tap.
@@ -399,7 +400,7 @@ class _FundCardState extends State<_FundCard> {
           boxShadow: _hover
               ? [
                   BoxShadow(
-                    color: const Color(0xFF8B6FA0).withValues(alpha: 0.18),
+                    color: kBrandPurple.withValues(alpha: 0.18),
                     blurRadius: 24,
                     offset: const Offset(0, 10),
                   ),
@@ -797,7 +798,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
                           border: InputBorder.none,
                           focusedBorder: UnderlineInputBorder(
                             borderSide: BorderSide(
-                                color: Color(0xFF8B6FA0), width: 2),
+                                color: kBrandPurple, width: 2),
                           ),
                           enabledBorder: UnderlineInputBorder(
                             borderSide:
@@ -1068,7 +1069,7 @@ class _SectionTitle extends StatelessWidget {
             color: const Color(0xFFEDE8F5),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 15, color: const Color(0xFF8B6FA0)),
+          child: Icon(icon, size: 15, color: kBrandPurple),
         ),
         const SizedBox(width: 10),
         Text(
@@ -1313,7 +1314,7 @@ class _SaveStateIndicator extends StatelessWidget {
       return Tooltip(
         message: 'Enregistrer',
         child: Material(
-          color: const Color(0xFF8B6FA0),
+          color: kBrandPurple,
           shape: const CircleBorder(),
           child: InkWell(
             onTap: onSave,
@@ -1425,7 +1426,7 @@ class _ContactActionButton extends StatelessWidget {
     return Opacity(
       opacity: enabled ? 1 : 0.5,
       child: Material(
-        color: enabled ? const Color(0xFF8B6FA0) : const Color(0xFFE4E7EB),
+        color: enabled ? kBrandPurple : const Color(0xFFE4E7EB),
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: enabled ? onTap : null,
@@ -1505,7 +1506,7 @@ class _IconCircleButton extends StatelessWidget {
     final Color bg;
     final Color fg;
     if (filled) {
-      bg = const Color(0xFF8B6FA0);
+      bg = kBrandPurple;
       fg = Colors.white;
     } else {
       bg = const Color(0xFFF2F4F6);
@@ -1665,13 +1666,13 @@ class _NewRetirementFundDialogState extends State<_NewRetirementFundDialog> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF8B6FA0).withValues(alpha: 0.12),
+                      color: kBrandPurple.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
                     child: const Icon(
                       LucideIcons.plus,
-                      color: Color(0xFF8B6FA0),
+                      color: kBrandPurple,
                       size: 22,
                     ),
                   ),
@@ -1747,7 +1748,7 @@ class _NewRetirementFundDialogState extends State<_NewRetirementFundDialog> {
                   const SizedBox(width: 8),
                   FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B6FA0),
+                      backgroundColor: kBrandPurple,
                     ),
                     onPressed: _isSubmitting ? null : _submit,
                     child: _isSubmitting
@@ -1798,7 +1799,7 @@ class _LabeledField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF8B6FA0),
+            color: kBrandPurple,
           ),
         ),
         const SizedBox(height: 4),
@@ -1823,7 +1824,7 @@ class _LabeledField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF8B6FA0), width: 1.4),
+              borderSide: const BorderSide(color: kBrandPurple, width: 1.4),
             ),
           ),
         ),
