@@ -307,99 +307,45 @@ class _MainScreenState extends State<MainScreen>
     _syncEngine.requestSync();
   }
 
-  /// Affiche un dialog décrivant l'opération sync en échec + propose de
-  /// l'ignorer définitivement. Indispensable pour débloquer le bandeau rouge
-  /// quand une modif n'aboutira jamais (ressource supprimée côté serveur,
-  /// payload rejeté par un backend plus strict, etc).
+  /// Ouvre un drawer (bottom sheet) listant TOUTES les opérations sync
+  /// en échec, avec un couple de boutons « Réessayer / Abandonner » par
+  /// op. Indispensable pour débloquer le bandeau rouge sans purger en
+  /// batch tout l'historique : avant cette refonte 2026-05-15, "Ignorer
+  /// cette modification" supprimait *toutes* les ops failed alors que
+  /// le dialog n'affichait que la première — l'ergo perdait
+  /// silencieusement les autres modifs en attente.
   Future<void> _showFailingOpDetails() async {
-    final info = await _syncEngine.inspectTopFailure();
+    final failures = await _syncEngine.inspectAllFailures();
     if (!mounted) return;
-    if (info == null) {
+    if (failures.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aucune opération en échec détectée.')),
       );
       return;
     }
-    // Le dialog renvoie une string-clé d'action :
-    //  • 'retry'   → relance la sync immédiatement (ne ferme pas l'op,
-    //               la requeue pour un essai instantané, utile sur
-    //               glitch réseau transitoire)
-    //  • 'discard' → ignore définitivement la modif locale
-    //  • null/autre → fermeture sans action (l'op reste en queue et
-    //                  retentera au prochain cycle 5s)
-    final action = await showSoftDialog<String>(
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Opération en échec'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _kv('Type', '${info['entityType']} · ${info['operationType']}'),
-            _kv('ID local', info['entityLocalId'] ?? '-'),
-            _kv('Tentatives', info['attemptCount'] ?? '0'),
-            const SizedBox(height: 8),
-            const Text(
-              'Erreur retournée :',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: SelectableText(
-                info['lastError'] ?? '(aucune)',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Hint UX : la plupart des "fetch failed" sont des glitches
-            // réseau transitoires. On invite à réessayer avant de
-            // proposer d'ignorer définitivement.
-            const Text(
-              'Astuce : si l\'erreur ressemble à un problème réseau '
-              '("fetch failed", "timeout"…), réessaie maintenant. La '
-              'modif est encore en queue, n\'ignore que si tu sais '
-              'qu\'elle ne pourra jamais aboutir.',
-              style: TextStyle(fontSize: 11, color: Colors.black54),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'close'),
-            child: const Text('Fermer'),
-          ),
-          FilledButton.tonal(
-            onPressed: () => Navigator.pop(ctx, 'retry'),
-            child: const Text('Réessayer maintenant'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            onPressed: () => Navigator.pop(ctx, 'discard'),
-            child: const Text('Ignorer cette modification'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.55,
+          minChildSize: 0.3,
+          maxChildSize: 0.92,
+          expand: false,
+          builder: (ctx, scrollController) {
+            return _FailingOpsSheet(
+              syncEngine: _syncEngine,
+              initialFailures: failures,
+              scrollController: scrollController,
+            );
+          },
+        );
+      },
     );
-    if (!mounted) return;
-    if (action == 'retry') {
-      // Reset attempt_count + lastError de l'op fautive, puis kick le
-      // sync engine pour un retry immédiat (sans attendre le tick).
-      await _syncEngine.retryFailedOperations();
-      _syncEngine.requestSync();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Synchronisation relancée…')),
-      );
-      return;
-    }
-    if (action == 'discard') {
-      final removed = await _syncEngine.discardFailedOperations();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$removed opération(s) ignorée(s)')),
-      );
-    }
   }
 
   Widget _kv(String k, String v) => Padding(
