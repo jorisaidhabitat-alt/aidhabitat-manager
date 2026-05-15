@@ -328,7 +328,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   // Pages
   late int _currentPage;
   late int _totalPages;
-  final Map<int, List<_Stroke>> _pageStrokes = <int, List<_Stroke>>{};
+  final Map<int, List<Stroke>> _pageStrokes = <int, List<Stroke>>{};
   final Map<int, String> _pageTexts = <int, String>{};
   // Flags médicaux par page (1 = Pathologie, 2 = Suivi, 3 = Sensoriel).
   // Sérialisés dans `drawing_json['medicalFlags']`. Utilisé uniquement
@@ -352,11 +352,11 @@ class _NotesWidgetState extends State<NotesWidget> {
   final double _eraserSize = _kDefaultEraserSize;
 
   // Stroke en cours
-  _Stroke? _activeStroke;
+  Stroke? _activeStroke;
 
   // Undo / redo (bonus par rapport à React)
-  final List<List<_Stroke>> _undoStack = <List<_Stroke>>[];
-  final List<List<_Stroke>> _redoStack = <List<_Stroke>>[];
+  final List<List<Stroke>> _undoStack = <List<Stroke>>[];
+  final List<List<Stroke>> _redoStack = <List<Stroke>>[];
 
   // État sauvegarde
   bool _isLoaded = false;
@@ -484,7 +484,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       // IMPORTANT pour l'animation de swipe canvas (MesuresTab) :
       // on appelle `.clear()` sur le Map, ce qui retire les entrées
       // (paires page→List) mais NE MUTE PAS les Lists elles-mêmes.
-      // Les `_StrokePainter` construits au build précédent ont capturé
+      // Les `StrokePainter` construits au build précédent ont capturé
       // une référence vers ces Lists et continueront à peindre les
       // anciens strokes pendant la transition `HorizontalSlideSwitcher`
       // (l'AnimatedSwitcher garde l'ancien sous-arbre vivant ~220 ms).
@@ -630,8 +630,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   // Accesseurs internes
   // ---------------------------------------------------------------------------
 
-  List<_Stroke> get _strokes =>
-      _pageStrokes.putIfAbsent(_currentPage, () => <_Stroke>[]);
+  List<Stroke> get _strokes =>
+      _pageStrokes.putIfAbsent(_currentPage, () => <Stroke>[]);
 
   List<NoteTool> get _availableTools => _availableToolsFor(widget.toolset);
 
@@ -807,7 +807,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   void _applyJson(int page, String? json, {required bool hydrateController}) {
     if (json == null || json.isEmpty) {
-      _pageStrokes[page] = <_Stroke>[];
+      _pageStrokes[page] = <Stroke>[];
       _pageTexts[page] = '';
       _pageMedicalFlags[page] = <int>{};
       if (hydrateController) _setControllerSilently('');
@@ -816,7 +816,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     try {
       final decoded = jsonDecode(json);
       if (decoded is! Map<String, dynamic>) {
-        _pageStrokes[page] = <_Stroke>[];
+        _pageStrokes[page] = <Stroke>[];
         _pageTexts[page] = '';
         _pageMedicalFlags[page] = <int>{};
         if (hydrateController) _setControllerSilently('');
@@ -825,11 +825,11 @@ class _NotesWidgetState extends State<NotesWidget> {
       final text = decoded['text']?.toString() ?? '';
       final rawStrokes = decoded['strokes'] as List?;
       final strokes = rawStrokes == null
-          ? <_Stroke>[]
+          ? <Stroke>[]
           : rawStrokes
               .whereType<Map>()
-              .map((raw) => _Stroke.fromJson(raw.cast<String, dynamic>()))
-              .whereType<_Stroke>()
+              .map((raw) => Stroke.fromJson(raw.cast<String, dynamic>()))
+              .whereType<Stroke>()
               .toList();
       // `medicalFlags` est optionnel (ajouté pour l'onglet Médical).
       // Les notes préexistantes sans ce champ → ensemble vide. Rétrocompatible.
@@ -849,7 +849,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageMedicalFlags[page] = flags;
       if (hydrateController) _setControllerSilently(text);
     } catch (_) {
-      _pageStrokes[page] = <_Stroke>[];
+      _pageStrokes[page] = <Stroke>[];
       _pageTexts[page] = '';
       _pageMedicalFlags[page] = <int>{};
       if (hydrateController) _setControllerSilently('');
@@ -970,7 +970,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   // ---------------------------------------------------------------------------
 
   void _pushUndo() {
-    _undoStack.add(List<_Stroke>.from(_strokes));
+    _undoStack.add(List<Stroke>.from(_strokes));
     if (_undoStack.length > 50) _undoStack.removeAt(0);
     _redoStack.clear();
   }
@@ -978,7 +978,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _undo() {
     if (_undoStack.isEmpty) return;
     setState(() {
-      _redoStack.add(List<_Stroke>.from(_strokes));
+      _redoStack.add(List<Stroke>.from(_strokes));
       _pageStrokes[_currentPage] = _undoStack.removeLast();
     });
     _markDirty();
@@ -987,7 +987,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _redo() {
     if (_redoStack.isEmpty) return;
     setState(() {
-      _undoStack.add(List<_Stroke>.from(_strokes));
+      _undoStack.add(List<Stroke>.from(_strokes));
       _pageStrokes[_currentPage] = _redoStack.removeLast();
     });
     _markDirty();
@@ -996,7 +996,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _clearStrokes() {
     if (_strokes.isEmpty) return;
     _pushUndo();
-    setState(() => _pageStrokes[_currentPage] = <_Stroke>[]);
+    setState(() => _pageStrokes[_currentPage] = <Stroke>[]);
     _markDirty();
   }
 
@@ -1029,7 +1029,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (!_isInsideCanvas(details.localPosition)) return;
     _pushUndo();
     setState(() {
-      _activeStroke = _Stroke(
+      _activeStroke = Stroke(
         tool: _activeTool,
         color: _activeColor,
         size: _activeSize,
@@ -1127,9 +1127,9 @@ class _NotesWidgetState extends State<NotesWidget> {
   // segment de gomme — pas juste les points isolés — pour un effaçage
   // pixel-précis même quand le stroke a des points très espacés.
   // ignore: unused_element
-  List<_Stroke>? _computeEraseSegment(List<_Stroke> input,
+  List<Stroke>? _computeEraseSegment(List<Stroke> input,
       Offset from, Offset to, double hitDistance) {
-    final next = <_Stroke>[];
+    final next = <Stroke>[];
     var changed = false;
     for (final stroke in input) {
       if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
@@ -1187,7 +1187,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       for (var i = 0; i < n; i++) {
         if (erased[i]) {
           if (current.length >= 2) {
-            next.add(_Stroke(
+            next.add(Stroke(
               tool: stroke.tool,
               color: stroke.color,
               size: stroke.size,
@@ -1200,7 +1200,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         }
       }
       if (current.length >= 2) {
-        next.add(_Stroke(
+        next.add(Stroke(
           tool: stroke.tool,
           color: stroke.color,
           size: stroke.size,
@@ -1264,7 +1264,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     final newPageIndex = _totalPages;
     setState(() {
       _totalPages += 1;
-      _pageStrokes[newPageIndex] = <_Stroke>[];
+      _pageStrokes[newPageIndex] = <Stroke>[];
       _pageTexts[newPageIndex] =
           widget.sharedText ? _textController.text : '';
       // Nouvelle page : flags médicaux vides — l'utilisateur re-sélectionne
@@ -1293,7 +1293,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageStrokes.remove(deletedIndex);
       _pageTexts.remove(deletedIndex);
       _pageMedicalFlags.remove(deletedIndex);
-      final nextStrokes = <int, List<_Stroke>>{};
+      final nextStrokes = <int, List<Stroke>>{};
       final nextTexts = <int, String>{};
       final nextFlags = <int, Set<int>>{};
       _pageStrokes.forEach((index, strokes) {
@@ -1337,7 +1337,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   Future<void> _persistPage(int pageIndex) async {
     final strokes =
-        _pageStrokes.putIfAbsent(pageIndex, () => <_Stroke>[]);
+        _pageStrokes.putIfAbsent(pageIndex, () => <Stroke>[]);
     final text = _pageTexts[pageIndex] ?? '';
     final flags = _pageMedicalFlags[pageIndex];
     final json = jsonEncode({
@@ -2055,7 +2055,7 @@ class _NotesWidgetState extends State<NotesWidget> {
               });
               // ClipRRect EXTERNE qui englobe TOUS les layers du canvas
               // (fond grid, backgroundContent, strokes). Sans ce clip
-              // global, le _BackgroundPainter (lignes grille, fond) n'est
+              // global, le BackgroundPainter (lignes grille, fond) n'est
               // pas rogné au border radius et les coins apparaissent
               // "effacés" / carrés. Maintenant le fond ET les strokes
               // sont clippés au même rayon que la carte parente.
@@ -2066,7 +2066,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                     // Fond : freeform (blanc) ou grille.
                     Positioned.fill(
                       child: CustomPaint(
-                        painter: _BackgroundPainter(mode: widget.mode),
+                        painter: BackgroundPainter(mode: widget.mode),
                       ),
                     ),
                     // Contenu décoratif optionnel derrière le canvas.
@@ -2089,7 +2089,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                             cursor: SystemMouseCursors.precise,
                             child: CustomPaint(
                               size: size,
-                              painter: _StrokePainter(
+                              painter: StrokePainter(
                                 strokes: _strokes,
                                 activeStroke: _activeStroke,
                               ),
@@ -2482,135 +2482,6 @@ class _NotesWidgetState extends State<NotesWidget> {
         return 'Rectangle';
     }
   }
-}
-
-// =============================================================================
-// Painter du fond (freeform ou grid)
-// =============================================================================
-
-class _BackgroundPainter extends CustomPainter {
-  _BackgroundPainter({required this.mode});
-
-  final NoteCanvasMode mode;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
-    if (mode == NoteCanvasMode.grid) {
-      final paint = Paint()
-        ..color = const Color(0xFF8A939D).withValues(alpha: 0.22)
-        ..strokeWidth = 1;
-      for (double x = _kGridCell; x < size.width; x += _kGridCell) {
-        canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-      }
-      for (double y = _kGridCell; y < size.height; y += _kGridCell) {
-        canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _BackgroundPainter oldDelegate) =>
-      oldDelegate.mode != mode;
-}
-
-// =============================================================================
-// Painter des traits
-// =============================================================================
-
-class _StrokePainter extends CustomPainter {
-  _StrokePainter({required this.strokes, required this.activeStroke});
-
-  final List<_Stroke> strokes;
-  final _Stroke? activeStroke;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // saveLayer isole les traits dans une couche transparente — la
-    // gomme peut alors utiliser BlendMode.clear pour trouer seulement
-    // les pixels de strokes, sans toucher le fond (silhouettes Mesures,
-    // plans…). Sans cette couche, la gomme peindrait en blanc par-dessus
-    // et masquerait les images de fond.
-    final bounds = Offset.zero & size;
-    canvas.saveLayer(bounds, Paint());
-    for (final stroke in strokes) {
-      _drawStroke(canvas, size, stroke);
-    }
-    final pending = activeStroke;
-    if (pending != null) _drawStroke(canvas, size, pending);
-    canvas.restore();
-  }
-
-  void _drawStroke(Canvas canvas, Size size, _Stroke stroke) {
-    if (stroke.points.isEmpty) return;
-    final realPoints = stroke.points
-        .map((p) => Offset(p.dx * size.width, p.dy * size.height))
-        .toList();
-
-    switch (stroke.tool) {
-      case NoteTool.pen:
-      case NoteTool.eraser:
-      case NoteTool.highlighter:
-        // Gomme = BlendMode.clear sur la couche de strokes → efface
-        // uniquement les pixels de traits, laisse le fond intact.
-        // Plume/surligneur = srcOver normal.
-        final isEraser = stroke.tool == NoteTool.eraser;
-        final paint = Paint()
-          ..color = isEraser
-              ? Colors.black // couleur ignorée avec BlendMode.clear
-              : Color(stroke.color).withValues(
-                  alpha: stroke.tool == NoteTool.highlighter ? 0.4 : 1.0,
-                )
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round
-          ..strokeWidth = stroke.size
-          ..style = PaintingStyle.stroke
-          ..blendMode = isEraser ? BlendMode.clear : BlendMode.srcOver;
-        if (realPoints.length == 1) {
-          canvas.drawCircle(
-            realPoints.first,
-            stroke.size / 2,
-            Paint()
-              ..color = paint.color
-              ..blendMode = paint.blendMode,
-          );
-          return;
-        }
-        // Courbe quadratique midpoint (comme plan_canvas) pour un tracé
-        // fluide sans saccades.
-        final path = Path()..moveTo(realPoints.first.dx, realPoints.first.dy);
-        for (var i = 1; i < realPoints.length; i++) {
-          final p0 = realPoints[i - 1];
-          final p1 = realPoints[i];
-          final mid = Offset((p0.dx + p1.dx) / 2, (p0.dy + p1.dy) / 2);
-          path.quadraticBezierTo(p0.dx, p0.dy, mid.dx, mid.dy);
-        }
-        path.lineTo(realPoints.last.dx, realPoints.last.dy);
-        canvas.drawPath(path, paint);
-        break;
-      case NoteTool.line:
-        if (realPoints.length < 2) return;
-        final paint = Paint()
-          ..color = Color(stroke.color)
-          ..strokeCap = StrokeCap.round
-          ..strokeWidth = stroke.size
-          ..style = PaintingStyle.stroke;
-        canvas.drawLine(realPoints.first, realPoints.last, paint);
-        break;
-      case NoteTool.rect:
-        if (realPoints.length < 2) return;
-        final paint = Paint()
-          ..color = Color(stroke.color)
-          ..strokeWidth = stroke.size
-          ..style = PaintingStyle.stroke;
-        canvas.drawRect(Rect.fromPoints(realPoints.first, realPoints.last),
-            paint);
-        break;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _StrokePainter oldDelegate) => true;
 }
 
 // =============================================================================

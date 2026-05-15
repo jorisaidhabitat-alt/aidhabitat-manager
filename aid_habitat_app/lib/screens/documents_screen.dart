@@ -20,6 +20,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
 
 import '../components/beneficiary_badges.dart';
+import '../components/dashed_border_painter.dart';
 import '../components/file_drop_zone.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
@@ -1565,7 +1566,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
             borderRadius: BorderRadius.circular(16),
           ),
           child: CustomPaint(
-            painter: _DashedBorderPainter(
+            painter: DashedBorderPainter(
               color: widget.disabled
                   ? Color(0xFFB9C0C7)
                   : _kPurple.withValues(alpha: _hovering ? 1 : 0.8),
@@ -1617,54 +1618,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
 enum _AddChoice { image, camera, scanner, file }
 
 /// Dessine une bordure pointillée autour d'un rectangle arrondi.
-class _DashedBorderPainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-  final double radius;
-  final double dashLength;
-  final double dashGap;
-
-  _DashedBorderPainter({
-    required this.color,
-    required this.strokeWidth,
-    required this.radius,
-    required this.dashLength,
-    required this.dashGap,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-    final rect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      Radius.circular(radius),
-    );
-    final path = Path()..addRRect(rect);
-    final metrics = path.computeMetrics();
-    for (final metric in metrics) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final end = (distance + dashLength).clamp(0.0, metric.length);
-        canvas.drawPath(
-          metric.extractPath(distance, end),
-          paint,
-        );
-        distance = end + dashGap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashedBorderPainter old) =>
-      old.color != color ||
-      old.strokeWidth != strokeWidth ||
-      old.radius != radius ||
-      old.dashLength != dashLength ||
-      old.dashGap != dashGap;
-}
+// `DashedBorderPainter` est désormais dans `../components/dashed_border_painter.dart`.
 
 // ---------------------------------------------------------------------------
 // Document card
