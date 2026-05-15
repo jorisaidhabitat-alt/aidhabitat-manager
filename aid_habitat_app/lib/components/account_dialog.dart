@@ -142,9 +142,16 @@ class _AccountDialogState extends State<AccountDialog> {
       // largement et garantit un base64 < 70 KB (sous la limite
       // NocoDB LongText à 100 000 chars). Avant 2026-05-07 :
       // 800×800 q85 → ~130 KB → rejet NocoDB 422 → 503 côté client.
+      //
+      // Fix 2026-05-15 (audit P0 #11) : `maxHeight: 400` ajouté en
+      // plus de `maxWidth`. Sans ça une photo portrait (1080×1920)
+      // tombait sur `400×711` avec hauteur non contrainte → ~110 KB
+      // en base64 → 413 côté serveur. Bug reproduit sur la photo de
+      // profil contact@aidhabitat.fr ce matin.
       final picked = await _imagePicker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 400,
+        maxHeight: 400,
         imageQuality: 70,
       );
       if (picked == null) {

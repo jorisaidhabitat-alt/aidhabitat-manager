@@ -405,10 +405,25 @@ class SyncEngine {
         // Purge completed operations older than 24h to prevent DB bloat.
         _syncRepository.purgeCompleted().catchError((_) => 0);
 
+        // Fix 2026-05-15 (audit P0 #11) : avant ce check, un cycle qui
+        // ne trouvait plus d'op `pending` à pousser (parce que la
+        // seule op restante était déjà en `failed` à cause d'un 4xx
+        // permanent ex. 413) reportait `failedOperations=0` →
+        // `clearError: true` → le bandeau rouge disparaissait alors
+        // que la queue contenait encore des ops bloquées. L'ergo
+        // perdait totalement la visibilité du problème. Désormais : on
+        // ne clear l'erreur QUE si la queue est vraiment vide (aucune
+        // op `failed` résiduelle). Sinon on synthétise un message qui
+        // invite à ouvrir les détails.
+        final hasFailedLeftover =
+            (await _syncRepository.fetchTopFailingOperation()) != null;
         _emitState(
           isSyncing: false,
           pendingCount: pendingAfter,
-          clearError: true,
+          clearError: !hasFailedLeftover,
+          lastError: hasFailedLeftover
+              ? 'Opération(s) en échec — touche « Détails » pour voir.'
+              : null,
           lastSyncAt: DateTime.now(),
           nextRetryAt: null,
         );
