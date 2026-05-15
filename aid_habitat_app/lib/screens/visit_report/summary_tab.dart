@@ -145,14 +145,24 @@ class _SummaryTabState extends State<SummaryTab>
                             ),
                     fillParentHeight: true,
                   ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: NotesWidget(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const NotesPanelTitleBanner(
+                          title: 'Résumé des préconisations'),
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: NotesWidget(
                     key: ValueKey('summary-note-resume-$patientId'),
                     patientId: patientId,
                     tabKey: 'Préconisations-Résumé',
-                    placeholder: 'Résumé des préconisations',
+                    placeholder: '',
                     showCanvas: false,
                     embedded: true,
                     showSaveButton: false,
@@ -172,6 +182,9 @@ class _SummaryTabState extends State<SummaryTab>
                               draft.text,
                             ),
                     fillParentHeight: true,
+                  ),
+                      ),
+                    ],
                   ),
                 ),
               ],
