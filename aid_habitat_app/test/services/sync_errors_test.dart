@@ -110,9 +110,26 @@ void main() {
     });
 
     test('HTTP 404 in message → NOT transient (ressource disparue)', () {
+      // Note : on évite volontairement les wordings type "upload failed"
+      // ou "download failed" qui contiennent la sous-chaîne "load failed"
+      // → faux-positif transient. La classification textuelle est large
+      // (cf. commentaire `_isTransientErrorLike`), c'est délibéré pour
+      // attraper les iPad PWA "load failed" Safari.
+      expect(
+        isTransientErrorLike(Exception('Resource not found (404)')),
+        isFalse,
+      );
+    });
+
+    test('Message contenant "upload failed" / "download failed" → '
+        'transient (faux positif assumé : ces verbes apparaissent dans '
+        'les exceptions réseau iPad, prudence > précision)', () {
+      // Documente la limite connue de la classification textuelle.
+      // Tant qu\'on a besoin du fallback Safari "Load failed", ce
+      // pattern reste large.
       expect(
         isTransientErrorLike(Exception('Doc upload failed (404)')),
-        isFalse,
+        isTrue,
       );
     });
 
@@ -138,13 +155,18 @@ void main() {
       expect(isTransientErrorLike('plain string error'), isFalse);
     });
 
-    test('TransientRemoteException → transient (déjà classifiée upstream)',
-        () {
+    test('TransientRemoteException → NON détecté par `isTransientErrorLike` '
+        '(géré séparément par un `on TransientRemoteException` upstream)', () {
+      // `_processGroup` capture `TransientRemoteException` AVANT le
+      // catch-all qui appelle `isTransientErrorLike`. Donc cette fonction
+      // n'est jamais appelée avec ce type — on documente le contrat ici
+      // pour qu'un futur refactor ne se trompe pas en pensant qu'il faut
+      // ajouter une `is TransientRemoteException` check.
       expect(
         isTransientErrorLike(
           TransientRemoteException('upstream said 503', statusCode: 503),
         ),
-        isTrue,
+        isFalse,
       );
     });
   });
