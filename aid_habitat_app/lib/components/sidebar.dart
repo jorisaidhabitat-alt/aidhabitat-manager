@@ -267,7 +267,11 @@ class _SidebarState extends State<Sidebar> {
               textStyle: const TextStyle(color: Colors.white, fontSize: 12),
               child: InkWell(
                 onTap: _openAccountDialog,
-                borderRadius: BorderRadius.circular(10),
+                // Refonte 2026-05-15 : avatar rond complet (demande
+                // user : « pour la photo de profil en bas à gauche
+                // augmente les radius pour avoir un format rond »).
+                // 36×36 + radius 999 = cercle parfait.
+                borderRadius: BorderRadius.circular(999),
                 child: Builder(builder: (_) {
                   // Source vérité avatar : `_effectiveUser` (override
                   // post-dialog → fallback widget.currentUser). Permet
@@ -279,7 +283,7 @@ class _SidebarState extends State<Sidebar> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(999),
                       // Sans photo : fond mauve-200 + texte mauve-700
                       // (initiales). Avec photo : la photo prend toute
                       // la place (le fond mauve-200 ne se voit pas).
