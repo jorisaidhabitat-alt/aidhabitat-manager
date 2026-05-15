@@ -17,8 +17,6 @@ import 'package:open_filex/open_filex.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:http/http.dart' as http;
-
 import '../components/beneficiary_badges.dart';
 import '../components/dashed_border_painter.dart';
 import '../components/doc_thumbnails.dart';
