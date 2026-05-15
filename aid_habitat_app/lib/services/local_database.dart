@@ -1,7 +1,8 @@
 import 'dart:convert';
-import 'dart:io' show File, Platform;
+import 'dart:io' show File;
 
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, debugPrint, defaultTargetPlatform, TargetPlatform;
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 // Audit P0 #4 Layer 2 (2026-05-15) : `sqflite_sqlcipher` permet
@@ -50,9 +51,16 @@ class LocalDatabase {
   /// fonctionner (iOS, macOS, Android). Sur le web Flutter, le factory
   /// est `sqflite_common_ffi_web` (SQLite WASM) et SQLCipher n'y est
   /// pas disponible → on retombe sur le chemin historique non chiffré.
+  ///
+  /// On utilise `defaultTargetPlatform` de `flutter/foundation` plutôt
+  /// que `dart:io.Platform` pour rester compilable sur le build web
+  /// sans warning ou exception au runtime (tree-shaking propre).
   bool _shouldEncrypt() {
     if (kIsWeb) return false;
-    return Platform.isIOS || Platform.isMacOS || Platform.isAndroid;
+    final t = defaultTargetPlatform;
+    return t == TargetPlatform.iOS
+        || t == TargetPlatform.macOS
+        || t == TargetPlatform.android;
   }
 
   /// Ouvre la base via SQLCipher avec la master key stockée dans
