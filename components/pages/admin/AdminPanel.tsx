@@ -12,6 +12,13 @@ export const AdminPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
   const [resettingEmail, setResettingEmail] = useState<string | null>(null);
+  // SECURITY 2026-05-15 (audit P0 #3) : le serveur n'expose plus le
+  // password dans la liste GET /api/admin/access-members. Quand l'admin
+  // crée/réinitialise un membre, le password est renvoyé UNE FOIS dans
+  // la response du POST — on le capture ici en state local éphémère
+  // pour permettre à l'admin de le copier/communiquer. Au prochain
+  // refresh ou changement de page, le password disparaît du state.
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({});
 
   const loadMembers = async (refreshing = false) => {
     if (refreshing) {
@@ -44,7 +51,12 @@ export const AdminPanel: React.FC = () => {
   }), [members]);
 
   const handleCopy = async (member: AdminAccessMember) => {
-    const content = `${member.email}\n${member.generatedPassword}`;
+    // Le password à copier vient du state local (révélé lors d'un
+    // create/reset récent) ; le `generatedPassword` du membre est
+    // toujours vide depuis le fix audit P0 #3.
+    const password = revealedPasswords[member.email] || member.generatedPassword;
+    if (!password) return;
+    const content = `${member.email}\n${password}`;
     try {
       await navigator.clipboard.writeText(content);
       setCopiedEmail(member.email);
@@ -62,6 +74,18 @@ export const AdminPanel: React.FC = () => {
     if (!result.success) {
       setError(result.error || 'Réinitialisation impossible');
       return;
+    }
+
+    // Capture le password tout juste généré (lecture unique côté
+    // serveur depuis le fix audit P0 #3) pour l'afficher dans la liste.
+    // Le state local sera reset à `loadMembers(true)` ci-dessous SI
+    // l'admin refresh manuellement, mais en attendant le password reste
+    // visible — le temps que l'admin le note.
+    if (result.password) {
+      setRevealedPasswords((prev) => ({
+        ...prev,
+        [member.email]: result.password!,
+      }));
     }
 
     await loadMembers(true);
