@@ -52,9 +52,21 @@ dependencies:
   path: ^1.9.1
   path_provider: ^2.1.5
   sqflite: ^2.4.2
+  # SQLCipher 4.x via sqflite-compatible API. Drop-in replacement utilisé
+  # par `LocalDatabase` pour `openDatabase(password: masterKey)` sur
+  # iOS/macOS (Android aussi mais non déployé). Audit sécurité 2026-05-15
+  # P0 #4 Layer 2 : chiffre toute la base SQLite locale (patients,
+  # dossiers, photos, contexte de vie, mesures, etc.) avec une clé
+  # maître de 32 bytes stockée dans le Keychain via
+  # `SecureSessionStorage`. **Pas de support web** — la cible web/PWA
+  # continue d'utiliser `sqflite_common_ffi_web` non chiffré (limitation
+  # SQLite WASM).
+  sqflite_sqlcipher: ^3.2.0
   # Web-only : fournit `databaseFactoryFfiWeb` qui fait tourner SQLite dans
   # le navigateur via WASM + IndexedDB. Les autres plateformes utilisent
-  # le backend sqflite natif.
+  # le backend sqflite natif. Note : pas de chiffrement SQLCipher
+  # disponible sur cette cible — origin isolation Safari + sandbox iOS
+  # protègent la PWA.
   sqflite_common_ffi_web: ^0.4.5+4
   fl_chart: ^1.1.1
   scribble: ^0.10.0+1

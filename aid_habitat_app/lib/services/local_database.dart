@@ -1,10 +1,20 @@
 import 'dart:convert';
+import 'dart:io' show File, Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+// Audit P0 #4 Layer 2 (2026-05-15) : `sqflite_sqlcipher` permet
+// `openDatabase(password: ...)` pour chiffrer toute la base SQLite
+// avec AES-256 (SQLCipher 4 par défaut). Compatible iOS, macOS,
+// Android. Sur web, on retombe sur `sqflite_common_ffi_web` qui n'a
+// pas de support SQLCipher → la PWA reste non chiffrée mais protégée
+// par l'origin isolation Safari + sandbox iOS.
+import 'package:sqflite_sqlcipher/sqflite.dart' as sqlcipher;
 
 import '../data/mock_data.dart';
 import '../models/types.dart';
+import 'secure_session_storage.dart';
 
 class LocalDatabase {
   LocalDatabase._();
@@ -18,13 +28,81 @@ class LocalDatabase {
   Future<Database> get database async {
     if (_database != null) return _database!;
     final dbPath = await getDatabasesPath();
-    _database = await openDatabase(
-      p.join(dbPath, _dbName),
-      version: _dbVersion,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-    );
+    final fullPath = p.join(dbPath, _dbName);
+
+    if (_shouldEncrypt()) {
+      _database = await _openEncrypted(fullPath);
+    } else {
+      // Web (PWA) : sqflite_common_ffi_web ne supporte pas SQLCipher.
+      // On garde l'ouverture historique non chiffrée. Origin isolation
+      // Safari + sandbox iOS limitent l'exposition.
+      _database = await openDatabase(
+        fullPath,
+        version: _dbVersion,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+      );
+    }
     return _database!;
+  }
+
+  /// Vrai quand on est sur une cible où `sqflite_sqlcipher` peut
+  /// fonctionner (iOS, macOS, Android). Sur le web Flutter, le factory
+  /// est `sqflite_common_ffi_web` (SQLite WASM) et SQLCipher n'y est
+  /// pas disponible → on retombe sur le chemin historique non chiffré.
+  bool _shouldEncrypt() {
+    if (kIsWeb) return false;
+    return Platform.isIOS || Platform.isMacOS || Platform.isAndroid;
+  }
+
+  /// Ouvre la base via SQLCipher avec la master key stockée dans
+  /// `SecureSessionStorage`. Gère la **migration depuis une base en
+  /// clair pré-fix** : si on détecte un fichier non-chiffrable avec la
+  /// clé (= installé avant le fix P0 #4 Layer 2), on le supprime et on
+  /// recrée vide. Les données se re-tireront depuis NocoDB au prochain
+  /// pull — perte = uniquement les écritures locales non encore sync.
+  Future<Database> _openEncrypted(String fullPath) async {
+    final masterKey = await SecureSessionStorage.instance.ensureMasterKey();
+
+    Future<Database> openWithKey() => sqlcipher.openDatabase(
+          fullPath,
+          password: masterKey,
+          version: _dbVersion,
+          onCreate: _onCreate,
+          onUpgrade: _onUpgrade,
+        );
+
+    try {
+      return await openWithKey();
+    } catch (firstError) {
+      // SQLCipher refuse d'ouvrir : soit fichier corrompu, soit base
+      // legacy en clair (= installé avant ce fix). Comme on ne peut
+      // pas distinguer les deux côté Dart, on tente la migration
+      // pragmatique « wipe + recreate ». La perte est limitée car
+      // NocoDB est la source de vérité.
+      debugPrint(
+        '[security] SQLCipher openDatabase a échoué : $firstError. '
+        'Suppression du fichier legacy et recréation chiffrée. '
+        'Les données locales seront re-tirées depuis NocoDB.',
+      );
+      try {
+        final legacyFile = File(fullPath);
+        if (await legacyFile.exists()) {
+          await legacyFile.delete();
+        }
+        // Supprime aussi les fichiers WAL / SHM qui peuvent traîner.
+        for (final suffix in ['-journal', '-wal', '-shm']) {
+          final sideCar = File('$fullPath$suffix');
+          if (await sideCar.exists()) {
+            await sideCar.delete();
+          }
+        }
+      } catch (deleteError) {
+        debugPrint('[security] suppression DB legacy échouée : $deleteError');
+      }
+      // Deuxième tentative — création fraîche chiffrée.
+      return await openWithKey();
+    }
   }
 
   // ---------------------------------------------------------------------------
