@@ -348,22 +348,6 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
-  Widget _kv(String k, String v) => Padding(
-        padding: const EdgeInsets.only(bottom: 2),
-        child: RichText(
-          text: TextSpan(
-            style: const TextStyle(fontSize: 13, color: Colors.black87),
-            children: [
-              TextSpan(
-                text: '$k : ',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              TextSpan(text: v),
-            ],
-          ),
-        ),
-      );
-
   void _handleCreateNew() {
     _pushHistory();
     setState(() => _activeView = 'create_beneficiary');
@@ -955,7 +939,7 @@ class _FailingOpsSheetState extends State<_FailingOpsSheet> {
                   controller: widget.scrollController,
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   itemCount: _failures.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (ctx, i) {
                     final op = _failures[i];
                     final id = op['id'] ?? '';
