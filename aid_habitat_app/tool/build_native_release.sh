@@ -48,7 +48,38 @@ fi
 
 API_BASE_URL="${AIDHABITAT_API_BASE_URL:-}"
 if [ -z "$API_BASE_URL" ]; then
-  echo "[build_native] WARN: AIDHABITAT_API_BASE_URL non défini — l'app pointera sur l'origine relative (cassé en natif)." >&2
+  echo "[build_native] ERROR: AIDHABITAT_API_BASE_URL est obligatoire pour un build natif release." >&2
+  echo "[build_native] Exemple: AIDHABITAT_API_BASE_URL=https://api.aid-habitat.fr $0 $PLATFORM" >&2
+  exit 1
+fi
+if [[ ! "$API_BASE_URL" =~ ^https://[^[:space:]]+$ ]]; then
+  echo "[build_native] ERROR: AIDHABITAT_API_BASE_URL doit être une URL HTTPS en release native." >&2
+  echo "[build_native] Reçu: $API_BASE_URL" >&2
+  exit 1
+fi
+API_BASE_URL="${API_BASE_URL%/}"
+
+if [ "$PLATFORM" = "android" ]; then
+  if [ ! -f "android/key.properties" ]; then
+    echo "[build_native] ERROR: android/key.properties manquant — signature Android release non configurée." >&2
+    echo "[build_native] Créez ce fichier avec storeFile, storePassword, keyAlias et keyPassword." >&2
+    exit 1
+  fi
+  HOMEBREW_JDK21="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+  if [ -d "$HOMEBREW_JDK21" ]; then
+    export JAVA_HOME="$HOMEBREW_JDK21"
+    export PATH="$JAVA_HOME/bin:$PATH"
+  fi
+  JAVA_VERSION_RAW="$(java -version 2>&1 | awk -F\" '/version/ {print $2; exit}')"
+  JAVA_MAJOR="${JAVA_VERSION_RAW%%.*}"
+  if [ "$JAVA_MAJOR" = "1" ]; then
+    JAVA_MAJOR="$(echo "$JAVA_VERSION_RAW" | cut -d. -f2)"
+  fi
+  if [ -n "$JAVA_MAJOR" ] && [ "$JAVA_MAJOR" -ge 25 ]; then
+    echo "[build_native] ERROR: Java $JAVA_VERSION_RAW détecté, incompatible avec la toolchain Android/Kotlin actuelle." >&2
+    echo "[build_native] Utilisez un JDK LTS supporté, idéalement Java 17 ou 21, puis relancez." >&2
+    exit 1
+  fi
 fi
 
 GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"

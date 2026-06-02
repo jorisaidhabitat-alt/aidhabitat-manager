@@ -30,6 +30,32 @@ flutter run \
 
 Sans ces variables, l'application fonctionne uniquement sur son stockage local.
 
+Pour un build natif release (TestFlight / App Store / Play Store), l'URL API
+doit être fournie en HTTPS :
+
+```bash
+AIDHABITAT_API_BASE_URL=https://api.aid-habitat.fr \
+  ./tool/build_native_release.sh ios
+```
+
+Le script refuse volontairement les builds natifs release sans URL HTTPS pour
+éviter de publier un binaire pointant vers `localhost`.
+
+### Signature Android Play Store
+
+Les builds Android release lisent `android/key.properties`, volontairement
+ignoré par Git. Exemple de contenu :
+
+```properties
+storeFile=/chemin/absolu/aid-habitat-release.jks
+storePassword=...
+keyAlias=aid-habitat
+keyPassword=...
+```
+
+Sans ce fichier, le build Android release échoue volontairement pour éviter de
+produire un AAB signé avec la clé debug.
+
 ## Synchronisation montante
 
 La synchronisation montante est maintenant branchée côté Flutter:

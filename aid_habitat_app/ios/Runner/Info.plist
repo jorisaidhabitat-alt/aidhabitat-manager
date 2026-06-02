@@ -111,13 +111,14 @@
 	<!-- ====================================================== -->
 	<!-- Catégorie App Store (visible dans Settings → Storage    -->
 	<!-- et utilisée par la fiche App Store Connect).            -->
-	<!-- "medical" convient pour une app métier ergothérapie.    -->
+	<!-- "business" convient mieux à l'usage outil métier        -->
+	<!-- administratif, sans classer l'app comme médicale.        -->
 	<!-- Liste : https://developer.apple.com/library/archive/    -->
 	<!--   documentation/General/Reference/                       -->
 	<!--   InfoPlistKeyReference/Articles/LaunchServicesKeys.html -->
 	<!-- ====================================================== -->
 	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.medical</string>
+	<string>public.app-category.business</string>
 
 	<!-- ====================================================== -->
 	<!-- iPadOS Multi-Window (Split View / Stage Manager)        -->

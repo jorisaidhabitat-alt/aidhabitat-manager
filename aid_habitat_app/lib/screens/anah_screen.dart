@@ -41,6 +41,69 @@ class _AnahScreenState extends State<AnahScreen> {
   double _webProgress = 0;
   bool _webLoading = true;
   String _currentUrl = 'https://monprojet.anah.gouv.fr/';
+  bool _portalRuntimeKnown = false;
+  bool _portalRuntimeAvailable = false;
+  String? _portalRuntimeMessage;
+
+  bool _matchesPrimaryPortalHost(String? host) {
+    final normalizedHost = host?.trim().toLowerCase() ?? '';
+    if (normalizedHost.isEmpty) return false;
+    final candidates = <String>{
+      Uri.tryParse(_registrationUrl)?.host.toLowerCase() ?? '',
+      Uri.tryParse(_publicUrl)?.host.toLowerCase() ?? '',
+      Uri.tryParse(_currentUrl)?.host.toLowerCase() ?? '',
+    }..removeWhere((value) => value.isEmpty);
+
+    for (final candidate in candidates) {
+      if (normalizedHost == candidate ||
+          normalizedHost.endsWith('.$candidate') ||
+          candidate.endsWith('.$normalizedHost')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _buildSecureConnectionRefusedMessage(String host) {
+    final safeHost = host.trim().isEmpty ? 'ce portail' : host.trim();
+    return 'La connexion securisee avec $safeHost a ete refusee. '
+        'Ouvrez le portail dans Safari pour poursuivre.';
+  }
+
+  String _buildMainFrameLoadErrorMessage({
+    required String description,
+    String? url,
+  }) {
+    final parsedHost = Uri.tryParse(url ?? '')?.host.trim();
+    final safeHost = (parsedHost != null && parsedHost.isNotEmpty)
+        ? parsedHost
+        : 'le portail';
+    final normalizedDescription = description.trim();
+    if (normalizedDescription.isEmpty) {
+      return 'Le chargement securise de $safeHost a echoue. '
+          'Ouvrez le portail dans Safari pour poursuivre.';
+    }
+    return 'Le chargement securise de $safeHost a echoue: '
+        '$normalizedDescription. Ouvrez le portail dans Safari pour poursuivre.';
+  }
+
+  void _markPortalLoaded(String? url) {
+    final host = Uri.tryParse(url ?? '')?.host;
+    if (!_matchesPrimaryPortalHost(host)) return;
+    _portalRuntimeKnown = true;
+    _portalRuntimeAvailable = true;
+    _portalRuntimeMessage = 'Portail chargé directement dans l’application.';
+  }
+
+  void _markPortalUnavailable(String message, {String? url, String? host}) {
+    final effectiveHost = host ?? Uri.tryParse(url ?? '')?.host;
+    if (effectiveHost != null && !_matchesPrimaryPortalHost(effectiveHost)) {
+      return;
+    }
+    _portalRuntimeKnown = true;
+    _portalRuntimeAvailable = false;
+    _portalRuntimeMessage = message;
+  }
 
   @override
   void initState() {
@@ -63,7 +126,8 @@ class _AnahScreenState extends State<AnahScreen> {
       if (!mounted) return;
       setState(() {
         _available = status['available'] as bool? ?? true;
-        _registrationUrl = status['registrationUrl']?.toString() ??
+        _registrationUrl =
+            status['registrationUrl']?.toString() ??
             'https://monprojet.anah.gouv.fr/';
         _publicUrl =
             status['publicUrl']?.toString() ?? 'https://www.anah.gouv.fr/';
@@ -94,9 +158,9 @@ class _AnahScreenState extends State<AnahScreen> {
     // clique un `<a target="_blank">` — pattern accepté sans prompt.
     final ok = await openExternalUrl(url);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossible d\'ouvrir $url')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Impossible d\'ouvrir $url')));
     }
   }
 
@@ -229,10 +293,7 @@ class _AnahScreenState extends State<AnahScreen> {
                   const SizedBox(height: 20),
                   Text(
                     _statusError!,
-                    style: TextStyle(
-                      color: Colors.red.shade700,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.red.shade700, fontSize: 12),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -290,9 +351,9 @@ class _AnahScreenState extends State<AnahScreen> {
           ),
           const SizedBox(width: 8),
           OutlinedButton.icon(
-            onPressed: () => _openExternal(_currentUrl.isEmpty
-                ? _registrationUrl
-                : _currentUrl),
+            onPressed: () => _openExternal(
+              _currentUrl.isEmpty ? _registrationUrl : _currentUrl,
+            ),
             icon: const Icon(LucideIcons.externalLink, size: 16),
             label: const Text('Ouvrir dans Safari'),
             style: OutlinedButton.styleFrom(
@@ -306,7 +367,9 @@ class _AnahScreenState extends State<AnahScreen> {
   }
 
   Widget _buildStatusBadge() {
-    if (_loadingStatus) {
+    final bool shouldShowRuntimeCheck =
+        !kIsWeb && _webLoading && !_portalRuntimeKnown && _statusError == null;
+    if (_loadingStatus || shouldShowRuntimeCheck) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
@@ -337,12 +400,29 @@ class _AnahScreenState extends State<AnahScreen> {
         ),
       );
     }
-    final bg = _available ? const Color(0xFFD1FAE5) : const Color(0xFFFEE2E2);
-    final fg = _available ? const Color(0xFF047857) : const Color(0xFFB91C1C);
-    final icon = _available ? LucideIcons.checkCircle : LucideIcons.xCircle;
-    final label = _available ? 'Service disponible' : 'Service indisponible';
+    final bool hasRuntimeStatus = !kIsWeb && _portalRuntimeKnown;
+    final bool effectiveAvailable = hasRuntimeStatus
+        ? _portalRuntimeAvailable
+        : _available;
+    final bg = effectiveAvailable
+        ? const Color(0xFFD1FAE5)
+        : const Color(0xFFFEE2E2);
+    final fg = effectiveAvailable
+        ? const Color(0xFF047857)
+        : const Color(0xFFB91C1C);
+    final icon = effectiveAvailable
+        ? LucideIcons.checkCircle
+        : LucideIcons.xCircle;
+    final label = hasRuntimeStatus
+        ? (effectiveAvailable ? 'Portail chargé' : 'Portail indisponible')
+        : (_available ? 'Service disponible' : 'Service indisponible');
+    final tooltipMessage = hasRuntimeStatus
+        ? (_portalRuntimeMessage?.isNotEmpty == true
+              ? _portalRuntimeMessage!
+              : label)
+        : (_reason.isNotEmpty ? _reason : label);
     return Tooltip(
-      message: _reason.isNotEmpty ? _reason : label,
+      message: tooltipMessage,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
@@ -394,26 +474,17 @@ class _AnahScreenState extends State<AnahScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: const Color(0xFFF7F7FA),
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFE4E7EB)),
-              ),
+              border: Border(bottom: BorderSide(color: Color(0xFFE4E7EB))),
             ),
             child: Row(
               children: [
-                Icon(
-                  LucideIcons.lock,
-                  size: 12,
-                  color: Color(0xFF5C6670),
-                ),
+                Icon(LucideIcons.lock, size: 12, color: Color(0xFF5C6670)),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     _currentUrl.isEmpty ? _registrationUrl : _currentUrl,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Color(0xFF2B323A),
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Color(0xFF2B323A), fontSize: 12),
                   ),
                 ),
               ],
@@ -456,6 +527,7 @@ class _AnahScreenState extends State<AnahScreen> {
           setState(() {
             _webLoading = true;
             _webProgress = 0;
+            _statusError = null;
             if (url != null) _currentUrl = url;
           });
         },
@@ -466,6 +538,7 @@ class _AnahScreenState extends State<AnahScreen> {
           setState(() {
             _webLoading = false;
             _webProgress = 1;
+            _markPortalLoaded(url);
             if (url != null) _currentUrl = url;
           });
         },
@@ -473,15 +546,51 @@ class _AnahScreenState extends State<AnahScreen> {
           if (!mounted) return;
           setState(() => _webProgress = progress / 100);
         },
-        onError: (type, description, url) {
+        onError: (type, description, url, isMainFrame) {
           // ignore: avoid_print
-          print('[ANAH] error: $type $description url=$url');
+          print(
+            '[ANAH] error: $type $description url=$url mainFrame=$isMainFrame',
+          );
           if (!mounted) return;
-          setState(() => _webLoading = false);
+          if (!isMainFrame) return;
+          setState(() {
+            _webLoading = false;
+            _webProgress = 0;
+            if (url != null && url.isNotEmpty) _currentUrl = url;
+            final message = _buildMainFrameLoadErrorMessage(
+              description: description,
+              url: url,
+            );
+            _markPortalUnavailable(message, url: url);
+            _statusError = message;
+          });
         },
-        onHttpError: (statusCode, url) {
+        onHttpError: (statusCode, url, isMainFrame) {
           // ignore: avoid_print
-          print('[ANAH] http error: $statusCode url=$url');
+          print(
+            '[ANAH] http error: $statusCode url=$url mainFrame=$isMainFrame',
+          );
+          if (!mounted || !isMainFrame) return;
+          setState(() {
+            _webLoading = false;
+            _webProgress = 0;
+            if (url != null && url.isNotEmpty) _currentUrl = url;
+            final message =
+                'Le portail a renvoye une erreur HTTP '
+                '$statusCode. Ouvrez le portail dans Safari pour poursuivre.';
+            _markPortalUnavailable(message, url: url);
+            _statusError = message;
+          });
+        },
+        onServerTrustError: (host) {
+          if (!mounted || !_matchesPrimaryPortalHost(host)) return;
+          setState(() {
+            _webLoading = false;
+            _webProgress = 0;
+            final message = _buildSecureConnectionRefusedMessage(host);
+            _markPortalUnavailable(message, host: host);
+            _statusError = message;
+          });
         },
         onControllerCreated: (ctrl) => _webController = ctrl,
       ),
@@ -505,10 +614,7 @@ class _AnahScreenState extends State<AnahScreen> {
               const SizedBox(height: 12),
               const Text(
                 'Impossible de charger le portail',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
               Text(
@@ -554,8 +660,16 @@ class _WebViewHost extends StatefulWidget {
   final void Function(String? url)? onLoadStart;
   final void Function(String? url)? onLoadStop;
   final void Function(int progress)? onProgress;
-  final void Function(dynamic type, String description, String? url)? onError;
-  final void Function(int statusCode, String? url)? onHttpError;
+  final void Function(
+    dynamic type,
+    String description,
+    String? url,
+    bool isMainFrame,
+  )?
+  onError;
+  final void Function(int statusCode, String? url, bool isMainFrame)?
+  onHttpError;
+  final void Function(String host)? onServerTrustError;
   final void Function(InAppWebViewController ctrl)? onControllerCreated;
 
   const _WebViewHost({
@@ -565,6 +679,7 @@ class _WebViewHost extends StatefulWidget {
     this.onProgress,
     this.onError,
     this.onHttpError,
+    this.onServerTrustError,
     this.onControllerCreated,
   });
 
@@ -620,7 +735,8 @@ class _WebViewHostState extends State<_WebViewHost> {
                 _firstLoadDone = true;
                 await Future<void>.delayed(const Duration(milliseconds: 150));
                 try {
-                  await c.evaluateJavascript(source: '''
+                  await c.evaluateJavascript(
+                    source: '''
                     (function() {
                       var b = document.body;
                       if (!b) return;
@@ -631,7 +747,8 @@ class _WebViewHostState extends State<_WebViewHost> {
                         b.style.transform = prev;
                       });
                     })();
-                  ''');
+                  ''',
+                  );
                 } catch (_) {}
               }
             },
@@ -640,20 +757,20 @@ class _WebViewHostState extends State<_WebViewHost> {
               err.type,
               err.description,
               req.url.toString(),
+              req.isForMainFrame ?? false,
             ),
             onReceivedHttpError: (c, req, resp) => widget.onHttpError?.call(
               resp.statusCode ?? 0,
               req.url.toString(),
+              req.isForMainFrame ?? false,
             ),
             onReceivedServerTrustAuthRequest: (c, challenge) async {
-              // Accepte tous les certs pour permettre à la page de charger
-              // ses ressources externes (wikimedia, vae.gouv.fr, etc.) —
-              // certains échouent à la validation dans le sandbox macOS.
               final host = challenge.protectionSpace.host.toLowerCase();
+              widget.onServerTrustError?.call(host);
               // ignore: avoid_print
-              print('[ANAH] trust challenge for $host → PROCEED');
+              print('[ANAH] trust challenge for $host -> CANCEL');
               return ServerTrustAuthResponse(
-                action: ServerTrustAuthResponseAction.PROCEED,
+                action: ServerTrustAuthResponseAction.CANCEL,
               );
             },
             onConsoleMessage: (c, m) {

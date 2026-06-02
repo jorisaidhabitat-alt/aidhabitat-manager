@@ -88,5 +88,120 @@ for dir in wiki-offline retirement-logos; do
   fi
 done
 
+node <<'NODE'
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const outDir = path.resolve('build/web');
+const ignore = new Set(['flutter_service_worker.js']);
+
+function walk(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const files = [];
+  for (const entry of entries) {
+    const abs = path.join(dir, entry.name);
+    const rel = path.relative(outDir, abs).replaceAll(path.sep, '/');
+    if (entry.name === '.DS_Store') continue;
+    if (ignore.has(rel)) continue;
+    if (entry.isDirectory()) {
+      files.push(...walk(abs));
+    } else if (entry.isFile()) {
+      files.push(rel);
+    }
+  }
+  return files;
+}
+
+const resources = walk(outDir);
+const version = crypto
+  .createHash('sha256')
+  .update(resources.map((rel) => {
+    const stat = fs.statSync(path.join(outDir, rel));
+    return `${rel}:${stat.size}:${stat.mtimeMs}`;
+  }).join('\n'))
+  .digest('hex')
+  .slice(0, 16);
+
+const sw = `'use strict';
+
+const CACHE_NAME = 'aidhabitat-pwa-${version}';
+const RESOURCES = ${JSON.stringify(resources, null, 2)};
+const CORE = [
+  '/',
+  '/index.html',
+  '/flutter_bootstrap.js',
+  '/main.dart.js',
+  '/manifest.json',
+  '/pdfjs/pdf.min.js',
+  '/pdfjs/pdf.worker.min.js'
+];
+
+const resourceUrl = (resource) => new URL(resource === '/' ? '/' : '/' + resource, self.location.origin).toString();
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(CORE);
+    await Promise.allSettled(
+      RESOURCES
+        .filter((resource) => !CORE.includes('/' + resource))
+        .map((resource) => cache.add(resourceUrl(resource)))
+    );
+  })());
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        const cache = await caches.open(CACHE_NAME);
+        cache.put('/index.html', response.clone());
+        return response;
+      } catch (_) {
+        return (await caches.match('/index.html')) || Response.error();
+      }
+    })());
+    return;
+  }
+
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    try {
+      const response = await fetch(request);
+      if (response.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(request, response.clone());
+      }
+      return response;
+    } catch (_) {
+      return Response.error();
+    }
+  })());
+});
+`;
+
+fs.writeFileSync(path.join(outDir, 'flutter_service_worker.js'), sw);
+console.log(`[build_web] generated offline service worker (${resources.length} resources, aidhabitat-pwa-${version})`);
+NODE
+
 echo "[build_web] build/web produced:"
 ls -lah build/web | head -20
