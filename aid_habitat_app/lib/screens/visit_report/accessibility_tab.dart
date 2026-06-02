@@ -861,7 +861,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         const SizedBox(height: 14),
         // 2. Années avec flèche de copie
         Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: FormTextFieldWithWarning(
@@ -882,29 +882,32 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               ),
             ),
             const SizedBox(width: 6),
-            Tooltip(
-              message: "Copier dans Habitation",
-              child: InkWell(
-                onTap: () {
-                  if (_yearConstruction.isNotEmpty) {
-                    setState(() => _yearHabitation = _yearConstruction);
-                    _markChanged();
-                  }
-                },
-                // Refonte 2026-05-13 : pill radius 999 uniforme.
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF2ECF5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.arrow_forward,
-                    size: 16,
-                    color: Color(0xFF554265),
+            Padding(
+              padding: const EdgeInsets.only(top: 25),
+              child: Tooltip(
+                message: "Copier dans Habitation",
+                child: InkWell(
+                  onTap: () {
+                    if (_yearConstruction.isNotEmpty) {
+                      setState(() => _yearHabitation = _yearConstruction);
+                      _markChanged();
+                    }
+                  },
+                  // Refonte 2026-05-13 : pill radius 999 uniforme.
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF2ECF5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.arrow_forward,
+                      size: 16,
+                      color: Color(0xFF554265),
+                    ),
                   ),
                 ),
               ),
