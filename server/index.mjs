@@ -103,9 +103,15 @@ let memberRegistryCache = null;
 
 const app = express();
 
-const ALLOWED_ORIGINS = new Set(
-  [APP_PUBLIC_BASE_URL, process.env.CORS_EXTRA_ORIGIN].filter(Boolean),
-);
+const parseCorsOrigins = (value) => String(value || '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+const ALLOWED_ORIGINS = new Set([
+  APP_PUBLIC_BASE_URL,
+  ...parseCorsOrigins(process.env.CORS_EXTRA_ORIGIN),
+].filter(Boolean));
 
 function isOriginAllowed(origin) {
   if (!origin) return true; // same-origin / non-browser requests
