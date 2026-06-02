@@ -16,7 +16,6 @@ import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
 import '../services/route_service.dart';
-import '../services/sync_engine.dart';
 
 /// Dashboard screen aligned with the React web `Dashboard.tsx` layout:
 ///   - Welcome header with user name + today's date
@@ -79,8 +78,8 @@ class DashboardScreen extends StatefulWidget {
         .replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  /// Adresse format bannière prochaine visite : "<numéro et rue>,
-  /// <Ville>" — pas de code postal, ville en Title Case (1ère lettre
+  /// Adresse format bannière prochaine visite : "numéro et rue, Ville" —
+  /// pas de code postal, ville en Title Case (1ère lettre
   /// majuscule, reste minuscule). Demande utilisateur 2026-05-12.
   static String buildAddressForBanner(Patient p) {
     final street = p.address.trim();
@@ -994,12 +993,6 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
       nv.dateTime.day,
     );
     final daysUntil = visitDay.difference(today).inDays;
-    final distanceLabel = daysUntil == 0
-        ? "aujourd'hui"
-        : daysUntil == 1
-            ? 'demain'
-            : 'dans $daysUntil jours';
-
     // Refonte 2026-05-13 (Refonte.html:978-1001) : card avec gradient
     // mauve-50 → blanc, 3 zones distinctes (time | info | action).
     // Le bloc time porte un fond mauve-100 séparé, séparé du reste par
@@ -2441,4 +2434,3 @@ class _AgendaRow extends StatelessWidget {
     );
   }
 }
-

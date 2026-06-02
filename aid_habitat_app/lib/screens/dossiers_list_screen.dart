@@ -583,7 +583,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                                   physics:
                                       const NeverScrollableScrollPhysics(),
                                   itemCount: dossiers.length,
-                                  separatorBuilder: (_, __) => Divider(
+                                  separatorBuilder: (context, index) => Divider(
                                     height: 1,
                                     thickness: 1,
                                     color: Color(0xFFF2F4F6),
@@ -1297,4 +1297,3 @@ class _EpciMenuTile extends StatelessWidget {
     );
   }
 }
-

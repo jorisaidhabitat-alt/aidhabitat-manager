@@ -6,7 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../components/beneficiary_badges.dart';
 import '../components/beneficiary_header.dart';
 import '../components/beneficiary_palettes.dart';
 import '../components/brand_colors.dart';
@@ -79,7 +78,7 @@ class _DossierScreenState extends State<DossierScreen> {
   late final DossierRepository _repository;
 
   Timer? _saveTimer;
-  bool _saving = false;
+  final bool _saving = false;
   bool _isBeneficiaryLocked = true;
 
   /// Coche « bénéficiaire préparé » du bandeau bénéficiaire (demande
@@ -99,7 +98,6 @@ class _DossierScreenState extends State<DossierScreen> {
   late String _cityId;
 
   // Readonly fields
-  late String _natureAccompagnement;
   late String _incomeCategory;
   double? _fiscalRevenue;
 
@@ -218,7 +216,6 @@ class _DossierScreenState extends State<DossierScreen> {
     _zipCode = p.zipCode;
     _cityId = p.cityId;
     _incomeCategory = p.incomeCategory;
-    _natureAccompagnement = widget.dossier.natureAccompagnement;
     _fiscalRevenue = _householdFiscalRevenue(p);
     _beneficiaryPrepared = widget.dossier.beneficiaryPrepared;
 
@@ -507,6 +504,7 @@ class _DossierScreenState extends State<DossierScreen> {
             label: 'Documents',
             subLabel: 'Photos, scans, plans...',
             onTap: () async {
+              final navigator = Navigator.of(context);
               // Flush avant navigation : même rationale que pour le
               // bouton VAD — éviter qu'un dossier modifié localement
               // (mais pas encore sauvé à 400 ms près) ne soit lu en
@@ -523,12 +521,11 @@ class _DossierScreenState extends State<DossierScreen> {
                 return;
               }
               if (!mounted) return;
-              await Navigator.push(
-                context,
+              await navigator.push(
                 MaterialPageRoute(
                   builder: (_) => DocumentsScreen(
                     dossier: widget.dossier,
-                    onBack: () => Navigator.pop(context),
+                    onBack: navigator.pop,
                   ),
                 ),
               );
@@ -542,6 +539,7 @@ class _DossierScreenState extends State<DossierScreen> {
             label: 'VAD',
             subLabel: 'Relevé de visite',
             onTap: () async {
+              final navigator = Navigator.of(context);
               // Flush des éventuelles modifs en attente (debounce 400 ms
               // du Nom/Prénom/Adresse) AVANT de naviguer vers VAD —
               // sinon "Générer le rapport" depuis VAD pousserait un PDF
@@ -550,6 +548,7 @@ class _DossierScreenState extends State<DossierScreen> {
               // → le _saveTimer n'avait pas encore tiré quand l'user a
               // cliqué Generate.
               await _flushPendingSave();
+              if (!mounted) return;
 
               // Prefer the in-shell navigation (callback) so the left
               // sidebar stays visible. Fallback to Navigator.push only if
@@ -558,13 +557,12 @@ class _DossierScreenState extends State<DossierScreen> {
                 widget.onOpenVisitReport!();
                 return;
               }
-              await Navigator.push(
-                context,
+              await navigator.push(
                 MaterialPageRoute(
                   builder: (_) => Scaffold(
                     body: VisitReportScreen(
                       dossier: widget.dossier,
-                      onBack: () => Navigator.pop(context),
+                      onBack: navigator.pop,
                     ),
                   ),
                 ),
@@ -623,7 +621,6 @@ class _DossierScreenState extends State<DossierScreen> {
       _zipCode = fresh.patient.zipCode;
       _cityId = fresh.patient.cityId;
       _incomeCategory = fresh.patient.incomeCategory;
-      _natureAccompagnement = fresh.natureAccompagnement;
       _fiscalRevenue = _householdFiscalRevenue(fresh.patient);
       final n = fresh.patient.numberPeople ?? 0;
       if (n <= 0) {

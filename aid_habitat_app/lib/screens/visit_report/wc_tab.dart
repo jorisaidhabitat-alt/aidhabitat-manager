@@ -41,7 +41,7 @@ class _WcTabState extends State<WcTab>
   bool get wantKeepAlive => true;
 
   DiagnosticSanitaire? _diagnostic;
-  bool _saving = false;
+  final bool _saving = false;
   bool _loaded = false;
   Timer? _saveTimer;
   int _activeLevelIndex = 0;

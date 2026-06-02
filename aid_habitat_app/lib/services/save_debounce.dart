@@ -6,7 +6,7 @@
 /// chevauchants (ex: Nom dans Bénéficiaire **et** Nom dans
 /// dossier_screen).
 ///
-/// **Règle finale (révisée 2026-04-28)** :
+/// **Règle finale (révisée 2026-06-02)** :
 ///   - Texte saisi (Nom, Prénom, Adresse, observations…) → **400 ms**.
 ///     L'ancien réglage `Duration.zero` provoquait des pertes de
 ///     données type « Foyer Yanis » → « F » ou « Bro » → « B » dans
@@ -17,9 +17,10 @@
 ///     PATCH parte → un seul PATCH avec la valeur finale. Couche
 ///     complémentaire dans `sync_repository.markCompleted` qui gate
 ///     les transitions sur `status='running'` pour le 1% restant.
-///   - Toggle / pills / dropdowns → 2000 ms (NB: alias kSaveDebouncePills
-///     reste à zéro car les clics sont délibérés et espacés, pas de
-///     race possible sur un même champ).
+///   - Toggle / pills / dropdowns → **300 ms**. L'UI reste instantanée
+///     (on met à jour l'état local tout de suite), mais on évite de
+///     réécrire SQLite + de relancer un PATCH à chaque micro-séquence
+///     de clics successifs dans un questionnaire.
 library;
 
 import 'dart:async';
@@ -34,12 +35,10 @@ import 'dart:async';
 /// observées en avril 2026.
 const Duration kSaveDebounceText = Duration(milliseconds: 400);
 
-/// Debounce pour les onglets de toggles / dropdowns. Reste à zéro :
-/// les clics sont délibérés et espacés, et chaque clic touche un champ
-/// distinct (pas de race sur le même champ). Le SyncEngine.notify()
-/// debounce déjà à 200 ms en interne pour mutualiser plusieurs clics
-/// proches en un seul push réseau.
-const Duration kSaveDebouncePills = Duration.zero;
+/// Debounce court pour les onglets à cases / pills / dropdowns.
+/// 300 ms suffit à regrouper une rafale de clics dans une seule save,
+/// tout en restant imperceptible pour l'utilisateur.
+const Duration kSaveDebouncePills = Duration(milliseconds: 300);
 
 /// Helper pour redémarrer un timer de save sans dupliquer le pattern
 /// dans chaque onglet. Annule le timer précédent puis en démarre un

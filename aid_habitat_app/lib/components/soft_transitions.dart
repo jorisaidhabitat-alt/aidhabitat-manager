@@ -184,7 +184,7 @@ Future<T?> showSoftDialog<T>({
     barrierLabel: barrierDismissible ? 'Dismiss' : null,
     barrierColor: barrierColor,
     transitionDuration: kSoftMedium,
-    pageBuilder: (ctx, _, __) => builder(ctx),
+    pageBuilder: (ctx, animation, secondaryAnimation) => builder(ctx),
     transitionBuilder: softDialogRouteBuilder,
   );
 }

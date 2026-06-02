@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io' show File;
 
 import 'package:flutter/foundation.dart'
-    show kIsWeb, debugPrint, defaultTargetPlatform, TargetPlatform;
+    show kDebugMode, kIsWeb, debugPrint, defaultTargetPlatform, TargetPlatform;
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 // Audit P0 #4 Layer 2 (2026-05-15) : `sqflite_sqlcipher` permet
@@ -22,23 +22,46 @@ class LocalDatabase {
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
+  static const _debugFallbackDbName = 'aid_habitat_offline.debug_fallback.db';
   static const _dbVersion = 18;
 
   Database? _database;
+  bool _forceDebugPlaintextFallback = false;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
     final dbPath = await getDatabasesPath();
-    final fullPath = p.join(dbPath, _dbName);
+    final encryptedPath = p.join(dbPath, _dbName);
+    final fallbackPath = p.join(dbPath, _debugFallbackDbName);
 
-    if (_shouldEncrypt()) {
-      _database = await _openEncrypted(fullPath);
+    if (_shouldEncrypt() && !_forceDebugPlaintextFallback) {
+      try {
+        _database = await _openEncrypted(encryptedPath);
+      } catch (error) {
+        if (_canUseDebugPlaintextFallback(error)) {
+          _forceDebugPlaintextFallback = true;
+          debugPrint(
+            '[security] Keychain indisponible sur ce macOS debug '
+            '→ fallback SQLite non chiffré local ($fallbackPath). '
+            'Cause: $error',
+          );
+          _database = await openDatabase(
+            fallbackPath,
+            version: _dbVersion,
+            onCreate: _onCreate,
+            onUpgrade: _onUpgrade,
+          );
+        } else {
+          rethrow;
+        }
+      }
     } else {
+      final plainPath = _forceDebugPlaintextFallback ? fallbackPath : encryptedPath;
       // Web (PWA) : sqflite_common_ffi_web ne supporte pas SQLCipher.
       // On garde l'ouverture historique non chiffrée. Origin isolation
       // Safari + sandbox iOS limitent l'exposition.
       _database = await openDatabase(
-        fullPath,
+        plainPath,
         version: _dbVersion,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
@@ -61,6 +84,16 @@ class LocalDatabase {
     return t == TargetPlatform.iOS
         || t == TargetPlatform.macOS
         || t == TargetPlatform.android;
+  }
+
+  bool _canUseDebugPlaintextFallback(Object error) {
+    if (!kDebugMode || kIsWeb || defaultTargetPlatform != TargetPlatform.macOS) {
+      return false;
+    }
+    final message = error.toString();
+    return message.contains('-34018')
+        || message.contains('A required entitlement isn\'t present')
+        || message.contains('Impossible de stocker la master key SQLCipher');
   }
 
   /// Ouvre la base via SQLCipher avec la master key stockée dans

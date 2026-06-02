@@ -1,6 +1,7 @@
 import { AdminAccessMember, AnahStatus, AppDocument, AppUser, Dossier, DossierStatus, HousingType, HeatingMode, NotePage, OccupantIdentity, Patient, UserRole, Visit, Housing, DiagnosticSanitaires, MesuresAnthropometriques, ObservationsSynthese, RetirementFund, VisitRecommendationItem, WikiLibraryItem } from '../types';
 import { profilsAutorises, nocoDbTokensParEmail, LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
-import { flushPendingReleves, queueReleveForSync } from './releveSync';
+import { clearQueuedReleveForSync, flushPendingReleves, queueReleveForSync } from './releveSync';
+import type { ReleveEnAttenteType } from './localDb';
 
 // Simple debug logger
 const debugLog = (msg: string) => {
@@ -750,7 +751,8 @@ const apiFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
 
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(body || `HTTP ${response.status}`);
+    const details = body ? `HTTP ${response.status} ${body}` : `HTTP ${response.status}`;
+    throw new Error(details);
   }
 
   if (response.status === 204) {
@@ -758,6 +760,32 @@ const apiFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
   }
 
   return response.json() as Promise<T>;
+};
+
+const shouldQueueReleveFailure = (error: unknown): boolean => {
+  if (typeof window === 'undefined') return false;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+
+  const message = String((error as { message?: unknown })?.message || error || '');
+  return /Failed to fetch|NetworkError|Load failed|fetch failed|timeout|aborted|HTTP 5\d{2}/i.test(message);
+};
+
+const queueReleveAfterTemporaryFailure = async (
+  type: ReleveEnAttenteType,
+  dossierId: string,
+  updates: Record<string, unknown>,
+  error: unknown,
+): Promise<{ success: boolean; error: string | null }> => {
+  if (!shouldQueueReleveFailure(error)) {
+    return { success: false, error: String((error as { message?: unknown })?.message || error || 'Erreur inconnue') };
+  }
+
+  try {
+    await queueReleveForSync(type, dossierId, updates);
+    return { success: true, error: null };
+  } catch (queueError) {
+    return { success: false, error: String((queueError as { message?: unknown })?.message || queueError || 'Mise en file locale impossible') };
+  }
 };
 
 const readBlobAsDataUrl = (blob: Blob): Promise<string> =>
@@ -1492,15 +1520,25 @@ export const saveVisitRecommendations = async (
   if (!normalizedDossierId) {
     return { success: false, error: 'Dossier introuvable' };
   }
-  try {
-    await apiFetch<VisitRecommendationsResult>(`/api/visit-recommendations/${encodeURIComponent(normalizedDossierId)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ items }),
-    });
-    return { success: true, error: null };
-  } catch (e: any) {
-    return { success: false, error: e.message || 'Erreur inconnue' };
-  }
+  const now = new Date().toISOString();
+  const cache = readVisitRecommendationsCacheMap();
+  const queue = readVisitRecommendationsQueueMap();
+
+  cache[normalizedDossierId] = {
+    dossierId: normalizedDossierId,
+    items,
+    updatedAt: now,
+    syncStatus: 'pending',
+  };
+  queue[normalizedDossierId] = {
+    dossierId: normalizedDossierId,
+    items,
+    queuedAt: now,
+  };
+  writeVisitRecommendationsCacheMap(cache);
+  writeVisitRecommendationsQueueMap(queue);
+  scheduleQueuedVisitRecommendationsSync();
+  return { success: true, error: null };
 };
 
 const fetchVisitRecommendationsRemote = async (dossierId: string): Promise<VisitRecommendationItem[]> => {
@@ -3558,8 +3596,11 @@ export const upsertDiagnosticSanitaires = async (dossierId: string, updates: Par
       method: 'PUT',
       body: JSON.stringify(updates),
     });
+    await clearQueuedReleveForSync('diagnostic_sanitaires', dossierId);
     return { success: true, error: null };
-  } catch (e: any) { return { success: false, error: e.message }; }
+  } catch (e: any) {
+    return queueReleveAfterTemporaryFailure('diagnostic_sanitaires', dossierId, updates as Record<string, unknown>, e);
+  }
 };
 
 // =============================================================
@@ -3588,8 +3629,11 @@ export const upsertMesuresAnthropometriques = async (dossierId: string, updates:
       method: 'PUT',
       body: JSON.stringify(updates),
     });
+    await clearQueuedReleveForSync('mesures_anthropometriques', dossierId);
     return { success: true, error: null };
-  } catch (e: any) { return { success: false, error: e.message }; }
+  } catch (e: any) {
+    return queueReleveAfterTemporaryFailure('mesures_anthropometriques', dossierId, updates as Record<string, unknown>, e);
+  }
 };
 
 // =============================================================
@@ -3619,6 +3663,9 @@ export const upsertObservationsSynthese = async (dossierId: string, beneficiaire
       method: 'PUT',
       body: JSON.stringify(updates),
     });
+    await clearQueuedReleveForSync('observations_synthese', dossierId);
     return { success: true, error: null };
-  } catch (e: any) { return { success: false, error: e.message }; }
+  } catch (e: any) {
+    return queueReleveAfterTemporaryFailure('observations_synthese', dossierId, updates as Record<string, unknown>, e);
+  }
 };

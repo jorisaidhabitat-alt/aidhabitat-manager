@@ -111,7 +111,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   ///   2 = Équipements         (chauffage + volets)
   ///   3 = Extérieur           (accès rue + annexes/motorisations)
   int _subSection = 0;
-  bool _saving = false;
+  final bool _saving = false;
   bool _loaded = false;
   Timer? _saveTimer;
 

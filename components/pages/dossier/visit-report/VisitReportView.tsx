@@ -41,7 +41,7 @@ interface VisitReportViewProps {
 }
 
 const TABS = [
-    'Bénéficiaire', 'Contexte de vie', 'Mesures', 'Accessibilité', 'Salle de bain', 'WC', 'Préconisations', 'Plans'
+    'Bénéficiaire', 'Contexte de vie', 'Mesures', 'Accessibilité', 'Salle de bain', 'WC', 'Préconisations', 'Synthèse', 'Plans'
 ];
 
 const WIKI_FILTER_TAGS = [
@@ -73,11 +73,13 @@ const normalizeVisitReportLocation = (location?: VisitReportLocation | null): Vi
     const defaults = createDefaultVisitReportLocation();
     if (!location) return defaults;
 
-    const activeTab = location.activeTab === 'Équipements lourds'
+    const activeTab = location.activeTab === 'Équipements lourds' || location.activeTab === 'Logement'
         ? 'Accessibilité'
-        : (location.activeTab || defaults.activeTab);
+        : location.activeTab === 'Observations'
+            ? 'Synthèse'
+            : (location.activeTab || defaults.activeTab);
 
-    const accessSection = location.activeTab === 'Équipements lourds'
+    const accessSection = location.activeTab === 'Équipements lourds' || location.activeTab === 'Logement'
         ? defaults.accessSection
         : (location.accessSection || defaults.accessSection);
 
@@ -1440,7 +1442,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
     }, [drainSaveQueue]);
 
     const flushActiveTabSaves = useCallback(() => {
-        if (activeTab === 'Bénéficiaire' || activeTab === 'Contexte de vie' || activeTab === 'Logement') {
+        if (activeTab === 'Bénéficiaire' || activeTab === 'Contexte de vie') {
             const phoneIsValid = isValidFrenchPhone(formData.beneficiary.phone);
             const emailIsValid = isValidEmail(formData.beneficiary.email);
             const trustedPhoneIsValid = isValidFrenchPhone(formData.beneficiary.trustedPhone);
@@ -1520,7 +1522,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 contextSnapshotRef.current = serializeForAutosave(formData.context);
             }).catch(() => undefined);
         }
-        if (activeTab === 'Logement') {
+        if (activeTab === 'Accessibilité') {
             void runSave('housing', async () => updateHousing(dossier.patient.id, dossier.housing.id, buildHousingPayload(formData.housing), { immediate: true }), 'Logement → logements')
                 .then(() => { housingSnapshotRef.current = serializeForAutosave(formData.housing); })
                 .catch(() => undefined);
@@ -1535,7 +1537,7 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                 .then(() => { mesuresSnapshotRef.current = serializeForAutosave(mesuresData); })
                 .catch(() => undefined);
         }
-        if (activeTab === 'Observations') {
+        if (activeTab === 'Synthèse') {
             void runSave('synthese', async () => upsertObservationsSynthese(dossier.id, dossier.patient.id, syntheseData), 'Synthèse → observations')
                 .then(() => { syntheseSnapshotRef.current = serializeForAutosave(syntheseData); })
                 .catch(() => undefined);
@@ -3136,6 +3138,8 @@ export const VisitReportView: React.FC<VisitReportViewProps> = ({ dossier, onBac
                         onUpdate={updateRecommendation}
                     />
                 );
+            case 'Synthèse':
+                return <SyntheseForm data={syntheseData} onChange={updateSynthese} />;
             case 'Plans':
                 return null;
             case 'Mesures':

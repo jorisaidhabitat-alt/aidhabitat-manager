@@ -76,19 +76,20 @@ class SyncRepository {
         limit: 1,
       );
       if (payloadRows.isEmpty) continue;
-      out.add(SyncOperation(
-        id: id,
-        entityType: row['entity_type'] as String,
-        entityLocalId: row['entity_local_id'] as String,
-        operationType: row['operation_type'] as String,
-        payloadJson: payloadRows.first['payload_json'] as String,
-        status:
-            SyncOperationStatus.values.byName(row['status'] as String),
-        attemptCount: row['attempt_count'] as int? ?? 0,
-        lastError: row['last_error'] as String?,
-        createdAt: DateTime.parse(row['created_at'] as String),
-        updatedAt: DateTime.parse(row['updated_at'] as String),
-      ));
+      out.add(
+        SyncOperation(
+          id: id,
+          entityType: row['entity_type'] as String,
+          entityLocalId: row['entity_local_id'] as String,
+          operationType: row['operation_type'] as String,
+          payloadJson: payloadRows.first['payload_json'] as String,
+          status: SyncOperationStatus.values.byName(row['status'] as String),
+          attemptCount: row['attempt_count'] as int? ?? 0,
+          lastError: row['last_error'] as String?,
+          createdAt: DateTime.parse(row['created_at'] as String),
+          updatedAt: DateTime.parse(row['updated_at'] as String),
+        ),
+      );
     }
     return out;
   }
@@ -209,10 +210,7 @@ class SyncRepository {
     final rows = await db.rawQuery(
       'SELECT COUNT(*) AS cnt FROM sync_operations '
       'WHERE status IN (?, ?)',
-      [
-        SyncOperationStatus.pending.name,
-        SyncOperationStatus.failed.name,
-      ],
+      [SyncOperationStatus.pending.name, SyncOperationStatus.failed.name],
     );
     if (rows.isEmpty) return 0;
     final v = rows.first['cnt'];
@@ -283,7 +281,9 @@ class SyncRepository {
     );
     if (n > 0) {
       // ignore: avoid_print
-      print('[sync] rehabFailedDocumentUploads : $n op(s) repassée(s) en pending');
+      print(
+        '[sync] rehabFailedDocumentUploads : $n op(s) repassée(s) en pending',
+      );
     }
     return n;
   }
@@ -610,11 +610,7 @@ class SyncRepository {
         AND last_error NOT LIKE '%Content Too Large%' COLLATE NOCASE
         AND last_error NOT LIKE '%Payload Too Large%' COLLATE NOCASE
       ''',
-      [
-        SyncOperationStatus.pending.name,
-        now,
-        SyncOperationStatus.failed.name,
-      ],
+      [SyncOperationStatus.pending.name, now, SyncOperationStatus.failed.name],
     );
     if (rehab > 0) {
       // ignore: avoid_print
@@ -625,10 +621,7 @@ class SyncRepository {
     final n1 = await db.delete(
       'sync_operations',
       where: 'status = ? AND updated_at < ?',
-      whereArgs: [
-        SyncOperationStatus.running.name,
-        cutoff,
-      ],
+      whereArgs: [SyncOperationStatus.running.name, cutoff],
     );
 
     // Purge d'URGENCE des ops dont le `payload_json` est énorme (>500KB,
@@ -649,10 +642,7 @@ class SyncRepository {
       'status IN (?, ?) AND '
       'attempt_count >= 3 AND '
       'length(payload_json) > 500000',
-      [
-        SyncOperationStatus.pending.name,
-        SyncOperationStatus.failed.name,
-      ],
+      [SyncOperationStatus.pending.name, SyncOperationStatus.failed.name],
     );
     if (n2 > 0) {
       // ignore: avoid_print
@@ -927,6 +917,26 @@ class SyncRepository {
       'housing' => const _EntityBinding('housings', 'local_id'),
       'document' => const _EntityBinding('documents', 'local_id'),
       'note_page' => const _EntityBinding('note_pages', 'local_id'),
+      'contexte_de_vie' => const _EntityBinding(
+        'contexte_de_vie',
+        'dossier_local_id',
+      ),
+      'diagnostic_sanitaires' => const _EntityBinding(
+        'diagnostic_sanitaires',
+        'dossier_local_id',
+      ),
+      'mesures_anthropometriques' => const _EntityBinding(
+        'mesures_anthropometriques',
+        'dossier_local_id',
+      ),
+      'observations_synthese' => const _EntityBinding(
+        'observations_synthese',
+        'dossier_local_id',
+      ),
+      'visit_recommendations' => const _EntityBinding(
+        'visit_recommendations',
+        'dossier_local_id',
+      ),
       'wiki_item' => const _EntityBinding('wiki_items', 'id'),
       'retirement_fund' => const _EntityBinding('retirement_funds', 'id'),
       'access_member' => const _EntityBinding('access_members', 'email'),

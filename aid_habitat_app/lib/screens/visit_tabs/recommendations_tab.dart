@@ -140,7 +140,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
               : ListView.separated(
                   padding: const EdgeInsets.only(right: 16),
                   itemCount: _items.length,
-                  separatorBuilder: (_, _a) => const Divider(height: 24),
+                  separatorBuilder: (context, index) => const Divider(height: 24),
                   itemBuilder: (context, i) => _buildItem(i),
                 ),
         ),

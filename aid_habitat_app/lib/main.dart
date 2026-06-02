@@ -47,12 +47,10 @@ Future<void> main(List<String> args) async {
   // `true` pour signaler que l'erreur a été « handled » et ne doit pas
   // remonter au navigateur en uncaught.
   FlutterError.onError = (FlutterErrorDetails details) {
-    // ignore: avoid_print
-    print('[flutter-error] ${details.exception}');
-    if (details.library != null) print('  library: ${details.library}');
-    if (details.context != null) print('  context: ${details.context}');
-    // ignore: avoid_print
-    print(details.stack);
+    debugPrint('[flutter-error] ${details.exception}');
+    if (details.library != null) debugPrint('  library: ${details.library}');
+    if (details.context != null) debugPrint('  context: ${details.context}');
+    debugPrint(details.stack?.toString());
   };
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
     // ignore: avoid_print
@@ -224,7 +222,11 @@ Future<void> main(List<String> args) async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.home});
+
+  /// Test seam: production uses [AuthRoot], while widget tests can mount the
+  /// app shell without booting SQLite/auth/sync side effects.
+  final Widget? home;
 
   @override
   Widget build(BuildContext context) {
@@ -254,7 +256,6 @@ class MyApp extends StatelessWidget {
           primary: kBrandPurple,
           secondary: const Color(0xFFC5D2D8),
           surface: Colors.white,
-          background: const Color(0xFFFDFCFB),
         ),
         // ----- Typographie Aid'Habitat (2026-05-13) -----
         // Refonte du design system : Quicksand (500) pour body/labels,
@@ -318,7 +319,7 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const AuthRoot(),
+      home: home ?? const AuthRoot(),
     );
   }
 }

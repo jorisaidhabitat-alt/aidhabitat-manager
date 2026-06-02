@@ -7,7 +7,6 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -16,7 +15,6 @@ import 'package:open_filex/open_filex.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../components/beneficiary_badges.dart';
 import '../components/beneficiary_header.dart';
 import '../components/brand_colors.dart';
 import '../components/dashed_border_painter.dart';
@@ -102,7 +100,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   static const double _kCompressMaxWidth = 1600;
   static const int _kCompressQuality = 80;
 
-  String _searchTerm = '';
+  final String _searchTerm = '';
   // Note : `_isLoading` retiré 2026-05-07. Plus de spinner d'attente —
   // la page s'affiche immédiatement (grille vide ou peuplée depuis
   // SQLite) et les documents apparaissent dès que `_loadDocuments`
@@ -2311,7 +2309,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     // Image distante → on télécharge via MediaCacheService (fichier sur
     // natif, bytes sur web), puis on active l'annotation dessus.
     if (isImage && doc.url != null && doc.url!.isNotEmpty) {
-      return RemoteImageAnnotatorWrapper(
+      return _RemoteImageAnnotatorWrapper(
         url: doc.url!,
         annotatorKey: _annotatorKey,
         onChanged: () => setState(() {}),
@@ -2547,7 +2545,7 @@ class _TopbarButton extends StatelessWidget {
 ///
 /// Sauvegarde par page : à chaque appel de `saveAll(documentId:)`, on
 /// aplatit chaque page modifiée (PDF page + traits) en PNG et on
-/// l'écrit dans `documents.annotations_json` (Map<page, dataUrl>) via
+/// l'écrit dans `documents.annotations_json` (map page -> dataUrl) via
 /// `DocumentRepository.enqueueAnnotatedPageBytes`. Le PDF original
 /// reste intact — la preview affiche l'overlay PNG sur les pages qui
 /// ont une entrée dans la map, sinon rendu PDF brut. Conséquence :
@@ -2949,7 +2947,7 @@ class _PdfAnnotatorWrapper extends StatefulWidget {
   /// pages modifiées sur disque en une fois.
   final GlobalKey<_PdfAnnotatorWrapperState>? wrapperKey;
 
-  _PdfAnnotatorWrapper({
+  const _PdfAnnotatorWrapper({
     required this.pdfPath,
     required this.annotatorKey,
     required this.onChanged,
@@ -3236,13 +3234,13 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
   }
 }
 
-class RemoteImageAnnotatorWrapper extends StatefulWidget {
+class _RemoteImageAnnotatorWrapper extends StatefulWidget {
   final String url;
   final GlobalKey<_ImageAnnotatorState> annotatorKey;
   final VoidCallback onChanged;
   final Widget fallback;
 
-  const RemoteImageAnnotatorWrapper({
+  const _RemoteImageAnnotatorWrapper({
     required this.url,
     required this.annotatorKey,
     required this.onChanged,
@@ -3250,12 +3248,12 @@ class RemoteImageAnnotatorWrapper extends StatefulWidget {
   });
 
   @override
-  State<RemoteImageAnnotatorWrapper> createState() =>
-      RemoteImageAnnotatorWrapperState();
+  State<_RemoteImageAnnotatorWrapper> createState() =>
+      _RemoteImageAnnotatorWrapperState();
 }
 
-class RemoteImageAnnotatorWrapperState
-    extends State<RemoteImageAnnotatorWrapper> {
+class _RemoteImageAnnotatorWrapperState
+    extends State<_RemoteImageAnnotatorWrapper> {
   /// Mode natif : `File` issu du cache filesystem.
   File? _file;
 
@@ -3271,9 +3269,9 @@ class RemoteImageAnnotatorWrapperState
   }
 
   @override
-  void didUpdateWidget(covariant RemoteImageAnnotatorWrapper old) {
-    super.didUpdateWidget(old);
-    if (old.url != widget.url) {
+  void didUpdateWidget(covariant _RemoteImageAnnotatorWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
       _file = null;
       _bytes = null;
       _failed = false;
@@ -3987,4 +3985,3 @@ class _ToolButton extends StatelessWidget {
     );
   }
 }
-

@@ -73,7 +73,7 @@ class _ContextTabState extends State<ContextTab>
 
   int _subSection = 0; // 0 = medical, 1 = autonomy
   int _activeOccupantIndex = 0;
-  bool _saving = false;
+  final bool _saving = false;
   bool _loaded = false;
   Timer? _saveTimer;
 

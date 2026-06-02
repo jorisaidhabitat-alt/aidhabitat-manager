@@ -3457,8 +3457,8 @@ const mapBeneficiaryUpdatesToFields = (updates, references) => {
   const communeMatch = has('cityId')
     ? references.communes.find((record) => String(record.id) === String(updates.cityId))
     : (hasCommuneInput ? findCommuneMatch(references.communes, updates.city, updates.zipCode) : undefined);
-  const resolvedCommuneLabel = communeMatch ? stringValue(field(communeMatch, 'nom')) : stringValue(updates.city);
-  const resolvedZipCode = communeMatch ? stringValue(field(communeMatch, 'code_postal')) : stringValue(updates.zipCode);
+  const resolvedCommuneLabel = (communeMatch ? stringValue(field(communeMatch, 'nom')) : stringValue(updates.city)).trim();
+  const resolvedZipCode = (communeMatch ? stringValue(field(communeMatch, 'code_postal')) : stringValue(updates.zipCode)).trim();
   const baremeMatch = has('numberPeople') ? selectBaremeAnah(references.baremesAnah, updates.numberPeople) : undefined;
   const normalizedOccupantsBase = Array.isArray(updates.occupants)
     ? updates.occupants
@@ -4101,18 +4101,30 @@ app.post('/api/admin/access-members/:email/revoke-sessions', requireAdmin, async
   }
 });
 
-app.get('/api/health', async (_req, res, next) => {
+app.get('/api/health/live', (_req, res) => {
+  res.json({
+    success: true,
+    status: 'live',
+    uptimeSec: Math.round(process.uptime()),
+  });
+});
+
+const sendReadyHealth = async (_req, res, next) => {
   try {
     const beneficiaires = await queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires });
     res.json({
       success: true,
+      status: 'ready',
       message: 'Connexion active à la base métier',
       count: beneficiaires.length,
     });
   } catch (error) {
     next(error);
   }
-});
+};
+
+app.get('/api/health/ready', sendReadyHealth);
+app.get('/api/health', sendReadyHealth);
 
 app.get('/api/references', requireAuth, async (req, res, next) => {
   try {
@@ -6208,11 +6220,12 @@ app.post('/api/beneficiaires', requireAuth, async (req, res, next) => {
     const natureAccompagnement = ['ergo', 'complet', 'diagnostic'].includes(rawNature)
       ? rawNature
       : '';
+    const dossierUuid = clientLocalId || crypto.randomUUID();
     const createdDossier = await createRecord(TABLES.dossiers, {
       // `uuid_source` : si le client a fourni `clientLocalId`, on
       // l'utilise tel quel (clé d'idempotence). Sinon fallback sur
       // un UUID random (ex. dossiers créés via une UI tierce).
-      uuid_source: clientLocalId || crypto.randomUUID(),
+      uuid_source: dossierUuid,
       patient_id: syntheticBeneficiaryId(created.id),
       beneficiaires_id: Number(created.id),
       ergo_id: assignedErgoLabel,
@@ -6227,7 +6240,7 @@ app.post('/api/beneficiaires', requireAuth, async (req, res, next) => {
       error: null,
       data: {
         id: syntheticBeneficiaryId(created.id),
-        dossierId: field(createdDossier, 'uuid_source') || String(createdDossier.id),
+        dossierId: dossierUuid,
       },
     });
   } catch (error) {
@@ -7781,7 +7794,7 @@ const warmupRuntime = async () => {
   }
 };
 
-await warmupRuntime();
+void warmupRuntime();
 
 if (isDirectExecution) {
   // Fix 2026-05-15 : depuis Node 15+, une `unhandledRejection` ou une

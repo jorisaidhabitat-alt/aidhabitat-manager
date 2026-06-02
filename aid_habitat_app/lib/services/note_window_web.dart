@@ -261,7 +261,7 @@ html.BroadcastChannel _ensureChannel() {
 /// tapé (méthode `liveNote`) vers la fenêtre principale, et inversement.
 ///
 /// Fix audit 2026-05-06 : on sérialise désormais le payload en JSON
-/// **string** avant `postMessage`. Avant ça on passait la Map<String,dynamic>
+/// **string** avant `postMessage`. Avant ça on passait la map Dart
 /// directement, ce qui en dart2js sur Mac arrivait côté receveur comme un
 /// `JSObject` opaque (pas une Map Dart) → le check `data is! Map` échouait
 /// et aucun message n'était propagé. Une string JSON traverse proprement

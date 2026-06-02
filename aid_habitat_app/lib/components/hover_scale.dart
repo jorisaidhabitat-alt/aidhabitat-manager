@@ -33,7 +33,13 @@ class _HoverScaleState extends State<HoverScale> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
-          transform: Matrix4.identity()..scale(_isHovering ? widget.scale : 1.0),
+          transform: Matrix4.identity()
+            ..scaleByDouble(
+              _isHovering ? widget.scale : 1.0,
+              _isHovering ? widget.scale : 1.0,
+              1.0,
+              1.0,
+            ),
           decoration: widget.showShadow && _isHovering
               ? BoxDecoration(
                   borderRadius: BorderRadius.circular(24), // Match common radius

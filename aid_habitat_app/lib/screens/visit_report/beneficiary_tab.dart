@@ -12,7 +12,6 @@ import '../../services/save_debounce.dart';
 import '../../services/retirement_funds_repository.dart';
 import '../../components/brand_colors.dart';
 import '../../components/cached_remote_image.dart';
-import '../../components/commune_field_group.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
 import '../../components/two_threshold_swipe.dart';
@@ -121,7 +120,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// Mis à jour par un swipe horizontal sur le panneau ou en interne
   /// quand la composition du foyer change.
   int _currentOccupantIndex = 0;
-  bool _saving = false;
   Timer? _saveTimer;
 
   // (Les anciens Sets d'édition repliée ont été retirés : les boutons et
@@ -153,7 +151,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // References
   final ReferencesService _references = ReferencesService();
   StreamSubscription<ReferencesPayload>? _refSub;
-  List<CommuneOption> _communeOptions = const [];
 
   // Caisses de retraite — version 2026-05-12 : on stocke les objets
   // complets (logo, audience, montant aide) pour pouvoir alimenter le
@@ -223,24 +220,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     _references.ensureLoaded();
     _refSub = _references.onLoaded.listen((_) {
       if (!mounted) return;
-      setState(() => _communeOptions = _mapCommunesToOptions());
       _recomputeIncomeCategory();
     });
-    _communeOptions = _mapCommunesToOptions();
     _loadRetirementFundNames();
     _loadPrincipalFundNames();
-  }
-
-  List<CommuneOption> _mapCommunesToOptions() {
-    return _references.communes
-        .map((c) => CommuneOption(
-              id: c.id,
-              label: c.label,
-              zipCode: c.zipCode,
-              epciId: c.epciId,
-              epciLabel: c.epciLabel,
-            ))
-        .toList();
   }
 
   Future<void> _loadRetirementFundNames() async {
@@ -1932,16 +1915,18 @@ class _DateOfBirthField extends StatelessWidget {
                       onTap: closing
                           ? null
                           : () {
+                              final selectedValue = values[i];
                               setLocal(() {
-                                pending = values[i];
+                                pending = selectedValue;
                                 closing = true;
                               });
                               // Laisse l'animation jouer avant de fermer.
                               Future.delayed(
                                 const Duration(milliseconds: 220),
                                 () {
+                                  if (!dialogCtx.mounted) return;
                                   if (Navigator.of(dialogCtx).canPop()) {
-                                    Navigator.pop(dialogCtx, values[i]);
+                                    Navigator.pop(dialogCtx, selectedValue);
                                   }
                                 },
                               );

@@ -196,7 +196,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
-        errorBuilder: (_, __, ___) =>
+        errorBuilder: (context, error, stackTrace) =>
             widget.errorWidget ?? const _DefaultError(),
       );
     }
@@ -206,7 +206,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
-        errorBuilder: (_, __, ___) =>
+        errorBuilder: (context, error, stackTrace) =>
             widget.errorWidget ?? const _DefaultError(),
       );
     }
@@ -217,7 +217,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
-        placeholderBuilder: (_) =>
+        placeholderBuilder: (context) =>
             widget.placeholder ?? const _DefaultPlaceholder(),
       );
     }
@@ -227,7 +227,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
-        errorBuilder: (_, __, ___) {
+        errorBuilder: (context, error, stackTrace) {
           // The file was downloaded (HTTP 200) but can't be decoded as an
           // image — likely the server returned HTML as a SPA fallback. Drop
           // the poisoned cache entry and let the caller try another URL.

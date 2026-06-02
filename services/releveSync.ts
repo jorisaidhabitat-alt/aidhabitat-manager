@@ -74,14 +74,34 @@ export const queueReleveForSync = async (
   payload: Record<string, unknown>,
 ) => {
   await upsertReleveEnAttente(type, dossierId, payload);
+  console.info(`[sync:releves] ${type} queued for dossier ${dossierId}`);
   if (typeof window !== 'undefined' && navigator.onLine) {
     scheduleFlushSoon();
+  }
+};
+
+export const clearQueuedReleveForSync = async (
+  type: ReleveEnAttenteType,
+  dossierId: string,
+) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const entry = await localDb.releves_attente
+      .where('[dossierId+type]')
+      .equals([dossierId, type])
+      .first();
+    if (entry?.id) {
+      await localDb.releves_attente.delete(entry.id);
+    }
+  } catch (error) {
+    console.warn(`Nettoyage relevé en attente impossible (${type})`, error);
   }
 };
 
 export const flushPendingReleves = async () => {
   if (typeof window === 'undefined') return;
   if (!navigator.onLine) return;
+  if (!getSessionToken()) return;
   if (syncPromise) return syncPromise;
 
   syncPromise = (async () => {
@@ -95,6 +115,7 @@ export const flushPendingReleves = async () => {
           payload: entry.payload,
         });
         await localDb.releves_attente.delete(entry.id);
+        console.info(`[sync:releves] ${entry.type} flushed for dossier ${entry.dossierId}`);
       } catch (error) {
         console.error(`Sync relevé en attente impossible (${entry.type})`, error);
       }

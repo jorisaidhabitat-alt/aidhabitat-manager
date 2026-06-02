@@ -615,7 +615,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                           height: 180,
                           child: ListView.separated(
                             itemCount: _descCtrls.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (context, index) =>
                                 const SizedBox(height: 8),
                             itemBuilder: (context, i) {
                               return Row(

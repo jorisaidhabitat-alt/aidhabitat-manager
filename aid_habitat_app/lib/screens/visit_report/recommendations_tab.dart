@@ -39,7 +39,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   List<VisitRecommendationItem> _items = [];
   List<WikiItem> _wikiItems = [];
   bool _loaded = false;
-  bool _saving = false;
+  final bool _saving = false;
   Timer? _saveDebounce;
   final WikiRepository _wikiRepo = WikiRepository();
 
@@ -1012,7 +1012,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: widget.descriptions.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (context, index) => const SizedBox(height: 8),
                   itemBuilder: (context, i) {
                     final selected = _selectedIndexes.contains(i);
                     return InkWell(

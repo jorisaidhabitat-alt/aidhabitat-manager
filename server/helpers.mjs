@@ -2665,8 +2665,8 @@ export const mapBeneficiaryUpdatesToFields = (updates, references) => {
   const communeMatch = has('cityId')
     ? references.communes.find((record) => String(record.id) === String(updates.cityId))
     : (hasCommuneInput ? findCommuneMatch(references.communes, updates.city, updates.zipCode) : undefined);
-  const resolvedCommuneLabel = communeMatch ? stringValue(field(communeMatch, 'nom')) : stringValue(updates.city);
-  const resolvedZipCode = communeMatch ? stringValue(field(communeMatch, 'code_postal')) : stringValue(updates.zipCode);
+  const resolvedCommuneLabel = (communeMatch ? stringValue(field(communeMatch, 'nom')) : stringValue(updates.city)).trim();
+  const resolvedZipCode = (communeMatch ? stringValue(field(communeMatch, 'code_postal')) : stringValue(updates.zipCode)).trim();
   const baremeMatch = has('numberPeople') ? selectBaremeAnah(references.baremesAnah, updates.numberPeople) : undefined;
   const normalizedOccupantsBase = Array.isArray(updates.occupants)
     ? updates.occupants

@@ -613,7 +613,7 @@ class _PrincipalFundLogo extends StatelessWidget {
       return Image.memory(
         bytes,
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => _placeholder(),
+        errorBuilder: (context, error, stackTrace) => _placeholder(),
       );
     }
     // URL HTTP — si .svg utilise flutter_svg.network (Image.network
@@ -624,13 +624,13 @@ class _PrincipalFundLogo extends StatelessWidget {
       return SvgPicture.network(
         logoUrl,
         fit: BoxFit.contain,
-        placeholderBuilder: (_) => _placeholder(),
+        placeholderBuilder: (context) => _placeholder(),
       );
     }
     return Image.network(
       logoUrl,
       fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => _placeholder(),
+      errorBuilder: (context, error, stackTrace) => _placeholder(),
     );
   }
 

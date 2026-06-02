@@ -190,16 +190,23 @@ class DossierRepository {
     final now = DateTime.now().toIso8601String();
 
     final dbUpdates = <String, dynamic>{'updated_at': now};
-    if (updates.containsKey('firstName')) dbUpdates['first_name'] = updates['firstName'];
-    if (updates.containsKey('lastName')) dbUpdates['last_name'] = updates['lastName'];
+    if (updates.containsKey('firstName'))
+      dbUpdates['first_name'] = updates['firstName'];
+    if (updates.containsKey('lastName'))
+      dbUpdates['last_name'] = updates['lastName'];
     if (updates.containsKey('phone')) dbUpdates['phone'] = updates['phone'];
     if (updates.containsKey('email')) dbUpdates['email'] = updates['email'];
-    if (updates.containsKey('address')) dbUpdates['address'] = updates['address'];
+    if (updates.containsKey('address'))
+      dbUpdates['address'] = updates['address'];
     if (updates.containsKey('city')) dbUpdates['city'] = updates['city'];
-    if (updates.containsKey('zipCode')) dbUpdates['zip_code'] = updates['zipCode'];
-    if (updates.containsKey('birthDate')) dbUpdates['birth_date'] = updates['birthDate'];
-    if (updates.containsKey('familySituation')) dbUpdates['family_situation'] = updates['familySituation'];
-    if (updates.containsKey('incomeCategory')) dbUpdates['income_category'] = updates['incomeCategory'];
+    if (updates.containsKey('zipCode'))
+      dbUpdates['zip_code'] = updates['zipCode'];
+    if (updates.containsKey('birthDate'))
+      dbUpdates['birth_date'] = updates['birthDate'];
+    if (updates.containsKey('familySituation'))
+      dbUpdates['family_situation'] = updates['familySituation'];
+    if (updates.containsKey('incomeCategory'))
+      dbUpdates['income_category'] = updates['incomeCategory'];
 
     // Only update sync_state if currently synced — don't overwrite localOnly
     final currentRows = await db.query(
@@ -259,10 +266,7 @@ class DossierRepository {
     final now = DateTime.now().toIso8601String();
     await db.update(
       'dossiers',
-      {
-        'beneficiary_prepared': prepared ? 1 : 0,
-        'updated_at': now,
-      },
+      {'beneficiary_prepared': prepared ? 1 : 0, 'updated_at': now},
       where: 'local_id = ?',
       whereArgs: [dossierLocalId],
     );
@@ -586,7 +590,8 @@ class DossierRepository {
           if (dossierRow.isNotEmpty) {
             final localRemoteUpdated =
                 dossierRow.first['remote_updated_at'] as String?;
-            remoteIsStrictlyNewer = localRemoteUpdated == null ||
+            remoteIsStrictlyNewer =
+                localRemoteUpdated == null ||
                 localRemoteUpdated.isEmpty ||
                 remoteUpdatedAtForLww.compareTo(localRemoteUpdated) > 0;
           }
@@ -727,11 +732,11 @@ class DossierRepository {
             );
             if (localRemoteUpdatedRows.isNotEmpty) {
               final localRemoteUpdatedAt =
-                  localRemoteUpdatedRows.first['remote_updated_at']
-                      as String?;
+                  localRemoteUpdatedRows.first['remote_updated_at'] as String?;
               if (localRemoteUpdatedAt != null &&
                   localRemoteUpdatedAt.isNotEmpty &&
-                  remoteUpdatedAtIncoming.compareTo(localRemoteUpdatedAt) <= 0) {
+                  remoteUpdatedAtIncoming.compareTo(localRemoteUpdatedAt) <=
+                      0) {
                 // Payload distant pas plus récent → on a déjà cette
                 // version (ou une plus récente). Skip pour éviter un
                 // replay inutile qui pourrait créer du flicker.
@@ -788,8 +793,7 @@ class DossierRepository {
         dossierData['patient_local_id'] = patientLocalId;
         dossierData['housing_local_id'] = housingLocalId;
         dossierData['plans_json'] = jsonEncode(const ['PF1', 'PF2', 'PF3']);
-        dossierData['created_at'] =
-            raw['createdAt']?.toString() ?? now;
+        dossierData['created_at'] = raw['createdAt']?.toString() ?? now;
         await _upsertByLocalId(
           txn: txn,
           table: 'dossiers',
@@ -863,10 +867,7 @@ class DossierRepository {
   }) async {
     if (remoteIds.isEmpty) return 0;
     final placeholders = List.filled(remoteIds.length, '?').join(',');
-    final args = <Object?>[
-      SyncState.synced.name,
-      ...remoteIds,
-    ];
+    final args = <Object?>[SyncState.synced.name, ...remoteIds];
     final deleted = await txn.delete(
       table,
       where: 'sync_state = ? AND $idColumn NOT IN ($placeholders)',
@@ -893,14 +894,10 @@ class DossierRepository {
   }) async {
     if (validParentIds.isEmpty) return 0;
     final placeholders = List.filled(validParentIds.length, '?').join(',');
-    final args = <Object?>[
-      SyncState.synced.name,
-      ...validParentIds,
-    ];
+    final args = <Object?>[SyncState.synced.name, ...validParentIds];
     final deleted = await txn.delete(
       table,
-      where:
-          'sync_state = ? AND $parentColumn NOT IN ($placeholders)',
+      where: 'sync_state = ? AND $parentColumn NOT IN ($placeholders)',
       whereArgs: args,
     );
     if (deleted > 0) {
@@ -965,13 +962,15 @@ class DossierRepository {
     );
 
     if (existing.isEmpty) {
-      await txn.insert(table, data,
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert(
+        table,
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
       return;
     }
 
-    final updateFields = Map<String, dynamic>.from(data)
-      ..remove('local_id');
+    final updateFields = Map<String, dynamic>.from(data)..remove('local_id');
 
     // Garde-fou : pour chaque colonne référence-dépendante, si la
     // valeur entrante est vide ET qu'on en avait une non-vide en
@@ -984,7 +983,8 @@ class DossierRepository {
       if (!isIncomingEmpty) continue;
       final localValue = existingRow[col];
       final isLocalEmpty =
-          localValue == null || (localValue is String && localValue.trim().isEmpty);
+          localValue == null ||
+          (localValue is String && localValue.trim().isEmpty);
       if (isLocalEmpty) continue;
       // Local a une valeur, remote n'en a pas → on garde la locale.
       updateFields[col] = localValue;
@@ -1005,8 +1005,8 @@ class DossierRepository {
     required Map<String, dynamic> raw,
     required String now,
   }) {
-    final trusted = (raw['trustedPerson'] as Map?)?.cast<String, dynamic>() ??
-        const {};
+    final trusted =
+        (raw['trustedPerson'] as Map?)?.cast<String, dynamic>() ?? const {};
     return {
       'first_name': raw['firstName']?.toString() ?? '',
       'last_name': raw['lastName']?.toString() ?? '',
@@ -1080,13 +1080,13 @@ class DossierRepository {
     final heatingMode = heatingDetailsJson['Électrique'] == true
         ? HeatingMode.ELECTRIC.name
         : heatingDetailsJson['Gaz'] == true
-            ? HeatingMode.GAS.name
-            : heatingDetailsJson['Bois'] == true ||
-                    heatingDetailsJson['Granulés'] == true
-                ? HeatingMode.WOOD.name
-                : heatingDetailsJson['Fioul'] == true
-                    ? HeatingMode.OIL.name
-                    : HeatingMode.OTHER.name;
+        ? HeatingMode.GAS.name
+        : heatingDetailsJson['Bois'] == true ||
+              heatingDetailsJson['Granulés'] == true
+        ? HeatingMode.WOOD.name
+        : heatingDetailsJson['Fioul'] == true
+        ? HeatingMode.OIL.name
+        : HeatingMode.OTHER.name;
 
     return {
       'type': _asHousingTypeName(raw['typology']),
@@ -1095,8 +1095,8 @@ class DossierRepository {
       'heating_mode': heatingMode,
       'accessibility_notes':
           raw['accessibilityNotes']?.toString() ??
-              raw['accessObservation']?.toString() ??
-              '',
+          raw['accessObservation']?.toString() ??
+          '',
       'year_construction': raw['yearConstruction']?.toString() ?? '',
       'year_habitation': raw['yearHabitation']?.toString() ?? '',
       'levels': _asInt(raw['levels']),
@@ -1120,32 +1120,35 @@ class DossierRepository {
       'heating_details_json': jsonEncode(heatingDetailsJson),
       'volets_roulants_manuels_localisation':
           raw['voletsRoulantsManuelsLocalisation']?.toString() ?? '',
-      'volets_roulants_manuels_entier':
-          _asBoolInt(raw['voletsRoulantsManuelsEntier']),
+      'volets_roulants_manuels_entier': _asBoolInt(
+        raw['voletsRoulantsManuelsEntier'],
+      ),
       'volets_roulants_electriques_localisation':
           raw['voletsRoulantsElectriquesLocalisation']?.toString() ?? '',
-      'volets_roulants_electriques_entier':
-          _asBoolInt(raw['voletsRoulantsElectriquesEntier']),
+      'volets_roulants_electriques_entier': _asBoolInt(
+        raw['voletsRoulantsElectriquesEntier'],
+      ),
       'volets_persiennes_localisation':
           raw['voletsPersiennesLocalisation']?.toString() ?? '',
-      'volets_persiennes_entier':
-          _asBoolInt(raw['voletsPersiennesEntier']),
-      'cheminement_escalier_exterieur':
-          _asBoolInt(raw['cheminementEscalierExterieur']),
-      'cheminement_escalier_interieur':
-          _asBoolInt(raw['cheminementEscalierInterieur']),
+      'volets_persiennes_entier': _asBoolInt(raw['voletsPersiennesEntier']),
+      'cheminement_escalier_exterieur': _asBoolInt(
+        raw['cheminementEscalierExterieur'],
+      ),
+      'cheminement_escalier_interieur': _asBoolInt(
+        raw['cheminementEscalierInterieur'],
+      ),
       'cheminement_pente_douce': _asBoolInt(raw['cheminementPenteDouce']),
       'cheminement_plat': _asBoolInt(raw['cheminementPlat']),
-      'cheminement_quelques_marches':
-          _asBoolInt(raw['cheminementQuelquesMarches']),
+      'cheminement_quelques_marches': _asBoolInt(
+        raw['cheminementQuelquesMarches'],
+      ),
       'cheminement_par_arriere': _asBoolInt(raw['cheminementParArriere']),
       'cheminement_seuil_porte': _asBoolInt(raw['cheminementSeuilPorte']),
       'porte_garage_id': raw['porteGarageId']?.toString() ?? '',
       'portail_id': raw['portailId']?.toString() ?? '',
       'motorisation_porte_garage':
           raw['motorisationPorteGarage']?.toString() ?? '',
-      'motorisation_portail':
-          raw['motorisationPortail']?.toString() ?? '',
+      'motorisation_portail': raw['motorisationPortail']?.toString() ?? '',
       'easy_access': _asBoolInt(raw['easyAccess']),
       // `easy_access_set` : 1 si NocoDB renvoie une valeur explicitement
       // posée (true/false/0/1/'oui'/'non'), 0 si la clé est absente ou
@@ -1199,11 +1202,15 @@ class DossierRepository {
     String encodeList(dynamic value) {
       if (value is List) {
         return jsonEncode(
-          value.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList(),
+          value
+              .map((e) => e?.toString() ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList(),
         );
       }
       return jsonEncode(const <String>[]);
     }
+
     return {
       'basement_rooms_json': encodeList(map['basement']),
       'rdc_rooms_json': encodeList(map['rdc']),
@@ -1224,16 +1231,16 @@ class DossierRepository {
       'visit_date': raw['visitDate']?.toString(),
       'autonomy_notes': raw['autonomyNotes']?.toString() ?? '',
       'compte_anah': raw['compteAnah']?.toString() ?? '',
-      'nature_accompagnement':
-          raw['natureAccompagnement']?.toString() ?? '',
+      'nature_accompagnement': raw['natureAccompagnement']?.toString() ?? '',
       'envoi_rapport': raw['envoiRapport']?.toString() ?? '',
       'personnes_presentes_visite':
           raw['personnesPresentesVisite']?.toString() ?? '',
       'medical_context_json': raw['medicalContext'] is Map
           ? jsonEncode(raw['medicalContext'])
           : null,
-      'autonomy_json':
-          raw['autonomy'] is Map ? jsonEncode(raw['autonomy']) : null,
+      'autonomy_json': raw['autonomy'] is Map
+          ? jsonEncode(raw['autonomy'])
+          : null,
       'updated_at': now,
       // remote_updated_at = horodatage authoritatif du serveur (et non
       // l'heure locale du merge). Indispensable pour le contrôle
@@ -1386,8 +1393,7 @@ class DossierRepository {
   Future<void> updatePatientFields(
     String patientLocalId,
     Map<String, dynamic> fields,
-  ) =>
-      updatePatient(patientLocalId, fields);
+  ) => updatePatient(patientLocalId, fields);
 
   Future<void> updateHousingFields(
     String patientLocalId,
@@ -1454,7 +1460,8 @@ class DossierRepository {
   }
 
   static Map<String, dynamic> _mapDossierFieldsToApi(
-      Map<String, dynamic> fields) {
+    Map<String, dynamic> fields,
+  ) {
     const snakeToCamel = <String, String>{
       'compte_anah': 'compteAnah',
       'nature_accompagnement': 'natureAccompagnement',
@@ -1490,22 +1497,11 @@ class DossierRepository {
     required String now,
   }) async {
     final opId = '${entityType}_update_$entityLocalId';
-    // Filtre sur `pending` uniquement (cf. `updatePatient`) : on évite
-    // de merger une payload obsolète sur une op `running` ou `completed`.
-    final existing = await db.query('sync_operations',
-        where: 'id = ? AND status = ?',
-        whereArgs: [opId, SyncOperationStatus.pending.name],
-        limit: 1);
-    Map<String, dynamic> merged = updates;
-    if (existing.isNotEmpty) {
-      try {
-        final prev = jsonDecode(existing.first['payload_json'] as String)
-            as Map<String, dynamic>;
-        final prevUpdates =
-            (prev['updates'] as Map?)?.cast<String, dynamic>();
-        if (prevUpdates != null) merged = {...prevUpdates, ...updates};
-      } catch (_) {}
-    }
+    final merged = await _mergeWithUnconfirmedSyncUpdates(
+      db,
+      operationId: opId,
+      nextUpdates: updates,
+    );
     final payloadMap = <String, dynamic>{
       payloadKey: entityLocalId,
       'updates': merged,
@@ -1516,22 +1512,62 @@ class DossierRepository {
     if (entityType == 'housing') {
       payloadMap['dossierLocalId'] = entityLocalId;
     }
-    await db.insert(
+    await db.insert('sync_operations', {
+      'id': opId,
+      'entity_type': entityType,
+      'entity_local_id': entityLocalId,
+      'operation_type': 'update',
+      'payload_json': jsonEncode(payloadMap),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Récupère, quand elle existe, la dernière payload d'une sync_operation
+  /// NON confirmée serveur (pending / running / failed) et la fusionne avec
+  /// [nextUpdates]. Cela évite de perdre des champs plus anciens lorsqu'une
+  /// nouvelle save remplace une op déjà partie en réseau.
+  ///
+  /// Cas typique avant ce fix :
+  ///   1. champ A part en `running`
+  ///   2. l'utilisateur modifie champ B avant la réponse serveur
+  ///   3. l'op est remplacée avec seulement B
+  ///   4. si le PATCH de A échoue, A disparaît de la queue
+  ///
+  /// Désormais, la nouvelle op garde A + B tant que le serveur n'a pas
+  /// confirmé la synchronisation.
+  Future<Map<String, dynamic>> _mergeWithUnconfirmedSyncUpdates(
+    DatabaseExecutor db, {
+    required String operationId,
+    required Map<String, dynamic> nextUpdates,
+  }) async {
+    final existing = await db.query(
       'sync_operations',
-      {
-        'id': opId,
-        'entity_type': entityType,
-        'entity_local_id': entityLocalId,
-        'operation_type': 'update',
-        'payload_json': jsonEncode(payloadMap),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
+      columns: const ['payload_json'],
+      where: 'id = ? AND status IN (?, ?, ?)',
+      whereArgs: [
+        operationId,
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.running.name,
+        SyncOperationStatus.failed.name,
+      ],
+      limit: 1,
     );
+    if (existing.isEmpty) return nextUpdates;
+
+    try {
+      final prev =
+          jsonDecode(existing.first['payload_json'] as String)
+              as Map<String, dynamic>;
+      final prevUpdates = (prev['updates'] as Map?)?.cast<String, dynamic>();
+      if (prevUpdates == null || prevUpdates.isEmpty) return nextUpdates;
+      return {...prevUpdates, ...nextUpdates};
+    } catch (_) {
+      return nextUpdates;
+    }
   }
 
   Future<Map<String, dynamic>> fetchFormData(
@@ -1560,23 +1596,19 @@ class DossierRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final noteId = 'form_${patientId}_$formKey';
-    await db.insert(
-      'note_pages',
-      {
-        'local_id': noteId,
-        'patient_local_id': patientId,
-        'tab_key': 'form_$formKey',
-        'page_number': 0,
-        'text_content': jsonEncode(data),
-        'drawing_json': null,
-        'drawing_local_path': null,
-        'drawing_remote_path': null,
-        'drawing_remote_url': null,
-        'updated_at': now,
-        'sync_state': SyncState.pendingSync.name,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('note_pages', {
+      'local_id': noteId,
+      'patient_local_id': patientId,
+      'tab_key': 'form_$formKey',
+      'page_number': 0,
+      'text_content': jsonEncode(data),
+      'drawing_json': null,
+      'drawing_local_path': null,
+      'drawing_remote_path': null,
+      'drawing_remote_url': null,
+      'updated_at': now,
+      'sync_state': SyncState.pendingSync.name,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Dossier _mapDossierRow(Map<String, Object?> row) {
@@ -1588,8 +1620,7 @@ class DossierRepository {
     // a per-occupant field is edited). Empty list means "no extra occupant
     // data yet" — the visit report will fall back to derive a single
     // occupant from the top-level patient fields.
-    final occupantsRaw =
-        row['patient_occupants_json'] as String? ?? '';
+    final occupantsRaw = row['patient_occupants_json'] as String? ?? '';
     List<Occupant> occupants = const [];
     if (occupantsRaw.trim().isNotEmpty) {
       try {
@@ -1611,10 +1642,8 @@ class DossierRepository {
         id: row['patient_local_id'] as String,
         firstName: row['patient_first_name'] as String,
         lastName: row['patient_last_name'] as String,
-        secondFirstName:
-            row['patient_second_first_name'] as String? ?? '',
-        secondLastName:
-            row['patient_second_last_name'] as String? ?? '',
+        secondFirstName: row['patient_second_first_name'] as String? ?? '',
+        secondLastName: row['patient_second_last_name'] as String? ?? '',
         birthDate: row['patient_birth_date'] as String,
         phone: row['patient_phone'] as String,
         email: row['patient_email'] as String,
@@ -1623,21 +1652,17 @@ class DossierRepository {
         cityId: row['patient_city_id'] as String? ?? '',
         zipCode: row['patient_zip_code'] as String,
         familySituation: row['patient_family_situation'] as String,
-        occupationStatus:
-            row['patient_occupation_status'] as String? ?? '',
+        occupationStatus: row['patient_occupation_status'] as String? ?? '',
         incomeCategory: row['patient_income_category'] as String,
         numberPeople: row['patient_number_people'] as int?,
         fiscalRevenue: (row['patient_fiscal_revenue'] as num?)?.toDouble(),
         occupants: occupants,
         apa: (row['patient_apa'] as int? ?? 0) == 1,
         invalidity: (row['patient_invalidity'] as int? ?? 0) == 1,
-        invalidityTxt:
-            row['patient_invalidity_txt'] as String? ?? '',
+        invalidityTxt: row['patient_invalidity_txt'] as String? ?? '',
         homeHelp: (row['patient_home_help'] as int? ?? 0) == 1,
-        homeHelpTxt:
-            row['patient_home_help_txt'] as String? ?? '',
-        dependenceTxt:
-            row['patient_dependence_txt'] as String? ?? '',
+        homeHelpTxt: row['patient_home_help_txt'] as String? ?? '',
+        dependenceTxt: row['patient_dependence_txt'] as String? ?? '',
         caisseRetraitePrincipale:
             row['patient_caisse_retraite_principale'] as String? ?? '',
         caissesRetraiteComplementaires:
@@ -1667,42 +1692,42 @@ class DossierRepository {
           row['housing_heating_mode'] as String,
         ),
         accessibilityNotes: row['housing_accessibility_notes'] as String,
-        yearConstruction:
-            row['housing_year_construction'] as String? ?? '',
+        yearConstruction: row['housing_year_construction'] as String? ?? '',
         yearHabitation: row['housing_year_habitation'] as String? ?? '',
         levels: row['housing_levels'] as int?,
         // Défaut '' (et pas 'Maison') pour préserver l'état « non
         // renseigné » au reload — voir _buildHousingPayload.
         typology: row['housing_typology'] as String? ?? '',
         basement: (row['housing_basement'] as int? ?? 0) == 1,
-        basementDescription:
-            row['housing_basement_desc'] as String? ?? '',
-        basementRooms:
-            _decodeRoomsJson(row['housing_basement_rooms'] as String?),
+        basementDescription: row['housing_basement_desc'] as String? ?? '',
+        basementRooms: _decodeRoomsJson(
+          row['housing_basement_rooms'] as String?,
+        ),
         rdc: (row['housing_rdc'] as int? ?? 0) == 1,
         rdcDescription: row['housing_rdc_desc'] as String? ?? '',
         rdcRooms: _decodeRoomsJson(row['housing_rdc_rooms'] as String?),
         floor: (row['housing_floor'] as int? ?? 0) == 1,
         floorDescription: row['housing_floor_desc'] as String? ?? '',
-        floorRooms:
-            _decodeRoomsJson(row['housing_floor_rooms'] as String?),
+        floorRooms: _decodeRoomsJson(row['housing_floor_rooms'] as String?),
         secondFloor: (row['housing_second_floor'] as int? ?? 0) == 1,
         secondFloorDescription:
             row['housing_second_floor_desc'] as String? ?? '',
         secondFloorRooms: _decodeRoomsJson(
-            row['housing_second_floor_rooms'] as String?),
+          row['housing_second_floor_rooms'] as String?,
+        ),
         thirdFloor: (row['housing_third_floor'] as int? ?? 0) == 1,
-        thirdFloorDescription:
-            row['housing_third_floor_desc'] as String? ?? '',
-        thirdFloorRooms:
-            _decodeRoomsJson(row['housing_third_floor_rooms'] as String?),
+        thirdFloorDescription: row['housing_third_floor_desc'] as String? ?? '',
+        thirdFloorRooms: _decodeRoomsJson(
+          row['housing_third_floor_rooms'] as String?,
+        ),
         garage: (row['housing_garage'] as int? ?? 0) == 1,
         veranda: (row['housing_veranda'] as int? ?? 0) == 1,
         balcon: (row['housing_balcon'] as int? ?? 0) == 1,
         terrasse: (row['housing_terrasse'] as int? ?? 0) == 1,
         jardin: (row['housing_jardin'] as int? ?? 0) == 1,
         heatingDetails: _decodeHeatingDetails(
-            row['housing_heating_details'] as String?),
+          row['housing_heating_details'] as String?,
+        ),
         voletsRoulantsManuelsLocalisation:
             row['housing_volets_man_loc'] as String? ?? '',
         voletsRoulantsManuelsEntier:
@@ -1723,8 +1748,7 @@ class DossierRepository {
             row['housing_motorisation_portail'] as String? ?? '',
         easyAccess: (row['housing_easy_access'] as int? ?? 0) == 1,
         comments: row['housing_comments'] as String? ?? '',
-        accessObservation:
-            row['housing_access_observation'] as String? ?? '',
+        accessObservation: row['housing_access_observation'] as String? ?? '',
       ),
       autonomyNotes: row['dossier_autonomy_notes'] as String,
       plans: const {
@@ -1743,9 +1767,11 @@ class DossierRepository {
       syncState: _aggregateSyncStates([
         SyncState.values.byName(row['dossier_sync_state'] as String),
         SyncState.values.byName(
-            row['patient_sync_state'] as String? ?? SyncState.synced.name),
+          row['patient_sync_state'] as String? ?? SyncState.synced.name,
+        ),
         SyncState.values.byName(
-            row['housing_sync_state'] as String? ?? SyncState.synced.name),
+          row['housing_sync_state'] as String? ?? SyncState.synced.name,
+        ),
       ]),
     );
   }
@@ -1773,7 +1799,9 @@ class DossierRepository {
       if (decoded is List) {
         return decoded.map((e) => e.toString()).toList(growable: false);
       }
-    } catch (_) {/* fall through */}
+    } catch (_) {
+      /* fall through */
+    }
     return const [];
   }
 
@@ -1784,7 +1812,9 @@ class DossierRepository {
       if (decoded is Map) {
         return decoded.map((k, v) => MapEntry(k.toString(), v == true));
       }
-    } catch (_) {/* fall through */}
+    } catch (_) {
+      /* fall through */
+    }
     return const {};
   }
 
@@ -1800,7 +1830,9 @@ class DossierRepository {
   /// payload keys (`firstName`, `trustedPerson: {…}`, …) before being
   /// enqueued. Unknown snake_case keys are passed through as-is.
   Future<void> updatePatient(
-      String patientId, Map<String, dynamic> fields) async {
+    String patientId,
+    Map<String, dynamic> fields,
+  ) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
 
@@ -1844,8 +1876,12 @@ class DossierRepository {
       final localFields = Map<String, dynamic>.from(changedFields);
       localFields['updated_at'] = now;
       localFields['sync_state'] = SyncState.pendingSync.name;
-      await txn.update('patients', localFields,
-          where: 'local_id = ?', whereArgs: [patientId]);
+      await txn.update(
+        'patients',
+        localFields,
+        where: 'local_id = ?',
+        whereArgs: [patientId],
+      );
 
       // Si aucun champ ne se traduit en API payload, on saute juste
       // l'enqueue — le UPDATE local reste committé (cas rare : champ
@@ -1853,44 +1889,27 @@ class DossierRepository {
       if (apiUpdates.isEmpty) return;
 
       final opId = 'patient_update_$patientId';
-      final existing = await txn.query('sync_operations',
-          where: 'id = ? AND status = ?',
-          whereArgs: [opId, SyncOperationStatus.pending.name],
-          limit: 1);
-      Map<String, dynamic> mergedUpdates = apiUpdates;
-      if (existing.isNotEmpty) {
-        try {
-          final prev = jsonDecode(existing.first['payload_json'] as String)
-              as Map<String, dynamic>;
-          final prevUpdates =
-              (prev['updates'] as Map?)?.cast<String, dynamic>();
-          if (prevUpdates != null) {
-            mergedUpdates = {...prevUpdates, ...apiUpdates};
-          }
-        } catch (_) {
-          // Fall back to the new payload only.
-        }
-      }
-
-      await txn.insert(
-        'sync_operations',
-        {
-          'id': opId,
-          'entity_type': 'patient',
-          'entity_local_id': patientId,
-          'operation_type': 'update',
-          'payload_json': jsonEncode({
-            'patientLocalId': patientId,
-            'updates': mergedUpdates,
-          }),
-          'status': SyncOperationStatus.pending.name,
-          'attempt_count': 0,
-          'last_error': null,
-          'created_at': now,
-          'updated_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      final mergedUpdates = await _mergeWithUnconfirmedSyncUpdates(
+        txn,
+        operationId: opId,
+        nextUpdates: apiUpdates,
       );
+
+      await txn.insert('sync_operations', {
+        'id': opId,
+        'entity_type': 'patient',
+        'entity_local_id': patientId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'patientLocalId': patientId,
+          'updates': mergedUpdates,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     SyncEngine().notify();
   }
@@ -1953,7 +1972,8 @@ class DossierRepository {
   /// the camelCase keys expected by the Express API. Also decodes JSON
   /// blobs (trusted_person_json, occupants_json) into nested structures.
   static Map<String, dynamic> _mapPatientFieldsToApi(
-      Map<String, dynamic> fields) {
+    Map<String, dynamic> fields,
+  ) {
     const snakeToCamel = <String, String>{
       'first_name': 'firstName',
       'last_name': 'lastName',
@@ -2054,8 +2074,16 @@ class DossierRepository {
   /// dont le mapping serveur passe par `toBoolOrNull` : on n'écrase
   /// pas le « non renseigné » légitime.
   static const List<String> _kHousingBoolColumnsToAlwaysPush = [
-    'basement', 'rdc', 'floor', 'second_floor', 'third_floor',
-    'garage', 'veranda', 'balcon', 'terrasse', 'jardin',
+    'basement',
+    'rdc',
+    'floor',
+    'second_floor',
+    'third_floor',
+    'garage',
+    'veranda',
+    'balcon',
+    'terrasse',
+    'jardin',
     'volets_roulants_manuels_entier',
     'volets_roulants_electriques_entier',
     'volets_persiennes_entier',
@@ -2069,13 +2097,17 @@ class DossierRepository {
   ];
 
   Future<void> updateHousing(
-      String dossierId, Map<String, dynamic> fields) async {
+    String dossierId,
+    Map<String, dynamic> fields,
+  ) async {
     final db = await _database.database;
-    final rows = await db.query('dossiers',
-        columns: ['housing_local_id'],
-        where: 'local_id = ?',
-        whereArgs: [dossierId],
-        limit: 1);
+    final rows = await db.query(
+      'dossiers',
+      columns: ['housing_local_id'],
+      where: 'local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
     if (rows.isEmpty) return;
     final housingId = rows.first['housing_local_id'] as String;
     final now = DateTime.now().toIso8601String();
@@ -2167,8 +2199,12 @@ class DossierRepository {
     // deux writes, SQLite rollback complet → pas d'état orphelin.
     final apiUpdates = _mapHousingFieldsToApi(changedFields);
     await db.transaction((txn) async {
-      await txn.update('housings', localFields,
-          where: 'local_id = ?', whereArgs: [housingId]);
+      await txn.update(
+        'housings',
+        localFields,
+        where: 'local_id = ?',
+        whereArgs: [housingId],
+      );
       if (apiUpdates.isEmpty) return;
       await _enqueueEntityUpdate(
         txn,
@@ -2183,7 +2219,8 @@ class DossierRepository {
   }
 
   static Map<String, dynamic> _mapHousingFieldsToApi(
-      Map<String, dynamic> fields) {
+    Map<String, dynamic> fields,
+  ) {
     // PATCH /api/logements server-side reads :
     //   - les champs simples en camelCase : `yearConstruction`,
     //     `voletsRoulantsManuelsEntier`, `voletsRoulantsManuelsLocalisation`,
@@ -2313,7 +2350,8 @@ class DossierRepository {
                 'electric': decoded['Électrique'] == true,
                 'gas': decoded['Gaz'] == true,
                 'oil': decoded['Fioul'] == true,
-                'heatPump': decoded['Pompe à chaleur'] == true ||
+                'heatPump':
+                    decoded['Pompe à chaleur'] == true ||
                     decoded['PAC'] == true,
                 'collective': decoded['Collectif'] == true,
                 'wood': decoded['Bois'] == true,
@@ -2358,19 +2396,38 @@ class DossierRepository {
 
   Future<Map<String, dynamic>?> fetchContexteDeVie(String dossierId) async {
     final db = await _database.database;
-    final rows = await db.query('contexte_de_vie', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final rows = await db.query(
+      'contexte_de_vie',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     final row = rows.first;
     return {
-      'medicalContext': row['medical_context_json'] != null ? jsonDecode(row['medical_context_json'] as String) : null,
-      'autonomy': row['autonomy_json'] != null ? jsonDecode(row['autonomy_json'] as String) : null,
+      'medicalContext': row['medical_context_json'] != null
+          ? jsonDecode(row['medical_context_json'] as String)
+          : null,
+      'autonomy': row['autonomy_json'] != null
+          ? jsonDecode(row['autonomy_json'] as String)
+          : null,
     };
   }
 
-  Future<void> upsertContexteDeVie(String dossierId, String patientId, {MedicalContext? medicalContext, AutonomyData? autonomy}) async {
+  Future<void> upsertContexteDeVie(
+    String dossierId,
+    String patientId, {
+    MedicalContext? medicalContext,
+    AutonomyData? autonomy,
+  }) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
-    final existing = await db.query('contexte_de_vie', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final existing = await db.query(
+      'contexte_de_vie',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
 
     // Optimisation 2026-05-13 : on compare le JSON encoded des sous-
     // objets `medicalContext` et `autonomy` avec ce qui est déjà en
@@ -2380,16 +2437,19 @@ class DossierRepository {
     final newMedicalJson = medicalContext != null
         ? jsonEncode(medicalContext.toJson())
         : null;
-    final newAutonomyJson =
-        autonomy != null ? jsonEncode(autonomy.toJson()) : null;
+    final newAutonomyJson = autonomy != null
+        ? jsonEncode(autonomy.toJson())
+        : null;
 
     final existingRow = existing.isNotEmpty ? existing.first : null;
     final existingMedicalJson = existingRow?['medical_context_json'] as String?;
     final existingAutonomyJson = existingRow?['autonomy_json'] as String?;
 
-    final medicalChanged = newMedicalJson != null &&
+    final medicalChanged =
+        newMedicalJson != null &&
         _fieldChanged(existingMedicalJson, newMedicalJson);
-    final autonomyChanged = newAutonomyJson != null &&
+    final autonomyChanged =
+        newAutonomyJson != null &&
         _fieldChanged(existingAutonomyJson, newAutonomyJson);
 
     if (!medicalChanged && !autonomyChanged) {
@@ -2422,70 +2482,79 @@ class DossierRepository {
         data['local_id'] = 'ctx_${dossierId}_${_uuid()}';
         await txn.insert('contexte_de_vie', data);
       } else {
-        await txn.update('contexte_de_vie', data,
-            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+        await txn.update(
+          'contexte_de_vie',
+          data,
+          where: 'dossier_local_id = ?',
+          whereArgs: [dossierId],
+        );
       }
 
       if (opUpdates.isEmpty) return;
 
       final opId = 'contexte_update_$dossierId';
-      final existingOp = await txn.query('sync_operations',
-          where: 'id = ?', whereArgs: [opId], limit: 1);
-      Map<String, dynamic> merged = opUpdates;
-      if (existingOp.isNotEmpty) {
-        try {
-          final prev = jsonDecode(existingOp.first['payload_json'] as String)
-              as Map<String, dynamic>;
-          final prevUpdates =
-              (prev['updates'] as Map?)?.cast<String, dynamic>();
-          if (prevUpdates != null) {
-            merged = {...prevUpdates, ...opUpdates};
-          }
-        } catch (_) {/* fall through */}
-      }
-      await txn.insert(
-        'sync_operations',
-        {
-          'id': opId,
-          'entity_type': 'contexte_de_vie',
-          'entity_local_id': dossierId,
-          'operation_type': 'update',
-          'payload_json': jsonEncode({
-            'dossierId': dossierId,
-            'updates': merged,
-          }),
-          'status': SyncOperationStatus.pending.name,
-          'attempt_count': 0,
-          'last_error': null,
-          'created_at': now,
-          'updated_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      final merged = await _mergeWithUnconfirmedSyncUpdates(
+        txn,
+        operationId: opId,
+        nextUpdates: opUpdates,
       );
+      await txn.insert('sync_operations', {
+        'id': opId,
+        'entity_type': 'contexte_de_vie',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     SyncEngine().notify();
   }
 
-  Future<DiagnosticSanitaire?> fetchDiagnosticSanitaire(String dossierId) async {
+  Future<DiagnosticSanitaire?> fetchDiagnosticSanitaire(
+    String dossierId,
+  ) async {
     final db = await _database.database;
-    final rows = await db.query('diagnostic_sanitaires', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final rows = await db.query(
+      'diagnostic_sanitaires',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     final row = rows.first;
     return DiagnosticSanitaire(
       dossierId: dossierId,
       sdbInstances: row['sdb_instances_json'] != null
-          ? (jsonDecode(row['sdb_instances_json'] as String) as List<dynamic>).map((e) => BathroomInstance.fromJson(e as Map<String, dynamic>)).toList()
+          ? (jsonDecode(row['sdb_instances_json'] as String) as List<dynamic>)
+                .map(
+                  (e) => BathroomInstance.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : [],
       wcInstances: row['wc_instances_json'] != null
-          ? (jsonDecode(row['wc_instances_json'] as String) as List<dynamic>).map((e) => WcInstance.fromJson(e as Map<String, dynamic>)).toList()
+          ? (jsonDecode(row['wc_instances_json'] as String) as List<dynamic>)
+                .map((e) => WcInstance.fromJson(e as Map<String, dynamic>))
+                .toList()
           : [],
     );
   }
 
-  Future<void> upsertDiagnosticSanitaire(String dossierId, DiagnosticSanitaire diag) async {
+  Future<void> upsertDiagnosticSanitaire(
+    String dossierId,
+    DiagnosticSanitaire diag,
+  ) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
-    final existing = await db.query('diagnostic_sanitaires', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final existing = await db.query(
+      'diagnostic_sanitaires',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
     final sdbJson = diag.sdbInstances.map((e) => e.toJson()).toList();
     final wcJson = diag.wcInstances.map((e) => e.toJson()).toList();
     final data = <String, dynamic>{
@@ -2502,52 +2571,66 @@ class DossierRepository {
         data['local_id'] = 'diag_${dossierId}_${_uuid()}';
         await txn.insert('diagnostic_sanitaires', data);
       } else {
-        await txn.update('diagnostic_sanitaires', data,
-            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+        await txn.update(
+          'diagnostic_sanitaires',
+          data,
+          where: 'dossier_local_id = ?',
+          whereArgs: [dossierId],
+        );
       }
-      await txn.insert(
-        'sync_operations',
-        {
-          'id': 'diag_update_$dossierId',
-          'entity_type': 'diagnostic_sanitaires',
-          'entity_local_id': dossierId,
-          'operation_type': 'update',
-          'payload_json': jsonEncode({
-            'dossierId': dossierId,
-            'sdbInstances': sdbJson,
-            'wcInstances': wcJson,
-          }),
-          'status': SyncOperationStatus.pending.name,
-          'attempt_count': 0,
-          'last_error': null,
-          'created_at': now,
-          'updated_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert('sync_operations', {
+        'id': 'diag_update_$dossierId',
+        'entity_type': 'diagnostic_sanitaires',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'dossierId': dossierId,
+          'sdbInstances': sdbJson,
+          'wcInstances': wcJson,
+        }),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     SyncEngine().notify();
   }
 
   Future<MesuresAnthropometriques?> fetchMesures(String dossierId) async {
     final db = await _database.database;
-    final rows = await db.query('mesures_anthropometriques', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final rows = await db.query(
+      'mesures_anthropometriques',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     final row = rows.first;
     return MesuresAnthropometriques(
       dossierId: dossierId,
       deboutHauteurCoude: (row['debout_hauteur_coude'] as num?)?.toDouble(),
       assisHauteurAssise: (row['assis_hauteur_assise'] as num?)?.toDouble(),
-      assisProfondeurGenoux: (row['assis_profondeur_genoux'] as num?)?.toDouble(),
+      assisProfondeurGenoux: (row['assis_profondeur_genoux'] as num?)
+          ?.toDouble(),
       assisHauteurCoudes: (row['assis_hauteur_coudes'] as num?)?.toDouble(),
       observations: row['observations'] as String? ?? '',
     );
   }
 
-  Future<void> upsertMesures(String dossierId, MesuresAnthropometriques mesures) async {
+  Future<void> upsertMesures(
+    String dossierId,
+    MesuresAnthropometriques mesures,
+  ) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
-    final existing = await db.query('mesures_anthropometriques', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final existing = await db.query(
+      'mesures_anthropometriques',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
 
     // Optimisation 2026-05-13 : diff avec la row existante pour ne
     // pousser au serveur QUE les champs réellement modifiés. Si l'ergo
@@ -2605,52 +2688,45 @@ class DossierRepository {
           ..['local_id'] = 'mes_${dossierId}_${_uuid()}';
         await txn.insert('mesures_anthropometriques', data);
       } else {
-        await txn.update('mesures_anthropometriques', data,
-            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+        await txn.update(
+          'mesures_anthropometriques',
+          data,
+          where: 'dossier_local_id = ?',
+          whereArgs: [dossierId],
+        );
       }
 
       if (updates.isEmpty) return;
       final opId = 'mesures_update_$dossierId';
-      final existingOp = await txn.query('sync_operations',
-          where: 'id = ?', whereArgs: [opId], limit: 1);
-      Map<String, dynamic> merged = updates;
-      if (existingOp.isNotEmpty) {
-        try {
-          final prev = jsonDecode(existingOp.first['payload_json'] as String)
-              as Map<String, dynamic>;
-          final prevUpdates =
-              (prev['updates'] as Map?)?.cast<String, dynamic>();
-          if (prevUpdates != null) {
-            merged = {...prevUpdates, ...updates};
-          }
-        } catch (_) {/* fall through */}
-      }
-      await txn.insert(
-        'sync_operations',
-        {
-          'id': opId,
-          'entity_type': 'mesures_anthropometriques',
-          'entity_local_id': dossierId,
-          'operation_type': 'update',
-          'payload_json': jsonEncode({
-            'dossierId': dossierId,
-            'updates': merged,
-          }),
-          'status': SyncOperationStatus.pending.name,
-          'attempt_count': 0,
-          'last_error': null,
-          'created_at': now,
-          'updated_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      final merged = await _mergeWithUnconfirmedSyncUpdates(
+        txn,
+        operationId: opId,
+        nextUpdates: updates,
       );
+      await txn.insert('sync_operations', {
+        'id': opId,
+        'entity_type': 'mesures_anthropometriques',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     SyncEngine().notify();
   }
 
   Future<ObservationsSynthese?> fetchObservations(String dossierId) async {
     final db = await _database.database;
-    final rows = await db.query('observations_synthese', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final rows = await db.query(
+      'observations_synthese',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     final row = rows.first;
     return ObservationsSynthese(
@@ -2661,10 +2737,18 @@ class DossierRepository {
     );
   }
 
-  Future<void> upsertObservations(String dossierId, ObservationsSynthese obs) async {
+  Future<void> upsertObservations(
+    String dossierId,
+    ObservationsSynthese obs,
+  ) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
-    final existing = await db.query('observations_synthese', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final existing = await db.query(
+      'observations_synthese',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
 
     // Optimisation 2026-05-13 : diff pattern aligné sur upsertMesures.
     final fieldCandidates = <String, dynamic>{
@@ -2709,61 +2793,67 @@ class DossierRepository {
           ..['local_id'] = 'obs_${dossierId}_${_uuid()}';
         await txn.insert('observations_synthese', data);
       } else {
-        await txn.update('observations_synthese', data,
-            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+        await txn.update(
+          'observations_synthese',
+          data,
+          where: 'dossier_local_id = ?',
+          whereArgs: [dossierId],
+        );
       }
 
       if (updates.isEmpty) return;
       final opId = 'observations_update_$dossierId';
-      final existingOp = await txn.query('sync_operations',
-          where: 'id = ?', whereArgs: [opId], limit: 1);
-      Map<String, dynamic> merged = updates;
-      if (existingOp.isNotEmpty) {
-        try {
-          final prev = jsonDecode(existingOp.first['payload_json'] as String)
-              as Map<String, dynamic>;
-          final prevUpdates =
-              (prev['updates'] as Map?)?.cast<String, dynamic>();
-          if (prevUpdates != null) {
-            merged = {...prevUpdates, ...updates};
-          }
-        } catch (_) {/* fall through */}
-      }
-      await txn.insert(
-        'sync_operations',
-        {
-          'id': opId,
-          'entity_type': 'observations_synthese',
-          'entity_local_id': dossierId,
-          'operation_type': 'update',
-          'payload_json': jsonEncode({
-            'dossierId': dossierId,
-            'updates': merged,
-          }),
-          'status': SyncOperationStatus.pending.name,
-          'attempt_count': 0,
-          'last_error': null,
-          'created_at': now,
-          'updated_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      final merged = await _mergeWithUnconfirmedSyncUpdates(
+        txn,
+        operationId: opId,
+        nextUpdates: updates,
       );
+      await txn.insert('sync_operations', {
+        'id': opId,
+        'entity_type': 'observations_synthese',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     SyncEngine().notify();
   }
 
-  Future<List<VisitRecommendationItem>> fetchVisitRecommendations(String dossierId) async {
+  Future<List<VisitRecommendationItem>> fetchVisitRecommendations(
+    String dossierId,
+  ) async {
     final db = await _database.database;
-    final rows = await db.query('visit_recommendations', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final rows = await db.query(
+      'visit_recommendations',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
     if (rows.isEmpty) return [];
-    final itemsJson = jsonDecode(rows.first['items_json'] as String) as List<dynamic>;
-    return itemsJson.map((e) => VisitRecommendationItem.fromJson(e as Map<String, dynamic>)).toList();
+    final itemsJson =
+        jsonDecode(rows.first['items_json'] as String) as List<dynamic>;
+    return itemsJson
+        .map((e) => VisitRecommendationItem.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<void> saveVisitRecommendations(String dossierId, List<VisitRecommendationItem> items) async {
+  Future<void> saveVisitRecommendations(
+    String dossierId,
+    List<VisitRecommendationItem> items,
+  ) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
-    final existing = await db.query('visit_recommendations', where: 'dossier_local_id = ?', whereArgs: [dossierId], limit: 1);
+    final existing = await db.query(
+      'visit_recommendations',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
     // EN LOCAL : on persiste TOUS les items (y compris ceux sans fiche
     // wiki liée) → une préconisation "vide" en cours de saisie n'est pas
     // perdue si l'app redémarre avant que l'utilisateur ait choisi
@@ -2816,33 +2906,33 @@ class DossierRepository {
         data['local_id'] = 'rec_${dossierId}_${_uuid()}';
         await txn.insert('visit_recommendations', data);
       } else {
-        await txn.update('visit_recommendations', data,
-            where: 'dossier_local_id = ?', whereArgs: [dossierId]);
+        await txn.update(
+          'visit_recommendations',
+          data,
+          where: 'dossier_local_id = ?',
+          whereArgs: [dossierId],
+        );
       }
 
       if (syncItems.isNotEmpty || items.isEmpty) {
         // `items.isEmpty` = l'utilisateur a tout supprimé, on push la liste
         // vide pour que le serveur retire ses records. Sinon on attend
         // qu'au moins un item ait une fiche wiki liée.
-        await txn.insert(
-          'sync_operations',
-          {
-            'id': opId,
-            'entity_type': 'visit_recommendations',
-            'entity_local_id': dossierId,
-            'operation_type': 'update',
-            'payload_json': jsonEncode({
-              'dossierId': dossierId,
-              'items': syncItems,
-            }),
-            'status': SyncOperationStatus.pending.name,
-            'attempt_count': 0,
-            'last_error': null,
-            'created_at': now,
-            'updated_at': now,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await txn.insert('sync_operations', {
+          'id': opId,
+          'entity_type': 'visit_recommendations',
+          'entity_local_id': dossierId,
+          'operation_type': 'update',
+          'payload_json': jsonEncode({
+            'dossierId': dossierId,
+            'items': syncItems,
+          }),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       } else {
         // Aucun item complet à pousser. Retire l'éventuelle sync_op
         // précédente (sinon elle ré-échouerait avec le même 400).
@@ -2876,25 +2966,21 @@ class DossierRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final opId = 'report_gen_$dossierId';
-    await db.insert(
-      'sync_operations',
-      {
-        'id': opId,
-        'entity_type': 'report_generation',
-        'entity_local_id': dossierId,
-        'operation_type': 'generate',
-        'payload_json': jsonEncode({
-          'dossierId': dossierId,
-          'patientId': patientId,
-        }),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('sync_operations', {
+      'id': opId,
+      'entity_type': 'report_generation',
+      'entity_local_id': dossierId,
+      'operation_type': 'generate',
+      'payload_json': jsonEncode({
+        'dossierId': dossierId,
+        'patientId': patientId,
+      }),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     SyncEngine().notify();
     return opId;
   }

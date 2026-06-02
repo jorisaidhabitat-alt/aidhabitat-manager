@@ -8,7 +8,8 @@ import '../services/multi_window_stub.dart'
     if (dart.library.io) 'package:desktop_multi_window/desktop_multi_window.dart';
 // Web-only : BroadcastChannel IPC + persistance frame en localStorage.
 import '../services/note_window_web_stub.dart'
-    if (dart.library.html) '../services/note_window_web.dart' as note_window_web;
+    if (dart.library.html) '../services/note_window_web.dart'
+    as note_window_web;
 import '../components/brand_colors.dart';
 import '../components/notes_widget.dart';
 
@@ -101,20 +102,26 @@ class NoteWindowScreen extends StatefulWidget {
   State<NoteWindowScreen> createState() => _NoteWindowScreenState();
 }
 
-class _NoteWindowScreenState extends State<NoteWindowScreen> {
+class _NoteWindowScreenState extends State<NoteWindowScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   Timer? _sizeReportTimer;
   Size? _lastReportedSize;
   Offset? _lastReportedOrigin;
   StreamSubscription<dynamic>? _webIpcSub;
+  bool _nativeIpcAvailable = true;
+  bool _tearingDown = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller.text = widget.initialText;
-    _controller.selection =
-        TextSelection.collapsed(offset: widget.initialText.length);
+    _controller.selection = TextSelection.collapsed(
+      offset: widget.initialText.length,
+    );
+    _focusNode.addListener(_handleFocusChange);
 
     // IPC handler: the main window pushes text when the user types in
     // the in-app NotesWidget — mirror it here EVEN if we're focused.
@@ -131,11 +138,12 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
     // l'utilisateur aurait juste cliqué dans le champ sans taper.
     void onPushNote(Map<String, dynamic> args) {
       if (args['patientId'] != widget.patientId ||
-          args['tabKey'] != widget.tabKey) return;
+          args['tabKey'] != widget.tabKey) {
+        return;
+      }
       final text = args['text']?.toString() ?? '';
       if (_controller.text == text) return;
-      final oldOffset = _controller.selection.baseOffset
-          .clamp(0, text.length);
+      final oldOffset = _controller.selection.baseOffset.clamp(0, text.length);
       _controller.value = TextEditingValue(
         text: text,
         selection: TextSelection.collapsed(
@@ -172,12 +180,34 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
   }
 
   @override
+  void deactivate() {
+    if (!kIsWeb) {
+      _flushLiveSafely();
+    }
+    super.deactivate();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _flushLiveSafely();
+    }
+  }
+
+  @override
   void dispose() {
+    _tearingDown = true;
+    WidgetsBinding.instance.removeObserver(this);
     _sizeReportTimer?.cancel();
     _webIpcSub?.cancel();
-    // Final flush — send one last IPC with the current text before the
-    // window vanishes, so nothing is lost.
-    _sendLive(_controller.text, flush: true);
+    _focusNode.removeListener(_handleFocusChange);
+    if (kIsWeb) {
+      // Sur web la popup ne subit pas le teardown de moteur Flutter du
+      // plugin desktop_multi_window. On peut donc conserver le flush final.
+      _sendLive(_controller.text, flush: true);
+    } else {
+      DesktopMultiWindow.setMethodHandler(null);
+    }
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -185,8 +215,21 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
 
   static const _windowFrameChannel = MethodChannel('aidhabitat/window_frame');
 
+  void _handleFocusChange() {
+    if (!_focusNode.hasFocus) {
+      _flushLiveSafely();
+    }
+  }
+
+  void _flushLiveSafely() {
+    if (_tearingDown) return;
+    if (!kIsWeb && !_nativeIpcAvailable) return;
+    _sendLive(_controller.text, flush: true);
+  }
+
   Future<void> _reportSize() async {
-    if (!mounted) return;
+    if (!mounted || _tearingDown) return;
+    final viewportSize = MediaQuery.of(context).size;
     // Sur web : pas de plugin natif pour la frame. On lit
     // `window.outerWidth/Height` + `screenX/Y` côté JS pour récupérer
     // la position de la POPUP (vs `MediaQuery` qui ne donne que le
@@ -195,7 +238,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
     // pour rouvrir aux mêmes dimensions et position.
     if (kIsWeb) {
       try {
-        final size = MediaQuery.of(context).size;
+        final size = viewportSize;
         // Web : `window.screenLeft/Top` donne l'origine écran de la
         // popup (cf. dart:html via le helper).
         // On passe par 2 chemins :
@@ -209,10 +252,10 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
         // (qui est dans le helper). On envoie juste la taille — la
         // position est captée côté localStorage par persistNoteWindowFrame
         // qui a accès à window.screenX directement.
-        note_window_web.sendNoteIpc(method: 'reportNoteSize', args: {
-          'width': size.width,
-          'height': size.height,
-        });
+        note_window_web.sendNoteIpc(
+          method: 'reportNoteSize',
+          args: {'width': size.width, 'height': size.height},
+        );
         // Le helper persistNoteWindowFrame lit lui-même window.screenX/Y
         // → on lui passe la taille connue, il complète avec l'origine.
         note_window_web.persistNoteWindowFrame(
@@ -226,14 +269,18 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
           width: size.width,
           height: size.height,
         );
-      } catch (_) {/* ignore */}
+      } catch (_) {
+        /* ignore */
+      }
       return;
     }
     // Native macOS : lit la frame via le plugin Swift local
     // `WindowFramePlugin` — le plugin Dart `desktop_multi_window` 0.2.1
     // n'expose pas getFrame().
     try {
-      final raw = await _windowFrameChannel.invokeMethod<List<dynamic>>('getFrame');
+      final raw = await _windowFrameChannel.invokeMethod<List<dynamic>>(
+        'getFrame',
+      );
       if (raw == null || raw.length != 4) return;
       final x = (raw[0] as num).toDouble();
       final y = (raw[1] as num).toDouble();
@@ -245,22 +292,28 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
       }
       _lastReportedSize = size;
       _lastReportedOrigin = Offset(x, y);
+      if (!_nativeIpcAvailable) return;
       DesktopMultiWindow.invokeMethod(0, 'reportNoteFrame', {
         'x': x,
         'y': y,
         'width': w,
         'height': h,
-      }).catchError((_) {});
+      }).catchError((_) {
+        _nativeIpcAvailable = false;
+      });
     } catch (_) {
       // Fallback : si le plugin natif n'est pas dispo, on envoie au moins
       // la taille comme avant (pas de position, conservée entre ouvertures).
-      final size = MediaQuery.of(context).size;
+      final size = viewportSize;
       if (_lastReportedSize == size) return;
       _lastReportedSize = size;
+      if (!_nativeIpcAvailable) return;
       DesktopMultiWindow.invokeMethod(0, 'reportNoteSize', {
         'width': size.width,
         'height': size.height,
-      }).catchError((_) {});
+      }).catchError((_) {
+        _nativeIpcAvailable = false;
+      });
     }
   }
 
@@ -270,24 +323,26 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
   /// its side.
   void _sendLive(String text, {bool flush = false}) {
     if (kIsWeb) {
-      note_window_web.sendNoteIpc(method: 'liveNote', args: {
-        'patientId': widget.patientId,
-        'tabKey': widget.tabKey,
-        'text': text,
-        'flush': flush,
-      });
+      note_window_web.sendNoteIpc(
+        method: 'liveNote',
+        args: {
+          'patientId': widget.patientId,
+          'tabKey': widget.tabKey,
+          'text': text,
+          'flush': flush,
+        },
+      );
       return;
     }
+    if (_tearingDown || !_nativeIpcAvailable) return;
     DesktopMultiWindow.invokeMethod(0, 'liveNote', {
       'patientId': widget.patientId,
       'tabKey': widget.tabKey,
       'text': text,
       'flush': flush,
-    }).catchError((_) {});
-  }
-
-  void _closeWindow() {
-    WindowController.fromWindowId(widget.windowId).close();
+    }).catchError((_) {
+      _nativeIpcAvailable = false;
+    });
   }
 
   @override
@@ -312,9 +367,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
                 padding: EdgeInsets.fromLTRB(isWebPopup ? 16 : 82, 6, 14, 6),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  border: Border(
-                    bottom: BorderSide(color: Color(0xFFE4E7EB)),
-                  ),
+                  border: Border(bottom: BorderSide(color: Color(0xFFE4E7EB))),
                 ),
                 child: Row(
                   children: [
@@ -365,9 +418,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen> {
               child: SizedBox(
                 width: 14,
                 height: 14,
-                child: CustomPaint(
-                  painter: _ResizeHintPainter(),
-                ),
+                child: CustomPaint(painter: _ResizeHintPainter()),
               ),
             ),
           ),
@@ -386,7 +437,8 @@ class _ResizeHintPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF8A939D) // slate-400
+      ..color =
+          const Color(0xFF8A939D) // slate-400
       ..strokeWidth = 1.2
       ..strokeCap = StrokeCap.round;
 
@@ -441,9 +493,7 @@ class NoteWindowDrawingScreen extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(isWebPopup ? 16 : 82, 6, 14, 6),
             decoration: BoxDecoration(
               color: Colors.white,
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFE4E7EB)),
-              ),
+              border: Border(bottom: BorderSide(color: Color(0xFFE4E7EB))),
             ),
             child: Row(
               children: [

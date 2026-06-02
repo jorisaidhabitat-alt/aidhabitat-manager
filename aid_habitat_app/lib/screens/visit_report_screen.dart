@@ -12,7 +12,8 @@ import '../services/multi_window_stub.dart'
 // Web-only : window.open + BroadcastChannel pour ouvrir une vraie
 // fenêtre browser détachée sur Mac (avec les pastilles natives).
 import '../services/note_window_web_stub.dart'
-    if (dart.library.html) '../services/note_window_web.dart' as note_window_web;
+    if (dart.library.html) '../services/note_window_web.dart'
+    as note_window_web;
 import 'package:lucide_icons/lucide_icons.dart';
 import '../components/notes_panel_title_banner.dart';
 import '../models/types.dart';
@@ -23,7 +24,6 @@ import '../services/dossier_repository.dart';
 import '../services/data_service.dart';
 import '../services/report_generation_service.dart';
 import '../services/sync_engine.dart';
-import '../components/beneficiary_badges.dart';
 import '../components/beneficiary_header.dart';
 import '../components/brand_colors.dart';
 import '../components/notes_widget.dart';
@@ -206,8 +206,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// serveur lit les 4 anciens tabKeys en fallback (cf.
   /// `fetchVadOverlayNotesForReport` dans server/index.mjs) — donc
   /// rien n'est perdu côté PDF.
-  static const String _kSharedAccessibiliteNotesTabKey =
-      'Accessibilité-Notes';
+  static const String _kSharedAccessibiliteNotesTabKey = 'Accessibilité-Notes';
 
   /// Calcule le tabKey à utiliser pour le panneau notes. Pour la
   /// majorité des onglets c'est `'$tab-$section'`. Cas spéciaux :
@@ -285,9 +284,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   void initState() {
     super.initState();
     _dossier = widget.dossier;
-    final initialTabIndex =
-        _VisitReportStateCache.getTabIndex(widget.dossier.id)
-            .clamp(0, _tabs.length - 1);
+    final initialTabIndex = _VisitReportStateCache.getTabIndex(
+      widget.dossier.id,
+    ).clamp(0, _tabs.length - 1);
     _tabController = TabController(
       length: _tabs.length,
       vsync: this,
@@ -303,17 +302,18 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // je quitte le relevé de visite et que je retourne dessus, je n'ai
     // plus le load qui indique la generation en cours ».
     final initialState = ReportGenerationService.instance.currentState;
-    _isGeneratingReport = initialState.inProgress
-        && initialState.activeDossierId == widget.dossier.id;
+    _isGeneratingReport =
+        initialState.inProgress &&
+        initialState.activeDossierId == widget.dossier.id;
     _reportGenSubscription = ReportGenerationService.instance.stateStream
         .listen((state) {
-      if (!mounted) return;
-      final mineInProgress = state.inProgress
-          && state.activeDossierId == widget.dossier.id;
-      if (mineInProgress != _isGeneratingReport) {
-        setState(() => _isGeneratingReport = mineInProgress);
-      }
-    });
+          if (!mounted) return;
+          final mineInProgress =
+              state.inProgress && state.activeDossierId == widget.dossier.id;
+          if (mineInProgress != _isGeneratingReport) {
+            setState(() => _isGeneratingReport = mineInProgress);
+          }
+        });
 
     // Pull BULK de toutes les notes du patient — 1 seul HTTP request
     // ramène toutes les pages de tous les onglets (Contexte de vie,
@@ -357,9 +357,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // `_resolveNotesTabKey`). Idempotent : DELETE no-op après la 1ère
     // ouverture du dossier post-déploiement. Fire-and-forget, on ne
     // bloque pas le rendu sur ce nettoyage SQLite local.
-    _dataService
-        .purgeLegacySanitairesNotes(_dossier.patient.id)
-        .then((removed) {
+    _dataService.purgeLegacySanitairesNotes(_dossier.patient.id).then((
+      removed,
+    ) {
       if (removed > 0) {
         // ignore: avoid_print
         print('[visit_report] purge notes SDB/WC legacy : $removed lignes');
@@ -383,10 +383,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           final flush = args['flush'] == true;
           if (mounted) {
             setState(() {
-              _liveText['${patientId}::$tabKey'] = text;
+              _liveText['$patientId::$tabKey'] = text;
             });
           }
-          final key = '${patientId}::$tabKey';
+          final key = '$patientId::$tabKey';
           _saveDebounce[key]?.cancel();
           if (flush) {
             _persistNoteText(patientId, tabKey, text);
@@ -450,7 +450,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// strokes) and persists it via DataService, which also enqueues a
   /// sync_operation so NocoDB receives the change.
   Future<void> _persistNoteText(
-      String patientId, String tabKey, String text) async {
+    String patientId,
+    String tabKey,
+    String text,
+  ) async {
     final existingJson = await _dataService.fetchNoteDrawingJson(
       patientId: patientId,
       tabKey: tabKey,
@@ -468,11 +471,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         }
       } catch (_) {}
     }
-    final merged = jsonEncode({
-      'version': 1,
-      'text': text,
-      'strokes': strokes,
-    });
+    final merged = jsonEncode({'version': 1, 'text': text, 'strokes': strokes});
     await _dataService.saveNoteDrawingJson(
       patientId: patientId,
       tabKey: tabKey,
@@ -537,18 +536,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       builder: (ctx) {
         final controller = TextEditingController(text: initialText);
         return Dialog(
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 32,
+          ),
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: SizedBox(
             width: 720,
             height: 520,
             child: Column(
               children: [
                 Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
                   child: Row(
                     children: [
                       Expanded(
@@ -578,8 +579,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       expands: true,
                       autofocus: true,
                       textAlignVertical: TextAlignVertical.top,
-                      style:
-                          const TextStyle(fontSize: 14, height: 1.5),
+                      style: const TextStyle(fontSize: 14, height: 1.5),
                       decoration: const InputDecoration(
                         border: InputBorder.none,
                         hintText: 'Écrivez votre note…',
@@ -587,8 +587,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       onChanged: (text) {
                         if (!mounted) return;
                         setState(() {
-                          _liveText[
-                                  '${_dossier.patient.id}::$sourceTab'] =
+                          _liveText['${_dossier.patient.id}::$sourceTab'] =
                               text;
                         });
                         final key = '${_dossier.patient.id}::$sourceTab';
@@ -598,7 +597,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                         _saveDebounce[key] = Timer(
                           const Duration(milliseconds: 150),
                           () => _persistNoteText(
-                              _dossier.patient.id, sourceTab, text),
+                            _dossier.patient.id,
+                            sourceTab,
+                            text,
+                          ),
                         );
                       },
                     ),
@@ -645,6 +647,24 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   @override
   void dispose() {
+    for (final entry in _liveText.entries) {
+      final sep = entry.key.indexOf('::');
+      if (sep <= 0) continue;
+      final patientId = entry.key.substring(0, sep);
+      final tabKey = entry.key.substring(sep + 2);
+      _saveDebounce[entry.key]?.cancel();
+      // ignore: discarded_futures
+      _persistNoteText(patientId, tabKey, entry.value);
+    }
+    if (!kIsWeb) {
+      final openWindowIds = _openNoteWindows.values.toSet().toList(
+        growable: false,
+      );
+      for (final windowId in openWindowIds) {
+        WindowController.fromWindowId(windowId).close().catchError((_) {});
+      }
+      DesktopMultiWindow.setMethodHandler(null);
+    }
     for (final t in _saveDebounce.values) {
       t.cancel();
     }
@@ -748,7 +768,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // principale affiche immédiatement le contenu (mirroir de la
       // fenêtre détachée). L'IPC BroadcastChannel prendra le relais
       // dès que la fenêtre détachée est prête.
-      _liveText['${patientId}::$sourceTab'] = initialText;
+      _liveText['$patientId::$sourceTab'] = initialText;
       return;
     }
 
@@ -762,10 +782,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       'initialText': initialText,
     });
     final window = await DesktopMultiWindow.createWindow(payload);
-    _openNoteWindows['${patientId}::$sourceTab'] = window.windowId;
-    _liveText['${patientId}::$sourceTab'] = initialText;
-    final origin = _VisitReportStateCache.lastNoteWindowOrigin
-        ?? const Offset(200, 200);
+    _openNoteWindows['$patientId::$sourceTab'] = window.windowId;
+    _liveText['$patientId::$sourceTab'] = initialText;
+    final origin =
+        _VisitReportStateCache.lastNoteWindowOrigin ?? const Offset(200, 200);
     window
       ..setFrame(origin & _VisitReportStateCache.lastNoteWindowSize)
       ..setTitle('Note — $sourceTab')
@@ -833,8 +853,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       'mode': 'drawing',
     });
     final window = await DesktopMultiWindow.createWindow(payload);
-    final origin = _VisitReportStateCache.lastNoteWindowOrigin
-        ?? const Offset(200, 200);
+    final origin =
+        _VisitReportStateCache.lastNoteWindowOrigin ?? const Offset(200, 200);
     window
       ..setFrame(origin & _VisitReportStateCache.lastNoteWindowSize)
       ..setTitle('Résumé — dessin')
@@ -879,108 +899,120 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         // à gauche, pour que l'utilisateur sente que le contenu vient
         // de changer.
         Expanded(
-          child: Builder(builder: (_) {
-            // Dédoublonne les sous-sections par tabKey résolu.
-            // Pour Accessibilité (Refonte 2026-05-15) : les 4
-            // sous-sections partagent le même tabKey
-            // `Accessibilité-Notes` → on collapse à 1 layer (sinon
-            // 4 NotesWidget avec la même ValueKey provoquaient un
-            // throw Flutter sur les keys dupliquées dans le Stack).
-            // Pour Sanitaires : déjà 1 entrée dans `_tabSubsections`,
-            // pas d'impact. Pour les autres tabs : 1 tabKey unique
-            // par sous-section, pas de dédoublonnage.
-            final seenTabKeys = <String>{};
-            final layers = <_NotesLayerSpec>[];
-            for (var i = 0; i < subsections.length; i++) {
-              final section = subsections[i];
-              final tabKey = _resolveNotesTabKey(activeTab, section);
-              if (!seenTabKeys.add(tabKey)) continue;
-              layers.add(_NotesLayerSpec(
-                section: section,
-                tabKey: tabKey,
-                originalIndex: i,
-              ));
-            }
-            // Tabkey actif (selon la sous-section sélectionnée).
-            final activeTabKey =
-                _resolveNotesTabKey(activeTab, subsections[safeIdx]);
-            return Stack(
-              fit: StackFit.expand,
-              children: layers.map((layer) {
-                final section = layer.section;
-                final tabKey = layer.tabKey;
-                final liveKey = '${_dossier.patient.id}::$tabKey';
-                final isMedical = tabKey == 'Contexte de vie-Médical';
-                final isActive = tabKey == activeTabKey;
-                final pdfPlaceholder = _resolvePlaceholderForTabKey(tabKey);
-              // Bannière titre 2026-05-15 : auparavant le libellé PDF
-              // (« Observations sur l'accessibilité », « Habitudes de
-              // vie »…) était noyé comme hintText du TextField interne.
-              // Demande user : passer ces libellés en TITRE en haut du
-              // cadre avec fond violet clair, pour qu'ils restent
-              // visibles même quand l'ergo a commencé à saisir. Le
-              // NotesWidget reçoit donc `placeholder: ''` (pas de hint).
-              final bannerTitle = pdfPlaceholder ?? section;
-              return _NotesPanelLayer(
-                isActive: isActive,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    NotesPanelTitleBanner(title: bannerTitle),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: NotesWidget(
-                  key: ValueKey(liveKey),
-                  patientId: _dossier.patient.id,
-                  tabKey: tabKey,
-                  title: section,
-                  placeholder: '',
-                  liveText: _liveText[liveKey],
-                  // Token incrémenté quand le pull bulk des notes
-                  // termine — déclenche `_reloadCurrentPageFromStore`
-                  // côté NotesWidget pour afficher la note fraîche
-                  // depuis SQLite (déjà mergée par le pull bulk).
-                  externalRefreshToken: _notesBulkPullToken,
-                  onDraftChange: (draft) =>
-                      _pushDraftToOpenWindow(tabKey, draft.text),
-                  onExpandToTab: () => _openNoteInSeparateWindow(tabKey),
-                  showSaveButton: false,
-                  embedded: false,
-                  fillParentHeight: true,
-                  allowPagination: true,
-                  stackedCards: true,
-                  // Médical : 3 pages fixes, chaque page affiche son
-                  // numéro (1/2/3) en background. Plus aucun couplage
-                  // avec les checkboxes à gauche (Pathologie / Suivi /
-                  // Sensoriel) — celles-ci gardent leur état interne via
-                  // `medicalFlags` mais ne pilotent plus l'overlay.
-                  // Cf. `_MedicalPageNumberBadge` + `_medicalCurrentPage`
-                  // (demande utilisateur 2026-05-04).
-                  totalPages: isMedical ? 3 : 1,
-                  backgroundContent: isMedical
-                      ? _MedicalPageNumberBadge(
-                          currentPage: _medicalCurrentPage,
-                        )
-                      : null,
-                  onPageChange: isMedical
-                      ? (page) {
-                          // `page` est 0-indexé côté NotesWidget, on le
-                          // convertit en 1-indexé pour l'affichage.
-                          if (!mounted) return;
-                          setState(() => _medicalCurrentPage = page + 1);
-                        }
-                      : null,
-                  medicalFlags: isMedical ? _medicalFlagNumbers : null,
-                  onMedicalFlagsChanged:
-                      isMedical ? _handleMedicalFlagsFromNotes : null,
-                ),
-                    ),
-                  ],
-                ),
+          child: Builder(
+            builder: (_) {
+              // Dédoublonne les sous-sections par tabKey résolu.
+              // Pour Accessibilité (Refonte 2026-05-15) : les 4
+              // sous-sections partagent le même tabKey
+              // `Accessibilité-Notes` → on collapse à 1 layer (sinon
+              // 4 NotesWidget avec la même ValueKey provoquaient un
+              // throw Flutter sur les keys dupliquées dans le Stack).
+              // Pour Sanitaires : déjà 1 entrée dans `_tabSubsections`,
+              // pas d'impact. Pour les autres tabs : 1 tabKey unique
+              // par sous-section, pas de dédoublonnage.
+              final seenTabKeys = <String>{};
+              final layers = <_NotesLayerSpec>[];
+              for (var i = 0; i < subsections.length; i++) {
+                final section = subsections[i];
+                final tabKey = _resolveNotesTabKey(activeTab, section);
+                if (!seenTabKeys.add(tabKey)) continue;
+                layers.add(
+                  _NotesLayerSpec(
+                    section: section,
+                    tabKey: tabKey,
+                    originalIndex: i,
+                  ),
+                );
+              }
+              // Tabkey actif (selon la sous-section sélectionnée).
+              final activeTabKey = _resolveNotesTabKey(
+                activeTab,
+                subsections[safeIdx],
               );
-              }).toList(),
-            );
-          }),
+              return Stack(
+                fit: StackFit.expand,
+                children: layers.map((layer) {
+                  final section = layer.section;
+                  final tabKey = layer.tabKey;
+                  final liveKey = '${_dossier.patient.id}::$tabKey';
+                  final isMedical = tabKey == 'Contexte de vie-Médical';
+                  final isActive = tabKey == activeTabKey;
+                  final pdfPlaceholder = _resolvePlaceholderForTabKey(tabKey);
+                  // Bannière titre 2026-05-15 : auparavant le libellé PDF
+                  // (« Observations sur l'accessibilité », « Habitudes de
+                  // vie »…) était noyé comme hintText du TextField interne.
+                  // Demande user : passer ces libellés en TITRE en haut du
+                  // cadre avec fond violet clair, pour qu'ils restent
+                  // visibles même quand l'ergo a commencé à saisir. Le
+                  // NotesWidget reçoit donc `placeholder: ''` (pas de hint).
+                  final bannerTitle = pdfPlaceholder ?? section;
+                  return _NotesPanelLayer(
+                    isActive: isActive,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        NotesPanelTitleBanner(title: bannerTitle),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: NotesWidget(
+                            key: ValueKey(liveKey),
+                            patientId: _dossier.patient.id,
+                            tabKey: tabKey,
+                            title: section,
+                            placeholder: '',
+                            liveText: _liveText[liveKey],
+                            // Token incrémenté quand le pull bulk des notes
+                            // termine — déclenche `_reloadCurrentPageFromStore`
+                            // côté NotesWidget pour afficher la note fraîche
+                            // depuis SQLite (déjà mergée par le pull bulk).
+                            externalRefreshToken: _notesBulkPullToken,
+                            onDraftChange: (draft) =>
+                                _pushDraftToOpenWindow(tabKey, draft.text),
+                            onExpandToTab: () =>
+                                _openNoteInSeparateWindow(tabKey),
+                            showSaveButton: false,
+                            embedded: false,
+                            fillParentHeight: true,
+                            allowPagination: true,
+                            stackedCards: true,
+                            // Médical : 3 pages fixes, chaque page affiche son
+                            // numéro (1/2/3) en background. Plus aucun couplage
+                            // avec les checkboxes à gauche (Pathologie / Suivi /
+                            // Sensoriel) — celles-ci gardent leur état interne via
+                            // `medicalFlags` mais ne pilotent plus l'overlay.
+                            // Cf. `_MedicalPageNumberBadge` + `_medicalCurrentPage`
+                            // (demande utilisateur 2026-05-04).
+                            totalPages: isMedical ? 3 : 1,
+                            backgroundContent: isMedical
+                                ? _MedicalPageNumberBadge(
+                                    currentPage: _medicalCurrentPage,
+                                  )
+                                : null,
+                            onPageChange: isMedical
+                                ? (page) {
+                                    // `page` est 0-indexé côté NotesWidget, on le
+                                    // convertit en 1-indexé pour l'affichage.
+                                    if (!mounted) return;
+                                    setState(
+                                      () => _medicalCurrentPage = page + 1,
+                                    );
+                                  }
+                                : null,
+                            medicalFlags: isMedical
+                                ? _medicalFlagNumbers
+                                : null,
+                            onMedicalFlagsChanged: isMedical
+                                ? _handleMedicalFlagsFromNotes
+                                : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -1058,11 +1090,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                 // dessiné par UnderlineTabIndicator côté TabBar
                 // (mécanique native Flutter), avec la bonne largeur
                 // « tab clickable » automatiquement.
-                return Tab(
-                  child: SoftTapScale.passThrough(
-                    child: Text(label),
-                  ),
-                );
+                return Tab(child: SoftTapScale.passThrough(child: Text(label)));
               }),
               dividerColor: Colors.transparent,
               padding: const EdgeInsets.all(4),
@@ -1153,8 +1181,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     height: 14,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
                 else
@@ -1279,8 +1306,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       //    (potentiellement vide) pour aligner NocoDB sur la vérité
       //    locale avant que le serveur ne lise les recos.
       try {
-        final localRecos =
-            await _repository.fetchVisitRecommendations(_dossier.id);
+        final localRecos = await _repository.fetchVisitRecommendations(
+          _dossier.id,
+        );
         await _repository.saveVisitRecommendations(_dossier.id, localRecos);
       } catch (_) {
         // Pas bloquant : si la fetch/save échoue, on tombe sur
@@ -1301,10 +1329,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       try {
         final syncResult = await _dataService.runSync();
         // ignore: avoid_print
-        print('[report] runSync : pushed=${syncResult.pushedOperations} '
-            'failed=${syncResult.failedOperations} '
-            'conflicts=${syncResult.conflictCount} '
-            'msg="${syncResult.message}"');
+        print(
+          '[report] runSync : pushed=${syncResult.pushedOperations} '
+          'failed=${syncResult.failedOperations} '
+          'conflicts=${syncResult.conflictCount} '
+          'msg="${syncResult.message}"',
+        );
         if (syncResult.conflictCount > 0) {
           // Conflits = action utilisateur requise (résolution manuelle).
           // Pas un cas pour la queue offline — on remonte l'erreur.
@@ -1370,11 +1400,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         String fileName,
         Map<String, dynamic>? stats,
         String? savedDocUuid,
-      }) result;
+      })
+      result;
       try {
-        result = await _dataService.downloadVisitReport(
-          dossierId: _dossier.id,
-        );
+        result = await _dataService.downloadVisitReport(dossierId: _dossier.id);
       } catch (error) {
         // Échec de l'appel /api/reports/visit/:dossierId (timeout,
         // 5xx, 502 Vercel cold start, etc.) → queue différée. Ne pas
@@ -1396,7 +1425,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           ReportGenerationFailure(
             dossierId: _dossier.id,
             patientLabel: patientLabel,
-            message: 'Rapport mis en file d\'attente — réessai automatique. '
+            message:
+                'Rapport mis en file d\'attente — réessai automatique. '
                 'Le bandeau vert s\'affichera dès qu\'il sera prêt.',
             deferred: true,
             occurredAt: DateTime.now(),
@@ -1424,8 +1454,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       final DocItem inserted;
       if (result.savedDocUuid != null && result.savedDocUuid!.isNotEmpty) {
         // ignore: avoid_print
-        print('[report] doc déjà en NocoDB (uuid=${result.savedDocUuid}) '
-            '→ insert local-only synced (no upload queue)');
+        print(
+          '[report] doc déjà en NocoDB (uuid=${result.savedDocUuid}) '
+          '→ insert local-only synced (no upload queue)',
+        );
         inserted = await _dataService.importDocumentRemoteOnly(
           patientId: patientId,
           dossierId: _dossier.id,
@@ -1446,8 +1478,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         );
       } else {
         // ignore: avoid_print
-        print('[report] importDocumentBytes patientId="$patientId" '
-            'fileName="${result.fileName}" bytes=${result.bytes.length}');
+        print(
+          '[report] importDocumentBytes patientId="$patientId" '
+          'fileName="${result.fileName}" bytes=${result.bytes.length}',
+        );
         // localId déterministe par dossier → 1 seul doc « Rapport »
         // par dossier, regénération = REPLACE (avec préservation des
         // annotations). Sans ça, chaque clic « Générer » créait un
@@ -1464,8 +1498,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         );
       }
       // ignore: avoid_print
-      print('[report] document local_id=${inserted.id} créé '
-          '(sync_state=${inserted.syncState.name})');
+      print(
+        '[report] document local_id=${inserted.id} créé '
+        '(sync_state=${inserted.syncState.name})',
+      );
 
       // Vérification immédiate : on relit la liste locale et on
       // confirme que le doc est bien retrouvable. Si non, on remonte
@@ -1474,8 +1510,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       final docs = await _dataService.fetchDocuments(patientId);
       final found = docs.any((d) => d.id == inserted.id);
       // ignore: avoid_print
-      print('[report] vérification : ${docs.length} doc(s) pour '
-          'patient="$patientId", trouvé=$found');
+      print(
+        '[report] vérification : ${docs.length} doc(s) pour '
+        'patient="$patientId", trouvé=$found',
+      );
 
       if (!found) {
         _showReportError(
@@ -1517,8 +1555,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         if (visitTagsNormalized.contains(n)) return true;
         return n.startsWith('visite - ') || n.startsWith('visite-');
       }
-      final docsInDocumentsSpace =
-          docs.where((d) => !d.tags.any(isVisitTag)).length;
+
+      final docsInDocumentsSpace = docs
+          .where((d) => !d.tags.any(isVisitTag))
+          .length;
       _showReportSuccess(result, totalDocs: docsInDocumentsSpace);
 
       // Notifie le service global → bandeau vert affichable depuis
@@ -1625,32 +1665,40 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final p = _dossier.patient;
     final tab = _tabs.indexOf('Bénéficiaire');
     if (p.firstName.trim().isEmpty || p.lastName.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Profil — nom et prénom',
-        tabIndex: tab,
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Profil — nom et prénom',
+          tabIndex: tab,
+          subSectionIndex: 0,
+        ),
+      );
     }
     if (p.birthDate.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Profil — date de naissance',
-        tabIndex: tab,
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Profil — date de naissance',
+          tabIndex: tab,
+          subSectionIndex: 0,
+        ),
+      );
     }
     if (p.phone.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Profil — téléphone',
-        tabIndex: tab,
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Profil — téléphone',
+          tabIndex: tab,
+          subSectionIndex: 0,
+        ),
+      );
     }
     if (p.trustedPerson.name.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Profil — personne de confiance',
-        tabIndex: tab,
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Profil — personne de confiance',
+          tabIndex: tab,
+          subSectionIndex: 0,
+        ),
+      );
     }
   }
 
@@ -1658,39 +1706,50 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final p = _dossier.patient;
     final tab = _tabs.indexOf('Bénéficiaire');
     if (p.address.trim().isEmpty || p.city.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Foyer — adresse complète',
-        tabIndex: tab,
-        subSectionIndex: 1,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Foyer — adresse complète',
+          tabIndex: tab,
+          subSectionIndex: 1,
+        ),
+      );
     }
     if (p.familySituation.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Foyer — situation familiale',
-        tabIndex: tab,
-        subSectionIndex: 1,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Foyer — situation familiale',
+          tabIndex: tab,
+          subSectionIndex: 1,
+        ),
+      );
     }
     if (p.occupationStatus.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Foyer — statut d\'occupation (Propriétaire/Locataire/Usufruitier)',
-        tabIndex: tab,
-        subSectionIndex: 1,
-      ));
+      missing.add(
+        _MissingField(
+          label:
+              'Foyer — statut d\'occupation (Propriétaire/Locataire/Usufruitier)',
+          tabIndex: tab,
+          subSectionIndex: 1,
+        ),
+      );
     }
     if ((p.numberPeople ?? 0) <= 0) {
-      missing.add(_MissingField(
-        label: 'Foyer — nombre de personnes',
-        tabIndex: tab,
-        subSectionIndex: 1,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Foyer — nombre de personnes',
+          tabIndex: tab,
+          subSectionIndex: 1,
+        ),
+      );
     }
     if (p.fiscalRevenue == null || p.fiscalRevenue! <= 0) {
-      missing.add(_MissingField(
-        label: 'Foyer — revenu fiscal de référence',
-        tabIndex: tab,
-        subSectionIndex: 1,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Foyer — revenu fiscal de référence',
+          tabIndex: tab,
+          subSectionIndex: 1,
+        ),
+      );
     }
   }
 
@@ -1705,18 +1764,22 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final apa = primary?.apa ?? false;
     final apaGir = primary?.apaGir.trim() ?? '';
     if (apa && apaGir.isEmpty) {
-      missing.add(_MissingField(
-        label: 'Santé — APA cochée mais GIR non renseigné',
-        tabIndex: tab,
-        subSectionIndex: 2,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Santé — APA cochée mais GIR non renseigné',
+          tabIndex: tab,
+          subSectionIndex: 2,
+        ),
+      );
     }
     if (p.invalidity && p.invalidityTxt.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Santé — Reconnaissance MDPH cochée mais % non renseigné',
-        tabIndex: tab,
-        subSectionIndex: 2,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Santé — Reconnaissance MDPH cochée mais % non renseigné',
+          tabIndex: tab,
+          subSectionIndex: 2,
+        ),
+      );
     }
     // Check « Aide à domicile cochée mais détails non renseignés » retiré
     // 2026-05-15 sur demande utilisateur : il n'y a pas de zone de texte
@@ -1734,11 +1797,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final p = _dossier.patient;
     final tab = _tabs.indexOf('Bénéficiaire');
     if (p.caisseRetraitePrincipale.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Admin — caisse de retraite principale',
-        tabIndex: tab,
-        subSectionIndex: 3,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Admin — caisse de retraite principale',
+          tabIndex: tab,
+          subSectionIndex: 3,
+        ),
+      );
     }
     // ANAH (déplacé dans Profil depuis 2026-05-04). Le champ
     // `compte_anah` peut être en JSON ({status, mail, mandat,
@@ -1755,35 +1820,45 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         if (decoded is Map) {
           anahStatusForCheck = (decoded['status']?.toString() ?? '').trim();
         }
-      } catch (_) {/* JSON invalide → considéré vide */}
+      } catch (_) {
+        /* JSON invalide → considéré vide */
+      }
     } else if (anahRawForCheck != 'Mandat') {
       // Plain string legacy (pas « Mandat » qui n'est plus un statut)
       anahStatusForCheck = anahRawForCheck;
     }
     if (anahStatusForCheck.isEmpty) {
-      missing.add(_MissingField(
-        label: 'Profil — création compte ANAH (à faire / à vérifier / déjà fait)',
-        tabIndex: tab,
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label:
+              'Profil — création compte ANAH (à faire / à vérifier / déjà fait)',
+          tabIndex: tab,
+          subSectionIndex: 0,
+        ),
+      );
     }
     if (_dossier.envoiRapport.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Admin — modalité d\'envoi du rapport',
-        tabIndex: tab,
-        subSectionIndex: 3,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Admin — modalité d\'envoi du rapport',
+          tabIndex: tab,
+          subSectionIndex: 3,
+        ),
+      );
     }
     // Type d'accompagnement (Diag ergo / MPA ergo / MPA complet) doit
     // être renseigné — demande utilisateur 2026-05-04 : « tout doit
     // avoir un type d'accompagnement ». Sans ça, la cellule AMO du PDF
     // tombe sur "/" alors que le dossier méritait un montant.
     if (_dossier.natureAccompagnement.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Admin — type d\'accompagnement (Diag ergo / MPA ergo / MPA complet)',
-        tabIndex: tab,
-        subSectionIndex: 3,
-      ));
+      missing.add(
+        _MissingField(
+          label:
+              'Admin — type d\'accompagnement (Diag ergo / MPA ergo / MPA complet)',
+          tabIndex: tab,
+          subSectionIndex: 3,
+        ),
+      );
     }
   }
 
@@ -1792,25 +1867,32 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     final tab = _tabs.indexOf('Accessibilité');
     // — Général (subSection 0)
     if (h.typology.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Accessibilité Général — type de logement (Maison/Appartement)',
-        tabIndex: tab,
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label:
+              'Accessibilité Général — type de logement (Maison/Appartement)',
+          tabIndex: tab,
+          subSectionIndex: 0,
+        ),
+      );
     }
     if (h.yearConstruction.trim().isEmpty) {
-      missing.add(_MissingField(
-        label: 'Accessibilité Général — année de construction',
-        tabIndex: tab,
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Accessibilité Général — année de construction',
+          tabIndex: tab,
+          subSectionIndex: 0,
+        ),
+      );
     }
     if (h.surface == null || h.surface! <= 0) {
-      missing.add(_MissingField(
-        label: 'Accessibilité Général — surface habitable',
-        tabIndex: tab,
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Accessibilité Général — surface habitable',
+          tabIndex: tab,
+          subSectionIndex: 0,
+        ),
+      );
     }
 
     // — Niveaux et pièces (subSection 1) : ≥ 1 niveau ayant à la fois
@@ -1829,21 +1911,26 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       return hasSdb && hasWc;
     });
     if (!hasBoth) {
-      missing.add(_MissingField(
-        label: 'Niveaux et pièces — au moins 1 niveau avec « Salle de bain » et « WC »',
-        tabIndex: tab,
-        subSectionIndex: 1,
-      ));
+      missing.add(
+        _MissingField(
+          label:
+              'Niveaux et pièces — au moins 1 niveau avec « Salle de bain » et « WC »',
+          tabIndex: tab,
+          subSectionIndex: 1,
+        ),
+      );
     }
 
     // — Équipements (subSection 2) : chauffage choisi + volets validés
     final hasHeating = h.heatingDetails.values.any((v) => v == true);
     if (!hasHeating) {
-      missing.add(_MissingField(
-        label: 'Équipements — chauffage (au moins 1 type sélectionné)',
-        tabIndex: tab,
-        subSectionIndex: 2,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Équipements — chauffage (au moins 1 type sélectionné)',
+          tabIndex: tab,
+          subSectionIndex: 2,
+        ),
+      );
     }
     // Volets : 2 cas de manquant
     //   1. Statut = Localisé mais localisation non précisée (texte vide)
@@ -1858,27 +1945,34 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     //   '‌' (ZWNJ, U+200C) → Aucun explicite
     void checkVolets(String label, bool entier, String rawLoc) {
       if (entier) return; // Entier — pas de check
-      const localizedMarker = '​';   // ZWSP
-      const aucunMarker = '‌';       // ZWNJ
+      const localizedMarker = '​'; // ZWSP
+      const aucunMarker = '‌'; // ZWNJ
       if (rawLoc == aucunMarker) return; // Aucun explicite — OK
       // Localisé : extraire le texte (sans le marqueur ZWSP)
       final cleaned = rawLoc.replaceAll(localizedMarker, '').trim();
       if (rawLoc.isNotEmpty && cleaned.isEmpty) {
         // Localisé sans précision (uniquement le marqueur ZWSP)
-        missing.add(_MissingField(
-          label: 'Équipements — $label : Localisé mais localisation non précisée',
-          tabIndex: tab,
-          subSectionIndex: 2,
-        ));
+        missing.add(
+          _MissingField(
+            label:
+                'Équipements — $label : Localisé mais localisation non précisée',
+            tabIndex: tab,
+            subSectionIndex: 2,
+          ),
+        );
       } else if (rawLoc.isEmpty) {
         // Aucun marqueur, aucun texte → l'ergo n'a pas répondu
-        missing.add(_MissingField(
-          label: 'Équipements — $label : statut non renseigné (Aucun/Entier/Localisé)',
-          tabIndex: tab,
-          subSectionIndex: 2,
-        ));
+        missing.add(
+          _MissingField(
+            label:
+                'Équipements — $label : statut non renseigné (Aucun/Entier/Localisé)',
+            tabIndex: tab,
+            subSectionIndex: 2,
+          ),
+        );
       }
     }
+
     checkVolets(
       'volets roulants manuels',
       h.voletsRoulantsManuelsEntier,
@@ -1901,26 +1995,35 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     //   `housing.easyAccess`, qui est non-nullable et vaut false par
     //   défaut quand l'ergo n'a jamais cliqué.
     final housingRaw = await _repository.fetchHousingRaw(_dossier.id);
-    final easyAccessSet =
-        (housingRaw?['easy_access_set'] as int? ?? 0) == 1;
+    final easyAccessSet = (housingRaw?['easy_access_set'] as int? ?? 0) == 1;
     if (!easyAccessSet) {
-      missing.add(_MissingField(
-        label: 'Extérieur — accès depuis la rue (Facile / À revoir)',
-        tabIndex: tab,
-        subSectionIndex: 3,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Extérieur — accès depuis la rue (Facile / À revoir)',
+          tabIndex: tab,
+          subSectionIndex: 3,
+        ),
+      );
     }
     // En plus : au moins une caractéristique d'accès ou d'annexe pour
     // montrer que la section a été visitée. Si l'ergo n'a vraiment rien
     // de spécial à signaler, il peut cocher Valider pour continuer.
-    final anyExterieur = h.garage || h.veranda || h.balcon || h.terrasse
-        || h.jardin || h.cheminementMarches || h.cheminementRampe;
+    final anyExterieur =
+        h.garage ||
+        h.veranda ||
+        h.balcon ||
+        h.terrasse ||
+        h.jardin ||
+        h.cheminementMarches ||
+        h.cheminementRampe;
     if (!anyExterieur) {
-      missing.add(_MissingField(
-        label: 'Extérieur — au moins une annexe ou caractéristique d\'accès',
-        tabIndex: tab,
-        subSectionIndex: 3,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Extérieur — au moins une annexe ou caractéristique d\'accès',
+          tabIndex: tab,
+          subSectionIndex: 3,
+        ),
+      );
     }
   }
 
@@ -1939,33 +2042,41 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       final lvl = s.levelLabel.isNotEmpty ? ' (${s.levelLabel})' : '';
       // Au moins douche OU baignoire
       if (!s.sdbBaignoire && !s.sdbBacDouche) {
-        missing.add(_MissingField(
-          label: 'Salle de bain$lvl — sélectionner douche ou baignoire',
-          tabIndex: tab,
-        ));
+        missing.add(
+          _MissingField(
+            label: 'Salle de bain$lvl — sélectionner douche ou baignoire',
+            tabIndex: tab,
+          ),
+        );
       } else {
-        if (s.sdbBaignoire
-            && (s.sdbBaignoireHauteur == null || s.sdbBaignoireHauteur! <= 0)) {
-          missing.add(_MissingField(
-            label: 'Salle de bain$lvl — hauteur baignoire',
-            tabIndex: tab,
-          ));
+        if (s.sdbBaignoire &&
+            (s.sdbBaignoireHauteur == null || s.sdbBaignoireHauteur! <= 0)) {
+          missing.add(
+            _MissingField(
+              label: 'Salle de bain$lvl — hauteur baignoire',
+              tabIndex: tab,
+            ),
+          );
         }
-        if (s.sdbBacDouche
-            && (s.sdbBacDoucheHauteur == null || s.sdbBacDoucheHauteur! <= 0)) {
-          missing.add(_MissingField(
-            label: 'Salle de bain$lvl — hauteur bac à douche',
-            tabIndex: tab,
-          ));
+        if (s.sdbBacDouche &&
+            (s.sdbBacDoucheHauteur == null || s.sdbBacDoucheHauteur! <= 0)) {
+          missing.add(
+            _MissingField(
+              label: 'Salle de bain$lvl — hauteur bac à douche',
+              tabIndex: tab,
+            ),
+          );
         }
       }
       // Porte : dimension chiffrée (les toggles ont des valeurs par
       // défaut, on ne peut pas les valider proprement).
       if (s.porteSdbDimension == null || s.porteSdbDimension! <= 0) {
-        missing.add(_MissingField(
-          label: 'Salle de bain$lvl — dimension de la porte',
-          tabIndex: tab,
-        ));
+        missing.add(
+          _MissingField(
+            label: 'Salle de bain$lvl — dimension de la porte',
+            tabIndex: tab,
+          ),
+        );
       }
     }
   }
@@ -1982,16 +2093,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // (cuvette bonne hauteur/trop basse, barre, sens, largeur)
       // ont des défauts donc on ne peut pas les valider.
       if (w.wcCuvetteHauteur == null || w.wcCuvetteHauteur! <= 0) {
-        missing.add(_MissingField(
-          label: 'WC$lvl — hauteur de cuvette',
-          tabIndex: tab,
-        ));
+        missing.add(
+          _MissingField(label: 'WC$lvl — hauteur de cuvette', tabIndex: tab),
+        );
       }
       if (w.porteWcDimension == null || w.porteWcDimension! <= 0) {
-        missing.add(_MissingField(
-          label: 'WC$lvl — dimension de la porte',
-          tabIndex: tab,
-        ));
+        missing.add(
+          _MissingField(label: 'WC$lvl — dimension de la porte', tabIndex: tab),
+        );
       }
     }
   }
@@ -2011,10 +2120,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       ];
       for (final (tag, label) in requiredCats) {
         if (!has(tag)) {
-          missing.add(_MissingField(
-            label: 'Photos — $label (au moins 1)',
-            tabIndex: tab,
-          ));
+          missing.add(
+            _MissingField(label: 'Photos — $label (au moins 1)', tabIndex: tab),
+          );
         }
       }
     } catch (_) {
@@ -2024,32 +2132,37 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   Future<void> _checkRecommendations(List<_MissingField> missing) async {
     final tab = _tabs.indexOf('Préconisations');
-    final recos =
-        await _repository.fetchVisitRecommendations(_dossier.id);
+    final recos = await _repository.fetchVisitRecommendations(_dossier.id);
     if (recos.isEmpty) {
-      missing.add(_MissingField(
-        label: 'Préconisations — au moins 1 préconisation',
-        tabIndex: tab,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Préconisations — au moins 1 préconisation',
+          tabIndex: tab,
+        ),
+      );
     }
   }
 
   Future<void> _checkNotesEcrites(List<_MissingField> missing) async {
     // 1) Contexte de vie — Médical (subSection 0) → PDF Environnement
     if (!await _hasNoteText('Contexte de vie-Médical')) {
-      missing.add(_MissingField(
-        label: 'Note Contexte de vie — Médical',
-        tabIndex: _tabs.indexOf('Contexte de vie'),
-        subSectionIndex: 0,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Note Contexte de vie — Médical',
+          tabIndex: _tabs.indexOf('Contexte de vie'),
+          subSectionIndex: 0,
+        ),
+      );
     }
     // 2) Contexte de vie — Autonomie (subSection 1) → PDF Habitudes
     if (!await _hasNoteText('Contexte de vie-Autonomie')) {
-      missing.add(_MissingField(
-        label: 'Note Contexte de vie — Autonomie',
-        tabIndex: _tabs.indexOf('Contexte de vie'),
-        subSectionIndex: 1,
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Note Contexte de vie — Autonomie',
+          tabIndex: _tabs.indexOf('Contexte de vie'),
+          subSectionIndex: 1,
+        ),
+      );
     }
     // 3) Accessibilité — note unique partagée entre les 4 sous-sections
     // (réintroduit 2026-05-15, cf. _kSharedAccessibiliteNotesTabKey).
@@ -2064,34 +2177,42 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       _hasNoteText('Accessibilité-Extérieur'),
     ]).then((results) => results.any((b) => b));
     if (!hasAnyAccessibility) {
-      missing.add(_MissingField(
-        label: 'Note Accessibilité (panneau de droite)',
-        tabIndex: _tabs.indexOf('Accessibilité'),
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Note Accessibilité (panneau de droite)',
+          tabIndex: _tabs.indexOf('Accessibilité'),
+        ),
+      );
     }
     // 4) Sanitaires (note partagée SDB+WC) — 1 seule note alimente
     //    le PDF « Observations sur les équipements et utilisation »
     if (!await _hasNoteText('Sanitaires-Notes')) {
-      missing.add(_MissingField(
-        label: 'Note Sanitaires (panneau de droite SDB ou WC)',
-        tabIndex: _tabs.indexOf('Salle de bain'),
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Note Sanitaires (panneau de droite SDB ou WC)',
+          tabIndex: _tabs.indexOf('Salle de bain'),
+        ),
+      );
     }
     // 5) Résumé — Projet de l'usager (déménagé de Préconisations vers
     //    le nouvel onglet Résumé en 2026-05-04 ; le tabKey reste
     //    'Préconisations-Projet' pour préserver la donnée historique).
     if (!await _hasNoteText('Préconisations-Projet')) {
-      missing.add(_MissingField(
-        label: 'Résumé — Projet de l\'usager',
-        tabIndex: _tabs.indexOf('Résumé'),
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Résumé — Projet de l\'usager',
+          tabIndex: _tabs.indexOf('Résumé'),
+        ),
+      );
     }
     // 6) Résumé — Résumé des préconisations (idem)
     if (!await _hasNoteText('Préconisations-Résumé')) {
-      missing.add(_MissingField(
-        label: 'Résumé — Résumé des préconisations',
-        tabIndex: _tabs.indexOf('Résumé'),
-      ));
+      missing.add(
+        _MissingField(
+          label: 'Résumé — Résumé des préconisations',
+          tabIndex: _tabs.indexOf('Résumé'),
+        ),
+      );
     }
   }
 
@@ -2111,16 +2232,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         // une simple liste de champs manquants). Demande utilisateur
         // 2026-04-30 : « pop up plus centrée et moins large ».
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         // insetPadding par défaut serait étroit — on lui force une marge
         // confortable + maxWidth pour que sur grand écran (iPad/macOS)
         // la popup reste centrée et compacte plutôt que de s'étirer.
-        insetPadding: const EdgeInsets.symmetric(
-          horizontal: 40,
-          vertical: 24,
-        ),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
           child: Padding(
@@ -2157,15 +2273,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                       children: missing
                           .map(
                             (m) => Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 4),
+                              padding: const EdgeInsets.symmetric(vertical: 4),
                               child: Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Padding(
-                                    padding:
-                                        EdgeInsets.only(top: 4, right: 8),
+                                    padding: EdgeInsets.only(top: 4, right: 8),
                                     child: Icon(
                                       LucideIcons.alertCircle,
                                       size: 14,
@@ -2243,8 +2356,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         patientId: _dossier.patient.id,
       );
       // ignore: avoid_print
-      print('[report] enqueued report_gen pour dossier=${_dossier.id} '
-          '(raison: $reason)');
+      print(
+        '[report] enqueued report_gen pour dossier=${_dossier.id} '
+        '(raison: $reason)',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2256,9 +2371,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     } catch (error) {
       // ignore: avoid_print
       print('[report] échec enqueue : $error');
-      _showReportError(
-        'Impossible de mettre le rapport en attente : $error',
-      );
+      _showReportError('Impossible de mettre le rapport en attente : $error');
     }
   }
 
@@ -2268,9 +2381,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       String fileName,
       Map<String, dynamic>? stats,
       String? savedDocUuid,
-    }) result,
-    {int? totalDocs}
-  ) {
+    })
+    result, {
+    int? totalDocs,
+  }) {
     if (!mounted) return;
     // Demande utilisateur 2026-04-30 : retirer les stats détaillées
     // (« 45 champs remplis, 12 à compléter ») — l'ergo n'en a pas
@@ -2401,10 +2515,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             dossier: _dossier,
             repository: _repository,
             onPatientChanged: _refreshDossier,
-            initialSubSection:
-                _activeSubsectionByTab['Bénéficiaire'] ?? 0,
-            onSubSectionChanged: (i) => setState(
-                () => _activeSubsectionByTab['Bénéficiaire'] = i),
+            initialSubSection: _activeSubsectionByTab['Bénéficiaire'] ?? 0,
+            onSubSectionChanged: (i) =>
+                setState(() => _activeSubsectionByTab['Bénéficiaire'] = i),
           ),
         ),
         _wrapTabWithNotes(
@@ -2424,10 +2537,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // basculait sur Autonomie en interne — et le PDF
             // « Habitudes de vie » paraissait vide alors que la note
             // Autonomie existait. Demande utilisateur 2026-04-30.
-            initialSubSection:
-                _activeSubsectionByTab['Contexte de vie'] ?? 0,
-            onSubSectionChanged: (i) => setState(
-                () => _activeSubsectionByTab['Contexte de vie'] = i),
+            initialSubSection: _activeSubsectionByTab['Contexte de vie'] ?? 0,
+            onSubSectionChanged: (i) =>
+                setState(() => _activeSubsectionByTab['Contexte de vie'] = i),
           ),
         ),
         _wrapTabWithNotes(
@@ -2447,10 +2559,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // section (bug rapporté 2026-05-04 : on arrivait sur
             // l'onglet Accessibilité mais pas sur la sous-section
             // contenant le champ vide).
-            initialSubSection:
-                _activeSubsectionByTab['Accessibilité'] ?? 0,
-            onSubSectionChanged: (i) => setState(
-                () => _activeSubsectionByTab['Accessibilité'] = i),
+            initialSubSection: _activeSubsectionByTab['Accessibilité'] ?? 0,
+            onSubSectionChanged: (i) =>
+                setState(() => _activeSubsectionByTab['Accessibilité'] = i),
           ),
         ),
         _wrapTabWithNotes(
@@ -2471,16 +2582,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         ),
         // Plans déplacé juste après WC (demande utilisateur 2026-05-04) —
         // doit rester aligné avec l'ordre déclaré dans `_tabs`.
-        _wrapTabWithNotes(
-          'Plans',
-          PlansTab(dossier: _dossier),
-        ),
+        _wrapTabWithNotes('Plans', PlansTab(dossier: _dossier)),
         // Onglet Photos — pleine largeur (pas de notes latérales).
         // Voir `lib/screens/visit_report/photos_tab.dart`.
-        _wrapTabWithNotes(
-          'Photos',
-          PhotosTab(dossier: _dossier),
-        ),
+        _wrapTabWithNotes('Photos', PhotosTab(dossier: _dossier)),
         // Onglet Résumé — split de l'ancien Préconisations (2026-05-04).
         // Cadres Projet/Résumé en haut + canvas pleine page (style
         // Mesures, sans image de fond) en dessous. Le canvas supporte
@@ -2490,14 +2595,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           'Résumé',
           SummaryTab(
             dossier: _dossier,
-            onExpandToTab: () =>
-                _openDrawingNoteInSeparateWindow('Résumé'),
+            onExpandToTab: () => _openDrawingNoteInSeparateWindow('Résumé'),
             // Notes texte du haut (Projet / Résumé des préco) → même
             // mécanisme que les notes VAD classiques : nouvelle
             // fenêtre détachée en mode text. Demande utilisateur
             // 2026-05-05.
-            onExpandTextNote: (tabKey) =>
-                _openNoteInSeparateWindow(tabKey),
+            onExpandTextNote: (tabKey) => _openNoteInSeparateWindow(tabKey),
             // Sync bi-directionnel avec la fenêtre détachée — fix
             // demande utilisateur 2026-05-05 : « quand j'écris dans
             // le nouvel onglet note, il faut également que ça écrive
@@ -2506,10 +2609,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // → SummaryTab le lit et le passe en `liveText:` à
             // chaque NotesWidget. Réciproque : `onDraftChange` →
             // `_pushDraftToOpenWindow`.
-            liveTextProjet: _liveText[
-                '${_dossier.patient.id}::Préconisations-Projet'],
-            liveTextResume: _liveText[
-                '${_dossier.patient.id}::Préconisations-Résumé'],
+            liveTextProjet:
+                _liveText['${_dossier.patient.id}::Préconisations-Projet'],
+            liveTextResume:
+                _liveText['${_dossier.patient.id}::Préconisations-Résumé'],
             onDraftChange: (tabKey, text) =>
                 _pushDraftToOpenWindow(tabKey, text),
           ),
@@ -2520,43 +2623,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         ),
       ],
     );
-
-    // Header bénéficiaire — même pattern que DocumentsScreen : NOM Prénom
-    // en gras. On ajoute l'adresse complète en dessous (demande utilisateur :
-    // retirer ces champs de la section Identité de l'onglet Bénéficiaire).
-    final patient = _dossier.patient;
-    final addressLine = [
-      patient.address.trim(),
-      [patient.zipCode.trim(), patient.city.trim()]
-          .where((s) => s.isNotEmpty)
-          .join(' '),
-    ].where((s) => s.isNotEmpty).join(' · ');
-    // Deux badges à afficher entre le nom et l'adresse (parité avec
-    // l'écran dossier) : type d'accompagnement + catégorie de revenu.
-    final accompanimentLabel =
-        formatAccompanimentType(_dossier.natureAccompagnement).trim();
-    final incomeLabel = patient.incomeCategory.trim();
-    // Statut compte ANAH — extrait du JSON `compte_anah` (cf.
-    // beneficiary_tab._parseAnahData). Format historique « plain string »
-    // toléré : si la valeur n'est pas du JSON, on l'utilise telle quelle.
-    String anahStatus = '';
-    final anahRaw = _dossier.compteAnah.trim();
-    if (anahRaw.isNotEmpty) {
-      if (anahRaw.startsWith('{')) {
-        try {
-          final decoded = jsonDecode(anahRaw);
-          if (decoded is Map) {
-            anahStatus = (decoded['status']?.toString() ?? '').trim();
-          }
-        } catch (_) {/* ignore — laisse vide */}
-      } else if (anahRaw == 'Mandat') {
-        // Legacy : l'entrée historique « Mandat » n'a plus de statut
-        // associé après la migration 2026-05-04 → pas de pastille.
-        anahStatus = '';
-      } else {
-        anahStatus = anahRaw;
-      }
-    }
 
     return Scaffold(
       body: Padding(
@@ -2581,7 +2647,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       ),
     );
   }
-
 }
 
 /// Couche d'un NotesWidget dans le Stack du panneau de droite. Garde
@@ -2607,10 +2672,7 @@ class _NotesLayerSpec {
 }
 
 class _NotesPanelLayer extends StatelessWidget {
-  const _NotesPanelLayer({
-    required this.isActive,
-    required this.child,
-  });
+  const _NotesPanelLayer({required this.isActive, required this.child});
 
   final bool isActive;
   final Widget child;
@@ -2631,10 +2693,7 @@ class _NotesPanelLayer extends StatelessWidget {
         // `IgnorePointer` pour que les couches inactives ne capturent
         // pas les taps (sinon on cliquerait sur un NotesWidget invisible
         // posé par-dessus l'actif).
-        child: IgnorePointer(
-          ignoring: !isActive,
-          child: child,
-        ),
+        child: IgnorePointer(ignoring: !isActive, child: child),
       ),
     );
   }
