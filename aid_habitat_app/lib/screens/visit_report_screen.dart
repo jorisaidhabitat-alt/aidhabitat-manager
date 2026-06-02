@@ -1399,6 +1399,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         return;
       }
 
+      final patientId = _dossier.patient.id;
+      final reportLocalId = 'doc_report_${_dossier.id}';
+      await _dataService.hideObsoleteReportDocuments(
+        patientId: patientId,
+        dossierId: _dossier.id,
+        keepLocalId: reportLocalId,
+      );
+
       // 3. Génération online : on télécharge le PDF synchroneously
       // pour pouvoir l'afficher tout de suite dans Documents.
       final ({
@@ -1456,7 +1464,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       //   - SINON (compat) : ancien chemin `importDocumentBytes` qui
       //     queue un upload. Sert si le serveur n'a pas pu sauvegarder
       //     (rare — limite 5 MB interne, erreur réseau NocoDB).
-      final patientId = _dossier.patient.id;
       final DocItem inserted;
       if (result.savedDocUuid != null && result.savedDocUuid!.isNotEmpty) {
         // ignore: avoid_print
@@ -1480,7 +1487,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           // ID strictement aligné avec celui généré côté serveur
           // dans `app.post('/api/reports/visit/:dossierId')` →
           // `documentLocalId = doc_report_<dossierId>`.
-          clientDocumentId: 'doc_report_${_dossier.id}',
+          clientDocumentId: reportLocalId,
         );
       } else {
         // ignore: avoid_print
@@ -1500,7 +1507,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           fileName: result.fileName,
           title: result.fileName.replaceAll(RegExp(r'\.pdf$'), ''),
           tags: const ['Rapport'],
-          localId: 'doc_report_${_dossier.id}',
+          localId: reportLocalId,
         );
       }
       // ignore: avoid_print

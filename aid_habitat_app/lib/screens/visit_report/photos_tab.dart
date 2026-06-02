@@ -152,8 +152,7 @@ class _PhotosTabState extends State<PhotosTab>
       // leurs variantes suffixées `(#N)` (sections supplémentaires
       // ajoutées via « Ajouter une partie »).
       final visitImages = docs
-          .where((d) =>
-              d.type == 'image' && d.tags.any(_isAnyVisitTag))
+          .where((d) => d.type == 'image' && d.tags.any(_isAnyVisitTag))
           .toList(growable: false);
       if (!mounted) return;
       // Re-dérive les sections supplémentaires depuis les tags des
@@ -175,13 +174,15 @@ class _PhotosTabState extends State<PhotosTab>
       // un `clear site data` le cache local est vide et on n'aurait
       // jamais les photos d'autres devices. Aligne le comportement
       // sur DocumentsScreen.
-      final refreshed = await _dataService
-          .refreshDocumentsFromRemote(widget.dossier.patient.id);
+      final refreshed = await _dataService.refreshDocumentsFromRemote(
+        widget.dossier.patient.id,
+      );
       if (!mounted || !refreshed) return;
       // 3) Re-lit la SQLite après merge — si remote a apporté du nouveau,
       // l'UI se met à jour silencieusement.
-      final remoteDocs =
-          await _dataService.fetchDocuments(widget.dossier.patient.id);
+      final remoteDocs = await _dataService.fetchDocuments(
+        widget.dossier.patient.id,
+      );
       final remoteVisitImages = remoteDocs
           .where((d) => d.type == 'image' && d.tags.any(_isAnyVisitTag))
           .toList(growable: false);
@@ -229,8 +230,7 @@ class _PhotosTabState extends State<PhotosTab>
 
   /// Vrai si [tag] est un tag visite reconnu — base (`Visite - X`) OU
   /// suffixe extra (`Visite - X (#N)`).
-  static bool _isAnyVisitTag(String tag) =>
-      _parseSectionTag(tag) != null;
+  static bool _isAnyVisitTag(String tag) => _parseSectionTag(tag) != null;
 
   /// Décompose un tag photo. Renvoie (baseTag, extraIndex) où
   /// extraIndex = 0 pour une section de base et > 0 pour une extra.
@@ -259,14 +259,14 @@ class _PhotosTabState extends State<PhotosTab>
   /// photos déjà persistées. Permet à un extra (avec ≥1 photo)
   /// d'être ré-affiché au reload du dossier sans état dédié.
   static Set<_ExtraSection> _deriveExtraSectionsFromPhotos(
-      List<DocItem> photos) {
+    List<DocItem> photos,
+  ) {
     final out = <_ExtraSection>{};
     for (final p in photos) {
       for (final t in p.tags) {
         final parsed = _parseSectionTag(t);
         if (parsed != null && parsed.index > 0) {
-          out.add(_ExtraSection(
-              baseTag: parsed.baseTag, index: parsed.index));
+          out.add(_ExtraSection(baseTag: parsed.baseTag, index: parsed.index));
         }
       }
     }
@@ -324,17 +324,32 @@ class _PhotosTabState extends State<PhotosTab>
       // qu'il n'y a pas de troncature avant de stocker (cf.
       // `validateImageBufferIsComplete` dans server/index.mjs).
       if (kIsWeb) {
-        final picked = await pickWebFile(
-          accept: source == ImageSource.camera ? 'image/*' : 'image/*',
-          capture: source == ImageSource.camera,
-        );
-        if (picked == null) return;
-        await _persistDroppedBytes(
-          bytes: Uint8List.fromList(picked.bytes),
-          originalName: picked.name,
-          categoryTag: categoryTag,
-        );
-        await _refresh();
+        if (source == ImageSource.camera) {
+          final picked = await pickWebFile(accept: 'image/*', capture: true);
+          if (picked == null) return;
+          await _persistPickedFilesOptimistic([
+            DroppedFile(
+              name: picked.name,
+              bytes: Uint8List.fromList(picked.bytes),
+              mimeType: 'image/*',
+            ),
+          ], categoryTag);
+        } else {
+          final picked = await pickWebFiles(accept: 'image/*');
+          if (picked.isEmpty) return;
+          await _persistPickedFilesOptimistic(
+            picked
+                .map(
+                  (f) => DroppedFile(
+                    name: f.name,
+                    bytes: Uint8List.fromList(f.bytes),
+                    mimeType: 'image/*',
+                  ),
+                )
+                .toList(growable: false),
+            categoryTag,
+          );
+        }
         return;
       }
       final XFile? picked = await _imagePicker.pickImage(
@@ -370,6 +385,15 @@ class _PhotosTabState extends State<PhotosTab>
       return;
     }
 
+    await _persistPickedFilesOptimistic(images, categoryTag);
+  }
+
+  Future<void> _persistPickedFilesOptimistic(
+    List<DroppedFile> images,
+    String categoryTag,
+  ) async {
+    if (images.isEmpty) return;
+
     // Optimistic UI (fix 2026-05-15) : les tuiles photos s'affichent
     // INSTANTANÉMENT au drop, sans attendre la compression + l'upload.
     // Pattern :
@@ -396,16 +420,18 @@ class _PhotosTabState extends State<PhotosTab>
       // Cache des bytes BRUTS (non compressés) sous l'id temporaire →
       // la tuile rend l'image immédiatement depuis la mémoire.
       _photoBytesCache[tempId] = f.bytes;
-      placeholders.add(DocItem(
-        id: tempId,
-        type: 'image',
-        name: f.name,
-        title: simpleTitle,
-        date: nowIso,
-        tags: [categoryTag],
-        syncState: SyncState.pendingSync,
-        categoryOrder: order,
-      ));
+      placeholders.add(
+        DocItem(
+          id: tempId,
+          type: 'image',
+          name: f.name,
+          title: simpleTitle,
+          date: nowIso,
+          tags: [categoryTag],
+          syncState: SyncState.pendingSync,
+          categoryOrder: order,
+        ),
+      );
     }
     setState(() {
       _photos = [..._photos, ...placeholders];
@@ -463,42 +489,6 @@ class _PhotosTabState extends State<PhotosTab>
     } finally {
       if (mounted) setState(() => _isImporting = false);
     }
-  }
-
-  /// Mirror de `_persistPicked` mais à partir de bytes en mémoire
-  /// (drag-and-drop OS, pickWebFile, capture browser).
-  ///
-  /// Compression 2026-05-07 : on ré-encode l'image en JPEG quality 80
-  /// max 1600px AVANT l'upload (pure Dart via le package `image`,
-  /// PAS de canvas browser, donc pas de risque de troncature à 1 MiB
-  /// observé avec image_picker_for_web sur Safari macOS). Une photo
-  /// brute de 2-3 MB devient ~150-400 KB, ce qui ramène la sync
-  /// Mac→iPad sous les 3 secondes en conditions normales.
-  Future<void> _persistDroppedBytes({
-    required Uint8List bytes,
-    required String originalName,
-    required String categoryTag,
-  }) async {
-    final compressed = await compressImageForUpload(
-      bytes: bytes,
-      fileName: originalName,
-    );
-    final order = _nextOrderInCategory(categoryTag);
-    final simpleTitle = _buildSimplePhotoTitle(categoryTag, order);
-    final fileName = _buildPhotoFileName(
-      categoryTag,
-      compressed.fileName,
-      simpleTitle,
-    );
-    final inserted = await _dataService.importDocumentBytes(
-      patientId: widget.dossier.patient.id,
-      bytes: compressed.bytes,
-      fileName: fileName,
-      title: simpleTitle,
-      tags: [categoryTag],
-      categoryOrder: order,
-    );
-    _photoBytesCache[inserted.id] = compressed.bytes;
   }
 
   Future<void> _persistPicked(XFile xfile, String categoryTag) async {
@@ -590,12 +580,10 @@ class _PhotosTabState extends State<PhotosTab>
   }) async {
     // Conserve les tags non-visite (Photo, Plan, …) pour ne pas
     // perdre la classification d'origine côté DocumentsScreen.
-    final preserved =
-        doc.tags.where((t) => !kVisitPhotoTags.contains(t)).toList();
-    final nextTags = <String>[
-      ...preserved,
-      if (newTag != null) newTag,
-    ];
+    final preserved = doc.tags
+        .where((t) => !kVisitPhotoTags.contains(t))
+        .toList();
+    final nextTags = <String>[...preserved, if (newTag != null) newTag];
     final order = newTag == null ? null : _nextOrderInCategory(newTag);
     await _dataService.setDocumentVisitCategorization(
       documentId: doc.id,
@@ -649,9 +637,9 @@ class _PhotosTabState extends State<PhotosTab>
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   // ----- Build -----
@@ -674,8 +662,7 @@ class _PhotosTabState extends State<PhotosTab>
     // « + Ajouter une partie ».
     final allSections = <_ExtraSection>[
       // Sections de base (index 0).
-      for (final tag in kVisitPhotoTags)
-        _ExtraSection(baseTag: tag, index: 0),
+      for (final tag in kVisitPhotoTags) _ExtraSection(baseTag: tag, index: 0),
       // Sections supplémentaires (index >= 1).
       ..._extraSections,
     ];
@@ -685,8 +672,9 @@ class _PhotosTabState extends State<PhotosTab>
     // suivent dans l'ordre. Si une seule section existe, on garde le
     // libellé court par défaut.
     final planApresProjectNumbers = <_ExtraSection, int>{};
-    final planApresSections =
-        allSections.where((s) => s.baseTag == kPhotoTagPlanApres).toList();
+    final planApresSections = allSections
+        .where((s) => s.baseTag == kPhotoTagPlanApres)
+        .toList();
     if (planApresSections.length > 1) {
       for (var i = 0; i < planApresSections.length; i++) {
         planApresProjectNumbers[planApresSections[i]] = i + 1;
@@ -709,11 +697,11 @@ class _PhotosTabState extends State<PhotosTab>
           maxSlots: kVisitPhotoSlotCount[section.baseTag] ?? 0,
           titleOverride: planApresProjectNumbers.containsKey(section)
               ? 'Travaux préconisés du projet '
-                  '${planApresProjectNumbers[section]}'
+                    '${planApresProjectNumbers[section]}'
               : (section.index == 0
-                  ? null
-                  : '${visitPhotoTagShortLabel(section.baseTag)} '
-                      '#${section.index + 1}'),
+                    ? null
+                    : '${visitPhotoTagShortLabel(section.baseTag)} '
+                          '#${section.index + 1}'),
           onRemove: section.index == 0
               ? null
               : () => _removeExtraSection(section),
@@ -733,16 +721,18 @@ class _PhotosTabState extends State<PhotosTab>
       }
       if (i > 0) rows.add(const SizedBox(height: spacing));
 
-      rows.add(Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: rowCells[0]),
-          const SizedBox(width: spacing),
-          Expanded(child: rowCells[1]),
-          const SizedBox(width: spacing),
-          Expanded(child: rowCells[2]),
-        ],
-      ));
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: rowCells[0]),
+            const SizedBox(width: spacing),
+            Expanded(child: rowCells[1]),
+            const SizedBox(width: spacing),
+            Expanded(child: rowCells[2]),
+          ],
+        ),
+      );
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
@@ -759,14 +749,14 @@ class _PhotosTabState extends State<PhotosTab>
   /// associées si présentes). Confirmation explicite à cause du
   /// risque de perte de photos.
   Future<void> _removeExtraSection(_ExtraSection section) async {
-    final photosInSection =
-        _photosForSectionTag(_tagForSection(section));
+    final photosInSection = _photosForSectionTag(_tagForSection(section));
     if (photosInSection.isNotEmpty) {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text('Supprimer cette partie ?'),
           content: Text(
             'Cette section contient ${photosInSection.length} '
@@ -795,8 +785,9 @@ class _PhotosTabState extends State<PhotosTab>
     }
     if (!mounted) return;
     setState(() {
-      _extraSections =
-          _extraSections.where((s) => s != section).toList(growable: false);
+      _extraSections = _extraSections
+          .where((s) => s != section)
+          .toList(growable: false);
     });
     await _refresh();
   }
@@ -829,15 +820,18 @@ class _PhotosTabState extends State<PhotosTab>
     required String tag,
     required IconData icon,
     required int maxSlots,
+
     /// Si fourni, override le label par défaut (utilisé pour
     /// distinguer les extras « Logement #2 » des bases).
     String? titleOverride,
+
     /// Si fourni, affiche un bouton X (supprimer la section). Réservé
     /// aux extras — les sections de base ne sont jamais supprimables.
     VoidCallback? onRemove,
   }) {
     final photos = _photosForCategory(tag);
-    final shortLabel = titleOverride ??
+    final shortLabel =
+        titleOverride ??
         visitPhotoTagShortLabel(_parseSectionTag(tag)?.baseTag ?? tag);
 
     // DragTarget englobe TOUT le container — drop n'importe où dans la
@@ -858,102 +852,93 @@ class _PhotosTabState extends State<PhotosTab>
       categoryTag: tag,
       onDrop: (files) => _persistDroppedFiles(files, tag),
       child: DragTarget<_DragPhotoPayload>(
-      onWillAcceptWithDetails: (details) =>
-          details.data.fromTag != tag,
-      onAcceptWithDetails: (details) async {
-        if (details.data.fromTag == tag) return;
-        await _moveToCategory(doc: details.data.doc, newTag: tag);
-      },
-      builder: (context, candidates, rejected) {
-        final hovering = candidates.isNotEmpty;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            color: hovering
-                ? const Color(0xFFF2ECF5)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: hovering
-                  ? kBrandPurple
-                  : const Color(0xFFE4E7EB),
-              width: hovering ? 2 : 1,
+        onWillAcceptWithDetails: (details) => details.data.fromTag != tag,
+        onAcceptWithDetails: (details) async {
+          if (details.data.fromTag == tag) return;
+          await _moveToCategory(doc: details.data.doc, newTag: tag);
+        },
+        builder: (context, candidates, rejected) {
+          final hovering = candidates.isNotEmpty;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            decoration: BoxDecoration(
+              color: hovering ? const Color(0xFFF2ECF5) : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: hovering ? kBrandPurple : const Color(0xFFE4E7EB),
+                width: hovering ? 2 : 1,
+              ),
             ),
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // En-tête : icône + nom (compteur "X / max" retiré le
-          // 2026-05-12 — demande utilisateur : on garde seulement le
-          // nombre d'emplacements de base par catégorie via `maxSlots`,
-          // pas de badge pollue le header).
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: _kPurpleLight,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 18, color: kBrandPurple),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  shortLabel,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: _kSlate,
-                  ),
-                ),
-              ),
-              // Bouton X de suppression — visible uniquement pour les
-              // sections supplémentaires (cf. demande 2026-05-04 :
-              // « il faut simplement pouvoir en ajouter davantage
-              // sans les retirer » → les bases sont protégées).
-              if (onRemove != null) ...[
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: onRemove,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEE2E2),
-                      // Refonte 2026-05-13 : pill radius 999 uniforme.
-                      borderRadius: BorderRadius.circular(999),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // En-tête : icône + nom (compteur "X / max" retiré le
+                // 2026-05-12 — demande utilisateur : on garde seulement le
+                // nombre d'emplacements de base par catégorie via `maxSlots`,
+                // pas de badge pollue le header).
+                Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: _kPurpleLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(icon, size: 18, color: kBrandPurple),
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      LucideIcons.x,
-                      size: 14,
-                      color: Color(0xFFB91C1C),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        shortLabel,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: _kSlate,
+                        ),
+                      ),
                     ),
-                  ),
+                    // Bouton X de suppression — visible uniquement pour les
+                    // sections supplémentaires (cf. demande 2026-05-04 :
+                    // « il faut simplement pouvoir en ajouter davantage
+                    // sans les retirer » → les bases sont protégées).
+                    if (onRemove != null) ...[
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: onRemove,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            // Refonte 2026-05-13 : pill radius 999 uniforme.
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            LucideIcons.x,
+                            size: 14,
+                            color: Color(0xFFB91C1C),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
+                const SizedBox(height: 12),
+                // Grille unifiée : photos existantes + emplacements gris
+                // vides jusqu'à maxSlots (capacité PDF). Chaque emplacement
+                // vide est un DragTarget (drop d'une photo d'une autre
+                // catégorie pour la re-tagger ici) ET tappable (ouvre la
+                // galerie pour ajouter une photo). Plus de boutons
+                // « Prendre / Galerie » dédiés — demande utilisateur
+                // 2026-04-28.
+                _buildSlotsGrid(tag: tag, photos: photos, maxSlots: maxSlots),
               ],
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Grille unifiée : photos existantes + emplacements gris
-          // vides jusqu'à maxSlots (capacité PDF). Chaque emplacement
-          // vide est un DragTarget (drop d'une photo d'une autre
-          // catégorie pour la re-tagger ici) ET tappable (ouvre la
-          // galerie pour ajouter une photo). Plus de boutons
-          // « Prendre / Galerie » dédiés — demande utilisateur
-          // 2026-04-28.
-          _buildSlotsGrid(
-            tag: tag,
-            photos: photos,
-            maxSlots: maxSlots,
-          ),
-        ],
-      ),
-        );
-      },
+            ),
+          );
+        },
       ),
     );
   }
@@ -992,16 +977,11 @@ class _PhotosTabState extends State<PhotosTab>
     final cells = <Widget>[];
     for (var i = 0; i < totalSlots; i++) {
       if (i < photos.length) {
-        cells.add(_buildOccupiedSlot(
-          tag: tag,
-          photos: photos,
-          index: i,
-        ));
+        cells.add(_buildOccupiedSlot(tag: tag, photos: photos, index: i));
       } else {
-        cells.add(AspectRatio(
-          aspectRatio: 1.0,
-          child: _buildEmptySlot(tag: tag),
-        ));
+        cells.add(
+          AspectRatio(aspectRatio: 1.0, child: _buildEmptySlot(tag: tag)),
+        );
       }
     }
     // Découpe en rangées de 3 cellules max — chaque rangée utilise
@@ -1022,10 +1002,12 @@ class _PhotosTabState extends State<PhotosTab>
         }
       }
       if (i > 0) rows.add(const SizedBox(height: spacing));
-      rows.add(Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: rowChildren,
-      ));
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rowChildren,
+        ),
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1043,73 +1025,71 @@ class _PhotosTabState extends State<PhotosTab>
     required int index,
   }) {
     final i = index;
-    return LayoutBuilder(builder: (context, constraints) {
-      final tileWidth = constraints.maxWidth;
-      return DragTarget<_DragPhotoPayload>(
-        onWillAcceptWithDetails: (details) {
-          return details.data.doc.id != photos[i].id;
-        },
-        onAcceptWithDetails: (details) async {
-          final payload = details.data;
-          if (payload.fromTag == tag) {
-            final fromIdx =
-                photos.indexWhere((d) => d.id == payload.doc.id);
-            if (fromIdx >= 0) {
-              await _reorderWithinCategory(
-                tag: tag,
-                fromIndex: fromIdx,
-                toIndex: i,
-              );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tileWidth = constraints.maxWidth;
+        return DragTarget<_DragPhotoPayload>(
+          onWillAcceptWithDetails: (details) {
+            return details.data.doc.id != photos[i].id;
+          },
+          onAcceptWithDetails: (details) async {
+            final payload = details.data;
+            if (payload.fromTag == tag) {
+              final fromIdx = photos.indexWhere((d) => d.id == payload.doc.id);
+              if (fromIdx >= 0) {
+                await _reorderWithinCategory(
+                  tag: tag,
+                  fromIndex: fromIdx,
+                  toIndex: i,
+                );
+              }
+            } else {
+              await _moveToCategory(doc: payload.doc, newTag: tag);
             }
-          } else {
-            await _moveToCategory(
-              doc: payload.doc,
-              newTag: tag,
-            );
-          }
-        },
-        builder: (context, candidates, rejected) {
-          final hovering = candidates.isNotEmpty;
-          return LongPressDraggable<_DragPhotoPayload>(
-            data: _DragPhotoPayload(doc: photos[i], fromTag: tag),
-            delay: const Duration(milliseconds: 250),
-            feedback: Material(
-              color: Colors.transparent,
-              elevation: 12,
-              borderRadius: BorderRadius.circular(8),
-              clipBehavior: Clip.antiAlias,
-              child: Opacity(
-                opacity: 0.85,
-                child: SizedBox(
-                  width: tileWidth,
-                  child: _PhotoTile(
-                    key: ValueKey('photo_drag_${photos[i].id}'),
-                    doc: photos[i],
-                    onTap: () {},
-                    highlight: false,
+          },
+          builder: (context, candidates, rejected) {
+            final hovering = candidates.isNotEmpty;
+            return LongPressDraggable<_DragPhotoPayload>(
+              data: _DragPhotoPayload(doc: photos[i], fromTag: tag),
+              delay: const Duration(milliseconds: 250),
+              feedback: Material(
+                color: Colors.transparent,
+                elevation: 12,
+                borderRadius: BorderRadius.circular(8),
+                clipBehavior: Clip.antiAlias,
+                child: Opacity(
+                  opacity: 0.85,
+                  child: SizedBox(
+                    width: tileWidth,
+                    child: _PhotoTile(
+                      key: ValueKey('photo_drag_${photos[i].id}'),
+                      doc: photos[i],
+                      onTap: () {},
+                      highlight: false,
+                    ),
                   ),
                 ),
               ),
-            ),
-            childWhenDragging: Opacity(
-              opacity: 0.3,
-              child: _PhotoTile(
-                key: ValueKey('photo_ghost_${photos[i].id}'),
-                doc: photos[i],
-                onTap: () {},
-                highlight: false,
+              childWhenDragging: Opacity(
+                opacity: 0.3,
+                child: _PhotoTile(
+                  key: ValueKey('photo_ghost_${photos[i].id}'),
+                  doc: photos[i],
+                  onTap: () {},
+                  highlight: false,
+                ),
               ),
-            ),
-            child: _PhotoTile(
-              key: ValueKey('photo_${photos[i].id}'),
-              doc: photos[i],
-              onTap: () => _openFullscreenWithDelete(photos[i]),
-              highlight: hovering,
-            ),
-          );
-        },
-      );
-    });
+              child: _PhotoTile(
+                key: ValueKey('photo_${photos[i].id}'),
+                doc: photos[i],
+                onTap: () => _openFullscreenWithDelete(photos[i]),
+                highlight: hovering,
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   /// Slot vide : gris clair avec icône `+`. Tap → galerie. Drop → re-tag.
@@ -1122,10 +1102,8 @@ class _PhotosTabState extends State<PhotosTab>
       builder: (context, candidates, rejected) {
         final hovering = candidates.isNotEmpty;
         return GestureDetector(
-          onTap: () => _captureFromSource(
-            categoryTag: tag,
-            source: ImageSource.gallery,
-          ),
+          onTap: () =>
+              _captureFromSource(categoryTag: tag, source: ImageSource.gallery),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(
@@ -1134,9 +1112,7 @@ class _PhotosTabState extends State<PhotosTab>
                   : const Color(0xFFF2F4F6),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: hovering
-                    ? kBrandPurple
-                    : const Color(0xFFB9C0C7),
+                color: hovering ? kBrandPurple : const Color(0xFFB9C0C7),
                 width: hovering ? 2 : 1,
               ),
             ),
@@ -1179,30 +1155,30 @@ class _PhotosTabState extends State<PhotosTab>
           Navigator.of(ctx).pop();
           await _deletePhoto(doc);
         },
-        onMetadataChanged: ({
-          required String newTitle,
-          required bool showLabelOnPdf,
-        }) async {
-          // Préserve les autres tags (catégorie visite, classification).
-          // Modèle opt-in 2026-05-05 : on retire les DEUX tags magiques
-          // (le legacy `__pdf_no_label` ET le nouveau `__pdf_show_label`)
-          // et on rajoute UNIQUEMENT `__pdf_show_label` si l'ergo a
-          // coché. Default (tag absent) = pas d'overlay titre PDF.
-          final preserved = doc.tags
-              .where((t) =>
-                  t != kPhotoTagPdfNoLabel && t != kPhotoTagPdfShowLabel)
-              .toList();
-          final nextTags = <String>[
-            ...preserved,
-            if (showLabelOnPdf) kPhotoTagPdfShowLabel,
-          ];
-          await _dataService.updateDocumentMetadata(
-            documentId: doc.id,
-            title: newTitle,
-            tags: nextTags,
-          );
-          await _refresh();
-        },
+        onMetadataChanged:
+            ({required String newTitle, required bool showLabelOnPdf}) async {
+              // Préserve les autres tags (catégorie visite, classification).
+              // Modèle opt-in 2026-05-05 : on retire les DEUX tags magiques
+              // (le legacy `__pdf_no_label` ET le nouveau `__pdf_show_label`)
+              // et on rajoute UNIQUEMENT `__pdf_show_label` si l'ergo a
+              // coché. Default (tag absent) = pas d'overlay titre PDF.
+              final preserved = doc.tags
+                  .where(
+                    (t) =>
+                        t != kPhotoTagPdfNoLabel && t != kPhotoTagPdfShowLabel,
+                  )
+                  .toList();
+              final nextTags = <String>[
+                ...preserved,
+                if (showLabelOnPdf) kPhotoTagPdfShowLabel,
+              ];
+              await _dataService.updateDocumentMetadata(
+                documentId: doc.id,
+                title: newTitle,
+                tags: nextTags,
+              );
+              await _refresh();
+            },
       ),
     );
   }
@@ -1269,10 +1245,7 @@ class _PhotoSectionDropWrapperState extends State<_PhotoSectionDropWrapper> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFF2ECF5).withValues(alpha: 0.85),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: kBrandPurple,
-                      width: 2,
-                    ),
+                    border: Border.all(color: kBrandPurple, width: 2),
                   ),
                   alignment: Alignment.center,
                   child: Container(
@@ -1677,14 +1650,10 @@ class _PhotoThumbnailState extends State<_PhotoThumbnail> {
   }
 
   Widget _placeholder() => Container(
-        color: const Color(0xFFF2F4F6),
-        alignment: Alignment.center,
-        child: const Icon(
-          LucideIcons.imageOff,
-          size: 18,
-          color: Color(0xFF8A939D),
-        ),
-      );
+    color: const Color(0xFFF2F4F6),
+    alignment: Alignment.center,
+    child: const Icon(LucideIcons.imageOff, size: 18, color: Color(0xFF8A939D)),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1712,7 +1681,8 @@ class _PhotoFullscreenDialog extends StatefulWidget {
   final Future<void> Function({
     required String newTitle,
     required bool showLabelOnPdf,
-  })? onMetadataChanged;
+  })?
+  onMetadataChanged;
 
   const _PhotoFullscreenDialog({
     required this.doc,
@@ -1721,8 +1691,7 @@ class _PhotoFullscreenDialog extends StatefulWidget {
   });
 
   @override
-  State<_PhotoFullscreenDialog> createState() =>
-      _PhotoFullscreenDialogState();
+  State<_PhotoFullscreenDialog> createState() => _PhotoFullscreenDialogState();
 }
 
 class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
@@ -1753,7 +1722,8 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
   void initState() {
     super.initState();
     _currentTitle = widget.doc.title;
-    _showLabelOnPdf = widget.doc.tags.contains(kPhotoTagPdfShowLabel) &&
+    _showLabelOnPdf =
+        widget.doc.tags.contains(kPhotoTagPdfShowLabel) &&
         !widget.doc.tags.contains(kPhotoTagPdfNoLabel);
     _load();
   }
@@ -1775,8 +1745,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
     final newName = await showDialog<String>(
       context: ctx,
       builder: (dialogCtx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Renommer la photo'),
         content: TextField(
           controller: controller,
@@ -1837,8 +1806,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
     final confirm = await showSoftDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Supprimer cette photo ?'),
         content: Text(
           'La photo "${widget.doc.title}" sera supprimée définitivement '
@@ -1888,14 +1856,12 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
                       ),
                     )
                   : _failed
-                      ? const Icon(
-                          LucideIcons.imageOff,
-                          size: 64,
-                          color: Colors.white54,
-                        )
-                      : const CircularProgressIndicator(
-                          color: Colors.white,
-                        ),
+                  ? const Icon(
+                      LucideIcons.imageOff,
+                      size: 64,
+                      color: Colors.white54,
+                    )
+                  : const CircularProgressIndicator(color: Colors.white),
             ),
             // Boutons d'action en haut à droite. Toujours accessibles
             // même après un zoom/pan via `InteractiveViewer`.
@@ -2010,8 +1976,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
                               const SizedBox(width: 4),
                               Switch.adaptive(
                                 value: _showLabelOnPdf,
-                                onChanged:
-                                    _isSaving ? null : _toggleShowLabel,
+                                onChanged: _isSaving ? null : _toggleShowLabel,
                                 activeThumbColor: kBrandPurple,
                               ),
                             ],

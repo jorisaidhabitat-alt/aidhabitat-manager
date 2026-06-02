@@ -7,3 +7,7 @@ Future<WebPickedFile?> pickWebFileImpl({
 }) async {
   return null;
 }
+
+Future<List<WebPickedFile>> pickWebFilesImpl({required String accept}) async {
+  return const [];
+}

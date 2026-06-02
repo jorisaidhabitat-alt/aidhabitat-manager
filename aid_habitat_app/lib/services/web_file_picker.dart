@@ -29,3 +29,9 @@ Future<WebPickedFile?> pickWebFile({
 }) async {
   return pickWebFileImpl(accept: accept, capture: capture);
 }
+
+/// Multi-file variant used when the UI can import several images into the same
+/// section in one gesture. Native targets return an empty list.
+Future<List<WebPickedFile>> pickWebFiles({required String accept}) async {
+  return pickWebFilesImpl(accept: accept);
+}

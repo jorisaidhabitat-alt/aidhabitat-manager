@@ -55,7 +55,8 @@ class DocumentRepository {
     final db = await _database.database;
     final rows = await db.query(
       'documents',
-      where: 'patient_local_id = ? AND pending_delete = 0 '
+      where:
+          'patient_local_id = ? AND pending_delete = 0 '
           "AND sync_state != ? "
           "AND mime_type LIKE 'image/%' "
           "AND tags_json LIKE '%Visite - %'",
@@ -76,8 +77,7 @@ class DocumentRepository {
       // 1) Web/PWA : bytes encodés en base64 dans `local_file_data_url`.
       final dataUrl = row['local_file_data_url'] as String?;
       if (dataUrl != null && dataUrl.isNotEmpty) {
-        final match =
-            RegExp(r'^data:[^;]+;base64,(.+)$').firstMatch(dataUrl);
+        final match = RegExp(r'^data:[^;]+;base64,(.+)$').firstMatch(dataUrl);
         if (match != null) {
           try {
             bytes = base64Decode(match.group(1)!);
@@ -141,6 +141,7 @@ class DocumentRepository {
     String? title,
     int? categoryOrder,
     String? dossierId,
+
     /// Identifiant déterministe assigné par le client (Flutter) — DOIT
     /// correspondre au `client_document_id` que le serveur a stocké
     /// dans NocoDB. Utilisé comme `local_id` pour que `mergeRemoteDocuments`
@@ -156,20 +157,16 @@ class DocumentRepository {
   }) async {
     final db = await _database.database;
     final now = DateTime.now();
-    final extension = p
-        .extension(fileName)
-        .replaceFirst('.', '')
-        .toLowerCase();
+    final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
     final resolvedTitle = (title != null && title.trim().isNotEmpty)
         ? title.trim()
         : p.basenameWithoutExtension(fileName);
     // Priorité au clientDocumentId pour que le merge polling matche
     // par `local_id == clientDocumentId`. Fallback sur remoteUuid si
     // l'appelant ne le connaît pas (cas legacy).
-    final localId =
-        (clientDocumentId != null && clientDocumentId.isNotEmpty)
-            ? clientDocumentId
-            : remoteUuid;
+    final localId = (clientDocumentId != null && clientDocumentId.isNotEmpty)
+        ? clientDocumentId
+        : remoteUuid;
     final mimeType = _mimeTypeFor(extension);
     final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
 
@@ -247,6 +244,7 @@ class DocumentRepository {
     String? title,
     int? categoryOrder,
     String? dossierId,
+
     /// Optionnel : id déterministe pour permettre la dédup. Quand
     /// fourni et qu'une ligne existe déjà, on REPLACE (ConflictAlgorithm.
     /// replace). Cas d'usage : le rapport PDF d'un dossier (« Rapport »
@@ -259,10 +257,7 @@ class DocumentRepository {
   }) async {
     final db = await _database.database;
     final now = DateTime.now();
-    final extension = p
-        .extension(fileName)
-        .replaceFirst('.', '')
-        .toLowerCase();
+    final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
     final resolvedTitle = (title != null && title.trim().isNotEmpty)
         ? title.trim()
         : p.basenameWithoutExtension(fileName);
@@ -550,8 +545,7 @@ class DocumentRepository {
     final patientId = row['patient_local_id'] as String;
     final title = row['title'] as String? ?? 'Document';
     final originalName = row['file_name'] as String? ?? 'document.bin';
-    final flatName =
-        '${p.basenameWithoutExtension(originalName)}-annoté.png';
+    final flatName = '${p.basenameWithoutExtension(originalName)}-annoté.png';
     final dataUrl = 'data:image/png;base64,${base64Encode(bytes)}';
     final now = DateTime.now().toIso8601String();
     final tagsJson = row['tags_json'] as String? ?? '[]';
@@ -561,8 +555,7 @@ class DocumentRepository {
     // version annotée.
     await db.delete(
       'sync_operations',
-      where:
-          'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
+      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
       whereArgs: [
         documentId,
         'document',
@@ -645,8 +638,7 @@ class DocumentRepository {
     // Nom de fichier côté serveur : on force l'extension .png puisque le
     // flatten produit un PNG (valable aussi pour les PDFs annotés aplatis
     // à une page).
-    final flatName =
-        '${p.basenameWithoutExtension(originalName)}-annoté.png';
+    final flatName = '${p.basenameWithoutExtension(originalName)}-annoté.png';
     final now = DateTime.now().toIso8601String();
     final tagsJson = row['tags_json'] as String? ?? '[]';
     final tags = (jsonDecode(tagsJson) as List<dynamic>).cast<String>();
@@ -655,8 +647,7 @@ class DocumentRepository {
     // pas pousser successivement deux versions.
     await db.delete(
       'sync_operations',
-      where:
-          'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
+      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
       whereArgs: [
         documentId,
         'document',
@@ -795,6 +786,92 @@ class DocumentRepository {
     // pour l'instant. Si un autre champ change, c'est un autre code-path.
   }
 
+  Future<void> hideObsoleteReportDocuments({
+    required String patientId,
+    required String dossierId,
+    String keepLocalId = '',
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      columns: const [
+        'local_id',
+        'dossier_local_id',
+        'tags_json',
+        'sync_state',
+        'remote_file_path',
+        'remote_public_url',
+      ],
+      where: 'patient_local_id = ? AND pending_delete = 0',
+      whereArgs: [patientId],
+    );
+
+    final now = DateTime.now().toIso8601String();
+    var changed = false;
+
+    await db.transaction((txn) async {
+      for (final row in rows) {
+        final localId = (row['local_id'] as String?) ?? '';
+        if (localId.isEmpty || localId == keepLocalId) continue;
+        if (!_documentRowHasTag(row, 'Rapport')) continue;
+
+        final rowDossierId = (row['dossier_local_id'] as String?) ?? '';
+        if (rowDossierId.isNotEmpty && rowDossierId != dossierId) continue;
+
+        changed = true;
+        final wasSynced =
+            (row['sync_state'] as String?) == SyncState.synced.name;
+        final remoteId = _extractRemoteIdFromRow(row, localId);
+
+        await txn.update(
+          'documents',
+          {
+            'pending_delete': 1,
+            'updated_at': now,
+            'sync_state': SyncState.pendingSync.name,
+          },
+          where: 'local_id = ?',
+          whereArgs: [localId],
+        );
+
+        await txn.delete(
+          'sync_operations',
+          where:
+              'entity_local_id = ? AND operation_type = ? AND status IN (?, ?)',
+          whereArgs: [
+            localId,
+            'upload_file',
+            SyncOperationStatus.pending.name,
+            SyncOperationStatus.failed.name,
+          ],
+        );
+
+        if (wasSynced && remoteId.isNotEmpty) {
+          await txn.insert('sync_operations', {
+            'id': 'sync_delete_$localId',
+            'entity_type': 'document',
+            'entity_local_id': localId,
+            'operation_type': 'delete_document',
+            'payload_json': jsonEncode({'remoteDocumentId': remoteId}),
+            'status': SyncOperationStatus.pending.name,
+            'attempt_count': 0,
+            'last_error': null,
+            'created_at': now,
+            'updated_at': now,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        } else {
+          await txn.delete(
+            'documents',
+            where: 'local_id = ?',
+            whereArgs: [localId],
+          );
+        }
+      }
+    });
+
+    if (changed) SyncEngine().notify();
+  }
+
   Future<void> deleteDocument(String documentId) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
@@ -832,8 +909,7 @@ class DocumentRepository {
     // est moot (le doc est en train d'être supprimé).
     await db.delete(
       'sync_operations',
-      where:
-          'entity_local_id = ? AND operation_type = ? AND status IN (?, ?)',
+      where: 'entity_local_id = ? AND operation_type = ? AND status IN (?, ?)',
       whereArgs: [
         documentId,
         'upload_file',
@@ -854,9 +930,7 @@ class DocumentRepository {
           'entity_type': 'document',
           'entity_local_id': documentId,
           'operation_type': 'delete_document',
-          'payload_json': jsonEncode({
-            'remoteDocumentId': remoteId,
-          }),
+          'payload_json': jsonEncode({'remoteDocumentId': remoteId}),
           'status': SyncOperationStatus.pending.name,
           'attempt_count': 0,
           'last_error': null,
@@ -877,6 +951,22 @@ class DocumentRepository {
     }
 
     SyncEngine().notify();
+  }
+
+  bool _documentRowHasTag(Map<String, Object?> row, String tag) {
+    final raw = row['tags_json'] as String? ?? '[]';
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final expected = tag.trim().toLowerCase();
+        return decoded.any(
+          (value) => value.toString().trim().toLowerCase() == expected,
+        );
+      }
+    } catch (_) {
+      return false;
+    }
+    return false;
   }
 
   /// Pour les documents synced, retrouve l'ID utilisé côté NocoDB pour
@@ -901,7 +991,9 @@ class DocumentRepository {
       (row['remote_public_url'] as String?) ?? '',
     ];
     for (final raw in candidates) {
-      final match = RegExp(r'/mobile-documents/([^/]+)/content').firstMatch(raw);
+      final match = RegExp(
+        r'/mobile-documents/([^/]+)/content',
+      ).firstMatch(raw);
       if (match != null) {
         return Uri.decodeComponent(match.group(1) ?? '');
       }
@@ -934,9 +1026,9 @@ class DocumentRepository {
           'documents',
           where: clientDocumentId.isNotEmpty
               ? 'patient_local_id = ? AND '
-                  '(local_id = ? OR remote_file_path = ? OR remote_public_url = ?)'
+                    '(local_id = ? OR remote_file_path = ? OR remote_public_url = ?)'
               : 'patient_local_id = ? AND '
-                  '(remote_file_path = ? OR remote_public_url = ?)',
+                    '(remote_file_path = ? OR remote_public_url = ?)',
           whereArgs: clientDocumentId.isNotEmpty
               ? [patientId, clientDocumentId, remotePath, publicUrl]
               : [patientId, remotePath, publicUrl],
@@ -981,7 +1073,8 @@ class DocumentRepository {
         // traité par le sync engine, on évite de l'écraser en `synced`
         // (sinon il réapparaît dans l'UI). On laisse la `sync_operations`
         // (delete_document) faire le DELETE distant + purger le local.
-        if (existing != null && (existing['pending_delete'] as int? ?? 0) == 1) {
+        if (existing != null &&
+            (existing['pending_delete'] as int? ?? 0) == 1) {
           continue;
         }
 
@@ -990,7 +1083,8 @@ class DocumentRepository {
             .extension(fileName)
             .replaceFirst('.', '')
             .toLowerCase();
-        final localId = existing?['local_id'] as String? ??
+        final localId =
+            existing?['local_id'] as String? ??
             'remote_doc_${remote['id'] ?? DateTime.now().microsecondsSinceEpoch}';
         remoteLocalIds.add(localId);
         final row = {
@@ -1067,20 +1161,18 @@ class DocumentRepository {
       // suppression d'un patient (l'ergo supprimait la seule photo
       // sur iPad → le Mac ne purgeait jamais la sienne).
       // ----------------------------------------------------------------
-      final ageThreshold = DateTime.now().subtract(
-        const Duration(minutes: 5),
-      );
+      final ageThreshold = DateTime.now().subtract(const Duration(minutes: 5));
       final args = <Object?>[
         patientId,
         SyncState.synced.name,
         ageThreshold.toIso8601String(),
       ];
-      String whereClause = 'patient_local_id = ? AND sync_state = ? '
+      String whereClause =
+          'patient_local_id = ? AND sync_state = ? '
           'AND pending_delete = 0 '
           'AND created_at < ?';
       if (remoteLocalIds.isNotEmpty) {
-        final placeholders =
-            List.filled(remoteLocalIds.length, '?').join(',');
+        final placeholders = List.filled(remoteLocalIds.length, '?').join(',');
         whereClause += ' AND local_id NOT IN ($placeholders)';
         args.addAll(remoteLocalIds);
       }
@@ -1197,15 +1289,14 @@ class DocumentRepository {
     for (final remote in remoteDocuments) {
       final url = remote['publicUrl']?.toString().trim() ?? '';
       if (url.isEmpty) continue;
-      final row = byKey[url] ??
-          byKey[remote['remotePath']?.toString().trim() ?? ''];
+      final row =
+          byKey[url] ?? byKey[remote['remotePath']?.toString().trim() ?? ''];
       if (row == null) continue;
 
       // Skip si l'utilisateur a déjà des bytes locaux (upload offline,
       // ou ré-upload après annotation).
       final existingPath = (row['local_file_path'] as String?)?.trim() ?? '';
-      if (existingPath.isNotEmpty &&
-          await File(existingPath).exists()) {
+      if (existingPath.isNotEmpty && await File(existingPath).exists()) {
         continue;
       }
 

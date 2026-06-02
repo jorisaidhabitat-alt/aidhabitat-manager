@@ -84,3 +84,60 @@ Future<WebPickedFile?> pickWebFileImpl({
 
   return completer.future;
 }
+
+Future<List<WebPickedFile>> pickWebFilesImpl({required String accept}) async {
+  final completer = Completer<List<WebPickedFile>>();
+  final input = html.FileUploadInputElement()
+    ..accept = accept
+    ..multiple = true
+    ..style.position = 'fixed'
+    ..style.left = '-9999px'
+    ..style.top = '-9999px';
+
+  html.document.body?.append(input);
+
+  StreamSubscription? changeSub;
+  StreamSubscription? cancelSub;
+
+  void cleanup() {
+    changeSub?.cancel();
+    cancelSub?.cancel();
+    input.remove();
+  }
+
+  changeSub = input.onChange.listen((_) async {
+    final files = input.files;
+    if (files == null || files.isEmpty) {
+      cleanup();
+      if (!completer.isCompleted) completer.complete(const []);
+      return;
+    }
+
+    final picked = <WebPickedFile>[];
+    for (final file in files) {
+      final reader = html.FileReader();
+      reader.readAsArrayBuffer(file);
+      await reader.onLoadEnd.first;
+      final bytes = reader.result;
+      if (bytes is Uint8List) {
+        picked.add(WebPickedFile(name: file.name, bytes: bytes));
+      } else if (bytes is List<int>) {
+        picked.add(
+          WebPickedFile(name: file.name, bytes: Uint8List.fromList(bytes)),
+        );
+      }
+    }
+
+    cleanup();
+    if (!completer.isCompleted) completer.complete(picked);
+  });
+
+  cancelSub = input.on['cancel'].listen((_) {
+    cleanup();
+    if (!completer.isCompleted) completer.complete(const []);
+  });
+
+  input.click();
+
+  return completer.future;
+}

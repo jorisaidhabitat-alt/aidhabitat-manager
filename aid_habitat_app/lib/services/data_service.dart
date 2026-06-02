@@ -234,8 +234,11 @@ class DataService {
   /// côté + ré-encode en JPEG quality 80 → renvoie un data URL prêt à
   /// être uploadé. Si le décodage échoue (format inconnu, fichier
   /// corrompu), on tombe sur l'envoi brut tel quel.
-  String _compressForUpload(Uint8List rawBytes,
-      {int maxDim = 1024, int quality = 80}) {
+  String _compressForUpload(
+    Uint8List rawBytes, {
+    int maxDim = 1024,
+    int quality = 80,
+  }) {
     try {
       final decoded = img.decodeImage(rawBytes);
       if (decoded == null) {
@@ -361,7 +364,9 @@ class DataService {
     // l'écran appelant puisse re-fetchAll proprement.
     try {
       await refreshRetirementFundsFromRemote();
-    } catch (_) {/* best-effort */}
+    } catch (_) {
+      /* best-effort */
+    }
     return created;
   }
 
@@ -406,10 +411,7 @@ class DataService {
     WikiItem item, {
     String? newImageDataUrl,
   }) async {
-    return _wikiRepository.updateLocalItem(
-      item,
-      imageDataUrl: newImageDataUrl,
-    );
+    return _wikiRepository.updateLocalItem(item, imageDataUrl: newImageDataUrl);
   }
 
   Future<List<DocItem>> fetchDocuments(String patientId) async {
@@ -503,6 +505,7 @@ class DataService {
     String? title,
     int? categoryOrder,
     String? dossierId,
+
     /// Voir [DocumentRepository.importDocumentBytes] : id déterministe
     /// pour la dédup (cas typique : rapport PDF d'un dossier).
     String? localId,
@@ -542,6 +545,18 @@ class DataService {
       categoryOrder: categoryOrder,
       dossierId: dossierId,
       clientDocumentId: clientDocumentId,
+    );
+  }
+
+  Future<void> hideObsoleteReportDocuments({
+    required String patientId,
+    required String dossierId,
+    String keepLocalId = '',
+  }) async {
+    await _documentRepository.hideObsoleteReportDocuments(
+      patientId: patientId,
+      dossierId: dossierId,
+      keepLocalId: keepLocalId,
     );
   }
 
@@ -624,8 +639,15 @@ class DataService {
   /// clique « Générer » pendant qu'une partie des photos vient juste
   /// d'être uploadée et l'autre pas, le serveur a quand même tous les
   /// bytes nécessaires (les inline gagnent sur la lecture NocoDB).
-  Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats, String? savedDocUuid})>
-      downloadVisitReport({required String dossierId}) async {
+  Future<
+    ({
+      Uint8List bytes,
+      String fileName,
+      Map<String, dynamic>? stats,
+      String? savedDocUuid,
+    })
+  >
+  downloadVisitReport({required String dossierId}) async {
     // Résolution patientId à partir du dossierId — nécessaire pour
     // récupérer les documents et notes scopés au patient. Si le dossier
     // est introuvable localement, on tombe sur les listes vides → POST
@@ -642,15 +664,18 @@ class DataService {
     var inlinePlans = const <InlinePlanBytes>[];
     if (patientId != null && patientId.isNotEmpty) {
       try {
-        inlineDocs = await _documentRepository
-            .fetchVisitReportInlineBytes(patientId);
+        inlineDocs = await _documentRepository.fetchVisitReportInlineBytes(
+          patientId,
+        );
       } catch (e) {
         // ignore: avoid_print
         print('[report] inline docs lookup failed: $e');
       }
       try {
-        inlinePlans = await _noteRepository
-            .fetchPlanReportInlineBytes(patientId, dossierId: dossierId);
+        inlinePlans = await _noteRepository.fetchPlanReportInlineBytes(
+          patientId,
+          dossierId: dossierId,
+        );
       } catch (e) {
         // ignore: avoid_print
         print('[report] inline plans lookup failed: $e');
@@ -736,8 +761,9 @@ class DataService {
   /// log/debug). Best-effort, errors swallowed.
   Future<int> refreshAllNotePagesForPatient(String patientId) async {
     try {
-      final remoteNotes =
-          await _nocodbApiClient.fetchAllNotePagesForPatient(patientId);
+      final remoteNotes = await _nocodbApiClient.fetchAllNotePagesForPatient(
+        patientId,
+      );
       if (remoteNotes.isEmpty) return 0;
       var merged = 0;
       for (final remote in remoteNotes) {
