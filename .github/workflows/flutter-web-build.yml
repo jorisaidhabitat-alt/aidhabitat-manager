@@ -21,6 +21,11 @@ on:
         description: "Container image tag used when publish_image is enabled"
         required: false
         default: "staging"
+      deploy_staging:
+        description: "Trigger Easypanel web staging after publishing the image"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -75,6 +80,20 @@ jobs:
             .
           docker push "$IMAGE_NAME:$IMAGE_TAG"
           docker push "$IMAGE_NAME:${{ github.sha }}"
+
+      - name: Trigger Easypanel web staging
+        if: ${{ inputs.publish_image && inputs.deploy_staging }}
+        working-directory: .
+        env:
+          EASYPANEL_DEPLOY_URL: ${{ secrets.EASYPANEL_WEB_STAGING_DEPLOY_URL }}
+        run: |
+          if [ -z "$EASYPANEL_DEPLOY_URL" ]; then
+            echo "Missing EASYPANEL_WEB_STAGING_DEPLOY_URL secret." >&2
+            exit 1
+          fi
+          curl --fail-with-body --show-error --silent \
+            --request POST \
+            "$EASYPANEL_DEPLOY_URL"
 
       - name: Upload PWA artifact
         if: ${{ inputs.upload_artifact }}
