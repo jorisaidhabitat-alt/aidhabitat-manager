@@ -1478,16 +1478,48 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
       child: GestureDetector(
         onTap: widget.disabled ? null : () => _showMenu(context),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration: const Duration(milliseconds: 180),
+          transform: _hovering && !widget.disabled
+              ? (Matrix4.identity()..translateByDouble(0.0, -3.0, 0.0, 1.0))
+              : Matrix4.identity(),
           decoration: BoxDecoration(
-            // Fond violet CONSTANT (légère teinte en base, plus foncée au
-            // hover). Disabled = gris très clair pour distinguer l'état.
             color: widget.disabled
                 ? const Color(0xFFF2F4F6)
                 : _hovering
                 ? kBrandPurple.withValues(alpha: 0.14)
                 : kBrandPurple.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: widget.disabled
+                  ? const Color(0xFFD6DAE0)
+                  : _hovering
+                  ? kBrandPurple.withValues(alpha: 0.34)
+                  : const Color(0xFFDADDE3),
+              width: 1.2,
+            ),
+            boxShadow: widget.disabled
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : _hovering
+                ? [
+                    BoxShadow(
+                      color: kBrandPurple.withValues(alpha: 0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 14,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
           ),
           child: CustomPaint(
             painter: DashedBorderPainter(

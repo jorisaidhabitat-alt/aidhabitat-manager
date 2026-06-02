@@ -173,11 +173,11 @@ class _DocCardState extends State<DocCard> {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected
-                ? kBrandPurple.withValues(alpha: 0.6)
+                ? kBrandPurple.withValues(alpha: 0.72)
                 : _hovering
-                ? kBrandPurple.withValues(alpha: 0.22)
-                : const Color(0xFFE4E7EB),
-            width: selected ? 1.5 : 1,
+                ? kBrandPurple.withValues(alpha: 0.34)
+                : const Color(0xFFDADDE3),
+            width: selected ? 1.8 : 1.2,
           ),
           boxShadow: _hovering
               ? [
@@ -189,9 +189,9 @@ class _DocCardState extends State<DocCard> {
                 ]
               : [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 14,
+                    offset: const Offset(0, 3),
                   ),
                 ],
         ),
