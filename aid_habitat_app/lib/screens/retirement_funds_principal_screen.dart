@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../components/brand_colors.dart';
+import '../components/cached_remote_image.dart';
 import '../services/app_config.dart';
 import '../services/local_database.dart';
 import '../services/nocodb_api_client.dart';
@@ -581,58 +582,87 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
 /// est fourni, on fixe une boîte carrée — sinon le widget remplit son
 /// parent (pour permettre aux wordmarks larges d'utiliser toute la
 /// largeur du hero, demande user 2026-05-12).
-class _PrincipalFundLogo extends StatelessWidget {
+class _PrincipalFundLogo extends StatefulWidget {
   final String logoUrl;
   final double? size;
 
   const _PrincipalFundLogo({required this.logoUrl, this.size});
 
   @override
+  State<_PrincipalFundLogo> createState() => _PrincipalFundLogoState();
+}
+
+class _PrincipalFundLogoState extends State<_PrincipalFundLogo> {
+  String? _svgString;
+  Uint8List? _bitmapBytes;
+  String _decodedLogoUrl = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _decodeInlineLogoIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PrincipalFundLogo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.logoUrl != widget.logoUrl) {
+      _decodeInlineLogoIfNeeded();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final child = _buildContent();
-    if (size != null) {
-      return SizedBox(width: size, height: size, child: child);
+    if (widget.size != null) {
+      return SizedBox(width: widget.size, height: widget.size, child: child);
     }
     // Pas de size fixée → on remplit l'espace dispo du parent.
     return SizedBox.expand(child: child);
   }
 
+  void _decodeInlineLogoIfNeeded() {
+    final logoUrl = widget.logoUrl;
+    if (_decodedLogoUrl == logoUrl) return;
+    _decodedLogoUrl = logoUrl;
+    _svgString = null;
+    _bitmapBytes = null;
+    if (logoUrl.startsWith('data:image/svg+xml')) {
+      _svgString = _decodeSvgDataUri(logoUrl);
+      return;
+    }
+    if (logoUrl.startsWith('data:image/')) {
+      _bitmapBytes = _decodeBitmapDataUri(logoUrl);
+    }
+  }
+
   Widget _buildContent() {
+    final logoUrl = widget.logoUrl;
     if (logoUrl.isEmpty) {
       return _placeholder();
     }
     if (logoUrl.startsWith('data:image/svg+xml')) {
-      // SVG inline — décode et rend avec flutter_svg.
-      final svgString = _decodeSvgDataUri(logoUrl);
-      if (svgString == null) return _placeholder();
-      return SvgPicture.string(svgString, fit: BoxFit.contain);
+      final svgString = _svgString;
+      return svgString == null
+          ? _placeholder()
+          : SvgPicture.string(svgString, fit: BoxFit.contain);
     }
     if (logoUrl.startsWith('data:image/')) {
-      // Bitmap inline (PNG / JPEG base64).
-      final bytes = _decodeBitmapDataUri(logoUrl);
+      final bytes = _bitmapBytes;
       if (bytes == null) return _placeholder();
       return Image.memory(
         bytes,
         fit: BoxFit.contain,
+        gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) => _placeholder(),
       );
     }
-    // URL HTTP — si .svg utilise flutter_svg.network (Image.network
-    // ne décode pas le SVG), sinon Image.network classique.
-    final resolvedLogoUrl = resolveMediaUrl(logoUrl);
-    final lowerUrl = resolvedLogoUrl.toLowerCase();
-    final isSvgUrl = lowerUrl.endsWith('.svg') || lowerUrl.contains('.svg?');
-    if (isSvgUrl) {
-      return SvgPicture.network(
-        resolvedLogoUrl,
-        fit: BoxFit.contain,
-        placeholderBuilder: (context) => _placeholder(),
-      );
-    }
-    return Image.network(
-      resolvedLogoUrl,
+    return CachedRemoteImage(
+      key: ValueKey(logoUrl),
+      url: resolveMediaUrl(logoUrl),
       fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) => _placeholder(),
+      placeholder: _placeholder(),
+      errorWidget: _placeholder(),
     );
   }
 
