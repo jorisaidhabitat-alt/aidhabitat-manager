@@ -39,6 +39,8 @@ const port = Number(process.env.API_PORT || 3001);
 const SERVER_DIR_PATH = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR_PATH = path.resolve(SERVER_DIR_PATH, '../dist');
 const DIST_INDEX_PATH = path.join(DIST_DIR_PATH, 'index.html');
+const PUBLIC_DIR_PATH = path.resolve(SERVER_DIR_PATH, '../public');
+const BUNDLED_WIKI_OFFLINE_DIR_PATH = path.join(PUBLIC_DIR_PATH, 'wiki-offline');
 const LOCAL_DATA_DIR_PATH = fileURLToPath(new URL('./data/', import.meta.url));
 // Cf. helpers.mjs:DATA_DIR_PATH pour le détail des priorités.
 // Sur Easypanel / Docker : set `AIDHABITAT_DATA_DIR_PATH=/data/aidhabitat`
@@ -996,6 +998,23 @@ const inferExtensionFromMimeType = (mimeType) => ({
   'image/gif': 'gif',
   'application/pdf': 'pdf',
 })[String(mimeType || '').trim().toLowerCase()] || 'bin';
+
+const inferMimeTypeFromFilePath = (filePath) => ({
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+})[path.extname(String(filePath || '')).toLowerCase()] || 'application/octet-stream';
+
+const safeDecodeUriComponent = (value) => {
+  try {
+    return decodeURIComponent(String(value || ''));
+  } catch {
+    return String(value || '');
+  }
+};
 
 const decodeBase64FilePayload = ({ contentBase64, mimeType }) => {
   const rawValue = String(contentBase64 || '').trim();
@@ -5564,6 +5583,45 @@ const fetchVisitRecommendationsForDossier = async (dossierId) => {
   }
 };
 
+const wikiOfflinePathnameFromUrl = (value) => {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+  try {
+    const parsed = /^https?:\/\//i.test(rawValue)
+      ? new URL(rawValue)
+      : new URL(rawValue, 'https://aid-habitat.local');
+    const pathname = safeDecodeUriComponent(parsed.pathname || '');
+    return pathname.startsWith('/wiki-offline/') ? pathname : '';
+  } catch {
+    const pathname = safeDecodeUriComponent(rawValue.split(/[?#]/, 1)[0] || '');
+    return pathname.startsWith('/wiki-offline/') ? pathname : '';
+  }
+};
+
+const readBundledWikiOfflineImage = async (urlValue) => {
+  const pathname = wikiOfflinePathnameFromUrl(urlValue);
+  if (!pathname) return null;
+  const relativePath = pathname.replace(/^\/wiki-offline\/+/, '');
+  if (!relativePath || relativePath.includes('\0')) return null;
+  const fullPath = path.resolve(BUNDLED_WIKI_OFFLINE_DIR_PATH, relativePath);
+  const relativeToRoot = path.relative(BUNDLED_WIKI_OFFLINE_DIR_PATH, fullPath);
+  if (relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) {
+    return null;
+  }
+  try {
+    const buffer = await fs.readFile(fullPath);
+    return {
+      buffer,
+      mimeType: inferMimeTypeFromFilePath(fullPath),
+    };
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('[report] échec lecture image wiki-offline :', pathname, error?.message || error);
+    }
+    return null;
+  }
+};
+
 /**
  * Récupère les bytes d'une image (document, URL HTTP, data URL) sous
  * forme de Buffer + mimeType. Renvoie `null` si l'image n'est pas
@@ -5638,6 +5696,8 @@ const fetchImageBytesForReport = async (descriptor) => {
           mimeType: dataUrlMatch[1] || 'image/png',
         };
       }
+      const bundledWikiImage = await readBundledWikiOfflineImage(rawUrl);
+      if (bundledWikiImage) return bundledWikiImage;
       const res = await fetch(rawUrl);
       if (!res.ok) return null;
       const arrayBuffer = await res.arrayBuffer();

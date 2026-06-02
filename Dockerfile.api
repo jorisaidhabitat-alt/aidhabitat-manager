@@ -44,6 +44,7 @@ COPY server/ ./server/
 COPY shared/ ./shared/
 COPY data/ ./data/
 COPY public/retirement-logos/ ./public/retirement-logos/
+COPY public/wiki-offline/ ./public/wiki-offline/
 
 # Volume pour la persistence des données serveur (auth-store.json,
 # profile-photos/, etc.). Sur Easypanel, monte un volume à /data.
