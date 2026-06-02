@@ -56,7 +56,6 @@ const List<String> _kAvailableTags = [
   'Autre',
 ];
 
-
 /// Nombre maximum de fetches binaires en parallèle dans
 /// `_warmDocumentBinaryCache`. Calé sur 4 — même valeur que le pool
 /// du SyncEngine (cf. `NocodbSyncService._maxConcurrency`). Au-dessus,
@@ -112,6 +111,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   // à l'ouverture.
   bool _isImporting = false;
   bool _isBulkDownloading = false;
+
   /// True pendant qu'un picker (caméra / galerie / fichier) est ouvert.
   /// Sert de verrou contre les double-taps — sans ça, le même fichier
   /// peut être inséré 2 fois d'affilée sur iPad.
@@ -234,7 +234,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               url,
               headers: {'X-App-Session': AppConfig.appSessionToken},
             );
-          } catch (_) {/* best-effort */}
+          } catch (_) {
+            /* best-effort */
+          }
         }
       }
 
@@ -347,8 +349,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   /// Web variant of [_openUploadModal] that reads from an [XFile]
   /// (delivered by image_picker camera on web). Delegates to the shared
   /// bytes-based flow.
-  Future<void> _openUploadModalWeb(XFile xfile,
-      {required String defaultTag}) async {
+  Future<void> _openUploadModalWeb(
+    XFile xfile, {
+    required String defaultTag,
+  }) async {
     final bytes = await xfile.readAsBytes();
     final fileName = xfile.name.isNotEmpty
         ? xfile.name
@@ -395,9 +399,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       );
       await _loadDocuments(silent: true);
       if (!mounted) return;
-      _showSnack(compressed.wasRecompressed
-          ? 'Image enregistrée (compressée pour sync rapide).'
-          : 'Document enregistré localement.');
+      _showSnack(
+        compressed.wasRecompressed
+            ? 'Image enregistrée (compressée pour sync rapide).'
+            : 'Document enregistré localement.',
+      );
     } catch (err) {
       _showError('Import impossible: $err');
     } finally {
@@ -469,8 +475,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
 
   /// Branches a [PlatformFile] picked via FilePicker into either the native
   /// File upload flow or the web bytes flow.
-  Future<void> _importPickedFile(PlatformFile picked,
-      {required String defaultTag}) async {
+  Future<void> _importPickedFile(
+    PlatformFile picked, {
+    required String defaultTag,
+  }) async {
     if (kIsWeb) {
       final bytes = picked.bytes;
       if (bytes == null) {
@@ -802,17 +810,16 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         final path = doc.localPath;
         if (path == null || path.isEmpty) continue;
         if (!await File(path).exists()) continue;
-        xFiles.add(XFile(path, name: doc.name.isNotEmpty ? doc.name : doc.title));
+        xFiles.add(
+          XFile(path, name: doc.name.isNotEmpty ? doc.name : doc.title),
+        );
       }
       if (xFiles.isEmpty) {
         _showError('Aucun fichier local dans la sélection.');
         return;
       }
       // iOS/Android native share sheet: one tap, user picks destination.
-      await Share.shareXFiles(
-        xFiles,
-        subject: '${xFiles.length} document(s)',
-      );
+      await Share.shareXFiles(xFiles, subject: '${xFiles.length} document(s)');
       _exitSelectionMode();
     } catch (err) {
       _showError('Partage impossible : $err');
@@ -846,10 +853,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red.shade700,
-      ));
+      ..showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red.shade700),
+      );
   }
 
   List<DocItem> get _filteredDocuments {
@@ -884,8 +890,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       if (visitTagsNormalized.contains(n)) return true;
       return n.startsWith('visite - ') || n.startsWith('visite-');
     }
-    Iterable<DocItem> docs =
-        _documents.where((doc) => !doc.tags.any(isVisitTag));
+
+    Iterable<DocItem> docs = _documents.where(
+      (doc) => !doc.tags.any(isVisitTag),
+    );
 
     final query = _searchTerm.trim().toLowerCase();
     if (query.isNotEmpty) {
@@ -936,9 +944,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               // la toolbar (le slot back+nom reste).
               _buildPatientHeader(),
               const SizedBox(height: 16),
-              Expanded(
-                child: _buildGridWithDropZone(),
-              ),
+              Expanded(child: _buildGridWithDropZone()),
             ],
           ),
         ),
@@ -1059,9 +1065,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       if (!mounted) return;
       if (success > 0 && failed == 0) {
         _showSnack(
-          success == 1
-              ? 'Document importé.'
-              : '$success documents importés.',
+          success == 1 ? 'Document importé.' : '$success documents importés.',
         );
       } else if (success > 0 && failed > 0) {
         _showSnack('$success importé(s), $failed échec(s).');
@@ -1086,9 +1090,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         child: Container(
           width: 44,
           height: 44,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(999)),
           alignment: Alignment.center,
           child: const Icon(
             LucideIcons.chevronLeft,
@@ -1121,14 +1123,12 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         ),
       );
     }
-    return BeneficiaryHeader(
-      dossier: widget.dossier,
-      onBack: widget.onBack,
-    );
+    return BeneficiaryHeader(dossier: widget.dossier, onBack: widget.onBack);
   }
 
   Widget _buildSelectionToolbar() {
-    final allSelected = _filteredDocuments.isNotEmpty &&
+    final allSelected =
+        _filteredDocuments.isNotEmpty &&
         _selectedIds.length >= _filteredDocuments.length;
     // Toolbar sur la même ligne que le titre. Boutons dimensionnés plus
     // confortablement (36px) tout en restant alignés verticalement.
@@ -1233,9 +1233,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     if (!mounted) return;
     _exitSelectionMode();
     await _loadDocuments(silent: true);
-    if (mounted) _showSnack('$count document${count > 1 ? 's supprimés' : ' supprimé'}.');
+    if (mounted)
+      _showSnack('$count document${count > 1 ? 's supprimés' : ' supprimé'}.');
   }
-
 
   Widget _buildGrid() {
     final docs = _filteredDocuments;
@@ -1348,12 +1348,11 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
     if (box == null || overlay == null) return;
     final position = RelativeRect.fromRect(
       Rect.fromPoints(
-        box.localToGlobal(Offset(box.size.width / 2, box.size.height / 2),
-            ancestor: overlay),
         box.localToGlobal(
-          box.size.bottomRight(Offset.zero),
+          Offset(box.size.width / 2, box.size.height / 2),
           ancestor: overlay,
         ),
+        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
       ),
       Offset.zero & overlay.size,
     );
@@ -1446,10 +1445,7 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
               ),
               Text(
                 subtitle,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF5C6670),
-                ),
+                style: TextStyle(fontSize: 11, color: Color(0xFF5C6670)),
               ),
             ],
           ),
@@ -1476,8 +1472,8 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
             color: widget.disabled
                 ? const Color(0xFFF2F4F6)
                 : _hovering
-                    ? kBrandPurple.withValues(alpha: 0.14)
-                    : kBrandPurple.withValues(alpha: 0.07),
+                ? kBrandPurple.withValues(alpha: 0.14)
+                : kBrandPurple.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(16),
           ),
           child: CustomPaint(
@@ -1512,12 +1508,10 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
                     'Déposer un fichier\nou prendre une photo',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
                       height: 1.35,
-                      color: widget.disabled
-                          ? Color(0xFF8A939D)
-                          : kBrandPurple,
+                      color: widget.disabled ? Color(0xFF8A939D) : kBrandPurple,
                     ),
                   ),
                 ],
@@ -1534,7 +1528,6 @@ enum _AddChoice { image, camera, scanner, file }
 
 /// Dessine une bordure pointillée autour d'un rectangle arrondi.
 // `DashedBorderPainter` est désormais dans `../components/dashed_border_painter.dart`.
-
 
 // ---------------------------------------------------------------------------
 // Compact toolbar button — hauteur fixe ~24 px pour rentrer dans la ligne du
@@ -1605,7 +1598,6 @@ class _CompactToolbarButton extends StatelessWidget {
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
@@ -1661,10 +1653,7 @@ class _UploadModal extends StatefulWidget {
   final String defaultTitle;
   final String defaultTag;
 
-  const _UploadModal({
-    required this.defaultTitle,
-    required this.defaultTag,
-  });
+  const _UploadModal({required this.defaultTitle, required this.defaultTag});
 
   @override
   State<_UploadModal> createState() => _UploadModalState();
@@ -1693,19 +1682,20 @@ class _UploadModalState extends State<_UploadModal> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Enregistrer le document'),
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       content: SizedBox(
         width: 420,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Titre',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: kBrandDarkPurple,
-                )),
+            const Text(
+              'Titre',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: kBrandDarkPurple,
+              ),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _titleCtrl,
@@ -1716,11 +1706,13 @@ class _UploadModalState extends State<_UploadModal> {
               ),
             ),
             const SizedBox(height: 20),
-            const Text('Catégorie',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: kBrandDarkPurple,
-                )),
+            const Text(
+              'Catégorie',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: kBrandDarkPurple,
+              ),
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -1984,9 +1976,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 440),
           child: Padding(
@@ -2040,8 +2030,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                     ),
                     const SizedBox(width: 8),
                     FilledButton.icon(
-                      onPressed: () =>
-                          Navigator.pop(ctx, _UnsavedChoice.save),
+                      onPressed: () => Navigator.pop(ctx, _UnsavedChoice.save),
                       icon: const Icon(LucideIcons.save, size: 16),
                       label: const Text('Enregistrer'),
                       style: FilledButton.styleFrom(
@@ -2085,9 +2074,9 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       );
       if (!mounted) return;
       if (saved == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Enregistré dans : $saved')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Enregistré dans : $saved')));
       return;
     }
     widget.onDownload();
@@ -2125,32 +2114,32 @@ class _PreviewScreenState extends State<_PreviewScreen> {
             child: Material(
               color: Colors.transparent,
               child: Container(
-              width: maxWidth,
-              height: maxHeight,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E22),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 40,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: Column(
-                  children: [
-                    _buildToolbar(),
-                    Expanded(child: _buildPreviewBody()),
+                width: maxWidth,
+                height: maxHeight,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E22),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 40,
+                      offset: const Offset(0, 12),
+                    ),
                   ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Column(
+                    children: [
+                      _buildToolbar(),
+                      Expanded(child: _buildPreviewBody()),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -2253,21 +2242,26 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       doc.localPath ?? '',
       doc.url ?? '',
     ].map((s) => s.toLowerCase()).toList();
-    return candidates.any((s) =>
-        s.endsWith('.png') ||
-        s.endsWith('.jpg') ||
-        s.endsWith('.jpeg') ||
-        s.endsWith('.webp') ||
-        s.endsWith('.gif') ||
-        s.endsWith('.heic') ||
-        s.endsWith('.bmp'));
+    return candidates.any(
+      (s) =>
+          s.endsWith('.png') ||
+          s.endsWith('.jpg') ||
+          s.endsWith('.jpeg') ||
+          s.endsWith('.webp') ||
+          s.endsWith('.gif') ||
+          s.endsWith('.heic') ||
+          s.endsWith('.bmp'),
+    );
   }
 
   bool _looksLikePdf() {
     final doc = widget.doc;
     if (doc.type == 'pdf') return true;
-    final candidates = [doc.name, doc.localPath ?? '', doc.url ?? '']
-        .map((s) => s.toLowerCase());
+    final candidates = [
+      doc.name,
+      doc.localPath ?? '',
+      doc.url ?? '',
+    ].map((s) => s.toLowerCase());
     return candidates.any((s) => s.endsWith('.pdf'));
   }
 
@@ -2356,74 +2350,76 @@ class _PreviewScreenState extends State<_PreviewScreen> {
 
   Widget _unsupportedPanel() {
     final doc = widget.doc;
-    return Builder(builder: (ctx) {
-      return Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Container(
-            padding: const EdgeInsets.all(32),
-            margin: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Color(0xFF0E1116),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  doc.type == 'pdf' ? LucideIcons.fileText : LucideIcons.file,
-                  size: 96,
-                  color: doc.type == 'pdf'
-                      ? Colors.red.shade300
-                      : Color(0xFF8A939D),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  doc.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+    return Builder(
+      builder: (ctx) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Container(
+              padding: const EdgeInsets.all(32),
+              margin: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: Color(0xFF0E1116),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    doc.type == 'pdf' ? LucideIcons.fileText : LucideIcons.file,
+                    size: 96,
+                    color: doc.type == 'pdf'
+                        ? Colors.red.shade300
+                        : Color(0xFF8A939D),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Prévisualisation non disponible pour ce format.',
-                  style: TextStyle(color: Color(0xFF8A939D), fontSize: 13),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                if (doc.localPath != null && doc.localPath!.isNotEmpty)
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        final result = await OpenFilex.open(doc.localPath!);
-                        if (result.type != ResultType.done && ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Ouverture impossible : ${result.message}',
+                  const SizedBox(height: 16),
+                  Text(
+                    doc.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Prévisualisation non disponible pour ce format.',
+                    style: TextStyle(color: Color(0xFF8A939D), fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  if (doc.localPath != null && doc.localPath!.isNotEmpty)
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          final result = await OpenFilex.open(doc.localPath!);
+                          if (result.type != ResultType.done && ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Ouverture impossible : ${result.message}',
+                                ),
                               ),
-                            ),
-                          );
-                        }
-                      },
-                      icon: const Icon(LucideIcons.externalLink, size: 16),
-                      label: const Text('Ouvrir dans une autre app'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kBrandPurple,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                            );
+                          }
+                        },
+                        icon: const Icon(LucideIcons.externalLink, size: 16),
+                        label: const Text('Ouvrir dans une autre app'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: kBrandPurple,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
   Widget _remoteOrIcon() {
@@ -2435,8 +2431,11 @@ class _PreviewScreenState extends State<_PreviewScreen> {
             url: doc.url!,
             fit: BoxFit.contain,
             fallback: const Center(
-              child: Icon(LucideIcons.imageOff,
-                  size: 96, color: Colors.white54),
+              child: Icon(
+                LucideIcons.imageOff,
+                size: 96,
+                color: Colors.white54,
+              ),
             ),
           ),
         ),
@@ -2732,10 +2731,12 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
     //     incompatible avec ce PDF particulier
     String message;
     if (lastBytesLength == null) {
-      message = 'Lecture du PDF impossible — aucun fichier reçu '
+      message =
+          'Lecture du PDF impossible — aucun fichier reçu '
           '(URL invalide, problème d\'authentification ou hors-ligne).';
     } else if (!lastBytesLookedLikePdf) {
-      message = 'Lecture du PDF impossible — le serveur a renvoyé '
+      message =
+          'Lecture du PDF impossible — le serveur a renvoyé '
           '${lastBytesLength!} octets qui ne sont pas un PDF valide '
           '(fichier corrompu côté serveur ou réponse d\'erreur).';
     } else {
@@ -2907,8 +2908,10 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 IconButton(
-                  icon: const Icon(LucideIcons.chevronLeft,
-                      color: Colors.white),
+                  icon: const Icon(
+                    LucideIcons.chevronLeft,
+                    color: Colors.white,
+                  ),
                   onPressed: _currentPage > 1 ? _goPrev : null,
                   tooltip: 'Page précédente',
                 ),
@@ -2919,8 +2922,10 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
                 ),
                 const SizedBox(width: 12),
                 IconButton(
-                  icon: const Icon(LucideIcons.chevronRight,
-                      color: Colors.white),
+                  icon: const Icon(
+                    LucideIcons.chevronRight,
+                    color: Colors.white,
+                  ),
                   onPressed: _currentPage < _totalPages ? _goNext : null,
                   tooltip: 'Page suivante',
                 ),
@@ -2997,8 +3002,7 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
         if (strokes.isEmpty) {
           if (await f.exists()) await f.delete();
         } else {
-          final json =
-              jsonEncode(strokes.map((s) => s.toJson()).toList());
+          final json = jsonEncode(strokes.map((s) => s.toJson()).toList());
           await f.writeAsString(json);
         }
       } catch (_) {
@@ -3127,10 +3131,7 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
       return Container(
         color: Color(0xFF0E1116),
         alignment: Alignment.center,
-        child: Text(
-          _error!,
-          style: const TextStyle(color: Colors.white),
-        ),
+        child: Text(_error!, style: const TextStyle(color: Colors.white)),
       );
     }
     final pngPath = _pagePngPaths[_currentPage];
@@ -3169,8 +3170,10 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
             right: 0,
             child: Center(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(999),
@@ -3433,9 +3436,9 @@ class _ImageAnnotator extends StatefulWidget {
     this.initialStrokes,
     this.autoPersistToDisk = true,
   }) : assert(
-          imagePath != null || imageBytes != null,
-          '_ImageAnnotator: provide imagePath OR imageBytes',
-        );
+         imagePath != null || imageBytes != null,
+         '_ImageAnnotator: provide imagePath OR imageBytes',
+       );
 
   @override
   State<_ImageAnnotator> createState() => _ImageAnnotatorState();
@@ -3504,8 +3507,9 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
       // pixels absolus (> 1), on ignore ces strokes car on ne peut plus les
       // dénormaliser correctement.
       final valid = loaded.where((s) {
-        return s.points.every((p) =>
-            p.dx >= 0 && p.dx <= 1 && p.dy >= 0 && p.dy <= 1);
+        return s.points.every(
+          (p) => p.dx >= 0 && p.dx <= 1 && p.dy >= 0 && p.dy <= 1,
+        );
       }).toList();
       if (!mounted) return;
       setState(() {
@@ -3550,13 +3554,13 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   /// Export l'image + l'annotation aplatie en PNG (bytes).
   Future<Uint8List?> exportFlatPng() async {
     try {
-      final boundary = _boundaryKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      final boundary =
+          _boundaryKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary == null) return null;
       // Pixel ratio plus élevé → meilleure qualité.
       final image = await boundary.toImage(pixelRatio: 2.5);
-      final byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
       return byteData?.buffer.asUint8List();
     } catch (_) {
@@ -3605,8 +3609,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     final kept = <_AnnotStroke>[];
     var touched = false;
     for (final stroke in _strokes) {
-      final hit = stroke.points
-          .any((p) => (p - normalizedPoint).distance <= r);
+      final hit = stroke.points.any((p) => (p - normalizedPoint).distance <= r);
       if (hit) {
         touched = true;
       } else {
@@ -3746,9 +3749,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
             children: [
               Positioned.fill(child: img),
               Positioned.fill(
-                child: CustomPaint(
-                  painter: _AnnotPainter(strokes: _strokes),
-                ),
+                child: CustomPaint(painter: _AnnotPainter(strokes: _strokes)),
               ),
             ],
           ),
@@ -3820,8 +3821,11 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     if (strokes.isEmpty) return 0;
     // Hash approximatif mais stable : nb de strokes + nb total de points.
     final nPoints = strokes.fold<int>(0, (acc, s) => acc + s.points.length);
-    return Object.hash(strokes.length, nPoints,
-        strokes.isNotEmpty ? strokes.last.points.length : 0);
+    return Object.hash(
+      strokes.length,
+      nPoints,
+      strokes.isNotEmpty ? strokes.last.points.length : 0,
+    );
   }
 }
 
@@ -3841,18 +3845,18 @@ class _AnnotStroke {
   });
 
   _AnnotStroke copyWith({List<Offset>? points}) => _AnnotStroke(
-        tool: tool,
-        color: color,
-        strokeWidth: strokeWidth,
-        points: points ?? this.points,
-      );
+    tool: tool,
+    color: color,
+    strokeWidth: strokeWidth,
+    points: points ?? this.points,
+  );
 
   Map<String, dynamic> toJson() => {
-        'tool': tool.name,
-        'color': color.toARGB32(),
-        'strokeWidth': strokeWidth,
-        'points': points.map((p) => [p.dx, p.dy]).toList(),
-      };
+    'tool': tool.name,
+    'color': color.toARGB32(),
+    'strokeWidth': strokeWidth,
+    'points': points.map((p) => [p.dx, p.dy]).toList(),
+  };
 
   static _AnnotStroke? fromJson(Map<String, dynamic> json) {
     try {
@@ -3861,10 +3865,8 @@ class _AnnotStroke {
         (t) => t.name == toolName,
         orElse: () => _AnnotTool.pen,
       );
-      final color =
-          Color((json['color'] as num?)?.toInt() ?? 0xFFE11D48);
-      final strokeWidth =
-          (json['strokeWidth'] as num?)?.toDouble() ?? 3.0;
+      final color = Color((json['color'] as num?)?.toInt() ?? 0xFFE11D48);
+      final strokeWidth = (json['strokeWidth'] as num?)?.toDouble() ?? 3.0;
       final pts = (json['points'] as List?) ?? const [];
       final points = pts.whereType<List>().map<Offset>((p) {
         return Offset((p[0] as num).toDouble(), (p[1] as num).toDouble());
@@ -3887,7 +3889,8 @@ class _AnnotPainter extends CustomPainter {
   const _AnnotPainter({required this.strokes});
 
   /// Convertit un point normalisé (0..1) en coordonnées pixel du canvas.
-  Offset _toCanvas(Offset p, Size size) => Offset(p.dx * size.width, p.dy * size.height);
+  Offset _toCanvas(Offset p, Size size) =>
+      Offset(p.dx * size.width, p.dy * size.height);
 
   @override
   void paint(Canvas canvas, Size size) {

@@ -160,18 +160,50 @@ class _DocCardState extends State<DocCard> {
     // ou quand on est en mode sélection global (long-press ou checkbox activée).
     final showCheckbox = _hovering || selected || selMode;
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
-      child: InkWell(
-        onTap: widget.onTap,
-        onLongPress: widget.onLongPress,
-        borderRadius: BorderRadius.circular(16),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        transform: _hovering
+            ? (Matrix4.identity()..translateByDouble(0.0, -3.0, 0.0, 1.0))
+            : Matrix4.identity(),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? kBrandPurple.withValues(alpha: 0.6)
+                : _hovering
+                ? kBrandPurple.withValues(alpha: 0.22)
+                : const Color(0xFFE4E7EB),
+            width: selected ? 1.5 : 1,
           ),
+          boxShadow: _hovering
+              ? [
+                  BoxShadow(
+                    color: kBrandPurple.withValues(alpha: 0.18),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -224,13 +256,11 @@ class _DocCardState extends State<DocCard> {
                               height: 22,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color:
-                                    selected ? kBrandPurple : Colors.white,
+                                color: selected ? kBrandPurple : Colors.white,
                                 borderRadius: BorderRadius.circular(6),
                                 boxShadow: [
                                   BoxShadow(
-                                    color:
-                                        Colors.black.withValues(alpha: 0.18),
+                                    color: Colors.black.withValues(alpha: 0.18),
                                     blurRadius: 4,
                                     offset: const Offset(0, 1),
                                   ),
@@ -294,8 +324,7 @@ class _DocCardState extends State<DocCard> {
                                   ),
                                   decoration: InputDecoration(
                                     isDense: true,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
+                                    contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 6,
                                       vertical: 4,
                                     ),
