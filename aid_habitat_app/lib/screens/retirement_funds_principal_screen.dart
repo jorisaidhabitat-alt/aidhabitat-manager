@@ -15,6 +15,7 @@ import '../components/brand_colors.dart';
 import '../services/app_config.dart';
 import '../services/local_database.dart';
 import '../services/nocodb_api_client.dart';
+import '../services/url_resolver.dart';
 
 /// Page « Caisses de retraite principales » — référentiel partagé.
 ///
@@ -618,17 +619,18 @@ class _PrincipalFundLogo extends StatelessWidget {
     }
     // URL HTTP — si .svg utilise flutter_svg.network (Image.network
     // ne décode pas le SVG), sinon Image.network classique.
-    final lowerUrl = logoUrl.toLowerCase();
+    final resolvedLogoUrl = resolveMediaUrl(logoUrl);
+    final lowerUrl = resolvedLogoUrl.toLowerCase();
     final isSvgUrl = lowerUrl.endsWith('.svg') || lowerUrl.contains('.svg?');
     if (isSvgUrl) {
       return SvgPicture.network(
-        logoUrl,
+        resolvedLogoUrl,
         fit: BoxFit.contain,
         placeholderBuilder: (context) => _placeholder(),
       );
     }
     return Image.network(
-      logoUrl,
+      resolvedLogoUrl,
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) => _placeholder(),
     );

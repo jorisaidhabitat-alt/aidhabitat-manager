@@ -23,7 +23,7 @@ String resolveMediaUrl(String url) {
       url.startsWith('/') &&
       !url.startsWith('/api/') &&
       !url.startsWith('/uploads/')) {
-    return url;
+    return Uri.base.resolve(url).toString();
   }
   final base = AppConfig.apiBaseUrl.replaceAll(RegExp(r'/+$'), '');
   if (url.startsWith('/')) return '$base$url';

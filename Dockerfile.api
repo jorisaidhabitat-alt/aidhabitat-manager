@@ -43,6 +43,7 @@ RUN npm ci --omit=dev --no-audit --no-fund && \
 COPY server/ ./server/
 COPY shared/ ./shared/
 COPY data/ ./data/
+COPY public/retirement-logos/ ./public/retirement-logos/
 
 # Volume pour la persistence des données serveur (auth-store.json,
 # profile-photos/, etc.). Sur Easypanel, monte un volume à /data.
