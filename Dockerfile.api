@@ -42,6 +42,7 @@ RUN npm ci --omit=dev --no-audit --no-fund && \
 # On copie aussi `shared/` pour les types partagés serveur/Flutter.
 COPY server/ ./server/
 COPY shared/ ./shared/
+COPY data/ ./data/
 
 # Volume pour la persistence des données serveur (auth-store.json,
 # profile-photos/, etc.). Sur Easypanel, monte un volume à /data.
@@ -58,10 +59,9 @@ ENV NODE_ENV=production \
 
 EXPOSE 3001
 
-# Healthcheck simple : le serveur répond OK sur GET / (sert l'index ou
-# une 404, l'important c'est qu'il réponde un statut < 500).
+# Healthcheck simple : route locale sans dépendance NocoDB.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/ || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/api/health/live || exit 1
 
 # Point d'entrée : le serveur Express.
 # `node server/index.mjs` détecte qu'il est en exécution directe (isDirectExecution)
