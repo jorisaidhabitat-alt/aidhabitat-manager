@@ -80,6 +80,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   late TabController _tabController;
   final DossierRepository _repository = DossierRepository();
   final DataService _dataService = DataService();
+  final AccessibilityTabController _accessibilityController =
+      AccessibilityTabController();
   late Dossier _dossier;
   int _housingVersion = 0;
   // Maps (patientId::tabKey) -> secondary OS windowId, so when the user
@@ -1245,6 +1247,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // _refreshDossier` après save ; les autres onglets persistent
     // directement en SQLite via leur propre `_save()`. On force ici un
     // re-fetch pour aligner le modèle in-memory avec le disque.
+    await _accessibilityController.flushPendingSave();
     await _refreshDossier();
     final missing = await _collectMissingFields();
     if (missing.isNotEmpty) {
@@ -2551,6 +2554,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           AccessibilityTab(
             dossier: _dossier,
             repository: _repository,
+            controller: _accessibilityController,
             onHousingChanged: _notifyHousingChanged,
             // Sync de la sous-section interne (Général / Niveaux /
             // Équipements / Extérieur) avec _activeSubsectionByTab —

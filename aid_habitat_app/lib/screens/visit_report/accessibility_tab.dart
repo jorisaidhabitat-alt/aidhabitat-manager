@@ -17,6 +17,7 @@ class AccessibilityTab extends StatefulWidget {
   final Dossier dossier;
   final DossierRepository repository;
   final VoidCallback? onHousingChanged;
+  final AccessibilityTabController? controller;
 
   /// Sous-section affichée à l'ouverture du tab. Permet à
   /// `visit_report_screen.dart > _navigateToMissingField` de pointer
@@ -36,12 +37,38 @@ class AccessibilityTab extends StatefulWidget {
     required this.dossier,
     required this.repository,
     this.onHousingChanged,
+    this.controller,
     this.initialSubSection,
     this.onSubSectionChanged,
   });
 
   @override
   State<AccessibilityTab> createState() => _AccessibilityTabState();
+}
+
+/// Small imperative bridge used by the report screen before validation.
+///
+/// Accessibility fields are debounced to avoid pushing partial text while an
+/// ergo is typing. Before "Generer", the parent flushes the pending save so
+/// validation reads the same value the user sees on screen.
+class AccessibilityTabController {
+  Future<void> Function()? _flushPendingSave;
+
+  Future<void> flushPendingSave() async {
+    final flush = _flushPendingSave;
+    if (flush == null) return;
+    await flush();
+  }
+
+  void _attach(Future<void> Function() flush) {
+    _flushPendingSave = flush;
+  }
+
+  void _detach(Future<void> Function() flush) {
+    if (_flushPendingSave == flush) {
+      _flushPendingSave = null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +141,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   final bool _saving = false;
   bool _loaded = false;
   Timer? _saveTimer;
+  bool _hasPendingSave = false;
+  Future<void>? _saveInFlight;
 
   /// ScrollController du formulaire — préserve la position de scroll
   /// entre les rebuilds de la sous-section Général.
@@ -273,12 +302,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       if (!counts.containsKey(r)) order.add(r);
       counts[r] = (counts[r] ?? 0) + 1;
     }
-    return order.map((r) {
-      final n = counts[r]!;
-      if (n <= 1) return r;
-      final suffix = n == 2 ? '²' : (n == 3 ? '³' : (n == 4 ? '⁴' : '$n'));
-      return '$r $suffix';
-    }).join(', ');
+    return order
+        .map((r) {
+          final n = counts[r]!;
+          if (n <= 1) return r;
+          final suffix = n == 2 ? '²' : (n == 3 ? '³' : (n == 4 ? '⁴' : '$n'));
+          return '$r $suffix';
+        })
+        .join(', ');
   }
 
   // ---------------------------------------------------------------------------
@@ -288,6 +319,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   @override
   void initState() {
     super.initState();
+    widget.controller?._attach(_flushPendingSave);
     // Honore la sous-section initiale demandée par le parent (utile
     // pour que « Remplir les champs » dans la popup de validation
     // pointe directement sur la bonne sous-section, pas seulement
@@ -302,6 +334,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   @override
   void didUpdateWidget(covariant AccessibilityTab oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(_flushPendingSave);
+      widget.controller?._attach(_flushPendingSave);
+    }
     // Quand le parent change `initialSubSection` (programmatic nav
     // depuis _navigateToMissingField), on bascule la sous-section
     // courante. Filtre par `oldWidget.initialSubSection !=
@@ -319,6 +355,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
 
   @override
   void dispose() {
+    widget.controller?._detach(_flushPendingSave);
     _saveTimer?.cancel();
     _scrollController.dispose();
     for (final c in _customRoomCtrls.values) {
@@ -343,13 +380,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     // Demande utilisateur 2026-04-30 : pas de pré-sélection 'Maison'
     // par défaut — l'ergo doit cliquer explicitement Maison ou
     // Appartement, sinon le validateur le flag comme manquant.
-    _typology = (row?['typology'] as String?) ??
+    _typology =
+        (row?['typology'] as String?) ??
         (h.typology.isNotEmpty ? h.typology : '');
 
     // Niveaux
     for (final cfg in _kLevelConfigs) {
-      _levelRooms[cfg.field] =
-          _parseRooms(row?[cfg.roomsField] as String? ?? '[]');
+      _levelRooms[cfg.field] = _parseRooms(
+        row?[cfg.roomsField] as String? ?? '[]',
+      );
       _customRoomCtrls[cfg.field] = TextEditingController();
     }
     _orderedLevels = _kLevelConfigs
@@ -359,8 +398,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
 
     // Chauffage (rétrocompat : données antérieures stockées comme
     // "Pompe à chaleur" → remplacées par la version compacte "PAC").
-    _heatingTypes =
-        _parseHeatingJson(row?['heating_details_json'] as String? ?? '{}');
+    _heatingTypes = _parseHeatingJson(
+      row?['heating_details_json'] as String? ?? '{}',
+    );
     if (_heatingTypes.contains('Pompe à chaleur')) {
       _heatingTypes.remove('Pompe à chaleur');
       _heatingTypes.add('PAC');
@@ -372,31 +412,31 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     // un état "Localisé sans texte" (sinon ça repasserait à "Aucun").
     final manEntier =
         ((row?['volets_roulants_manuels_entier'] as int?) ??
-                (h.voletsRoulantsManuelsEntier ? 1 : 0)) ==
-            1;
+            (h.voletsRoulantsManuelsEntier ? 1 : 0)) ==
+        1;
     final manRawLoc =
         (row?['volets_roulants_manuels_localisation'] as String?) ??
-            h.voletsRoulantsManuelsLocalisation;
+        h.voletsRoulantsManuelsLocalisation;
     _voletsManStatus = _inferVoletsStatus(manEntier, manRawLoc);
     _voletsManLoc = _cleanVoletsLoc(manRawLoc);
 
     final elecEntier =
         ((row?['volets_roulants_electriques_entier'] as int?) ??
-                (h.voletsRoulantsElectriquesEntier ? 1 : 0)) ==
-            1;
+            (h.voletsRoulantsElectriquesEntier ? 1 : 0)) ==
+        1;
     final elecRawLoc =
         (row?['volets_roulants_electriques_localisation'] as String?) ??
-            h.voletsRoulantsElectriquesLocalisation;
+        h.voletsRoulantsElectriquesLocalisation;
     _voletsElecStatus = _inferVoletsStatus(elecEntier, elecRawLoc);
     _voletsElecLoc = _cleanVoletsLoc(elecRawLoc);
 
     final persEntier =
         ((row?['volets_persiennes_entier'] as int?) ??
-                (h.voletsPersiennesEntier ? 1 : 0)) ==
-            1;
+            (h.voletsPersiennesEntier ? 1 : 0)) ==
+        1;
     final persRawLoc =
         (row?['volets_persiennes_localisation'] as String?) ??
-            h.voletsPersiennesLocalisation;
+        h.voletsPersiennesLocalisation;
     _voletsPersStatus = _inferVoletsStatus(persEntier, persRawLoc);
     _voletsPersLoc = _cleanVoletsLoc(persRawLoc);
 
@@ -428,7 +468,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     }
 
     final rawGarage =
-        (row?['motorisation_porte_garage'] as String?) ?? h.motorisationPorteGarage;
+        (row?['motorisation_porte_garage'] as String?) ??
+        h.motorisationPorteGarage;
     _motorisationPorteGarage = rawGarage.isEmpty ? 'Aucun' : rawGarage;
 
     final rawPortail =
@@ -474,11 +515,21 @@ class _AccessibilityTabState extends State<AccessibilityTab>
 
   void _scheduleSave() {
     _saveTimer?.cancel();
+    _hasPendingSave = true;
     _saveTimer = Timer(kSaveDebouncePills, _save);
   }
 
-  Future<void> _save() async {
-    if (!mounted) return;
+  Future<void> _save() {
+    if (!mounted) return Future<void>.value();
+    final inFlight = _saveInFlight;
+    if (inFlight != null) return inFlight;
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    _saveInFlight = _saveNow();
+    return _saveInFlight!;
+  }
+
+  Future<void> _saveNow() async {
     // try/catch global défensif (fix 2026-05-15 : reproductible sur
     // « n'importe quel champ Accessibilité » via la PWA Vercel). Le
     // Timer de `_scheduleSave` invoque `_save()` SANS await — un throw
@@ -489,10 +540,18 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     // déjà silencieusement le save async.
     try {
       await _saveImpl();
+      _hasPendingSave = false;
     } catch (e, st) {
       // ignore: avoid_print
       print('[accessibility_tab] _save failed: $e\n$st');
+    } finally {
+      _saveInFlight = null;
     }
+  }
+
+  Future<void> _flushPendingSave() async {
+    if (!_hasPendingSave) return;
+    await _save();
   }
 
   /// Valide une saisie d'année avant push NocoDB. Retourne la valeur
@@ -536,15 +595,22 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       // Volets — `_serializeVoletsLoc` gère le marqueur invisible
       // pour préserver l'état "Localisé sans texte" au reload.
       'volets_roulants_manuels_entier': _voletsManStatus == 'Entier' ? 1 : 0,
-      'volets_roulants_manuels_localisation':
-          _serializeVoletsLoc(_voletsManStatus, _voletsManLoc),
-      'volets_roulants_electriques_entier':
-          _voletsElecStatus == 'Entier' ? 1 : 0,
-      'volets_roulants_electriques_localisation':
-          _serializeVoletsLoc(_voletsElecStatus, _voletsElecLoc),
+      'volets_roulants_manuels_localisation': _serializeVoletsLoc(
+        _voletsManStatus,
+        _voletsManLoc,
+      ),
+      'volets_roulants_electriques_entier': _voletsElecStatus == 'Entier'
+          ? 1
+          : 0,
+      'volets_roulants_electriques_localisation': _serializeVoletsLoc(
+        _voletsElecStatus,
+        _voletsElecLoc,
+      ),
       'volets_persiennes_entier': _voletsPersStatus == 'Entier' ? 1 : 0,
-      'volets_persiennes_localisation':
-          _serializeVoletsLoc(_voletsPersStatus, _voletsPersLoc),
+      'volets_persiennes_localisation': _serializeVoletsLoc(
+        _voletsPersStatus,
+        _voletsPersLoc,
+      ),
       // Extérieur
       // `_easyAccess` peut être null (= non renseigné). On ne peut PAS
       // écrire null dans `easy_access` (NOT NULL) — on utilise plutôt
@@ -570,8 +636,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       'jardin': _annexes.contains('Jardin') ? 1 : 0,
       'motorisation_porte_garage': _annexes.contains('Garage')
           ? (_motorisationPorteGarage == 'Aucun'
-              ? ''
-              : _motorisationPorteGarage)
+                ? ''
+                : _motorisationPorteGarage)
           : '',
       'motorisation_portail': _portail
           ? (_motorisationPortail == 'Aucun' ? 'Aucun' : _motorisationPortail)
@@ -593,8 +659,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       // dédiée (description_sous_sol, description_rdc, description_etage).
       // Pour second_floor / third_floor on stocke quand même côté local
       // (au cas où une colonne serait ajoutée plus tard).
-      map['${cfg.field}_desc'] =
-          _formatRoomsWithCounts(_levelRooms[cfg.field] ?? []);
+      map['${cfg.field}_desc'] = _formatRoomsWithCounts(
+        _levelRooms[cfg.field] ?? [],
+      );
     }
 
     await widget.repository.updateHousing(widget.dossier.id, map);
@@ -627,38 +694,37 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           // uniquement via le QuickNav (tap). Pas d'occupants dans cet
           // onglet → plus aucun swipe horizontal câblé ici.
           child: SoftSwitcher(
-              // Légère animation entre les 4 sous-sections — fade +
-              // apparition vers le haut, mêmes sensations qu'un
-              // changement de vue principale (sidebar).
-              child: KeyedSubtree(
-                key: ValueKey<int>(_subSection),
-                child: SingleChildScrollView(
-                  // Le controller n'est utile qu'en sous-section
-                  // « Niveaux et pièces » (auto-scroll après ajout d'un
-                  // niveau). On le branche uniquement là — pas d'effet
-                  // de bord sur les autres sections.
-                  controller:
-                      _subSection == 1 ? _scrollController : null,
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_subSection == 0)
-                        _buildGeneral()
-                      else if (_subSection == 1)
-                        _buildLevelsAndRooms()
-                      else if (_subSection == 2)
-                        _buildEquipements()
-                      else
-                        _buildExterior(),
-                    ],
-                  ),
+            // Légère animation entre les 4 sous-sections — fade +
+            // apparition vers le haut, mêmes sensations qu'un
+            // changement de vue principale (sidebar).
+            child: KeyedSubtree(
+              key: ValueKey<int>(_subSection),
+              child: SingleChildScrollView(
+                // Le controller n'est utile qu'en sous-section
+                // « Niveaux et pièces » (auto-scroll après ajout d'un
+                // niveau). On le branche uniquement là — pas d'effet
+                // de bord sur les autres sections.
+                controller: _subSection == 1 ? _scrollController : null,
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_subSection == 0)
+                      _buildGeneral()
+                    else if (_subSection == 1)
+                      _buildLevelsAndRooms()
+                    else if (_subSection == 2)
+                      _buildEquipements()
+                    else
+                      _buildExterior(),
+                  ],
                 ),
               ),
             ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -707,13 +773,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                       // 20 → 18 → 16 (demande user 2026-05-13).
                       Icon(items[i].icon, size: 16, color: labelColor),
                       const SizedBox(height: 2),
-                      Text(items[i].label,
-                          style: const TextStyle(
-                            // 10 → 12 (demande user 2026-05-13).
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: labelColor,
-                          )),
+                      Text(
+                        items[i].label,
+                        style: const TextStyle(
+                          // 10 → 12 (demande user 2026-05-13).
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: labelColor,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Container(
                         height: 1.5,
@@ -794,8 +862,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     color: Color(0xFFF2ECF5),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.arrow_forward,
-                      size: 16, color: Color(0xFF554265)),
+                  child: const Icon(
+                    Icons.arrow_forward,
+                    size: 16,
+                    color: Color(0xFF554265),
+                  ),
                 ),
               ),
             ),
@@ -859,9 +930,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ..._orderedLevels
-            .where((field) => field != _pendingLevelField)
-            .map((field) {
+        ..._orderedLevels.where((field) => field != _pendingLevelField).map((
+          field,
+        ) {
           final cfg = _kLevelConfigs.firstWhere((c) => c.field == field);
           return Padding(
             key: ValueKey<String>('level-${cfg.field}'),
@@ -977,8 +1048,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       // Le tap "settle" le niveau pending puis rouvre la picker
       // (cf. `_settlePendingAndOpenPicker`).
       final stillAvailable = _kLevelConfigs
-          .where((c) =>
-              !_orderedLevels.contains(c.field) || c.field == cfg.field)
+          .where(
+            (c) => !_orderedLevels.contains(c.field) || c.field == cfg.field,
+          )
           .where((c) => c.field != cfg.field)
           .toList();
       content = Column(
@@ -1034,10 +1106,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           return ClipRect(
             child: FadeTransition(
               opacity: animation,
-              child: SlideTransition(
-                position: slide,
-                child: child,
-              ),
+              child: SlideTransition(position: slide, child: child),
             ),
           );
         },
@@ -1068,12 +1137,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           children: [
             Icon(Icons.add, size: 16, color: Color(0xFF554265)),
             SizedBox(width: 8),
-            Text('Ajouter un niveau',
-                style: TextStyle(
-                  color: Color(0xFF554265),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                )),
+            Text(
+              'Ajouter un niveau',
+              style: TextStyle(
+                color: Color(0xFF554265),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
           ],
         ),
       ),
@@ -1123,8 +1194,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             Row(
               children: [
                 const SizedBox(width: 4),
-                const Icon(Icons.layers_outlined,
-                    size: 16, color: Color(0xFF554265)),
+                const Icon(
+                  Icons.layers_outlined,
+                  size: 16,
+                  color: Color(0xFF554265),
+                ),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
@@ -1153,8 +1227,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   borderRadius: BorderRadius.circular(999),
                   child: const Padding(
                     padding: EdgeInsets.all(4),
-                    child: Icon(Icons.expand_less,
-                        size: 20, color: Color(0xFF554265)),
+                    child: Icon(
+                      Icons.expand_less,
+                      size: 20,
+                      color: Color(0xFF554265),
+                    ),
                   ),
                 ),
               ],
@@ -1189,8 +1266,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     setState(() {
       _orderedLevels.insert(0, cfg.field);
       _levelRooms[cfg.field] ??= [];
-      _customRoomCtrls.putIfAbsent(
-          cfg.field, () => TextEditingController());
+      _customRoomCtrls.putIfAbsent(cfg.field, () => TextEditingController());
       _expandedLevel = cfg.field;
       _addLevelMode = false;
       _pendingLevelField = cfg.field;
@@ -1298,9 +1374,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: isSelected
-                ? kBrandPurple
-                : Colors.transparent,
+            color: isSelected ? kBrandPurple : Colors.transparent,
           ),
         ),
         child: Text(
@@ -1324,8 +1398,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     final rooms = _levelRooms[cfg.field] ?? [];
     final allItems = <String>[
       ...cfg.presetRooms,
-      ...rooms.where((r) =>
-          !cfg.presetRooms.any((p) => p.toLowerCase() == r.toLowerCase())),
+      ...rooms.where(
+        (r) => !cfg.presetRooms.any((p) => p.toLowerCase() == r.toLowerCase()),
+      ),
     ];
     final ctrl = _customRoomCtrls[cfg.field]!;
     final isExpanded = _expandedLevel == cfg.field;
@@ -1336,8 +1411,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       // croix n'apparaît qu'une fois la card rouverte (mode édition).
       // Les doublons sont groupés avec un exposant (² ou ³) pour
       // refléter le compteur des pills.
-      final displayRooms =
-          rooms.isEmpty ? '—' : _formatRoomsWithCounts(rooms);
+      final displayRooms = rooms.isEmpty ? '—' : _formatRoomsWithCounts(rooms);
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _expandedLevel = cfg.field),
@@ -1371,11 +1445,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(
-                Icons.expand_more,
-                size: 20,
-                color: Color(0xFF5C6670),
-              ),
+              const Icon(Icons.expand_more, size: 20, color: Color(0xFF5C6670)),
             ],
           ),
         ),
@@ -1408,261 +1478,275 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         _scheduleSave();
       },
       child: Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2ECF5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // En-tête niveau + bouton fermer/supprimer.
-          //
-          // L'icône change selon le « moment » de l'édition (demande
-          // utilisateur 2026-04-28 : « on doit simplement avoir un
-          // chevron pour refermer mais pas une croix, la croix apparait
-          // seulement quand on reclique dessus si on souhaite supprimer
-          // le niveau ajouté precedemment ») :
-          //   - Niveau qui vient d'être ajouté (encore dans le container
-          //     morphant, `_pendingLevelField == cfg.field`) → chevron
-          //     vers le haut. Le tap "settle" le niveau dans la liste
-          //     principale et collapse l'éditeur en pill (donnée
-          //     préservée).
-          //   - Niveau ré-ouvert depuis sa pill (déjà settle dans la
-          //     liste, `_pendingLevelField != cfg.field`) → croix. Le
-          //     tap retire le niveau du foyer (intention destructive
-          //     explicite, utilisateur a choisi de re-cliquer dessus).
-          Row(
-            children: [
-              Text(
-                cfg.label.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF8A939D),
-                  letterSpacing: 0.5,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2ECF5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // En-tête niveau + bouton fermer/supprimer.
+            //
+            // L'icône change selon le « moment » de l'édition (demande
+            // utilisateur 2026-04-28 : « on doit simplement avoir un
+            // chevron pour refermer mais pas une croix, la croix apparait
+            // seulement quand on reclique dessus si on souhaite supprimer
+            // le niveau ajouté precedemment ») :
+            //   - Niveau qui vient d'être ajouté (encore dans le container
+            //     morphant, `_pendingLevelField == cfg.field`) → chevron
+            //     vers le haut. Le tap "settle" le niveau dans la liste
+            //     principale et collapse l'éditeur en pill (donnée
+            //     préservée).
+            //   - Niveau ré-ouvert depuis sa pill (déjà settle dans la
+            //     liste, `_pendingLevelField != cfg.field`) → croix. Le
+            //     tap retire le niveau du foyer (intention destructive
+            //     explicite, utilisateur a choisi de re-cliquer dessus).
+            Row(
+              children: [
+                Text(
+                  cfg.label.toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF8A939D),
+                    letterSpacing: 0.5,
+                  ),
                 ),
-              ),
-              const Spacer(),
-              // Bouton fermer/supprimer.
-              //
-              // **Hit area agrandie en mode croix** : comme le reste du
-              // container violet replie l'éditeur (cf. GestureDetector
-              // parent), il faut que la croix de suppression ait une
-              // zone tactile généreuse pour être atteignable sans
-              // déclencher le repli par accident. Demande utilisateur
-              // 2026-04-28 : « rend la croix plus facilement cliquable
-              // si elle est présente car le reste du container le
-              // repli ». Padding 12 + icon 18 → ~42 × 42 pt de hit
-              // area, au-dessus du seuil HIG (44 pt) sans couper
-              // visuellement avec le reste du header.
-              //
-              // En mode chevron, on garde la hit area d'origine (le
-              // tap-anywhere du parent absorbe les ratés).
-              InkWell(
-                onTap: () async {
-                  if (_pendingLevelField == cfg.field) {
-                    // Pending = juste créé, pas de confirmation
-                    // nécessaire — le chevron up "settle" sans
-                    // perdre de données saisies.
+                const Spacer(),
+                // Bouton fermer/supprimer.
+                //
+                // **Hit area agrandie en mode croix** : comme le reste du
+                // container violet replie l'éditeur (cf. GestureDetector
+                // parent), il faut que la croix de suppression ait une
+                // zone tactile généreuse pour être atteignable sans
+                // déclencher le repli par accident. Demande utilisateur
+                // 2026-04-28 : « rend la croix plus facilement cliquable
+                // si elle est présente car le reste du container le
+                // repli ». Padding 12 + icon 18 → ~42 × 42 pt de hit
+                // area, au-dessus du seuil HIG (44 pt) sans couper
+                // visuellement avec le reste du header.
+                //
+                // En mode chevron, on garde la hit area d'origine (le
+                // tap-anywhere du parent absorbe les ratés).
+                InkWell(
+                  onTap: () async {
+                    if (_pendingLevelField == cfg.field) {
+                      // Pending = juste créé, pas de confirmation
+                      // nécessaire — le chevron up "settle" sans
+                      // perdre de données saisies.
+                      setState(() {
+                        _pendingLevelField = null;
+                        _expandedLevel = null;
+                      });
+                      _scheduleSave();
+                      return;
+                    }
+
+                    // Niveau déjà settled : la croix est destructive.
+                    // Confirmation explicite avant de supprimer + reset
+                    // total des données (pièces cochées, descriptions)
+                    // pour que le niveau parte sur un état vierge si
+                    // l'ergo le ré-ajoute plus tard. Demande user
+                    // 2026-04-28 : "si je supprime le niveau ça doit
+                    // tout réinitialiser, pas garder les boutons cochés
+                    // au prochain ajout".
+                    final confirm = await showSoftDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        title: const Text('Supprimer ce niveau ?'),
+                        content: Text(
+                          'Le niveau « ${cfg.label} » et toutes les '
+                          'pièces cochées dessus seront supprimés du '
+                          'foyer. Cette action est définitive.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Annuler'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFB91C1C),
+                            ),
+                            child: const Text('Supprimer'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm != true || !mounted) return;
+
                     setState(() {
-                      _pendingLevelField = null;
-                      _expandedLevel = null;
+                      _orderedLevels.remove(cfg.field);
+                      // Reset complet des données du niveau — sans ça
+                      // un re-add ressort les anciennes pills cochées.
+                      _levelRooms[cfg.field] = [];
+                      // Sync annexe Garage : si le Garage était coché
+                      // uniquement parce qu'il était dans ce niveau, on
+                      // doit le retirer aussi de la liste annexes.
+                      final stillPresent = _levelRooms.values.any(
+                        (rooms) => rooms.contains('Garage'),
+                      );
+                      if (!stillPresent) _annexes.remove('Garage');
                     });
                     _scheduleSave();
-                    return;
-                  }
-
-                  // Niveau déjà settled : la croix est destructive.
-                  // Confirmation explicite avant de supprimer + reset
-                  // total des données (pièces cochées, descriptions)
-                  // pour que le niveau parte sur un état vierge si
-                  // l'ergo le ré-ajoute plus tard. Demande user
-                  // 2026-04-28 : "si je supprime le niveau ça doit
-                  // tout réinitialiser, pas garder les boutons cochés
-                  // au prochain ajout".
-                  final confirm = await showSoftDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      title: const Text('Supprimer ce niveau ?'),
-                      content: Text(
-                        'Le niveau « ${cfg.label} » et toutes les '
-                        'pièces cochées dessus seront supprimés du '
-                        'foyer. Cette action est définitive.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Annuler'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFB91C1C),
-                          ),
-                          child: const Text('Supprimer'),
-                        ),
-                      ],
+                  },
+                  // Refonte 2026-05-13 : pill radius 999 uniforme.
+                  borderRadius: BorderRadius.circular(999),
+                  child: Padding(
+                    padding: EdgeInsets.all(
+                      _pendingLevelField == cfg.field ? 4 : 12,
                     ),
-                  );
-                  if (confirm != true || !mounted) return;
-
-                  setState(() {
-                    _orderedLevels.remove(cfg.field);
-                    // Reset complet des données du niveau — sans ça
-                    // un re-add ressort les anciennes pills cochées.
-                    _levelRooms[cfg.field] = [];
-                    // Sync annexe Garage : si le Garage était coché
-                    // uniquement parce qu'il était dans ce niveau, on
-                    // doit le retirer aussi de la liste annexes.
-                    final stillPresent = _levelRooms.values
-                        .any((rooms) => rooms.contains('Garage'));
-                    if (!stillPresent) _annexes.remove('Garage');
-                  });
-                  _scheduleSave();
-                },
-                // Refonte 2026-05-13 : pill radius 999 uniforme.
-                borderRadius: BorderRadius.circular(999),
-                child: Padding(
-                  padding: EdgeInsets.all(
-                    _pendingLevelField == cfg.field ? 4 : 12,
-                  ),
-                  child: Icon(
-                    _pendingLevelField == cfg.field
-                        ? Icons.expand_less
-                        : Icons.close,
-                    size: _pendingLevelField == cfg.field ? 20 : 18,
-                    color: const Color(0xFF8A939D),
+                    child: Icon(
+                      _pendingLevelField == cfg.field
+                          ? Icons.expand_less
+                          : Icons.close,
+                      size: _pendingLevelField == cfg.field ? 20 : 18,
+                      color: const Color(0xFF8A939D),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Pièces — boutons-pilules multi-sélection (plus de
-          // cases à cocher). Un tap bascule l'état de la pièce dans
-          // le niveau courant.
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            // Demande utilisateur : boutons des pièces nettement plus
-            // grands (ils étaient si compressés que les libellés
-            // longs comme "Salle de bain" se faisaient tronquer).
-            // Aspect ratio 3.2 = environ 60 px de haut pour ~190 px
-            // de large → place pour un libellé d'une ligne avec
-            // confort tactile sur iPad.
-            childAspectRatio: 3.2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            children: allItems.map((room) {
-              // Compte les occurrences de cette pièce dans le niveau
-              // courant. Le tap cycle 0 → 1 → 2 → 3 → 4 → 0 (max 4
-              // pour couvrir les maisons familiales avec jusqu'à
-              // 4 chambres sur un même étage — demande utilisateur
-              // 2026-05-04). Bump global à toutes les pièces, pas
-              // juste « Chambre » : permet aussi 4 SDB / 4 WC sur le
-              // même niveau si besoin (rare mais cohérent).
-              final count = rooms.where((r) => r == room).length;
-              final checked = count > 0;
-              return TogglePillButton(
-                label: room,
-                active: checked,
-                countBadge: count,
-                expand: true,
-                onTap: () {
-                  setState(() {
-                    final next =
-                        List<String>.from(_levelRooms[cfg.field] ?? []);
-                    if (count >= 4) {
-                      // Cycle complet : on retire toutes les
-                      // occurrences (retour à 0 = pill désactivée).
-                      next.removeWhere((r) => r == room);
-                    } else {
-                      // Incrément : ajoute une occurrence (la pill
-                      // affiche ² ³ ⁴ via TogglePillButton).
-                      next.add(room);
-                    }
-                    _levelRooms[cfg.field] = next;
-                    // Sync Garage annexe : présent dans n'importe quel
-                    // niveau → coché dans Annexes ; sinon décoché.
-                    if (room == 'Garage') {
-                      final stillPresent = _levelRooms.values
-                          .any((rooms) => rooms.contains('Garage'));
-                      if (stillPresent) {
-                        _annexes.add('Garage');
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Pièces — boutons-pilules multi-sélection (plus de
+            // cases à cocher). Un tap bascule l'état de la pièce dans
+            // le niveau courant.
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              // Demande utilisateur : boutons des pièces nettement plus
+              // grands (ils étaient si compressés que les libellés
+              // longs comme "Salle de bain" se faisaient tronquer).
+              // Aspect ratio 3.2 = environ 60 px de haut pour ~190 px
+              // de large → place pour un libellé d'une ligne avec
+              // confort tactile sur iPad.
+              childAspectRatio: 3.2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              children: allItems.map((room) {
+                // Compte les occurrences de cette pièce dans le niveau
+                // courant. Le tap cycle 0 → 1 → 2 → 3 → 4 → 0 (max 4
+                // pour couvrir les maisons familiales avec jusqu'à
+                // 4 chambres sur un même étage — demande utilisateur
+                // 2026-05-04). Bump global à toutes les pièces, pas
+                // juste « Chambre » : permet aussi 4 SDB / 4 WC sur le
+                // même niveau si besoin (rare mais cohérent).
+                final count = rooms.where((r) => r == room).length;
+                final checked = count > 0;
+                return TogglePillButton(
+                  label: room,
+                  active: checked,
+                  countBadge: count,
+                  expand: true,
+                  onTap: () {
+                    setState(() {
+                      final next = List<String>.from(
+                        _levelRooms[cfg.field] ?? [],
+                      );
+                      if (count >= 4) {
+                        // Cycle complet : on retire toutes les
+                        // occurrences (retour à 0 = pill désactivée).
+                        next.removeWhere((r) => r == room);
                       } else {
-                        _annexes.remove('Garage');
+                        // Incrément : ajoute une occurrence (la pill
+                        // affiche ² ³ ⁴ via TogglePillButton).
+                        next.add(room);
                       }
-                    }
-                  });
-                  _scheduleSave();
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 10),
-          // Ajout pièce personnalisée
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: ctrl,
-                  stylusHandwritingEnabled: true,
-                  // fontSize 12 + padding vertical 10 → même hauteur que
-                  // le pill "Vasque suspendue" (référence du relevé).
-                  style: const TextStyle(fontSize: 12),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    hintText: 'Ajouter une pièce',
-                    hintStyle: const TextStyle(
-                        color: Color(0xFF8A939D), fontSize: 12),
-                    filled: true,
-                    fillColor: Colors.white,
-                    // Refonte 2026-05-13 (demande user) — border gris léger
-                    // partout, focus violet, parité avec FormTextField et
-                    // le champ Ville du dossier.
-                    // Refonte 2026-05-13 : pill radius 999 uniforme.
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(999),
-                      borderSide: BorderSide(color: Color(0xFFB9C0C7)),
+                      _levelRooms[cfg.field] = next;
+                      // Sync Garage annexe : présent dans n'importe quel
+                      // niveau → coché dans Annexes ; sinon décoché.
+                      if (room == 'Garage') {
+                        final stillPresent = _levelRooms.values.any(
+                          (rooms) => rooms.contains('Garage'),
+                        );
+                        if (stillPresent) {
+                          _annexes.add('Garage');
+                        } else {
+                          _annexes.remove('Garage');
+                        }
+                      }
+                    });
+                    _scheduleSave();
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 10),
+            // Ajout pièce personnalisée
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: ctrl,
+                    stylusHandwritingEnabled: true,
+                    // fontSize 12 + padding vertical 10 → même hauteur que
+                    // le pill "Vasque suspendue" (référence du relevé).
+                    style: const TextStyle(fontSize: 12),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      hintText: 'Ajouter une pièce',
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF8A939D),
+                        fontSize: 12,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      // Refonte 2026-05-13 (demande user) — border gris léger
+                      // partout, focus violet, parité avec FormTextField et
+                      // le champ Ville du dossier.
+                      // Refonte 2026-05-13 : pill radius 999 uniforme.
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(999),
+                        borderSide: BorderSide(color: Color(0xFFB9C0C7)),
+                      ),
+                      // Refonte 2026-05-13 : pill radius 999 uniforme.
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(999),
+                        borderSide: BorderSide(color: Color(0xFFB9C0C7)),
+                      ),
+                      // Refonte 2026-05-13 : pill radius 999 uniforme.
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(999),
+                        borderSide: const BorderSide(
+                          color: kBrandPurple,
+                          width: 1.5,
+                        ),
+                      ),
                     ),
-                    // Refonte 2026-05-13 : pill radius 999 uniforme.
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(999),
-                      borderSide: BorderSide(color: Color(0xFFB9C0C7)),
+                    onSubmitted: (_) => _addCustomRoom(cfg),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _addCustomRoom(cfg),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF2ECF5),
+                      shape: BoxShape.circle,
                     ),
-                    // Refonte 2026-05-13 : pill radius 999 uniforme.
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(999),
-                      borderSide: const BorderSide(
-                          color: kBrandPurple, width: 1.5),
+                    child: const Icon(
+                      Icons.add,
+                      color: Color(0xFF554265),
+                      size: 18,
                     ),
                   ),
-                  onSubmitted: (_) => _addCustomRoom(cfg),
                 ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _addCustomRoom(cfg),
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: const BoxDecoration(
-                      color: Color(0xFFF2ECF5), shape: BoxShape.circle),
-                  child: const Icon(Icons.add,
-                      color: Color(0xFF554265), size: 18),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1731,10 +1815,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         ? ''
         : (_easyAccess! ? 'Facile' : 'À revoir');
     final annexItems = <String>[..._annexeOptions, 'Portail'];
-    final selectedAnnexes = <String>{
-      ..._annexes,
-      if (_portail) 'Portail',
-    };
+    final selectedAnnexes = <String>{..._annexes, if (_portail) 'Portail'};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1743,12 +1824,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Accès depuis la rue',
-                // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: Color(0xFF0E1116))),
+            const Text(
+              'Accès depuis la rue',
+              // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: Color(0xFF0E1116),
+              ),
+            ),
             const SizedBox(height: 5),
             FormToggleGroup(
               label: '',
@@ -1775,12 +1859,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Annexes',
-                // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: Color(0xFF0E1116))),
+            const Text(
+              'Annexes',
+              // Uniformisé 2026-05-13 : w700 14px ink-900 noir.
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: Color(0xFF0E1116),
+              ),
+            ),
             const SizedBox(height: 5),
             _buildMultiSelectGrid(
               options: annexItems,
@@ -1831,13 +1918,17 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           ..._motorisationOrder
               // Filtre défensif : on ne rend que les motorisations dont
               // l'annexe est encore active.
-              .where((m) =>
-                  (m == 'Garage' && showGarageMoto) ||
-                  (m == 'Portail' && showPortailMoto))
-              .map((m) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildMotorisationButtons(m),
-                  )),
+              .where(
+                (m) =>
+                    (m == 'Garage' && showGarageMoto) ||
+                    (m == 'Portail' && showPortailMoto),
+              )
+              .map(
+                (m) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildMotorisationButtons(m),
+                ),
+              ),
         ],
       ],
     );
@@ -1870,7 +1961,6 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       },
     );
   }
-
 }
 
 // ---------------------------------------------------------------------------
