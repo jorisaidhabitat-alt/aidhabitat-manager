@@ -29,6 +29,7 @@ class MediaCacheService {
   factory MediaCacheService() => instance;
 
   final Map<String, Future<File?>> _inFlight = {};
+  final Map<String, Future<Uint8List?>> _webInFlight = {};
   Directory? _cacheDir;
 
   Future<Directory> _getCacheDir() async {
@@ -304,7 +305,31 @@ class MediaCacheService {
       }
     }
 
+    final existingFetch = _webInFlight[resolved];
+    if (existingFetch != null) return existingFetch;
+
+    final fetchFuture = _webFetchAndStore(
+      resolved: resolved,
+      hash: hash,
+      headers: headers,
+    );
+    _webInFlight[resolved] = fetchFuture;
     try {
+      return await fetchFuture;
+    } finally {
+      if (_webInFlight[resolved] == fetchFuture) {
+        _webInFlight.remove(resolved);
+      }
+    }
+  }
+
+  Future<Uint8List?> _webFetchAndStore({
+    required String resolved,
+    required String hash,
+    Map<String, String>? headers,
+  }) async {
+    try {
+      final db = await LocalDatabase.instance.database;
       final response = await http
           .get(Uri.parse(resolved), headers: headers)
           .timeout(const Duration(seconds: 20));

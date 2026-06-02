@@ -117,6 +117,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   /// peut être inséré 2 fois d'affilée sur iPad.
   bool _isPicking = false;
   List<DocItem> _documents = const [];
+  int _loadGeneration = 0;
 
   // Sélection multiple
   final Set<String> _selectedIds = <String>{};
@@ -162,6 +163,8 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     // pendant le fetch (cf. commentaire sur la déclaration du champ).
     // Le `silent` param est gardé pour compat des appelants existants
     // (importDocument, deleteDocument, etc. qui passent silent:true).
+    final generation = ++_loadGeneration;
+    final remoteRefresh = _dataService.refreshDocumentsFromRemote(_patientId);
     final docs = await _dataService.fetchDocuments(_patientId);
     if (!mounted) return;
     setState(() {
@@ -172,11 +175,20 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     // s'afficher instantanément au moment où chaque card monte.
     _warmDocumentBinaryCache(docs);
 
-    final refreshed = await _dataService.refreshDocumentsFromRemote(_patientId);
+    unawaited(_applyRemoteDocumentsWhenReady(remoteRefresh, generation));
+  }
+
+  Future<void> _applyRemoteDocumentsWhenReady(
+    Future<bool> remoteRefresh,
+    int generation,
+  ) async {
+    final refreshed = await remoteRefresh;
     if (!mounted) return;
+    if (generation != _loadGeneration) return;
     if (refreshed) {
       final remoteDocs = await _dataService.fetchDocuments(_patientId);
       if (!mounted) return;
+      if (generation != _loadGeneration) return;
       setState(() {
         _documents = remoteDocs;
       });

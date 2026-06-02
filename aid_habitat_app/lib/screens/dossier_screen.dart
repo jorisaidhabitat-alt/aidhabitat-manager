@@ -131,6 +131,13 @@ class _DossierScreenState extends State<DossierScreen> {
     // pull ultra-actif retiré). La fiche bénéficiaire affiche l'état
     // au moment de l'ouverture ; les modifs distantes sont récupérées
     // au prochain événement (foreground/reconnexion/login).
+    final patientId = widget.dossier.patient.id;
+    if (patientId.isNotEmpty) {
+      // Précharge les documents dès l'arrivée sur la fiche. L'écran
+      // Documents réutilise cet appel en vol via DataService, donc une
+      // première ouverture ne repart pas de zéro.
+      unawaited(DataService().refreshDocumentsFromRemote(patientId));
+    }
 
     _references.ensureLoaded();
     _communeOptions = _mapCommunes();

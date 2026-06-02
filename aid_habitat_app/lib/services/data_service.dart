@@ -38,6 +38,8 @@ class DataService {
       RetirementFundsRepository();
   final AccessMembersRepository _accessMembersRepository =
       AccessMembersRepository();
+  final Map<String, Future<bool>> _documentRefreshInFlight =
+      <String, Future<bool>>{};
 
   Future<void> initialize() async {
     await _dossierRepository.initialize();
@@ -434,7 +436,23 @@ class DataService {
     }
   }
 
-  Future<bool> refreshDocumentsFromRemote(String patientId) async {
+  Future<bool> refreshDocumentsFromRemote(String patientId) {
+    final key = patientId.trim();
+    if (key.isEmpty) return Future.value(false);
+    final existing = _documentRefreshInFlight[key];
+    if (existing != null) return existing;
+
+    final future = _refreshDocumentsFromRemoteUncoalesced(key);
+    _documentRefreshInFlight[key] = future;
+    future.whenComplete(() {
+      if (_documentRefreshInFlight[key] == future) {
+        _documentRefreshInFlight.remove(key);
+      }
+    });
+    return future;
+  }
+
+  Future<bool> _refreshDocumentsFromRemoteUncoalesced(String patientId) async {
     // 1. Auto-débloquage : avant tout fetch, on réhabilite les
     //    `upload_file` ops bloquées en `failed` → le SyncEngine va
     //    les retenter au prochain cycle. Idempotent côté serveur (dédup
