@@ -81,6 +81,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   void _subSectionNext() {
     _setSubSection((_subSectionIndex + 1) % 4);
   }
+
   // ignore: unused_element
   void _subSectionPrev() {
     _setSubSection((_subSectionIndex - 1 + 4) % 4);
@@ -93,10 +94,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   void _occupantNext() {
     if (_occupants.length <= 1) return;
     setState(() {
-      _currentOccupantIndex =
-          (_currentOccupantIndex + 1) % _occupants.length;
+      _currentOccupantIndex = (_currentOccupantIndex + 1) % _occupants.length;
     });
   }
+
   void _occupantPrev() {
     if (_occupants.length <= 1) return;
     setState(() {
@@ -164,6 +165,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   List<String> _principalFundNames = const [];
   List<RetirementFund> _retirementFunds = const [];
   List<Map<String, String>> _principalFunds = const [];
+  String? _principalFundsLoadError;
 
   // ANAH options — version 2026-05-04 : 3 statuts seulement, le
   // « Mandat » historique est désormais une question séparée
@@ -253,10 +255,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
       setState(() {
         _principalFunds = sorted;
-        _principalFundNames =
-            sorted.map((f) => f['name'] ?? '').where((n) => n.isNotEmpty).toList();
+        _principalFundNames = sorted
+            .map((f) => f['name'] ?? '')
+            .where((n) => n.isNotEmpty)
+            .toList();
+        _principalFundsLoadError = null;
       });
-    } catch (_) {
+    } catch (primaryError) {
       // Fallback historique : juste les noms via l'API legacy.
       try {
         final names = await DataService().fetchPrincipalRetirementFundNames();
@@ -266,11 +271,32 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           _principalFunds = _principalFundNames
               .map((n) => {'name': n, 'logoUrl': '', 'phone': ''})
               .toList();
+          _principalFundsLoadError = _principalFunds.isEmpty
+              ? _principalFundLoadError(primaryError)
+              : null;
         });
-      } catch (_) {
-        // silent
+      } catch (fallbackError) {
+        if (!mounted) return;
+        setState(() {
+          _principalFundsLoadError = _principalFundLoadError(
+            fallbackError,
+            fallback: primaryError,
+          );
+        });
       }
     }
+  }
+
+  String _principalFundLoadError(Object error, {Object? fallback}) {
+    final text = '${fallback ?? ''} $error'.toLowerCase();
+    if (text.contains('(401)') ||
+        text.contains('(403)') ||
+        text.contains('unauthorized') ||
+        text.contains('session invalide') ||
+        text.contains('session expired')) {
+      return 'Session expirée. Reconnectez-vous pour charger les caisses.';
+    }
+    return 'Chargement impossible pour le moment.';
   }
 
   void _loadFromDossier() {
@@ -285,8 +311,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     _occupationStatus = p.occupationStatus;
     _incomeCategory = p.incomeCategory;
     _fiscalRevenue = p.fiscalRevenue;
-    _numberPeople =
-        p.numberPeople != null && p.numberPeople! > 0 ? p.numberPeople! : 1;
+    _numberPeople = p.numberPeople != null && p.numberPeople! > 0
+        ? p.numberPeople!
+        : 1;
     _trustedName = p.trustedPerson.name;
     _trustedPhone = p.trustedPerson.phone;
     _trustedEmail = p.trustedPerson.email;
@@ -313,10 +340,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         caissesRetraiteComplementaires: p.caissesRetraiteComplementaires,
       ),
       if (p.secondFirstName.isNotEmpty || p.secondLastName.isNotEmpty)
-        Occupant(
-          firstName: p.secondFirstName,
-          lastName: p.secondLastName,
-        ),
+        Occupant(firstName: p.secondFirstName, lastName: p.secondLastName),
     ];
     final merged = <Occupant>[];
     final targetLen = count < 1 ? 1 : count;
@@ -374,7 +398,8 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final oldP = oldWidget.dossier.patient;
     final newP = widget.dossier.patient;
     final numberPeopleChanged = oldP.numberPeople != newP.numberPeople;
-    final changed = oldP.firstName != newP.firstName ||
+    final changed =
+        oldP.firstName != newP.firstName ||
         oldP.lastName != newP.lastName ||
         oldP.city != newP.city ||
         oldP.zipCode != newP.zipCode ||
@@ -426,52 +451,49 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // Pas de `setState(_saving = true/false)` — voir dossier_screen.dart
     // pour le rationale (rebuild lourd à chaque keystroke avec save à
     // 0 ms). `SaveStatusIndicator` est de toute façon vide.
-    final primary =
-        _occupants.isNotEmpty ? _occupants.first : const Occupant();
-    final secondary =
-        _occupants.length > 1 ? _occupants[1] : const Occupant();
+    final primary = _occupants.isNotEmpty ? _occupants.first : const Occupant();
+    final secondary = _occupants.length > 1 ? _occupants[1] : const Occupant();
     await widget.repository.updatePatient(widget.dossier.patient.id, {
-        'first_name': primary.firstName,
-        'last_name': primary.lastName,
-        'birth_date': primary.birthDate,
-        'second_first_name': secondary.firstName,
-        'second_last_name': secondary.lastName,
-        'address': _address,
-        'city': _city,
-        'zip_code': _zipCode,
-        'city_id': _cityId,
-        'phone': _phone,
-        'email': _email,
-        'family_situation': _familySituation,
-        // Statut d'occupation (Propriétaire / Locataire / Usufruitier).
-        // Avant ce push, le champ n'était jamais sauvé → la sélection
-        // utilisateur restait orpheline en mémoire et le PDF affichait
-        // par défaut la case « Propriétaire » cochée pour tous les
-        // dossiers. Maintenant le serveur reçoit la vraie valeur (ou
-        // vide si l'utilisateur n'a rien coché → aucune case dans le PDF).
-        'occupation_status': _occupationStatus,
-        'income_category': _incomeCategory,
-        // Legacy aggregate column: store the sum of per-occupant RFRs so
-        // backward-compatible consumers keep working.
-        'fiscal_revenue': _totalFiscalRevenue(),
-        'number_people': _numberPeople,
-        'apa': primary.apa ? 1 : 0,
-        'invalidity': primary.invalidity ? 1 : 0,
-        'invalidity_txt': primary.invalidityTxt,
-        'home_help': primary.homeHelp ? 1 : 0,
-        'home_help_txt': primary.homeHelpTxt,
-        'dependence_txt': primary.dependenceTxt,
-        'trusted_person_json': jsonEncode({
-          'name': _trustedName,
-          'phone': _trustedPhone,
-          'email': _trustedEmail,
-        }),
-        'caisse_retraite_principale': primary.caisseRetraitePrincipale,
-        'caisses_retraite_complementaires':
-            primary.caissesRetraiteComplementaires,
-        'occupants_json':
-            jsonEncode(_occupants.map((o) => o.toJson()).toList()),
-      });
+      'first_name': primary.firstName,
+      'last_name': primary.lastName,
+      'birth_date': primary.birthDate,
+      'second_first_name': secondary.firstName,
+      'second_last_name': secondary.lastName,
+      'address': _address,
+      'city': _city,
+      'zip_code': _zipCode,
+      'city_id': _cityId,
+      'phone': _phone,
+      'email': _email,
+      'family_situation': _familySituation,
+      // Statut d'occupation (Propriétaire / Locataire / Usufruitier).
+      // Avant ce push, le champ n'était jamais sauvé → la sélection
+      // utilisateur restait orpheline en mémoire et le PDF affichait
+      // par défaut la case « Propriétaire » cochée pour tous les
+      // dossiers. Maintenant le serveur reçoit la vraie valeur (ou
+      // vide si l'utilisateur n'a rien coché → aucune case dans le PDF).
+      'occupation_status': _occupationStatus,
+      'income_category': _incomeCategory,
+      // Legacy aggregate column: store the sum of per-occupant RFRs so
+      // backward-compatible consumers keep working.
+      'fiscal_revenue': _totalFiscalRevenue(),
+      'number_people': _numberPeople,
+      'apa': primary.apa ? 1 : 0,
+      'invalidity': primary.invalidity ? 1 : 0,
+      'invalidity_txt': primary.invalidityTxt,
+      'home_help': primary.homeHelp ? 1 : 0,
+      'home_help_txt': primary.homeHelpTxt,
+      'dependence_txt': primary.dependenceTxt,
+      'trusted_person_json': jsonEncode({
+        'name': _trustedName,
+        'phone': _trustedPhone,
+        'email': _trustedEmail,
+      }),
+      'caisse_retraite_principale': primary.caisseRetraitePrincipale,
+      'caisses_retraite_complementaires':
+          primary.caissesRetraiteComplementaires,
+      'occupants_json': jsonEncode(_occupants.map((o) => o.toJson()).toList()),
+    });
     await widget.repository.updateDossierFields(widget.dossier.id, {
       'compte_anah': _compteAnah,
       'envoi_rapport': _envoiRapport,
@@ -625,11 +647,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     const SizedBox(height: 6),
                     Container(
                       height: 1.5,
-                      width: (items[i].label.length * 3.2)
-                          .clamp(18.0, 50.0),
+                      width: (items[i].label.length * 3.2).clamp(18.0, 50.0),
                       decoration: BoxDecoration(
-                        color:
-                            active ? underlineColor : Colors.transparent,
+                        color: active ? underlineColor : Colors.transparent,
                         borderRadius: BorderRadius.circular(999),
                       ),
                     ),
@@ -666,10 +686,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // → Accueil/Dossiers/Bibliothèque…). Bascule rapide qui rappelle
     // à l'utilisateur que le contenu vient de changer.
     return SoftSwitcher(
-      child: KeyedSubtree(
-        key: ValueKey<int>(_subSectionIndex),
-        child: section,
-      ),
+      child: KeyedSubtree(key: ValueKey<int>(_subSectionIndex), child: section),
     );
   }
 
@@ -700,10 +717,8 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             final dateField = _DateOfBirthField(
               birthDate: occ.birthDate,
               showLabel: false,
-              onChanged: (iso) => _updateOccupant(
-                index,
-                occ.copyWith(birthDate: iso),
-              ),
+              onChanged: (iso) =>
+                  _updateOccupant(index, occ.copyWith(birthDate: iso)),
             );
             // Si aucune date saisie (ageLabel vide) → le champ prend
             // toute la largeur, pas de colonne vide à droite.
@@ -735,8 +750,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   Widget _buildProfilSection() {
     final phoneInvalid = !isValidFrenchPhone(_phone);
     final emailInvalid = !isValidEmail(_email);
-    final idx =
-        _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    final idx = _currentOccupantIndex.clamp(0, _occupants.length - 1);
     final anah = _parseAnahData(_compteAnah);
     return _buildOccupantSwipeContainer(
       perOccupantContent: _buildBirthDateRow(idx),
@@ -959,8 +973,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 // blanc opaque pour cacher le contenu qui défile.
                 Container(
                   color: Colors.white,
-                  padding:
-                      const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                   child: _buildOccupantHeader(idx),
                 ),
                 Expanded(
@@ -1212,8 +1225,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildSanteSection() {
-    final idx =
-        _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    final idx = _currentOccupantIndex.clamp(0, _occupants.length - 1);
     return _buildOccupantSwipeContainer(
       perOccupantContent: _buildAidesDependenceBlock(idx),
       sharedContent: Column(
@@ -1337,10 +1349,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           onCheckedChanged: (v) {
             _updateOccupant(
               index,
-              occ.copyWith(
-                apa: v,
-                apaGir: v ? occ.apaGir : '',
-              ),
+              occ.copyWith(apa: v, apaGir: v ? occ.apaGir : ''),
             );
           },
           onValueChanged: (v) {
@@ -1400,8 +1409,8 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         FormTextField(
           label: 'N° Sécu',
           value: occ.numeroSecuriteSociale,
-          onChanged: (v) => _updateOccupant(
-              index, occ.copyWith(numeroSecuriteSociale: v)),
+          onChanged: (v) =>
+              _updateOccupant(index, occ.copyWith(numeroSecuriteSociale: v)),
         ),
         const SizedBox(height: 14),
         // Caisse principale + caisse complémentaire sur la même ligne.
@@ -1435,8 +1444,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 value: caisseCompl,
                 placeholder: 'Sélectionner une caisse',
                 onTap: () async {
-                  final picked =
-                      await _openComplementaryFundPicker(caisseCompl);
+                  final picked = await _openComplementaryFundPicker(
+                    caisseCompl,
+                  );
                   if (picked == null) return;
                   _updateOccupant(
                     index,
@@ -1454,8 +1464,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   Widget _buildAdminSection() {
     final trustedPhoneInvalid = !isValidFrenchPhone(_trustedPhone);
     final trustedEmailInvalid = !isValidEmail(_trustedEmail);
-    final idx =
-        _currentOccupantIndex.clamp(0, _occupants.length - 1);
+    final idx = _currentOccupantIndex.clamp(0, _occupants.length - 1);
     return _buildOccupantSwipeContainer(
       perOccupantContent: _buildAdminPersonalBlock(idx),
       sharedContent: Column(
@@ -1557,9 +1566,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       try {
         final decoded = jsonDecode(trimmed);
         if (decoded is Map) {
-          return decoded.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+          return decoded.map(
+            (k, v) => MapEntry(k.toString(), v?.toString() ?? ''),
+          );
         }
-      } catch (_) {/* fall through au plain string */}
+      } catch (_) {
+        /* fall through au plain string */
+      }
     }
     // Plain string legacy
     if (trimmed == 'Mandat') {
@@ -1623,7 +1636,8 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     if (parsed == null) return '';
     final now = DateTime.now();
     var age = now.year - parsed.year;
-    final hadBirthday = (now.month > parsed.month) ||
+    final hadBirthday =
+        (now.month > parsed.month) ||
         (now.month == parsed.month && now.day >= parsed.day);
     if (!hadBirthday) age -= 1;
     // Afficher même les âges 0 (nouveau-né / enfant < 1 an). On filtre
@@ -1686,17 +1700,20 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// principal, donc la card affiche logo + nom + téléphone).
   Future<String?> _openPrincipalFundPicker(String currentValue) async {
     final items = _principalFunds
-        .map((f) => _RetirementFundPickerItem(
-              name: f['name'] ?? '',
-              logoUrl: f['logoUrl'] ?? '',
-              subtitle: (f['phone'] ?? '').trim(),
-            ))
+        .map(
+          (f) => _RetirementFundPickerItem(
+            name: f['name'] ?? '',
+            logoUrl: f['logoUrl'] ?? '',
+            subtitle: (f['phone'] ?? '').trim(),
+          ),
+        )
         .where((it) => it.name.isNotEmpty)
         .toList();
     return _showRetirementFundPicker(
       title: 'Caisse de retraite principale',
       items: items,
       initialSelected: currentValue,
+      emptyMessage: _principalFundsLoadError ?? 'Aucune caisse trouvée.',
     );
   }
 
@@ -1706,17 +1723,20 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// concatène en ligne courte (Option 1B utilisateur 2026-05-12).
   Future<String?> _openComplementaryFundPicker(String currentValue) async {
     final items = _retirementFunds
-        .map((f) => _RetirementFundPickerItem(
-              name: f.name,
-              logoUrl: f.logoUrl,
-              subtitle: _buildSubtitleForFund(f),
-            ))
+        .map(
+          (f) => _RetirementFundPickerItem(
+            name: f.name,
+            logoUrl: f.logoUrl,
+            subtitle: _buildSubtitleForFund(f),
+          ),
+        )
         .where((it) => it.name.isNotEmpty)
         .toList();
     return _showRetirementFundPicker(
       title: 'Caisse de retraite complémentaire',
       items: items,
       initialSelected: currentValue,
+      emptyMessage: 'Aucune caisse trouvée.',
     );
   }
 
@@ -1738,6 +1758,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     required String title,
     required List<_RetirementFundPickerItem> items,
     required String initialSelected,
+    required String emptyMessage,
   }) {
     return showDialog<String>(
       context: context,
@@ -1745,6 +1766,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         title: title,
         items: items,
         initialSelected: initialSelected,
+        emptyMessage: emptyMessage,
       ),
     );
   }
@@ -1811,10 +1833,7 @@ class _DateOfBirthField extends StatelessWidget {
     final now = DateTime.now();
 
     // 1) Année — grille 3 colonnes, du plus récent au plus ancien.
-    final years = List<int>.generate(
-      now.year - 1900 + 1,
-      (i) => now.year - i,
-    );
+    final years = List<int>.generate(now.year - 1900 + 1, (i) => now.year - i);
     final year = await _pickFromGrid(
       context,
       title: 'Année de naissance',
@@ -1826,8 +1845,18 @@ class _DateOfBirthField extends StatelessWidget {
 
     // 2) Mois — grille 3 colonnes, 12 mois FR abrégés pour tenir large.
     const monthNames = [
-      'Janv.', 'Févr.', 'Mars', 'Avril', 'Mai', 'Juin',
-      'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.',
+      'Janv.',
+      'Févr.',
+      'Mars',
+      'Avril',
+      'Mai',
+      'Juin',
+      'Juil.',
+      'Août',
+      'Sept.',
+      'Oct.',
+      'Nov.',
+      'Déc.',
     ];
     if (!context.mounted) return;
     final months = List<int>.generate(12, (i) => i + 1);
@@ -1867,8 +1896,7 @@ class _DateOfBirthField extends StatelessWidget {
     assert(labels.length == values.length);
     final initialIdx = values.indexOf(initialValue);
     final scrollCtrl = ScrollController(
-      initialScrollOffset:
-          initialIdx > 5 ? ((initialIdx ~/ 3) - 1) * 56.0 : 0,
+      initialScrollOffset: initialIdx > 5 ? ((initialIdx ~/ 3) - 1) * 56.0 : 0,
     );
     return showSoftDialog<int>(
       context: context,
@@ -1901,8 +1929,7 @@ class _DateOfBirthField extends StatelessWidget {
                 controller: scrollCtrl,
                 child: GridView.builder(
                   controller: scrollCtrl,
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
                     mainAxisSpacing: 8,
                     crossAxisSpacing: 8,
@@ -1957,13 +1984,13 @@ class _DateOfBirthField extends StatelessWidget {
                           // `decoration`/`decorationColor`, donc un style
                           // ambiant avec underline polluait les cellules).
                           style: DefaultTextStyle.of(ctx).style.copyWith(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w400,
-                                color: isSelected
-                                    ? Colors.white
-                                    : const Color(0xFF0E1116),
-                                decoration: TextDecoration.none,
-                              ),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w400,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF0E1116),
+                            decoration: TextDecoration.none,
+                          ),
                           child: Text(labels[i]),
                         ),
                       ),
@@ -2007,13 +2034,22 @@ class _DateOfBirthField extends StatelessWidget {
     // vides AVANT le 1er = weekday - 1.
     final leadingBlanks = firstDay.weekday - 1;
     final totalCells = leadingBlanks + daysInMonth;
-    final effectiveInitial =
-        initialDay <= daysInMonth ? initialDay : 1;
+    final effectiveInitial = initialDay <= daysInMonth ? initialDay : 1;
 
     const weekdayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
     const monthFullNames = [
-      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+      'Janvier',
+      'Février',
+      'Mars',
+      'Avril',
+      'Mai',
+      'Juin',
+      'Juillet',
+      'Août',
+      'Septembre',
+      'Octobre',
+      'Novembre',
+      'Décembre',
     ];
 
     return showSoftDialog<int>(
@@ -2062,8 +2098,7 @@ class _DateOfBirthField extends StatelessWidget {
               Expanded(
                 child: GridView.builder(
                   physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 7,
                     mainAxisSpacing: 4,
                     crossAxisSpacing: 4,
@@ -2146,8 +2181,7 @@ class _DateOfBirthField extends StatelessWidget {
           onTap: () => _pickDate(context),
           borderRadius: BorderRadius.circular(999),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: Color(0xFFB9C0C7)),
@@ -2297,8 +2331,7 @@ class _RetirementFundFieldButton extends StatelessWidget {
               // d'Occupation ». On garde le pill radius 999 et on
               // ajuste le padding vertical (7) pour reproduire la
               // hauteur ~32 px du pill Occupation.
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
                 // Refonte 2026-05-13 : pill radius 999 uniforme.
                 borderRadius: BorderRadius.circular(999),
@@ -2315,8 +2348,9 @@ class _RetirementFundFieldButton extends StatelessWidget {
                         // 12 → 14 : aligné sur la fontSize des pills
                         // Occupation (FormToggleGroup).
                         fontSize: 14,
-                        fontWeight:
-                            hasValue ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: hasValue
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                         color: hasValue
                             ? const Color(0xFF1E293B)
                             : const Color(0xFF8A939D),
@@ -2348,10 +2382,12 @@ class _RetirementFundPickerDialog extends StatefulWidget {
   final String title;
   final List<_RetirementFundPickerItem> items;
   final String initialSelected;
+  final String emptyMessage;
   const _RetirementFundPickerDialog({
     required this.title,
     required this.items,
     required this.initialSelected,
+    required this.emptyMessage,
   });
 
   @override
@@ -2374,8 +2410,7 @@ class _RetirementFundPickerDialogState
     // un free-text.
     final initial = widget.initialSelected.trim();
     final inList = widget.items.any((it) => it.name == initial);
-    _freeInputController =
-        TextEditingController(text: inList ? '' : initial);
+    _freeInputController = TextEditingController(text: inList ? '' : initial);
   }
 
   @override
@@ -2399,9 +2434,7 @@ class _RetirementFundPickerDialogState
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         width: 800,
@@ -2458,10 +2491,14 @@ class _RetirementFundPickerDialogState
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(
-                              color: kBrandPurple, width: 1.5),
+                            color: kBrandPurple,
+                            width: 1.5,
+                          ),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 12),
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                       ),
                       onChanged: (v) => setState(() => _search = v),
                     ),
@@ -2472,24 +2509,24 @@ class _RetirementFundPickerDialogState
             // Grid de cards 3-cols
             Expanded(
               child: filtered.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
-                        'Aucune caisse trouvée.',
-                        style: TextStyle(color: Color(0xFF8A939D)),
+                        widget.emptyMessage,
+                        style: const TextStyle(color: Color(0xFF8A939D)),
+                        textAlign: TextAlign.center,
                       ),
                     )
                   : GridView.builder(
                       padding: const EdgeInsets.all(16),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 0.85,
-                      ),
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 0.85,
+                          ),
                       itemCount: filtered.length,
-                      itemBuilder: (context, i) =>
-                          _buildTile(filtered[i]),
+                      itemBuilder: (context, i) => _buildTile(filtered[i]),
                     ),
             ),
             // Champ "caisse non listée" — demande utilisateur 2026-05-12
@@ -2501,9 +2538,7 @@ class _RetirementFundPickerDialogState
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
               decoration: const BoxDecoration(
                 color: Color(0xFFFAFBFC),
-                border: Border(
-                  top: BorderSide(color: Color(0xFFE4E7EB)),
-                ),
+                border: Border(top: BorderSide(color: Color(0xFFE4E7EB))),
               ),
               child: Row(
                 children: [
@@ -2512,27 +2547,32 @@ class _RetirementFundPickerDialogState
                       controller: _freeInputController,
                       decoration: InputDecoration(
                         hintText: 'Ou saisir une caisse non listée…',
-                        prefixIcon:
-                            const Icon(LucideIcons.edit3, size: 18),
+                        prefixIcon: const Icon(LucideIcons.edit3, size: 18),
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Color(0xFFE4E7EB)),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE4E7EB),
+                          ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Color(0xFFE4E7EB)),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE4E7EB),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(
-                              color: kBrandPurple, width: 1.5),
+                            color: kBrandPurple,
+                            width: 1.5,
+                          ),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                       ),
                       onSubmitted: (v) {
                         final t = v.trim();
@@ -2546,7 +2586,9 @@ class _RetirementFundPickerDialogState
                       backgroundColor: kBrandPurple,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 14),
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -2579,9 +2621,7 @@ class _RetirementFundPickerDialogState
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected
-                ? kBrandPurple
-                : const Color(0xFFE4E7EB),
+            color: isSelected ? kBrandPurple : const Color(0xFFE4E7EB),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
@@ -2667,8 +2707,8 @@ class _FundInitialsAvatar extends StatelessWidget {
     final initials = parts.isEmpty
         ? '?'
         : parts.length == 1
-            ? parts.first.substring(0, 1).toUpperCase()
-            : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+        ? parts.first.substring(0, 1).toUpperCase()
+        : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     return Center(
       child: Container(
         width: 64,

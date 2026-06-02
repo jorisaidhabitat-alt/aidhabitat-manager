@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:async';
 
 import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
@@ -19,7 +20,20 @@ class AuthService {
 
   final LocalDatabase _database = LocalDatabase.instance;
 
+  static String? _pendingSessionNotice;
+  static final StreamController<void> _sessionInvalidatedController =
+      StreamController<void>.broadcast();
+
   static const String bootstrapPassword = 'AidHabitat!Local';
+
+  static String? consumePendingSessionNotice() {
+    final notice = _pendingSessionNotice;
+    _pendingSessionNotice = null;
+    return notice;
+  }
+
+  static Stream<void> get sessionInvalidatedStream =>
+      _sessionInvalidatedController.stream;
 
   /// Build a fallback session token for a locally-authenticated user. The
   /// server accepts tokens prefixed with `local-auth:` followed by a
@@ -61,6 +75,7 @@ class AuthService {
     final db = await _database.database;
     await _ensureSeedUsers(db);
     await _ensureSeedScopes(db);
+    AppConfig.registerUnauthorizedHandler(_handleRejectedRemoteSession);
   }
 
   Future<void> _ensureSeedUsers(Database db) async {
@@ -203,7 +218,8 @@ class AuthService {
         whereArgs: [userLocalId],
       );
       await txn.insert('sync_operations', {
-        'id': 'profile_photo_${userLocalId}_'
+        'id':
+            'profile_photo_${userLocalId}_'
             '${DateTime.now().microsecondsSinceEpoch}',
         'entity_type': 'profile_photo',
         'entity_local_id': userLocalId,
@@ -305,16 +321,18 @@ class AuthService {
     // user only ever types a single password.
     if (!localPasswordMatches && remoteToken != null) {
       final nextSalt = _generateSalt();
-      await _database.database.then((db) => db.update(
-            'app_users',
-            {
-              'password_salt': nextSalt,
-              'password_hash': _hashPassword(password, nextSalt),
-              'updated_at': DateTime.now().toIso8601String(),
-            },
-            where: 'local_id = ?',
-            whereArgs: [row['local_id']],
-          ));
+      await _database.database.then(
+        (db) => db.update(
+          'app_users',
+          {
+            'password_salt': nextSalt,
+            'password_hash': _hashPassword(password, nextSalt),
+            'updated_at': DateTime.now().toIso8601String(),
+          },
+          where: 'local_id = ?',
+          whereArgs: [row['local_id']],
+        ),
+      );
     }
 
     final now = DateTime.now().toIso8601String();
@@ -369,14 +387,10 @@ class AuthService {
     final db = await _database.database;
     // `remote_token` reste vide en SQLite — le token est stocké dans
     // le secure storage uniquement (cf. fix audit P0 #4 du 2026-05-15).
-    await db.update(
-      'app_session',
-      {
-        'remote_token': '',
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      where: 'id = 1',
-    );
+    await db.update('app_session', {
+      'remote_token': '',
+      'updated_at': DateTime.now().toIso8601String(),
+    }, where: 'id = 1');
     await SecureSessionStorage.instance.write(token);
     AppConfig.setAppSessionToken(token);
     return true;
@@ -422,14 +436,10 @@ class AuthService {
       final legacyToken = rows.first['remote_token'] as String?;
       if (legacyToken != null && legacyToken.isNotEmpty) {
         await SecureSessionStorage.instance.write(legacyToken);
-        await db.update(
-          'app_session',
-          {
-            'remote_token': '',
-            'updated_at': DateTime.now().toIso8601String(),
-          },
-          where: 'id = 1',
-        );
+        await db.update('app_session', {
+          'remote_token': '',
+          'updated_at': DateTime.now().toIso8601String(),
+        }, where: 'id = 1');
         await _activateRestoredToken(db, legacyToken);
         return;
       }
@@ -470,62 +480,46 @@ class AuthService {
   }
 
   /// Active un token restauré (depuis secure storage ou migration
-  /// SQLite legacy) dans [AppConfig], avec validation préalable pour
-  /// les tokens `local-auth:`.
+  /// SQLite legacy) dans [AppConfig], puis le valide contre
+  /// `/api/auth/session` quand le serveur est joignable.
   ///
-  /// **Tokens HMAC signés** (cas normal) : set direct, return. Pas de
-  /// round-trip serveur — le secure storage est notre source de vérité
-  /// jusqu'au prochain 401 in-flight.
+  /// Refonte 2026-06-02 : on valide désormais AUSSI les tokens HMAC
+  /// signés restaurés depuis le secure storage, pas seulement les
+  /// placeholders `local-auth:`. Sans ça, une PWA web pouvait relancer
+  /// un vieux token expiré/révoqué au simple reload et rester "connectée"
+  /// localement alors que toute l'API répondait 401.
   ///
-  /// **Tokens `local-auth:`** (placeholder pré-fix P0 #4 ou fallback
-  /// offline) : on valide via `/api/auth/session` AVANT de set le
-  /// token. Trois résultats :
-  ///   • `valid` → set le token, on continue.
-  ///   • `rejected` → on PURGE (secure storage + app_session row) sans
-  ///     jamais setter le token côté `AppConfig`. L'UI verra
-  ///     `_currentUser == null` au prochain `getCurrentUser` → login.
-  ///   • `unreachable` (offline / 5xx) → set le token quand même pour
-  ///     que l'app fonctionne en lecture seule depuis le cache local.
-  ///     Si plus tard le réseau revient et que le serveur rejette,
-  ///     le sync engine traitera le 401 comme transient (cf.
-  ///     `nocodb_sync_service.isTransientErrorLike`).
-  ///
-  /// Fix audit code-review 2026-05-16 : avant cette refonte, le token
-  /// était setté immédiatement puis validé en `await`. Pendant les
-  /// quelques secondes de validation, un timer ou un autre service
-  /// pouvait kick une requête API avec un token déjà mort. Maintenant
-  /// le token n'est jamais publié dans `AppConfig` tant qu'on n'a pas
-  /// vérifié sa validité (ou décidé d'un fallback offline assumé).
+  /// Trois résultats :
+  ///   • `valid` → on garde le token.
+  ///   • `rejected` → on purge la session locale (ligne `app_session`
+  ///     + secure storage + AppConfig) pour forcer une reconnexion
+  ///     propre sans toucher aux données métier locales.
+  ///   • `unreachable` (offline / 5xx) → on garde le token pour
+  ///     permettre le mode hors ligne.
   Future<void> _activateRestoredToken(Database db, String token) async {
-    if (!token.startsWith('local-auth:')) {
-      // Cas standard : token HMAC signé venant du secure storage.
-      AppConfig.setAppSessionToken(token);
-      return;
-    }
-
     SessionTokenStatus status;
     try {
-      // On valide AVANT de publier le token dans AppConfig pour éviter
-      // qu'une requête concurrente parte avec un placeholder rejeté.
-      // `validateSessionToken` lit `AppConfig.appSessionToken` lui-même
-      // — sur web isolé on ne peut pas lui passer le token en
-      // paramètre, donc on le set temporairement puis on l'éclipse si
-      // rejeté avant tout autre await.
+      // `validateSessionToken` lit `AppConfig.appSessionToken` lui-même.
+      // On pose donc d'abord le token en RAM, puis on le retire
+      // immédiatement si le serveur le rejette.
       AppConfig.setAppSessionToken(token);
       status = await NocodbApiClient().validateSessionToken();
     } catch (_) {
       // Si la validation explose (cas pathologique), on traite comme
-      // unreachable pour ne pas faire perdre l'état UI à l'utilisateur
-      // sur une erreur Dart imprévue. Token déjà setté ci-dessus.
+      // unreachable pour ne pas faire perdre l'état UI à l'utilisateur.
       return;
     }
 
     if (status == SessionTokenStatus.rejected) {
       // ignore: avoid_print
-      print('[auth-root] local-auth token rejected by server — '
-          'clearing session to force re-login (data preserved)');
+      print(
+        '[auth-root] restored token rejected by server — '
+        'clearing session to force re-login (data preserved)',
+      );
       await _clearSessionRowOnly(db);
       AppConfig.clearAppSessionToken();
+      _pendingSessionNotice =
+          'Votre session a expiré. Reconnectez-vous pour reprendre la synchronisation.';
     }
     // valid / unreachable : on garde le token déjà setté.
   }
@@ -539,6 +533,15 @@ class AuthService {
   Future<void> _clearSessionRowOnly(Database db) async {
     await db.delete('app_session');
     await SecureSessionStorage.instance.clear();
+  }
+
+  Future<void> _handleRejectedRemoteSession() async {
+    final db = await _database.database;
+    await _clearSessionRowOnly(db);
+    AppConfig.clearAppSessionToken();
+    _pendingSessionNotice =
+        'Votre session a expiré. Reconnectez-vous pour reprendre la synchronisation.';
+    _sessionInvalidatedController.add(null);
   }
 
   Future<void> signOut() async {
@@ -699,8 +702,7 @@ class AuthService {
           'establishment_id': _nullableValue(remoteUser['establishmentId']),
           'ergo_label': _nullableValue(remoteUser['ergoLabel']),
           'is_active': _remoteIsActive(remoteUser) ? 1 : 0,
-          'profile_photo_url':
-              remoteUser['profilePhotoUrl']?.toString() ?? '',
+          'profile_photo_url': remoteUser['profilePhotoUrl']?.toString() ?? '',
           'created_at': now,
           'updated_at': now,
         }, conflictAlgorithm: ConflictAlgorithm.replace);

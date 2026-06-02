@@ -26,7 +26,8 @@ import 'services/sync_engine.dart';
 // `note_window_web.dart` pour le rationale). Sur natif, le stub fait
 // passer la compilation.
 import 'services/note_window_web_stub.dart'
-    if (dart.library.html) 'services/note_window_web.dart' as note_window_web;
+    if (dart.library.html) 'services/note_window_web.dart'
+    as note_window_web;
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -87,15 +88,17 @@ Future<void> main(List<String> args) async {
     final windowId = int.parse(args[1]);
     final payload = jsonDecode(args[2]) as Map<String, dynamic>;
     await initializeDateFormatting('fr_FR', null);
-    runApp(NoteWindowApp(
-      windowId: windowId,
-      patientId: payload['patientId'] as String,
-      tabKey: payload['tabKey'] as String,
-      title: payload['title'] as String? ?? 'Note',
-      initialText: payload['initialText'] as String? ?? '',
-      // 'text' (défaut) ou 'drawing' (cf. NoteWindowApp).
-      mode: payload['mode'] as String? ?? 'text',
-    ));
+    runApp(
+      NoteWindowApp(
+        windowId: windowId,
+        patientId: payload['patientId'] as String,
+        tabKey: payload['tabKey'] as String,
+        title: payload['title'] as String? ?? 'Note',
+        initialText: payload['initialText'] as String? ?? '',
+        // 'text' (défaut) ou 'drawing' (cf. NoteWindowApp).
+        mode: payload['mode'] as String? ?? 'text',
+      ),
+    );
     return;
   }
 
@@ -144,16 +147,18 @@ Future<void> main(List<String> args) async {
         }
       }
       await initializeDateFormatting('fr_FR', null);
-      runApp(NoteWindowApp(
-        // windowId : 0 sur web — on n'utilise pas DesktopMultiWindow.
-        // L'IPC passe par BroadcastChannel, sans besoin d'identifiant.
-        windowId: 0,
-        patientId: params['patientId'] ?? '',
-        tabKey: params['tabKey'] ?? '',
-        title: params['title'] ?? 'Note',
-        initialText: params['initialText'] ?? '',
-        mode: mode,
-      ));
+      runApp(
+        NoteWindowApp(
+          // windowId : 0 sur web — on n'utilise pas DesktopMultiWindow.
+          // L'IPC passe par BroadcastChannel, sans besoin d'identifiant.
+          windowId: 0,
+          patientId: params['patientId'] ?? '',
+          tabKey: params['tabKey'] ?? '',
+          title: params['title'] ?? 'Note',
+          initialText: params['initialText'] ?? '',
+          mode: mode,
+        ),
+      );
       return;
     }
   }
@@ -165,8 +170,11 @@ Future<void> main(List<String> args) async {
   // permanent blank page with no error. With them, the app always
   // reaches runApp and the offline-first DataService can paper over
   // whatever failed.
-  Future<void> bootStep(String name, Future<void> future,
-      {Duration timeout = const Duration(seconds: 8)}) async {
+  Future<void> bootStep(
+    String name,
+    Future<void> future, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
     try {
       await future.timeout(timeout);
     } catch (e, st) {
@@ -182,20 +190,27 @@ Future<void> main(List<String> args) async {
   // otherwise their frozen payloads would be pushed to NocoDB at startup
   // and overwrite fresh remote data with obsolete values.
   await bootStep(
-      'purgeStaleSyncOperations', DataService().purgeStaleSyncOperations());
+    'purgeStaleSyncOperations',
+    DataService().purgeStaleSyncOperations(),
+  );
   await bootStep('AuthService.initialize', AuthService().initialize());
   // Restore any Express API session token persisted from a previous login
   // before making remote calls.
   await bootStep(
-      'AuthService.restoreRemoteSession', AuthService().restoreRemoteSession());
+    'AuthService.restoreRemoteSession',
+    AuthService().restoreRemoteSession(),
+  );
   // 401 / network failures here are normal (fresh device, offline, etc.);
   // the refresh is best-effort.
   await bootStep(
-      'refreshLocalAuthStateFromRemote',
-      DataService().refreshLocalAuthStateFromRemote(),
-      timeout: const Duration(seconds: 5));
+    'refreshLocalAuthStateFromRemote',
+    DataService().refreshLocalAuthStateFromRemote(),
+    timeout: const Duration(seconds: 5),
+  );
   await bootStep(
-      'ConnectivityService.initialize', ConnectivityService().initialize());
+    'ConnectivityService.initialize',
+    ConnectivityService().initialize(),
+  );
   // Lance le fetch des références (communes, EPCIs, barèmes ANAH) tout
   // de suite — sans `await`, pour ne pas bloquer le boot. Le service
   // hydrate d'abord depuis SQLite (instantané sur les sessions
@@ -216,7 +231,9 @@ Future<void> main(List<String> args) async {
   // seule voie d'import.
   FileDropListener.instance.activate();
   await bootStep(
-      'initializeDateFormatting', initializeDateFormatting('fr_FR', null));
+    'initializeDateFormatting',
+    initializeDateFormatting('fr_FR', null),
+  );
 
   runApp(const MyApp());
 }
@@ -241,10 +258,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('fr', 'FR'),
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const [Locale('fr', 'FR'), Locale('en', 'US')],
       theme: ThemeData(
         // Refonte 2026-05-13 :
         //  - scaffoldBackground passé à paper #FDFCFB (warm white du
@@ -336,6 +350,7 @@ class _AuthRootState extends State<AuthRoot> {
   LocalAppUser? _currentUser;
   bool _isLoading = true;
   String? _bootError;
+  String? _loginNotice;
 
   /// Écoute les pulls workspace pour rafraîchir le `currentUser`
   /// quand un autre device a modifié son profil (notamment la photo).
@@ -343,12 +358,21 @@ class _AuthRootState extends State<AuthRoot> {
   /// profil sur l'iPad, ça ne s'est pas actualisé sur le mac, ça
   /// doit être le cas de manière quasi instantané ».
   StreamSubscription<SyncEngineState>? _syncSubscription;
+  StreamSubscription<void>? _sessionInvalidatedSubscription;
   DateTime? _lastObservedSyncAt;
 
   @override
   void initState() {
     super.initState();
     _restoreSession();
+    _sessionInvalidatedSubscription = AuthService.sessionInvalidatedStream
+        .listen((_) {
+          if (!mounted) return;
+          setState(() {
+            _currentUser = null;
+            _loginNotice = AuthService.consumePendingSessionNotice();
+          });
+        });
     _syncSubscription = SyncEngine().stateStream.listen((state) {
       if (!mounted || _currentUser == null) return;
       final at = state.lastSyncAt;
@@ -386,6 +410,8 @@ class _AuthRootState extends State<AuthRoot> {
   void dispose() {
     _syncSubscription?.cancel();
     _syncSubscription = null;
+    _sessionInvalidatedSubscription?.cancel();
+    _sessionInvalidatedSubscription = null;
     super.dispose();
   }
 
@@ -402,16 +428,19 @@ class _AuthRootState extends State<AuthRoot> {
     try {
       // ignore: avoid_print
       print('[auth-root] restoreRemoteSession…');
-      await _authService.restoreRemoteSession()
-          .timeout(const Duration(seconds: 8));
+      await _authService.restoreRemoteSession().timeout(
+        const Duration(seconds: 8),
+      );
       // ignore: avoid_print
       print('[auth-root] getCurrentUser…');
-      final user = await _authService.getCurrentUser()
-          .timeout(const Duration(seconds: 8));
+      final user = await _authService.getCurrentUser().timeout(
+        const Duration(seconds: 8),
+      );
       if (!mounted) return;
       setState(() {
         _currentUser = user;
         _isLoading = false;
+        _loginNotice = AuthService.consumePendingSessionNotice();
       });
       // ignore: avoid_print
       print('[auth-root] done. user=${user?.email ?? "(none)"}');
@@ -456,7 +485,11 @@ class _AuthRootState extends State<AuthRoot> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline, size: 64, color: Colors.redAccent),
+                const Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: Colors.redAccent,
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   "Impossible d'initialiser le stockage local",
@@ -490,9 +523,11 @@ class _AuthRootState extends State<AuthRoot> {
 
     if (_currentUser == null) {
       return LoginScreen(
+        infoMessage: _loginNotice,
         onLoggedIn: (user) {
           setState(() {
             _currentUser = user;
+            _loginNotice = null;
           });
         },
       );

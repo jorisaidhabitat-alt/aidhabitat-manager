@@ -26,6 +26,9 @@ class AppConfig {
   /// SQLite and restored at app startup by AuthService.
   static String _appSessionTokenRuntime = _appSessionTokenBuild;
 
+  static Future<void> Function()? _onUnauthorized;
+  static bool _unauthorizedHandlerRunning = false;
+
   static String get apiBaseUrl => _apiBaseUrlRuntime;
 
   /// Token de session **envoyé au serveur**. Filtre automatiquement les
@@ -51,6 +54,22 @@ class AppConfig {
 
   static void clearAppSessionToken() {
     _appSessionTokenRuntime = '';
+  }
+
+  static void registerUnauthorizedHandler(Future<void> Function() handler) {
+    _onUnauthorized = handler;
+  }
+
+  static Future<void> notifyUnauthorized() async {
+    if (_unauthorizedHandlerRunning) return;
+    final handler = _onUnauthorized;
+    if (handler == null) return;
+    _unauthorizedHandlerRunning = true;
+    try {
+      await handler();
+    } finally {
+      _unauthorizedHandlerRunning = false;
+    }
   }
 
   static bool get hasRemoteConfig =>

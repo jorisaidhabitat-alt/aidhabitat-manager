@@ -6,9 +6,10 @@ import '../services/auth_service.dart';
 import '../services/data_service.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onLoggedIn});
+  const LoginScreen({super.key, required this.onLoggedIn, this.infoMessage});
 
   final ValueChanged<LocalAppUser> onLoggedIn;
+  final String? infoMessage;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -176,6 +177,25 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           onSubmitted: (_) => _submit(),
                         ),
+                        if (widget.infoMessage != null &&
+                            widget.infoMessage!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF5F3FF),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFFD8B4FE),
+                              ),
+                            ),
+                            child: Text(
+                              widget.infoMessage!,
+                              style: const TextStyle(color: Color(0xFF5B21B6)),
+                            ),
+                          ),
+                        ],
                         if (_error != null) ...[
                           const SizedBox(height: 16),
                           Container(

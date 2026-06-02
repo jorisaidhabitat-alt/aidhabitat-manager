@@ -10,6 +10,33 @@ import 'app_config.dart';
 import 'document_repository.dart' show InlineDocumentBytes;
 import 'note_repository.dart' show InlinePlanBytes;
 
+class _AuthAwareHttpClient extends http.BaseClient {
+  _AuthAwareHttpClient(this._inner);
+
+  final http.Client _inner;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await _inner.send(request);
+    final token = request.headers['X-App-Session']?.trim() ?? '';
+    final isAuthenticatedRequest = token.isNotEmpty;
+    final path = request.url.path;
+    final isAuthEndpoint =
+        path.endsWith('/api/auth/login') || path.endsWith('/api/auth/session');
+    if (isAuthenticatedRequest &&
+        !isAuthEndpoint &&
+        (response.statusCode == 401 || response.statusCode == 403)) {
+      unawaited(AppConfig.notifyUnauthorized());
+    }
+    return response;
+  }
+
+  @override
+  void close() {
+    _inner.close();
+  }
+}
+
 /// Thrown when the server returns HTTP 409, indicating the remote record was
 /// modified since the client last fetched it.
 class ConflictException implements Exception {
@@ -50,7 +77,7 @@ class RemoteLoginResult {
 
   const RemoteLoginResult._({this.token, required this.rejected});
   const RemoteLoginResult.success(String token)
-      : this._(token: token, rejected: false);
+    : this._(token: token, rejected: false);
   const RemoteLoginResult.rejected() : this._(token: null, rejected: true);
   const RemoteLoginResult.unreachable() : this._(token: null, rejected: false);
 
@@ -99,7 +126,8 @@ Future<http.Response> _runWithTransientGuard(
 }
 
 class NocodbApiClient {
-  NocodbApiClient({http.Client? client}) : _client = client ?? http.Client();
+  NocodbApiClient({http.Client? client})
+    : _client = _AuthAwareHttpClient(client ?? http.Client());
 
   final http.Client _client;
 
@@ -142,10 +170,9 @@ class NocodbApiClient {
   Future<List<Map<String, dynamic>>> fetchDossierPayloads() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/dossiers'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/dossiers'), headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote dossiers fetch failed (${response.statusCode})');
@@ -199,8 +226,7 @@ class NocodbApiClient {
     }
 
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
-    final data =
-        (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
     return data;
   }
 
@@ -232,11 +258,13 @@ class NocodbApiClient {
     // base bien peuplée.
     final response = await _runWithTransientGuard(
       'Remote dossier update',
-      () => _client.patch(
-        Uri.parse('$_baseUrl/api/dossiers/$dossierId'),
-        headers: _headers,
-        body: jsonEncode(updates),
-      ).timeout(const Duration(seconds: 60)),
+      () => _client
+          .patch(
+            Uri.parse('$_baseUrl/api/dossiers/$dossierId'),
+            headers: _headers,
+            body: jsonEncode(updates),
+          )
+          .timeout(const Duration(seconds: 60)),
     );
 
     if (response.statusCode == 409) {
@@ -365,8 +393,7 @@ class NocodbApiClient {
       'Remote logement update',
       () => _client
           .patch(
-            Uri.parse(
-                '$_baseUrl/api/logements/by-beneficiary/$beneficiaryId'),
+            Uri.parse('$_baseUrl/api/logements/by-beneficiary/$beneficiaryId'),
             headers: _headers,
             body: jsonEncode(updates),
           )
@@ -718,13 +745,12 @@ class NocodbApiClient {
     String responseBody;
     try {
       streamed = await _client.send(request).timeout(_uploadTimeout);
-      responseBody =
-          await streamed.stream.bytesToString().timeout(_uploadTimeout);
+      responseBody = await streamed.stream.bytesToString().timeout(
+        _uploadTimeout,
+      );
     } catch (error) {
       if (_isTransientNetworkError(error)) {
-        throw TransientRemoteException(
-          'Document upload network error: $error',
-        );
+        throw TransientRemoteException('Document upload network error: $error');
       }
       rethrow;
     }
@@ -778,7 +804,8 @@ class NocodbApiClient {
     final uploadId =
         '${documentLocalId}_${DateTime.now().millisecondsSinceEpoch}';
 
-    final totalChunks = (bytes.length + _kChunkSizeBytes - 1) ~/ _kChunkSizeBytes;
+    final totalChunks =
+        (bytes.length + _kChunkSizeBytes - 1) ~/ _kChunkSizeBytes;
 
     // 1) Upload PARALLÈLE des chunks. Chaque chunk est une requête
     //    indépendante côté serveur (juste un blob put), donc on peut
@@ -823,9 +850,9 @@ class NocodbApiClient {
       String responseBody;
       try {
         streamed = await _client.send(request).timeout(_uploadTimeout);
-        responseBody = await streamed.stream
-            .bytesToString()
-            .timeout(_uploadTimeout);
+        responseBody = await streamed.stream.bytesToString().timeout(
+          _uploadTimeout,
+        );
       } catch (error) {
         if (_isTransientNetworkError(error)) {
           throw TransientRemoteException(
@@ -847,9 +874,9 @@ class NocodbApiClient {
       }
     }
 
-    await Future.wait(
-      [for (var i = 0; i < totalChunks; i += 1) uploadChunk(i)],
-    );
+    await Future.wait([
+      for (var i = 0; i < totalChunks; i += 1) uploadChunk(i),
+    ]);
 
     // 2) Finalize — assemble + push NocoDB. C'est CETTE requête qui
     //    peut être longue (pousse les ~5 MB en NocoDB), mais comme on
@@ -874,15 +901,14 @@ class NocodbApiClient {
           .timeout(_uploadTimeout),
     );
 
-    if (finalizeResponse.statusCode < 200
-        || finalizeResponse.statusCode >= 300) {
+    if (finalizeResponse.statusCode < 200 ||
+        finalizeResponse.statusCode >= 300) {
       throw Exception(
         'Document finalize failed (${finalizeResponse.statusCode}): ${finalizeResponse.body}',
       );
     }
 
-    final payload =
-        jsonDecode(finalizeResponse.body) as Map<String, dynamic>;
+    final payload = jsonDecode(finalizeResponse.body) as Map<String, dynamic>;
     final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
     final document = (data['document'] as Map?)?.cast<String, dynamic>();
     if (document == null) {
@@ -1007,8 +1033,15 @@ class NocodbApiClient {
   /// générer le PDF même quand la sync NocoDB est en retard ou
   /// intermittente. Si vides, on retombe sur le POST sans body
   /// (comportement v1, lecture intégrale depuis NocoDB côté serveur).
-  Future<({Uint8List bytes, String fileName, Map<String, dynamic>? stats, String? savedDocUuid})>
-      downloadVisitReport({
+  Future<
+    ({
+      Uint8List bytes,
+      String fileName,
+      Map<String, dynamic>? stats,
+      String? savedDocUuid,
+    })
+  >
+  downloadVisitReport({
     required String dossierId,
     List<InlineDocumentBytes> inlineDocuments = const [],
     List<InlinePlanBytes> inlinePlans = const [],
@@ -1076,10 +1109,9 @@ class NocodbApiClient {
       bytes: response.bodyBytes,
       fileName: fileName,
       stats: stats,
-      savedDocUuid:
-          savedDocUuid != null && savedDocUuid.isNotEmpty
-              ? savedDocUuid
-              : null,
+      savedDocUuid: savedDocUuid != null && savedDocUuid.isNotEmpty
+          ? savedDocUuid
+          : null,
     );
   }
 
@@ -1148,13 +1180,10 @@ class NocodbApiClient {
     // retry au cycle suivant au lieu de marquer définitivement failed.
     http.StreamedResponse streamed;
     try {
-      streamed =
-          await _client.send(request).timeout(_reportGenerationTimeout);
+      streamed = await _client.send(request).timeout(_reportGenerationTimeout);
     } catch (error) {
       if (_isTransientNetworkError(error)) {
-        throw TransientRemoteException(
-          'Visit report network error: $error',
-        );
+        throw TransientRemoteException('Visit report network error: $error');
       }
       rethrow;
     }
@@ -1170,10 +1199,9 @@ class NocodbApiClient {
   Future<List<Map<String, dynamic>>> fetchDocuments(String patientId) async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/documents/$patientId'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/documents/$patientId'), headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote documents fetch failed (${response.statusCode})');
@@ -1207,11 +1235,13 @@ class NocodbApiClient {
     }
 
     try {
-      final response = await _client.post(
-        Uri.parse('$_baseUrl/api/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'password': password}),
-      ).timeout(_defaultTimeout);
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl/api/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'password': password}),
+          )
+          .timeout(_defaultTimeout);
 
       if (response.statusCode == 401 || response.statusCode == 403) {
         // Serveur a explicitement rejeté l'authentification — mauvais
@@ -1291,10 +1321,9 @@ class NocodbApiClient {
   Future<List<Map<String, dynamic>>> fetchLocalAuthState() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/auth/local-state'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/auth/local-state'), headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1316,10 +1345,9 @@ class NocodbApiClient {
   Future<ReferencesPayload> fetchReferences() async {
     if (!AppConfig.hasRemoteConfig) return const ReferencesPayload();
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/references'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/references'), headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1355,10 +1383,9 @@ class NocodbApiClient {
   Future<List<WikiItem>> fetchWikiItems() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/wiki-library'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/wiki-library'), headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1451,9 +1478,7 @@ class NocodbApiClient {
       );
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Profile photo upload failed (${response.statusCode})',
-      );
+      throw Exception('Profile photo upload failed (${response.statusCode})');
     }
 
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
@@ -1478,10 +1503,7 @@ class NocodbApiClient {
     }
 
     final response = await _client
-        .get(
-          Uri.parse('$_baseUrl/api/anah-status'),
-          headers: _headers,
-        )
+        .get(Uri.parse('$_baseUrl/api/anah-status'), headers: _headers)
         .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1495,7 +1517,8 @@ class NocodbApiClient {
     return {
       'available': status['available'] as bool? ?? false,
       'registrationUrl':
-          status['registrationUrl']?.toString() ?? 'https://monprojet.anah.gouv.fr/',
+          status['registrationUrl']?.toString() ??
+          'https://monprojet.anah.gouv.fr/',
       'publicUrl':
           status['publicUrl']?.toString() ?? 'https://www.anah.gouv.fr/',
       'reason': status['reason']?.toString() ?? '',
@@ -1526,11 +1549,13 @@ class NocodbApiClient {
       body['imageDataUrl'] = imageDataUrl;
     }
 
-    final response = await _client.put(
-      Uri.parse('$_baseUrl/api/wiki-library/$itemId'),
-      headers: _headers,
-      body: jsonEncode(body),
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .put(
+          Uri.parse('$_baseUrl/api/wiki-library/$itemId'),
+          headers: _headers,
+          body: jsonEncode(body),
+        )
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1550,10 +1575,9 @@ class NocodbApiClient {
   Future<List<RetirementFund>> fetchRetirementFunds() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/retirement-funds'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/retirement-funds'), headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1572,10 +1596,12 @@ class NocodbApiClient {
   Future<List<String>> fetchPrincipalRetirementFundNames() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/retirement-funds-principal'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/retirement-funds-principal'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1600,10 +1626,12 @@ class NocodbApiClient {
   Future<List<Map<String, String>>> fetchPrincipalRetirementFunds() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/retirement-funds-principal'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/retirement-funds-principal'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1615,12 +1643,14 @@ class NocodbApiClient {
     final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
     return ((data['funds'] as List?) ?? const [])
         .whereType<Map>()
-        .map((item) => {
-              'id': (item['id'] ?? '').toString(),
-              'name': (item['name'] ?? '').toString().trim(),
-              'phone': (item['phone'] ?? '').toString().trim(),
-              'logoUrl': (item['logoUrl'] ?? '').toString(),
-            })
+        .map(
+          (item) => {
+            'id': (item['id'] ?? '').toString(),
+            'name': (item['name'] ?? '').toString().trim(),
+            'phone': (item['phone'] ?? '').toString().trim(),
+            'logoUrl': (item['logoUrl'] ?? '').toString(),
+          },
+        )
         .where((m) => (m['name'] ?? '').isNotEmpty)
         .toList();
   }
@@ -1646,21 +1676,23 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
 
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/api/retirement-funds'),
-      headers: _headers,
-      body: jsonEncode({
-        'name': name,
-        'phone': phone,
-        'audience': audience,
-        'requestMethod': requestMethod,
-        'requestDelay': requestDelay,
-        'aidAmount': aidAmount,
-        'therapistNote': therapistNote,
-        'website': website,
-        'logoUrl': logoUrl,
-      }),
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/retirement-funds'),
+          headers: _headers,
+          body: jsonEncode({
+            'name': name,
+            'phone': phone,
+            'audience': audience,
+            'requestMethod': requestMethod,
+            'requestDelay': requestDelay,
+            'aidAmount': aidAmount,
+            'therapistNote': therapistNote,
+            'website': website,
+            'logoUrl': logoUrl,
+          }),
+        )
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1686,20 +1718,22 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
 
-    final response = await _client.put(
-      Uri.parse('$_baseUrl/api/retirement-funds/$fundId'),
-      headers: _headers,
-      body: jsonEncode({
-        'name': fund.name,
-        'phone': fund.phone,
-        'audience': fund.audience,
-        'requestMethod': fund.requestMethod,
-        'requestDelay': fund.requestDelay,
-        'aidAmount': fund.aidAmount,
-        'therapistNote': fund.therapistNote,
-        'website': fund.website,
-      }),
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .put(
+          Uri.parse('$_baseUrl/api/retirement-funds/$fundId'),
+          headers: _headers,
+          body: jsonEncode({
+            'name': fund.name,
+            'phone': fund.phone,
+            'audience': fund.audience,
+            'requestMethod': fund.requestMethod,
+            'requestDelay': fund.requestDelay,
+            'aidAmount': fund.aidAmount,
+            'therapistNote': fund.therapistNote,
+            'website': fund.website,
+          }),
+        )
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1719,10 +1753,9 @@ class NocodbApiClient {
   Future<List<AdminAccessMember>> fetchAdminAccessMembers() async {
     if (!AppConfig.hasRemoteConfig) return const [];
 
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/api/admin/access-members'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/admin/access-members'), headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
@@ -1755,11 +1788,13 @@ class NocodbApiClient {
       else
         'forceReset': true,
     };
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/api/auth/provision'),
-      headers: _headers,
-      body: jsonEncode(body),
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/auth/provision'),
+          headers: _headers,
+          body: jsonEncode(body),
+        )
+        .timeout(_defaultTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote password set failed (${response.statusCode})');
     }
@@ -1786,18 +1821,20 @@ class NocodbApiClient {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
     }
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/api/admin/access-members'),
-      headers: _headers,
-      body: jsonEncode({
-        'email': email,
-        'displayName': displayName,
-        'role': role == LocalUserRole.admin ? 'ADMIN' : 'ERGO',
-        if (establishmentId != null && establishmentId.isNotEmpty)
-          'establishmentId': establishmentId,
-        if (password != null && password.isNotEmpty) 'password': password,
-      }),
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/admin/access-members'),
+          headers: _headers,
+          body: jsonEncode({
+            'email': email,
+            'displayName': displayName,
+            'role': role == LocalUserRole.admin ? 'ADMIN' : 'ERGO',
+            if (establishmentId != null && establishmentId.isNotEmpty)
+              'establishmentId': establishmentId,
+            if (password != null && password.isNotEmpty) 'password': password,
+          }),
+        )
+        .timeout(_defaultTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         'Remote create member failed (${response.statusCode}): ${response.body}',
@@ -1821,14 +1858,16 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
     final encodedEmail = Uri.encodeComponent(email);
-    final response = await _client.patch(
-      Uri.parse('$_baseUrl/api/admin/access-members/$encodedEmail'),
-      headers: _headers,
-      body: jsonEncode({
-        if (displayName != null) 'displayName': displayName,
-        if (establishmentId != null) 'establishmentId': establishmentId,
-      }),
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .patch(
+          Uri.parse('$_baseUrl/api/admin/access-members/$encodedEmail'),
+          headers: _headers,
+          body: jsonEncode({
+            if (displayName != null) 'displayName': displayName,
+            if (establishmentId != null) 'establishmentId': establishmentId,
+          }),
+        )
+        .timeout(_defaultTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote update member failed (${response.statusCode})');
     }
@@ -1846,10 +1885,12 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
     final encodedEmail = Uri.encodeComponent(email);
-    final response = await _client.delete(
-      Uri.parse('$_baseUrl/api/admin/access-members/$encodedEmail'),
-      headers: _headers,
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .delete(
+          Uri.parse('$_baseUrl/api/admin/access-members/$encodedEmail'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote delete member failed (${response.statusCode})');
     }
@@ -1860,11 +1901,13 @@ class NocodbApiClient {
       throw Exception('Remote config missing');
     }
 
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/api/auth/provision'),
-      headers: _headers,
-      body: jsonEncode({'email': email, 'forceReset': true}),
-    ).timeout(_defaultTimeout);
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/auth/provision'),
+          headers: _headers,
+          body: jsonEncode({'email': email, 'forceReset': true}),
+        )
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote password reset failed (${response.statusCode})');
@@ -1893,8 +1936,9 @@ class NocodbApiClient {
     final uri = Uri.parse(
       '$_baseUrl/api/note-pages/$patientId',
     ).replace(queryParameters: {'tabKey': tabKey, 'pageNumber': '$pageNumber'});
-    final response =
-        await _client.get(uri, headers: _headers).timeout(_defaultTimeout);
+    final response = await _client
+        .get(uri, headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Remote note fetch failed (${response.statusCode})');
@@ -1931,13 +1975,12 @@ class NocodbApiClient {
     if (!AppConfig.hasRemoteConfig) return const [];
 
     final uri = Uri.parse('$_baseUrl/api/note-pages/$patientId');
-    final response =
-        await _client.get(uri, headers: _headers).timeout(_defaultTimeout);
+    final response = await _client
+        .get(uri, headers: _headers)
+        .timeout(_defaultTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Remote bulk note fetch failed (${response.statusCode})',
-      );
+      throw Exception('Remote bulk note fetch failed (${response.statusCode})');
     }
 
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
@@ -1958,10 +2001,10 @@ class NocodbApiClient {
         const {};
     final occupantsList =
         (patientJson['occupants'] as List?)
-                ?.whereType<Map>()
-                .map((e) => Occupant.fromJson(e.cast<String, dynamic>()))
-                .toList() ??
-            const <Occupant>[];
+            ?.whereType<Map>()
+            .map((e) => Occupant.fromJson(e.cast<String, dynamic>()))
+            .toList() ??
+        const <Occupant>[];
 
     return Dossier(
       id: json['id']?.toString() ?? '',
@@ -1979,8 +2022,7 @@ class NocodbApiClient {
         cityId: patientJson['cityId']?.toString() ?? '',
         zipCode: patientJson['zipCode']?.toString() ?? '',
         familySituation: patientJson['familySituation']?.toString() ?? '',
-        occupationStatus:
-            patientJson['occupationStatus']?.toString() ?? '',
+        occupationStatus: patientJson['occupationStatus']?.toString() ?? '',
         incomeCategory: patientJson['incomeCategory']?.toString() ?? '',
         numberPeople: _parseInt(patientJson['numberPeople']),
         fiscalRevenue: _parseDouble(patientJson['fiscalRevenue']),
@@ -2023,11 +2065,13 @@ class NocodbApiClient {
           json['personnesPresentesVisite']?.toString() ?? '',
       medicalContext: json['medicalContext'] is Map
           ? MedicalContext.fromJson(
-              (json['medicalContext'] as Map).cast<String, dynamic>())
+              (json['medicalContext'] as Map).cast<String, dynamic>(),
+            )
           : null,
       autonomy: json['autonomy'] is Map
           ? AutonomyData.fromJson(
-              (json['autonomy'] as Map).cast<String, dynamic>())
+              (json['autonomy'] as Map).cast<String, dynamic>(),
+            )
           : null,
       plans: const {
         'PF1': FinancialPlan(id: 'PF1'),
@@ -2132,7 +2176,8 @@ class NocodbApiClient {
       website: json['website']?.toString() ?? '',
       logoUrl: json['logoUrl']?.toString() ?? '',
       lastEditedAt: json['lastEditedAt']?.toString(),
-      createdAt: json['createdAt']?.toString() ??
+      createdAt:
+          json['createdAt']?.toString() ??
           json['created_at']?.toString() ??
           json['updatedAt']?.toString(),
     );
