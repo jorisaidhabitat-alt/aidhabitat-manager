@@ -1233,8 +1233,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     if (!mounted) return;
     _exitSelectionMode();
     await _loadDocuments(silent: true);
-    if (mounted)
+    if (mounted) {
       _showSnack('$count document${count > 1 ? 's supprimés' : ' supprimé'}.');
+    }
   }
 
   Widget _buildGrid() {
@@ -2573,6 +2574,7 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
   int _currentPage = 1;
   int _totalPages = 1;
   Uint8List? _currentImage;
+  int _renderTicket = 0;
   bool _loading = true;
   String? _error;
 
@@ -2755,14 +2757,21 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
   Future<void> _renderCurrent() async {
     final doc = _doc;
     if (doc == null) return;
-    setState(() => _loading = true);
+    final pageNumber = _currentPage;
+    final ticket = ++_renderTicket;
+    setState(() {
+      _loading = true;
+      _currentImage = null;
+    });
 
     // 1. Si la page courante a un aplat sauvegardé → on l'affiche
     //    directement. L'_ImageAnnotator partira d'un canvas vierge
     //    par-dessus (les strokes ont été baked dans l'aplat).
-    final cachedFlat = _flatPagesByPage[_currentPage];
+    final cachedFlat = _flatPagesByPage[pageNumber];
     if (cachedFlat != null) {
-      if (!mounted) return;
+      if (!mounted || ticket != _renderTicket || pageNumber != _currentPage) {
+        return;
+      }
       setState(() {
         _currentImage = cachedFlat;
         _loading = false;
@@ -2771,7 +2780,7 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
     }
 
     try {
-      final page = await doc.getPage(_currentPage);
+      final page = await doc.getPage(pageNumber);
       // Render à 2x la taille naturelle pour un peu de netteté sur les
       // écrans Retina sans exploser la mémoire.
       final raster = await page.render(
@@ -2780,16 +2789,20 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
         format: PdfPageImageFormat.png,
       );
       await page.close();
-      if (!mounted) return;
+      if (!mounted || ticket != _renderTicket || pageNumber != _currentPage) {
+        return;
+      }
       setState(() {
         _currentImage = raster?.bytes;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || ticket != _renderTicket || pageNumber != _currentPage) {
+        return;
+      }
       setState(() {
         _loading = false;
-        _error = 'Rendu page $_currentPage impossible : $e';
+        _error = 'Rendu page $pageNumber impossible : $e';
       });
     }
   }
@@ -2845,14 +2858,22 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
   Future<void> _goPrev() async {
     if (_currentPage <= 1) return;
     await _captureCurrentPageFlat();
-    setState(() => _currentPage -= 1);
+    setState(() {
+      _currentPage -= 1;
+      _currentImage = null;
+      _loading = true;
+    });
     await _renderCurrent();
   }
 
   Future<void> _goNext() async {
     if (_currentPage >= _totalPages) return;
     await _captureCurrentPageFlat();
-    setState(() => _currentPage += 1);
+    setState(() {
+      _currentPage += 1;
+      _currentImage = null;
+      _loading = true;
+    });
     await _renderCurrent();
   }
 
