@@ -38,17 +38,18 @@ class SecureSessionStorage {
   static const String _masterKeyKey = 'aidhabitat.db_master_key';
 
   /// Options par plateforme — durci `accessibility` sur iOS/macOS pour
-  /// que le Keychain n'expose le token qu'APRÈS le premier déverrouillage
-  /// post-boot (cf. `KeychainAccessibility.first_unlock_this_device`).
+  /// que le Keychain n'expose le token que lorsque l'appareil est
+  /// effectivement déverrouillé, et sans migration iCloud vers un autre
+  /// device (cf. `KeychainAccessibility.unlocked_this_device`).
   /// Sur web : pas d'options additionnelles (flutter_secure_storage
   /// utilise WebCrypto+IndexedDB par défaut).
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock_this_device,
+      accessibility: KeychainAccessibility.unlocked_this_device,
     ),
     mOptions: MacOsOptions(
-      accessibility: KeychainAccessibility.first_unlock_this_device,
+      accessibility: KeychainAccessibility.unlocked_this_device,
     ),
   );
 

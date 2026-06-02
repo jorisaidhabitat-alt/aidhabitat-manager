@@ -41,6 +41,17 @@ AIDHABITAT_API_BASE_URL=https://api.aid-habitat.fr \
 Le script refuse volontairement les builds natifs release sans URL HTTPS pour
 éviter de publier un binaire pointant vers `localhost`.
 
+Avant de tenter une archive store, lancer le preflight :
+
+```bash
+AIDHABITAT_API_BASE_URL=https://api.aid-habitat.fr \
+  ./tool/release_preflight.sh
+```
+
+Le preflight vérifie les prérequis locaux sans afficher les secrets :
+Xcode/SDK iOS, certificat Apple Distribution, signature Android, SDK Android,
+Java, manifestes iOS et URL API HTTPS.
+
 ### Signature Android Play Store
 
 Les builds Android release lisent `android/key.properties`, volontairement

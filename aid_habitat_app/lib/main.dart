@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show PlatformDispatcher;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -48,16 +48,25 @@ Future<void> main(List<String> args) async {
   // `true` pour signaler que l'erreur a été « handled » et ne doit pas
   // remonter au navigateur en uncaught.
   FlutterError.onError = (FlutterErrorDetails details) {
-    debugPrint('[flutter-error] ${details.exception}');
-    if (details.library != null) debugPrint('  library: ${details.library}');
-    if (details.context != null) debugPrint('  context: ${details.context}');
-    debugPrint(details.stack?.toString());
+    if (kDebugMode) {
+      debugPrint('[flutter-error] ${details.exception}');
+      if (details.library != null) debugPrint('  library: ${details.library}');
+      if (details.context != null) debugPrint('  context: ${details.context}');
+      debugPrint(details.stack?.toString());
+    } else {
+      debugPrint('[flutter-error] ${details.exception.runtimeType}');
+    }
   };
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    // ignore: avoid_print
-    print('[async-error] $error');
-    // ignore: avoid_print
-    print(stack);
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[async-error] $error');
+      // ignore: avoid_print
+      print(stack);
+    } else {
+      // ignore: avoid_print
+      print('[async-error] ${error.runtimeType}');
+    }
     return true; // marqué comme handled → pas de propagation uncaught
   };
 

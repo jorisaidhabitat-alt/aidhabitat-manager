@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ====================================================== -->
     <!-- Permissions runtime (Android 6+)                        -->
@@ -8,12 +9,14 @@
     <!-- image_picker (camera) : VAD photos logement / sanitaires -->
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- image_picker (gallery) Android 13+ : photo seulement -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-
-    <!-- image_picker (gallery) Android 12 et inférieur -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- Galerie / documents : accès via les pickers système
+         (image_picker / file_picker), sans permission large de lecture
+         des médias. Réduit le risque de blocage Play Store. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" tools:node="remove" />
 
     <!-- url_launcher : ouverture d'URL externes (mailto, tel, https) -->
     <uses-permission android:name="android.permission.INTERNET" />

@@ -70,6 +70,11 @@ if [ "$PLATFORM" = "android" ]; then
     export JAVA_HOME="$HOMEBREW_JDK21"
     export PATH="$JAVA_HOME/bin:$PATH"
   fi
+  HOMEBREW_ANDROID_SDK="/opt/homebrew/share/android-commandlinetools"
+  if [ -d "$HOMEBREW_ANDROID_SDK" ]; then
+    export ANDROID_HOME="${ANDROID_HOME:-$HOMEBREW_ANDROID_SDK}"
+    export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+  fi
   JAVA_VERSION_RAW="$(java -version 2>&1 | awk -F\" '/version/ {print $2; exit}')"
   JAVA_MAJOR="${JAVA_VERSION_RAW%%.*}"
   if [ "$JAVA_MAJOR" = "1" ]; then
