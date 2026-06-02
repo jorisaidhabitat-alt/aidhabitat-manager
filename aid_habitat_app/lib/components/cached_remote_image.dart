@@ -51,6 +51,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
   File? _file;
   Uint8List? _svgBytes;
   Uint8List? _pendingBytes;
+
   /// Raster (png/jpg/webp/gif) bytes downloaded via http — used on web where
   /// [File] isn't available. On native we rely on [MediaCacheService] + [_file].
   Uint8List? _webBytes;
@@ -60,47 +61,82 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    if (!_primeInlineImage()) {
+      _load();
+    }
   }
 
   @override
   void didUpdateWidget(CachedRemoteImage old) {
     super.didUpdateWidget(old);
     if (old.url != widget.url || old.pendingDataUrl != widget.pendingDataUrl) {
-      setState(() {
-        _file = null;
-        _svgBytes = null;
-        _pendingBytes = null;
-        _webBytes = null;
-        _loading = true;
-        _failed = false;
-      });
-      _load();
+      _file = null;
+      _svgBytes = null;
+      _pendingBytes = null;
+      _webBytes = null;
+      _loading = true;
+      _failed = false;
+      final primed = _primeInlineImage();
+      if (mounted) {
+        setState(() {});
+      }
+      if (!primed) {
+        _load();
+      }
     }
   }
 
   Uint8List? _decodeDataUrl(String dataUrl) {
-    final comma = dataUrl.indexOf(',');
-    if (comma < 0) return null;
     try {
-      return base64Decode(dataUrl.substring(comma + 1));
+      final comma = dataUrl.indexOf(',');
+      if (comma < 0) return null;
+      final header = dataUrl.substring(0, comma);
+      final payload = dataUrl.substring(comma + 1);
+      if (header.toLowerCase().contains(';base64')) {
+        return base64Decode(payload.replaceAll(RegExp(r'\s+'), ''));
+      }
+      final decoded = Uri.decodeComponent(payload);
+      return Uint8List.fromList(utf8.encode(decoded));
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> _load() async {
-    // Priority: locally-captured image (offline create/update) shown as-is.
+  bool _primeInlineImage() {
     final pending = widget.pendingDataUrl?.trim() ?? '';
     if (pending.isNotEmpty) {
       final bytes = _decodeDataUrl(pending);
-      if (bytes != null && mounted) {
-        setState(() {
-          _pendingBytes = bytes;
-          _loading = false;
-        });
-        return;
+      if (bytes != null) {
+        _pendingBytes = bytes;
+        _loading = false;
+        _failed = false;
+        return true;
       }
+    }
+
+    final inlineUrl = widget.url.trim();
+    if (!inlineUrl.startsWith('data:')) return false;
+    final bytes = _decodeDataUrl(inlineUrl);
+    if (bytes == null) return false;
+    if (isSvgUrl(inlineUrl)) {
+      _svgBytes = bytes;
+    } else {
+      _webBytes = bytes;
+    }
+    _loading = false;
+    _failed = false;
+    return true;
+  }
+
+  Future<void> _load() async {
+    // Les data URLs inline (logos générés, images pending locales) sont
+    // déjà prises en charge synchroniquement par `_primeInlineImage()`
+    // afin d'éviter le flash placeholder → image au premier rendu.
+    if (_primeInlineImage()) {
+      if (mounted) {
+        setState(() {});
+      }
+      return;
     }
 
     final svg = isSvgUrl(widget.url);
@@ -196,6 +232,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
+        gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) =>
             widget.errorWidget ?? const _DefaultError(),
       );
@@ -206,6 +243,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
+        gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) =>
             widget.errorWidget ?? const _DefaultError(),
       );
@@ -227,6 +265,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
+        gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) {
           // The file was downloaded (HTTP 200) but can't be decoded as an
           // image — likely the server returned HTML as a SPA fallback. Drop
