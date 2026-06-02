@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# Dockerfile Easypanel pour la PWA Flutter web.
+#
+# Contrairement à Dockerfile.web, celui-ci compile `build/web/` pendant le
+# build Docker. Il est donc adapté à Easypanel quand le service reconstruit
+# directement depuis GitHub.
+# ---------------------------------------------------------------------------
+
+FROM ghcr.io/cirruslabs/flutter:stable AS build
+
+WORKDIR /app
+
+COPY pubspec.yaml pubspec.lock ./
+RUN flutter config --enable-web && flutter pub get
+
+COPY . .
+
+ARG AIDHABITAT_API_BASE_URL
+ENV AIDHABITAT_API_BASE_URL=${AIDHABITAT_API_BASE_URL}
+
+RUN bash ./tool/build_web.sh
+
+FROM nginx:alpine
+
+COPY --from=build /app/build/web/ /usr/share/nginx/html/
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+

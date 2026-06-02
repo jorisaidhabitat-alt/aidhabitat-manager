@@ -11,5 +11,22 @@
 !build/web/**
 !nginx.conf
 !Dockerfile.web
+!Dockerfile.easypanel-web
+
+# Sources nécessaires à Dockerfile.easypanel-web, qui compile Flutter web
+# directement pendant le build Docker Easypanel.
+!pubspec.yaml
+!pubspec.lock
+!analysis_options.yaml
+!lib/
+!lib/**
+!web/
+!web/**
+!assets/
+!assets/**
+!web-assets/
+!web-assets/**
+!tool/
+!tool/**
 
 # (le `*` exclu tout, les `!xxx` ré-incluent ce qu'on veut)
