@@ -59,10 +59,6 @@ ENV NODE_ENV=production \
 
 EXPOSE 3001
 
-# Healthcheck simple : route locale sans dépendance NocoDB.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/api/health/live || exit 1
-
 # Point d'entrée : le serveur Express.
 # `node server/index.mjs` détecte qu'il est en exécution directe (isDirectExecution)
 # → appelle app.listen(port) automatiquement.
