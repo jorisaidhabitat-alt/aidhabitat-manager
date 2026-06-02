@@ -12,9 +12,19 @@ on:
         required: false
         type: boolean
         default: true
+      publish_image:
+        description: "Publish a prebuilt nginx image to GitHub Container Registry"
+        required: false
+        type: boolean
+        default: false
+      image_tag:
+        description: "Container image tag used when publish_image is enabled"
+        required: false
+        default: "staging"
 
 permissions:
   contents: read
+  packages: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -50,6 +60,21 @@ jobs:
         run: |
           chmod +x ./tool/build_web.sh
           ./tool/build_web.sh
+
+      - name: Publish prebuilt nginx image
+        if: ${{ inputs.publish_image }}
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/aidhabitat-web
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build -f Dockerfile.web \
+            -t "$IMAGE_NAME:$IMAGE_TAG" \
+            -t "$IMAGE_NAME:${{ github.sha }}" \
+            .
+          docker push "$IMAGE_NAME:$IMAGE_TAG"
+          docker push "$IMAGE_NAME:${{ github.sha }}"
 
       - name: Upload PWA artifact
         if: ${{ inputs.upload_artifact }}
