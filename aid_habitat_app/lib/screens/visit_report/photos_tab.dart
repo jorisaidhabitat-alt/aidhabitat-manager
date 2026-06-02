@@ -58,6 +58,7 @@ class _PhotosTabState extends State<PhotosTab>
     with AutomaticKeepAliveClientMixin {
   static const Color _kPurpleLight = Color(0xFFF2ECF5);
   static const Color _kSlate = Color(0xFF2B323A);
+  static const Color _kSectionBackground = Color(0xFFFDFCFB);
   // _kSlateMuted retiré le 2026-05-12 (servait au badge count
   // supprimé, cf. _buildCountBadge également retiré).
 
@@ -872,12 +873,11 @@ class _PhotosTabState extends State<PhotosTab>
           return AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(
-              color: hovering ? const Color(0xFFF2ECF5) : Colors.white,
+              color: hovering ? const Color(0xFFF2ECF5) : _kSectionBackground,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: hovering ? kBrandPurple : const Color(0xFFE4E7EB),
-                width: hovering ? 2 : 1,
-              ),
+              border: hovering
+                  ? Border.all(color: kBrandPurple, width: 2)
+                  : null,
             ),
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: Column(
