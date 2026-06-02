@@ -15,7 +15,7 @@ RUN flutter config --enable-web && flutter pub get
 
 COPY . .
 
-ARG AIDHABITAT_API_BASE_URL
+ARG AIDHABITAT_API_BASE_URL=https://apps-aidhabitat-api-staging.z5avx1.easypanel.host
 ENV AIDHABITAT_API_BASE_URL=${AIDHABITAT_API_BASE_URL}
 
 RUN bash ./tool/build_web.sh
@@ -26,4 +26,3 @@ COPY --from=build /app/build/web/ /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
-
