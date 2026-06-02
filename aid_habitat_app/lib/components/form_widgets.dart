@@ -1296,7 +1296,7 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
                 },
           // Refonte 2026-05-13 (demande user) — cf. FormTextField :
           // fond blanc, border gris léger, radius 10. État warning =
-          // border ambre 1.5px (au lieu de gris). Focus violet 1.5px.
+          // border ambre 1.5px (au lieu de gris), y compris au focus.
           decoration: InputDecoration(
             isDense: true,
             filled: true,
@@ -1318,10 +1318,12 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
             // Refonte 2026-05-13 : pill radius 999 uniforme.
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
-              borderSide: const BorderSide(
-                color: kBrandPurple,
-                width: 1.5,
-              ),
+              borderSide: widget.showWarning
+                  ? const BorderSide(color: Color(0xFFC48429), width: 1.5)
+                  : const BorderSide(
+                      color: kBrandPurple,
+                      width: 1.5,
+                    ),
             ),
             hintText: widget.placeholder,
             hintStyle:
