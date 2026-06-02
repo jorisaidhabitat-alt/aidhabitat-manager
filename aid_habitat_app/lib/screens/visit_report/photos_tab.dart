@@ -61,12 +61,10 @@ class _PhotosTabState extends State<PhotosTab>
   // _kSlateMuted retiré le 2026-05-12 (servait au badge count
   // supprimé, cf. _buildCountBadge également retiré).
 
-  /// Compression cible — `image_picker` accepte directement ces
-  /// paramètres et applique le redimensionnement + ré-encodage JPEG
-  /// côté natif. Sur PWA web, image_picker compresse aussi (le
-  /// browser retourne un blob déjà JPEG via `pickImage`).
-  static const double _kCompressMaxWidth = 1600;
-  static const int _kCompressQuality = 80;
+  /// Compression cible pour les photos VAD : assez net pour le rapport,
+  /// mais volontairement plus léger pour que l'import multi reste fluide.
+  static const double _kCompressMaxWidth = 1280;
+  static const int _kCompressQuality = 74;
 
   final DataService _dataService = DataService();
   final ImagePicker _imagePicker = ImagePicker();
@@ -433,11 +431,22 @@ class _PhotosTabState extends State<PhotosTab>
         ),
       );
     }
-    setState(() {
-      _photos = [..._photos, ...placeholders];
-      _isImporting = true;
-    });
+    setState(() => _photos = [..._photos, ...placeholders]);
 
+    unawaited(
+      _persistPlaceholdersInBackground(
+        images: images,
+        placeholders: placeholders,
+        categoryTag: categoryTag,
+      ),
+    );
+  }
+
+  Future<void> _persistPlaceholdersInBackground({
+    required List<DroppedFile> images,
+    required List<DocItem> placeholders,
+    required String categoryTag,
+  }) async {
     try {
       for (var i = 0; i < images.length; i++) {
         final f = images[i];
@@ -446,6 +455,9 @@ class _PhotosTabState extends State<PhotosTab>
           final compressed = await compressImageForUpload(
             bytes: f.bytes,
             fileName: f.name,
+            maxWidthPx: _kCompressMaxWidth.round(),
+            jpegQuality: _kCompressQuality,
+            fastResize: true,
           );
           final fileName = _buildPhotoFileName(
             categoryTag,
@@ -485,10 +497,8 @@ class _PhotosTabState extends State<PhotosTab>
       }
       // Pull silencieux pour aligner l'ordre / l'état serveur canonique.
       // `silent: true` évite tout spinner / flash de loading visible.
-      await _refresh(silent: true);
-    } finally {
-      if (mounted) setState(() => _isImporting = false);
-    }
+      if (mounted) await _refresh(silent: true);
+    } catch (_) {}
   }
 
   Future<void> _persistPicked(XFile xfile, String categoryTag) async {

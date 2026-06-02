@@ -64,6 +64,10 @@ Future<CompressedImage> compressImageForUpload({
   required Uint8List bytes,
   required String fileName,
   String? sourceMimeType,
+  int maxWidthPx = _kMaxWidthPx,
+  int jpegQuality = _kJpegQuality,
+  int skipThresholdBytes = _kSkipThresholdBytes,
+  bool fastResize = false,
 }) async {
   final lowerName = fileName.toLowerCase();
   final originalMime = (sourceMimeType ?? '').toLowerCase();
@@ -71,14 +75,16 @@ Future<CompressedImage> compressImageForUpload({
   // Détection : seules JPEG/PNG/HEIC/WebP/BMP/GIF sont décodables par
   // le package `image`. Pour le reste (rare), on passe les bytes tels
   // quels — le serveur fera son boulot ou rejettera.
-  final isJpeg = originalMime == 'image/jpeg'
-      || lowerName.endsWith('.jpg')
-      || lowerName.endsWith('.jpeg');
+  final isJpeg =
+      originalMime == 'image/jpeg' ||
+      lowerName.endsWith('.jpg') ||
+      lowerName.endsWith('.jpeg');
   final isPng = originalMime == 'image/png' || lowerName.endsWith('.png');
-  final isHeic = originalMime.startsWith('image/heic')
-      || originalMime.startsWith('image/heif')
-      || lowerName.endsWith('.heic')
-      || lowerName.endsWith('.heif');
+  final isHeic =
+      originalMime.startsWith('image/heic') ||
+      originalMime.startsWith('image/heif') ||
+      lowerName.endsWith('.heic') ||
+      lowerName.endsWith('.heif');
   final isWebp = originalMime == 'image/webp' || lowerName.endsWith('.webp');
   final isBmp = originalMime == 'image/bmp' || lowerName.endsWith('.bmp');
   final isGif = originalMime == 'image/gif' || lowerName.endsWith('.gif');
@@ -97,7 +103,7 @@ Future<CompressedImage> compressImageForUpload({
 
   // Skip si déjà petit (sauf PNG : la recompression JPEG d'un PNG de
   // 100KB peut quand même diviser par 2 la taille, donc on tente).
-  if (!isPng && bytes.length < _kSkipThresholdBytes) {
+  if (!isPng && bytes.length < skipThresholdBytes) {
     return CompressedImage(
       bytes: bytes,
       mimeType: originalMime.isNotEmpty ? originalMime : 'image/jpeg',
@@ -121,18 +127,17 @@ Future<CompressedImage> compressImageForUpload({
     }
 
     img.Image working = decoded;
-    if (working.width > _kMaxWidthPx) {
+    if (working.width > maxWidthPx) {
       working = img.copyResize(
         working,
-        width: _kMaxWidthPx,
-        // `interpolation` cubic = bonne qualité pour la réduction. Le
-        // surcoût CPU est négligeable face à la transmission réseau
-        // qu'on évite.
-        interpolation: img.Interpolation.cubic,
+        width: maxWidthPx,
+        interpolation: fastResize
+            ? img.Interpolation.linear
+            : img.Interpolation.cubic,
       );
     }
 
-    final encoded = img.encodeJpg(working, quality: _kJpegQuality);
+    final encoded = img.encodeJpg(working, quality: jpegQuality);
     final result = Uint8List.fromList(encoded);
 
     // Garde-fou : si pour une raison X le re-encodage produit un fichier

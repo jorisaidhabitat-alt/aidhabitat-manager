@@ -50,22 +50,10 @@ Future<WebPickedFile?> pickWebFileImpl({
       if (!completer.isCompleted) completer.complete(null);
       return;
     }
-    final file = files.first;
-    final reader = html.FileReader();
-    reader.readAsArrayBuffer(file);
-    await reader.onLoadEnd.first;
-    final bytes = reader.result;
+    final picked = await _readWebPickedFile(files.first);
     cleanup();
     if (!completer.isCompleted) {
-      if (bytes is Uint8List) {
-        completer.complete(WebPickedFile(name: file.name, bytes: bytes));
-      } else if (bytes is List<int>) {
-        completer.complete(
-          WebPickedFile(name: file.name, bytes: Uint8List.fromList(bytes)),
-        );
-      } else {
-        completer.complete(null);
-      }
+      completer.complete(picked);
     }
   });
 
@@ -113,20 +101,9 @@ Future<List<WebPickedFile>> pickWebFilesImpl({required String accept}) async {
       return;
     }
 
-    final picked = <WebPickedFile>[];
-    for (final file in files) {
-      final reader = html.FileReader();
-      reader.readAsArrayBuffer(file);
-      await reader.onLoadEnd.first;
-      final bytes = reader.result;
-      if (bytes is Uint8List) {
-        picked.add(WebPickedFile(name: file.name, bytes: bytes));
-      } else if (bytes is List<int>) {
-        picked.add(
-          WebPickedFile(name: file.name, bytes: Uint8List.fromList(bytes)),
-        );
-      }
-    }
+    final picked = (await Future.wait(
+      files.map(_readWebPickedFile),
+    )).whereType<WebPickedFile>().toList(growable: false);
 
     cleanup();
     if (!completer.isCompleted) completer.complete(picked);
@@ -140,4 +117,18 @@ Future<List<WebPickedFile>> pickWebFilesImpl({required String accept}) async {
   input.click();
 
   return completer.future;
+}
+
+Future<WebPickedFile?> _readWebPickedFile(html.File file) async {
+  final reader = html.FileReader();
+  reader.readAsArrayBuffer(file);
+  await reader.onLoadEnd.first;
+  final bytes = reader.result;
+  if (bytes is Uint8List) {
+    return WebPickedFile(name: file.name, bytes: bytes);
+  }
+  if (bytes is List<int>) {
+    return WebPickedFile(name: file.name, bytes: Uint8List.fromList(bytes));
+  }
+  return null;
 }
