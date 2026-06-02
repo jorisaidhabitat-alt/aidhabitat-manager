@@ -1212,6 +1212,8 @@ class FormTextFieldWithWarning extends StatefulWidget {
   final String label;
   final String value;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onTapOutside;
   final TextInputType? keyboardType;
   final bool showWarning;
   final String? warningText;
@@ -1222,6 +1224,8 @@ class FormTextFieldWithWarning extends StatefulWidget {
     required this.label,
     this.value = '',
     this.onChanged,
+    this.onSubmitted,
+    this.onTapOutside,
     this.keyboardType,
     this.showWarning = false,
     this.warningText,
@@ -1283,6 +1287,13 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
           keyboardType: widget.keyboardType,
           style: const TextStyle(fontSize: 14, color: Color(0xFF2B323A)),
           stylusHandwritingEnabled: true,
+          onFieldSubmitted: widget.onSubmitted,
+          onTapOutside: widget.onTapOutside == null
+              ? null
+              : (_) {
+                  _focusNode.unfocus();
+                  widget.onTapOutside!();
+                },
           // Refonte 2026-05-13 (demande user) — cf. FormTextField :
           // fond blanc, border gris léger, radius 10. État warning =
           // border ambre 1.5px (au lieu de gris). Focus violet 1.5px.

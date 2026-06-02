@@ -601,6 +601,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return trimmed;
   }
 
+  static bool _isInvalidYearInput(String raw) {
+    final trimmed = raw.trim();
+    return trimmed.isNotEmpty && _sanitizeYearForSave(trimmed).isEmpty;
+  }
+
   Future<void> _saveImpl() async {
     if (!mounted) return;
     // Pas de setState(_saving) — voir dossier_screen.dart pour le
@@ -836,6 +841,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   // ---------------------------------------------------------------------------
 
   Widget _buildGeneral() {
+    final yearConstructionInvalid = _isInvalidYearInput(_yearConstruction);
+    final yearHabitationInvalid = _isInvalidYearInput(_yearHabitation);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -856,10 +864,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
-              child: FormTextField(
+              child: FormTextFieldWithWarning(
                 label: 'Construction',
                 value: _yearConstruction,
                 keyboardType: TextInputType.number,
+                showWarning: yearConstructionInvalid,
+                warningText: 'Année invalide',
                 onChanged: (v) {
                   _yearConstruction = v;
                   _markChanged();
@@ -901,10 +911,12 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             ),
             const SizedBox(width: 6),
             Expanded(
-              child: FormTextField(
+              child: FormTextFieldWithWarning(
                 label: "Habitation",
                 value: _yearHabitation,
                 keyboardType: TextInputType.number,
+                showWarning: yearHabitationInvalid,
+                warningText: 'Année invalide',
                 onChanged: (v) {
                   _yearHabitation = v;
                   _markChanged();
