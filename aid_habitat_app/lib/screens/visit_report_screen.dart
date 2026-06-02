@@ -1515,6 +1515,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         '[report] document local_id=${inserted.id} créé '
         '(sync_state=${inserted.syncState.name})',
       );
+      await _dataService.hideObsoleteReportDocuments(
+        patientId: patientId,
+        dossierId: _dossier.id,
+        keepLocalId: inserted.id,
+      );
 
       // Vérification immédiate : on relit la liste locale et on
       // confirme que le doc est bien retrouvable. Si non, on remonte

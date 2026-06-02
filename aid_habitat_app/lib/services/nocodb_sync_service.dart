@@ -669,6 +669,11 @@ class NocodbSyncService {
         localId: 'doc_report_$dossierId',
       );
     }
+    await DocumentRepository().hideObsoleteReportDocuments(
+      patientId: patientId,
+      dossierId: dossierId,
+      keepLocalId: 'doc_report_$dossierId',
+    );
     // ignore: avoid_print
     print('[sync] document "Rapport" inséré localement (id=doc_report_$dossierId)');
 

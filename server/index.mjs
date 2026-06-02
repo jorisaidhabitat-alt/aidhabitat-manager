@@ -5921,6 +5921,43 @@ const mergeInlineNotePages = (remotePages, inlineMap) => {
   });
 };
 
+const isReportDocument = (document) => asArray(document?.tags).some(
+  (tag) => stringValue(tag).trim().toLowerCase() === 'rapport',
+);
+
+const deleteObsoleteReportDocuments = async ({
+  patientId,
+  dossierId,
+  keepDocumentId,
+  keepClientDocumentId,
+}) => {
+  if (!patientId || !dossierId) return 0;
+  const documents = await mobileSyncStore.listDocumentsByPatient(patientId, {
+    dossierId,
+  });
+  let deletedCount = 0;
+  for (const document of documents) {
+    if (!isReportDocument(document)) continue;
+    const documentId = stringValue(document?.id);
+    const clientDocumentId = stringValue(document?.clientDocumentId);
+    if (keepDocumentId) {
+      if (documentId === keepDocumentId) continue;
+    } else if (clientDocumentId && clientDocumentId === keepClientDocumentId) {
+      continue;
+    }
+    try {
+      await mobileSyncStore.deleteDocument(documentId);
+      deletedCount += 1;
+    } catch (error) {
+      console.warn(
+        `[report] suppression ancien rapport ${documentId} échouée :`,
+        error?.message || error,
+      );
+    }
+  }
+  return deletedCount;
+};
+
 app.post(
   '/api/reports/visit/:dossierId',
   requireAuth,
@@ -6197,10 +6234,16 @@ app.post(
               .trim(),
         });
         savedDocUuid = stringValue(savedDoc?.id || savedDoc?.uuid_source);
+        const deletedReports = await deleteObsoleteReportDocuments({
+          patientId,
+          dossierId,
+          keepDocumentId: savedDocUuid,
+          keepClientDocumentId: documentLocalId,
+        });
         console.log(
           `[report] PDF sauvegardé directement dans NocoDB ` +
           `(dossier=${dossierId}, uuid=${savedDocUuid.slice(0, 8)}…, ` +
-          `${bytes.length} bytes)`,
+          `${bytes.length} bytes, anciens rapports supprimés=${deletedReports})`,
         );
       }
     } catch (saveErr) {
