@@ -142,6 +142,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   bool _loaded = false;
   Timer? _saveTimer;
   bool _hasPendingSave = false;
+  int _saveGeneration = 0;
   Future<void>? _saveInFlight;
 
   /// ScrollController du formulaire — préserve la position de scroll
@@ -515,8 +516,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _hasPendingSave = true;
+    _markPendingSave();
     _saveTimer = Timer(kSaveDebouncePills, _save);
+  }
+
+  void _markPendingSave() {
+    _hasPendingSave = true;
+    _saveGeneration += 1;
   }
 
   Future<void> _save() {
@@ -525,11 +531,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     if (inFlight != null) return inFlight;
     _saveTimer?.cancel();
     _saveTimer = null;
-    _saveInFlight = _saveNow();
+    _saveInFlight = _drainPendingSaves();
     return _saveInFlight!;
   }
 
-  Future<void> _saveNow() async {
+  Future<void> _drainPendingSaves() async {
     // try/catch global défensif (fix 2026-05-15 : reproductible sur
     // « n'importe quel champ Accessibilité » via la PWA Vercel). Le
     // Timer de `_scheduleSave` invoque `_save()` SANS await — un throw
@@ -538,20 +544,38 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     // attachées au sync engine multiplient le bruit). Cf. pattern
     // identique sur les autres tabs (recommendations_tab) qui catchent
     // déjà silencieusement le save async.
+    var stoppedAfterFailure = false;
     try {
-      await _saveImpl();
-      _hasPendingSave = false;
-    } catch (e, st) {
-      // ignore: avoid_print
-      print('[accessibility_tab] _save failed: $e\n$st');
+      while (mounted && _hasPendingSave) {
+        final generation = _saveGeneration;
+        try {
+          await _saveImpl();
+        } catch (e, st) {
+          stoppedAfterFailure = true;
+          // ignore: avoid_print
+          print('[accessibility_tab] _save failed: $e\n$st');
+          return;
+        }
+        if (_saveGeneration == generation) {
+          _hasPendingSave = false;
+        }
+      }
     } finally {
       _saveInFlight = null;
+      if (!stoppedAfterFailure && mounted && _hasPendingSave) {
+        unawaited(_save());
+      }
     }
   }
 
   Future<void> _flushPendingSave() async {
     if (!_hasPendingSave) return;
     await _save();
+  }
+
+  void _saveTextFieldNow() {
+    _markPendingSave();
+    unawaited(_save());
   }
 
   /// Valide une saisie d'année avant push NocoDB. Retourne la valeur
@@ -840,6 +864,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   _yearConstruction = v;
                   _markChanged();
                 },
+                onSubmitted: (v) {
+                  _yearConstruction = v;
+                  _saveTextFieldNow();
+                },
+                onTapOutside: _saveTextFieldNow,
               ),
             ),
             const SizedBox(width: 6),
@@ -880,6 +909,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   _yearHabitation = v;
                   _markChanged();
                 },
+                onSubmitted: (v) {
+                  _yearHabitation = v;
+                  _saveTextFieldNow();
+                },
+                onTapOutside: _saveTextFieldNow,
               ),
             ),
           ],

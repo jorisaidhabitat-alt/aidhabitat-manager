@@ -82,6 +82,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   final DataService _dataService = DataService();
   final AccessibilityTabController _accessibilityController =
       AccessibilityTabController();
+  final RecommendationsTabController _recommendationsController =
+      RecommendationsTabController();
   late Dossier _dossier;
   int _housingVersion = 0;
   // Maps (patientId::tabKey) -> secondary OS windowId, so when the user
@@ -1248,6 +1250,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // directement en SQLite via leur propre `_save()`. On force ici un
     // re-fetch pour aligner le modèle in-memory avec le disque.
     await _accessibilityController.flushPendingSave();
+    await _recommendationsController.flushPendingSave();
     await _refreshDossier();
     final missing = await _collectMissingFields();
     if (missing.isNotEmpty) {
@@ -2623,7 +2626,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         ),
         _wrapTabWithNotes(
           'Préconisations',
-          RecommendationsTab(dossier: _dossier, repository: _repository),
+          RecommendationsTab(
+            dossier: _dossier,
+            repository: _repository,
+            controller: _recommendationsController,
+          ),
         ),
       ],
     );

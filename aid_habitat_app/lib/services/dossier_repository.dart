@@ -2096,6 +2096,19 @@ class DossierRepository {
     'cheminement_seuil_porte',
   ];
 
+  /// Champs texte/nombre du bloc Général qui alimentent directement le PDF.
+  /// On les re-pousse à chaque save logement comme les booléens ci-dessus :
+  /// si le local les possède déjà mais que NocoDB a été vidé par un ancien
+  /// PATCH partiel ou par une course de sync, le prochain save auto-répare
+  /// la base distante et évite un PDF sans années/surface/type.
+  static const List<String> _kHousingCriticalColumnsToAlwaysPush = [
+    'year_construction',
+    'year_habitation',
+    'surface',
+    'levels',
+    'typology',
+  ];
+
   Future<void> updateHousing(
     String dossierId,
     Map<String, dynamic> fields,
@@ -2167,10 +2180,20 @@ class DossierRepository {
       }
     });
 
+    final criticalFieldsAlways = <String, dynamic>{};
+    for (final col in _kHousingCriticalColumnsToAlwaysPush) {
+      if (fields.containsKey(col)) {
+        criticalFieldsAlways[col] = fields[col];
+      } else if (existingRow != null && existingRow.containsKey(col)) {
+        criticalFieldsAlways[col] = existingRow[col];
+      }
+    }
+
     // Diff des champs TEXT/INT-non-bool (économie bande passante).
     final textFieldsToDiff = <String, dynamic>{};
     fields.forEach((key, value) {
       if (_kHousingBoolColumnsToAlwaysPush.contains(key)) return;
+      if (_kHousingCriticalColumnsToAlwaysPush.contains(key)) return;
       if (key == 'heating_details_json') return; // déjà géré ci-dessus.
       textFieldsToDiff[key] = value;
     });
@@ -2178,6 +2201,7 @@ class DossierRepository {
 
     final changedFields = <String, dynamic>{
       ...boolFieldsAlways,
+      ...criticalFieldsAlways,
       ...changedTextFields,
     };
 

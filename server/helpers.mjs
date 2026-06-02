@@ -217,6 +217,7 @@ export const nullableString = (value) => value == null || value === '' ? null : 
 export const absoluteUrl = (value) => {
   const stringified = String(value || '').trim();
   if (!stringified) return '';
+  if (stringified.startsWith('data:')) return stringified;
   if (LOCALHOST_URL_PATTERN.test(stringified)) {
     try {
       const parsed = new URL(stringified);

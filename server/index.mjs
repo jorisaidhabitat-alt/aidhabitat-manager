@@ -430,6 +430,7 @@ const nullableString = (value) => {
 const absoluteUrl = (value) => {
   const stringified = String(value || '').trim();
   if (!stringified) return '';
+  if (stringified.startsWith('data:')) return stringified;
   if (LOCALHOST_URL_PATTERN.test(stringified)) {
     try {
       const parsed = new URL(stringified);
@@ -5539,7 +5540,24 @@ const fetchVisitRecommendationsForDossier = async (dossierId) => {
       const payload = store.dossiers?.[dossierId];
       items = asArray(payload?.items);
     }
-    return items;
+    const wikiItems = await loadWikiLibrary();
+    const wikiLookup = buildWikiRecommendationLookup(wikiItems);
+    return items.map((item) => {
+      const matchedWikiItem = resolveRecommendationWikiItem(item, wikiLookup);
+      if (!matchedWikiItem) {
+        return {
+          ...item,
+          wikiImageUrl: absoluteUrl(item?.wikiImageUrl),
+        };
+      }
+      return {
+        ...item,
+        wikiItemId: stringValue(matchedWikiItem.id),
+        wikiTitle: stringValue(matchedWikiItem.title),
+        wikiImageUrl: absoluteUrl(matchedWikiItem.imageUrl),
+        wikiTag: stringValue(matchedWikiItem.tags?.[0] || item?.wikiTag),
+      };
+    });
   } catch (error) {
     console.warn('[report] échec fetch recos :', error?.message || error);
     return [];
@@ -5612,7 +5630,15 @@ const fetchImageBytesForReport = async (descriptor) => {
       };
     }
     if (descriptor.kind === 'url' && descriptor.url) {
-      const res = await fetch(descriptor.url);
+      const rawUrl = String(descriptor.url || '').trim();
+      const dataUrlMatch = rawUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (dataUrlMatch) {
+        return {
+          buffer: Buffer.from(dataUrlMatch[2], 'base64'),
+          mimeType: dataUrlMatch[1] || 'image/png',
+        };
+      }
+      const res = await fetch(rawUrl);
       if (!res.ok) return null;
       const arrayBuffer = await res.arrayBuffer();
       return {

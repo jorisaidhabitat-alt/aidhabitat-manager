@@ -20,15 +20,42 @@ import '../../components/soft_transitions.dart';
 class RecommendationsTab extends StatefulWidget {
   final Dossier dossier;
   final DossierRepository repository;
+  final RecommendationsTabController? controller;
 
   const RecommendationsTab({
     super.key,
     required this.dossier,
     required this.repository,
+    this.controller,
   });
 
   @override
   State<RecommendationsTab> createState() => _RecommendationsTabState();
+}
+
+/// Bridge used by the report screen before PDF generation.
+///
+/// Recommendations are debounced while the ergo edits titles/notes. Before
+/// "Generer", the parent flushes the pending save so the forced sync sends the
+/// same list the user sees on screen.
+class RecommendationsTabController {
+  Future<void> Function()? _flushPendingSave;
+
+  Future<void> flushPendingSave() async {
+    final flush = _flushPendingSave;
+    if (flush == null) return;
+    await flush();
+  }
+
+  void _attach(Future<void> Function() flush) {
+    _flushPendingSave = flush;
+  }
+
+  void _detach(Future<void> Function() flush) {
+    if (_flushPendingSave == flush) {
+      _flushPendingSave = null;
+    }
+  }
 }
 
 class _RecommendationsTabState extends State<RecommendationsTab>
@@ -41,6 +68,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   bool _loaded = false;
   final bool _saving = false;
   Timer? _saveDebounce;
+  bool _hasPendingSave = false;
+  int _saveGeneration = 0;
+  Future<void>? _saveInFlight;
   final WikiRepository _wikiRepo = WikiRepository();
 
   /// Polling cross-device 2 s. Demande utilisateur 2026-05-07 :
@@ -59,6 +89,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   @override
   void initState() {
     super.initState();
+    widget.controller?._attach(_flushPendingSave);
     _load();
     // Refactor 2026-05-12 : suppression du polling 2 s. Recommandations
     // chargées au mount. Modifs distantes visibles au prochain
@@ -66,7 +97,17 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   }
 
   @override
+  void didUpdateWidget(covariant RecommendationsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(_flushPendingSave);
+      widget.controller?._attach(_flushPendingSave);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.controller?._detach(_flushPendingSave);
     // Flush immédiat si un save était en attente (debounce non tiré).
     // Sinon, toute modif dans les 2 dernières secondes avant fermeture
     // de l'onglet / app était perdue.
@@ -100,8 +141,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     // switch. Le compromis : si un second device modifie la liste
     // pendant la session, on ne le verra qu'après un redémarrage de
     // l'app (SyncEngine pull pull côté init).
-    final localItems =
-        await widget.repository.fetchVisitRecommendations(widget.dossier.id);
+    final localItems = await widget.repository.fetchVisitRecommendations(
+      widget.dossier.id,
+    );
     final localWiki = await _wikiRepo.fetchAllItems().catchError((_) {
       return <WikiItem>[];
     });
@@ -115,6 +157,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   void _scheduleSave() {
     _saveDebounce?.cancel();
+    _markPendingSave();
     // Debounce uniformisé sur kSaveDebounceText (400 ms) — élimine les
     // races offline où 2 onglets sauvent en parallèle. Le saut de 100ms
     // → 400ms reste imperceptible parce que ConflictAlgorithm.replace
@@ -122,11 +165,45 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     _saveDebounce = Timer(kSaveDebounceText, _save);
   }
 
-  Future<void> _save() async {
-    if (!mounted) return;
+  void _markPendingSave() {
+    _hasPendingSave = true;
+    _saveGeneration += 1;
+  }
+
+  Future<void> _save() {
+    if (!mounted) return Future<void>.value();
+    final inFlight = _saveInFlight;
+    if (inFlight != null) return inFlight;
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
+    _saveInFlight = _drainPendingSaves();
+    return _saveInFlight!;
+  }
+
+  Future<void> _drainPendingSaves() async {
     // Pas de setState(_saving) — voir dossier_screen.dart.
-    await widget.repository
-        .saveVisitRecommendations(widget.dossier.id, _items);
+    try {
+      while (mounted && _hasPendingSave) {
+        final generation = _saveGeneration;
+        await widget.repository.saveVisitRecommendations(
+          widget.dossier.id,
+          _items,
+        );
+        if (_saveGeneration == generation) {
+          _hasPendingSave = false;
+        }
+      }
+    } finally {
+      _saveInFlight = null;
+      if (mounted && _hasPendingSave) {
+        unawaited(_save());
+      }
+    }
+  }
+
+  Future<void> _flushPendingSave() async {
+    if (!_hasPendingSave) return;
+    await _save();
   }
 
   // ---------------------------------------------------------------------------
@@ -135,16 +212,11 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   void _addItem() {
     final now = DateTime.now().toIso8601String();
-    final id =
-        'rec_${DateTime.now().millisecondsSinceEpoch}_${_items.length}';
+    final id = 'rec_${DateTime.now().millisecondsSinceEpoch}_${_items.length}';
     setState(() {
       _items = [
         ..._items,
-        VisitRecommendationItem(
-          id: id,
-          createdAt: now,
-          updatedAt: now,
-        ),
+        VisitRecommendationItem(id: id, createdAt: now, updatedAt: now),
       ];
     });
     _scheduleSave();
@@ -237,8 +309,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
         // Pré-remplit le titre personnalisé avec le titre wiki uniquement
         // si l'utilisateur n'a encore rien tapé (ne pas écraser une
         // saisie manuelle).
-        customTitle:
-            current.customTitle.isNotEmpty ? current.customTitle : picked.title,
+        customTitle: current.customTitle.isNotEmpty
+            ? current.customTitle
+            : picked.title,
         // Only pre-fill note if empty (don't overwrite user input).
         note: current.note.isNotEmpty ? current.note : prefillNote,
       ),
@@ -301,7 +374,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                       backgroundColor: kBrandPurple,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                     ),
                   ),
                 ),
@@ -378,8 +453,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       ),
       child: const Column(
         children: [
-          Icon(Icons.auto_awesome_outlined,
-              size: 36, color: Color(0xFF8A939D)),
+          Icon(Icons.auto_awesome_outlined, size: 36, color: Color(0xFF8A939D)),
           SizedBox(height: 8),
           Text(
             'Aucune préconisation pour l\'instant.',
@@ -427,10 +501,7 @@ class _RecommendationCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFE4E7EB),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFE4E7EB), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -603,9 +674,7 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
       // forcer le radius côté Material child. Avec le clip, le Dialog
       // découpe lui-même son contenu au shape — radius uniforme sur
       // les 4 coins (demande utilisateur 2026-05-04).
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         width: 800,
@@ -662,10 +731,14 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(
-                              color: kBrandPurple, width: 1.5),
+                            color: kBrandPurple,
+                            width: 1.5,
+                          ),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 12),
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                       ),
                       onChanged: (v) => setState(() => _search = v),
                     ),
@@ -686,14 +759,13 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                       padding: const EdgeInsets.all(16),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 0.85,
-                      ),
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 0.85,
+                          ),
                       itemCount: filtered.length,
-                      itemBuilder: (context, i) =>
-                          _buildTile(filtered[i]),
+                      itemBuilder: (context, i) => _buildTile(filtered[i]),
                     ),
             ),
           ],
@@ -731,19 +803,22 @@ class _WikiPickerDialogState extends State<_WikiPickerDialog> {
                         url: resolveMediaUrl(it.imageUrl),
                         fit: BoxFit.cover,
                         errorWidget: const Center(
-                          child: Icon(Icons.image_outlined,
-                              color: Color(0xFF8A939D)),
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: Color(0xFF8A939D),
+                          ),
                         ),
                       )
                     : const Center(
-                        child: Icon(Icons.image_outlined,
-                            color: Color(0xFF8A939D)),
+                        child: Icon(
+                          Icons.image_outlined,
+                          color: Color(0xFF8A939D),
+                        ),
                       ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Text(
                 it.title,
                 maxLines: 2,
@@ -894,10 +969,7 @@ class _DraggableRecoSlot extends StatelessWidget {
         final highlight = Container(
           decoration: isHovered
               ? BoxDecoration(
-                  border: Border.all(
-                    color: kBrandPurple,
-                    width: 2,
-                  ),
+                  border: Border.all(color: kBrandPurple, width: 2),
                   borderRadius: BorderRadius.circular(16),
                 )
               : null,
@@ -1002,17 +1074,15 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
               const SizedBox(height: 4),
               Text(
                 widget.title,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF5C6670),
-                ),
+                style: const TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
               ),
               const SizedBox(height: 12),
               Flexible(
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: widget.descriptions.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 8),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 8),
                   itemBuilder: (context, i) {
                     final selected = _selectedIndexes.contains(i);
                     return InkWell(
@@ -1034,9 +1104,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                               : Colors.white,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: selected
-                                ? kBrandPurple
-                                : Color(0xFFB9C0C7),
+                            color: selected ? kBrandPurple : Color(0xFFB9C0C7),
                           ),
                         ),
                         child: Row(
@@ -1047,9 +1115,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                               height: 20,
                               margin: const EdgeInsets.only(top: 1),
                               decoration: BoxDecoration(
-                                color: selected
-                                    ? kBrandPurple
-                                    : Colors.white,
+                                color: selected ? kBrandPurple : Colors.white,
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
                                   color: selected
@@ -1059,8 +1125,11 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                                 ),
                               ),
                               child: selected
-                                  ? const Icon(Icons.check,
-                                      size: 14, color: Colors.white)
+                                  ? const Icon(
+                                      Icons.check,
+                                      size: 14,
+                                      color: Colors.white,
+                                    )
                                   : null,
                             ),
                             const SizedBox(width: 12),
