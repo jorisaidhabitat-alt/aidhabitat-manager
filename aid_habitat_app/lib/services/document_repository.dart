@@ -25,7 +25,7 @@ class DocumentRepository {
       'documents',
       where: 'patient_local_id = ? AND pending_delete = 0',
       whereArgs: [patientId],
-      orderBy: 'created_at DESC',
+      orderBy: 'updated_at DESC, created_at DESC',
     );
 
     return rows.map(_mapRow).toList();
@@ -300,10 +300,13 @@ class DocumentRepository {
       if (existing.isNotEmpty) {
         preservedFields = {
           'annotations_json': existing.first['annotations_json'],
-          // On préserve le `created_at` initial pour que le doc reste
-          // à sa place dans la liste triée par création (sinon il
-          // remonte en haut à chaque regénération).
-          'created_at': existing.first['created_at'],
+          // Les rapports doivent afficher la date de dernière
+          // génération. Les autres documents déterministes gardent leur
+          // date de création initiale.
+          if (!tags.any(
+            (tag) => tag.trim().toLowerCase() == 'rapport',
+          ))
+            'created_at': existing.first['created_at'],
         };
       }
     }
@@ -1346,6 +1349,11 @@ class DocumentRepository {
     final type = _typeForExtension(ext);
     final rawTags = row['tags_json'] as String? ?? '[]';
     final decodedTags = (jsonDecode(rawTags) as List<dynamic>).cast<String>();
+    final isReport = decodedTags.any(
+      (tag) => tag.trim().toLowerCase() == 'rapport',
+    );
+    final createdAt = row['created_at'] as String;
+    final updatedAt = row['updated_at'] as String? ?? createdAt;
 
     return DocItem(
       id: row['local_id'] as String,
@@ -1353,7 +1361,7 @@ class DocumentRepository {
       name: row['file_name'] as String,
       title: row['title'] as String,
       url: row['remote_public_url'] as String?,
-      date: row['created_at'] as String,
+      date: isReport ? updatedAt : createdAt,
       localPath: row['local_file_path'] as String?,
       // Web-only: the freshly captured bytes as a data URL. Populated by
       // `importDocumentBytes` on web and cleared once the sync processor

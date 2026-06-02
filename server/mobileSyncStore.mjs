@@ -522,6 +522,10 @@ const buildDocumentPayload = (document, absoluteUrl, mode) => {
   };
 };
 
+const hasReportTag = (tags) => asArray(tags).some(
+  (tag) => stringValue(tag).trim().toLowerCase() === 'rapport',
+);
+
 const buildNotePagePayload = (notePage, absoluteUrl) => ({
   id: notePage.id,
   patientId: notePage.patientId,
@@ -1088,25 +1092,32 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     });
 
     return records
-      .map((record) => ({
-        id: stringValue(field(record, 'uuid_source') || record.id),
-        patientId: stringValue(field(record, 'beneficiaire_id')),
-        dossierId: stringValue(field(record, 'dossier_id')) || null,
-        clientDocumentId: stringValue(field(record, 'client_document_id')),
-        patientFirstName: stringValue(field(record, 'beneficiaire_prenom')),
-        patientLastName: stringValue(field(record, 'beneficiaire_nom')),
-        patientDisplayName: stringValue(field(record, 'beneficiaire_nom_complet')),
-        dossierLabel: stringValue(field(record, 'dossier_libelle')),
-        title: stringValue(field(record, 'titre')),
-        fileName: stringValue(field(record, 'nom_fichier')),
-        mimeType: normalizeMimeType(
-          stringValue(field(record, 'mime_type')),
-          stringValue(field(record, 'nom_fichier')),
-        ),
-        tags: safeParseJsonArray(field(record, 'tags_json')),
-        createdAt: stringValue(field(record, 'created_at')) || new Date().toISOString(),
-        updatedAt: stringValue(field(record, 'updated_at')) || stringValue(field(record, 'created_at')) || new Date().toISOString(),
-      }))
+      .map((record) => {
+        const tags = safeParseJsonArray(field(record, 'tags_json'));
+        const updatedAt = stringValue(field(record, 'updated_at')) || stringValue(field(record, 'created_at')) || new Date().toISOString();
+        const createdAt = hasReportTag(tags)
+          ? updatedAt
+          : stringValue(field(record, 'created_at')) || updatedAt;
+        return {
+          id: stringValue(field(record, 'uuid_source') || record.id),
+          patientId: stringValue(field(record, 'beneficiaire_id')),
+          dossierId: stringValue(field(record, 'dossier_id')) || null,
+          clientDocumentId: stringValue(field(record, 'client_document_id')),
+          patientFirstName: stringValue(field(record, 'beneficiaire_prenom')),
+          patientLastName: stringValue(field(record, 'beneficiaire_nom')),
+          patientDisplayName: stringValue(field(record, 'beneficiaire_nom_complet')),
+          dossierLabel: stringValue(field(record, 'dossier_libelle')),
+          title: stringValue(field(record, 'titre')),
+          fileName: stringValue(field(record, 'nom_fichier')),
+          mimeType: normalizeMimeType(
+            stringValue(field(record, 'mime_type')),
+            stringValue(field(record, 'nom_fichier')),
+          ),
+          tags,
+          createdAt,
+          updatedAt,
+        };
+      })
       .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
       .map((document) => buildDocumentPayload(document, absoluteUrl, 'nocodb'));
   },
@@ -1167,6 +1178,8 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     const now = new Date().toISOString();
     const storedInlineContent = base64.length <= MAX_NOCODB_LONG_TEXT_LENGTH ? base64 : '';
     const beneficiary = normalizeBeneficiaryMetadata({ patientFirstName, patientLastName, patientDisplayName, dossierLabel, dossierId });
+    const resolvedTags = tags.length > 0 ? tags : ['Autre'];
+    const isReport = hasReportTag(resolvedTags);
     if (existing) {
       await updateRecord(documentsTableId, existing.id, {
         dossier_id: dossierId || null,
@@ -1178,8 +1191,9 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         titre: title,
         nom_fichier: fileName,
         mime_type: resolvedMimeType,
-        tags_json: JSON.stringify(tags.length > 0 ? tags : ['Autre']),
+        tags_json: JSON.stringify(resolvedTags),
         contenu_base64: storedInlineContent,
+        ...(isReport ? { created_at: now } : {}),
         updated_at: now,
       });
 
@@ -1215,8 +1229,8 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         title,
         fileName,
         mimeType: resolvedMimeType,
-        tags: tags.length > 0 ? tags : ['Autre'],
-        createdAt: stringValue(field(existing, 'created_at')),
+        tags: resolvedTags,
+        createdAt: isReport ? now : stringValue(field(existing, 'created_at')),
         updatedAt: now,
       }, absoluteUrl, 'nocodb');
     }
@@ -1234,7 +1248,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       titre: title,
       nom_fichier: fileName,
       mime_type: resolvedMimeType,
-      tags_json: JSON.stringify(tags.length > 0 ? tags : ['Autre']),
+      tags_json: JSON.stringify(resolvedTags),
       contenu_base64: storedInlineContent,
       created_at: now,
       updated_at: now,
@@ -1263,7 +1277,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       title,
       fileName,
       mimeType: resolvedMimeType,
-      tags: tags.length > 0 ? tags : ['Autre'],
+      tags: resolvedTags,
       createdAt: now,
       updatedAt: now,
     }, absoluteUrl, 'nocodb');
