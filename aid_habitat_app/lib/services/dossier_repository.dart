@@ -2070,57 +2070,37 @@ class DossierRepository {
     return Map<String, dynamic>.from(housing.first);
   }
 
-  /// Colonnes booléennes du logement (SQLite INTEGER 0/1) qui DOIVENT
-  /// être re-poussées à chaque save pour auto-réparer la corruption
-  /// silencieuse côté NocoDB.
-  ///
-  /// Audit 2026-05-15 (bug Girard Suzanne) : un bug serveur
-  /// `boolText(undefined) = "false"` écrasait tous les booléens absents
-  /// d'un PATCH partiel à `false`. Côté Flutter, le diff comparait avec
-  /// SQLite local (qui avait les bonnes valeurs) → disait « rien n'a
-  /// changé » → ne re-poussait jamais. NocoDB restait corrompu
-  /// indéfiniment. On force le re-push de TOUS ces bool depuis SQLite
-  /// à chaque save, indépendamment de ce que le caller a fourni dans
-  /// `fields`. Coût bande passante : ~22 bool × 8 bytes = ~200 B par
-  /// PATCH, négligeable. `easy_access` et `easy_access_set` sont
-  /// EXCLUS car ils gèrent un état tristate (oui/non/non renseigné)
-  /// dont le mapping serveur passe par `toBoolOrNull` : on n'écrase
-  /// pas le « non renseigné » légitime.
-  static const List<String> _kHousingBoolColumnsToAlwaysPush = [
-    'basement',
-    'rdc',
-    'floor',
-    'second_floor',
-    'third_floor',
-    'garage',
-    'veranda',
-    'balcon',
-    'terrasse',
-    'jardin',
-    'volets_roulants_manuels_entier',
-    'volets_roulants_electriques_entier',
-    'volets_persiennes_entier',
-    'cheminement_escalier_exterieur',
-    'cheminement_escalier_interieur',
-    'cheminement_pente_douce',
-    'cheminement_plat',
-    'cheminement_quelques_marches',
-    'cheminement_par_arriere',
-    'cheminement_seuil_porte',
+  static const List<String> _kHousingRoomBreakdownColumns = [
+    'basement_rooms_json',
+    'rdc_rooms_json',
+    'floor_rooms_json',
+    'second_floor_rooms_json',
+    'third_floor_rooms_json',
   ];
 
-  /// Champs texte/nombre du bloc Général qui alimentent directement le PDF.
-  /// On les re-pousse à chaque save logement comme les booléens ci-dessus :
-  /// si le local les possède déjà mais que NocoDB a été vidé par un ancien
-  /// PATCH partiel ou par une course de sync, le prochain save auto-répare
-  /// la base distante et évite un PDF sans années/surface/type.
-  static const List<String> _kHousingCriticalColumnsToAlwaysPush = [
-    'year_construction',
-    'year_habitation',
-    'surface',
-    'levels',
-    'typology',
-  ];
+  static void _expandChangedRoomBreakdownFields(
+    Map<String, dynamic> changedFields,
+    Map<String, dynamic> candidateFields,
+    Map<String, dynamic>? existingRow,
+  ) {
+    final roomChanged = _kHousingRoomBreakdownColumns.any(
+      changedFields.containsKey,
+    );
+    if (!roomChanged) return;
+
+    // L'API stocke les pièces des niveaux dans un seul JSON
+    // `roomsBreakdown`. Si un seul niveau change, on ajoute les autres
+    // niveaux inchangés pour éviter de remplacer le JSON distant par un
+    // objet partiel.
+    for (final col in _kHousingRoomBreakdownColumns) {
+      if (changedFields.containsKey(col)) continue;
+      if (candidateFields.containsKey(col)) {
+        changedFields[col] = candidateFields[col];
+      } else if (existingRow != null && existingRow.containsKey(col)) {
+        changedFields[col] = existingRow[col];
+      }
+    }
+  }
 
   Future<void> updateHousing(
     String dossierId,
@@ -2138,12 +2118,12 @@ class DossierRepository {
     final housingId = rows.first['housing_local_id'] as String;
     final now = DateTime.now().toIso8601String();
 
-    // Lecture row SQLite locale pour :
-    //  • diff des champs TEXT (volumineux → on évite la re-poussée
-    //    quand rien n'a changé)
-    //  • récupération des bool à RE-PUSHER systématiquement (auto-
-    //    réparation de la corruption serveur évoquée dans la doc de
-    //    `_kHousingBoolColumnsToAlwaysPush`)
+    // Lecture row SQLite locale pour calculer un vrai PATCH partiel.
+    // L'ancien code repoussait systématiquement les booléens et les
+    // champs critiques du logement à chaque save Accessibilité. C'était
+    // défensif après un ancien bug serveur, mais le serveur respecte
+    // maintenant `undefined` comme "ne pas toucher". On peut donc
+    // alléger fortement la sync sans risque d'effacer les champs absents.
     final existingRows = await db.query(
       'housings',
       where: 'local_id = ?',
@@ -2152,71 +2132,8 @@ class DossierRepository {
     );
     final existingRow = existingRows.isEmpty ? null : existingRows.first;
 
-    // Bool fields TOUJOURS pushés depuis l'état SQLite local.
-    // Si le caller (`fields`) en surcharge certains (ex: l'utilisateur
-    // vient de cocher/décocher), ses valeurs ont précédence — la row
-    // existante est juste le fallback pour les bool non touchés cette
-    // fois-ci.
-    final boolFieldsAlways = <String, dynamic>{};
-    if (existingRow != null) {
-      for (final col in _kHousingBoolColumnsToAlwaysPush) {
-        final localValue = existingRow[col];
-        if (localValue is int) {
-          boolFieldsAlways[col] = localValue == 1;
-        }
-      }
-      // `heating_details_json` (JSON Map<String,bool>) est aussi
-      // toujours re-poussé pour la même raison que les bool : un PATCH
-      // partiel serveur pré-fix 2026-05-15 pouvait écraser silencieuse-
-      // ment les types de chauffage à `false`. On lit le JSON SQLite
-      // local et on le force dans le payload — le mapper plus bas
-      // (`_mapHousingFieldsToApi`) le décodera en `heatingDetails:
-      // { electric, gas, oil, … }`. Si le caller fournit déjà cette
-      // clé, le forEach below l'écrasera donc on conserve la dernière
-      // intention utilisateur.
-      final heatingJson = existingRow['heating_details_json'];
-      if (heatingJson is String && heatingJson.isNotEmpty) {
-        boolFieldsAlways['heating_details_json'] = heatingJson;
-      }
-    }
-    // Override par les bool/heating du caller (action utilisateur fraîche).
-    fields.forEach((key, value) {
-      if (key == 'heating_details_json') {
-        boolFieldsAlways[key] = value;
-        return;
-      }
-      if (!_kHousingBoolColumnsToAlwaysPush.contains(key)) return;
-      if (value is bool) {
-        boolFieldsAlways[key] = value;
-      } else if (value is int && (value == 0 || value == 1)) {
-        boolFieldsAlways[key] = value == 1;
-      }
-    });
-
-    final criticalFieldsAlways = <String, dynamic>{};
-    for (final col in _kHousingCriticalColumnsToAlwaysPush) {
-      if (fields.containsKey(col)) {
-        criticalFieldsAlways[col] = fields[col];
-      } else if (existingRow != null && existingRow.containsKey(col)) {
-        criticalFieldsAlways[col] = existingRow[col];
-      }
-    }
-
-    // Diff des champs TEXT/INT-non-bool (économie bande passante).
-    final textFieldsToDiff = <String, dynamic>{};
-    fields.forEach((key, value) {
-      if (_kHousingBoolColumnsToAlwaysPush.contains(key)) return;
-      if (_kHousingCriticalColumnsToAlwaysPush.contains(key)) return;
-      if (key == 'heating_details_json') return; // déjà géré ci-dessus.
-      textFieldsToDiff[key] = value;
-    });
-    final changedTextFields = _diffAgainstRow(existingRow, textFieldsToDiff);
-
-    final changedFields = <String, dynamic>{
-      ...boolFieldsAlways,
-      ...criticalFieldsAlways,
-      ...changedTextFields,
-    };
+    final changedFields = _diffAgainstRow(existingRow, fields);
+    _expandChangedRoomBreakdownFields(changedFields, fields, existingRow);
 
     if (changedFields.isEmpty) {
       return; // rien n'a vraiment changé → no-op
