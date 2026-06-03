@@ -144,6 +144,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   bool _hasPendingSave = false;
   int _saveGeneration = 0;
   Future<void>? _saveInFlight;
+  Map<String, dynamic>? _lastSavedHousingSnapshot;
 
   /// ScrollController du formulaire — préserve la position de scroll
   /// entre les rebuilds de la sous-section Général.
@@ -485,6 +486,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     if (_annexes.contains('Garage')) _motorisationOrder.add('Garage');
     if (_portail) _motorisationOrder.add('Portail');
 
+    _lastSavedHousingSnapshot = _buildHousingSaveMap();
     if (mounted) setState(() => _loaded = true);
   }
 
@@ -606,10 +608,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return trimmed.isNotEmpty && _sanitizeYearForSave(trimmed).isEmpty;
   }
 
-  Future<void> _saveImpl() async {
-    if (!mounted) return;
-    // Pas de setState(_saving) — voir dossier_screen.dart pour le
-    // rationale (rebuild lourd inutile, indicateur visuel toujours vide).
+  Map<String, dynamic> _buildHousingSaveMap() {
     final heatingJson = <String, bool>{
       for (final opt in _heatingOptions) opt: _heatingTypes.contains(opt),
     };
@@ -693,7 +692,55 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       );
     }
 
-    await widget.repository.updateHousing(widget.dossier.id, map);
+    return map;
+  }
+
+  static bool _housingValueChanged(dynamic before, dynamic after) {
+    if (before is num && after is num) {
+      return before.toDouble() != after.toDouble();
+    }
+    final beforeText = before == null ? '' : before.toString();
+    final afterText = after == null ? '' : after.toString();
+    return beforeText != afterText;
+  }
+
+  Map<String, dynamic> _diffHousingSnapshot(
+    Map<String, dynamic>? before,
+    Map<String, dynamic> after,
+  ) {
+    if (before == null) return after;
+
+    final diff = <String, dynamic>{};
+    after.forEach((key, value) {
+      if (_housingValueChanged(before[key], value)) {
+        diff[key] = value;
+      }
+    });
+
+    final roomChanged = _kLevelConfigs.any(
+      (cfg) => diff.containsKey(cfg.roomsField),
+    );
+    if (roomChanged) {
+      for (final cfg in _kLevelConfigs) {
+        diff[cfg.roomsField] = after[cfg.roomsField];
+      }
+    }
+    return diff;
+  }
+
+  Future<void> _saveImpl() async {
+    if (!mounted) return;
+    // Pas de setState(_saving) — voir dossier_screen.dart pour le
+    // rationale (rebuild lourd inutile, indicateur visuel toujours vide).
+    final nextSnapshot = _buildHousingSaveMap();
+    final diff = _diffHousingSnapshot(
+      _lastSavedHousingSnapshot,
+      nextSnapshot,
+    );
+    if (diff.isEmpty) return;
+
+    await widget.repository.updateHousing(widget.dossier.id, diff);
+    _lastSavedHousingSnapshot = nextSnapshot;
     widget.onHousingChanged?.call();
   }
 
