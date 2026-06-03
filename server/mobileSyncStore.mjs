@@ -68,6 +68,11 @@ const NOTE_PAGES_STORE_URL = new URL('./data/note-pages-store.json', import.meta
 const asArray = (value) => Array.isArray(value) ? value : [];
 const field = (record, name) => record?.fields?.[name];
 const stringValue = (value) => value == null ? '' : String(value);
+const forbiddenNotePageAccessError = () => Object.assign(
+  new Error('Note hors bénéficiaire'),
+  { statusCode: 403 },
+);
+const sameId = (left, right) => String(left || '') === String(right || '');
 const safeParseJsonArray = (value) => {
   try {
     const parsed = JSON.parse(stringValue(value) || '[]');
@@ -492,6 +497,43 @@ const replaceDocumentChunks = async (documentChunksTableId, documentId, chunks, 
   );
 };
 
+const deleteDocumentChunks = async (documentChunksTableId, documentId) => {
+  const existingChunks = await listDocumentChunks(documentChunksTableId, documentId);
+  await Promise.all(existingChunks.map((chunkRecord) =>
+    deleteRecord(documentChunksTableId, chunkRecord.id),
+  ));
+};
+
+const createDocumentChunks = async (documentChunksTableId, documentId, chunks, metadata = {}) => {
+  const beneficiary = normalizeBeneficiaryMetadata(metadata);
+  const now = new Date().toISOString();
+  await Promise.all(
+    chunks.map((chunk, index) =>
+      createRecord(documentChunksTableId, {
+        uuid_source: crypto.randomUUID(),
+        document_uuid_source: String(documentId),
+        beneficiaire_id: stringValue(metadata.patientId),
+        dossier_id: stringValue(metadata.dossierId) || null,
+        beneficiaire_prenom: beneficiary.patientFirstName,
+        beneficiaire_nom: beneficiary.patientLastName,
+        beneficiaire_nom_complet: beneficiary.patientDisplayName,
+        dossier_libelle: beneficiary.dossierLabel,
+        chunk_index: index,
+        chunk_base64: chunk,
+        updated_at: now,
+      }),
+    ),
+  );
+};
+
+const listChunkDocumentIdsForPatient = async (documentChunksTableId, patientId) => {
+  const chunks = await queryAll(documentChunksTableId, {
+    fields: ['document_uuid_source', 'beneficiaire_id'],
+    where: `(beneficiaire_id,eq,${JSON.stringify(String(patientId))})`,
+  });
+  return new Set(chunks.map((chunk) => stringValue(field(chunk, 'document_uuid_source'))).filter(Boolean));
+};
+
 const buildDocumentPayload = (document, absoluteUrl, mode) => {
   const contentPath = mode === 'nocodb'
     ? `/api/mobile-documents/${encodeURIComponent(document.id)}/content`
@@ -767,9 +809,17 @@ const createLocalStoreAdapter = ({ absoluteUrl }) => ({
         ? applyBeneficiaryMetadataToNotePage(existingNotePage, { ...beneficiary, dossierId })
         : existingNotePage
     ));
+    if (notePageId) {
+      const noteWithSameId = store.notePages.find((notePage) => sameId(notePage.id, notePageId));
+      if (noteWithSameId && !sameId(noteWithSameId.patientId, patientId)) {
+        throw forbiddenNotePageAccessError();
+      }
+    }
+
     const existingIndex = store.notePages.findIndex((notePage) =>
-      (notePageId && String(notePage.id) === String(notePageId))
-      || (
+      notePageId
+        ? sameId(notePage.id, notePageId) && sameId(notePage.patientId, patientId)
+        : (
         String(notePage.patientId) === String(patientId)
         && String(notePage.scopeType || 'legacy') === String(scopeType || 'legacy')
         && String(notePage.scopeId || notePage.dossierId || notePage.patientId) === String(scopeId || dossierId || patientId)
@@ -814,11 +864,14 @@ const createLocalStoreAdapter = ({ absoluteUrl }) => ({
     return buildNotePagePayload(notePage, absoluteUrl);
   },
 
-  async deleteNotePage(notePageId) {
+  async deleteNotePage(notePageId, expectedPatientId = null) {
     const store = await readNotePagesStore();
     const existingIndex = store.notePages.findIndex((notePage) => String(notePage.id) === String(notePageId));
     if (existingIndex < 0) {
       return false;
+    }
+    if (expectedPatientId && !sameId(store.notePages[existingIndex].patientId, expectedPatientId)) {
+      throw forbiddenNotePageAccessError();
     }
     store.notePages.splice(existingIndex, 1);
     await writeNotePagesStore(store);
@@ -1087,11 +1140,28 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     }
 
     const records = await queryAll(documentsTableId, {
-      fields: ['uuid_source', 'beneficiaire_id', 'dossier_id', 'beneficiaire_prenom', 'beneficiaire_nom', 'beneficiaire_nom_complet', 'dossier_libelle', 'titre', 'nom_fichier', 'mime_type', 'tags_json', 'created_at', 'updated_at', 'client_document_id'],
+      fields: ['uuid_source', 'beneficiaire_id', 'dossier_id', 'beneficiaire_prenom', 'beneficiaire_nom', 'beneficiaire_nom_complet', 'dossier_libelle', 'titre', 'nom_fichier', 'mime_type', 'tags_json', 'contenu_base64', 'created_at', 'updated_at', 'client_document_id'],
       where: clauses.join('~and'),
     });
 
+    const chunkedDocumentIds = await listChunkDocumentIdsForPatient(
+      documentChunksTableId,
+      patientId,
+    );
+
     return records
+      .filter((record) => {
+        const documentId = stringValue(field(record, 'uuid_source') || record.id);
+        const inlineContent = stringValue(field(record, 'contenu_base64')).trim();
+        const hasContent = inlineContent.length > 0 || chunkedDocumentIds.has(documentId);
+        if (!hasContent) {
+          console.warn(
+            `[documents] document sans contenu masqué ` +
+            `(uuid=${documentId}, patient=${patientId}, fichier=${stringValue(field(record, 'nom_fichier'))})`,
+          );
+        }
+        return hasContent;
+      })
       .map((record) => {
         const tags = safeParseJsonArray(field(record, 'tags_json'));
         const updatedAt = stringValue(field(record, 'updated_at')) || stringValue(field(record, 'created_at')) || new Date().toISOString();
@@ -1180,45 +1250,66 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     const beneficiary = normalizeBeneficiaryMetadata({ patientFirstName, patientLastName, patientDisplayName, dossierLabel, dossierId });
     const resolvedTags = tags.length > 0 ? tags : ['Autre'];
     const isReport = hasReportTag(resolvedTags);
+    const chunkMetadata = {
+      patientId,
+      dossierId,
+      patientFirstName,
+      patientLastName,
+      patientDisplayName,
+      dossierLabel,
+    };
     if (existing) {
-      await updateRecord(documentsTableId, existing.id, {
-        dossier_id: dossierId || null,
-        beneficiaire_prenom: beneficiary.patientFirstName,
-        beneficiaire_nom: beneficiary.patientLastName,
-        beneficiaire_nom_complet: beneficiary.patientDisplayName,
-        dossier_libelle: beneficiary.dossierLabel,
-        client_document_id: documentLocalId || null,
-        titre: title,
-        nom_fichier: fileName,
-        mime_type: resolvedMimeType,
-        tags_json: JSON.stringify(resolvedTags),
-        contenu_base64: storedInlineContent,
-        ...(isReport ? { created_at: now } : {}),
-        updated_at: now,
-      });
+      const previousDocumentId = stringValue(field(existing, 'uuid_source') || existing.id);
+      // Nouvelle URL à chaque remplacement : évite de servir un ancien PDF
+      // depuis le cache web, et permet de préparer les chunks avant exposition.
+      const nextDocumentId = crypto.randomUUID();
+      const nextChunks = storedInlineContent ? [] : splitBase64IntoChunks(base64);
 
-      if (storedInlineContent) {
-        await replaceDocumentChunks(documentChunksTableId, stringValue(field(existing, 'uuid_source') || existing.id), [], {
-          patientId,
-          dossierId,
-          patientFirstName,
-          patientLastName,
-          patientDisplayName,
-          dossierLabel,
+      if (nextChunks.length > 0) {
+        await createDocumentChunks(
+          documentChunksTableId,
+          nextDocumentId,
+          nextChunks,
+          chunkMetadata,
+        );
+      }
+
+      try {
+        await updateRecord(documentsTableId, existing.id, {
+          uuid_source: nextDocumentId,
+          dossier_id: dossierId || null,
+          beneficiaire_prenom: beneficiary.patientFirstName,
+          beneficiaire_nom: beneficiary.patientLastName,
+          beneficiaire_nom_complet: beneficiary.patientDisplayName,
+          dossier_libelle: beneficiary.dossierLabel,
+          client_document_id: documentLocalId || null,
+          titre: title,
+          nom_fichier: fileName,
+          mime_type: resolvedMimeType,
+          tags_json: JSON.stringify(resolvedTags),
+          contenu_base64: storedInlineContent,
+          ...(isReport ? { created_at: now } : {}),
+          updated_at: now,
         });
-      } else {
-        await replaceDocumentChunks(documentChunksTableId, stringValue(field(existing, 'uuid_source') || existing.id), splitBase64IntoChunks(base64), {
-          patientId,
-          dossierId,
-          patientFirstName,
-          patientLastName,
-          patientDisplayName,
-          dossierLabel,
+      } catch (error) {
+        if (nextChunks.length > 0) {
+          await deleteDocumentChunks(documentChunksTableId, nextDocumentId).catch(() => undefined);
+        }
+        throw error;
+      }
+
+      if (previousDocumentId && previousDocumentId !== nextDocumentId) {
+        await deleteDocumentChunks(documentChunksTableId, previousDocumentId).catch((error) => {
+          console.warn(
+            `[documents] purge anciens chunks échouée ` +
+            `(uuid=${previousDocumentId}) :`,
+            error?.message || error,
+          );
         });
       }
 
       return buildDocumentPayload({
-        id: stringValue(field(existing, 'uuid_source') || existing.id),
+        id: nextDocumentId,
         patientId,
         dossierId: dossierId || null,
         clientDocumentId: stringValue(documentLocalId || ''),
@@ -1236,33 +1327,40 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     }
 
     const documentId = crypto.randomUUID();
-    const created = await createRecord(documentsTableId, {
-      uuid_source: documentId,
-      beneficiaire_id: patientId,
-      dossier_id: dossierId || null,
-      beneficiaire_prenom: beneficiary.patientFirstName,
-      beneficiaire_nom: beneficiary.patientLastName,
-      beneficiaire_nom_complet: beneficiary.patientDisplayName,
-      dossier_libelle: beneficiary.dossierLabel,
-      client_document_id: documentLocalId || null,
-      titre: title,
-      nom_fichier: fileName,
-      mime_type: resolvedMimeType,
-      tags_json: JSON.stringify(resolvedTags),
-      contenu_base64: storedInlineContent,
-      created_at: now,
-      updated_at: now,
-    });
+    const chunks = storedInlineContent ? [] : splitBase64IntoChunks(base64);
+    if (chunks.length > 0) {
+      await createDocumentChunks(
+        documentChunksTableId,
+        documentId,
+        chunks,
+        chunkMetadata,
+      );
+    }
 
-    if (!storedInlineContent) {
-      await replaceDocumentChunks(documentChunksTableId, documentId, splitBase64IntoChunks(base64), {
-        patientId,
-        dossierId,
-        patientFirstName,
-        patientLastName,
-        patientDisplayName,
-        dossierLabel,
+    let created;
+    try {
+      created = await createRecord(documentsTableId, {
+        uuid_source: documentId,
+        beneficiaire_id: patientId,
+        dossier_id: dossierId || null,
+        beneficiaire_prenom: beneficiary.patientFirstName,
+        beneficiaire_nom: beneficiary.patientLastName,
+        beneficiaire_nom_complet: beneficiary.patientDisplayName,
+        dossier_libelle: beneficiary.dossierLabel,
+        client_document_id: documentLocalId || null,
+        titre: title,
+        nom_fichier: fileName,
+        mime_type: resolvedMimeType,
+        tags_json: JSON.stringify(resolvedTags),
+        contenu_base64: storedInlineContent,
+        created_at: now,
+        updated_at: now,
       });
+    } catch (error) {
+      if (chunks.length > 0) {
+        await deleteDocumentChunks(documentChunksTableId, documentId).catch(() => undefined);
+      }
+      throw error;
     }
 
     return buildDocumentPayload({
@@ -1520,13 +1618,22 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     patientDisplayName,
     dossierLabel,
   }) {
-    const where = notePageId
-      ? `(uuid_source,eq,${JSON.stringify(String(notePageId))})`
-      : `(beneficiaire_id,eq,${JSON.stringify(String(patientId))})~and(scope_type,eq,${JSON.stringify(String(scopeType || 'legacy'))})~and(scope_id,eq,${JSON.stringify(String(scopeId || dossierId || patientId))})~and(tab_key,eq,${JSON.stringify(String(tabKey))})~and(sub_tab_key,eq,${JSON.stringify(String(subTabKey || ''))})~and(page_number,eq,${Number(pageNumber)})`;
-    const existing = latestRecord(await queryAll(notePagesTableId, {
-      fields: await getNotePageFields(),
-      where,
-    }));
+    const notePageFields = await getNotePageFields();
+    let existing = null;
+    if (notePageId) {
+      existing = latestRecord(await queryAll(notePagesTableId, {
+        fields: notePageFields,
+        where: `(uuid_source,eq,${JSON.stringify(String(notePageId))})`,
+      }));
+      if (existing && !sameId(field(existing, 'beneficiaire_id'), patientId)) {
+        throw forbiddenNotePageAccessError();
+      }
+    } else {
+      existing = latestRecord(await queryAll(notePagesTableId, {
+        fields: notePageFields,
+        where: `(beneficiaire_id,eq,${JSON.stringify(String(patientId))})~and(scope_type,eq,${JSON.stringify(String(scopeType || 'legacy'))})~and(scope_id,eq,${JSON.stringify(String(scopeId || dossierId || patientId))})~and(tab_key,eq,${JSON.stringify(String(tabKey))})~and(sub_tab_key,eq,${JSON.stringify(String(subTabKey || ''))})~and(page_number,eq,${Number(pageNumber)})`,
+      }));
+    }
 
     const now = new Date().toISOString();
     const beneficiary = normalizeBeneficiaryMetadata({ patientFirstName, patientLastName, patientDisplayName, dossierLabel, dossierId });
@@ -1666,13 +1773,16 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     }, absoluteUrl);
   },
 
-  async deleteNotePage(notePageId) {
+  async deleteNotePage(notePageId, expectedPatientId = null) {
     const existing = latestRecord(await queryAll(notePagesTableId, {
-      fields: ['uuid_source'],
+      fields: ['uuid_source', 'beneficiaire_id'],
       where: `(uuid_source,eq,${JSON.stringify(String(notePageId))})`,
     }));
     if (!existing) {
       return false;
+    }
+    if (expectedPatientId && !sameId(field(existing, 'beneficiaire_id'), expectedPatientId)) {
+      throw forbiddenNotePageAccessError();
     }
     await deleteRecord(notePagesTableId, existing.id);
     return true;
@@ -1995,9 +2105,9 @@ export const createMobileSyncStore = ({ absoluteUrl }) => {
       return adapter.upsertNotePage(payload);
     },
 
-    async deleteNotePage(notePageId) {
+    async deleteNotePage(notePageId, expectedPatientId = null) {
       const adapter = await getAdapter();
-      return adapter.deleteNotePage(notePageId);
+      return adapter.deleteNotePage(notePageId, expectedPatientId);
     },
 
     async syncNotePagesBeneficiaryMetadata(patientId, metadata) {
