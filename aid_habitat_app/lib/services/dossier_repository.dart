@@ -190,23 +190,36 @@ class DossierRepository {
     final now = DateTime.now().toIso8601String();
 
     final dbUpdates = <String, dynamic>{'updated_at': now};
-    if (updates.containsKey('firstName'))
+    if (updates.containsKey('firstName')) {
       dbUpdates['first_name'] = updates['firstName'];
-    if (updates.containsKey('lastName'))
+    }
+    if (updates.containsKey('lastName')) {
       dbUpdates['last_name'] = updates['lastName'];
-    if (updates.containsKey('phone')) dbUpdates['phone'] = updates['phone'];
-    if (updates.containsKey('email')) dbUpdates['email'] = updates['email'];
-    if (updates.containsKey('address'))
+    }
+    if (updates.containsKey('phone')) {
+      dbUpdates['phone'] = updates['phone'];
+    }
+    if (updates.containsKey('email')) {
+      dbUpdates['email'] = updates['email'];
+    }
+    if (updates.containsKey('address')) {
       dbUpdates['address'] = updates['address'];
-    if (updates.containsKey('city')) dbUpdates['city'] = updates['city'];
-    if (updates.containsKey('zipCode'))
+    }
+    if (updates.containsKey('city')) {
+      dbUpdates['city'] = updates['city'];
+    }
+    if (updates.containsKey('zipCode')) {
       dbUpdates['zip_code'] = updates['zipCode'];
-    if (updates.containsKey('birthDate'))
+    }
+    if (updates.containsKey('birthDate')) {
       dbUpdates['birth_date'] = updates['birthDate'];
-    if (updates.containsKey('familySituation'))
+    }
+    if (updates.containsKey('familySituation')) {
       dbUpdates['family_situation'] = updates['familySituation'];
-    if (updates.containsKey('incomeCategory'))
+    }
+    if (updates.containsKey('incomeCategory')) {
       dbUpdates['income_category'] = updates['incomeCategory'];
+    }
 
     // Only update sync_state if currently synced — don't overwrite localOnly
     final currentRows = await db.query(

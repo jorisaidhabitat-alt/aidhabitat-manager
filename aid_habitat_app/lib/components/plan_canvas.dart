@@ -1225,121 +1225,6 @@ class _PlanCanvasState extends State<PlanCanvas> {
   // (Ancien pill d'épaisseur [− | N | +] retiré — remplacé par le
   // popover flottant activé au 2e tap sur un outil de tracé.)
 
-  // Menu "Insérer un élément" — ouvre un overlay custom en grille 3
-  // colonnes au lieu du PopupMenu linéaire natif.
-  final GlobalKey _insertMenuKey = GlobalKey();
-
-  Widget _buildInsertSymbolMenu() {
-    // Bouton compact — largeur ajustée au contenu (IntrinsicWidth) pour
-    // ne pas monopoliser la ligne dans le Wrap de la toolbar. Reste
-    // reconnaissable (fond teal + chevron) mais tient au même niveau
-    // que les autres outils (gomme, crayon, rectangle…).
-    return IntrinsicWidth(
-      child: GestureDetector(
-        key: _insertMenuKey,
-        onTap: _openInsertSymbolOverlay,
-        child: Tooltip(
-          message: 'Insérer un élément',
-          child: Container(
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _kTeal,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(LucideIcons.plus, size: 14, color: Colors.white),
-                SizedBox(width: 6),
-                Text(
-                  'Insérer',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(width: 2),
-                Icon(LucideIcons.chevronDown, size: 12, color: Colors.white),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openInsertSymbolOverlay() async {
-    final ctx = _insertMenuKey.currentContext;
-    if (ctx == null) return;
-    final RenderBox button = ctx.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(
-          Offset(0, button.size.height + 6),
-          ancestor: overlay,
-        ),
-        button.localToGlobal(
-          button.size.bottomRight(Offset.zero) + const Offset(0, 6),
-          ancestor: overlay,
-        ),
-      ),
-      Offset.zero & overlay.size,
-    );
-    final tool = await showMenu<PlanTool>(
-      context: context,
-      position: position,
-      color: Colors.white,
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      items: [
-        PopupMenuItem<PlanTool>(
-          enabled: false,
-          padding: EdgeInsets.zero,
-          child: _SymbolGridMenu(
-            onPick: (t) => Navigator.of(context).pop(t),
-          ),
-        ),
-      ],
-    );
-    if (tool != null) _insertSymbolAtCenter(tool);
-  }
-
-  Widget _sizeStepButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback? onTap,
-  }) {
-    final enabled = onTap != null;
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 28,
-          height: 28,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF2F4F6),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            icon,
-            size: 14,
-            color: enabled
-                ? const Color(0xFF2B323A)
-                : const Color(0xFFB9C0C7),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _toolBtn(PlanTool tool, IconData icon, String label) {
     // Bouton rond (cercle plein quand l'outil est actif), tooltip au
     // survol. Un 2e tap sur un outil crayon / surligneur déjà actif
@@ -1417,58 +1302,6 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
-  Widget _colorDot(int color) {
-    final active = _penColor == color;
-    return GestureDetector(
-      onTap: () => setState(() => _penColor = color),
-      child: Container(
-        width: 22,
-        height: 22,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        decoration: BoxDecoration(
-          color: Color(color),
-          shape: BoxShape.circle,
-          border: active
-              ? Border.all(color: Color(0xFF0E1116), width: 2)
-              : null,
-        ),
-      ),
-    );
-  }
-
-  /// Bouton "autre couleur" qui ouvre un sélecteur de couleur libre
-  /// (parité avec `<input type="color">` de la version React).
-  Widget _customColorDot() {
-    final isCustom = !_presetColors.contains(_penColor);
-    return Tooltip(
-      message: 'Autre couleur',
-      child: GestureDetector(
-        onTap: _pickCustomColor,
-        child: Container(
-          width: 22,
-          height: 22,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: isCustom ? Color(_penColor) : Colors.white,
-            shape: BoxShape.circle,
-            gradient: isCustom
-                ? null
-                : const SweepGradient(
-                    colors: [
-                      Color(0xFFE53E3E),
-                      Color(0xFFD69E2E),
-                      Color(0xFF2F855A),
-                      Color(0xFF2B6CB0),
-                      Color(0xFF805AD5),
-                      Color(0xFFE53E3E),
-                    ],
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _pickCustomColor() async {
     final picked = await showSoftDialog<int>(
       context: context,
@@ -1477,15 +1310,6 @@ class _PlanCanvasState extends State<PlanCanvas> {
     if (picked != null) {
       setState(() => _penColor = picked);
     }
-  }
-
-  Widget _divider() {
-    return Container(
-      width: 1,
-      height: 20,
-      color: Color(0xFFE4E7EB),
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-    );
   }
 
   Widget _buildCanvas() {
@@ -1557,39 +1381,6 @@ class _PlanCanvasState extends State<PlanCanvas> {
             ],
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildDeletePageFab() {
-    return Tooltip(
-      message: 'Supprimer la page',
-      child: Material(
-        color: Colors.white,
-        shape: const CircleBorder(),
-        elevation: 3,
-        shadowColor: Colors.black26,
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: widget.onDeletePage,
-          child: Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFFFCA5A5),
-                width: 1,
-              ),
-            ),
-            child: const Icon(
-              LucideIcons.fileX,
-              size: 20,
-              color: Color(0xFFB91C1C),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1912,68 +1703,6 @@ enum _SymbolHandle {
   rightMid,
   rotate,
   body,
-}
-
-/// Grille 3 colonnes affichée dans un PopupMenuItem unique pour le menu
-/// "Insérer un élément".
-class _SymbolGridMenu extends StatelessWidget {
-  const _SymbolGridMenu({required this.onPick});
-  final ValueChanged<PlanTool> onPick;
-
-  static const List<({PlanTool tool, IconData icon, String label})> _items = [
-    (tool: PlanTool.window, icon: LucideIcons.appWindow, label: 'Fenêtre'),
-    (tool: PlanTool.door, icon: LucideIcons.doorOpen, label: 'Porte'),
-    (tool: PlanTool.toilet, icon: LucideIcons.armchair, label: 'WC'),
-    (tool: PlanTool.shower, icon: LucideIcons.droplets, label: 'Douche'),
-    (tool: PlanTool.bath, icon: LucideIcons.bath, label: 'Baignoire'),
-    (tool: PlanTool.sink, icon: LucideIcons.hand, label: 'Lavabo'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 280,
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: _items.map((item) {
-            return SizedBox(
-              width: (280 - 16 - 12) / 3, // 3 colonnes
-              height: 72,
-              child: InkWell(
-                onTap: () => onPick(item.tool),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F4F6),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(item.icon,
-                          size: 22, color: const Color(0xFF2B323A)),
-                      const SizedBox(height: 6),
-                      Text(
-                        item.label,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0E1116),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
 }
 
 /// Painter overlay qui dessine les 4 poignées de coin + la flèche de

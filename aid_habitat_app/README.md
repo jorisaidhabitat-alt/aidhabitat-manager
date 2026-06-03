@@ -83,3 +83,30 @@ Limites actuelles:
 - les documents et notes transitent encore par un stockage serveur local derrière l'API Express, pas par des tables NocoDB dédiées
 - le `pull` distant ramène aujourd'hui surtout les dossiers; l'import descendant des documents et notes reste à compléter
 - la base SQLite mobile reconstruit encore son schéma lors d'un upgrade majeur
+
+## Easypanel et apps stores
+
+Le backend actuel sur Easypanel est compatible avec une publication App Store
+/ Play Store, tant que l'application mobile pointe vers une API HTTPS stable.
+
+En pratique:
+
+- la migration mobile ne force pas de changement d'hebergement
+- l'app Flutter native peut continuer a consommer l'API Aid'Habitat
+  derriere Easypanel
+- les vrais sujets "store" sont surtout la signature, la qualite mobile,
+  les metadonnees de publication et les prerequis Apple / Google
+
+## Blocages release constates localement
+
+Au 2026-06-03, le preflight natif (`tool/release_preflight.sh`) remonte
+encore les points suivants avant une vraie archive TestFlight / Play Store:
+
+- espace disque local insuffisant pour les archives iOS/Android
+- certificat Apple Distribution absent du trousseau
+- `DEVELOPMENT_TEAM` non configure dans le projet iOS
+- Java 25 installe localement au lieu d'un JDK 17/21 recommande
+- `android/key.properties` absent, donc pas de signature Android release
+
+Ces points ne remettent pas en cause l'architecture mobile. Ils bloquent
+simplement la production d'un binaire store signe depuis cette machine.

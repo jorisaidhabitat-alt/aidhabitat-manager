@@ -30,7 +30,19 @@
     <application
         android:label="App'Ergo"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false">
+        <!--
+          Donnees metier sensibles stockees localement : on interdit les
+          backups Android automatiques tant qu'une politique de restauration
+          chiffree et maitrisee n'est pas definie.
+
+          Le cleartext HTTP est refuse sur le binaire principal pour aligner
+          Android avec la contrainte HTTPS deja appliquee aux builds natifs
+          release cote Flutter/AppConfig. Le mode debug re-autorise le
+          cleartext pour les environnements locaux de developpement.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
