@@ -299,19 +299,6 @@ class _BathroomTabState extends State<BathroomTab>
         sdbBaignoireHauteur: next ? a.sdbBaignoireHauteur : null));
   }
 
-  void _setEquipmentEnabled(_EquipDef def, bool checked) {
-    final a = _active;
-    if (a == null) return;
-    _updateActive(_setEquipmentOnInstance(a, def.enabledField,
-        enabled: checked, clearHeight: !checked));
-  }
-
-  void _setEquipmentHeight(_EquipDef def, double? v) {
-    final a = _active;
-    if (a == null) return;
-    _updateActive(_setEquipmentOnInstance(a, def.enabledField, height: v));
-  }
-
   /// Applies a multi-select delta for the complementary-equipment dropdown:
   /// enables every field whose label is in [nextLabels] and disables the
   /// rest (clearing any stored height, since height isn't asked for the
@@ -756,28 +743,6 @@ class _BathroomTabState extends State<BathroomTab>
     return false;
   }
 
-  double? _getEquipmentHeight(BathroomInstance i, String field) {
-    switch (field) {
-      case 'sdbBaignoire':
-        return i.sdbBaignoireHauteur;
-      case 'sdbBacDouche':
-        return i.sdbBacDoucheHauteur;
-      case 'sdbParoiDouche':
-        return i.sdbParoiDoucheHauteur;
-      case 'sdbVasqueSuspendue':
-        return i.sdbVasqueSuspendueHauteur;
-      case 'sdbVasqueColonne':
-        return i.sdbVasqueColonneHauteur;
-      case 'sdbMeubleVasque':
-        return i.sdbMeubleVasqueHauteur;
-      case 'sdbBidet':
-        return i.sdbBidetHauteur;
-      case 'sdbMachineALaver':
-        return i.sdbMachineALaverHauteur;
-    }
-    return null;
-  }
-
   BathroomInstance _setEquipmentOnInstance(
     BathroomInstance i,
     String field, {
@@ -984,84 +949,6 @@ class _WetZoneButton extends StatelessWidget {
                 : const Color(0xFF2B323A), // ink-700
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _MeasuredOptionCard extends StatelessWidget {
-  final String label;
-  final bool checked;
-  final double? value;
-  final ValueChanged<bool> onToggle;
-  final ValueChanged<double?> onValueChange;
-
-  const _MeasuredOptionCard({
-    required this.label,
-    required this.checked,
-    required this.value,
-    required this.onToggle,
-    required this.onValueChange,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: checked ? const Color(0xFFF2ECF5) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            onTap: () => onToggle(!checked),
-            child: Row(
-              children: [
-                Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: checked
-                        ? kBrandPurple
-                        : Colors.white,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.check,
-                    size: 13,
-                    color: checked ? Colors.white : Colors.transparent,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: checked
-                          ? const Color(0xFF554265)
-                          : const Color(0xFF2B323A),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (checked) ...[
-            const SizedBox(height: 10),
-            FormNumberField(
-              label: 'Hauteur',
-              value: value,
-              unit: 'cm',
-              onChanged: onValueChange,
-            ),
-          ],
-        ],
       ),
     );
   }
