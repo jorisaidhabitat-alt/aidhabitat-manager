@@ -16,6 +16,7 @@
     "storage:readiness": "node tools/analyze-object-storage-readiness.mjs",
     "staging:snapshot": "node tools/create-staging-snapshot.mjs",
     "staging:export-import-batches": "node tools/export-nocodb-import-batches.mjs",
+    "commercial:preflight": "node tools/run-commercial-readiness-check.mjs",
     "test:pdf": "node tools/generate-test-report.mjs",
     "test:flutter": "bash aid_habitat_app/tool/test_safely.sh",
     "start": "node server/index.mjs",

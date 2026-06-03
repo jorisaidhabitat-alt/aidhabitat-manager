@@ -87,6 +87,7 @@ Scripts existants :
 - `tools/analyze-object-storage-readiness.mjs` : audit fichiers lourds.
 - `tools/create-staging-snapshot.mjs` : snapshot staging léger.
 - `tools/export-nocodb-import-batches.mjs` : lots d'import staging.
+- `tools/run-commercial-readiness-check.mjs` : preflight global non destructif.
 
 Exemple :
 
@@ -97,11 +98,16 @@ node tools/plan-nocodb-restore.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.g
 node tools/analyze-object-storage-readiness.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 node tools/create-staging-snapshot.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/staging-snapshot.json.gz
 node tools/export-nocodb-import-batches.mjs tmp/staging-snapshot.json.gz tmp/staging-import-batches
+node tools/run-commercial-readiness-check.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/commercial-readiness
 ```
 
 La vérification prouve que le fichier est exploitable. Le plan de restauration
 prouve qu'on sait estimer l'effort de récupération sans toucher à la production.
 L'audit stockage objet chiffre ce qui devra sortir progressivement de NocoDB.
+
+Le preflight global doit passer avant toute opération sensible. Il ne modifie
+pas NocoDB : il orchestre les vérifications, génère un staging local, prépare
+les lots d'import, valide leur forme, lance les contrôles critiques et le build.
 
 ## Migration fichiers
 
