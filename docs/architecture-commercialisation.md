@@ -88,6 +88,7 @@ Scripts existants :
 - `tools/create-staging-snapshot.mjs` : snapshot staging léger.
 - `tools/export-nocodb-import-batches.mjs` : lots d'import staging.
 - `tools/run-commercial-readiness-check.mjs` : preflight global non destructif.
+- `tools/audit-nocodb-api-usage.mjs` : audit dépendances NocoDB API.
 
 Exemple :
 
@@ -99,6 +100,7 @@ node tools/analyze-object-storage-readiness.mjs backups/aidhabitat-YYYY-MM-DD_HH
 node tools/create-staging-snapshot.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/staging-snapshot.json.gz
 node tools/export-nocodb-import-batches.mjs tmp/staging-snapshot.json.gz tmp/staging-import-batches
 node tools/run-commercial-readiness-check.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/commercial-readiness
+node tools/audit-nocodb-api-usage.mjs tmp/nocodb-api-audit.md
 ```
 
 La vérification prouve que le fichier est exploitable. Le plan de restauration
@@ -108,6 +110,7 @@ L'audit stockage objet chiffre ce qui devra sortir progressivement de NocoDB.
 Le preflight global doit passer avant toute opération sensible. Il ne modifie
 pas NocoDB : il orchestre les vérifications, génère un staging local, prépare
 les lots d'import, valide leur forme, lance les contrôles critiques et le build.
+L'audit API rend visibles les dépendances `/api/v2` avant une éventuelle V3.
 
 ## Migration fichiers
 
@@ -143,6 +146,12 @@ La migration V3 est cohérente à moyen terme, mais secondaire.
 
 Raison : le code utilise encore beaucoup `/api/v2`. Une migration V3 directe
 peut casser les filtres, les scripts ou certains comportements API.
+
+Le niveau de risque doit être relu avec :
+
+```bash
+npm run nocodb:api-audit -- tmp/nocodb-api-audit.md
+```
 
 Ordre recommandé :
 

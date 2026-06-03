@@ -27,6 +27,7 @@ COMMERCIAL_PREFLIGHT_OVERWRITE=1 npm run commercial:preflight -- backups/aidhabi
 - vérification du backup production ;
 - plan de restauration production ;
 - audit stockage objet production ;
+- audit dépendances NocoDB API ;
 - création d'un snapshot staging anonymisé ;
 - vérification du snapshot staging ;
 - plan de restauration staging ;
@@ -42,6 +43,7 @@ Dans le dossier choisi :
 - `report.md` : résumé lisible ;
 - `report.json` : résultat structuré ;
 - `logs/` : sortie détaillée de chaque étape ;
+- `nocodb-api-audit.md` et `nocodb-api-audit.json` : dépendances API NocoDB ;
 - `staging-snapshot.json.gz` : snapshot staging généré ;
 - `staging-import-batches/` : lots d'import staging.
 

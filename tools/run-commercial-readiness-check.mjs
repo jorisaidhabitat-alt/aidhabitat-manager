@@ -26,6 +26,7 @@ const resolvedOutput = path.resolve(outputDir);
 const logsDir = path.join(resolvedOutput, 'logs');
 const stagingSnapshot = path.join(resolvedOutput, 'staging-snapshot.json.gz');
 const importBatchesDir = path.join(resolvedOutput, 'staging-import-batches');
+const nocodbApiAuditPath = path.join(resolvedOutput, 'nocodb-api-audit.md');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 const fileExists = async (file) => {
@@ -58,6 +59,7 @@ const addNode = (name, args, env = {}) => {
 addNode('verify-production-backup', ['tools/verify-nocodb-backup.mjs', resolvedBackup]);
 addNode('plan-production-restore', ['tools/plan-nocodb-restore.mjs', resolvedBackup]);
 addNode('analyze-production-object-storage', ['tools/analyze-object-storage-readiness.mjs', resolvedBackup]);
+addNode('audit-nocodb-api-usage', ['tools/audit-nocodb-api-usage.mjs', nocodbApiAuditPath]);
 addNode('create-sanitized-staging-snapshot', ['tools/create-staging-snapshot.mjs', resolvedBackup, stagingSnapshot]);
 addNode('verify-staging-snapshot', ['tools/verify-nocodb-backup.mjs', stagingSnapshot]);
 addNode('plan-staging-restore', ['tools/plan-nocodb-restore.mjs', stagingSnapshot]);
