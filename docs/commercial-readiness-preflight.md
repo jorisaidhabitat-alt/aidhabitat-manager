@@ -37,7 +37,7 @@ COMMERCIAL_PREFLIGHT_OVERWRITE=1 npm run commercial:preflight -- backups/aidhabi
 - validation des lots JSON ;
 - contrôle des flux critiques ;
 - build web.
-- contrôle du bundle PWA Flutter si `npm run build:pwa` a été lancé.
+- contrôle optionnel du bundle PWA Flutter.
 
 ## Sorties
 
@@ -70,6 +70,23 @@ npm run release:web-check -- --url https://app.aidhabitat.fr
 Ce contrôle vérifie le HTML, le manifest App'Ergo, les icônes, PDF.js local,
 SQLite web, le service worker Flutter et les fichiers principaux du bundle.
 
+Pour inclure automatiquement le build Flutter PWA et le contrôle du bundle dans
+le preflight :
+
+```bash
+COMMERCIAL_PREFLIGHT_CHECK_PWA=1 npm run commercial:preflight -- backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/commercial-readiness
+```
+
+À utiliser avant une migration ou un changement d'hébergement. Le mode par
+défaut reste plus rapide pour les vérifications data quotidiennes.
+
+Le mode PWA vérifie qu'il reste au moins 450 Mo libres avant de lancer le build
+Flutter. Le seuil peut être ajusté si besoin :
+
+```bash
+COMMERCIAL_PREFLIGHT_CHECK_PWA=1 COMMERCIAL_PREFLIGHT_MIN_PWA_FREE_MB=700 npm run commercial:preflight -- backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/commercial-readiness
+```
+
 ## Interprétation
 
 Si le preflight échoue, ne pas migrer.
@@ -91,3 +108,9 @@ COMMERCIAL_PREFLIGHT_SKIP_BUILD=1 npm run commercial:preflight -- backups/aidhab
 ```
 
 Ne pas utiliser cette option pour valider une migration complète.
+
+Pour une validation complète avant migration :
+
+```bash
+COMMERCIAL_PREFLIGHT_CHECK_PWA=1 npm run commercial:preflight -- backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/commercial-readiness
+```
