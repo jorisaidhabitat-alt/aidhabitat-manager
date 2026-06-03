@@ -20,6 +20,7 @@ import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/data_service.dart';
 import 'services/file_drop_listener.dart';
+import 'services/pencil_interaction_service.dart';
 import 'services/references_service.dart';
 import 'services/sync_engine.dart';
 // Web-only helpers pour la fenêtre détachée des notes (cf.
@@ -243,6 +244,10 @@ Future<void> main(List<String> args) async {
     'initializeDateFormatting',
     initializeDateFormatting('fr_FR', null),
   );
+
+  // iPad / iOS natif : active l'ecoute Apple Pencil (double-tap).
+  // No-op silencieux sur web, Android et desktop.
+  PencilInteractionService.instance.start();
 
   runApp(const MyApp());
 }
