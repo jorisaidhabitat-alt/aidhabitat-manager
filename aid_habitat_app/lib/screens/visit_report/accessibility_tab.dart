@@ -144,7 +144,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   bool _hasPendingSave = false;
   int _saveGeneration = 0;
   Future<void>? _saveInFlight;
-  Map<String, dynamic>? _lastSavedHousingSnapshot;
+  final Set<String> _dirtyHousingKeys = {};
 
   /// ScrollController du formulaire — préserve la position de scroll
   /// entre les rebuilds de la sous-section Général.
@@ -486,7 +486,6 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     if (_annexes.contains('Garage')) _motorisationOrder.add('Garage');
     if (_portail) _motorisationOrder.add('Portail');
 
-    _lastSavedHousingSnapshot = _buildHousingSaveMap();
     if (mounted) setState(() => _loaded = true);
   }
 
@@ -516,13 +515,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   // Save
   // ---------------------------------------------------------------------------
 
-  void _scheduleSave() {
+  void _scheduleSave([Iterable<String> dirtyKeys = const []]) {
     _saveTimer?.cancel();
-    _markPendingSave();
+    _markPendingSave(dirtyKeys);
     _saveTimer = Timer(kSaveDebouncePills, _save);
   }
 
-  void _markPendingSave() {
+  void _markPendingSave([Iterable<String> dirtyKeys = const []]) {
+    _dirtyHousingKeys.addAll(dirtyKeys);
     _hasPendingSave = true;
     _saveGeneration += 1;
   }
@@ -575,8 +575,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     await _save();
   }
 
-  void _saveTextFieldNow() {
-    _markPendingSave();
+  void _saveTextFieldNow([Iterable<String> dirtyKeys = const []]) {
+    _markPendingSave(dirtyKeys);
     unawaited(_save());
   }
 
@@ -695,37 +695,26 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     return map;
   }
 
-  static bool _housingValueChanged(dynamic before, dynamic after) {
-    if (before is num && after is num) {
-      return before.toDouble() != after.toDouble();
-    }
-    final beforeText = before == null ? '' : before.toString();
-    final afterText = after == null ? '' : after.toString();
-    return beforeText != afterText;
-  }
-
-  Map<String, dynamic> _diffHousingSnapshot(
-    Map<String, dynamic>? before,
-    Map<String, dynamic> after,
+  Map<String, dynamic> _dirtyHousingSnapshot(
+    Set<String> dirtyKeys,
+    Map<String, dynamic> snapshot,
   ) {
-    if (before == null) return after;
-
-    final diff = <String, dynamic>{};
-    after.forEach((key, value) {
-      if (_housingValueChanged(before[key], value)) {
-        diff[key] = value;
+    if (dirtyKeys.isEmpty) return const {};
+    final out = <String, dynamic>{};
+    for (final key in dirtyKeys) {
+      if (snapshot.containsKey(key)) {
+        out[key] = snapshot[key];
       }
-    });
-
+    }
     final roomChanged = _kLevelConfigs.any(
-      (cfg) => diff.containsKey(cfg.roomsField),
+      (cfg) => dirtyKeys.contains(cfg.roomsField),
     );
     if (roomChanged) {
       for (final cfg in _kLevelConfigs) {
-        diff[cfg.roomsField] = after[cfg.roomsField];
+        out[cfg.roomsField] = snapshot[cfg.roomsField];
       }
     }
-    return diff;
+    return out;
   }
 
   Future<void> _saveImpl() async {
@@ -733,20 +722,28 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     // Pas de setState(_saving) — voir dossier_screen.dart pour le
     // rationale (rebuild lourd inutile, indicateur visuel toujours vide).
     final nextSnapshot = _buildHousingSaveMap();
-    final diff = _diffHousingSnapshot(
-      _lastSavedHousingSnapshot,
-      nextSnapshot,
-    );
+    final dirtyAtStart = Set<String>.from(_dirtyHousingKeys);
+    final diff = _dirtyHousingSnapshot(dirtyAtStart, nextSnapshot);
     if (diff.isEmpty) return;
 
     await widget.repository.updateHousing(widget.dossier.id, diff);
-    _lastSavedHousingSnapshot = nextSnapshot;
+    _dirtyHousingKeys.removeAll(dirtyAtStart);
     widget.onHousingChanged?.call();
   }
 
-  void _markChanged() {
+  void _markChanged([Iterable<String> dirtyKeys = const []]) {
     setState(() {});
-    _scheduleSave();
+    _scheduleSave(dirtyKeys);
+  }
+
+  List<String> _levelDirtyKeys(_LevelConfig cfg, {bool includeGarage = false}) {
+    return [
+      'levels',
+      cfg.field,
+      cfg.roomsField,
+      '${cfg.field}_desc',
+      if (includeGarage) 'garage',
+    ];
   }
 
   // ---------------------------------------------------------------------------
@@ -902,7 +899,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           expand: true,
           onChanged: (v) {
             _typology = v;
-            _markChanged();
+            _markChanged(['typology']);
           },
         ),
         const SizedBox(height: 14),
@@ -919,13 +916,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 warningText: 'Année invalide',
                 onChanged: (v) {
                   _yearConstruction = v;
-                  _markChanged();
+                  _markChanged(['year_construction']);
                 },
                 onSubmitted: (v) {
                   _yearConstruction = v;
-                  _saveTextFieldNow();
+                  _saveTextFieldNow(['year_construction']);
                 },
-                onTapOutside: _saveTextFieldNow,
+                onTapOutside: () => _saveTextFieldNow(['year_construction']),
               ),
             ),
             const SizedBox(width: 6),
@@ -937,7 +934,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   onTap: () {
                     if (_yearConstruction.isNotEmpty) {
                       setState(() => _yearHabitation = _yearConstruction);
-                      _markChanged();
+                      _markChanged(['year_habitation']);
                     }
                   },
                   // Refonte 2026-05-13 : pill radius 999 uniforme.
@@ -969,13 +966,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 warningText: 'Année invalide',
                 onChanged: (v) {
                   _yearHabitation = v;
-                  _markChanged();
+                  _markChanged(['year_habitation']);
                 },
                 onSubmitted: (v) {
                   _yearHabitation = v;
-                  _saveTextFieldNow();
+                  _saveTextFieldNow(['year_habitation']);
                 },
-                onTapOutside: _saveTextFieldNow,
+                onTapOutside: () => _saveTextFieldNow(['year_habitation']),
               ),
             ),
           ],
@@ -988,7 +985,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           unit: 'm²',
           onChanged: (v) {
             _surface = v;
-            _markChanged();
+            _markChanged(['surface']);
           },
         ),
         // (Niveaux + pièces déplacés vers la sous-section dédiée
@@ -1073,6 +1070,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           'Volets roulants manuels',
           _voletsManStatus,
           _voletsManLoc,
+          const [
+            'volets_roulants_manuels_entier',
+            'volets_roulants_manuels_localisation',
+          ],
           (s) => setState(() {
             _voletsManStatus = s;
             if (s != 'Localisé') _voletsManLoc = '';
@@ -1084,6 +1085,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           'Volets roulants électriques',
           _voletsElecStatus,
           _voletsElecLoc,
+          const [
+            'volets_roulants_electriques_entier',
+            'volets_roulants_electriques_localisation',
+          ],
           (s) => setState(() {
             _voletsElecStatus = s;
             if (s != 'Localisé') _voletsElecLoc = '';
@@ -1095,6 +1100,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           'Volets persiennes',
           _voletsPersStatus,
           _voletsPersLoc,
+          const [
+            'volets_persiennes_entier',
+            'volets_persiennes_localisation',
+          ],
           (s) => setState(() {
             _voletsPersStatus = s;
             if (s != 'Localisé') _voletsPersLoc = '';
@@ -1367,7 +1376,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       _addLevelMode = false;
       _pendingLevelField = cfg.field;
     });
-    _scheduleSave();
+    _scheduleSave(_levelDirtyKeys(cfg));
   }
 
   /// Éditeur chauffage : pills multi-toggle sur 3 colonnes, toujours
@@ -1401,7 +1410,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               }
               _heatingTypes = next;
             });
-            _scheduleSave();
+            _scheduleSave(['heating_details_json']);
           },
         ),
       ],
@@ -1635,7 +1644,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                         _pendingLevelField = null;
                         _expandedLevel = null;
                       });
-                      _scheduleSave();
+                      _scheduleSave(_levelDirtyKeys(cfg));
                       return;
                     }
 
@@ -1689,7 +1698,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                       );
                       if (!stillPresent) _annexes.remove('Garage');
                     });
-                    _scheduleSave();
+                    _scheduleSave(_levelDirtyKeys(cfg, includeGarage: true));
                   },
                   // Refonte 2026-05-13 : pill radius 999 uniforme.
                   borderRadius: BorderRadius.circular(999),
@@ -1768,7 +1777,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                         }
                       }
                     });
-                    _scheduleSave();
+                    _scheduleSave(_levelDirtyKeys(cfg, includeGarage: true));
                   },
                 );
               }).toList(),
@@ -1861,13 +1870,14 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       _levelRooms[cfg.field] = current;
       ctrl.clear();
     });
-    _scheduleSave();
+    _scheduleSave(_levelDirtyKeys(cfg));
   }
 
   Widget _buildVoletRow(
     String label,
     String status,
     String loc,
+    Iterable<String> dirtyKeys,
     ValueChanged<String> onStatusChange,
     ValueChanged<String> onLocChange,
   ) {
@@ -1881,7 +1891,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           columns: 3,
           onChanged: (v) {
             onStatusChange(v);
-            _markChanged();
+            _markChanged(dirtyKeys);
           },
         ),
         if (status == 'Localisé') ...[
@@ -1891,7 +1901,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             value: loc,
             onChanged: (v) {
               onLocChange(v);
-              _markChanged();
+              _markChanged(dirtyKeys);
             },
           ),
         ],
@@ -1945,7 +1955,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     _easyAccess = v == 'Facile';
                   }
                 });
-                _scheduleSave();
+                _scheduleSave(['easy_access', 'easy_access_set']);
               },
             ),
           ],
@@ -1999,7 +2009,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     }
                   }
                 });
-                _scheduleSave();
+                _scheduleSave([
+                  'garage',
+                  'veranda',
+                  'balcon',
+                  'terrasse',
+                  'jardin',
+                  'motorisation_porte_garage',
+                  'motorisation_portail',
+                ]);
               },
             ),
           ],
@@ -2053,7 +2071,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             _motorisationPortail = v;
           }
         });
-        _scheduleSave();
+        _scheduleSave([
+          which == 'Garage'
+              ? 'motorisation_porte_garage'
+              : 'motorisation_portail',
+        ]);
       },
     );
   }
