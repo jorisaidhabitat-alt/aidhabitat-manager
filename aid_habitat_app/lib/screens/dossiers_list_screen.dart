@@ -19,14 +19,10 @@ enum _DossierBucket { visiteAFaire, rapportAFaire, rapportEnvoye }
 /// État par section : tri courant + drapeau replié/déroulé. Mutable
 /// (les setState côté écran modifient les champs directement).
 class _BucketState {
-  String sortColumn;
-  bool sortAscending;
-  bool expanded;
-  _BucketState({
-    this.sortColumn = 'name',
-    this.sortAscending = true,
-    this.expanded = true,
-  });
+  String sortColumn = 'name';
+  bool sortAscending = true;
+  bool expanded = true;
+  _BucketState();
 }
 
 /// Mapping bucket → libellé affiché en titre de section.
@@ -192,8 +188,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     int Function(Dossier, Dossier) cmp;
     switch (state.sortColumn) {
       case 'commune':
-        cmp = (a, b) =>
-            a.patient.city.toLowerCase().compareTo(b.patient.city.toLowerCase());
+        cmp = (a, b) => a.patient.city.toLowerCase().compareTo(
+          b.patient.city.toLowerCase(),
+        );
         break;
       case 'revenus':
         cmp = (a, b) {
@@ -202,9 +199,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
           if (ar != 0 && br != 0) return ar.compareTo(br);
           if (ar != 0) return -1;
           if (br != 0) return 1;
-          return a.patient.incomeCategory
-              .toLowerCase()
-              .compareTo(b.patient.incomeCategory.toLowerCase());
+          return a.patient.incomeCategory.toLowerCase().compareTo(
+            b.patient.incomeCategory.toLowerCase(),
+          );
         };
         break;
       case 'epci':
@@ -223,9 +220,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         break;
       case 'name':
       default:
-        cmp = (a, b) => a.patient.lastName
-            .toLowerCase()
-            .compareTo(b.patient.lastName.toLowerCase());
+        cmp = (a, b) => a.patient.lastName.toLowerCase().compareTo(
+          b.patient.lastName.toLowerCase(),
+        );
     }
     final direction = state.sortAscending ? 1 : -1;
     filtered.sort((a, b) => cmp(a, b) * direction);
@@ -256,9 +253,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   /// matching dossier.
   List<EpciRef> get _availableEpcis {
     final list = [..._references.epcis];
-    list.sort(
-      (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
-    );
+    list.sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     return list;
   }
 
@@ -293,10 +288,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       items: [
-        _EpciMenuEntry(
-          epcis: _availableEpcis,
-          currentEpciId: _selectedEpciId,
-        ),
+        _EpciMenuEntry(epcis: _availableEpcis, currentEpciId: _selectedEpciId),
       ],
     );
     if (selected == null) return;
@@ -313,19 +305,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     if (f.isEmpty) return l.substring(0, 1).toUpperCase();
     if (l.isEmpty) return f.substring(0, 1).toUpperCase();
     return '${f[0]}${l[0]}'.toUpperCase();
-  }
-
-  /// Full address: `<street> <zip> <CITY>`. Collapses multiple spaces and
-  /// skips empty parts so incomplete dossiers don't render "  35137 ".
-  String _fullAddress(Patient p) {
-    final street = p.address.trim();
-    final zip = p.zipCode.trim();
-    final city = p.city.trim();
-    return [street, zip, city.toUpperCase()]
-        .where((s) => s.isNotEmpty)
-        .join(' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
   }
 
   String _formatVisitDate(String? raw) {
@@ -493,8 +472,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => state.expanded = !state.expanded),
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 24, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Row(
                 children: [
                   Expanded(
@@ -512,7 +490,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                         // Badge compteur (style discret slate-100).
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 3),
+                            horizontal: 10,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF2F4F6),
                             borderRadius: BorderRadius.circular(999),
@@ -554,10 +534,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        height: 1,
-                        color: const Color(0xFFEEEEF2),
-                      ),
+                      Container(height: 1, color: const Color(0xFFEEEEF2)),
                       _buildTableHeader(bucket),
                       SoftSwitcher(
                         fillParent: false,
@@ -568,7 +545,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                           child: dossiers.isEmpty
                               ? Padding(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 24, vertical: 24),
+                                    horizontal: 24,
+                                    vertical: 24,
+                                  ),
                                   child: Text(
                                     'Aucun dossier dans cette catégorie.',
                                     style: TextStyle(
@@ -580,8 +559,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                               : ListView.separated(
                                   padding: EdgeInsets.zero,
                                   shrinkWrap: true,
-                                  physics:
-                                      const NeverScrollableScrollPhysics(),
+                                  physics: const NeverScrollableScrollPhysics(),
                                   itemCount: dossiers.length,
                                   separatorBuilder: (context, index) => Divider(
                                     height: 1,
@@ -595,10 +573,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                       ),
                     ],
                   )
-                : const SizedBox(
-                    width: double.infinity,
-                    height: 0,
-                  ),
+                : const SizedBox(width: double.infinity, height: 0),
           ),
         ],
       ),
@@ -618,8 +593,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         borderRadius: BorderRadius.circular(999),
         onTap: widget.onCreateNew,
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -677,8 +651,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
       onTap: _openEpciPicker,
       borderRadius: BorderRadius.circular(999),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(999),
@@ -686,8 +659,7 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
         ),
         child: Row(
           children: [
-            const Icon(LucideIcons.mapPin,
-                size: 16, color: Color(0xFF8A939D)),
+            const Icon(LucideIcons.mapPin, size: 16, color: Color(0xFF8A939D)),
             const SizedBox(width: 8),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 220),
@@ -738,26 +710,31 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
           // BÉNÉFICIAIRE inclut l'avatar rond — prévoir la même
           // réserve que dans la rangée (48 + 16 = 64 px). Cellule sans
           // tri (juste l'avatar).
-          SizedBox(
-              width: 64, child: _headerCell(bucket, '', column: null)),
+          SizedBox(width: 64, child: _headerCell(bucket, '', column: null)),
           Expanded(
-              flex: _flexBeneficiary,
-              child: _headerCell(bucket, 'BÉNÉFICIAIRE', column: 'name')),
+            flex: _flexBeneficiary,
+            child: _headerCell(bucket, 'BÉNÉFICIAIRE', column: 'name'),
+          ),
           Expanded(
-              flex: _flexCommune,
-              child: _headerCell(bucket, 'COMMUNE', column: 'commune')),
+            flex: _flexCommune,
+            child: _headerCell(bucket, 'COMMUNE', column: 'commune'),
+          ),
           Expanded(
-              flex: _flexRevenus,
-              child: _headerCell(bucket, 'REVENUS', column: 'revenus')),
+            flex: _flexRevenus,
+            child: _headerCell(bucket, 'REVENUS', column: 'revenus'),
+          ),
           Expanded(
             flex: _flexEpci,
-            child: _headerCell(bucket, 'COMMUNAUTÉ DE COMMUNE',
-                column: 'epci'),
+            child: _headerCell(bucket, 'COMMUNAUTÉ DE COMMUNE', column: 'epci'),
           ),
           Expanded(
             flex: _flexDate,
-            child: _headerCell(bucket, 'DATE DE VISITE',
-                column: 'date', alignRight: true),
+            child: _headerCell(
+              bucket,
+              'DATE DE VISITE',
+              column: 'date',
+              alignRight: true,
+            ),
           ),
           const SizedBox(width: 32), // espace pour le chevron des rangées
         ],
@@ -769,15 +746,17 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   /// non-null, le tap déclenche `_onHeaderTap(bucket, column)` — 1er
   /// clic = ascendant, 2e clic = inverse. Une flèche ▲ / ▼ apparaît
   /// à côté du titre actif, lue depuis l'état du bucket.
-  Widget _headerCell(_DossierBucket bucket, String text,
-      {String? column, bool alignRight = false}) {
+  Widget _headerCell(
+    _DossierBucket bucket,
+    String text, {
+    String? column,
+    bool alignRight = false,
+  }) {
     final state = _bucketStates[bucket]!;
     final isActive = column != null && state.sortColumn == column;
     final indicator = isActive
         ? Icon(
-            state.sortAscending
-                ? Icons.arrow_drop_up
-                : Icons.arrow_drop_down,
+            state.sortAscending ? Icons.arrow_drop_up : Icons.arrow_drop_down,
             size: 18,
             color: kBrandPurple,
           )
@@ -799,8 +778,9 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     if (column == null) return textWidget;
 
     final content = Row(
-      mainAxisAlignment:
-          alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment: alignRight
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         if (alignRight && indicator != null) indicator,
@@ -834,196 +814,178 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
     return SoftTapScale(
       onTap: () => widget.onSelectDossier(dossier),
       child: InkWell(
-      onTap: () => widget.onSelectDossier(dossier),
-      child: Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Row(
-          children: [
-            // Avatar — couleur dérivée du TYPE D'ACCOMPAGNEMENT du
-            // dossier (rose pour Diag ergo, vert pour MPA ergo, violet
-            // pour MPA complet, gris pour vide). Demande utilisateur
-            // 2026-05-04 : "la même couleur sur la photo de profil que
-            // le type d'accompagnement". Permet à l'ergo de reconnaître
-            // la nature d'un dossier d'un seul coup d'œil dans la liste,
-            // sans avoir à le scanner colonne par colonne.
-            //
-            // Si l'avatar a une vraie photo de profil un jour, ce
-            // Container sert de bordure/halo coloré autour de la photo
-            // (à câbler quand le champ photo de bénéficiaire existera —
-            // pour l'instant, fallback initiales).
-            //
-            // Avant : couleur dérivée des initiales (mint/pêche/ciel)
-            // qui ne portait aucune info métier, juste de la variété
-            // visuelle.
-            SizedBox(
-              width: 64,
-              child: Builder(builder: (_) {
-                final palette =
-                    accompanimentPaletteFor(dossier.natureAccompagnement);
-                // Bordure jaune (non préparé) / verte (préparé) autour
-                // de l'avatar — demande utilisateur 2026-05-05. Reflète
-                // le flag `beneficiary_prepared` togglé dans le bandeau
-                // bénéficiaire de l'écran dossier.
-                final borderColor = dossier.beneficiaryPrepared
-                    ? const Color(0xFF86EFAC) // green-300, vert léger
-                    : const Color(0xFFFDE047); // yellow-300, jaune léger
-                return Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: palette.bg,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: borderColor, width: 1.5),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    _initials(p),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: palette.fg,
-                      fontSize: 16,
-                    ),
-                  ),
-                );
-              }),
-            ),
-            // BÉNÉFICIAIRE (nom + âge/GIR)
-            Expanded(
-              flex: _flexBeneficiary,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${p.lastName.toUpperCase()} ${p.firstName}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: Color(0xFF0E1116),
-                    ),
-                  ),
-                  if (meta.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      meta.join(' · '),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF8A939D),
+        onTap: () => widget.onSelectDossier(dossier),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Row(
+            children: [
+              // Avatar — couleur dérivée du TYPE D'ACCOMPAGNEMENT du
+              // dossier (rose pour Diag ergo, vert pour MPA ergo, violet
+              // pour MPA complet, gris pour vide). Demande utilisateur
+              // 2026-05-04 : "la même couleur sur la photo de profil que
+              // le type d'accompagnement". Permet à l'ergo de reconnaître
+              // la nature d'un dossier d'un seul coup d'œil dans la liste,
+              // sans avoir à le scanner colonne par colonne.
+              //
+              // Si l'avatar a une vraie photo de profil un jour, ce
+              // Container sert de bordure/halo coloré autour de la photo
+              // (à câbler quand le champ photo de bénéficiaire existera —
+              // pour l'instant, fallback initiales).
+              //
+              // Avant : couleur dérivée des initiales (mint/pêche/ciel)
+              // qui ne portait aucune info métier, juste de la variété
+              // visuelle.
+              SizedBox(
+                width: 64,
+                child: Builder(
+                  builder: (_) {
+                    final palette = accompanimentPaletteFor(
+                      dossier.natureAccompagnement,
+                    );
+                    // Bordure jaune (non préparé) / verte (préparé) autour
+                    // de l'avatar — demande utilisateur 2026-05-05. Reflète
+                    // le flag `beneficiary_prepared` togglé dans le bandeau
+                    // bénéficiaire de l'écran dossier.
+                    final borderColor = dossier.beneficiaryPrepared
+                        ? const Color(0xFF86EFAC) // green-300, vert léger
+                        : const Color(0xFFFDE047); // yellow-300, jaune léger
+                    return Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: palette.bg,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: borderColor, width: 1.5),
                       ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // COMMUNE (ville + code postal)
-            Expanded(
-              flex: _flexCommune,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    p.city,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0E1116),
-                    ),
-                  ),
-                  if (p.zipCode.trim().isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      p.zipCode,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF8A939D),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _initials(p),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: palette.fg,
+                          fontSize: 16,
+                        ),
                       ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // REVENUS — variante monochrome (sans couleur) demandée
-            // par l'utilisateur sur la liste « Mes dossiers » : fond
-            // gris neutre, texte gris foncé. Les couleurs (bleu Très
-            // modeste, jaune/orange Modeste…) restent utilisées dans
-            // les autres écrans (header de dossier, relevé de visite).
-            Expanded(
-              flex: _flexRevenus,
-              child: income.isEmpty
-                  ? const SizedBox.shrink()
-                  : Align(
-                      alignment: Alignment.centerLeft,
-                      child: IncomeCategoryBadge(
-                        value: income,
-                        monochrome: true,
-                      ),
-                    ),
-            ),
-            // COMMUNAUTÉ DE COMMUNE
-            Expanded(
-              flex: _flexEpci,
-              child: epci.isEmpty
-                  ? const SizedBox.shrink()
-                  : Align(
-                      alignment: Alignment.centerLeft,
-                      child: EpciBadge(label: epci),
-                    ),
-            ),
-            // DATE DE VISITE — alignée à droite pour la pousser au
-            // maximum vers le chevron (demande utilisateur : "décaler
-            // la date plus à droite").
-            Expanded(
-              flex: _flexDate,
-              child: Text(
-                visitDate.isEmpty ? '—' : visitDate,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: visitDate.isEmpty
-                      ? const Color(0xFF8A939D)
-                      : const Color(0xFF0E1116),
+                    );
+                  },
                 ),
               ),
-            ),
-            // Chevron
-            const SizedBox(
-              width: 32,
-              child: Icon(
-                LucideIcons.chevronRight,
-                size: 18,
-                color: Color(0xFF8A939D),
+              // BÉNÉFICIAIRE (nom + âge/GIR)
+              Expanded(
+                flex: _flexBeneficiary,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${p.lastName.toUpperCase()} ${p.firstName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: Color(0xFF0E1116),
+                      ),
+                    ),
+                    if (meta.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        meta.join(' · '),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A939D),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              // COMMUNE (ville + code postal)
+              Expanded(
+                flex: _flexCommune,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      p.city,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0E1116),
+                      ),
+                    ),
+                    if (p.zipCode.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        p.zipCode,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A939D),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // REVENUS — variante monochrome (sans couleur) demandée
+              // par l'utilisateur sur la liste « Mes dossiers » : fond
+              // gris neutre, texte gris foncé. Les couleurs (bleu Très
+              // modeste, jaune/orange Modeste…) restent utilisées dans
+              // les autres écrans (header de dossier, relevé de visite).
+              Expanded(
+                flex: _flexRevenus,
+                child: income.isEmpty
+                    ? const SizedBox.shrink()
+                    : Align(
+                        alignment: Alignment.centerLeft,
+                        child: IncomeCategoryBadge(
+                          value: income,
+                          monochrome: true,
+                        ),
+                      ),
+              ),
+              // COMMUNAUTÉ DE COMMUNE
+              Expanded(
+                flex: _flexEpci,
+                child: epci.isEmpty
+                    ? const SizedBox.shrink()
+                    : Align(
+                        alignment: Alignment.centerLeft,
+                        child: EpciBadge(label: epci),
+                      ),
+              ),
+              // DATE DE VISITE — alignée à droite pour la pousser au
+              // maximum vers le chevron (demande utilisateur : "décaler
+              // la date plus à droite").
+              Expanded(
+                flex: _flexDate,
+                child: Text(
+                  visitDate.isEmpty ? '—' : visitDate,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: visitDate.isEmpty
+                        ? const Color(0xFF8A939D)
+                        : const Color(0xFF0E1116),
+                  ),
+                ),
+              ),
+              // Chevron
+              const SizedBox(
+                width: 32,
+                child: Icon(
+                  LucideIcons.chevronRight,
+                  size: 18,
+                  color: Color(0xFF8A939D),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            LucideIcons.search,
-            size: 48,
-            color: Color(0xFFB9C0C7),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Aucun résultat',
-            style: TextStyle(color: Color(0xFF8A939D)),
-          ),
-        ],
       ),
     );
   }
@@ -1038,51 +1000,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
 // DossiersListScreen et DashboardScreen pour que même bénéficiaire /
 // même EPCI garde la même couleur partout dans l'app.
 
-/// Visit date badge shown on the right of each dossier row, right before
-/// the chevron. Larger font than the address line. Falls back to the
-/// soft placeholder "À planifier" when no date is set.
-class _VisitDateBadge extends StatelessWidget {
-  const _VisitDateBadge({required this.dateLabel});
-
-  final String dateLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasDate = dateLabel.isNotEmpty;
-    final displayDate = hasDate ? dateLabel : 'À planifier';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F4F6),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            LucideIcons.calendar,
-            size: 16,
-            color: hasDate
-                ? const Color(0xFF0E1116)
-                : const Color(0xFF8A939D),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            displayDate,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: hasDate
-                  ? const Color(0xFF0E1116)
-                  : const Color(0xFF8A939D),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Payload returned by the EPCI picker. `id` null = reset filter.
 class _EpciPickerResult {
   const _EpciPickerResult({this.id, required this.label});
@@ -1095,10 +1012,7 @@ class _EpciPickerResult {
 /// so the dropdown opens inline below the trigger button (no modal
 /// dialog, no blocking overlay).
 class _EpciMenuEntry extends PopupMenuEntry<_EpciPickerResult> {
-  const _EpciMenuEntry({
-    required this.epcis,
-    required this.currentEpciId,
-  });
+  const _EpciMenuEntry({required this.epcis, required this.currentEpciId});
 
   final List<EpciRef> epcis;
   final String? currentEpciId;
@@ -1141,13 +1055,12 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
   void _pick(EpciRef e) {
     // Reclicking the active EPCI clears the filter (toggle).
     if (widget.currentEpciId == e.id) {
-      Navigator.of(context).pop(
-        const _EpciPickerResult(id: null, label: 'Communauté de commune'),
-      );
+      Navigator.of(
+        context,
+      ).pop(const _EpciPickerResult(id: null, label: 'Communauté de commune'));
       return;
     }
-    Navigator.of(context)
-        .pop(_EpciPickerResult(id: e.id, label: e.label));
+    Navigator.of(context).pop(_EpciPickerResult(id: e.id, label: e.label));
   }
 
   @override
@@ -1235,7 +1148,9 @@ class _EpciMenuEntryState extends State<_EpciMenuEntry> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       itemCount: visible.length,
                       itemBuilder: (context, index) {
                         final epci = visible[index];
@@ -1289,8 +1204,7 @@ class _EpciMenuTile extends StatelessWidget {
               ),
             ),
             if (selected)
-              const Icon(LucideIcons.check,
-                  size: 18, color: Color(0xFF2B323A)),
+              const Icon(LucideIcons.check, size: 18, color: Color(0xFF2B323A)),
           ],
         ),
       ),

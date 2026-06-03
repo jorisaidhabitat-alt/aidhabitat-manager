@@ -12,6 +12,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../services/data_service.dart';
+import '../services/pencil_interaction_service.dart';
 import 'soft_transitions.dart';
 
 // ---------------------------------------------------------------------------
@@ -58,19 +59,23 @@ class _PlanStroke {
   final PlanTool tool;
   final int color; // ARGB
   final double size;
+
   /// pen/highlighter/eraser : liste de points.
   /// line/rect/wall : [start, end].
   /// Symboles (window/door/toilet/shower/bath) : [centerPoint, cornerPoint]
   /// où le rectangle englobant (non tourné) est centré sur centerPoint
   /// et va jusqu'à cornerPoint en coordonnées LOCALES (avant rotation).
   final List<Offset> points;
+
   /// Rotation (radians, horaire). N'a de sens que pour les symboles
   /// architecturaux. Par défaut 0 (pas de rotation).
   double rotation;
+
   /// Flip visuel sur l'axe X (mirror gauche↔droite). Ne change pas la
   /// bounding box — juste le rendu. Utilisé pour inverser le sens d'une
   /// porte, d'un lavabo, etc.
   bool flipX;
+
   /// Flip visuel sur l'axe Y (mirror haut↔bas).
   bool flipY;
 
@@ -85,14 +90,14 @@ class _PlanStroke {
   });
 
   Map<String, dynamic> toJson() => {
-        'tool': tool.name,
-        'color': color,
-        'size': size,
-        'points': points.map((p) => [p.dx, p.dy]).toList(),
-        if (rotation != 0) 'rotation': rotation,
-        if (flipX) 'flipX': true,
-        if (flipY) 'flipY': true,
-      };
+    'tool': tool.name,
+    'color': color,
+    'size': size,
+    'points': points.map((p) => [p.dx, p.dy]).toList(),
+    if (rotation != 0) 'rotation': rotation,
+    if (flipX) 'flipX': true,
+    if (flipY) 'flipY': true,
+  };
 
   static _PlanStroke? fromJson(Map<String, dynamic> json) {
     try {
@@ -105,10 +110,7 @@ class _PlanStroke {
       final size = (json['size'] as num?)?.toDouble() ?? 2.0;
       final pts = (json['points'] as List?) ?? const [];
       final points = pts.whereType<List>().map<Offset>((pt) {
-        return Offset(
-          (pt[0] as num).toDouble(),
-          (pt[1] as num).toDouble(),
-        );
+        return Offset((pt[0] as num).toDouble(), (pt[1] as num).toDouble());
       }).toList();
       final rotation = (json['rotation'] as num?)?.toDouble() ?? 0.0;
       final flipX = json['flipX'] == true;
@@ -160,8 +162,10 @@ class PlanCanvas extends StatefulWidget {
   final int? totalPages;
   final VoidCallback? onPrevPage;
   final VoidCallback? onNextPage;
+
   /// Ajoute une nouvelle page VIERGE après la page courante.
   final VoidCallback? onAddPage;
+
   /// Duplique la page courante (clone des strokes + symboles) — demande
   /// utilisateur 2026-05-04 : « possibilité d'ajouter une page (vierge)
   /// ou de dupliquer la page actuelle ». Si null, l'option n'apparaît
@@ -190,6 +194,7 @@ class PlanCanvas extends StatefulWidget {
 class _PlanCanvasState extends State<PlanCanvas> {
   final _dataService = DataService();
   final GlobalKey _drawAreaKey = GlobalKey();
+  StreamSubscription<PencilDoubleTapEvent>? _pencilDoubleTapSubscription;
 
   PlanTool _tool = PlanTool.pen;
   int _penColor = 0xFF1A1A1A;
@@ -253,6 +258,15 @@ class _PlanCanvasState extends State<PlanCanvas> {
   void initState() {
     super.initState();
     _loadStrokes();
+    _pencilDoubleTapSubscription =
+        PencilInteractionService.instance.onDoubleTap.listen((_) {
+      if (!mounted) return;
+      if (_tool == PlanTool.eraser) return;
+      setState(() {
+        _tool = PlanTool.eraser;
+        _thicknessPopoverTool = null;
+      });
+    });
   }
 
   @override
@@ -287,6 +301,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _pencilDoubleTapSubscription?.cancel();
+    _pencilDoubleTapSubscription = null;
     super.dispose();
   }
 
@@ -299,8 +315,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final encoded = jsonEncode(_strokes.map((s) => s.toJson()).toList());
     final decoded = jsonDecode(encoded) as List;
     return decoded
-        .map((m) => _PlanStroke.fromJson(
-            (m as Map).cast<String, dynamic>()))
+        .map((m) => _PlanStroke.fromJson((m as Map).cast<String, dynamic>()))
         .whereType<_PlanStroke>()
         .toList();
   }
@@ -361,10 +376,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
         final strokes = (decoded['strokes'] as List?) ?? const [];
         _strokes
           ..clear()
-          ..addAll(strokes
-              .whereType<Map>()
-              .map((m) => _PlanStroke.fromJson(m.cast<String, dynamic>()))
-              .whereType<_PlanStroke>());
+          ..addAll(
+            strokes
+                .whereType<Map>()
+                .map((m) => _PlanStroke.fromJson(m.cast<String, dynamic>()))
+                .whereType<_PlanStroke>(),
+          );
       }
     } catch (_) {
       // Either legacy scribble data or corrupt — start fresh
@@ -412,8 +429,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   /// rapport aura juste un slot vide.
   Future<String?> _rasterizeCanvasDataUrl() async {
     try {
-      final box =
-          _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
+      final box = _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
       if (box == null) return null;
       final size = box.size;
       if (size.width < 1 || size.height < 1) return null;
@@ -452,8 +468,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   // ----- Gesture handlers -----
 
   Offset _localPoint(Offset global) {
-    final box =
-        _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    final box = _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return global;
     return box.globalToLocal(global);
   }
@@ -551,7 +566,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
       builder: (ctx) => AlertDialog(
         title: const Text('Effacer le plan ?'),
         content: const Text(
-            'Toutes les annotations seront supprimées définitivement.'),
+          'Toutes les annotations seront supprimées définitivement.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -575,8 +591,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   }
 
   Future<void> _downloadPng() async {
-    final box =
-        _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    final box = _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final size = box.size;
 
@@ -594,10 +609,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     _DrawPainter.paintStrokes(canvas, _strokes, null);
 
     final picture = recorder.endRecording();
-    final img = await picture.toImage(
-      size.width.toInt(),
-      size.height.toInt(),
-    );
+    final img = await picture.toImage(size.width.toInt(), size.height.toInt());
     final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
     if (byteData == null) return;
     final bytes = byteData.buffer.asUint8List();
@@ -651,8 +663,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   };
 
   void _insertSymbolAtCenter(PlanTool tool) {
-    final box =
-        _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    final box = _drawAreaKey.currentContext?.findRenderObject() as RenderBox?;
     final canvasSize = box?.size ?? const Size(800, 600);
     final center = Offset(canvasSize.width / 2, canvasSize.height / 2);
     final defaultSize = _defaultSymbolSize[tool] ?? const Size(100, 100);
@@ -746,8 +757,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     }
     // Flèche de rotation au-dessus du bord haut, à `rotateOffset` px.
     const rotateOffset = 52.0;
-    final rotateLocal =
-        Offset(bounds.center.dx, bounds.top - rotateOffset);
+    final rotateLocal = Offset(bounds.center.dx, bounds.top - rotateOffset);
     if ((local - rotateLocal).distance < rotateHit) {
       return _SymbolHandle.rotate;
     }
@@ -820,8 +830,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
         children: [
           _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
           const SizedBox(width: 10),
-          _toolBtn(PlanTool.highlighter, LucideIcons.highlighter,
-              'Surligneur'),
+          _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
           const SizedBox(width: 10),
           // Gomme placée juste à côté du surligneur (demande utilisateur)
           _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
@@ -897,15 +906,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
           // une fenêtre à montants.
           _symbolInsertBtn(
             PlanTool.window,
-            Icon(LucideIcons.columns,
-                size: 22, color: Color(0xFF2B323A)),
+            Icon(LucideIcons.columns, size: 22, color: Color(0xFF2B323A)),
             'Fenêtre',
           ),
           const SizedBox(width: 8),
           _symbolInsertBtn(
             PlanTool.door,
-            Icon(LucideIcons.doorClosed,
-                size: 22, color: Color(0xFF2B323A)),
+            Icon(LucideIcons.doorClosed, size: 22, color: Color(0xFF2B323A)),
             'Porte',
           ),
           const SizedBox(width: 8),
@@ -921,23 +928,20 @@ class _PlanCanvasState extends State<PlanCanvas> {
           const SizedBox(width: 8),
           _symbolInsertBtn(
             PlanTool.shower,
-            Icon(LucideIcons.showerHead,
-                size: 22, color: Color(0xFF2B323A)),
+            Icon(LucideIcons.showerHead, size: 22, color: Color(0xFF2B323A)),
             'Douche',
           ),
           const SizedBox(width: 8),
           _symbolInsertBtn(
             PlanTool.bath,
-            Icon(LucideIcons.bath,
-                size: 22, color: Color(0xFF2B323A)),
+            Icon(LucideIcons.bath, size: 22, color: Color(0xFF2B323A)),
             'Baignoire',
           ),
           const SizedBox(width: 8),
           // Lavabo : simples gouttes d'eau (demande utilisateur).
           _symbolInsertBtn(
             PlanTool.sink,
-            Icon(LucideIcons.droplets,
-                size: 22, color: Color(0xFF2B323A)),
+            Icon(LucideIcons.droplets, size: 22, color: Color(0xFF2B323A)),
             'Lavabo',
           ),
         ],
@@ -959,8 +963,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
     // actif venait à changer juste avant l'ouverture.
     final target = _thicknessPopoverTool ?? _tool;
     final size = _thicknessByTool[target] ?? 2.0;
-    final pos = ((size - minThickness) / (maxThickness - minThickness))
-        .clamp(0.0, 1.0);
+    final pos = ((size - minThickness) / (maxThickness - minThickness)).clamp(
+      0.0,
+      1.0,
+    );
     return Material(
       elevation: 6,
       shadowColor: Colors.black26,
@@ -971,9 +977,17 @@ class _PlanCanvasState extends State<PlanCanvas> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (d) => _updateThicknessFromOffset(
-              d.localPosition.dx, sliderWidth, minThickness, maxThickness),
+            d.localPosition.dx,
+            sliderWidth,
+            minThickness,
+            maxThickness,
+          ),
           onPanUpdate: (d) => _updateThicknessFromOffset(
-              d.localPosition.dx, sliderWidth, minThickness, maxThickness),
+            d.localPosition.dx,
+            sliderWidth,
+            minThickness,
+            maxThickness,
+          ),
           child: SizedBox(
             width: sliderWidth,
             height: 36,
@@ -996,10 +1010,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Color(_penColor),
-                        width: 2.5,
-                      ),
+                      border: Border.all(color: Color(_penColor), width: 2.5),
                       boxShadow: const [
                         BoxShadow(
                           color: Colors.black12,
@@ -1038,9 +1049,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       tooltip: 'Plus d\'actions',
       icon: const Icon(LucideIcons.moreVertical, size: 18),
       color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       onSelected: (v) {
         switch (v) {
           case 'download':
@@ -1060,40 +1069,49 @@ class _PlanCanvasState extends State<PlanCanvas> {
       itemBuilder: (ctx) => [
         const PopupMenuItem(
           value: 'download',
-          child: Row(children: [
-            Icon(LucideIcons.download, size: 16, color: Color(0xFF2B323A)),
-            SizedBox(width: 10),
-            Text('Télécharger le plan'),
-          ]),
+          child: Row(
+            children: [
+              Icon(LucideIcons.download, size: 16, color: Color(0xFF2B323A)),
+              SizedBox(width: 10),
+              Text('Télécharger le plan'),
+            ],
+          ),
         ),
         if (widget.onAddPage != null)
           const PopupMenuItem(
             value: 'addPage',
-            child: Row(children: [
-              Icon(LucideIcons.filePlus, size: 16, color: Color(0xFF2B323A)),
-              SizedBox(width: 10),
-              Text('Ajouter une page vierge'),
-            ]),
+            child: Row(
+              children: [
+                Icon(LucideIcons.filePlus, size: 16, color: Color(0xFF2B323A)),
+                SizedBox(width: 10),
+                Text('Ajouter une page vierge'),
+              ],
+            ),
           ),
         if (widget.onDuplicatePage != null)
           const PopupMenuItem(
             value: 'duplicatePage',
-            child: Row(children: [
-              Icon(LucideIcons.copy, size: 16, color: Color(0xFF2B323A)),
-              SizedBox(width: 10),
-              Text('Dupliquer la page actuelle'),
-            ]),
+            child: Row(
+              children: [
+                Icon(LucideIcons.copy, size: 16, color: Color(0xFF2B323A)),
+                SizedBox(width: 10),
+                Text('Dupliquer la page actuelle'),
+              ],
+            ),
           ),
-        if (widget.onDeletePage != null &&
-            (widget.totalPages ?? 1) > 1)
+        if (widget.onDeletePage != null && (widget.totalPages ?? 1) > 1)
           const PopupMenuItem(
             value: 'deletePage',
-            child: Row(children: [
-              Icon(LucideIcons.fileX, size: 16, color: Color(0xFFB91C1C)),
-              SizedBox(width: 10),
-              Text('Supprimer la page',
-                  style: TextStyle(color: Color(0xFFB91C1C))),
-            ]),
+            child: Row(
+              children: [
+                Icon(LucideIcons.fileX, size: 16, color: Color(0xFFB91C1C)),
+                SizedBox(width: 10),
+                Text(
+                  'Supprimer la page',
+                  style: TextStyle(color: Color(0xFFB91C1C)),
+                ),
+              ],
+            ),
           ),
       ],
     );
@@ -1123,10 +1141,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
               decoration: BoxDecoration(
                 color: Color(_penColor),
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: Color(0xFFB9C0C7),
-                  width: 1.5,
-                ),
+                border: Border.all(color: Color(0xFFB9C0C7), width: 1.5),
               ),
             ),
           ),
@@ -1141,8 +1156,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final box = ctx.findRenderObject() as RenderBox;
     final overlayBox =
         Overlay.of(context).context.findRenderObject() as RenderBox;
-    final topLeft =
-        box.localToGlobal(Offset(0, box.size.height + 6), ancestor: overlayBox);
+    final topLeft = box.localToGlobal(
+      Offset(0, box.size.height + 6),
+      ancestor: overlayBox,
+    );
     final position = RelativeRect.fromRect(
       Rect.fromLTWH(topLeft.dx, topLeft.dy, 0, 0),
       Offset.zero & overlayBox.size,
@@ -1152,8 +1169,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       position: position,
       color: Colors.white,
       elevation: 6,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       items: [
         PopupMenuItem<int>(
           enabled: false,
@@ -1163,26 +1179,28 @@ class _PlanCanvasState extends State<PlanCanvas> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: _presetColors
-                  .map((c) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: GestureDetector(
-                          onTap: () => Navigator.of(context).pop(c),
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: Color(c),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: _penColor == c
-                                    ? const Color(0xFF0E1116)
-                                    : Color(0xFFB9C0C7),
-                                width: _penColor == c ? 2.5 : 1.5,
-                              ),
+                  .map(
+                    (c) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: GestureDetector(
+                        onTap: () => Navigator.of(context).pop(c),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Color(c),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _penColor == c
+                                  ? const Color(0xFF0E1116)
+                                  : Color(0xFFB9C0C7),
+                              width: _penColor == c ? 2.5 : 1.5,
                             ),
                           ),
                         ),
-                      ))
+                      ),
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -1235,18 +1253,19 @@ class _PlanCanvasState extends State<PlanCanvas> {
     // mémorisée indépendamment dans `_thicknessByTool`.
     final supportsThickness =
         tool == PlanTool.pen ||
-            tool == PlanTool.highlighter ||
-            tool == PlanTool.line ||
-            tool == PlanTool.rect ||
-            tool == PlanTool.eraser;
+        tool == PlanTool.highlighter ||
+        tool == PlanTool.line ||
+        tool == PlanTool.rect ||
+        tool == PlanTool.eraser;
     return Tooltip(
       message: label,
       child: InkWell(
         onTap: () {
           if (active && supportsThickness) {
             setState(() {
-              _thicknessPopoverTool =
-                  _thicknessPopoverTool == tool ? null : tool;
+              _thicknessPopoverTool = _thicknessPopoverTool == tool
+                  ? null
+                  : tool;
             });
             return;
           }
@@ -1291,25 +1310,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0xFFE4E7EB),
-              width: 1,
-            ),
+            border: Border.all(color: const Color(0xFFE4E7EB), width: 1),
           ),
           child: iconChild,
         ),
       ),
     );
-  }
-
-  Future<void> _pickCustomColor() async {
-    final picked = await showSoftDialog<int>(
-      context: context,
-      builder: (ctx) => _ColorPickerDialog(initial: _penColor),
-    );
-    if (picked != null) {
-      setState(() => _penColor = picked);
-    }
   }
 
   Widget _buildCanvas() {
@@ -1636,10 +1642,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
         // l'autre axe (ex : allonger une baignoire sans grossir sa
         // profondeur).
         final local = _toSymbolLocal(sel, pt);
-        final initHalfW =
-            (initCorner.dx - initCenter.dx).abs().clamp(8.0, 2000.0);
-        final initHalfH =
-            (initCorner.dy - initCenter.dy).abs().clamp(8.0, 2000.0);
+        final initHalfW = (initCorner.dx - initCenter.dx).abs().clamp(
+          8.0,
+          2000.0,
+        );
+        final initHalfH = (initCorner.dy - initCenter.dy).abs().clamp(
+          8.0,
+          2000.0,
+        );
         final sx = (initCorner.dx - initCenter.dx) >= 0 ? 1 : -1;
         final sy = (initCorner.dy - initCenter.dy) >= 0 ? 1 : -1;
         double newHalfW = initHalfW;
@@ -1664,11 +1674,17 @@ class _PlanCanvasState extends State<PlanCanvas> {
         // centre (en coordonnées locales non-tournées), et on applique
         // ce même facteur à largeur ET hauteur pour préserver le ratio.
         final local = _toSymbolLocal(sel, pt);
-        final initHalfW =
-            (initCorner.dx - initCenter.dx).abs().clamp(8.0, 2000.0);
-        final initHalfH =
-            (initCorner.dy - initCenter.dy).abs().clamp(8.0, 2000.0);
-        final initDiag = math.sqrt(initHalfW * initHalfW + initHalfH * initHalfH);
+        final initHalfW = (initCorner.dx - initCenter.dx).abs().clamp(
+          8.0,
+          2000.0,
+        );
+        final initHalfH = (initCorner.dy - initCenter.dy).abs().clamp(
+          8.0,
+          2000.0,
+        );
+        final initDiag = math.sqrt(
+          initHalfW * initHalfW + initHalfH * initHalfH,
+        );
         final curDiag = (local - initCenter).distance;
         final scale = (curDiag / initDiag).clamp(0.15, 10.0);
         final newHalfW = (initHalfW * scale).clamp(8.0, 2000.0);
@@ -1738,11 +1754,7 @@ class _HandlesPainter extends CustomPainter {
 
     // Ligne vers la poignée rotation.
     final rotateTop = Offset(bounds.center.dx, bounds.top - _rotateOffset);
-    canvas.drawLine(
-      Offset(bounds.center.dx, bounds.top),
-      rotateTop,
-      frame,
-    );
+    canvas.drawLine(Offset(bounds.center.dx, bounds.top), rotateTop, frame);
 
     // 4 coins (redimensionnement proportionnel).
     final handleFill = Paint()..color = _accent;
@@ -1769,11 +1781,7 @@ class _HandlesPainter extends CustomPainter {
       Offset(bounds.right, bounds.center.dy), // rightMid
     ];
     for (final pt in midHandles) {
-      final rect = Rect.fromCenter(
-        center: pt,
-        width: 11,
-        height: 11,
-      );
+      final rect = Rect.fromCenter(center: pt, width: 11, height: 11);
       canvas.drawRRect(
         RRect.fromRectAndRadius(rect, const Radius.circular(2)),
         handleFill,
@@ -1897,12 +1905,7 @@ class _DrawPainter extends CustomPainter {
     List<_PlanStroke> strokes,
     _PlanStroke? current,
   ) {
-    final drawBounds = Rect.fromLTWH(
-      -100000,
-      -100000,
-      200000,
-      200000,
-    );
+    final drawBounds = Rect.fromLTWH(-100000, -100000, 200000, 200000);
     // Couche 1 : traits effaçables.
     canvas.saveLayer(drawBounds, Paint());
     for (final s in strokes) {
@@ -1944,8 +1947,11 @@ class _DrawPainter extends CustomPainter {
       case PlanTool.eraser:
       case PlanTool.highlighter:
         if (s.points.length == 1) {
-          canvas.drawCircle(s.points.first, s.size / 2,
-              paint..style = PaintingStyle.fill);
+          canvas.drawCircle(
+            s.points.first,
+            s.size / 2,
+            paint..style = PaintingStyle.fill,
+          );
           return;
         }
         final path = Path()..moveTo(s.points.first.dx, s.points.first.dy);
@@ -2005,8 +2011,7 @@ class _DrawPainter extends CustomPainter {
     // tourné selon rotation. On dessine relativement à (0,0).
     final w = bounds.width;
     final h = bounds.height;
-    final rect = Rect.fromCenter(
-        center: Offset.zero, width: w, height: h);
+    final rect = Rect.fromCenter(center: Offset.zero, width: w, height: h);
     final color = Color(s.color);
     final stroke = Paint()
       ..color = color
@@ -2121,11 +2126,7 @@ class _DrawPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
     canvas.drawLine(r.topLeft, r.bottomRight, dashed);
     canvas.drawLine(r.topRight, r.bottomLeft, dashed);
-    canvas.drawCircle(
-      r.center,
-      3,
-      Paint()..color = stroke.color,
-    );
+    canvas.drawCircle(r.center, 3, Paint()..color = stroke.color);
   }
 
   /// Lavabo : rectangle arrondi englobant (meuble), vasque ovale
@@ -2133,8 +2134,7 @@ class _DrawPainter extends CustomPainter {
   /// fond. Axe long = largeur horizontale dans le repère local.
   static void _paintSinkLocal(Canvas canvas, Rect r, Paint stroke) {
     // Meuble / plan de travail = rectangle arrondi.
-    final furniture =
-        RRect.fromRectAndRadius(r, const Radius.circular(6));
+    final furniture = RRect.fromRectAndRadius(r, const Radius.circular(6));
     canvas.drawRRect(furniture, stroke);
     // Vasque = ovale centré, 70% largeur / 60% hauteur.
     final basin = Rect.fromCenter(
@@ -2182,7 +2182,10 @@ Uint8List _unusedTypedData() => Uint8List(0);
 // baignoire : on voit immédiatement de quel équipement il s'agit.
 // ---------------------------------------------------------------------------
 class _ToiletPictogram extends StatelessWidget {
-  const _ToiletPictogram({this.size = 22, this.color = const Color(0xFF2B323A)});
+  const _ToiletPictogram({
+    this.size = 22,
+    this.color = const Color(0xFF2B323A),
+  });
   final double size;
   final Color color;
 
@@ -2233,112 +2236,4 @@ class _ToiletIconPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ToiletIconPainter oldDelegate) =>
       oldDelegate.color != color;
-}
-
-// ---------------------------------------------------------------------------
-// Custom color picker dialog — parité avec React `<input type="color">`
-// ---------------------------------------------------------------------------
-
-class _ColorPickerDialog extends StatefulWidget {
-  const _ColorPickerDialog({required this.initial});
-  final int initial;
-
-  @override
-  State<_ColorPickerDialog> createState() => _ColorPickerDialogState();
-}
-
-class _ColorPickerDialogState extends State<_ColorPickerDialog> {
-  late double _hue;
-  late double _saturation;
-  late double _value;
-
-  @override
-  void initState() {
-    super.initState();
-    final hsv = HSVColor.fromColor(Color(widget.initial));
-    _hue = hsv.hue;
-    _saturation = hsv.saturation;
-    _value = hsv.value;
-  }
-
-  Color get _color => HSVColor.fromAHSV(1, _hue, _saturation, _value).toColor();
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Choisir une couleur'),
-      content: SizedBox(
-        width: 300,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Aperçu
-            Container(
-              height: 48,
-              decoration: BoxDecoration(
-                color: _color,
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Teinte
-            Row(
-              children: [
-                const SizedBox(width: 60, child: Text('Teinte')),
-                Expanded(
-                  child: Slider(
-                    value: _hue,
-                    min: 0,
-                    max: 360,
-                    onChanged: (v) => setState(() => _hue = v),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                const SizedBox(width: 60, child: Text('Saturation')),
-                Expanded(
-                  child: Slider(
-                    value: _saturation,
-                    min: 0,
-                    max: 1,
-                    onChanged: (v) => setState(() => _saturation = v),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                const SizedBox(width: 60, child: Text('Luminosité')),
-                Expanded(
-                  child: Slider(
-                    value: _value,
-                    min: 0,
-                    max: 1,
-                    onChanged: (v) => setState(() => _value = v),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '#${_color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Annuler'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _color.toARGB32()),
-          child: const Text('Valider'),
-        ),
-      ],
-    );
-  }
 }

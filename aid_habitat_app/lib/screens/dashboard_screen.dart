@@ -6,10 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/beneficiary_badges.dart'
-    show
-        formatAccompanimentType,
-        accompanimentPaletteFor,
-        IncomeCategoryBadge;
+    show formatAccompanimentType, accompanimentPaletteFor, IncomeCategoryBadge;
 import '../components/beneficiary_palettes.dart';
 import '../components/brand_colors.dart';
 import '../components/soft_transitions.dart';
@@ -72,10 +69,11 @@ class DashboardScreen extends StatefulWidget {
     final street = p.address.trim();
     final zip = p.zipCode.trim();
     final city = p.city.trim();
-    return [street, zip, city.toUpperCase()]
-        .where((s) => s.isNotEmpty)
-        .join(' ')
-        .replaceAll(RegExp(r'\s+'), ' ');
+    return [
+      street,
+      zip,
+      city.toUpperCase(),
+    ].where((s) => s.isNotEmpty).join(' ').replaceAll(RegExp(r'\s+'), ' ');
   }
 
   /// Adresse format bannière prochaine visite : "numéro et rue, Ville" —
@@ -100,15 +98,13 @@ class DashboardScreen extends StatefulWidget {
     if (input != input.toUpperCase() && input != input.toLowerCase()) {
       return input;
     }
-    return input
-        .toLowerCase()
-        .splitMapJoin(
-          RegExp(r"[ \-']"),
-          onMatch: (m) => m[0]!,
-          onNonMatch: (token) => token.isEmpty
-              ? token
-              : '${token[0].toUpperCase()}${token.substring(1)}',
-        );
+    return input.toLowerCase().splitMapJoin(
+      RegExp(r"[ \-']"),
+      onMatch: (m) => m[0]!,
+      onNonMatch: (token) => token.isEmpty
+          ? token
+          : '${token[0].toUpperCase()}${token.substring(1)}',
+    );
   }
 
   /// Adresse courte (CP + ville UPPER) pour les listes du dashboard où
@@ -119,10 +115,10 @@ class DashboardScreen extends StatefulWidget {
   static String buildShortAddress(Patient p) {
     final zip = p.zipCode.trim();
     final city = p.city.trim();
-    return [zip, city.toUpperCase()]
-        .where((s) => s.isNotEmpty)
-        .join(' ')
-        .replaceAll(RegExp(r'\s+'), ' ');
+    return [
+      zip,
+      city.toUpperCase(),
+    ].where((s) => s.isNotEmpty).join(' ').replaceAll(RegExp(r'\s+'), ' ');
   }
 
   @override
@@ -217,8 +213,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final now = DateTime.now();
     // Date en uppercase pour le mini-label au-dessus du Bonjour.
     // Format : "MARDI 21 AVRIL" (maquette 2026-05-12).
-    final dateLabelUpper =
-        DateFormat('EEEE d MMMM', 'fr_FR').format(now).toUpperCase();
+    final dateLabelUpper = DateFormat(
+      'EEEE d MMMM',
+      'fr_FR',
+    ).format(now).toUpperCase();
 
     // Next upcoming visit = nearest future `visitDate` across all dossiers.
     final nextVisit = _findNextVisit(dossiers, now);
@@ -229,8 +227,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // - Dossiers en cours = dossiers dont le statut N'EST PAS « Visité »
     //   (mapping basé sur les statuts existants côté NocoDB, sans
     //   changer le modèle — cf. demande utilisateur 2026-05-12).
-    final weekStart = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: (now.weekday - 1)));
+    final weekStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: (now.weekday - 1)));
     final weekEnd = weekStart.add(const Duration(days: 7));
     int visitsThisWeek = 0;
     int activeDossiers = 0;
@@ -360,11 +361,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  pending,
-                  const SizedBox(height: 24),
-                  agenda,
-                ],
+                children: [pending, const SizedBox(height: 24), agenda],
               );
             },
           ),
@@ -377,7 +374,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // ---------------------------------------------------------------------------
 // KPI card
 // ---------------------------------------------------------------------------
-
 
 class _RecentDossierRow extends StatefulWidget {
   final Dossier dossier;
@@ -470,184 +466,186 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
       child: SoftTapScale(
         onTap: widget.onTap,
         child: InkWell(
-        onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: _hover
-                ? const Color(0xFFF2F4F6) // slate-100
-                : const Color(0xFFF7F7FA), // slate-50
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showTravelOverline) ...[
-                _TravelOverline(state: travelState),
-                const SizedBox(height: 10),
-              ],
-              Row(
-                children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  // Pastel stable par bénéficiaire — même palette et
-                  // même couleur que sur l'écran "Mes dossiers" (hash
-                  // des initiales, cf. `beneficiaryAvatarBgFor`).
-                  color: beneficiaryAvatarBgFor(initials),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    initials,
-                    style: const TextStyle(
-                      // Bump 2026-05-13 : ajout fontSize 16, bold→w800.
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: kBeneficiaryAvatarFg,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _hover
+                  ? const Color(0xFFF2F4F6) // slate-100
+                  : const Color(0xFFF7F7FA), // slate-50
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showTravelOverline) ...[
+                  _TravelOverline(state: travelState),
+                  const SizedBox(height: 10),
+                ],
+                Row(
                   children: [
-                    Text(
-                      "${patient.lastName} ${patient.firstName}",
-                      style: TextStyle(
-                        // Bump 2026-05-13 : 15→17, bold→w800.
-                        fontWeight: FontWeight.w800,
-                        fontSize: 17,
-                        color: _hover
-                            ? kBrandPurple
-                            : const Color(0xFF1E293B),
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        // Pastel stable par bénéficiaire — même palette et
+                        // même couleur que sur l'écran "Mes dossiers" (hash
+                        // des initiales, cf. `beneficiaryAvatarBgFor`).
+                        color: beneficiaryAvatarBgFor(initials),
+                        shape: BoxShape.circle,
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(
-                          LucideIcons.mapPin,
-                          size: 12,
-                          color: Color(0xFF8A939D), // slate-400
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            shortAddress.isEmpty ? '—' : shortAddress,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              // Bump 2026-05-13 : 12→14, ajout w600.
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF8A939D),
-                            ),
+                      child: Center(
+                        child: Text(
+                          initials,
+                          style: const TextStyle(
+                            // Bump 2026-05-13 : ajout fontSize 16, bold→w800.
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: kBeneficiaryAvatarFg,
                           ),
                         ),
-                      ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "${patient.lastName} ${patient.firstName}",
+                            style: TextStyle(
+                              // Bump 2026-05-13 : 15→17, bold→w800.
+                              fontWeight: FontWeight.w800,
+                              fontSize: 17,
+                              color: _hover
+                                  ? kBrandPurple
+                                  : const Color(0xFF1E293B),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(
+                                LucideIcons.mapPin,
+                                size: 12,
+                                color: Color(0xFF8A939D), // slate-400
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  shortAddress.isEmpty ? '—' : shortAddress,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    // Bump 2026-05-13 : 12→14, ajout w600.
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF8A939D),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Remplace l'ancien badge de statut par la date de visite
+                    // (demande utilisateur — le statut n'apporte pas d'info
+                    // actionnable sur le tableau de bord).
+                    // Badge EPCI + pill date de visite côte à côte.
+                    if (epci.isNotEmpty) ...[
+                      EpciBadge(label: epci, maxWidth: 180),
+                      const SizedBox(width: 8),
+                    ],
+                    if (showHourPill)
+                      // Mode « visite du jour » — l'heure prend la place du
+                      // pill date (le jour est implicite, c'est aujourd'hui).
+                      // Style pill violet plein, blanc, icône horloge — même
+                      // hiérarchie visuelle que l'ancien _RouteSegmentRow.
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kBrandPurple,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              LucideIcons.clock3,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              visitTimeHighlight,
+                              style: const TextStyle(
+                                // Bump 2026-05-13 : 13→15, w700→w800.
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: visitLabel.isEmpty
+                              ? const Color(0xFFF2F4F6)
+                              : const Color(0xFFEDE8F5),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.calendar,
+                              size: 13,
+                              color: visitLabel.isEmpty
+                                  ? const Color(0xFF8A939D)
+                                  : kBrandPurple,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              visitLabel.isEmpty ? 'À planifier' : visitLabel,
+                              style: TextStyle(
+                                // Bump 2026-05-13 : 12→14, bold→w800.
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: visitLabel.isEmpty
+                                    ? const Color(0xFF8A939D)
+                                    : kBrandPurple,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(width: 16),
+                    Icon(
+                      LucideIcons.arrowRight,
+                      size: 18,
+                      color: _hover
+                          ? kBrandPurple
+                          : const Color(0xFFB9C0C7), // slate-300
                     ),
                   ],
                 ),
-              ),
-              // Remplace l'ancien badge de statut par la date de visite
-              // (demande utilisateur — le statut n'apporte pas d'info
-              // actionnable sur le tableau de bord).
-              // Badge EPCI + pill date de visite côte à côte.
-              if (epci.isNotEmpty) ...[
-                EpciBadge(label: epci, maxWidth: 180),
-                const SizedBox(width: 8),
               ],
-              if (showHourPill)
-                // Mode « visite du jour » — l'heure prend la place du
-                // pill date (le jour est implicite, c'est aujourd'hui).
-                // Style pill violet plein, blanc, icône horloge — même
-                // hiérarchie visuelle que l'ancien _RouteSegmentRow.
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: kBrandPurple,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        LucideIcons.clock3,
-                        size: 12,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        visitTimeHighlight,
-                        style: const TextStyle(
-                          // Bump 2026-05-13 : 13→15, w700→w800.
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: visitLabel.isEmpty
-                        ? const Color(0xFFF2F4F6)
-                        : const Color(0xFFEDE8F5),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        LucideIcons.calendar,
-                        size: 13,
-                        color: visitLabel.isEmpty
-                            ? const Color(0xFF8A939D)
-                            : kBrandPurple,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        visitLabel.isEmpty ? 'À planifier' : visitLabel,
-                        style: TextStyle(
-                          // Bump 2026-05-13 : 12→14, bold→w800.
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: visitLabel.isEmpty
-                              ? const Color(0xFF8A939D)
-                              : kBrandPurple,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(width: 16),
-              Icon(
-                LucideIcons.arrowRight,
-                size: 18,
-                color: _hover
-                    ? kBrandPurple
-                    : const Color(0xFFB9C0C7), // slate-300
-              ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -675,6 +673,7 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
 
 class _NextVisit {
   final Dossier dossier;
+
   /// Datetime complète (jour + heure) de la visite. Si la
   /// `visit_date` source n'a pas d'heure, l'heure est 00:00:00 — la
   /// bannière affichera alors juste le jour sans l'horaire.
@@ -684,9 +683,11 @@ class _NextVisit {
 
 class _NextVisitBanner extends StatefulWidget {
   final _NextVisit? nextVisit;
+
   /// Tap général sur la bannière (zones gauche + zone info bénéficiaire)
   /// → navigation vers le dossier détail.
   final VoidCallback? onTap;
+
   /// Tap spécifique sur le bouton « Démarrer le relevé » → navigation
   /// directe vers la VAD (visit_report_screen). Demande utilisateur
   /// 2026-05-12.
@@ -727,14 +728,11 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
     _routedAddressKey = addr;
     // ignore: discarded_futures
     RouteService.instance
-        .drivingDurationByAddress(
-          from: kAidHabitatOrigin,
-          toAddress: addr,
-        )
+        .drivingDurationByAddress(from: kAidHabitatOrigin, toAddress: addr)
         .then((d) {
-      if (!mounted) return;
-      setState(() => _driveTime = d);
-    });
+          if (!mounted) return;
+          setState(() => _driveTime = d);
+        });
   }
 
   /// Extrait l'heure (HH:mm) si la `visit_date` ISO contient une partie
@@ -787,12 +785,12 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                     topLeft: Radius.circular(16),
                     bottomLeft: Radius.circular(16),
                   ),
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE3D9EA)),
-                  ),
+                  border: Border(right: BorderSide(color: Color(0xFFE3D9EA))),
                 ),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 28, vertical: 22),
+                  horizontal: 28,
+                  vertical: 22,
+                ),
                 constraints: const BoxConstraints(minWidth: 160),
                 child: const Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -815,7 +813,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 28, vertical: 24),
+                    horizontal: 28,
+                    vertical: 24,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -892,8 +892,8 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
     final dayBadgeLabel = daysUntil == 0
         ? "AUJOURD'HUI"
         : daysUntil == 1
-            ? 'DEMAIN'
-            : dayLabel.toUpperCase();
+        ? 'DEMAIN'
+        : dayLabel.toUpperCase();
 
     return Container(
       decoration: BoxDecoration(
@@ -925,12 +925,12 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                       topLeft: Radius.circular(16),
                       bottomLeft: Radius.circular(16),
                     ),
-                    border: Border(
-                      right: BorderSide(color: Color(0xFFE3D9EA)),
-                    ),
+                    border: Border(right: BorderSide(color: Color(0xFFE3D9EA))),
                   ),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 28, vertical: 22),
+                    horizontal: 28,
+                    vertical: 22,
+                  ),
                   constraints: const BoxConstraints(minWidth: 160),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -983,7 +983,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                   onTap: onTap,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 28, vertical: 24),
+                      horizontal: 28,
+                      vertical: 24,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1022,13 +1024,16 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(LucideIcons.mapPin,
-                                        size: 14,
-                                        color: Color(0xFF8A939D)), // ink-400
+                                    const Icon(
+                                      LucideIcons.mapPin,
+                                      size: 14,
+                                      color: Color(0xFF8A939D),
+                                    ), // ink-400
                                     const SizedBox(width: 6),
                                     ConstrainedBox(
                                       constraints: const BoxConstraints(
-                                          maxWidth: 360),
+                                        maxWidth: 360,
+                                      ),
                                       child: Text(
                                         fullAddress,
                                         maxLines: 1,
@@ -1047,9 +1052,11 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(LucideIcons.phone,
-                                        size: 14,
-                                        color: Color(0xFF8A939D)),
+                                    const Icon(
+                                      LucideIcons.phone,
+                                      size: 14,
+                                      color: Color(0xFF8A939D),
+                                    ),
                                     const SizedBox(width: 6),
                                     Text(
                                       phone,
@@ -1073,8 +1080,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
             ),
             // ----- ACTION block (bouton accent mauve-500) -----
             Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 28, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
               child: Center(
                 child: ElevatedButton.icon(
                   onPressed: widget.onStartReport ?? onTap,
@@ -1082,7 +1088,9 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
                     backgroundColor: kBrandPurple, // mauve-500
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 14),
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -1115,8 +1123,7 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
     if (d == null) return null;
     final now = DateTime.now();
     var age = now.year - d.year;
-    if (now.month < d.month ||
-        (now.month == d.month && now.day < d.day)) {
+    if (now.month < d.month || (now.month == d.month && now.day < d.day)) {
       age -= 1;
     }
     return age >= 0 && age < 150 ? age : null;
@@ -1133,12 +1140,10 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
 
 class _PanelCard extends StatelessWidget {
   final Widget child;
-  final VoidCallback? onTap;
   final EdgeInsets padding;
 
   const _PanelCard({
     required this.child,
-    this.onTap,
     this.padding = const EdgeInsets.all(24),
   });
 
@@ -1158,17 +1163,7 @@ class _PanelCard extends StatelessWidget {
       child: child,
     );
 
-    if (onTap == null) return card;
-    // Ajoute un léger scale-down au tap pour l'effet "soft" partagé avec
-    // le reste de l'app (cf. `components/soft_transitions.dart`).
-    return SoftTapScale(
-      onTap: onTap,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: card,
-      ),
-    );
+    return card;
   }
 }
 
@@ -1267,9 +1262,9 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
         final cmp = da.compareTo(db);
         if (cmp != 0) return cmp;
       }
-      return a.patient.lastName
-          .toLowerCase()
-          .compareTo(b.patient.lastName.toLowerCase());
+      return a.patient.lastName.toLowerCase().compareTo(
+        b.patient.lastName.toLowerCase(),
+      );
     });
     // Cap à 3 visites max par jour.
     return out.length > 3 ? out.sublist(0, 3) : out;
@@ -1325,25 +1320,28 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
       if (!mounted) return;
       final addr = DashboardScreen.buildFullAddress(dossier.patient);
       if (addr.isEmpty) {
-        setState(() =>
-            _segmentDurations[dossier.id] = const _SegmentState.failed());
+        setState(
+          () => _segmentDurations[dossier.id] = const _SegmentState.failed(),
+        );
         continue;
       }
       // 1) Géocode la destination de ce segment.
       final to = await RouteService.instance.geocode(addr);
       if (!mounted) return;
       if (to == null) {
-        setState(() =>
-            _segmentDurations[dossier.id] = const _SegmentState.failed());
+        setState(
+          () => _segmentDurations[dossier.id] = const _SegmentState.failed(),
+        );
         continue;
       }
       // 2) Calcule le trajet depuis `previous` (séquentiel).
-      final d =
-          await RouteService.instance.drivingDuration(previous, to);
+      final d = await RouteService.instance.drivingDuration(previous, to);
       if (!mounted) return;
-      setState(() => _segmentDurations[dossier.id] = d != null
-          ? _SegmentState.done(d)
-          : const _SegmentState.failed());
+      setState(
+        () => _segmentDurations[dossier.id] = d != null
+            ? _SegmentState.done(d)
+            : const _SegmentState.failed(),
+      );
       // 3) Avance le pointeur après calcul.
       previous = to;
     }
@@ -1407,7 +1405,8 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
               _RecentDossierRow(
                 dossier: visits[i],
                 onTap: () => widget.onSelect(visits[i]),
-                travelState: _segmentDurations[visits[i].id] ??
+                travelState:
+                    _segmentDurations[visits[i].id] ??
                     const _SegmentState.loading(),
                 visitTimeHighlight: _extractVisitTime(visits[i]),
               ),
@@ -1438,59 +1437,53 @@ class _TravelOverline extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(
-          LucideIcons.car,
-          size: 13,
-          color: kBrandPurple,
-        ),
+        const Icon(LucideIcons.car, size: 13, color: kBrandPurple),
         const SizedBox(width: 6),
         switch (state) {
           _SegmentLoading() => const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 10,
-                  height: 10,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.4,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      kBrandPurple,
-                    ),
-                  ),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.4,
+                  valueColor: AlwaysStoppedAnimation<Color>(kBrandPurple),
                 ),
-                SizedBox(width: 6),
-                Text(
-                  'Calcul du trajet…',
-                  style: TextStyle(
-                    // Bump 2026-05-13 : 11.5→13.5, ajout w600.
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF8A939D),
-                    fontStyle: FontStyle.italic,
-                  ),
+              ),
+              SizedBox(width: 6),
+              Text(
+                'Calcul du trajet…',
+                style: TextStyle(
+                  // Bump 2026-05-13 : 11.5→13.5, ajout w600.
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF8A939D),
+                  fontStyle: FontStyle.italic,
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
           _SegmentFailed() => const Text(
-              'Trajet indisponible',
-              style: TextStyle(
-                // Bump 2026-05-13 : 11.5→13.5, w600→w700.
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF8A939D),
-                fontStyle: FontStyle.italic,
-              ),
+            'Trajet indisponible',
+            style: TextStyle(
+              // Bump 2026-05-13 : 11.5→13.5, w600→w700.
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF8A939D),
+              fontStyle: FontStyle.italic,
             ),
+          ),
           _SegmentDone(duration: final d) => Text(
-              RouteService.formatDuration(d),
-              style: const TextStyle(
-                // Bump 2026-05-13 : 12→14, w700→w800.
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: kBrandPurple,
-                letterSpacing: 0.2,
-              ),
+            RouteService.formatDuration(d),
+            style: const TextStyle(
+              // Bump 2026-05-13 : 12→14, w700→w800.
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: kBrandPurple,
+              letterSpacing: 0.2,
             ),
+          ),
         },
       ],
     );
@@ -1570,16 +1563,20 @@ class _PendingReportsPanel extends StatelessWidget {
     //   • status == VISITED (visite réalisée, rapport pas envoyé)
     //   • OU status == TO_VISIT && date de visite passée (bascule
     //     auto quand l'ergo a oublié de marquer la visite).
-    final pending = dossiers
-        .where((d) => d.status == DossierStatus.VISITED
-            || (d.status == DossierStatus.TO_VISIT && _isVisitInPast(d)))
-        .toList(growable: false)
-      ..sort((a, b) {
-        // Plus récents d'abord (createdAt desc).
-        final aDt = DateTime.tryParse(a.createdAt) ?? DateTime(2000);
-        final bDt = DateTime.tryParse(b.createdAt) ?? DateTime(2000);
-        return bDt.compareTo(aDt);
-      });
+    final pending =
+        dossiers
+            .where(
+              (d) =>
+                  d.status == DossierStatus.VISITED ||
+                  (d.status == DossierStatus.TO_VISIT && _isVisitInPast(d)),
+            )
+            .toList(growable: false)
+          ..sort((a, b) {
+            // Plus récents d'abord (createdAt desc).
+            final aDt = DateTime.tryParse(a.createdAt) ?? DateTime(2000);
+            final bDt = DateTime.tryParse(b.createdAt) ?? DateTime(2000);
+            return bDt.compareTo(aDt);
+          });
     final items = pending.take(3).toList(growable: false);
 
     return _PanelCard(
@@ -1631,7 +1628,9 @@ class _PendingReportsPanel extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                       side: const BorderSide(color: Color(0xFFE4E7EB)),
@@ -1654,13 +1653,12 @@ class _PendingReportsPanel extends StatelessWidget {
               subText: 'Aucun rapport à réaliser pour le moment.',
             )
           else
-            ...items.map((d) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _PendingReportRow(
-                    dossier: d,
-                    onTap: () => onSelect(d),
-                  ),
-                )),
+            ...items.map(
+              (d) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _PendingReportRow(dossier: d, onTap: () => onSelect(d)),
+              ),
+            ),
         ],
       ),
     );
@@ -1692,8 +1690,7 @@ class _PendingReportRow extends StatelessWidget {
     // nature d'accompagnement Diag/MPA) + contour vert/jaune selon le
     // flag `beneficiaryPrepared` — parité totale avec Mes dossiers.
     // Demande utilisateur 2026-05-12.
-    final avatarPalette =
-        accompanimentPaletteFor(dossier.natureAccompagnement);
+    final avatarPalette = accompanimentPaletteFor(dossier.natureAccompagnement);
     final borderColor = dossier.beneficiaryPrepared
         ? const Color(0xFF86EFAC) // green-300, bénéficiaire prêt
         : const Color(0xFFFDE047); // yellow-300, en attente
@@ -1763,13 +1760,13 @@ class _PendingReportRow extends StatelessWidget {
             // Badge catégorie de revenu (variante monochrome — fond
             // gris neutre, pas de teinte selon le palier ANAH).
             if (income.isNotEmpty)
-              IncomeCategoryBadge(
-                value: income,
-                monochrome: true,
-              ),
+              IncomeCategoryBadge(value: income, monochrome: true),
             const SizedBox(width: 10),
-            const Icon(LucideIcons.arrowRight,
-                size: 18, color: Color(0xFFB9C0C7)), // ink-300
+            const Icon(
+              LucideIcons.arrowRight,
+              size: 18,
+              color: Color(0xFFB9C0C7),
+            ), // ink-300
           ],
         ),
       ),
@@ -1792,13 +1789,11 @@ class _PendingReportRow extends StatelessWidget {
     if (d == null) return null;
     final now = DateTime.now();
     var age = now.year - d.year;
-    if (now.month < d.month ||
-        (now.month == d.month && now.day < d.day)) {
+    if (now.month < d.month || (now.month == d.month && now.day < d.day)) {
       age -= 1;
     }
     return age >= 0 && age < 150 ? age : null;
   }
-
 }
 
 /// Placeholder « empty state » réutilisé par les 2 panneaux du
@@ -1967,7 +1962,9 @@ class _WeekAgendaPanel extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                       side: const BorderSide(color: Color(0xFFE4E7EB)),
@@ -1987,14 +1984,16 @@ class _WeekAgendaPanel extends StatelessWidget {
               subText: 'Profite d\'une semaine plus calme.',
             )
           else
-            ...items.map((it) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _AgendaRow(
-                    item: it,
-                    isHighlighted: _isSameDay(it.dateTime, now),
-                    onTap: () => onSelect(it.dossier),
-                  ),
-                )),
+            ...items.map(
+              (it) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _AgendaRow(
+                  item: it,
+                  isHighlighted: _isSameDay(it.dateTime, now),
+                  onTap: () => onSelect(it.dossier),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -2026,20 +2025,20 @@ class _AgendaRow extends StatelessWidget {
     final p = item.dossier.patient;
     final dt = item.dateTime;
     final dayLabel = dt.day.toString().padLeft(2, '0');
-    final monthLabel =
-        DateFormat('MMM', 'fr_FR').format(dt).toUpperCase().replaceAll('.', '');
+    final monthLabel = DateFormat(
+      'MMM',
+      'fr_FR',
+    ).format(dt).toUpperCase().replaceAll('.', '');
     final hasTime = !(dt.hour == 0 && dt.minute == 0);
     final timeLabel = hasTime
         ? '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
         : '—';
     final city = p.city.trim();
     final subtitle = city.isNotEmpty
-        ? '$city · ${item.dossier.natureAccompagnement.isNotEmpty
-            ? formatAccompanimentType(item.dossier.natureAccompagnement)
-            : 'Relevé visite'}'
+        ? '$city · ${item.dossier.natureAccompagnement.isNotEmpty ? formatAccompanimentType(item.dossier.natureAccompagnement) : 'Relevé visite'}'
         : (item.dossier.natureAccompagnement.isNotEmpty
-            ? formatAccompanimentType(item.dossier.natureAccompagnement)
-            : 'Relevé visite');
+              ? formatAccompanimentType(item.dossier.natureAccompagnement)
+              : 'Relevé visite');
 
     // Refonte 2026-05-13 (Refonte.html:1044-1054) :
     //  - Highlight today : fond mauve-50, day en mauve-700 Fraunces 20px
@@ -2053,14 +2052,15 @@ class _AgendaRow extends StatelessWidget {
         ? const Color(0xFF554265)
         : const Color(0xFF5C6670); // ink-500
     return Material(
-      color: isHighlighted ? const Color(0xFFFAF7FB) : Colors.transparent, // mauve-50
+      color: isHighlighted
+          ? const Color(0xFFFAF7FB)
+          : Colors.transparent, // mauve-50
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
             children: [
               SizedBox(

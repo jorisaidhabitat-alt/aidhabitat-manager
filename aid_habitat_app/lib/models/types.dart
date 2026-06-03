@@ -1,3 +1,5 @@
+// ignore_for_file: constant_identifier_names
+
 import 'dart:convert' show jsonDecode, jsonEncode;
 
 enum DossierStatus {
@@ -54,6 +56,7 @@ class LocalAppUser {
   final String? ergoLabel;
   final List<LocalAccessScope> scopes;
   final String profilePhotoUrl;
+
   /// Base64 data URL of a profile photo captured offline that has not yet
   /// been uploaded. The UI should prefer this over [profilePhotoUrl] while
   /// the sync is pending.
@@ -183,6 +186,7 @@ class RetirementFund {
 class WikiItem {
   final String id;
   final String title;
+
   /// Soit une chaîne brute (legacy : 1 seule description), soit un JSON
   /// array `["desc1","desc2",…]` (nouveau format 2026-05-04 : plusieurs
   /// descriptions cochables au moment d'ajouter la fiche dans une
@@ -214,7 +218,9 @@ class WikiItem {
               .where((s) => s.isNotEmpty)
               .toList();
         }
-      } catch (_) {/* fall through plain string */}
+      } catch (_) {
+        /* fall through plain string */
+      }
     }
     return [trimmed];
   }
@@ -225,7 +231,10 @@ class WikiItem {
   ///                  legacy qui ignorent le JSON)
   ///   - 2+ éléments → JSON array
   static String serializeDescriptions(List<String> values) {
-    final clean = values.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final clean = values
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
     if (clean.isEmpty) return '';
     if (clean.length == 1) return clean.first;
     return jsonEncode(clean);
@@ -339,7 +348,8 @@ class Occupant {
     dependenceTxt: json['dependenceTxt'] as String? ?? '',
     numeroSecuriteSociale: json['numeroSecuriteSociale'] as String? ?? '',
     caisseRetraitePrincipale: json['caisseRetraitePrincipale'] as String? ?? '',
-    caissesRetraiteComplementaires: json['caissesRetraiteComplementaires'] as String? ?? '',
+    caissesRetraiteComplementaires:
+        json['caissesRetraiteComplementaires'] as String? ?? '',
     fiscalRevenue: (json['fiscalRevenue'] as num?)?.toDouble(),
     apaGir: json['apaGir'] as String? ?? '',
   );
@@ -392,8 +402,8 @@ class Occupant {
           numeroSecuriteSociale ?? this.numeroSecuriteSociale,
       caisseRetraitePrincipale:
           caisseRetraitePrincipale ?? this.caisseRetraitePrincipale,
-      caissesRetraiteComplementaires: caissesRetraiteComplementaires ??
-          this.caissesRetraiteComplementaires,
+      caissesRetraiteComplementaires:
+          caissesRetraiteComplementaires ?? this.caissesRetraiteComplementaires,
       fiscalRevenue: clearFiscalRevenue
           ? null
           : (fiscalRevenue ?? this.fiscalRevenue),
@@ -413,6 +423,7 @@ class Patient {
   final String city;
   final String zipCode;
   final String familySituation;
+
   /// Statut d'occupation du logement : « Propriétaire » / « Locataire » /
   /// « Usufruitier » (ou vide si pas encore renseigné). Utilisé par le
   /// rapport PDF pour cocher la case correspondante.
@@ -673,17 +684,21 @@ class AutonomyItem {
 
   Map<String, dynamic> toJson() => {'name': name, 'checked': checked};
 
-  AutonomyItem copyWith({bool? checked}) => AutonomyItem(name: name, checked: checked ?? this.checked);
+  AutonomyItem copyWith({bool? checked}) =>
+      AutonomyItem(name: name, checked: checked ?? this.checked);
 }
 
 class OccupantAutonomy {
   final MedicalContext medical;
   final bool autonomyDone;
+
   /// État "✓" : cet item est validé autonome (parfait, pas d'aide requise).
   final List<AutonomyItem> autonomy;
+
   /// État "👥" : cet item nécessite une aide humaine (affiché seulement
   /// quand "Aide à domicile" est coché côté Bénéficiaire > Santé).
   final List<AutonomyItem> humanHelp;
+
   /// État "!" : cet item est à revoir / pose question (attention
   /// requise). Exclusif avec `autonomy[i]` et `humanHelp[i]` au niveau
   /// de la ligne.
@@ -697,13 +712,28 @@ class OccupantAutonomy {
     this.attention = const [],
   });
 
-  factory OccupantAutonomy.fromJson(Map<String, dynamic> json) => OccupantAutonomy(
-    medical: json['medical'] != null ? MedicalContext.fromJson(json['medical'] as Map<String, dynamic>) : const MedicalContext(),
-    autonomyDone: json['autonomyDone'] as bool? ?? false,
-    autonomy: (json['autonomy'] as List<dynamic>?)?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
-    humanHelp: (json['humanHelp'] as List<dynamic>?)?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
-    attention: (json['attention'] as List<dynamic>?)?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
-  );
+  factory OccupantAutonomy.fromJson(Map<String, dynamic> json) =>
+      OccupantAutonomy(
+        medical: json['medical'] != null
+            ? MedicalContext.fromJson(json['medical'] as Map<String, dynamic>)
+            : const MedicalContext(),
+        autonomyDone: json['autonomyDone'] as bool? ?? false,
+        autonomy:
+            (json['autonomy'] as List<dynamic>?)
+                ?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+        humanHelp:
+            (json['humanHelp'] as List<dynamic>?)
+                ?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+        attention:
+            (json['attention'] as List<dynamic>?)
+                ?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+      );
 
   Map<String, dynamic> toJson() => {
     'medical': medical.toJson(),
@@ -727,8 +757,16 @@ class AutonomyData {
 
   factory AutonomyData.fromJson(Map<String, dynamic> json) => AutonomyData(
     done: json['done'] as bool? ?? false,
-    checklist: (json['checklist'] as List<dynamic>?)?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
-    occupants: (json['occupants'] as List<dynamic>?)?.map((e) => OccupantAutonomy.fromJson(e as Map<String, dynamic>)).toList() ?? [],
+    checklist:
+        (json['checklist'] as List<dynamic>?)
+            ?.map((e) => AutonomyItem.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [],
+    occupants:
+        (json['occupants'] as List<dynamic>?)
+            ?.map((e) => OccupantAutonomy.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [],
   );
 
   Map<String, dynamic> toJson() => {
@@ -759,6 +797,7 @@ class BathroomInstance {
   final bool sdbSolGlissant;
   final bool sdbMachineALaver;
   final double? sdbMachineALaverHauteur;
+
   /// Largeur de la porte SDB : `true`=suffisante, `false`=à revoir,
   /// `null`=non renseigné (l'ergo n'a jamais cliqué). Pattern aligné
   /// sur `Housing.easyAccess` côté accessibility — permet à l'ergo de
@@ -766,6 +805,7 @@ class BathroomInstance {
   /// Refonte 2026-05-16 : `bool` → `bool?` (demande utilisateur).
   final bool? porteSdbLargeurSuffisante;
   final double? porteSdbDimension;
+
   /// Sens d'ouverture de la porte SDB : `true`=Intérieur, `false`=Extérieur,
   /// `null`=non renseigné. Même rationale que `porteSdbLargeurSuffisante`.
   final bool? porteSdbSensAdapte;
@@ -796,44 +836,61 @@ class BathroomInstance {
     this.porteSdbSensAdapte,
   });
 
-  factory BathroomInstance.fromJson(Map<String, dynamic> json) => BathroomInstance(
-    id: json['id'] as String? ?? '',
-    levelField: json['levelField'] as String? ?? '',
-    levelLabel: json['levelLabel'] as String? ?? '',
-    sdbBaignoire: json['sdbBaignoire'] as bool? ?? false,
-    sdbBaignoireHauteur: (json['sdbBaignoireHauteur'] as num?)?.toDouble(),
-    sdbBacDouche: json['sdbBacDouche'] as bool? ?? false,
-    sdbBacDoucheHauteur: (json['sdbBacDoucheHauteur'] as num?)?.toDouble(),
-    sdbVasqueSuspendue: json['sdbVasqueSuspendue'] as bool? ?? false,
-    sdbVasqueSuspendueHauteur: (json['sdbVasqueSuspendueHauteur'] as num?)?.toDouble(),
-    sdbVasqueColonne: json['sdbVasqueColonne'] as bool? ?? false,
-    sdbVasqueColonneHauteur: (json['sdbVasqueColonneHauteur'] as num?)?.toDouble(),
-    sdbMeubleVasque: json['sdbMeubleVasque'] as bool? ?? false,
-    sdbMeubleVasqueHauteur: (json['sdbMeubleVasqueHauteur'] as num?)?.toDouble(),
-    sdbBidet: json['sdbBidet'] as bool? ?? false,
-    sdbBidetHauteur: (json['sdbBidetHauteur'] as num?)?.toDouble(),
-    sdbParoiDouche: json['sdbParoiDouche'] as bool? ?? false,
-    sdbParoiDoucheHauteur: (json['sdbParoiDoucheHauteur'] as num?)?.toDouble(),
-    sdbSolGlissant: json['sdbSolGlissant'] as bool? ?? false,
-    sdbMachineALaver: json['sdbMachineALaver'] as bool? ?? false,
-    sdbMachineALaverHauteur: (json['sdbMachineALaverHauteur'] as num?)?.toDouble(),
-    porteSdbLargeurSuffisante: json['porteSdbLargeurSuffisante'] as bool?,
-    porteSdbDimension: (json['porteSdbDimension'] as num?)?.toDouble(),
-    porteSdbSensAdapte: json['porteSdbSensAdapte'] as bool?,
-  );
+  factory BathroomInstance.fromJson(Map<String, dynamic> json) =>
+      BathroomInstance(
+        id: json['id'] as String? ?? '',
+        levelField: json['levelField'] as String? ?? '',
+        levelLabel: json['levelLabel'] as String? ?? '',
+        sdbBaignoire: json['sdbBaignoire'] as bool? ?? false,
+        sdbBaignoireHauteur: (json['sdbBaignoireHauteur'] as num?)?.toDouble(),
+        sdbBacDouche: json['sdbBacDouche'] as bool? ?? false,
+        sdbBacDoucheHauteur: (json['sdbBacDoucheHauteur'] as num?)?.toDouble(),
+        sdbVasqueSuspendue: json['sdbVasqueSuspendue'] as bool? ?? false,
+        sdbVasqueSuspendueHauteur: (json['sdbVasqueSuspendueHauteur'] as num?)
+            ?.toDouble(),
+        sdbVasqueColonne: json['sdbVasqueColonne'] as bool? ?? false,
+        sdbVasqueColonneHauteur: (json['sdbVasqueColonneHauteur'] as num?)
+            ?.toDouble(),
+        sdbMeubleVasque: json['sdbMeubleVasque'] as bool? ?? false,
+        sdbMeubleVasqueHauteur: (json['sdbMeubleVasqueHauteur'] as num?)
+            ?.toDouble(),
+        sdbBidet: json['sdbBidet'] as bool? ?? false,
+        sdbBidetHauteur: (json['sdbBidetHauteur'] as num?)?.toDouble(),
+        sdbParoiDouche: json['sdbParoiDouche'] as bool? ?? false,
+        sdbParoiDoucheHauteur: (json['sdbParoiDoucheHauteur'] as num?)
+            ?.toDouble(),
+        sdbSolGlissant: json['sdbSolGlissant'] as bool? ?? false,
+        sdbMachineALaver: json['sdbMachineALaver'] as bool? ?? false,
+        sdbMachineALaverHauteur: (json['sdbMachineALaverHauteur'] as num?)
+            ?.toDouble(),
+        porteSdbLargeurSuffisante: json['porteSdbLargeurSuffisante'] as bool?,
+        porteSdbDimension: (json['porteSdbDimension'] as num?)?.toDouble(),
+        porteSdbSensAdapte: json['porteSdbSensAdapte'] as bool?,
+      );
 
   Map<String, dynamic> toJson() => {
-    'id': id, 'levelField': levelField, 'levelLabel': levelLabel,
-    'sdbBaignoire': sdbBaignoire, 'sdbBaignoireHauteur': sdbBaignoireHauteur,
-    'sdbBacDouche': sdbBacDouche, 'sdbBacDoucheHauteur': sdbBacDoucheHauteur,
-    'sdbVasqueSuspendue': sdbVasqueSuspendue, 'sdbVasqueSuspendueHauteur': sdbVasqueSuspendueHauteur,
-    'sdbVasqueColonne': sdbVasqueColonne, 'sdbVasqueColonneHauteur': sdbVasqueColonneHauteur,
-    'sdbMeubleVasque': sdbMeubleVasque, 'sdbMeubleVasqueHauteur': sdbMeubleVasqueHauteur,
-    'sdbBidet': sdbBidet, 'sdbBidetHauteur': sdbBidetHauteur,
-    'sdbParoiDouche': sdbParoiDouche, 'sdbParoiDoucheHauteur': sdbParoiDoucheHauteur,
+    'id': id,
+    'levelField': levelField,
+    'levelLabel': levelLabel,
+    'sdbBaignoire': sdbBaignoire,
+    'sdbBaignoireHauteur': sdbBaignoireHauteur,
+    'sdbBacDouche': sdbBacDouche,
+    'sdbBacDoucheHauteur': sdbBacDoucheHauteur,
+    'sdbVasqueSuspendue': sdbVasqueSuspendue,
+    'sdbVasqueSuspendueHauteur': sdbVasqueSuspendueHauteur,
+    'sdbVasqueColonne': sdbVasqueColonne,
+    'sdbVasqueColonneHauteur': sdbVasqueColonneHauteur,
+    'sdbMeubleVasque': sdbMeubleVasque,
+    'sdbMeubleVasqueHauteur': sdbMeubleVasqueHauteur,
+    'sdbBidet': sdbBidet,
+    'sdbBidetHauteur': sdbBidetHauteur,
+    'sdbParoiDouche': sdbParoiDouche,
+    'sdbParoiDoucheHauteur': sdbParoiDoucheHauteur,
     'sdbSolGlissant': sdbSolGlissant,
-    'sdbMachineALaver': sdbMachineALaver, 'sdbMachineALaverHauteur': sdbMachineALaverHauteur,
-    'porteSdbLargeurSuffisante': porteSdbLargeurSuffisante, 'porteSdbDimension': porteSdbDimension,
+    'sdbMachineALaver': sdbMachineALaver,
+    'sdbMachineALaverHauteur': sdbMachineALaverHauteur,
+    'porteSdbLargeurSuffisante': porteSdbLargeurSuffisante,
+    'porteSdbDimension': porteSdbDimension,
     'porteSdbSensAdapte': porteSdbSensAdapte,
   };
 }
@@ -852,11 +909,13 @@ class WcInstance {
   final bool wcCuvetteTropHaute;
   final double? wcCuvetteHauteur;
   final bool wcBarreRelevement;
+
   /// Largeur de la porte WC : `true`=suffisante, `false`=à revoir,
   /// `null`=non renseigné. Même pattern que `porteSdbLargeurSuffisante`,
   /// refonte 2026-05-16.
   final bool? porteWcLargeurSuffisante;
   final double? porteWcDimension;
+
   /// Sens d'ouverture de la porte WC : `true`=Intérieur,
   /// `false`=Extérieur, `null`=non renseigné.
   final bool? porteWcSensAdapte;
@@ -889,15 +948,21 @@ class WcInstance {
     porteWcLargeurSuffisante: json['porteWcLargeurSuffisante'] as bool?,
     porteWcDimension: (json['porteWcDimension'] as num?)?.toDouble(),
     porteWcSensAdapte: json['porteWcSensAdapte'] as bool?,
-    observationEquipementsUtilisation: json['observationEquipementsUtilisation'] as String? ?? '',
+    observationEquipementsUtilisation:
+        json['observationEquipementsUtilisation'] as String? ?? '',
   );
 
   Map<String, dynamic> toJson() => {
-    'id': id, 'levelField': levelField, 'levelLabel': levelLabel,
-    'wcCuvetteBonneHauteur': wcCuvetteBonneHauteur, 'wcCuvetteTropBasse': wcCuvetteTropBasse,
+    'id': id,
+    'levelField': levelField,
+    'levelLabel': levelLabel,
+    'wcCuvetteBonneHauteur': wcCuvetteBonneHauteur,
+    'wcCuvetteTropBasse': wcCuvetteTropBasse,
     'wcCuvetteTropHaute': wcCuvetteTropHaute,
-    'wcCuvetteHauteur': wcCuvetteHauteur, 'wcBarreRelevement': wcBarreRelevement,
-    'porteWcLargeurSuffisante': porteWcLargeurSuffisante, 'porteWcDimension': porteWcDimension,
+    'wcCuvetteHauteur': wcCuvetteHauteur,
+    'wcBarreRelevement': wcBarreRelevement,
+    'porteWcLargeurSuffisante': porteWcLargeurSuffisante,
+    'porteWcDimension': porteWcDimension,
     'porteWcSensAdapte': porteWcSensAdapte,
     'observationEquipementsUtilisation': observationEquipementsUtilisation,
   };
@@ -914,11 +979,22 @@ class DiagnosticSanitaire {
     this.wcInstances = const [],
   });
 
-  factory DiagnosticSanitaire.fromJson(Map<String, dynamic> json) => DiagnosticSanitaire(
-    dossierId: json['dossierId'] as String? ?? '',
-    sdbInstances: (json['sdbInstances'] as List<dynamic>?)?.map((e) => BathroomInstance.fromJson(e as Map<String, dynamic>)).toList() ?? [],
-    wcInstances: (json['wcInstances'] as List<dynamic>?)?.map((e) => WcInstance.fromJson(e as Map<String, dynamic>)).toList() ?? [],
-  );
+  factory DiagnosticSanitaire.fromJson(Map<String, dynamic> json) =>
+      DiagnosticSanitaire(
+        dossierId: json['dossierId'] as String? ?? '',
+        sdbInstances:
+            (json['sdbInstances'] as List<dynamic>?)
+                ?.map(
+                  (e) => BathroomInstance.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            [],
+        wcInstances:
+            (json['wcInstances'] as List<dynamic>?)
+                ?.map((e) => WcInstance.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+      );
 
   Map<String, dynamic> toJson() => {
     'dossierId': dossierId,
@@ -944,14 +1020,16 @@ class MesuresAnthropometriques {
     this.observations = '',
   });
 
-  factory MesuresAnthropometriques.fromJson(Map<String, dynamic> json) => MesuresAnthropometriques(
-    dossierId: json['dossierId'] as String? ?? '',
-    deboutHauteurCoude: (json['deboutHauteurCoude'] as num?)?.toDouble(),
-    assisHauteurAssise: (json['assisHauteurAssise'] as num?)?.toDouble(),
-    assisProfondeurGenoux: (json['assisProfondeurGenoux'] as num?)?.toDouble(),
-    assisHauteurCoudes: (json['assisHauteurCoudes'] as num?)?.toDouble(),
-    observations: json['observations'] as String? ?? '',
-  );
+  factory MesuresAnthropometriques.fromJson(Map<String, dynamic> json) =>
+      MesuresAnthropometriques(
+        dossierId: json['dossierId'] as String? ?? '',
+        deboutHauteurCoude: (json['deboutHauteurCoude'] as num?)?.toDouble(),
+        assisHauteurAssise: (json['assisHauteurAssise'] as num?)?.toDouble(),
+        assisProfondeurGenoux: (json['assisProfondeurGenoux'] as num?)
+            ?.toDouble(),
+        assisHauteurCoudes: (json['assisHauteurCoudes'] as num?)?.toDouble(),
+        observations: json['observations'] as String? ?? '',
+      );
 
   Map<String, dynamic> toJson() => {
     'dossierId': dossierId,
@@ -976,12 +1054,13 @@ class ObservationsSynthese {
     this.resumePreconisations = '',
   });
 
-  factory ObservationsSynthese.fromJson(Map<String, dynamic> json) => ObservationsSynthese(
-    dossierId: json['dossierId'] as String? ?? '',
-    observationEquipements: json['observationEquipements'] as String? ?? '',
-    projetSouhaitUsage: json['projetSouhaitUsage'] as String? ?? '',
-    resumePreconisations: json['resumePreconisations'] as String? ?? '',
-  );
+  factory ObservationsSynthese.fromJson(Map<String, dynamic> json) =>
+      ObservationsSynthese(
+        dossierId: json['dossierId'] as String? ?? '',
+        observationEquipements: json['observationEquipements'] as String? ?? '',
+        projetSouhaitUsage: json['projetSouhaitUsage'] as String? ?? '',
+        resumePreconisations: json['resumePreconisations'] as String? ?? '',
+      );
 
   Map<String, dynamic> toJson() => {
     'dossierId': dossierId,
@@ -1028,16 +1107,16 @@ class VisitRecommendationItem {
       );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'wikiItemId': wikiItemId,
-        'wikiTitle': wikiTitle,
-        'wikiImageUrl': wikiImageUrl,
-        'wikiTag': wikiTag,
-        'customTitle': customTitle,
-        'note': note,
-        'createdAt': createdAt,
-        'updatedAt': updatedAt,
-      };
+    'id': id,
+    'wikiItemId': wikiItemId,
+    'wikiTitle': wikiTitle,
+    'wikiImageUrl': wikiImageUrl,
+    'wikiTag': wikiTag,
+    'customTitle': customTitle,
+    'note': note,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+  };
 
   VisitRecommendationItem copyWith({
     String? wikiItemId,
@@ -1152,6 +1231,7 @@ class DocItem {
   final String? url;
   final String date;
   final String? localPath;
+
   /// Web-only: base64 data URL (`data:<mime>;base64,…`) of the freshly
   /// captured bytes, stored until the sync engine uploads them and
   /// populates [url]. Always null on native targets (which use [localPath]).
@@ -1383,10 +1463,7 @@ class EpciRef {
     label: json['label']?.toString() ?? '',
   );
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'label': label,
-  };
+  Map<String, dynamic> toJson() => {'id': id, 'label': label};
 }
 
 class ReferencesPayload {

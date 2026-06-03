@@ -13,8 +13,6 @@ import 'package:sqflite/sqflite.dart';
 // par l'origin isolation Safari + sandbox iOS.
 import 'package:sqflite_sqlcipher/sqflite.dart' as sqlcipher;
 
-import '../data/mock_data.dart';
-import '../models/types.dart';
 import 'secure_session_storage.dart';
 
 class LocalDatabase {
@@ -56,7 +54,9 @@ class LocalDatabase {
         }
       }
     } else {
-      final plainPath = _forceDebugPlaintextFallback ? fallbackPath : encryptedPath;
+      final plainPath = _forceDebugPlaintextFallback
+          ? fallbackPath
+          : encryptedPath;
       // Web (PWA) : sqflite_common_ffi_web ne supporte pas SQLCipher.
       // On garde l'ouverture historique non chiffrée. Origin isolation
       // Safari + sandbox iOS limitent l'exposition.
@@ -81,19 +81,21 @@ class LocalDatabase {
   bool _shouldEncrypt() {
     if (kIsWeb) return false;
     final t = defaultTargetPlatform;
-    return t == TargetPlatform.iOS
-        || t == TargetPlatform.macOS
-        || t == TargetPlatform.android;
+    return t == TargetPlatform.iOS ||
+        t == TargetPlatform.macOS ||
+        t == TargetPlatform.android;
   }
 
   bool _canUseDebugPlaintextFallback(Object error) {
-    if (!kDebugMode || kIsWeb || defaultTargetPlatform != TargetPlatform.macOS) {
+    if (!kDebugMode ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.macOS) {
       return false;
     }
     final message = error.toString();
-    return message.contains('-34018')
-        || message.contains('A required entitlement isn\'t present')
-        || message.contains('Impossible de stocker la master key SQLCipher');
+    return message.contains('-34018') ||
+        message.contains('A required entitlement isn\'t present') ||
+        message.contains('Impossible de stocker la master key SQLCipher');
   }
 
   /// Ouvre la base via SQLCipher avec la master key stockée dans
@@ -106,12 +108,12 @@ class LocalDatabase {
     final masterKey = await SecureSessionStorage.instance.ensureMasterKey();
 
     Future<Database> openWithKey() => sqlcipher.openDatabase(
-          fullPath,
-          password: masterKey,
-          version: _dbVersion,
-          onCreate: _onCreate,
-          onUpgrade: _onUpgrade,
-        );
+      fullPath,
+      password: masterKey,
+      version: _dbVersion,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+    );
 
     try {
       return await openWithKey();
@@ -169,7 +171,9 @@ class LocalDatabase {
             final sideCar = File('$fullPath$suffix');
             if (await sideCar.exists()) await sideCar.delete();
           }
-        } catch (_) {/* best-effort */}
+        } catch (_) {
+          /* best-effort */
+        }
       }
       // Deuxième tentative — création fraîche chiffrée.
       return await openWithKey();
@@ -381,30 +385,26 @@ class LocalDatabase {
           ? housingLocalId.substring('housing_'.length)
           : housingLocalId;
       final opId = 'housing_update_reset_v15_$dossierId';
-      await db.insert(
-        'sync_operations',
-        {
-          'id': opId,
-          'entity_type': 'housing',
-          'entity_local_id': dossierId,
-          'operation_type': 'update',
-          'payload_json': jsonEncode({
-            'dossierLocalId': dossierId,
-            'updates': {
-              'basement': false,
-              'rdc': false,
-              'floor': false,
-              'levels': 0,
-            },
-          }),
-          'status': 'pending',
-          'attempt_count': 0,
-          'last_error': null,
-          'created_at': now,
-          'updated_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('sync_operations', {
+        'id': opId,
+        'entity_type': 'housing',
+        'entity_local_id': dossierId,
+        'operation_type': 'update',
+        'payload_json': jsonEncode({
+          'dossierLocalId': dossierId,
+          'updates': {
+            'basement': false,
+            'rdc': false,
+            'floor': false,
+            'levels': 0,
+          },
+        }),
+        'status': 'pending',
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -418,12 +418,7 @@ class LocalDatabase {
   /// `local_file_data_url` — la preview applique l'overlay PNG quand
   /// la page courante a une entrée dans la map, sinon rendu PDF brut.
   Future<void> _migrateV13ToV14(Database db) async {
-    await _addColumnIfMissing(
-      db,
-      'documents',
-      'annotations_json',
-      'TEXT',
-    );
+    await _addColumnIfMissing(db, 'documents', 'annotations_json', 'TEXT');
   }
 
   /// v12 → v13 : statut d'occupation (« Propriétaire / Locataire /
@@ -514,9 +509,19 @@ class LocalDatabase {
   /// on patients and housings. Add them if missing.
   Future<void> _migrateV1ToV2(Database db) async {
     await _addColumnIfMissing(db, 'patients', 'remote_updated_at', 'TEXT');
-    await _addColumnIfMissing(db, 'patients', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+    await _addColumnIfMissing(
+      db,
+      'patients',
+      'sync_state',
+      "TEXT NOT NULL DEFAULT 'synced'",
+    );
     await _addColumnIfMissing(db, 'housings', 'remote_updated_at', 'TEXT');
-    await _addColumnIfMissing(db, 'housings', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+    await _addColumnIfMissing(
+      db,
+      'housings',
+      'sync_state',
+      "TEXT NOT NULL DEFAULT 'synced'",
+    );
   }
 
   /// v2 → v3: Added user_access_scopes table and ergo_label to app_users.
@@ -540,21 +545,43 @@ class LocalDatabase {
     await _addColumnIfMissing(db, 'note_pages', 'dossier_local_id', 'TEXT');
 
     // Indexes to speed up common lookups
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_patient ON dossiers(patient_local_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_sync ON dossiers(sync_state)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_local_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_documents_sync ON documents(sync_state)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dossiers_patient ON dossiers(patient_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dossiers_sync ON dossiers(sync_state)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_documents_sync ON documents(sync_state)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)',
+    );
   }
 
   /// v4 → v5: Add wiki_items and retirement_funds tables for offline reference
   /// data caching.
   Future<void> _migrateV4ToV5(Database db) async {
     await _createTableIfMissing(db, 'wiki_items', _createWikiItemsSQL);
-    await _createTableIfMissing(db, 'retirement_funds', _createRetirementFundsSQL);
-    await _createTableIfMissing(db, 'reference_sync_meta', _createReferenceSyncMetaSQL);
+    await _createTableIfMissing(
+      db,
+      'retirement_funds',
+      _createRetirementFundsSQL,
+    );
+    await _createTableIfMissing(
+      db,
+      'reference_sync_meta',
+      _createReferenceSyncMetaSQL,
+    );
   }
 
   /// v5 → v6: Add per-dossier offline tables used by DossierRepository for
@@ -563,10 +590,26 @@ class LocalDatabase {
   /// against them raises "no such table" and silently drops offline data.
   Future<void> _migrateV5ToV6(Database db) async {
     await _createTableIfMissing(db, 'contexte_de_vie', _createContexteDeVieSQL);
-    await _createTableIfMissing(db, 'diagnostic_sanitaires', _createDiagnosticSanitairesSQL);
-    await _createTableIfMissing(db, 'mesures_anthropometriques', _createMesuresAnthropometriquesSQL);
-    await _createTableIfMissing(db, 'observations_synthese', _createObservationsSyntheseSQL);
-    await _createTableIfMissing(db, 'visit_recommendations', _createVisitRecommendationsSQL);
+    await _createTableIfMissing(
+      db,
+      'diagnostic_sanitaires',
+      _createDiagnosticSanitairesSQL,
+    );
+    await _createTableIfMissing(
+      db,
+      'mesures_anthropometriques',
+      _createMesuresAnthropometriquesSQL,
+    );
+    await _createTableIfMissing(
+      db,
+      'observations_synthese',
+      _createObservationsSyntheseSQL,
+    );
+    await _createTableIfMissing(
+      db,
+      'visit_recommendations',
+      _createVisitRecommendationsSQL,
+    );
   }
 
   /// v6 → v7: Offline capability for admin access, wiki creation/edit,
@@ -587,17 +630,41 @@ class LocalDatabase {
   Future<void> _migrateV6ToV7(Database db) async {
     await _createTableIfMissing(db, 'access_members', _createAccessMembersSQL);
     await _addColumnIfMissing(
-      db, 'wiki_items', 'pending_image_data_url', 'TEXT');
+      db,
+      'wiki_items',
+      'pending_image_data_url',
+      'TEXT',
+    );
     await _addColumnIfMissing(
-      db, 'wiki_items', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+      db,
+      'wiki_items',
+      'sync_state',
+      "TEXT NOT NULL DEFAULT 'synced'",
+    );
     await _addColumnIfMissing(
-      db, 'retirement_funds', 'pending_logo_data_url', 'TEXT');
+      db,
+      'retirement_funds',
+      'pending_logo_data_url',
+      'TEXT',
+    );
     await _addColumnIfMissing(
-      db, 'retirement_funds', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+      db,
+      'retirement_funds',
+      'sync_state',
+      "TEXT NOT NULL DEFAULT 'synced'",
+    );
     await _addColumnIfMissing(
-      db, 'app_users', 'pending_photo_data_url', 'TEXT');
+      db,
+      'app_users',
+      'pending_photo_data_url',
+      'TEXT',
+    );
     await _addColumnIfMissing(
-      db, 'app_users', 'sync_state', "TEXT NOT NULL DEFAULT 'synced'");
+      db,
+      'app_users',
+      'sync_state',
+      "TEXT NOT NULL DEFAULT 'synced'",
+    );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_access_members_sync '
       'ON access_members(sync_state)',
@@ -995,14 +1062,30 @@ class LocalDatabase {
     await db.execute(_createVisitRecommendationsSQL);
 
     // Indexes for common queries
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_patient ON dossiers(patient_local_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_dossiers_sync ON dossiers(sync_state)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_local_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_documents_sync ON documents(sync_state)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_access_members_sync ON access_members(sync_state)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dossiers_patient ON dossiers(patient_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dossiers_sync ON dossiers(sync_state)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_documents_sync ON documents(sync_state)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_access_members_sync ON access_members(sync_state)',
+    );
 
     // No initial seed — the workspace is populated from NocoDB at first login.
   }
@@ -1012,148 +1095,5 @@ class LocalDatabase {
     // DataService.refreshWorkspaceFromRemote). Offline-created dossiers
     // remain as the user creates them.
     await database;
-  }
-
-  Future<void> _seedInitialWorkspace(Database db) async {
-    for (final dossier in MOCK_DOSSIERS) {
-      final patient = dossier.patient;
-      final housing = dossier.housing;
-      final timestamp = DateTime.now().toIso8601String();
-
-      await db.insert('patients', {
-        'local_id': patient.id,
-        'remote_patient_id': null,
-        'first_name': patient.firstName,
-        'last_name': patient.lastName,
-        'birth_date': patient.birthDate,
-        'phone': patient.phone,
-        'email': patient.email,
-        'address': patient.address,
-        'city': patient.city,
-        'zip_code': patient.zipCode,
-        'family_situation': patient.familySituation,
-        'income_category': patient.incomeCategory,
-        'trusted_person_json': jsonEncode({
-          'name': patient.trustedPerson.name,
-          'phone': patient.trustedPerson.phone,
-          'email': patient.trustedPerson.email,
-        }),
-        'second_first_name': '',
-        'second_last_name': '',
-        'occupants_json': null,
-        'number_people': null,
-        'fiscal_revenue': null,
-        'apa': 0,
-        'invalidity': 0,
-        'invalidity_txt': '',
-        'home_help': 0,
-        'home_help_txt': '',
-        'dependence_txt': '',
-        'city_id': '',
-        'caisse_retraite_principale': '',
-        'caisses_retraite_complementaires': '',
-        'updated_at': timestamp,
-        'remote_updated_at': null,
-        'sync_state': dossier.syncState.name,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-
-      final housingLocalId = 'housing_${dossier.id}';
-      await db.insert('housings', {
-        'local_id': housingLocalId,
-        'remote_housing_id': null,
-        'patient_local_id': patient.id,
-        'type': housing.type.name,
-        'year_value': housing.year,
-        'surface': housing.surface,
-        'heating_mode': housing.heating.name,
-        'accessibility_notes': housing.accessibilityNotes,
-        'year_construction': '',
-        'year_habitation': '',
-        'levels': null,
-        // '' (et non 'Maison') : l'ergo doit cliquer explicitement
-        // Maison ou Appartement — sinon le validateur de pré-génération
-        // signale le champ comme manquant.
-        'typology': '',
-        'basement': 0,
-        'basement_desc': '',
-        'rdc': 0,
-        'rdc_desc': '',
-        'floor': 0,
-        'floor_desc': '',
-        'garage': 0,
-        'veranda': 0,
-        'balcon': 0,
-        'terrasse': 0,
-        'jardin': 0,
-        'heating_details_json': '{}',
-        'volets_roulants_manuels_localisation': '',
-        'volets_roulants_manuels_entier': 0,
-        'volets_roulants_electriques_localisation': '',
-        'volets_roulants_electriques_entier': 0,
-        'volets_persiennes_localisation': '',
-        'volets_persiennes_entier': 0,
-        'cheminement_escalier_exterieur': 0,
-        'cheminement_escalier_interieur': 0,
-        'cheminement_pente_douce': 0,
-        'cheminement_plat': 0,
-        'cheminement_quelques_marches': 0,
-        'cheminement_par_arriere': 0,
-        'cheminement_seuil_porte': 0,
-        'porte_garage_id': '',
-        'portail_id': '',
-        'motorisation_porte_garage': '',
-        'motorisation_portail': '',
-        'easy_access': 0,
-        'easy_access_set': 0,
-        'comments': '',
-        'access_observation': '',
-        'updated_at': timestamp,
-        'remote_updated_at': null,
-        'sync_state': dossier.syncState.name,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-
-      await db.insert('dossiers', {
-        'local_id': dossier.id,
-        'remote_dossier_id': null,
-        'patient_local_id': patient.id,
-        'housing_local_id': housingLocalId,
-        'status': dossier.status.name,
-        'ergo_id': dossier.ergoId,
-        'visit_date': dossier.visitDate,
-        'autonomy_notes': dossier.autonomyNotes,
-        'compte_anah': '',
-        'nature_accompagnement': '',
-        'envoi_rapport': '',
-        'personnes_presentes_visite': '',
-        'medical_context_json': null,
-        'autonomy_json': null,
-        'plans_json': jsonEncode(dossier.plans.keys.toList()),
-        'created_at': dossier.createdAt,
-        'updated_at': timestamp,
-        'remote_updated_at': null,
-        'sync_state': dossier.syncState.name,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-
-      if (dossier.syncState != SyncState.synced) {
-        await db.insert('sync_operations', {
-          'id': 'seed_${dossier.id}',
-          'entity_type': 'dossier',
-          'entity_local_id': dossier.id,
-          'operation_type': dossier.syncState == SyncState.syncError
-              ? 'retry'
-              : 'seed_sync',
-          'payload_json': jsonEncode({'dossierId': dossier.id}),
-          'status': dossier.syncState == SyncState.syncError
-              ? SyncOperationStatus.failed.name
-              : SyncOperationStatus.pending.name,
-          'attempt_count': dossier.syncState == SyncState.syncError ? 1 : 0,
-          'last_error': dossier.syncState == SyncState.syncError
-              ? 'Synchronisation NocoDB non configurée'
-              : null,
-          'created_at': timestamp,
-          'updated_at': timestamp,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-      }
-    }
   }
 }

@@ -1111,34 +1111,6 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     );
   }
 
-  /// Bouton retour. Bumpé de 30×30 / icône 16 → 44×44 / icône 24 sur
-  /// demande utilisateur 2026-05-13 (« met la flèche retour de VAD
-  /// plus grande »). Reste transparent, pill radius 999, icône ink-700.
-  Widget _buildBackButton() {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: widget.onBack,
-        // Refonte 2026-05-13 : pill radius 999 uniforme.
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
-            borderRadius: BorderRadius.circular(999),
-          ),
-          alignment: Alignment.center,
-          child: const Icon(
-            LucideIcons.chevronLeft,
-            size: 24,
-            color: Color(0xFF2B323A), // ink-700
-          ),
-        ),
-      ),
-    );
-  }
-
   /// Bouton violet « Générer le rapport » — dernière entrée de la
   /// barre de navigation des onglets (cf. `_buildTabBar`).
   /// Appelle [_generateReport] qui invoque le serveur, récupère le

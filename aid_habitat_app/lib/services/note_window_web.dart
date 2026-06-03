@@ -23,7 +23,7 @@
 // elles voient la même base. Le polling toutes les 1 s côté
 // NoteWindowScreen suffit à propager les écritures.
 
-// ignore_for_file: avoid_web_libraries_in_flutter
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
@@ -75,13 +75,16 @@ bool tryOpenNoteWindow({
   required String initialText,
   required double defaultWidth,
   required double defaultHeight,
+
   /// Base URL de l'API (`AppConfig.apiBaseUrl`) — transmis à la popup
   /// pour qu'elle puisse appeler le backend en mode `drawing`.
   required String apiBaseUrl,
+
   /// Session token de l'utilisateur (`AppConfig.appSessionToken`) —
   /// idem, transmis via localStorage one-shot. Chaîne vide acceptée
   /// (mode anonyme, ne pas appeler l'API).
   required String appSessionToken,
+
   /// Mode d'édition de la fenêtre détachée :
   ///   - 'text' (défaut) → TextField simple, sync via IPC sur chaque
   ///     keystroke. La fenêtre principale écrit en SQLite.
@@ -106,7 +109,9 @@ bool tryOpenNoteWindow({
       'appSessionToken': appSessionToken,
       'createdAt': DateTime.now().millisecondsSinceEpoch,
     });
-  } catch (_) {/* localStorage indisponible : la popup utilisera l'IndexedDB partagé en fallback */}
+  } catch (_) {
+    /* localStorage indisponible : la popup utilisera l'IndexedDB partagé en fallback */
+  }
 
   // Restitue la dernière taille/position connue (clés par tabKey pour
   // que les notes Médical / Autonomie / Accessibilité gardent chacune
@@ -117,9 +122,11 @@ bool tryOpenNoteWindow({
   // Si on n'a pas de position mémorisée, on centre vaguement à l'écran
   // — sinon le browser place la popup en (0,0) ce qui chevauche la
   // titlebar macOS et est laid.
-  final left = stored?.left ??
+  final left =
+      stored?.left ??
       ((html.window.screen?.available.width ?? 1440) - width) / 2;
-  final top = stored?.top ??
+  final top =
+      stored?.top ??
       ((html.window.screen?.available.height ?? 900) - height) / 2;
 
   final origin = html.window.location.origin;
@@ -136,7 +143,9 @@ bool tryOpenNoteWindow({
     'mode': mode,
   };
   final query = params.entries
-      .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+      .map(
+        (e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+      )
       .join('&');
   final url = '$origin/?$query';
 
@@ -151,7 +160,8 @@ bool tryOpenNoteWindow({
   // comme invalide et basculer en onglet si elles sont présentes.
   // Pour la sécurité « pas d'accès au window.opener », on neutralise
   // après coup avec `win?.opener = null` (cf. plus bas).
-  final features = 'popup=yes,'
+  final features =
+      'popup=yes,'
       'width=${width.round()},'
       'height=${height.round()},'
       'left=${left.round()},'
@@ -160,8 +170,8 @@ bool tryOpenNoteWindow({
   // Nom de fenêtre UNIQUE par tabKey + timestamp — sinon Chrome peut
   // réutiliser un onglet/popup déjà existant avec le même nom et
   // basculer dessus au lieu d'en créer un nouveau.
-  final windowName = 'aidhabitat-note-${tabKey.replaceAll(RegExp(r"[^A-Za-z0-9]"), "_")}-${DateTime.now().millisecondsSinceEpoch}';
-  // ignore: deprecated_member_use
+  final windowName =
+      'aidhabitat-note-${tabKey.replaceAll(RegExp(r"[^A-Za-z0-9]"), "_")}-${DateTime.now().millisecondsSinceEpoch}';
   final win = html.window.open(url, windowName, features);
   // Sécurité : empêche la nouvelle fenêtre de remonter à la principale
   // via `window.opener` (équivalent de `noopener` qui n'est pas
@@ -200,7 +210,9 @@ void persistNoteWindowFrame({
     // Clé "shared" sans tabKey : utilisée comme défaut quand la note
     // d'un nouveau tab s'ouvre pour la 1ère fois.
     html.window.localStorage[_kFrameStoragePrefix] = payload;
-  } catch (_) {/* localStorage plein ou désactivé : ignore */}
+  } catch (_) {
+    /* localStorage plein ou désactivé : ignore */
+  }
 }
 
 class _StoredFrame {
@@ -208,13 +220,19 @@ class _StoredFrame {
   final double? top;
   final double width;
   final double height;
-  _StoredFrame({this.left, this.top, required this.width, required this.height});
+  _StoredFrame({
+    this.left,
+    this.top,
+    required this.width,
+    required this.height,
+  });
 }
 
 _StoredFrame? _loadStoredFrame(String tabKey) {
   try {
-    final raw = html.window.localStorage['$_kFrameStoragePrefix.$tabKey']
-        ?? html.window.localStorage[_kFrameStoragePrefix];
+    final raw =
+        html.window.localStorage['$_kFrameStoragePrefix.$tabKey'] ??
+        html.window.localStorage[_kFrameStoragePrefix];
     if (raw == null) return null;
     final m = jsonDecode(raw) as Map<String, dynamic>;
     final w = (m['width'] as num?)?.toDouble();
@@ -270,7 +288,9 @@ void sendNoteIpc({required String method, required Map<String, dynamic> args}) {
   try {
     final payload = jsonEncode({'method': method, 'args': args});
     _ensureChannel().postMessage(payload);
-  } catch (_) {/* ignore */}
+  } catch (_) {
+    /* ignore */
+  }
 }
 
 /// S'abonne aux messages IPC. Le callback reçoit method + args. Retourne
@@ -281,7 +301,8 @@ void sendNoteIpc({required String method, required Map<String, dynamic> args}) {
 /// format, et Map Dart legacy si une ancienne fenêtre n'a pas encore
 /// été reloadée — utile pendant les transitions de déploiement).
 StreamSubscription<dynamic> listenNoteIpc(
-    void Function(String method, Map<String, dynamic> args) callback) {
+  void Function(String method, Map<String, dynamic> args) callback,
+) {
   final ch = _ensureChannel();
   return ch.onMessage.listen((event) {
     try {
@@ -309,7 +330,9 @@ StreamSubscription<dynamic> listenNoteIpc(
             )
           : <String, dynamic>{};
       callback(method, args);
-    } catch (_) {/* ignore message mal formé */}
+    } catch (_) {
+      /* ignore message mal formé */
+    }
   });
 }
 

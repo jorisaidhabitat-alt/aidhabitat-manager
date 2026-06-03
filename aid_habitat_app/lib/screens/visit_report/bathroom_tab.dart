@@ -14,11 +14,27 @@ import '../../components/form_widgets.dart';
 /// derive their instances from Intérieur instead of letting the user add
 /// them manually.
 const List<SanitaryLevel> _kSanitaryLevels = [
-  SanitaryLevel(field: 'basement', roomsField: 'basement_rooms_json', label: 'Sous-sol'),
+  SanitaryLevel(
+    field: 'basement',
+    roomsField: 'basement_rooms_json',
+    label: 'Sous-sol',
+  ),
   SanitaryLevel(field: 'rdc', roomsField: 'rdc_rooms_json', label: 'RDC'),
-  SanitaryLevel(field: 'floor', roomsField: 'floor_rooms_json', label: '1er étage'),
-  SanitaryLevel(field: 'second_floor', roomsField: 'second_floor_rooms_json', label: '2e étage'),
-  SanitaryLevel(field: 'third_floor', roomsField: 'third_floor_rooms_json', label: '3e étage'),
+  SanitaryLevel(
+    field: 'floor',
+    roomsField: 'floor_rooms_json',
+    label: '1er étage',
+  ),
+  SanitaryLevel(
+    field: 'second_floor',
+    roomsField: 'second_floor_rooms_json',
+    label: '2e étage',
+  ),
+  SanitaryLevel(
+    field: 'third_floor',
+    roomsField: 'third_floor_rooms_json',
+    label: '3e étage',
+  ),
 ];
 
 class SanitaryLevel {
@@ -45,8 +61,9 @@ List<SanitaryLevel> buildSanitaryLevelSelections(
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List &&
-          decoded.any((r) => r.toString().toLowerCase() ==
-              targetRoom.toLowerCase())) {
+          decoded.any(
+            (r) => r.toString().toLowerCase() == targetRoom.toLowerCase(),
+          )) {
         result.add(lvl);
       }
     } catch (_) {
@@ -150,8 +167,9 @@ class _BathroomTabState extends State<BathroomTab>
     // Phase 2 — refresh depuis le serveur en arrière-plan. Si des
     // données plus récentes arrivent, on rehydrate silencieusement.
     try {
-      await widget.repository
-          .refreshDiagnosticSanitaireFromRemote(widget.dossier.id);
+      await widget.repository.refreshDiagnosticSanitaireFromRemote(
+        widget.dossier.id,
+      );
     } catch (_) {
       return; // offline : le cache local suffit
     }
@@ -160,12 +178,16 @@ class _BathroomTabState extends State<BathroomTab>
   }
 
   Future<void> _hydrateFromLocal() async {
-    final result =
-        await widget.repository.fetchDiagnosticSanitaire(widget.dossier.id);
-    final housingRow =
-        await widget.repository.fetchHousingRaw(widget.dossier.id);
-    final selectedLevels =
-        buildSanitaryLevelSelections(housingRow, 'Salle de bain');
+    final result = await widget.repository.fetchDiagnosticSanitaire(
+      widget.dossier.id,
+    );
+    final housingRow = await widget.repository.fetchHousingRaw(
+      widget.dossier.id,
+    );
+    final selectedLevels = buildSanitaryLevelSelections(
+      housingRow,
+      'Salle de bain',
+    );
     if (!mounted) return;
 
     final previous = result?.sdbInstances ?? const <BathroomInstance>[];
@@ -173,40 +195,45 @@ class _BathroomTabState extends State<BathroomTab>
     // existing saved instance for that level; create an empty one otherwise.
     final nextInstances = <BathroomInstance>[];
     for (final lvl in selectedLevels) {
-      final existing =
-          previous.where((i) => i.levelField == lvl.field).toList();
+      final existing = previous
+          .where((i) => i.levelField == lvl.field)
+          .toList();
       if (existing.isNotEmpty) {
-        nextInstances.add(BathroomInstance(
-          id: existing.first.id,
-          levelField: lvl.field,
-          levelLabel: lvl.label,
-          sdbBaignoire: existing.first.sdbBaignoire,
-          sdbBaignoireHauteur: existing.first.sdbBaignoireHauteur,
-          sdbBacDouche: existing.first.sdbBacDouche,
-          sdbBacDoucheHauteur: existing.first.sdbBacDoucheHauteur,
-          sdbVasqueSuspendue: existing.first.sdbVasqueSuspendue,
-          sdbVasqueSuspendueHauteur: existing.first.sdbVasqueSuspendueHauteur,
-          sdbVasqueColonne: existing.first.sdbVasqueColonne,
-          sdbVasqueColonneHauteur: existing.first.sdbVasqueColonneHauteur,
-          sdbMeubleVasque: existing.first.sdbMeubleVasque,
-          sdbMeubleVasqueHauteur: existing.first.sdbMeubleVasqueHauteur,
-          sdbBidet: existing.first.sdbBidet,
-          sdbBidetHauteur: existing.first.sdbBidetHauteur,
-          sdbParoiDouche: existing.first.sdbParoiDouche,
-          sdbParoiDoucheHauteur: existing.first.sdbParoiDoucheHauteur,
-          sdbSolGlissant: existing.first.sdbSolGlissant,
-          sdbMachineALaver: existing.first.sdbMachineALaver,
-          sdbMachineALaverHauteur: existing.first.sdbMachineALaverHauteur,
-          porteSdbLargeurSuffisante: existing.first.porteSdbLargeurSuffisante,
-          porteSdbDimension: existing.first.porteSdbDimension,
-          porteSdbSensAdapte: existing.first.porteSdbSensAdapte,
-        ));
+        nextInstances.add(
+          BathroomInstance(
+            id: existing.first.id,
+            levelField: lvl.field,
+            levelLabel: lvl.label,
+            sdbBaignoire: existing.first.sdbBaignoire,
+            sdbBaignoireHauteur: existing.first.sdbBaignoireHauteur,
+            sdbBacDouche: existing.first.sdbBacDouche,
+            sdbBacDoucheHauteur: existing.first.sdbBacDoucheHauteur,
+            sdbVasqueSuspendue: existing.first.sdbVasqueSuspendue,
+            sdbVasqueSuspendueHauteur: existing.first.sdbVasqueSuspendueHauteur,
+            sdbVasqueColonne: existing.first.sdbVasqueColonne,
+            sdbVasqueColonneHauteur: existing.first.sdbVasqueColonneHauteur,
+            sdbMeubleVasque: existing.first.sdbMeubleVasque,
+            sdbMeubleVasqueHauteur: existing.first.sdbMeubleVasqueHauteur,
+            sdbBidet: existing.first.sdbBidet,
+            sdbBidetHauteur: existing.first.sdbBidetHauteur,
+            sdbParoiDouche: existing.first.sdbParoiDouche,
+            sdbParoiDoucheHauteur: existing.first.sdbParoiDoucheHauteur,
+            sdbSolGlissant: existing.first.sdbSolGlissant,
+            sdbMachineALaver: existing.first.sdbMachineALaver,
+            sdbMachineALaverHauteur: existing.first.sdbMachineALaverHauteur,
+            porteSdbLargeurSuffisante: existing.first.porteSdbLargeurSuffisante,
+            porteSdbDimension: existing.first.porteSdbDimension,
+            porteSdbSensAdapte: existing.first.porteSdbSensAdapte,
+          ),
+        );
       } else {
-        nextInstances.add(BathroomInstance(
-          id: 'sdb_${lvl.field}',
-          levelField: lvl.field,
-          levelLabel: lvl.label,
-        ));
+        nextInstances.add(
+          BathroomInstance(
+            id: 'sdb_${lvl.field}',
+            levelField: lvl.field,
+            levelLabel: lvl.label,
+          ),
+        );
       }
     }
 
@@ -283,28 +310,35 @@ class _BathroomTabState extends State<BathroomTab>
     final a = _active;
     if (a == null) return;
     final next = !a.sdbBacDouche;
-    _updateActive(_copy(a,
+    _updateActive(
+      _copy(
+        a,
         sdbBacDouche: next,
         sdbBacDoucheHauteur: next ? a.sdbBacDoucheHauteur : null,
         sdbParoiDouche: next ? a.sdbParoiDouche : false,
-        sdbParoiDoucheHauteur: next ? a.sdbParoiDoucheHauteur : null));
+        sdbParoiDoucheHauteur: next ? a.sdbParoiDoucheHauteur : null,
+      ),
+    );
   }
 
   void _toggleBath() {
     final a = _active;
     if (a == null) return;
     final next = !a.sdbBaignoire;
-    _updateActive(_copy(a,
+    _updateActive(
+      _copy(
+        a,
         sdbBaignoire: next,
-        sdbBaignoireHauteur: next ? a.sdbBaignoireHauteur : null));
+        sdbBaignoireHauteur: next ? a.sdbBaignoireHauteur : null,
+      ),
+    );
   }
 
   /// Applies a multi-select delta for the complementary-equipment dropdown:
   /// enables every field whose label is in [nextLabels] and disables the
   /// rest (clearing any stored height, since height isn't asked for the
   /// complementary items).
-  void _applyCommonSelection(
-      List<_EquipDef> items, Set<String> nextLabels) {
+  void _applyCommonSelection(List<_EquipDef> items, Set<String> nextLabels) {
     final start = _active;
     if (start == null) return;
     var a = start;
@@ -312,8 +346,12 @@ class _BathroomTabState extends State<BathroomTab>
       final shouldBeOn = nextLabels.contains(def.label);
       final isOn = _getEquipmentEnabled(a, def.enabledField);
       if (shouldBeOn == isOn) continue;
-      a = _setEquipmentOnInstance(a, def.enabledField,
-          enabled: shouldBeOn, clearHeight: !shouldBeOn);
+      a = _setEquipmentOnInstance(
+        a,
+        def.enabledField,
+        enabled: shouldBeOn,
+        clearHeight: !shouldBeOn,
+      );
     }
     _updateActive(a);
   }
@@ -366,8 +404,7 @@ class _BathroomTabState extends State<BathroomTab>
       ),
       child: const Column(
         children: [
-          Icon(Icons.bathtub_outlined,
-              size: 40, color: Color(0xFF8A939D)),
+          Icon(Icons.bathtub_outlined, size: 40, color: Color(0xFF8A939D)),
           SizedBox(height: 10),
           Text(
             "Aucune salle de bain renseignée pour ce logement.\n"
@@ -392,8 +429,7 @@ class _BathroomTabState extends State<BathroomTab>
             child: Container(
               // Padding bumpé pour rester proportionné au fontSize 12
               // (avant 10 + 12/6 → maintenant 12 + 14/8).
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: _activeLevelIndex == i
                     ? const Color(0xFFF2ECF5)
@@ -439,99 +475,98 @@ class _BathroomTabState extends State<BathroomTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Titre "Équipements Salle de Bain — …" retiré.
-          // Wet zone toggles
-          Row(
-            children: [
-              Expanded(
-                child: _WetZoneButton(
-                  label: 'Douche',
-                  active: hasShower,
-                  onTap: _toggleShower,
-                ),
+        // Wet zone toggles
+        Row(
+          children: [
+            Expanded(
+              child: _WetZoneButton(
+                label: 'Douche',
+                active: hasShower,
+                onTap: _toggleShower,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _WetZoneButton(
-                  label: 'Baignoire',
-                  active: hasBath,
-                  onTap: _toggleBath,
-                ),
-              ),
-            ],
-          ),
-          // Hauteur douche / baignoire : sur UNE MÊME ligne quand les
-          // deux sont cochées (une colonne chacune), sinon l'unique
-          // champ visible occupe toute la largeur.
-          //
-          // Refonte 2026-05-15 (demande user) : animation d'entrée fluide
-          // type « menu déroulant » quand le champ apparaît après un
-          // clic sur Douche/Baignoire. `AnimatedSize` interpole la
-          // hauteur (slide vertical de 0 à la hauteur finale) +
-          // `AnimatedOpacity` interpole l'opacité (fade-in). Quand on
-          // décoche, animation inverse (slide-up + fade-out).
-          AnimatedSize(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: AnimatedOpacity(
-              opacity: (hasShower || hasBath) ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              child: (hasShower || hasBath)
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (hasShower)
-                            Expanded(
-                              child: FormNumberField(
-                                label: 'Hauteur douche',
-                                value: a.sdbBacDoucheHauteur,
-                                unit: 'cm',
-                                onChanged: (v) => _updateActive(
-                                  _setEquipmentOnInstance(
-                                    a,
-                                    'sdbBacDouche',
-                                    height: v,
-                                    clearHeight: v == null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          if (hasShower && hasBath)
-                            const SizedBox(width: 10),
-                          if (hasBath)
-                            Expanded(
-                              child: FormNumberField(
-                                label: 'Hauteur baignoire',
-                                value: a.sdbBaignoireHauteur,
-                                unit: 'cm',
-                                onChanged: (v) => _updateActive(
-                                  _setEquipmentOnInstance(
-                                    a,
-                                    'sdbBaignoire',
-                                    height: v,
-                                    clearHeight: v == null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox.shrink(),
             ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _WetZoneButton(
+                label: 'Baignoire',
+                active: hasBath,
+                onTap: _toggleBath,
+              ),
+            ),
+          ],
+        ),
+        // Hauteur douche / baignoire : sur UNE MÊME ligne quand les
+        // deux sont cochées (une colonne chacune), sinon l'unique
+        // champ visible occupe toute la largeur.
+        //
+        // Refonte 2026-05-15 (demande user) : animation d'entrée fluide
+        // type « menu déroulant » quand le champ apparaît après un
+        // clic sur Douche/Baignoire. `AnimatedSize` interpole la
+        // hauteur (slide vertical de 0 à la hauteur finale) +
+        // `AnimatedOpacity` interpole l'opacité (fade-in). Quand on
+        // décoche, animation inverse (slide-up + fade-out).
+        AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedOpacity(
+            opacity: (hasShower || hasBath) ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: (hasShower || hasBath)
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (hasShower)
+                          Expanded(
+                            child: FormNumberField(
+                              label: 'Hauteur douche',
+                              value: a.sdbBacDoucheHauteur,
+                              unit: 'cm',
+                              onChanged: (v) => _updateActive(
+                                _setEquipmentOnInstance(
+                                  a,
+                                  'sdbBacDouche',
+                                  height: v,
+                                  clearHeight: v == null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (hasShower && hasBath) const SizedBox(width: 10),
+                        if (hasBath)
+                          Expanded(
+                            child: FormNumberField(
+                              label: 'Hauteur baignoire',
+                              value: a.sdbBaignoireHauteur,
+                              unit: 'cm',
+                              onChanged: (v) => _updateActive(
+                                _setEquipmentOnInstance(
+                                  a,
+                                  'sdbBaignoire',
+                                  height: v,
+                                  clearHeight: v == null,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
           ),
-          const SizedBox(height: 16),
-          _buildEquipmentChecklistOrCollapsed(
-            instance: a,
-            commonItems: commonItems,
-            selectedCommon: selectedCommon,
-          ),
-          const SizedBox(height: 24),
-        ],
-      );
+        ),
+        const SizedBox(height: 16),
+        _buildEquipmentChecklistOrCollapsed(
+          instance: a,
+          commonItems: commonItems,
+          selectedCommon: selectedCommon,
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -556,11 +591,13 @@ class _BathroomTabState extends State<BathroomTab>
             trueLabel: 'Suffisante',
             falseLabel: 'À revoir',
           ),
-          onChanged: (v) => _updateActive(_copy(
-            a,
-            porteSdbLargeurSuffisante: v.isEmpty ? null : v == 'Suffisante',
-            porteSdbLargeurSuffisanteNull: v.isEmpty,
-          )),
+          onChanged: (v) => _updateActive(
+            _copy(
+              a,
+              porteSdbLargeurSuffisante: v.isEmpty ? null : v == 'Suffisante',
+              porteSdbLargeurSuffisanteNull: v.isEmpty,
+            ),
+          ),
         ),
         const SizedBox(height: 14),
         FormNumberField(
@@ -568,7 +605,8 @@ class _BathroomTabState extends State<BathroomTab>
           value: a.porteSdbDimension,
           unit: 'cm',
           onChanged: (v) => _updateActive(
-              _copy(a, porteSdbDimension: v, porteSdbDimensionNull: v == null)),
+            _copy(a, porteSdbDimension: v, porteSdbDimensionNull: v == null),
+          ),
         ),
         const SizedBox(height: 14),
         _collapsibleToggle(
@@ -581,11 +619,13 @@ class _BathroomTabState extends State<BathroomTab>
             trueLabel: 'Intérieur',
             falseLabel: 'Extérieur',
           ),
-          onChanged: (v) => _updateActive(_copy(
-            a,
-            porteSdbSensAdapte: v.isEmpty ? null : v == 'Intérieur',
-            porteSdbSensAdapteNull: v.isEmpty,
-          )),
+          onChanged: (v) => _updateActive(
+            _copy(
+              a,
+              porteSdbSensAdapte: v.isEmpty ? null : v == 'Intérieur',
+              porteSdbSensAdapteNull: v.isEmpty,
+            ),
+          ),
         ),
         // Espace augmenté (18 → 32) pour bien dégager le pill warning
         // « Sol glissant » des contrôles de porte au-dessus. Demande
@@ -752,45 +792,75 @@ class _BathroomTabState extends State<BathroomTab>
   }) {
     switch (field) {
       case 'sdbBaignoire':
-        return _copy(i,
-            sdbBaignoire: enabled ?? i.sdbBaignoire,
-            sdbBaignoireHauteur: clearHeight ? null : (height ?? i.sdbBaignoireHauteur),
-            sdbBaignoireHauteurNull: clearHeight);
+        return _copy(
+          i,
+          sdbBaignoire: enabled ?? i.sdbBaignoire,
+          sdbBaignoireHauteur: clearHeight
+              ? null
+              : (height ?? i.sdbBaignoireHauteur),
+          sdbBaignoireHauteurNull: clearHeight,
+        );
       case 'sdbBacDouche':
-        return _copy(i,
-            sdbBacDouche: enabled ?? i.sdbBacDouche,
-            sdbBacDoucheHauteur: clearHeight ? null : (height ?? i.sdbBacDoucheHauteur),
-            sdbBacDoucheHauteurNull: clearHeight);
+        return _copy(
+          i,
+          sdbBacDouche: enabled ?? i.sdbBacDouche,
+          sdbBacDoucheHauteur: clearHeight
+              ? null
+              : (height ?? i.sdbBacDoucheHauteur),
+          sdbBacDoucheHauteurNull: clearHeight,
+        );
       case 'sdbParoiDouche':
-        return _copy(i,
-            sdbParoiDouche: enabled ?? i.sdbParoiDouche,
-            sdbParoiDoucheHauteur: clearHeight ? null : (height ?? i.sdbParoiDoucheHauteur),
-            sdbParoiDoucheHauteurNull: clearHeight);
+        return _copy(
+          i,
+          sdbParoiDouche: enabled ?? i.sdbParoiDouche,
+          sdbParoiDoucheHauteur: clearHeight
+              ? null
+              : (height ?? i.sdbParoiDoucheHauteur),
+          sdbParoiDoucheHauteurNull: clearHeight,
+        );
       case 'sdbVasqueSuspendue':
-        return _copy(i,
-            sdbVasqueSuspendue: enabled ?? i.sdbVasqueSuspendue,
-            sdbVasqueSuspendueHauteur: clearHeight ? null : (height ?? i.sdbVasqueSuspendueHauteur),
-            sdbVasqueSuspendueHauteurNull: clearHeight);
+        return _copy(
+          i,
+          sdbVasqueSuspendue: enabled ?? i.sdbVasqueSuspendue,
+          sdbVasqueSuspendueHauteur: clearHeight
+              ? null
+              : (height ?? i.sdbVasqueSuspendueHauteur),
+          sdbVasqueSuspendueHauteurNull: clearHeight,
+        );
       case 'sdbVasqueColonne':
-        return _copy(i,
-            sdbVasqueColonne: enabled ?? i.sdbVasqueColonne,
-            sdbVasqueColonneHauteur: clearHeight ? null : (height ?? i.sdbVasqueColonneHauteur),
-            sdbVasqueColonneHauteurNull: clearHeight);
+        return _copy(
+          i,
+          sdbVasqueColonne: enabled ?? i.sdbVasqueColonne,
+          sdbVasqueColonneHauteur: clearHeight
+              ? null
+              : (height ?? i.sdbVasqueColonneHauteur),
+          sdbVasqueColonneHauteurNull: clearHeight,
+        );
       case 'sdbMeubleVasque':
-        return _copy(i,
-            sdbMeubleVasque: enabled ?? i.sdbMeubleVasque,
-            sdbMeubleVasqueHauteur: clearHeight ? null : (height ?? i.sdbMeubleVasqueHauteur),
-            sdbMeubleVasqueHauteurNull: clearHeight);
+        return _copy(
+          i,
+          sdbMeubleVasque: enabled ?? i.sdbMeubleVasque,
+          sdbMeubleVasqueHauteur: clearHeight
+              ? null
+              : (height ?? i.sdbMeubleVasqueHauteur),
+          sdbMeubleVasqueHauteurNull: clearHeight,
+        );
       case 'sdbBidet':
-        return _copy(i,
-            sdbBidet: enabled ?? i.sdbBidet,
-            sdbBidetHauteur: clearHeight ? null : (height ?? i.sdbBidetHauteur),
-            sdbBidetHauteurNull: clearHeight);
+        return _copy(
+          i,
+          sdbBidet: enabled ?? i.sdbBidet,
+          sdbBidetHauteur: clearHeight ? null : (height ?? i.sdbBidetHauteur),
+          sdbBidetHauteurNull: clearHeight,
+        );
       case 'sdbMachineALaver':
-        return _copy(i,
-            sdbMachineALaver: enabled ?? i.sdbMachineALaver,
-            sdbMachineALaverHauteur: clearHeight ? null : (height ?? i.sdbMachineALaverHauteur),
-            sdbMachineALaverHauteurNull: clearHeight);
+        return _copy(
+          i,
+          sdbMachineALaver: enabled ?? i.sdbMachineALaver,
+          sdbMachineALaverHauteur: clearHeight
+              ? null
+              : (height ?? i.sdbMachineALaverHauteur),
+          sdbMachineALaverHauteurNull: clearHeight,
+        );
     }
     return i;
   }
@@ -908,8 +978,11 @@ class _WetZoneButton extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
-  const _WetZoneButton(
-      {required this.label, required this.active, required this.onTap});
+  const _WetZoneButton({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -932,11 +1005,7 @@ class _WetZoneButton extends StatelessWidget {
               ? kBrandPurple // mauve-500
               : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: active
-                ? kBrandPurple
-                : Colors.transparent,
-          ),
+          border: Border.all(color: active ? kBrandPurple : Colors.transparent),
         ),
         child: Text(
           label,
@@ -944,9 +1013,7 @@ class _WetZoneButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: active ? FontWeight.w500 : FontWeight.w400,
-            color: active
-                ? Colors.white
-                : const Color(0xFF2B323A), // ink-700
+            color: active ? Colors.white : const Color(0xFF2B323A), // ink-700
           ),
         ),
       ),
@@ -1029,9 +1096,7 @@ class _Pill extends StatelessWidget {
               : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: isSelected
-                ? kBrandPurple
-                : Colors.transparent,
+            color: isSelected ? kBrandPurple : Colors.transparent,
           ),
         ),
         child: Text(
