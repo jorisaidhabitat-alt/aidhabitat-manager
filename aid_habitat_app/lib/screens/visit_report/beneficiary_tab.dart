@@ -2398,6 +2398,7 @@ class _RetirementFundPickerDialogState
                   Padding(
                     padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
                     child: TextField(
+                      stylusHandwritingEnabled: true,
                       decoration: InputDecoration(
                         hintText: 'Rechercher une caisse par nom',
                         prefixIcon: const Icon(Icons.search),
@@ -2468,6 +2469,7 @@ class _RetirementFundPickerDialogState
                   Expanded(
                     child: TextField(
                       controller: _freeInputController,
+                      stylusHandwritingEnabled: true,
                       decoration: InputDecoration(
                         hintText: 'Ou saisir une caisse non listée…',
                         prefixIcon: const Icon(LucideIcons.edit3, size: 18),

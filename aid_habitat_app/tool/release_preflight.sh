@@ -130,7 +130,7 @@ else
   warn "UIRequiresFullScreen ne permet pas clairement le multitache iPad."
 fi
 
-if rg -q 'PencilDoubleTapPlugin.register\\(with: self\\)' ios/Runner/AppDelegate.swift; then
+if rg -Fq 'PencilDoubleTapPlugin.register(with: self)' ios/Runner/AppDelegate.swift; then
   ok "Le bridge Apple Pencil natif est branche."
 else
   warn "Le bridge Apple Pencil n'est pas encore enregistre dans AppDelegate.swift."

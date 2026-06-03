@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../services/data_service.dart';
+import '../services/pencil_interaction_service.dart';
 import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
 import 'brand_colors.dart';
@@ -110,7 +111,12 @@ List<NoteTool> _availableToolsFor(NoteToolset toolset) {
     case NoteToolset.advanced:
       return const [NoteTool.pen, NoteTool.highlighter, NoteTool.eraser];
     case NoteToolset.structured:
-      return const [NoteTool.pen, NoteTool.line, NoteTool.rect, NoteTool.eraser];
+      return const [
+        NoteTool.pen,
+        NoteTool.line,
+        NoteTool.rect,
+        NoteTool.eraser,
+      ];
   }
 }
 
@@ -391,6 +397,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// l'écran restait ouvert. Demande utilisateur 2026-05-06.
   StreamSubscription<SyncEngineState>? _syncSubscription;
   DateTime? _lastObservedSyncAt;
+  StreamSubscription<PencilDoubleTapEvent>? _pencilDoubleTapSubscription;
 
   /// Timer dédié qui poll `/api/note-pages/:patientId` toutes les 1 s
   /// pour la page courante. Découplé du pull workspace lourd
@@ -434,6 +441,13 @@ class _NotesWidgetState extends State<NotesWidget> {
       _refreshCurrentPageFromRemoteAfterPull();
     });
 
+    _pencilDoubleTapSubscription = PencilInteractionService.instance.onDoubleTap
+        .listen((_) {
+          if (!mounted || !widget.showCanvas) return;
+          if (_activeTool == NoteTool.eraser) return;
+          _setActiveTool(NoteTool.eraser);
+        });
+
     // Refactor 2026-05-12 : suppression du polling 1 s. La note est
     // chargée au mount + re-fetchée à chaque pull workspace réussi
     // (déclenché par foreground return / reconnexion / login) via le
@@ -456,11 +470,9 @@ class _NotesWidgetState extends State<NotesWidget> {
         pageNumber: _currentPage,
       );
       if (!mounted || _isDirty) return;
-      setState(() => _applyJson(
-            _currentPage,
-            refreshed,
-            hydrateController: true,
-          ));
+      setState(
+        () => _applyJson(_currentPage, refreshed, hydrateController: true),
+      );
       // Pousse les flags médicaux fraîchement mergés vers le parent —
       // sans ça, ContextTab ne voyait jamais les `medicalFlags` mis à
       // jour côté autre device. Bug 2026-05-07 : pathologie cochée
@@ -477,7 +489,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   @override
   void didUpdateWidget(covariant NotesWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final changedDoc = oldWidget.patientId != widget.patientId ||
+    final changedDoc =
+        oldWidget.patientId != widget.patientId ||
         oldWidget.tabKey != widget.tabKey;
     if (changedDoc) {
       // IMPORTANT pour l'animation de swipe canvas (MesuresTab) :
@@ -536,7 +549,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       // les responses dans n'importe quel ordre). Désormais chaque
       // burst de toggle est ajouté à la queue, ce qui garantit que
       // la dernière coche utilisateur écrase bien les précédentes.
-      _flagsPersistChain = (_flagsPersistChain ?? Future.value()).then((_) async {
+      _flagsPersistChain = (_flagsPersistChain ?? Future.value()).then((
+        _,
+      ) async {
         for (var p = 0; p < _totalPages; p++) {
           if (!mounted) return;
           await _persistPage(p);
@@ -546,7 +561,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (oldWidget.totalPages != widget.totalPages) {
       setState(() => _totalPages = math.max(1, widget.totalPages));
     }
-    if (oldWidget.activeTool != widget.activeTool && widget.activeTool != null) {
+    if (oldWidget.activeTool != widget.activeTool &&
+        widget.activeTool != null) {
       setState(() => _activeTool = widget.activeTool!);
     }
     if (oldWidget.toolset != widget.toolset) {
@@ -617,6 +633,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     _textFocusNode.dispose();
     _syncSubscription?.cancel();
     _syncSubscription = null;
+    _pencilDoubleTapSubscription?.cancel();
+    _pencilDoubleTapSubscription = null;
     // Sécurité : si le pop-up est encore visible quand le NotesWidget
     // est démonté (ex. navigation arrière), on retire l'OverlayEntry
     // pour éviter de garder un orphelin sur l'écran.
@@ -715,8 +733,10 @@ class _NotesWidgetState extends State<NotesWidget> {
               pageNumber: _currentPage,
             );
             if (!mounted || _isDirty) return;
-            setState(() => _applyJson(_currentPage, refreshed,
-                hydrateController: true));
+            setState(
+              () =>
+                  _applyJson(_currentPage, refreshed, hydrateController: true),
+            );
             // Émet aussi après le refresh initial (cf. fix
             // _refreshCurrentPageFromRemoteAfterPull) — la version remote
             // peut contenir de nouveaux medicalFlags posés depuis l'autre
@@ -826,10 +846,10 @@ class _NotesWidgetState extends State<NotesWidget> {
       final strokes = rawStrokes == null
           ? <Stroke>[]
           : rawStrokes
-              .whereType<Map>()
-              .map((raw) => Stroke.fromJson(raw.cast<String, dynamic>()))
-              .whereType<Stroke>()
-              .toList();
+                .whereType<Map>()
+                .map((raw) => Stroke.fromJson(raw.cast<String, dynamic>()))
+                .whereType<Stroke>()
+                .toList();
       // `medicalFlags` est optionnel (ajouté pour l'onglet Médical).
       // Les notes préexistantes sans ce champ → ensemble vide. Rétrocompatible.
       final rawFlags = decoded['medicalFlags'];
@@ -877,11 +897,13 @@ class _NotesWidgetState extends State<NotesWidget> {
     // comme « Uncaught Error » sans message — multiplié par le nombre
     // de NotesWidget montés (jusqu'à 4 sur Bénéficiaire/Accessibilité).
     try {
-      widget.onDraftChange?.call(NoteDraftPayload(
-        text: _textController.text,
-        drawingJson: _currentDrawingJson(),
-        isDirty: _isDirty,
-      ));
+      widget.onDraftChange?.call(
+        NoteDraftPayload(
+          text: _textController.text,
+          drawingJson: _currentDrawingJson(),
+          isDirty: _isDirty,
+        ),
+      );
     } catch (e, st) {
       // ignore: avoid_print
       print('[notes_widget] onDraftChange callback failed: $e\n$st');
@@ -1138,8 +1160,12 @@ class _NotesWidgetState extends State<NotesWidget> {
   // segment de gomme — pas juste les points isolés — pour un effaçage
   // pixel-précis même quand le stroke a des points très espacés.
   // ignore: unused_element
-  List<Stroke>? _computeEraseSegment(List<Stroke> input,
-      Offset from, Offset to, double hitDistance) {
+  List<Stroke>? _computeEraseSegment(
+    List<Stroke> input,
+    Offset from,
+    Offset to,
+    double hitDistance,
+  ) {
     final next = <Stroke>[];
     var changed = false;
     for (final stroke in input) {
@@ -1149,9 +1175,8 @@ class _NotesWidgetState extends State<NotesWidget> {
           next.add(stroke);
           continue;
         }
-        final hit = _distSegmentSegment(
-              stroke.points[0], stroke.points[1], from, to,
-            ) <
+        final hit =
+            _distSegmentSegment(stroke.points[0], stroke.points[1], from, to) <
             hitDistance;
         if (hit) {
           changed = true;
@@ -1180,8 +1205,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         }
       } else {
         for (var i = 0; i < n - 1; i++) {
-          if (_distSegmentSegment(pts[i], pts[i + 1], from, to) <
-              hitDistance) {
+          if (_distSegmentSegment(pts[i], pts[i + 1], from, to) < hitDistance) {
             erased[i] = true;
             erased[i + 1] = true;
             anyHit = true;
@@ -1198,12 +1222,14 @@ class _NotesWidgetState extends State<NotesWidget> {
       for (var i = 0; i < n; i++) {
         if (erased[i]) {
           if (current.length >= 2) {
-            next.add(Stroke(
-              tool: stroke.tool,
-              color: stroke.color,
-              size: stroke.size,
-              points: current,
-            ));
+            next.add(
+              Stroke(
+                tool: stroke.tool,
+                color: stroke.color,
+                size: stroke.size,
+                points: current,
+              ),
+            );
           }
           current = <Offset>[];
         } else {
@@ -1211,12 +1237,14 @@ class _NotesWidgetState extends State<NotesWidget> {
         }
       }
       if (current.length >= 2) {
-        next.add(Stroke(
-          tool: stroke.tool,
-          color: stroke.color,
-          size: stroke.size,
-          points: current,
-        ));
+        next.add(
+          Stroke(
+            tool: stroke.tool,
+            color: stroke.color,
+            size: stroke.size,
+            points: current,
+          ),
+        );
       }
     }
     return changed ? next : null;
@@ -1276,8 +1304,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     setState(() {
       _totalPages += 1;
       _pageStrokes[newPageIndex] = <Stroke>[];
-      _pageTexts[newPageIndex] =
-          widget.sharedText ? _textController.text : '';
+      _pageTexts[newPageIndex] = widget.sharedText ? _textController.text : '';
       // Nouvelle page : flags médicaux vides — l'utilisateur re-sélectionne
       // les numéros souhaités via les cases Pathologie / Suivi / Sensoriel
       // (demande utilisateur : les numéros ne doivent pas rester les mêmes
@@ -1347,8 +1374,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   Future<void> _persistPage(int pageIndex) async {
-    final strokes =
-        _pageStrokes.putIfAbsent(pageIndex, () => <Stroke>[]);
+    final strokes = _pageStrokes.putIfAbsent(pageIndex, () => <Stroke>[]);
     final text = _pageTexts[pageIndex] ?? '';
     final flags = _pageMedicalFlags[pageIndex];
     final json = jsonEncode({
@@ -1469,11 +1495,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       final textOnly = widget.fillParentHeight
           ? SizedBox.expand(child: editor)
           : SizedBox(height: 60, child: editor);
-      return Container(
-        key: _outerKey,
-        decoration: decoration,
-        child: textOnly,
-      );
+      return Container(key: _outerKey, decoration: decoration, child: textOnly);
     }
 
     final content = Column(
@@ -1507,11 +1529,13 @@ class _NotesWidgetState extends State<NotesWidget> {
 
     final wrapped = widget.fillParentHeight
         ? SizedBox.expand(child: content)
-        : Container(constraints: const BoxConstraints(minHeight: 460), child: content);
+        : Container(
+            constraints: const BoxConstraints(minHeight: 460),
+            child: content,
+          );
 
     return Container(key: _outerKey, decoration: decoration, child: wrapped);
   }
-
 
   /// Nouvelle mise en page "deux cartes empilées" (demande utilisateur) :
   /// - carte texte en haut AVEC poignée rose intégrée en bas (full-width,
@@ -1528,9 +1552,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (showText) _buildStackedTextCard(),
         Expanded(
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: showText ? 120.0 : 340.0,
-            ),
+            constraints: BoxConstraints(minHeight: showText ? 120.0 : 340.0),
             child: _buildStackedCanvasCard(),
           ),
         ),
@@ -1539,7 +1561,10 @@ class _NotesWidgetState extends State<NotesWidget> {
 
     final wrapped = widget.fillParentHeight
         ? SizedBox.expand(child: content)
-        : Container(constraints: const BoxConstraints(minHeight: 460), child: content);
+        : Container(
+            constraints: const BoxConstraints(minHeight: 460),
+            child: content,
+          );
 
     // Pas de décoration externe : chaque sous-carte porte son propre
     // fond blanc arrondi (séparation visuelle nette entre texte et canvas).
@@ -1649,7 +1674,9 @@ class _NotesWidgetState extends State<NotesWidget> {
                   ?.size;
           final totalHeight = outerSize?.height ?? 600;
           final maxH = math.max(
-              40.0, totalHeight - kToolbarReserved - kSplitterMargin);
+            40.0,
+            totalHeight - kToolbarReserved - kSplitterMargin,
+          );
           final next = _textAreaHeight + details.delta.dy;
           _textAreaHeight = next.clamp(40.0, maxH);
         });
@@ -1706,11 +1733,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             ),
           // Boutons + et 🗑 en haut-droite, SANS conteneur visible.
           if (widget.allowPagination)
-            Positioned(
-              top: 10,
-              right: 12,
-              child: _buildTopRightPageActions(),
-            ),
+            Positioned(top: 10, right: 12, child: _buildTopRightPageActions()),
         ],
       ),
     );
@@ -1915,7 +1938,8 @@ class _NotesWidgetState extends State<NotesWidget> {
             ),
             _HeaderIconButton(
               icon: LucideIcons.trash2,
-              onTap: (_totalPages > 1 &&
+              onTap:
+                  (_totalPages > 1 &&
                       (widget.onDeletePage == null || widget.canDeletePage))
                   ? () => _deletePage()
                   : null,
@@ -2000,7 +2024,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       // : le parent (SizedBox.expand dans la branche showCanvas: false)
       // contraint la zone. En mode classique, hauteur pilotée par le
       // splitter via _textAreaHeight.
-      child: fillHeight ? stack : SizedBox(height: _textAreaHeight, child: stack),
+      child: fillHeight
+          ? stack
+          : SizedBox(height: _textAreaHeight, child: stack),
     );
 
     // En mode texte-seul (fillHeight) on resserre le padding externe
@@ -2008,10 +2034,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     final outerPadding = fillHeight
         ? const EdgeInsets.fromLTRB(4, 4, 4, 4)
         : const EdgeInsets.fromLTRB(16, 12, 16, 8);
-    return Padding(
-      padding: outerPadding,
-      child: boxedContainer,
-    );
+    return Padding(padding: outerPadding, child: boxedContainer);
   }
 
   Widget _buildSplitter() {
@@ -2029,7 +2052,9 @@ class _NotesWidgetState extends State<NotesWidget> {
                   ?.size;
           final totalHeight = outerSize?.height ?? 600;
           final maxH = math.max(
-              40.0, totalHeight - kToolbarReserved - kSplitterMargin);
+            40.0,
+            totalHeight - kToolbarReserved - kSplitterMargin,
+          );
           final next = _textAreaHeight + details.delta.dy;
           _textAreaHeight = next.clamp(40.0, maxH);
         });
@@ -2147,8 +2172,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       case NoteToolbarPlacement.topRight:
         return Positioned(top: 74, right: 12, child: palette);
       case NoteToolbarPlacement.bottomCenter:
-        final bottomOffset =
-            widget.toolbarDockedToBorder ? 40.0 : 80.0 + margin;
+        final bottomOffset = widget.toolbarDockedToBorder
+            ? 40.0
+            : 80.0 + margin;
         return Positioned(
           left: 0,
           right: 0,
@@ -2161,8 +2187,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   Widget _buildFooterToolbar() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-      decoration: BoxDecoration(
-      ),
+      decoration: BoxDecoration(),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [_buildToolbar()],
@@ -2181,28 +2206,34 @@ class _NotesWidgetState extends State<NotesWidget> {
       buttons.add(_paletteButton());
     }
     // Clear
-    buttons.add(_circularToolButton(
-      icon: LucideIcons.trash2,
-      tooltip: 'Tout effacer',
-      onTap: _clearStrokes,
-      disabled: _strokes.isEmpty,
-    ));
+    buttons.add(
+      _circularToolButton(
+        icon: LucideIcons.trash2,
+        tooltip: 'Tout effacer',
+        onTap: _clearStrokes,
+        disabled: _strokes.isEmpty,
+      ),
+    );
     // Undo / Redo — inclus uniquement dans la nouvelle mise en page
     // "deux cartes" (la mise en page historique les affiche dans la
     // barre d'en-tête `_buildPageNavRow`).
     if (widget.stackedCards) {
-      buttons.add(_circularToolButton(
-        icon: LucideIcons.undo2,
-        tooltip: 'Annuler',
-        onTap: _undo,
-        disabled: _undoStack.isEmpty,
-      ));
-      buttons.add(_circularToolButton(
-        icon: LucideIcons.redo2,
-        tooltip: 'Rétablir',
-        onTap: _redo,
-        disabled: _redoStack.isEmpty,
-      ));
+      buttons.add(
+        _circularToolButton(
+          icon: LucideIcons.undo2,
+          tooltip: 'Annuler',
+          onTap: _undo,
+          disabled: _undoStack.isEmpty,
+        ),
+      );
+      buttons.add(
+        _circularToolButton(
+          icon: LucideIcons.redo2,
+          tooltip: 'Rétablir',
+          onTap: _redo,
+          disabled: _redoStack.isEmpty,
+        ),
+      );
     }
     // Save
     if (widget.showSaveButton) buttons.add(_saveButton());
@@ -2316,8 +2347,8 @@ class _NotesWidgetState extends State<NotesWidget> {
               color: _saveLabel == _SaveLabel.saved
                   ? const Color(0xFFDCFCE7)
                   : (_saveLabel == _SaveLabel.error
-                      ? const Color(0xFFFEE2E2)
-                      : Color(0xFFF2F4F6)),
+                        ? const Color(0xFFFEE2E2)
+                        : Color(0xFFF2F4F6)),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
@@ -2327,9 +2358,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   icon: LucideIcons.save,
                   animate: _isSaving,
                   size: 16,
-                  color: disabled
-                      ? Color(0xFF8A939D)
-                      : Color(0xFF1A1E24),
+                  color: disabled ? Color(0xFF8A939D) : Color(0xFF1A1E24),
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -2337,9 +2366,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: disabled
-                        ? Color(0xFF8A939D)
-                        : Color(0xFF1A1E24),
+                    color: disabled ? Color(0xFF8A939D) : Color(0xFF1A1E24),
                   ),
                 ),
               ],
@@ -2641,122 +2668,135 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
             child: ScaleTransition(
               scale: scaleTween,
               child: Material(
-            elevation: 12,
-            borderRadius: BorderRadius.circular(16),
-            color: Colors.white,
-            child: Column(
-              children: [
-                // Barre draggable
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onPanUpdate: _fullscreen
-                      ? null
-                      : (details) {
-                          setState(() {
-                            _pos += details.delta;
-                            _pos = Offset(
-                              _pos.dx.clamp(
-                                  0, math.max(0, screen.width - 120)),
-                              _pos.dy.clamp(
-                                  0, math.max(0, screen.height - 60)),
-                            );
-                          });
-                        },
-                  child: MouseRegion(
-                    cursor: _fullscreen
-                        ? SystemMouseCursors.basic
-                        : SystemMouseCursors.move,
-                    child: Container(
-                      height: 38,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(LucideIcons.gripHorizontal,
-                              size: 16, color: Color(0xFF5C6670)),
-                          const SizedBox(width: 8),
-                          Text(
-                            widget.title,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            tooltip: _fullscreen ? 'Réduire' : 'Plein écran',
-                            icon: Icon(
-                              _fullscreen
-                                  ? LucideIcons.minimize2
-                                  : LucideIcons.maximize2,
-                              size: 16,
-                            ),
-                            onPressed: () =>
-                                setState(() => _fullscreen = !_fullscreen),
-                          ),
-                          IconButton(
-                            tooltip: 'Fermer',
-                            icon: const Icon(LucideIcons.x, size: 16),
-                            // Route via _animateClose pour rejouer
-                            // l'animation de fermeture (fade-out +
-                            // scale-down) avant de retirer l'overlay.
-                            onPressed: _animateClose,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: widget.placeholder,
-                        hintStyle: TextStyle(color: Color(0xFF5C6670)),
-                        isCollapsed: true,
-                      ),
-                    ),
-                  ),
-                ),
-                if (!_fullscreen)
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: GestureDetector(
+                elevation: 12,
+                borderRadius: BorderRadius.circular(16),
+                color: Colors.white,
+                child: Column(
+                  children: [
+                    // Barre draggable
+                    GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onPanUpdate: (details) {
-                        setState(() {
-                          final w = (_size.width + details.delta.dx).clamp(
-                              280.0, screen.width - 40);
-                          final h = (_size.height + details.delta.dy).clamp(
-                              200.0, screen.height - 40);
-                          _size = Size(w, h);
-                        });
-                      },
+                      onPanUpdate: _fullscreen
+                          ? null
+                          : (details) {
+                              setState(() {
+                                _pos += details.delta;
+                                _pos = Offset(
+                                  _pos.dx.clamp(
+                                    0,
+                                    math.max(0, screen.width - 120),
+                                  ),
+                                  _pos.dy.clamp(
+                                    0,
+                                    math.max(0, screen.height - 60),
+                                  ),
+                                );
+                              });
+                            },
                       child: MouseRegion(
-                        cursor: SystemMouseCursors.resizeDownRight,
+                        cursor: _fullscreen
+                            ? SystemMouseCursors.basic
+                            : SystemMouseCursors.move,
                         child: Container(
-                          width: 18,
-                          height: 18,
-                          margin: const EdgeInsets.all(4),
-                          child: CustomPaint(
-                            painter: _ResizeHandlePainter(
-                                color: Color(0xFF8A939D)),
+                          height: 38,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(),
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.gripHorizontal,
+                                size: 16,
+                                color: Color(0xFF5C6670),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                widget.title,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                tooltip: _fullscreen
+                                    ? 'Réduire'
+                                    : 'Plein écran',
+                                icon: Icon(
+                                  _fullscreen
+                                      ? LucideIcons.minimize2
+                                      : LucideIcons.maximize2,
+                                  size: 16,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _fullscreen = !_fullscreen),
+                              ),
+                              IconButton(
+                                tooltip: 'Fermer',
+                                icon: const Icon(LucideIcons.x, size: 16),
+                                // Route via _animateClose pour rejouer
+                                // l'animation de fermeture (fade-out +
+                                // scale-down) avant de retirer l'overlay.
+                                onPressed: _animateClose,
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-          ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: TextField(
+                          controller: _controller,
+                          autofocus: true,
+                          maxLines: null,
+                          expands: true,
+                          textAlignVertical: TextAlignVertical.top,
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            hintText: widget.placeholder,
+                            hintStyle: TextStyle(color: Color(0xFF5C6670)),
+                            isCollapsed: true,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!_fullscreen)
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanUpdate: (details) {
+                            setState(() {
+                              final w = (_size.width + details.delta.dx).clamp(
+                                280.0,
+                                screen.width - 40,
+                              );
+                              final h = (_size.height + details.delta.dy).clamp(
+                                200.0,
+                                screen.height - 40,
+                              );
+                              _size = Size(w, h);
+                            });
+                          },
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.resizeDownRight,
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              margin: const EdgeInsets.all(4),
+                              child: CustomPaint(
+                                painter: _ResizeHandlePainter(
+                                  color: Color(0xFF8A939D),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ), // close ScaleTransition
           ), // close FadeTransition
         ),
@@ -2855,11 +2895,7 @@ class _StackedChevronButton extends StatelessWidget {
             alignment: Alignment.center,
             child: Opacity(
               opacity: enabled ? 1 : 0.3,
-              child: Icon(
-                icon,
-                size: 22,
-                color: kBrandPurple,
-              ),
+              child: Icon(icon, size: 22, color: kBrandPurple),
             ),
           ),
         ),

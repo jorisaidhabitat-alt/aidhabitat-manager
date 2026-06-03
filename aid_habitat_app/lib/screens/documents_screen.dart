@@ -30,8 +30,10 @@ import '../services/web_file_picker.dart';
 import '../services/web_file_saver.dart';
 import '../services/app_config.dart';
 import '../services/data_service.dart';
+import '../services/document_scanner_service.dart';
 import '../services/document_repository.dart';
 import '../services/media_cache_service.dart';
+import '../services/pencil_interaction_service.dart';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -423,14 +425,22 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
-  /// "Scanner un document" → ouvre directement l'appareil photo. iOS
-  /// inclut un scanner natif dans son picker caméra (encadre auto le
-  /// document), on laisse le user l'utiliser tel quel.
+  /// "Scanner un document" :
+  ///  - iPad/iPhone natif : VisionKit (`VNDocumentCameraViewController`)
+  ///    avec détection automatique du contour + export PDF multipage.
+  ///  - Web / Android : fallback caméra actuel.
+  ///  - Desktop : fallback file picker.
   Future<void> _pickFromScanner() async {
     if (_isPicking || _isImporting) return;
     _isPicking = true;
     try {
-      if (kIsWeb || Platform.isIOS || Platform.isAndroid) {
+      if (!kIsWeb && Platform.isIOS) {
+        final scanned = await DocumentScannerService.instance.scanToPdf();
+        if (scanned == null) return;
+        await _openUploadModal(File(scanned.path), defaultTag: 'Scan');
+        return;
+      }
+      if (kIsWeb || Platform.isAndroid) {
         final xfile = await _imagePicker.pickImage(
           source: ImageSource.camera,
           maxWidth: _kCompressMaxWidth,
@@ -3516,6 +3526,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   int _savedHash = 0;
   // Clé du RepaintBoundary pour l'export PNG.
   final GlobalKey _boundaryKey = GlobalKey();
+  StreamSubscription<PencilDoubleTapEvent>? _pencilDoubleTapSubscription;
 
   // Outils courants. Crayon noir simple, comme les notes rapides (quick toolset).
   _AnnotTool _tool = _AnnotTool.pen;
@@ -3554,6 +3565,19 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     }
     // Web mode : pas de chargement depuis disque (impossible dans le
     // navigateur). Les annotations démarrent vides à chaque ouverture.
+    _pencilDoubleTapSubscription = PencilInteractionService.instance.onDoubleTap
+        .listen((_) {
+          if (!mounted) return;
+          if (_tool == _AnnotTool.eraser) return;
+          setState(() => _tool = _AnnotTool.eraser);
+        });
+  }
+
+  @override
+  void dispose() {
+    _pencilDoubleTapSubscription?.cancel();
+    _pencilDoubleTapSubscription = null;
+    super.dispose();
   }
 
   Future<void> _loadAnnotation() async {

@@ -54,9 +54,7 @@ class VSubSectionBar extends StatelessWidget {
               decoration: BoxDecoration(
                 color: active ? kBrandPurple : Colors.white,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: active ? kBrandPurple : _kLightGray,
-                ),
+                border: Border.all(color: active ? kBrandPurple : _kLightGray),
               ),
               child: Text(
                 sections[i],
@@ -126,13 +124,16 @@ class _VTextFieldState extends State<VTextField> {
         controller: _ctrl,
         keyboardType: widget.keyboardType,
         style: const TextStyle(fontSize: 13),
+        stylusHandwritingEnabled: true,
         decoration: InputDecoration(
           labelText: widget.label,
           labelStyle: const TextStyle(fontSize: 12, color: kBrandDarkPurple),
           suffixText: widget.suffix,
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 0,
+            vertical: 8,
+          ),
           enabledBorder: const UnderlineInputBorder(
             borderSide: BorderSide(color: _kLightGray),
           ),
@@ -195,17 +196,18 @@ class _VNumberFieldState extends State<VNumberField> {
       child: TextFormField(
         controller: _ctrl,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-        ],
+        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
         style: const TextStyle(fontSize: 13),
+        stylusHandwritingEnabled: true,
         decoration: InputDecoration(
           labelText: widget.label,
           labelStyle: const TextStyle(fontSize: 12, color: kBrandDarkPurple),
           suffixText: widget.suffix,
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 0,
+            vertical: 8,
+          ),
           enabledBorder: const UnderlineInputBorder(
             borderSide: BorderSide(color: _kLightGray),
           ),
@@ -256,14 +258,14 @@ class VToggleGroup extends StatelessWidget {
               return GestureDetector(
                 onTap: () => onChanged(option),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: active ? _kTeal : Colors.white,
                     borderRadius: BorderRadius.circular(5),
-                    border: Border.all(
-                      color: active ? _kTeal : _kLightGray,
-                    ),
+                    border: Border.all(color: active ? _kTeal : _kLightGray),
                   ),
                   child: Text(
                     option,
@@ -382,12 +384,15 @@ class _VTextAreaState extends State<VTextArea> {
         controller: _ctrl,
         maxLines: widget.maxLines,
         style: const TextStyle(fontSize: 13),
+        stylusHandwritingEnabled: true,
         decoration: InputDecoration(
           labelText: widget.label,
           labelStyle: const TextStyle(fontSize: 12, color: kBrandDarkPurple),
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 10,
+          ),
           enabledBorder: OutlineInputBorder(
             borderSide: const BorderSide(color: _kLightGray),
             borderRadius: BorderRadius.circular(6),
@@ -424,8 +429,10 @@ class VDropdown extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(fontSize: 12, color: kBrandDarkPurple)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: kBrandDarkPurple),
+          ),
           const SizedBox(height: 4),
           DropdownButtonFormField<String>(
             initialValue: options.contains(selected) ? selected : null,
@@ -434,8 +441,10 @@ class VDropdown extends StatelessWidget {
             style: const TextStyle(fontSize: 13, color: Colors.black87),
             decoration: InputDecoration(
               isDense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
               enabledBorder: OutlineInputBorder(
                 borderSide: const BorderSide(color: _kLightGray),
                 borderRadius: BorderRadius.circular(6),

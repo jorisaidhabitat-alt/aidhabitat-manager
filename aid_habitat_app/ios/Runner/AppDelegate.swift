@@ -9,6 +9,7 @@ import UIKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     PencilDoubleTapPlugin.register(with: self)
+    DocumentScannerPlugin.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

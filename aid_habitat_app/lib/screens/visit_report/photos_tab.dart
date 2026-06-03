@@ -1761,6 +1761,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
         content: TextField(
           controller: controller,
           autofocus: true,
+          stylusHandwritingEnabled: true,
           decoration: const InputDecoration(
             labelText: 'Nom',
             hintText: 'ex. Salle de bain',
