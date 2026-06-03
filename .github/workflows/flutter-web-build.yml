@@ -72,6 +72,10 @@ jobs:
           chmod +x ./tool/build_web.sh
           ./tool/build_web.sh
 
+      - name: Check PWA bundle
+        working-directory: .
+        run: npm run release:web-check -- --dir aid_habitat_app/build/web
+
       - name: Publish prebuilt nginx image
         if: ${{ inputs.publish_image }}
         env:

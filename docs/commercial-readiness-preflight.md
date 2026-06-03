@@ -37,6 +37,7 @@ COMMERCIAL_PREFLIGHT_OVERWRITE=1 npm run commercial:preflight -- backups/aidhabi
 - validation des lots JSON ;
 - contrôle des flux critiques ;
 - build web.
+- contrôle du bundle PWA Flutter si `npm run build:pwa` a été lancé.
 
 ## Sorties
 
@@ -50,6 +51,24 @@ Dans le dossier choisi :
 - `staging-snapshot.json.gz` : snapshot staging généré ;
 - `staging-schema-plan/` : plan de recréation des tables/colonnes ;
 - `staging-import-batches/` : lots d'import staging.
+
+## Contrôle PWA
+
+Après un build Flutter web :
+
+```bash
+npm run build:pwa
+npm run release:web-check -- --dir aid_habitat_app/build/web
+```
+
+Pour vérifier une URL déjà en ligne :
+
+```bash
+npm run release:web-check -- --url https://app.aidhabitat.fr
+```
+
+Ce contrôle vérifie le HTML, le manifest App'Ergo, les icônes, PDF.js local,
+SQLite web, le service worker Flutter et les fichiers principaux du bundle.
 
 ## Interprétation
 

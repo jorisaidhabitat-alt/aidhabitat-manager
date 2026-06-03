@@ -21,6 +21,7 @@
     "commercial:preflight": "node tools/run-commercial-readiness-check.mjs",
     "nocodb:api-audit": "node tools/audit-nocodb-api-usage.mjs",
     "secrets:audit": "node tools/audit-env-secrets.mjs",
+    "release:web-check": "node tools/check-web-release.mjs",
     "test:pdf": "node tools/generate-test-report.mjs",
     "test:flutter": "bash aid_habitat_app/tool/test_safely.sh",
     "start": "node server/index.mjs",
