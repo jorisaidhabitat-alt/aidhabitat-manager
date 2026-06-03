@@ -1175,51 +1175,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     );
   }
 
-  Widget _buildReadOnlyField({
-    required String label,
-    required String value,
-    String? hint,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: Color(0xFF5C6670),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7FA),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF2B323A),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        if (hint != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            hint,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF8A939D)),
-          ),
-        ],
-      ],
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Santé
   // ---------------------------------------------------------------------------
@@ -1622,15 +1577,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return sorted.join(', ');
   }
 
-  Set<String> _parseComplementaryFunds(String raw) {
-    if (raw.trim().isEmpty) return <String>{};
-    return raw
-        .split(RegExp(r'[,;]'))
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toSet();
-  }
-
   String _computeAgeLabel(String birthDate) {
     final parsed = _tryParseBirthDate(birthDate);
     if (parsed == null) return '';
@@ -1669,29 +1615,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     } catch (_) {
       return null;
     }
-  }
-
-  /// Formats a stored birth date for display as DD/MM/YYYY.
-  /// If the stored value is partial / unparseable, returns it unchanged so
-  /// the user can keep typing without disruption.
-  String _formatBirthDateForInput(String stored) {
-    final parsed = _tryParseBirthDate(stored);
-    if (parsed == null) return stored;
-    final d = parsed.day.toString().padLeft(2, '0');
-    final m = parsed.month.toString().padLeft(2, '0');
-    return '$d/$m/${parsed.year}';
-  }
-
-  /// Converts user input (typically DD/MM/YYYY) to ISO (YYYY-MM-DD) for
-  /// storage. Returns the raw input if parsing fails, so intermediate typing
-  /// states don't lose characters.
-  String _parseBirthDateFromInput(String typed) {
-    final parsed = _tryParseBirthDate(typed);
-    if (parsed == null) return typed;
-    final y = parsed.year.toString().padLeft(4, '0');
-    final m = parsed.month.toString().padLeft(2, '0');
-    final d = parsed.day.toString().padLeft(2, '0');
-    return '$y-$m-$d';
   }
 
   /// Ouvre le picker visuel pour la caisse de retraite PRINCIPALE.
