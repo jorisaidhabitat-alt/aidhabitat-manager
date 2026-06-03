@@ -95,6 +95,11 @@ const checks = [
     file: '.github/workflows/flutter-web-build.yml',
     assert: (source) => source.includes('npm run release:web-check -- --dir aid_habitat_app/build/web'),
   },
+  {
+    name: 'Package exposes the live stack release check',
+    file: 'package.json',
+    assert: (source) => source.includes('"release:live-check": "node tools/check-live-stack.mjs"'),
+  },
 ];
 
 const failures = [];

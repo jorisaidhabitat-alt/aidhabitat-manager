@@ -70,6 +70,23 @@ npm run release:web-check -- --url https://app.aidhabitat.fr
 Ce contrôle vérifie le HTML, le manifest App'Ergo, les icônes, PDF.js local,
 SQLite web, le service worker Flutter et les fichiers principaux du bundle.
 
+Pour vérifier rapidement toute la stack publique :
+
+```bash
+npm run release:live-check
+```
+
+Ce contrôle vérifie `https://app.aidhabitat.fr`, le bundle PWA, puis
+`https://api.aidhabitat.fr/api/health/live` et `/api/health/ready` avec les
+headers CORS/CORP attendus. Il est utile juste avant et juste après une bascule
+DNS ou Easypanel.
+
+Pour staging :
+
+```bash
+npm run release:live-check -- --app-url https://apps-aidhabitat-web-staging.z5avx1.easypanel.host --api-url https://apps-aidhabitat-api-staging.z5avx1.easypanel.host
+```
+
 Pour inclure automatiquement le build Flutter PWA et le contrôle du bundle dans
 le preflight :
 
