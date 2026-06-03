@@ -174,12 +174,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? get userName => widget.userName;
   VoidCallback? get onNavigateToDossiers => widget.onNavigateToDossiers;
 
-  // Short French month labels for the activity chart (Jan..Déc).
-  static const List<String> _monthsFr = [
-    'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
-    'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
-  ];
-
   /// Renvoie la prochaine visite à venir — la plus proche dans le
   /// futur en termes de DATETIME (pas seulement de jour). Demande
   /// utilisateur 2026-05-05 : « la plus proche est la prochaine, puis
@@ -216,40 +210,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
     return best;
-  }
-
-  /// Builds the last-6-months activity series from the real dossiers list.
-  /// Each bar = number of dossiers whose `createdAt` falls in that month.
-  List<_ActivityBar> _buildActivitySeries(
-    List<Dossier> dossiers,
-    DateTime now,
-  ) {
-    final buckets = <String, int>{}; // key = "YYYY-MM"
-    final months = <DateTime>[];
-    for (var i = 5; i >= 0; i--) {
-      final m = DateTime(now.year, now.month - i, 1);
-      months.add(m);
-      final key = '${m.year}-${m.month.toString().padLeft(2, '0')}';
-      buckets[key] = 0;
-    }
-
-    for (final d in dossiers) {
-      DateTime? dt;
-      try {
-        dt = DateTime.parse(d.createdAt);
-      } catch (_) {
-        continue;
-      }
-      final key = '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
-      if (buckets.containsKey(key)) {
-        buckets[key] = buckets[key]! + 1;
-      }
-    }
-
-    return months.map((m) {
-      final key = '${m.year}-${m.month.toString().padLeft(2, '0')}';
-      return _ActivityBar(name: _monthsFr[m.month - 1], value: buckets[key]!);
-    }).toList(growable: false);
   }
 
   @override
@@ -418,78 +378,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // KPI card
 // ---------------------------------------------------------------------------
 
-
-// ---------------------------------------------------------------------------
-// Recent dossiers panel
-// ---------------------------------------------------------------------------
-
-class _RecentDossiersPanel extends StatelessWidget {
-  final List<Dossier> recent;
-  final void Function(Dossier) onSelect;
-  final VoidCallback? onSeeAll;
-
-  const _RecentDossiersPanel({
-    required this.recent,
-    required this.onSelect,
-    this.onSeeAll,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _PanelCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "Mes rapports en cours",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              if (onSeeAll != null)
-                TextButton(
-                  onPressed: onSeeAll,
-                  child: const Text(
-                    "Voir tout",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: kBrandPurple,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (recent.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 32),
-              child: Center(
-                child: Text(
-                  "Aucun dossier pour le moment.",
-                  style: TextStyle(color: Color(0xFF5C6670)),
-                ),
-              ),
-            )
-          else
-            ...recent.map(
-              (d) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _RecentDossierRow(
-                  dossier: d,
-                  onTap: () => onSelect(d),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 class _RecentDossierRow extends StatefulWidget {
   final Dossier dossier;
@@ -1239,127 +1127,6 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
 // Activity chart (custom, matches React `ActivityChart`)
 // ---------------------------------------------------------------------------
 
-class _ActivityBar {
-  final String name;
-  final int value;
-  const _ActivityBar({required this.name, required this.value});
-}
-
-class _ActivityChart extends StatelessWidget {
-  final List<_ActivityBar> data;
-
-  const _ActivityChart({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final maxValue = data
-        .map((e) => e.value)
-        .fold<int>(1, (a, b) => a > b ? a : b);
-
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFF2F4F6)), // slate-100
-        ),
-      ),
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < data.length; i++) ...[
-            if (i > 0) const SizedBox(width: 12),
-            Expanded(
-              child: _ActivityBarColumn(
-                bar: data[i],
-                ratio: data[i].value / maxValue,
-                isHighlighted: i == data.length - 1,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ActivityBarColumn extends StatelessWidget {
-  final _ActivityBar bar;
-  final double ratio;
-  final bool isHighlighted;
-
-  const _ActivityBarColumn({
-    required this.bar,
-    required this.ratio,
-    required this.isHighlighted,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text(
-          bar.value.toString(),
-          style: const TextStyle(
-            // Bump 2026-05-13 : 12→14, w600→w700.
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF8A939D), // slate-400
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Bar container — matches the slate-50 rounded panel from React.
-        SizedBox(
-          height: 160,
-          width: double.infinity,
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7FA), // slate-50
-              borderRadius: BorderRadius.circular(16),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
-            alignment: Alignment.bottomCenter,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final availableHeight = constraints.maxHeight;
-                final height = (availableHeight * ratio).clamp(
-                  availableHeight * 0.08,
-                  availableHeight,
-                );
-                return Align(
-                  alignment: Alignment.bottomCenter,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    width: double.infinity,
-                    constraints: const BoxConstraints(maxWidth: 32),
-                    height: height,
-                    decoration: BoxDecoration(
-                      color: isHighlighted
-                          ? kBrandPurple
-                          : const Color(0xFFE4E7EB), // slate-200
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          bar.name,
-          style: const TextStyle(
-            // Bump 2026-05-13 : 12→14, w500→w600.
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF8A939D),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Panel card — shared container for KPI, recent dossiers, and chart panels
 // ---------------------------------------------------------------------------
@@ -2032,62 +1799,6 @@ class _PendingReportRow extends StatelessWidget {
     return age >= 0 && age < 150 ? age : null;
   }
 
-  _StatusPalette _statusPalette(DossierStatus status) {
-    // Palette compacte alignée sur l'esprit de la maquette : ton
-    // pastel + point vif. Mapping sur les enum existants (cf.
-    // DossierStatus + DossierStatusLabel). Demande utilisateur
-    // 2026-05-12 : ne pas changer les statuts, juste mieux les
-    // visualiser.
-    switch (status) {
-      case DossierStatus.TO_VISIT:
-        return const _StatusPalette(
-          bg: Color(0xFFFCE7F3),
-          fg: Color(0xFFBE185D),
-          dot: Color(0xFFDB2777),
-        );
-      case DossierStatus.IN_PROGRESS:
-        return const _StatusPalette(
-          bg: Color(0xFFFFEDD5),
-          fg: Color(0xFFB45309),
-          dot: Color(0xFFD97706),
-        );
-      case DossierStatus.WAITING_QUOTES:
-      case DossierStatus.QUOTES_RECEIVED:
-      case DossierStatus.WAITING_GRANT:
-        return const _StatusPalette(
-          bg: Color(0xFFFEE2E2),
-          fg: Color(0xFFB91C1C),
-          dot: Color(0xFFDC2626),
-        );
-      case DossierStatus.GRANT_VALIDATED:
-      case DossierStatus.WORKS_STARTED:
-      case DossierStatus.WORKS_COMPLETED:
-        return const _StatusPalette(
-          bg: Color(0xFFDCFCE7),
-          fg: Color(0xFF15803D),
-          dot: Color(0xFF16A34A),
-        );
-      case DossierStatus.VISITED:
-      case DossierStatus.CLOSED:
-      case DossierStatus.ARCHIVED:
-        return const _StatusPalette(
-          bg: Color(0xFFF2F4F6),
-          fg: Color(0xFF5C6670),
-          dot: Color(0xFF8A939D),
-        );
-    }
-  }
-}
-
-class _StatusPalette {
-  final Color bg;
-  final Color fg;
-  final Color dot;
-  const _StatusPalette({
-    required this.bg,
-    required this.fg,
-    required this.dot,
-  });
 }
 
 /// Placeholder « empty state » réutilisé par les 2 panneaux du
