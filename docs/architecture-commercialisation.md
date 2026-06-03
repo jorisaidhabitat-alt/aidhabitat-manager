@@ -85,6 +85,7 @@ Scripts existants :
 - `tools/verify-nocodb-backup.mjs` : vérification d'un dump.
 - `tools/plan-nocodb-restore.mjs` : plan de restauration non destructif.
 - `tools/analyze-object-storage-readiness.mjs` : audit fichiers lourds.
+- `tools/create-staging-snapshot.mjs` : snapshot staging léger.
 
 Exemple :
 
@@ -93,6 +94,7 @@ node tools/backup-nocodb.mjs
 node tools/verify-nocodb-backup.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 node tools/plan-nocodb-restore.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 node tools/analyze-object-storage-readiness.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
+node tools/create-staging-snapshot.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/staging-snapshot.json.gz
 ```
 
 La vérification prouve que le fichier est exploitable. Le plan de restauration
@@ -108,6 +110,8 @@ pourra le lire depuis le stockage objet. Sinon elle gardera le fallback actuel
 via `mobile_document_chunks`. Cette approche évite une bascule brutale.
 
 ## Staging
+
+Document dédié : `docs/staging-snapshot.md`.
 
 Créer une base de test légère, pas un clone complet durable.
 
