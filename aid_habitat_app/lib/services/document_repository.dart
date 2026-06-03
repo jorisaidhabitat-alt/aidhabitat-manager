@@ -13,11 +13,43 @@ import 'local_database.dart';
 import 'media_cache_service.dart';
 import 'sync_engine.dart';
 
+class DocumentRepositoryChange {
+  const DocumentRepositoryChange({
+    required this.patientId,
+    this.dossierId,
+    required this.reason,
+  });
+
+  final String patientId;
+  final String? dossierId;
+  final String reason;
+}
+
 class DocumentRepository {
   DocumentRepository({LocalDatabase? database})
     : _database = database ?? LocalDatabase.instance;
 
+  static final StreamController<DocumentRepositoryChange> _changesController =
+      StreamController<DocumentRepositoryChange>.broadcast();
+
+  static Stream<DocumentRepositoryChange> get changes =>
+      _changesController.stream;
+
   final LocalDatabase _database;
+
+  void _notifyChanged({
+    required String patientId,
+    String? dossierId,
+    required String reason,
+  }) {
+    _changesController.add(
+      DocumentRepositoryChange(
+        patientId: patientId,
+        dossierId: dossierId,
+        reason: reason,
+      ),
+    );
+  }
 
   Future<List<DocItem>> fetchDocuments(String patientId) async {
     final db = await _database.database;
@@ -233,6 +265,11 @@ class DocumentRepository {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
     // PAS de sync_operations — le doc est déjà côté serveur.
+    _notifyChanged(
+      patientId: patientId,
+      dossierId: dossierId,
+      reason: 'import_remote_only',
+    );
     return _mapRow(row);
   }
 
@@ -303,9 +340,7 @@ class DocumentRepository {
           // Les rapports doivent afficher la date de dernière
           // génération. Les autres documents déterministes gardent leur
           // date de création initiale.
-          if (!tags.any(
-            (tag) => tag.trim().toLowerCase() == 'rapport',
-          ))
+          if (!tags.any((tag) => tag.trim().toLowerCase() == 'rapport'))
             'created_at': existing.first['created_at'],
         };
       }
@@ -380,6 +415,11 @@ class DocumentRepository {
     );
 
     SyncEngine().notify();
+    _notifyChanged(
+      patientId: patientId,
+      dossierId: dossierId,
+      reason: 'import_bytes',
+    );
     return _mapRow(row);
   }
 
@@ -453,6 +493,7 @@ class DocumentRepository {
     });
 
     SyncEngine().notify();
+    _notifyChanged(patientId: patientId, reason: 'import_file');
 
     return _mapRow(row);
   }
@@ -728,6 +769,27 @@ class DocumentRepository {
     SyncEngine().notify();
   }
 
+  /// Persiste le chemin local d'un fichier distant téléchargé en cache.
+  ///
+  /// Local-only : on ne marque pas le document comme modifié et on ne crée
+  /// aucune opération de sync. Le but est uniquement de permettre aux aperçus
+  /// natifs (notamment PDF) de s'ouvrir instantanément aux prochains clics.
+  Future<void> storeLocalDocumentPath({
+    required String documentId,
+    required String localFilePath,
+  }) async {
+    final trimmedPath = localFilePath.trim();
+    if (trimmedPath.isEmpty) return;
+    final db = await _database.database;
+    await db.update(
+      'documents',
+      {'local_file_path': trimmedPath},
+      where:
+          'local_id = ? AND (local_file_path IS NULL OR local_file_path = "")',
+      whereArgs: [documentId],
+    );
+  }
+
   /// Met à jour la catégorisation visite d'un document — utilisé
   /// exclusivement par l'onglet Photos du relevé de visite.
   ///
@@ -873,6 +935,13 @@ class DocumentRepository {
     });
 
     if (changed) SyncEngine().notify();
+    if (changed) {
+      _notifyChanged(
+        patientId: patientId,
+        dossierId: dossierId,
+        reason: 'hide_obsolete_reports',
+      );
+    }
   }
 
   Future<void> deleteDocument(String documentId) async {
@@ -884,12 +953,18 @@ class DocumentRepository {
     // Sinon on peut juste annuler la pending upload et purger.
     final rows = await db.query(
       'documents',
-      columns: const ['sync_state', 'remote_file_path', 'remote_public_url'],
+      columns: const [
+        'patient_local_id',
+        'sync_state',
+        'remote_file_path',
+        'remote_public_url',
+      ],
       where: 'local_id = ?',
       whereArgs: [documentId],
       limit: 1,
     );
     if (rows.isEmpty) return;
+    final patientId = rows.first['patient_local_id'] as String? ?? '';
 
     final wasSynced =
         (rows.first['sync_state'] as String?) == SyncState.synced.name;
@@ -954,6 +1029,10 @@ class DocumentRepository {
     }
 
     SyncEngine().notify();
+    _notifyChanged(
+      patientId: patientId,
+      reason: 'delete',
+    );
   }
 
   bool _documentRowHasTag(Map<String, Object?> row, String tag) {

@@ -1435,10 +1435,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       return false;
     }
     const documentUuid = stringValue(field(existing, 'uuid_source') || documentId);
-    const chunks = await listDocumentChunks(documentChunksTableId, documentUuid);
-    for (const chunk of chunks) {
-      await deleteRecord(documentChunksTableId, chunk.id);
-    }
+    await deleteDocumentChunks(documentChunksTableId, documentUuid);
     await deleteRecord(documentsTableId, existing.id);
     return true;
   },

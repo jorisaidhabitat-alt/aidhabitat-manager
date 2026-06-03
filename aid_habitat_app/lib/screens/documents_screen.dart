@@ -120,6 +120,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   bool _isPicking = false;
   List<DocItem> _documents = const [];
   int _loadGeneration = 0;
+  StreamSubscription<DocumentRepositoryChange>? _documentChangeSubscription;
 
   // Sélection multiple
   final Set<String> _selectedIds = <String>{};
@@ -139,6 +140,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDocuments();
+    _documentChangeSubscription = DocumentRepository.changes.listen((change) {
+      if (!mounted) return;
+      if (change.patientId != _patientId) return;
+      unawaited(_loadDocuments(silent: true, refreshRemote: false));
+    });
     // Refactor 2026-05-12 : suppression du polling 1 s + de
     // `enterActiveContext`. L'écran Documents charge sa grille à
     // l'ouverture et la garde stable pendant toute la session sur
@@ -160,13 +166,18 @@ class _DocumentsScreenState extends State<DocumentsScreen>
 
   // ----- Data loading -----
 
-  Future<void> _loadDocuments({bool silent = false}) async {
+  Future<void> _loadDocuments({
+    bool silent = false,
+    bool refreshRemote = true,
+  }) async {
     // Plus de toggle `_isLoading` — la grille reste affichée même
     // pendant le fetch (cf. commentaire sur la déclaration du champ).
     // Le `silent` param est gardé pour compat des appelants existants
     // (importDocument, deleteDocument, etc. qui passent silent:true).
     final generation = ++_loadGeneration;
-    final remoteRefresh = _dataService.refreshDocumentsFromRemote(_patientId);
+    final remoteRefresh = refreshRemote
+        ? _dataService.refreshDocumentsFromRemote(_patientId)
+        : Future<bool>.value(false);
     final docs = await _dataService.fetchDocuments(_patientId);
     if (!mounted) return;
     setState(() {
@@ -1332,6 +1343,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _documentChangeSubscription?.cancel();
     _keyboardFocus.dispose();
     super.dispose();
   }
@@ -2007,7 +2019,11 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     try {
       final bytes = await annotator.exportFlatPng();
       if (bytes == null) return;
-      final localPath = widget.doc.localPath;
+      final docLocalPath = widget.doc.localPath;
+      final wrapperPdfPath = _pdfWrapperKey.currentState?.pdfPath;
+      final localPath = docLocalPath != null && docLocalPath.isNotEmpty
+          ? docLocalPath
+          : wrapperPdfPath;
       if (localPath == null || localPath.isEmpty) return;
       final flatPath = '$localPath.flat.png';
       await File(flatPath).writeAsBytes(bytes, flush: true);
@@ -2380,6 +2396,19 @@ class _PreviewScreenState extends State<_PreviewScreen> {
         File(doc.localPath!).existsSync()) {
       return _PdfAnnotatorWrapper(
         pdfPath: doc.localPath!,
+        annotatorKey: _annotatorKey,
+        wrapperKey: _pdfWrapperKey,
+        onChanged: () => setState(() {}),
+      );
+    }
+
+    // PDF distant sur iPad/iOS/macOS : si le merge remote a affiché le
+    // document avant que `local_file_path` soit hydraté, on télécharge le
+    // binaire à la demande, on le met en cache disque, puis on l'ouvre avec
+    // le même annotator PDF que les fichiers locaux.
+    if (!kIsWeb && isPdf && doc.url != null && doc.url!.isNotEmpty) {
+      return _RemotePdfAnnotatorWrapper(
+        doc: doc,
         annotatorKey: _annotatorKey,
         wrapperKey: _pdfWrapperKey,
         onChanged: () => setState(() {}),
@@ -3015,6 +3044,207 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
 /// Wrapper qui télécharge une image distante via [MediaCacheService] puis
 /// affiche un [_ImageAnnotator] sur le fichier local mis en cache. Permet
 /// d'annoter des documents synchronisés depuis le serveur (pas de localPath).
+class _RemotePdfAnnotatorWrapper extends StatefulWidget {
+  final DocItem doc;
+  final GlobalKey<_ImageAnnotatorState> annotatorKey;
+  final VoidCallback onChanged;
+  final GlobalKey<_PdfAnnotatorWrapperState>? wrapperKey;
+
+  const _RemotePdfAnnotatorWrapper({
+    required this.doc,
+    required this.annotatorKey,
+    required this.onChanged,
+    this.wrapperKey,
+  });
+
+  @override
+  State<_RemotePdfAnnotatorWrapper> createState() =>
+      _RemotePdfAnnotatorWrapperState();
+}
+
+class _RemotePdfAnnotatorWrapperState
+    extends State<_RemotePdfAnnotatorWrapper> {
+  String? _pdfPath;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RemotePdfAnnotatorWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.doc.id != widget.doc.id ||
+        oldWidget.doc.url != widget.doc.url) {
+      _pdfPath = null;
+      _error = null;
+      _loading = true;
+      _load();
+    }
+  }
+
+  Future<bool> _looksLikePdfFile(File file) async {
+    try {
+      if (!await file.exists()) return false;
+      final raf = await file.open();
+      try {
+        final bytes = await raf.read(5);
+        return bytes.length == 5 &&
+            bytes[0] == 0x25 &&
+            bytes[1] == 0x50 &&
+            bytes[2] == 0x44 &&
+            bytes[3] == 0x46 &&
+            bytes[4] == 0x2D;
+      } finally {
+        await raf.close();
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _messageForDiagnosis(MediaFetchDiagnosis? diagnosis) {
+    if (diagnosis == null) {
+      return 'PDF indisponible pour le moment. Réessayez avec la connexion active.';
+    }
+    if (diagnosis.isAuthError) {
+      return 'Accès au PDF refusé : la session semble expirée. Déconnectez-vous puis reconnectez-vous.';
+    }
+    if (diagnosis.isMissing) {
+      return 'PDF introuvable côté serveur.';
+    }
+    if (diagnosis.isServerError) {
+      return 'Serveur temporairement indisponible pour charger ce PDF.';
+    }
+    if (diagnosis.isNetworkError) {
+      return 'Réseau indisponible ou instable pour charger ce PDF.';
+    }
+    if (diagnosis.statusCode >= 200 &&
+        diagnosis.statusCode < 300 &&
+        diagnosis.bodyLength == 0) {
+      return 'Le fichier reçu est vide.';
+    }
+    if (diagnosis.statusCode > 0) {
+      return 'Téléchargement du PDF impossible (HTTP ${diagnosis.statusCode}).';
+    }
+    return diagnosis.message ?? 'PDF indisponible pour le moment.';
+  }
+
+  Future<void> _load() async {
+    final url = widget.doc.url?.trim() ?? '';
+    if (url.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'URL du PDF absente.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final file = await MediaCacheService.instance.fetch(
+      url,
+      headers: MediaCacheService.authHeaders(),
+    );
+    if (!mounted) return;
+
+    if (file == null || !await file.exists()) {
+      final diagnosis = await MediaCacheService.instance.diagnose(
+        url,
+        headers: MediaCacheService.authHeaders(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = _messageForDiagnosis(diagnosis);
+      });
+      return;
+    }
+
+    if (!await _looksLikePdfFile(file)) {
+      setState(() {
+        _loading = false;
+        _error = 'Le fichier reçu ne ressemble pas à un PDF valide.';
+      });
+      return;
+    }
+
+    unawaited(
+      DocumentRepository().storeLocalDocumentPath(
+        documentId: widget.doc.id,
+        localFilePath: file.path,
+      ),
+    );
+
+    setState(() {
+      _pdfPath = file.path;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Container(
+        color: const Color(0xFF0E1116),
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    if (_error != null) {
+      return Container(
+        color: const Color(0xFF0E1116),
+        alignment: Alignment.center,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(LucideIcons.fileX, size: 72, color: Colors.white54),
+                const SizedBox(height: 16),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(LucideIcons.refreshCw, size: 16),
+                  label: const Text('Réessayer'),
+                  style: FilledButton.styleFrom(backgroundColor: kBrandPurple),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final pdfPath = _pdfPath;
+    if (pdfPath == null || pdfPath.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return _PdfAnnotatorWrapper(
+      pdfPath: pdfPath,
+      annotatorKey: widget.annotatorKey,
+      wrapperKey: widget.wrapperKey,
+      onChanged: widget.onChanged,
+    );
+  }
+}
+
 /// Wrapper qui rend les pages d'un PDF en PNG (via pdfx) et les passe au
 /// [_ImageAnnotator]. Permet d'annoter chaque page avec le stylet, exactement
 /// comme une image. Navigation précédent/suivant entre les pages.
@@ -3052,6 +3282,8 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
   final Map<int, List<_AnnotStroke>> _memoryStrokesByPage = {};
   // Pages dont le contenu en mémoire diffère du disque — à flush au Save.
   final Set<int> _dirtyPages = {};
+
+  String get pdfPath => widget.pdfPath;
 
   /// True dès qu'au moins une page a été modifiée depuis le dernier save.
   bool get hasUnsavedChanges {
