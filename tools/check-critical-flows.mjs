@@ -100,6 +100,11 @@ const checks = [
     file: 'package.json',
     assert: (source) => source.includes('"release:live-check": "node tools/check-live-stack.mjs"'),
   },
+  {
+    name: 'Package exposes the safe local artifacts cleanup',
+    file: 'package.json',
+    assert: (source) => source.includes('"cleanup:artifacts": "node tools/cleanup-local-artifacts.mjs"'),
+  },
 ];
 
 const failures = [];

@@ -26,6 +26,21 @@ La production doit rester dans son état actuel tant que :
 df -h /System/Volumes/Data .
 ```
 
+Si l'espace est trop juste, afficher les artefacts locaux supprimables :
+
+```bash
+npm run cleanup:artifacts
+```
+
+Puis supprimer uniquement les artefacts générés si nécessaire :
+
+```bash
+npm run cleanup:artifacts -- --apply
+```
+
+Les backups NocoDB ne sont pas supprimés par ce script. Les rapports preflight
+ne sont inclus que si l'option `--include-reports` est ajoutée.
+
 2. Créer ou sélectionner un backup NocoDB récent :
 
 ```bash
