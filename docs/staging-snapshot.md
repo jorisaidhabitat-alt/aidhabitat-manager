@@ -114,6 +114,44 @@ IMPORT_BATCHES_OVERWRITE=1 npm run staging:export-import-batches -- tmp/staging-
 Les champs système NocoDB (`Id`, `CreatedAt`, `UpdatedAt`) sont exclus des
 payloads d'import car ils ne doivent pas être forcés dans une base neuve.
 
+## Préparer l'import staging
+
+Générer le modèle de mapping des tables :
+
+```bash
+npm run staging:import-batches -- tmp/staging-import-batches
+```
+
+Cela crée `tmp/staging-import-batches/table-map.template.json`.
+
+Après avoir créé les tables dans NocoDB staging, remplir les `stagingTableId`
+dans ce fichier, puis lancer un dry-run :
+
+```bash
+npm run staging:import-batches -- tmp/staging-import-batches tmp/staging-import-batches/table-map.json
+```
+
+Le dry-run vérifie :
+
+- tous les mappings de tables ;
+- la forme JSON des lots ;
+- l'absence de champs système interdits ;
+- la taille des batches.
+
+Pour écrire réellement dans NocoDB staging, il faut toutes ces sécurités :
+
+```bash
+NOCODB_RESTORE_ALLOW_APPLY=1 \
+NOCODB_RESTORE_TARGET=staging \
+NOCODB_API_URL="https://..." \
+NOCODB_API_TOKEN="..." \
+NOCODB_BASE_ID="<base-staging>" \
+npm run staging:import-batches -- tmp/staging-import-batches tmp/staging-import-batches/table-map.json --apply
+```
+
+L'importeur refuse d'écrire si `NOCODB_BASE_ID` correspond à la base source ou
+à la base production connue.
+
 ## Critère de réussite
 
 Le staging est utile si l'on retrouve :

@@ -17,6 +17,7 @@
     "staging:snapshot": "node tools/create-staging-snapshot.mjs",
     "staging:export-schema-plan": "node tools/export-nocodb-schema-plan.mjs",
     "staging:export-import-batches": "node tools/export-nocodb-import-batches.mjs",
+    "staging:import-batches": "node tools/import-nocodb-batches.mjs",
     "commercial:preflight": "node tools/run-commercial-readiness-check.mjs",
     "nocodb:api-audit": "node tools/audit-nocodb-api-usage.mjs",
     "test:pdf": "node tools/generate-test-report.mjs",
