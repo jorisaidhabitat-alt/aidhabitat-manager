@@ -59,10 +59,35 @@ Recommandation : ne pas utiliser cette option pour les tests ordinaires.
 1. Générer un backup production.
 2. Vérifier le backup.
 3. Générer le snapshot staging.
-4. Créer une base NocoDB staging vide.
-5. Restaurer le snapshot dans staging.
-6. Pointer une app staging vers cette base.
-7. Tester les flux critiques avant toute migration production.
+4. Exporter les lots d'import staging.
+5. Créer une base NocoDB staging vide.
+6. Recréer les tables et colonnes.
+7. Importer les lots dans staging.
+8. Pointer une app staging vers cette base.
+9. Tester les flux critiques avant toute migration production.
+
+## Préparer les lots d'import
+
+```bash
+npm run staging:export-import-batches -- tmp/staging-snapshot.json.gz tmp/staging-import-batches
+```
+
+Le script produit :
+
+- un `manifest.json` global ;
+- un `schema.json` par table ;
+- des fichiers `batch-*.json` directement compatibles avec le bulk insert NocoDB v2 ;
+- un `README.md` dans le dossier de sortie.
+
+Par sécurité, le dossier de sortie ne sera pas remplacé s'il existe déjà.
+Pour le remplacer :
+
+```bash
+IMPORT_BATCHES_OVERWRITE=1 npm run staging:export-import-batches -- tmp/staging-snapshot.json.gz tmp/staging-import-batches
+```
+
+Les champs système NocoDB (`Id`, `CreatedAt`, `UpdatedAt`) sont exclus des
+payloads d'import car ils ne doivent pas être forcés dans une base neuve.
 
 ## Critère de réussite
 

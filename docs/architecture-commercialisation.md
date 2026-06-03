@@ -86,6 +86,7 @@ Scripts existants :
 - `tools/plan-nocodb-restore.mjs` : plan de restauration non destructif.
 - `tools/analyze-object-storage-readiness.mjs` : audit fichiers lourds.
 - `tools/create-staging-snapshot.mjs` : snapshot staging léger.
+- `tools/export-nocodb-import-batches.mjs` : lots d'import staging.
 
 Exemple :
 
@@ -95,6 +96,7 @@ node tools/verify-nocodb-backup.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.
 node tools/plan-nocodb-restore.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 node tools/analyze-object-storage-readiness.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 node tools/create-staging-snapshot.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/staging-snapshot.json.gz
+node tools/export-nocodb-import-batches.mjs tmp/staging-snapshot.json.gz tmp/staging-import-batches
 ```
 
 La vérification prouve que le fichier est exploitable. Le plan de restauration
