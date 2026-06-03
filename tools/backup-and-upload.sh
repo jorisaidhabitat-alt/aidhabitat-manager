@@ -3,7 +3,8 @@
 #   1. dump NocoDB → fichier .json.gz local
 #   2. upload off-site via rclone (n'importe quelle destination : S3, Drive,
 #      Backblaze, Hetzner, SCP, Dropbox, etc. — cf. https://rclone.org)
-#   3. purge des backups locaux > RETENTION_DAYS jours
+#   3. vérification du dump
+#   4. purge des backups locaux > RETENTION_DAYS jours
 #
 # Variables d'environnement attendues :
 #   NOCODB_API_URL, NOCODB_API_TOKEN, NOCODB_BASE_ID  (passées au dump script)
@@ -35,14 +36,24 @@ if ! node tools/backup-nocodb.mjs; then
   exit 1
 fi
 
-# 2. Upload off-site (si rclone configuré)
+# 2. Vérification du dernier dump avant tout upload.
+BACKUP_DIR="${BACKUP_DIR:-./backups}"
+LATEST=$(ls -1t "$BACKUP_DIR"/aidhabitat-*.json.gz 2>/dev/null | head -n 1 || true)
+if [ -z "$LATEST" ]; then
+  echo "$LOG_PREFIX ÉCHEC: aucun fichier de backup trouvé dans $BACKUP_DIR" >&2
+  exit 1
+fi
+
+if ! node tools/verify-nocodb-backup.mjs "$LATEST"; then
+  echo "$LOG_PREFIX ÉCHEC vérification backup" >&2
+  [ -n "${ALERT_WEBHOOK:-}" ] && curl -sf -X POST -H 'Content-Type: application/json' \
+    -d '{"text":"⚠️ Backup NocoDB aid'\''habitat : dump créé mais vérification ÉCHEC"}' \
+    "$ALERT_WEBHOOK" >/dev/null || true
+  exit 1
+fi
+
+# 3. Upload off-site (si rclone configuré)
 if [ -n "${RCLONE_REMOTE:-}" ]; then
-  BACKUP_DIR="${BACKUP_DIR:-./backups}"
-  LATEST=$(ls -1t "$BACKUP_DIR"/aidhabitat-*.json.gz 2>/dev/null | head -n 1 || true)
-  if [ -z "$LATEST" ]; then
-    echo "$LOG_PREFIX ÉCHEC: aucun fichier de backup trouvé dans $BACKUP_DIR" >&2
-    exit 1
-  fi
   echo "$LOG_PREFIX upload $LATEST → $RCLONE_REMOTE"
   if ! rclone copy "$LATEST" "$RCLONE_REMOTE" --progress; then
     echo "$LOG_PREFIX ÉCHEC upload rclone" >&2
@@ -52,7 +63,7 @@ if [ -n "${RCLONE_REMOTE:-}" ]; then
     exit 1
   fi
 
-  # Purge côté remote (garde N derniers jours).
+  # 4. Purge côté remote (garde N derniers jours).
   # rclone delete avec --min-age = supprime ce qui est PLUS VIEUX que N jours.
   RETENTION_DAYS="${RETENTION_DAYS:-30}"
   echo "$LOG_PREFIX purge remote > ${RETENTION_DAYS} jours"

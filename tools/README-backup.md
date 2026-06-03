@@ -9,7 +9,9 @@ quelle machine Linux avec accès au NocoDB).
 ```
 tools/
 ├── backup-nocodb.mjs         ← Node script, dump → fichier .json.gz local
-├── backup-and-upload.sh      ← Wrapper bash : dump + rclone upload + purge
+├── verify-nocodb-backup.mjs  ← Vérifie qu'un dump est lisible et cohérent
+├── backup-and-upload.sh      ← Wrapper bash : dump + vérification + upload
+├── Dockerfile.backup         ← Job cron conteneurisé optionnel
 └── README-backup.md          ← Ce fichier
 ```
 
@@ -84,6 +86,22 @@ Test immédiat sans attendre 3h du matin :
 /opt/aidhabitat-manager/tools/backup-and-upload.sh
 ```
 
+## Vérification du backup
+
+Après chaque sauvegarde importante, vérifier que le fichier est lisible :
+
+```bash
+node tools/verify-nocodb-backup.mjs /var/backups/nocodb/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
+```
+
+Le script vérifie :
+
+- gzip lisible ;
+- JSON parseable ;
+- tables critiques présentes ;
+- tables critiques non vides ;
+- cohérence de base entre `mobile_documents` et `mobile_document_chunks`.
+
 ## Restauration
 
 Le format est du JSON brut, restaurable manuellement (mais long) via
@@ -95,10 +113,9 @@ complète de NocoDB), le plus rapide :
 3. Réimporter les records via `POST /api/v2/tables/{id}/records` (max
    1000 records par requête)
 
-Un script `tools/restore-nocodb.mjs` serait à écrire si on a besoin de
-restaurer souvent. À ce jour il n'existe pas — on l'écrira le jour où on
-en aura besoin (= le jour d'un sinistre, on improvisera avec ce JSON et
-quelques `curl` PATCH/POST).
+Un vrai script `tools/restore-nocodb.mjs` reste à écrire avant toute
+commercialisation. En attendant, `tools/verify-nocodb-backup.mjs` permet
+au minimum de prouver que le dump est lisible et exploitable.
 
 ## Variables d'environnement
 
@@ -116,18 +133,10 @@ quelques `curl` PATCH/POST).
 ## Déploiement EasyPanel (alternative au cron host)
 
 Au lieu d'un cron host, on peut packager comme container EasyPanel
-dédié. Approche minimale :
+dédié. Le fichier existe déjà :
 
-```dockerfile
-# tools/Dockerfile.backup
-FROM node:24-alpine
-RUN apk add --no-cache rclone bash curl
-WORKDIR /app
-COPY tools/backup-nocodb.mjs tools/backup-and-upload.sh ./tools/
-RUN chmod +x ./tools/backup-and-upload.sh
-# Cron via crond Alpine
-RUN echo "0 3 * * * /app/tools/backup-and-upload.sh >> /var/log/cron.log 2>&1" > /etc/crontabs/root
-CMD ["crond", "-f", "-l", "8"]
+```bash
+docker build -f tools/Dockerfile.backup -t aidhabitat-nocodb-backup .
 ```
 
 Puis monter `RCLONE_CONFIG` en volume + les env vars NocoDB en secrets

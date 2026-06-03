@@ -1,0 +1,15 @@
+FROM node:24-alpine
+
+RUN apk add --no-cache bash curl rclone
+
+WORKDIR /app
+
+COPY tools/backup-nocodb.mjs tools/verify-nocodb-backup.mjs tools/backup-and-upload.sh ./tools/
+
+RUN chmod +x ./tools/backup-and-upload.sh \
+  && mkdir -p /var/backups/nocodb /var/log \
+  && echo "0 3 * * * /app/tools/backup-and-upload.sh >> /var/log/nocodb-backup.log 2>&1" > /etc/crontabs/root
+
+ENV BACKUP_DIR=/var/backups/nocodb
+
+CMD ["crond", "-f", "-l", "8"]
