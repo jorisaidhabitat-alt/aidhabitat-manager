@@ -86,6 +86,12 @@ gh workflow run "Build Flutter Web" \
 gh run watch <run-id> --exit-status
 ```
 
+7. Vérifier que le commit courant a bien un build GitHub réussi :
+
+```bash
+npm run release:ci-check
+```
+
 ## Critères obligatoires
 
 Le preflight doit indiquer :
@@ -115,6 +121,7 @@ GitHub Actions doit indiquer :
 - check PWA bundle OK ;
 - upload artifact OK ;
 - publication image et déploiement désactivés sauf décision explicite.
+- `npm run release:ci-check` OK sur le hash courant.
 
 ## Pendant la bascule
 

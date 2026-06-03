@@ -24,6 +24,7 @@
     "secrets:audit": "node tools/audit-env-secrets.mjs",
     "release:web-check": "node tools/check-web-release.mjs",
     "release:live-check": "node tools/check-live-stack.mjs",
+    "release:ci-check": "node tools/check-github-actions-head.mjs",
     "release:smoke": "node tools/run-release-smoke.mjs",
     "test:pdf": "node tools/generate-test-report.mjs",
     "test:flutter": "bash aid_habitat_app/tool/test_safely.sh",

@@ -110,6 +110,11 @@ const checks = [
     file: 'package.json',
     assert: (source) => source.includes('"release:smoke": "node tools/run-release-smoke.mjs"'),
   },
+  {
+    name: 'Package exposes the GitHub Actions HEAD check',
+    file: 'package.json',
+    assert: (source) => source.includes('"release:ci-check": "node tools/check-github-actions-head.mjs"'),
+  },
 ];
 
 const failures = [];
