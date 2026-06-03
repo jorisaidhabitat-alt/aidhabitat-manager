@@ -16,7 +16,7 @@ void main() {
 
     final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
 
-    expect(materialApp.title, "Aid'Habitat Manager");
+    expect(materialApp.title, "App'Ergo");
     expect(materialApp.locale, const Locale('fr', 'FR'));
     expect(materialApp.debugShowCheckedModeBanner, isFalse);
     expect(find.text('Aid Habitat smoke'), findsOneWidget);

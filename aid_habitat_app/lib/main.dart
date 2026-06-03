@@ -257,7 +257,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: "Aid'Habitat Manager",
+      title: "App'Ergo",
       debugShowCheckedModeBanner: false,
       // Localisation française — nécessaire pour que showDatePicker soit
       // en français dans l'onglet Bénéficiaire (champ date de naissance).

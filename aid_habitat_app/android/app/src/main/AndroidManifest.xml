@@ -28,7 +28,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
-        android:label="Aid'Habitat"
+        android:label="App'Ergo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
