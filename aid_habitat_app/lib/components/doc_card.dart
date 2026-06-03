@@ -171,6 +171,7 @@ class _DocCardState extends State<DocCard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: null,
           boxShadow: _hovering
               ? [
                   BoxShadow(
