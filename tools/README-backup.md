@@ -9,7 +9,9 @@ quelle machine Linux avec accès au NocoDB).
 ```
 tools/
 ├── backup-nocodb.mjs         ← Node script, dump → fichier .json.gz local
+├── nocodbBackupLib.mjs       ← Lecture + validation partagée des dumps
 ├── verify-nocodb-backup.mjs  ← Vérifie qu'un dump est lisible et cohérent
+├── plan-nocodb-restore.mjs   ← Plan de restauration non destructif
 ├── backup-and-upload.sh      ← Wrapper bash : dump + vérification + upload
 ├── Dockerfile.backup         ← Job cron conteneurisé optionnel
 └── README-backup.md          ← Ce fichier
@@ -102,6 +104,21 @@ Le script vérifie :
 - tables critiques non vides ;
 - cohérence de base entre `mobile_documents` et `mobile_document_chunks`.
 
+## Plan de restauration
+
+Avant une vraie restauration, générer un plan lisible :
+
+```bash
+node tools/plan-nocodb-restore.mjs /var/backups/nocodb/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
+```
+
+Le script ne contacte pas NocoDB et ne restaure rien. Il indique :
+
+- le nombre de tables et records ;
+- les tables critiques ;
+- le nombre de batchs API à prévoir ;
+- l'ordre recommandé pour restaurer sur une base staging.
+
 ## Restauration
 
 Le format est du JSON brut, restaurable manuellement (mais long) via
@@ -115,7 +132,8 @@ complète de NocoDB), le plus rapide :
 
 Un vrai script `tools/restore-nocodb.mjs` reste à écrire avant toute
 commercialisation. En attendant, `tools/verify-nocodb-backup.mjs` permet
-au minimum de prouver que le dump est lisible et exploitable.
+au minimum de prouver que le dump est lisible et `tools/plan-nocodb-restore.mjs`
+permet de préparer l'exercice de restauration sans risque.
 
 ## Variables d'environnement
 
@@ -151,7 +169,8 @@ EasyPanel.
   Slack/Mattermost.
 - **Test de récupération** : à faire trimestriellement — décompresser un
   backup, parser le JSON, vérifier que la table principale (`dossiers`,
-  `beneficiaires`) a > 0 records.
+  `beneficiaires`) a > 0 records, puis générer un plan avec
+  `tools/plan-nocodb-restore.mjs`.
 
 ## Coûts estimés
 

@@ -12,6 +12,7 @@
     "build:all": "npm run build && npm run build:pwa",
     "check:critical": "node tools/check-critical-flows.mjs",
     "backup:verify": "node tools/verify-nocodb-backup.mjs",
+    "backup:restore-plan": "node tools/plan-nocodb-restore.mjs",
     "test:pdf": "node tools/generate-test-report.mjs",
     "test:flutter": "bash aid_habitat_app/tool/test_safely.sh",
     "start": "node server/index.mjs",

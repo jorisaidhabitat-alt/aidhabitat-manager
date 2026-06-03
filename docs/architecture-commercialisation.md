@@ -83,13 +83,18 @@ Scripts existants :
 - `tools/backup-nocodb.mjs` : dump complet.
 - `tools/backup-and-upload.sh` : dump + upload rclone.
 - `tools/verify-nocodb-backup.mjs` : vérification d'un dump.
+- `tools/plan-nocodb-restore.mjs` : plan de restauration non destructif.
 
 Exemple :
 
 ```bash
 node tools/backup-nocodb.mjs
 node tools/verify-nocodb-backup.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
+node tools/plan-nocodb-restore.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 ```
+
+La vérification prouve que le fichier est exploitable. Le plan de restauration
+prouve qu'on sait estimer l'effort de récupération sans toucher à la production.
 
 ## Staging
 
