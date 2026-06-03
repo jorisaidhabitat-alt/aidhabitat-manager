@@ -70,9 +70,9 @@ class _PhotosTabState extends State<PhotosTab>
   final DataService _dataService = DataService();
   final ImagePicker _imagePicker = ImagePicker();
 
-  bool _isLoading = true;
   bool _isImporting = false;
   List<DocItem> _photos = const [];
+  int _refreshGeneration = 0;
 
   /// Sections SUPPLÉMENTAIRES ajoutées par l'ergo via le bouton
   /// « + Ajouter une partie » (en plus des 5 sections de base toujours
@@ -140,10 +140,11 @@ class _PhotosTabState extends State<PhotosTab>
 
   // ----- Data -----
 
-  /// Recharge la liste depuis SQLite + déclenche un refresh remote en
-  /// arrière-plan, puis recharge SQLite si remote a apporté du nouveau.
-  /// Filtre : images portant AU MOINS un des tags visite (base ou extras).
+  /// Recharge la liste locale immédiatement, puis déclenche un refresh
+  /// remote en arrière-plan. L'écran reste utilisable même si l'API met
+  /// quelques secondes à répondre.
   Future<void> _refresh({bool silent = false}) async {
+    final generation = ++_refreshGeneration;
     try {
       // 1) Lecture locale immédiate (SQLite cache).
       final docs = await _dataService.fetchDocuments(widget.dossier.patient.id);
@@ -153,7 +154,7 @@ class _PhotosTabState extends State<PhotosTab>
       final visitImages = docs
           .where((d) => d.type == 'image' && d.tags.any(_isAnyVisitTag))
           .toList(growable: false);
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       // Re-dérive les sections supplémentaires depuis les tags des
       // photos remontées + union avec celles déjà en mémoire (extras
       // créés mais pas encore alimentés en photos cette session).
@@ -167,17 +168,23 @@ class _PhotosTabState extends State<PhotosTab>
       setState(() {
         _photos = visitImages;
         _extraSections = union;
-        _isLoading = false;
       });
-      // 2) Pull remote en arrière-plan (best-effort) — sans ça, après
-      // un `clear site data` le cache local est vide et on n'aurait
-      // jamais les photos d'autres devices. Aligne le comportement
-      // sur DocumentsScreen.
+      // 2) Pull remote en arrière-plan (best-effort), puis relecture
+      // SQLite uniquement si le serveur a apporté du nouveau.
+      unawaited(_refreshRemotePhotos(generation));
+    } catch (_) {
+      // Pas de loader global à débloquer : les sections restent
+      // visibles, même si la lecture locale échoue temporairement.
+    }
+  }
+
+  Future<void> _refreshRemotePhotos(int generation) async {
+    try {
       final refreshed = await _dataService.refreshDocumentsFromRemote(
         widget.dossier.patient.id,
       );
-      if (!mounted || !refreshed) return;
-      // 3) Re-lit la SQLite après merge — si remote a apporté du nouveau,
+      if (!mounted || generation != _refreshGeneration || !refreshed) return;
+      // Re-lit la SQLite après merge — si remote a apporté du nouveau,
       // l'UI se met à jour silencieusement.
       final remoteDocs = await _dataService.fetchDocuments(
         widget.dossier.patient.id,
@@ -185,7 +192,7 @@ class _PhotosTabState extends State<PhotosTab>
       final remoteVisitImages = remoteDocs
           .where((d) => d.type == 'image' && d.tags.any(_isAnyVisitTag))
           .toList(growable: false);
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       final remoteDerived = _deriveExtraSectionsFromPhotos(remoteVisitImages);
       final remoteUnion =
           <_ExtraSection>{...remoteDerived, ..._extraSections}.toList()
@@ -212,10 +219,7 @@ class _PhotosTabState extends State<PhotosTab>
           _resolvePhotoBytes(d);
         }
       }
-    } catch (_) {
-      if (!mounted) return;
-      if (!silent) setState(() => _isLoading = false);
-    }
+    } catch (_) {}
   }
 
   /// Regex strict pour parser le suffixe ` (#N)` à la fin d'un tag
@@ -658,9 +662,6 @@ class _PhotosTabState extends State<PhotosTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
     // Layout 2026-05-04 v2 : les 5 sections de BASE sont toujours
     // visibles (Logement / Accessibilité / Sanitaires / Plan avant /
     // Plan après). Les sections SUPPLÉMENTAIRES (extras) s'ajoutent
