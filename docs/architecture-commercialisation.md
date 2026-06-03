@@ -91,6 +91,7 @@ Scripts existants :
 - `tools/import-nocodb-batches.mjs` : import staging avec dry-run et garde-fous.
 - `tools/run-commercial-readiness-check.mjs` : preflight global non destructif.
 - `tools/audit-nocodb-api-usage.mjs` : audit dépendances NocoDB API.
+- `tools/audit-env-secrets.mjs` : audit secrets et environnement.
 
 Exemple :
 
@@ -105,6 +106,7 @@ node tools/export-nocodb-import-batches.mjs tmp/staging-snapshot.json.gz tmp/sta
 node tools/import-nocodb-batches.mjs tmp/staging-import-batches
 node tools/run-commercial-readiness-check.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/commercial-readiness
 node tools/audit-nocodb-api-usage.mjs tmp/nocodb-api-audit.md
+node tools/audit-env-secrets.mjs tmp/env-secrets-audit.md
 ```
 
 La vérification prouve que le fichier est exploitable. Le plan de restauration
