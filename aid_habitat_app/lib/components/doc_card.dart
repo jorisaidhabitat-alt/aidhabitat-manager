@@ -163,267 +163,244 @@ class _DocCardState extends State<DocCard> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        transform: _hovering
-            ? (Matrix4.identity()..translateByDouble(0.0, -3.0, 0.0, 1.0))
-            : Matrix4.identity(),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected
-                ? kBrandPurple.withValues(alpha: 0.72)
-                : _hovering
-                ? kBrandPurple.withValues(alpha: 0.34)
-                : const Color(0xFFDADDE3),
-            width: selected ? 1.8 : 1.2,
-          ),
-          boxShadow: _hovering
-              ? [
-                  BoxShadow(
-                    color: kBrandPurple.withValues(alpha: 0.18),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 14,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
-          borderRadius: BorderRadius.circular(16),
-          splashColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-          hoverColor: Colors.transparent,
-          focusColor: Colors.transparent,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Thumbnail / preview area
-              Expanded(
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(16),
-                        ),
-                        child: DocThumbnail(doc: doc),
-                      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          transform: _hovering
+              ? (Matrix4.identity()..translateByDouble(0.0, -3.0, 0.0, 1.0))
+              : Matrix4.identity(),
+          decoration: BoxDecoration(
+            color: _hovering ? const Color(0xFFFCFAFD) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? kBrandPurple.withValues(alpha: 0.78)
+                  : _hovering
+                  ? kBrandPurple.withValues(alpha: 0.42)
+                  : const Color(0xFFD8D0DC),
+              width: selected ? 1.9 : 1.35,
+            ),
+            boxShadow: _hovering
+                ? [
+                    BoxShadow(
+                      color: kBrandPurple.withValues(alpha: 0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
                     ),
-                    // Selection overlay
-                    if (selMode)
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 14,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
+            borderRadius: BorderRadius.circular(16),
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            focusColor: Colors.transparent,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Thumbnail / preview area
+                Expanded(
+                  child: Stack(
+                    children: [
                       Positioned.fill(
                         child: ClipRRect(
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(16),
                           ),
-                          child: Container(
-                            color: selected
-                                ? kBrandPurple.withValues(alpha: 0.35)
-                                : Colors.black.withValues(alpha: 0.08),
-                          ),
+                          child: DocThumbnail(doc: doc),
                         ),
                       ),
-                    // Tag overlay supprimé (demande utilisateur
-                    // 2026-04-29) — le système de tags a été retiré côté
-                    // import (plus de modale de choix de type) et côté
-                    // affichage (pas de badge noir en haut-gauche).
-                    // Checkbox de sélection (top-left). Apparaît au survol
-                    // souris, quand la card est sélectionnée, ou pendant le
-                    // mode sélection. Carré à coins arrondis, sans contour
-                    // violet — violet seulement quand coché.
-                    if (showCheckbox)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: widget.onToggleSelect,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 120),
-                              width: 22,
-                              height: 22,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: selected ? kBrandPurple : Colors.white,
-                                borderRadius: BorderRadius.circular(6),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.18),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 1),
-                                  ),
-                                ],
-                              ),
-                              child: selected
-                                  ? const Icon(
-                                      LucideIcons.check,
-                                      size: 14,
-                                      color: Colors.white,
-                                    )
-                                  : null,
+                      if (selMode)
+                        Positioned.fill(
+                          child: ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(16),
+                            ),
+                            child: Container(
+                              color: selected
+                                  ? kBrandPurple.withValues(alpha: 0.35)
+                                  : Colors.black.withValues(alpha: 0.08),
                             ),
                           ),
                         ),
-                      ),
-                    // Sync badge (top-right) — hidden in selection mode.
-                    // Les actions « Télécharger » et « Supprimer » sont
-                    // déplacées dans le menu kebab (3 points) sur le
-                    // bandeau blanc en bas de la card — plus d'icônes
-                    // flottantes sur la vignette.
-                    if (!selMode)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: SyncBadge(syncState: doc.syncState),
-                      ),
-                  ],
-                ),
-              ),
-              // Title + date (gauche) + menu actions kebab (droite).
-              // Le bandeau blanc accueille à la fois le titre éditable
-              // et un bouton 3 points qui ouvre un menu avec « Télécharger »
-              // / « Supprimer » — choix design utilisateur pour libérer
-              // la vignette de toute icône flottante.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Inline editable title — Nunito (parité avec
-                          // les autres titres de l'app, demande user
-                          // 2026-05-13). Taille bumpée 13 → 16, weight
-                          // allégé bold (w700) → w500 (demande user
-                          // 2026-05-13 : « augmente la taille et reduis
-                          // l'epaisseur »).
-                          _isEditingTitle
-                              ? TextField(
-                                  controller: _titleCtrl,
-                                  focusNode: _titleFocus,
-                                  maxLines: 1,
-                                  textInputAction: TextInputAction.done,
-                                  style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 16,
-                                    color: Colors.black87,
-                                  ),
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 4,
+                      if (showCheckbox)
+                        Positioned(
+                          top: 8,
+                          left: 8,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: widget.onToggleSelect,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 120),
+                                width: 22,
+                                height: 22,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: selected ? kBrandPurple : Colors.white,
+                                  borderRadius: BorderRadius.circular(6),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.18,
+                                      ),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1),
                                     ),
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                  ),
-                                  onSubmitted: (_) => _commitRename(),
-                                  onTapOutside: (_) => _commitRename(),
-                                )
-                              : GestureDetector(
-                                  onTap: selMode ? null : _startEditing,
-                                  behavior: HitTestBehavior.opaque,
-                                  child: Text(
-                                    doc.title,
+                                  ],
+                                ),
+                                child: selected
+                                    ? const Icon(
+                                        LucideIcons.check,
+                                        size: 14,
+                                        color: Colors.white,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (!selMode)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: SyncBadge(syncState: doc.syncState),
+                        ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _isEditingTitle
+                                ? TextField(
+                                    controller: _titleCtrl,
+                                    focusNode: _titleFocus,
                                     maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    textInputAction: TextInputAction.done,
                                     style: GoogleFonts.nunito(
                                       fontWeight: FontWeight.w500,
                                       fontSize: 16,
                                       color: Colors.black87,
                                     ),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 4,
+                                          ),
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                    ),
+                                    onSubmitted: (_) => _commitRename(),
+                                    onTapOutside: (_) => _commitRename(),
+                                  )
+                                : GestureDetector(
+                                    onTap: selMode ? null : _startEditing,
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Text(
+                                      doc.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.nunito(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 16,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                          const SizedBox(height: 2),
-                          // Date : 10 → 13, weight light (w300) — discret
-                          // et lisible avec un peu plus d'air sous le titre.
-                          Text(
-                            dateLabel,
-                            style: GoogleFonts.nunito(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w300,
-                              color: Colors.grey,
+                            const SizedBox(height: 2),
+                            Text(
+                              dateLabel,
+                              style: GoogleFonts.nunito(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.grey,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Menu kebab (3 points) — caché en mode sélection,
-                    // sinon expose Télécharger + Supprimer.
-                    if (!selMode)
-                      PopupMenuButton<String>(
-                        tooltip: 'Actions',
-                        icon: const Icon(
-                          LucideIcons.moreVertical,
-                          size: 18,
-                          color: Color(0xFF8A939D),
+                          ],
                         ),
-                        padding: EdgeInsets.zero,
-                        splashRadius: 18,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        onSelected: (value) {
-                          if (value == 'download') {
-                            widget.onDownload();
-                          } else if (value == 'delete') {
-                            widget.onDelete();
-                          }
-                        },
-                        itemBuilder: (ctx) => const [
-                          PopupMenuItem<String>(
-                            value: 'download',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.download,
-                                  size: 16,
-                                  color: kBrandDarkPurple,
-                                ),
-                                SizedBox(width: 10),
-                                Text('Télécharger'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuDivider(),
-                          PopupMenuItem<String>(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.trash2,
-                                  size: 16,
-                                  color: Colors.red,
-                                ),
-                                SizedBox(width: 10),
-                                Text(
-                                  'Supprimer',
-                                  style: TextStyle(color: Colors.red),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
                       ),
-                  ],
+                      if (!selMode)
+                        PopupMenuButton<String>(
+                          tooltip: 'Actions',
+                          icon: const Icon(
+                            LucideIcons.moreVertical,
+                            size: 18,
+                            color: Color(0xFF8A939D),
+                          ),
+                          padding: EdgeInsets.zero,
+                          splashRadius: 18,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          onSelected: (value) {
+                            if (value == 'download') {
+                              widget.onDownload();
+                            } else if (value == 'delete') {
+                              widget.onDelete();
+                            }
+                          },
+                          itemBuilder: (ctx) => const [
+                            PopupMenuItem<String>(
+                              value: 'download',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    LucideIcons.download,
+                                    size: 16,
+                                    color: kBrandDarkPurple,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text('Télécharger'),
+                                ],
+                              ),
+                            ),
+                            PopupMenuDivider(),
+                            PopupMenuItem<String>(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    LucideIcons.trash2,
+                                    size: 16,
+                                    color: Colors.red,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Supprimer',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
