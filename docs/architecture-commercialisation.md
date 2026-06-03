@@ -94,6 +94,7 @@ Scripts existants :
 - `tools/audit-env-secrets.mjs` : audit secrets et environnement.
 - `docs/bootstrap-password-transition.md` : rotation progressive du mot de passe
   bootstrap local.
+- `docs/release-migration-runbook.md` : procédure de bascule sans impact.
 
 Exemple :
 
@@ -121,6 +122,9 @@ les lots d'import, valide leur forme, lance les contrôles critiques et le build
 L'audit API rend visibles les dépendances `/api/v2` avant une éventuelle V3.
 L'audit secrets signale aussi les avertissements non bloquants à traiter avant
 commercialisation, notamment le mot de passe bootstrap local.
+
+Pour tout changement d'hébergement, DNS, image Docker ou configuration serveur,
+suivre `docs/release-migration-runbook.md` avant et après la bascule.
 
 ## Migration fichiers
 
