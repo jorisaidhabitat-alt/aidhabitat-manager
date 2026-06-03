@@ -97,6 +97,19 @@ En pratique:
 - les vrais sujets "store" sont surtout la signature, la qualite mobile,
   les metadonnees de publication et les prerequis Apple / Google
 
+## Cible actuelle: iPad d'abord
+
+Le projet est actuellement prepare en priorite pour un usage iPad:
+
+- mode offline-first
+- saisie longue et prise de notes pendant visite
+- support clavier/trackpad iPadOS
+- multitache iPad (Split View / Stage Manager)
+- support Apple Pencil natif
+
+La sortie Android/Play Store reste possible plus tard, mais ne pilote pas
+les decisions de structure a court terme.
+
 ## Blocages release constates localement
 
 Au 2026-06-03, le preflight natif (`tool/release_preflight.sh`) remonte

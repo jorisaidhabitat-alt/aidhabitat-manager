@@ -112,6 +112,30 @@ else
   warn "DEVELOPMENT_TEAM non configure dans le projet iOS. Xcode pourra le renseigner via Signing & Capabilities."
 fi
 
+if rg -q 'TARGETED_DEVICE_FAMILY = "1,2"|TARGETED_DEVICE_FAMILY = 2' ios/Runner.xcodeproj/project.pbxproj; then
+  ok "La cible iOS inclut bien l'iPad."
+else
+  fail "La cible iOS n'inclut pas l'iPad."
+fi
+
+if /usr/libexec/PlistBuddy -c 'Print :UIApplicationSupportsIndirectInputEvents' ios/Runner/Info.plist 2>/dev/null | grep -q '^true$'; then
+  ok "Le support clavier/trackpad iPad est active."
+else
+  warn "UIApplicationSupportsIndirectInputEvents absent ou desactive."
+fi
+
+if /usr/libexec/PlistBuddy -c 'Print :UIRequiresFullScreen' ios/Runner/Info.plist 2>/dev/null | grep -q '^false$'; then
+  ok "Le multitache iPad (Split View / Stage Manager) est autorise."
+else
+  warn "UIRequiresFullScreen ne permet pas clairement le multitache iPad."
+fi
+
+if rg -q 'PencilDoubleTapPlugin.register\\(with: self\\)' ios/Runner/AppDelegate.swift; then
+  ok "Le bridge Apple Pencil natif est branche."
+else
+  warn "Le bridge Apple Pencil n'est pas encore enregistre dans AppDelegate.swift."
+fi
+
 echo
 echo "Android / Play Store"
 echo "--------------------"
