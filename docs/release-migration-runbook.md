@@ -59,6 +59,15 @@ COMMERCIAL_PREFLIGHT_CHECK_PWA=1 npm run commercial:preflight -- backups/aidhabi
 npm run release:live-check
 ```
 
+Pour une vérification rapide quotidienne sans build :
+
+```bash
+npm run release:smoke
+```
+
+Cette commande lance les contrôles critiques, le live check public et le
+nettoyage local en dry-run.
+
 5. Lancer le build GitHub Actions sans déploiement :
 
 ```bash

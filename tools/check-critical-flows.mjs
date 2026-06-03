@@ -105,6 +105,11 @@ const checks = [
     file: 'package.json',
     assert: (source) => source.includes('"cleanup:artifacts": "node tools/cleanup-local-artifacts.mjs"'),
   },
+  {
+    name: 'Package exposes the quick release smoke check',
+    file: 'package.json',
+    assert: (source) => source.includes('"release:smoke": "node tools/run-release-smoke.mjs"'),
+  },
 ];
 
 const failures = [];
