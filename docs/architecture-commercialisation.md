@@ -92,6 +92,8 @@ Scripts existants :
 - `tools/run-commercial-readiness-check.mjs` : preflight global non destructif.
 - `tools/audit-nocodb-api-usage.mjs` : audit dépendances NocoDB API.
 - `tools/audit-env-secrets.mjs` : audit secrets et environnement.
+- `docs/bootstrap-password-transition.md` : rotation progressive du mot de passe
+  bootstrap local.
 
 Exemple :
 
@@ -117,6 +119,8 @@ Le preflight global doit passer avant toute opération sensible. Il ne modifie
 pas NocoDB : il orchestre les vérifications, génère un staging local, prépare
 les lots d'import, valide leur forme, lance les contrôles critiques et le build.
 L'audit API rend visibles les dépendances `/api/v2` avant une éventuelle V3.
+L'audit secrets signale aussi les avertissements non bloquants à traiter avant
+commercialisation, notamment le mot de passe bootstrap local.
 
 ## Migration fichiers
 

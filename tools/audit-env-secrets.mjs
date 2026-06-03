@@ -229,6 +229,18 @@ const markdown = [
   '',
   `Avertissements : ${warnings.length}`,
   '',
+  ...(warnings.length
+    ? [
+        '## Avertissements',
+        '',
+        ...warnings.map((warning) => [
+          `- ${warning.reason} : ${warning.file}:${warning.line}`,
+          `  - Extrait masqué : ${warning.excerpt}`,
+          '  - Action recommandée : préparer une rotation via variable de build avant de supprimer la valeur du code.',
+        ].join('\n')),
+        '',
+      ]
+    : []),
   '## .gitignore',
   '',
   ...Object.entries(gitignoreChecks).map(([key, value]) => `- ${key}: ${value ? 'OK' : 'manquant'}`),
@@ -256,6 +268,7 @@ console.log(JSON.stringify({
   missingRequired,
   missingRecommended,
   possibleSecretFindings: findings.length,
+  warnings: warnings.length,
   trackedEnvFiles,
   report: outputPath ? path.resolve(outputPath) : null,
 }, null, 2));

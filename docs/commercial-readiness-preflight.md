@@ -59,6 +59,10 @@ Si le preflight passe, cela ne veut pas dire que la migration est terminée.
 Cela veut dire que l'on peut passer à l'étape suivante : créer une vraie base
 NocoDB staging et tester l'import dessus.
 
+Les avertissements doivent être relus même si le preflight passe. Le cas connu
+actuel est le mot de passe bootstrap local : il doit être rotaté avec la
+procédure `docs/bootstrap-password-transition.md`, sans casser le login offline.
+
 ## Option rapide
 
 Pour éviter le build web pendant un test purement data :
