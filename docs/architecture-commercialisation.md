@@ -84,6 +84,7 @@ Scripts existants :
 - `tools/backup-and-upload.sh` : dump + upload rclone.
 - `tools/verify-nocodb-backup.mjs` : vérification d'un dump.
 - `tools/plan-nocodb-restore.mjs` : plan de restauration non destructif.
+- `tools/analyze-object-storage-readiness.mjs` : audit fichiers lourds.
 
 Exemple :
 
@@ -91,10 +92,20 @@ Exemple :
 node tools/backup-nocodb.mjs
 node tools/verify-nocodb-backup.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 node tools/plan-nocodb-restore.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
+node tools/analyze-object-storage-readiness.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 ```
 
 La vérification prouve que le fichier est exploitable. Le plan de restauration
 prouve qu'on sait estimer l'effort de récupération sans toucher à la production.
+L'audit stockage objet chiffre ce qui devra sortir progressivement de NocoDB.
+
+## Migration fichiers
+
+Document dédié : `docs/object-storage-migration.md`.
+
+Stratégie : double lecture temporaire. Si un fichier a une `object_key`, l'app
+pourra le lire depuis le stockage objet. Sinon elle gardera le fallback actuel
+via `mobile_document_chunks`. Cette approche évite une bascule brutale.
 
 ## Staging
 
