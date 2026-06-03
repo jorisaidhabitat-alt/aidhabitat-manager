@@ -6,7 +6,7 @@ on:
       api_base_url:
         description: "API URL baked into the Flutter web bundle"
         required: false
-        default: "https://apps-aidhabitat-api-staging.z5avx1.easypanel.host"
+        default: "https://api.aidhabitat.fr"
       upload_artifact:
         description: "Upload build/web as a short-lived artifact"
         required: false
@@ -51,6 +51,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Run PDF smoke test
+        working-directory: .
+        run: |
+          npm ci --no-audit --no-fund
+          npm run test:pdf
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2

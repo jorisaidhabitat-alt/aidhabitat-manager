@@ -77,6 +77,19 @@ const checks = [
     file: 'index.html',
     assert: (source) => !source.includes('/index.css'),
   },
+  {
+    name: 'Flutter web workflow defaults to the production API',
+    file: '.github/workflows/flutter-web-build.yml',
+    assert: (source) => (
+      source.includes('default: "https://api.aidhabitat.fr"')
+      && !source.includes('default: "https://apps-aidhabitat-api-staging.z5avx1.easypanel.host"')
+    ),
+  },
+  {
+    name: 'Flutter web workflow runs the PDF smoke test',
+    file: '.github/workflows/flutter-web-build.yml',
+    assert: (source) => source.includes('npm run test:pdf'),
+  },
 ];
 
 const failures = [];
