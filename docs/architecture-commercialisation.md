@@ -86,6 +86,7 @@ Scripts existants :
 - `tools/plan-nocodb-restore.mjs` : plan de restauration non destructif.
 - `tools/analyze-object-storage-readiness.mjs` : audit fichiers lourds.
 - `tools/create-staging-snapshot.mjs` : snapshot staging léger.
+- `tools/export-nocodb-schema-plan.mjs` : plan schéma staging.
 - `tools/export-nocodb-import-batches.mjs` : lots d'import staging.
 - `tools/run-commercial-readiness-check.mjs` : preflight global non destructif.
 - `tools/audit-nocodb-api-usage.mjs` : audit dépendances NocoDB API.
@@ -98,6 +99,7 @@ node tools/verify-nocodb-backup.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.
 node tools/plan-nocodb-restore.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 node tools/analyze-object-storage-readiness.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz
 node tools/create-staging-snapshot.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/staging-snapshot.json.gz
+node tools/export-nocodb-schema-plan.mjs tmp/staging-snapshot.json.gz tmp/staging-schema-plan
 node tools/export-nocodb-import-batches.mjs tmp/staging-snapshot.json.gz tmp/staging-import-batches
 node tools/run-commercial-readiness-check.mjs backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz tmp/commercial-readiness
 node tools/audit-nocodb-api-usage.mjs tmp/nocodb-api-audit.md

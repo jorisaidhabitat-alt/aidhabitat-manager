@@ -25,6 +25,7 @@ const resolvedBackup = path.resolve(backupPath);
 const resolvedOutput = path.resolve(outputDir);
 const logsDir = path.join(resolvedOutput, 'logs');
 const stagingSnapshot = path.join(resolvedOutput, 'staging-snapshot.json.gz');
+const schemaPlanDir = path.join(resolvedOutput, 'staging-schema-plan');
 const importBatchesDir = path.join(resolvedOutput, 'staging-import-batches');
 const nocodbApiAuditPath = path.join(resolvedOutput, 'nocodb-api-audit.md');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -63,6 +64,11 @@ addNode('audit-nocodb-api-usage', ['tools/audit-nocodb-api-usage.mjs', nocodbApi
 addNode('create-sanitized-staging-snapshot', ['tools/create-staging-snapshot.mjs', resolvedBackup, stagingSnapshot]);
 addNode('verify-staging-snapshot', ['tools/verify-nocodb-backup.mjs', stagingSnapshot]);
 addNode('plan-staging-restore', ['tools/plan-nocodb-restore.mjs', stagingSnapshot]);
+addNode(
+  'export-staging-schema-plan',
+  ['tools/export-nocodb-schema-plan.mjs', stagingSnapshot, schemaPlanDir],
+  { SCHEMA_PLAN_OVERWRITE: '1' },
+);
 addNode(
   'export-staging-import-batches',
   ['tools/export-nocodb-import-batches.mjs', stagingSnapshot, importBatchesDir],
