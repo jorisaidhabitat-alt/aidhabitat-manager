@@ -122,20 +122,24 @@ class _WikiScreenState extends State<WikiScreen> {
   /// haystack = "title description tags.join(' ')" lowercased.
   List<WikiItem> get _filteredItems {
     final search = _searchTerm.trim().toLowerCase();
-    return _items.where((item) {
-      final matchesTag =
-          _selectedTag == null || item.tags.contains(_selectedTag);
-      if (!matchesTag) return false;
-      if (search.isEmpty) return true;
-      final haystack = '${item.title} ${item.description} ${item.tags.join(' ')}'
-          .toLowerCase();
-      return haystack.contains(search);
-    }).toList(growable: false);
+    return _items
+        .where((item) {
+          final matchesTag =
+              _selectedTag == null || item.tags.contains(_selectedTag);
+          if (!matchesTag) return false;
+          if (search.isEmpty) return true;
+          final haystack =
+              '${item.title} ${item.description} ${item.tags.join(' ')}'
+                  .toLowerCase();
+          return haystack.contains(search);
+        })
+        .toList(growable: false);
   }
 
   Future<void> _openItem(WikiItem item) async {
     final updated = await showSoftDialog<WikiItem>(
       context: context,
+      barrierDismissible: false,
       builder: (context) =>
           _WikiItemDialog(item: item, availableTags: _availableTags.toList()),
     );
@@ -162,6 +166,7 @@ class _WikiScreenState extends State<WikiScreen> {
   Future<void> _createItem() async {
     final draft = await showSoftDialog<_WikiItemDraft>(
       context: context,
+      barrierDismissible: false,
       builder: (context) =>
           _WikiCreateDialog(availableTags: _availableTags.toList()),
     );
@@ -181,9 +186,9 @@ class _WikiScreenState extends State<WikiScreen> {
       });
     } catch (err) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Création impossible : $err')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Création impossible : $err')));
     }
   }
 
@@ -231,26 +236,26 @@ class _WikiScreenState extends State<WikiScreen> {
                     width: 320,
                     child: Container(
                       height: 52,
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(999),
-                        border:
-                            Border.all(color: const Color(0xFFE4E7EB)),
+                        border: Border.all(color: const Color(0xFFE4E7EB)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(LucideIcons.search,
-                              size: 18, color: Color(0xFF8A939D)),
+                          const Icon(
+                            LucideIcons.search,
+                            size: 18,
+                            color: Color(0xFF8A939D),
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: TextField(
                               controller: _searchController,
                               decoration: const InputDecoration(
                                 hintText: 'Rechercher un élément…',
-                                hintStyle: TextStyle(
-                                    color: Color(0xFF8A939D)),
+                                hintStyle: TextStyle(color: Color(0xFF8A939D)),
                                 border: InputBorder.none,
                                 enabledBorder: InputBorder.none,
                                 focusedBorder: InputBorder.none,
@@ -282,8 +287,8 @@ class _WikiScreenState extends State<WikiScreen> {
                           label: tag,
                           isActive: _selectedTag == tag,
                           onTap: () => setState(
-                            () => _selectedTag =
-                                _selectedTag == tag ? null : tag,
+                            () =>
+                                _selectedTag = _selectedTag == tag ? null : tag,
                           ),
                         ),
                       ),
@@ -309,18 +314,19 @@ class _WikiScreenState extends State<WikiScreen> {
                   child: GridView.builder(
                     gridDelegate:
                         const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 280,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      // Hauteur alignée sur Caisses (+10 px pour le hero
-                      // image plus haut qu'un logo).
-                      mainAxisExtent: 260,
-                    ),
+                          maxCrossAxisExtent: 280,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          // Hauteur alignée sur Caisses (+10 px pour le hero
+                          // image plus haut qu'un logo).
+                          mainAxisExtent: 260,
+                        ),
                     itemCount: _filteredItems.length,
                     itemBuilder: (context, index) {
                       final item = _filteredItems[index];
-                      final primaryTag =
-                          item.tags.isNotEmpty ? item.tags.first : null;
+                      final primaryTag = item.tags.isNotEmpty
+                          ? item.tags.first
+                          : null;
                       return _WikiCard(
                         item: item,
                         primaryTag: primaryTag,
@@ -400,6 +406,7 @@ class _WikiItemDialog extends StatefulWidget {
 
 class _WikiItemDialogState extends State<_WikiItemDialog> {
   late final TextEditingController _titleController;
+
   /// Une description = un controller. La fiche peut en contenir plusieurs
   /// (demande utilisateur 2026-05-04) — l'ergo peut alors cocher
   /// celle(s) qui s'appliquent à la préconisation au moment de
@@ -448,6 +455,31 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
     });
   }
 
+  bool get _hasUnsavedChanges {
+    final currentTitle = _titleController.text.trim();
+    final currentDescriptions = _normalizedDescriptions(_descCtrls);
+    final initialDescriptions = widget.item.descriptionsList
+        .map((entry) => entry.trim())
+        .where((entry) => entry.isNotEmpty)
+        .toList(growable: false);
+
+    return currentTitle != widget.item.title.trim() ||
+        WikiItem.serializeDescriptions(currentDescriptions) !=
+            WikiItem.serializeDescriptions(initialDescriptions) ||
+        !_sameStrings(_selectedTags, widget.item.tags);
+  }
+
+  Future<void> _requestClose() async {
+    if (!_hasUnsavedChanges) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final shouldDiscard = await _confirmDiscardWikiChanges(context);
+    if (!mounted || shouldDiscard != true) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedTag = _selectedTags.isNotEmpty ? _selectedTags.first : '';
@@ -455,263 +487,277 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
     // Taille alignée sur la popup Caisses de retraite (demande
     // utilisateur 2026-04-29 : « fait la même taille de pop up pour la
     // bibliothèque »). Avant : 1040 × 720 + insetPadding all(24).
-    return Dialog(
-      backgroundColor: Colors.white,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 960, maxHeight: 680),
-        // Pas de `StackFit.expand` (demande utilisateur 2026-04-29 v2 :
-        // « c'est la hauteur de la partie de droite qui doit réduire »
-        // — pas l'inverse). Sans ce fit, le Stack se dimensionne sur la
-        // hauteur intrinsèque de son enfant Row → la Row prend la
-        // hauteur naturelle du formulaire de droite (Column avec
-        // mainAxisSize.min ci-dessous), et l'image (Expanded gauche)
-        // s'aligne sur cette même hauteur côté Row. Résultat : popup
-        // compacte sans espace vide vertical.
-        child: Stack(
-          children: [
-            Row(
-              children: [
-                // Left side: image on neutral slate-100 background (matches React)
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    color: const Color(0xFFF2F4F6),
-                    // BoxFit.cover (au lieu de contain) — demande
-                    // utilisateur 2026-04-29 : « aligne bien la hauteur
-                    // à l'image sans prendre en compte le blanc autour
-                    // (haut et bas de l'image) ». Avec contain, on
-                    // gardait des bandes slate-100 au-dessus/dessous
-                    // quand le ratio de l'image différait du conteneur.
-                    // Avec cover, l'image remplit toute la moitié
-                    // gauche → la hauteur visible = la hauteur du
-                    // formulaire de droite, sans blanc parasite.
-                    child: (widget.item.imageUrl.isNotEmpty ||
-                            widget.item.pendingImageDataUrl.isNotEmpty)
-                        ? CachedRemoteImage(
-                            url: resolveMediaUrl(widget.item.imageUrl),
-                            pendingDataUrl: widget.item.pendingImageDataUrl,
-                            fit: BoxFit.cover,
-                            errorWidget: const Center(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _requestClose();
+      },
+      child: Dialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 960, maxHeight: 680),
+          // Pas de `StackFit.expand` (demande utilisateur 2026-04-29 v2 :
+          // « c'est la hauteur de la partie de droite qui doit réduire »
+          // — pas l'inverse). Sans ce fit, le Stack se dimensionne sur la
+          // hauteur intrinsèque de son enfant Row → la Row prend la
+          // hauteur naturelle du formulaire de droite (Column avec
+          // mainAxisSize.min ci-dessous), et l'image (Expanded gauche)
+          // s'aligne sur cette même hauteur côté Row. Résultat : popup
+          // compacte sans espace vide vertical.
+          child: Stack(
+            children: [
+              Row(
+                children: [
+                  // Left side: image on neutral slate-100 background (matches React)
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      color: const Color(0xFFF2F4F6),
+                      // BoxFit.cover (au lieu de contain) — demande
+                      // utilisateur 2026-04-29 : « aligne bien la hauteur
+                      // à l'image sans prendre en compte le blanc autour
+                      // (haut et bas de l'image) ». Avec contain, on
+                      // gardait des bandes slate-100 au-dessus/dessous
+                      // quand le ratio de l'image différait du conteneur.
+                      // Avec cover, l'image remplit toute la moitié
+                      // gauche → la hauteur visible = la hauteur du
+                      // formulaire de droite, sans blanc parasite.
+                      child:
+                          (widget.item.imageUrl.isNotEmpty ||
+                              widget.item.pendingImageDataUrl.isNotEmpty)
+                          ? CachedRemoteImage(
+                              url: resolveMediaUrl(widget.item.imageUrl),
+                              pendingDataUrl: widget.item.pendingImageDataUrl,
+                              fit: BoxFit.cover,
+                              errorWidget: const Center(
+                                child: Icon(
+                                  LucideIcons.image,
+                                  size: 72,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            )
+                          : const Center(
                               child: Icon(
                                 LucideIcons.image,
                                 size: 72,
                                 color: Colors.black54,
                               ),
                             ),
-                          )
-                        : const Center(
-                            child: Icon(
-                              LucideIcons.image,
-                              size: 72,
-                              color: Colors.black54,
+                    ),
+                  ),
+                  // Right side: form on white background
+                  Expanded(
+                    flex: 1,
+                    child: Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.all(28),
+                      // `mainAxisSize.min` → la Column shrink-wrap à la
+                      // hauteur naturelle de ses enfants, ce qui devient
+                      // la hauteur de la popup. L'Expanded sur le
+                      // TextField description est remplacé par une
+                      // hauteur fixe (180 pt) pour que la Column ait bien
+                      // une hauteur intrinsèque finie (sinon Expanded
+                      // dans une Column non-bornée → erreur layout).
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _FormLabel(text: 'Titre'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _titleController,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0E1116),
+                            ),
+                            decoration: _inputDecoration(),
+                          ),
+                          const SizedBox(height: 20),
+                          _FormLabel(text: 'Tag'),
+                          const SizedBox(height: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: const Color(0xFFE4E7EB),
+                              ),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value:
+                                    widget.availableTags.contains(selectedTag)
+                                    ? selectedTag
+                                    : (selectedTag.isEmpty ? '' : null),
+                                isExpanded: true,
+                                hint: const Text('Aucun tag'),
+                                items: [
+                                  const DropdownMenuItem(
+                                    value: '',
+                                    child: Text('Aucun tag'),
+                                  ),
+                                  ...widget.availableTags.map(
+                                    (tag) => DropdownMenuItem(
+                                      value: tag,
+                                      child: Text(tag),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedTags =
+                                        (value == null || value.isEmpty)
+                                        ? []
+                                        : [value];
+                                  });
+                                },
+                              ),
                             ),
                           ),
-                  ),
-                ),
-                // Right side: form on white background
-                Expanded(
-                  flex: 1,
-                  child: Container(
-                    color: Colors.white,
-                    padding: const EdgeInsets.all(28),
-                    // `mainAxisSize.min` → la Column shrink-wrap à la
-                    // hauteur naturelle de ses enfants, ce qui devient
-                    // la hauteur de la popup. L'Expanded sur le
-                    // TextField description est remplacé par une
-                    // hauteur fixe (180 pt) pour que la Column ait bien
-                    // une hauteur intrinsèque finie (sinon Expanded
-                    // dans une Column non-bornée → erreur layout).
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _FormLabel(text: 'Titre'),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _titleController,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF0E1116),
-                          ),
-                          decoration: _inputDecoration(),
-                        ),
-                        const SizedBox(height: 20),
-                        _FormLabel(text: 'Tag'),
-                        const SizedBox(height: 8),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE4E7EB)),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: widget.availableTags.contains(selectedTag)
-                                  ? selectedTag
-                                  : (selectedTag.isEmpty ? '' : null),
-                              isExpanded: true,
-                              hint: const Text('Aucun tag'),
-                              items: [
-                                const DropdownMenuItem(
-                                  value: '',
-                                  child: Text('Aucun tag'),
-                                ),
-                                ...widget.availableTags.map(
-                                  (tag) => DropdownMenuItem(
-                                    value: tag,
-                                    child: Text(tag),
+                          const SizedBox(height: 20),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(child: _FormLabel(text: 'Descriptions')),
+                              // Bouton « + » discret pour ajouter une
+                              // description supplémentaire (l'ergo pourra
+                              // ensuite cocher celles qui s'appliquent
+                              // depuis l'écran préconisations).
+                              Material(
+                                color: const Color(0xFFEDE8F5),
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  onTap: _addDescription,
+                                  customBorder: const CircleBorder(),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(6),
+                                    child: Icon(
+                                      Icons.add,
+                                      size: 18,
+                                      color: kBrandPurple,
+                                      semanticLabel: 'Ajouter une description',
+                                    ),
                                   ),
                                 ),
-                              ],
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedTags =
-                                      (value == null || value.isEmpty)
-                                          ? []
-                                          : [value];
-                                });
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Liste des descriptions — hauteur globale fixe
+                          // (180 pt) en scroll vertical pour pouvoir héberger
+                          // 1 à N champs sans déformer la popup.
+                          SizedBox(
+                            height: 180,
+                            child: ListView.separated(
+                              itemCount: _descCtrls.length,
+                              separatorBuilder: (context, index) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (context, i) {
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _descCtrls[i],
+                                        maxLines: 3,
+                                        minLines: 2,
+                                        textAlignVertical:
+                                            TextAlignVertical.top,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Color(0xFF5C6670),
+                                          height: 1.5,
+                                        ),
+                                        decoration: _inputDecoration(),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      onPressed: () => _removeDescription(i),
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 18,
+                                        color: Color(0xFF8A939D),
+                                      ),
+                                      tooltip: 'Supprimer cette description',
+                                      visualDensity: VisualDensity.compact,
+                                      splashRadius: 18,
+                                    ),
+                                  ],
+                                );
                               },
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(child: _FormLabel(text: 'Descriptions')),
-                            // Bouton « + » discret pour ajouter une
-                            // description supplémentaire (l'ergo pourra
-                            // ensuite cocher celles qui s'appliquent
-                            // depuis l'écran préconisations).
-                            Material(
-                              color: const Color(0xFFEDE8F5),
-                              shape: const CircleBorder(),
-                              child: InkWell(
-                                onTap: _addDescription,
-                                customBorder: const CircleBorder(),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(6),
-                                  child: Icon(
-                                    Icons.add,
-                                    size: 18,
-                                    color: kBrandPurple,
-                                    semanticLabel: 'Ajouter une description',
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: () {
+                                final descriptions = _descCtrls
+                                    .map((c) => c.text.trim())
+                                    .where((s) => s.isNotEmpty)
+                                    .toList();
+                                Navigator.of(context).pop(
+                                  widget.item.copyWith(
+                                    title: _titleController.text.trim(),
+                                    description: WikiItem.serializeDescriptions(
+                                      descriptions,
+                                    ),
+                                    tags: _selectedTags,
                                   ),
+                                );
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: kBrandPurple,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              child: const Text(
+                                'Enregistrer',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
                                 ),
                               ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Liste des descriptions — hauteur globale fixe
-                        // (180 pt) en scroll vertical pour pouvoir héberger
-                        // 1 à N champs sans déformer la popup.
-                        SizedBox(
-                          height: 180,
-                          child: ListView.separated(
-                            itemCount: _descCtrls.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 8),
-                            itemBuilder: (context, i) {
-                              return Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _descCtrls[i],
-                                      maxLines: 3,
-                                      minLines: 2,
-                                      textAlignVertical: TextAlignVertical.top,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: Color(0xFF5C6670),
-                                        height: 1.5,
-                                      ),
-                                      decoration: _inputDecoration(),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  IconButton(
-                                    onPressed: () => _removeDescription(i),
-                                    icon: const Icon(
-                                      Icons.delete_outline,
-                                      size: 18,
-                                      color: Color(0xFF8A939D),
-                                    ),
-                                    tooltip: 'Supprimer cette description',
-                                    visualDensity: VisualDensity.compact,
-                                    splashRadius: 18,
-                                  ),
-                                ],
-                              );
-                            },
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            onPressed: () {
-                              final descriptions = _descCtrls
-                                  .map((c) => c.text.trim())
-                                  .where((s) => s.isNotEmpty)
-                                  .toList();
-                              Navigator.of(context).pop(
-                                widget.item.copyWith(
-                                  title: _titleController.text.trim(),
-                                  description:
-                                      WikiItem.serializeDescriptions(descriptions),
-                                  tags: _selectedTags,
-                                ),
-                              );
-                            },
-                            style: FilledButton.styleFrom(
-                              backgroundColor: kBrandPurple,
-                              foregroundColor: Colors.white,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                            ),
-                            child: const Text(
-                              'Enregistrer',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Close button top-right (over the image)
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Material(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _requestClose,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(Icons.close, color: Colors.white, size: 18),
                     ),
                   ),
                 ),
-              ],
-            ),
-            // Close button top-right (over the image)
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Material(
-                color: Colors.black.withValues(alpha: 0.35),
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: () => Navigator.of(context).pop(),
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.close, color: Colors.white, size: 18),
-                  ),
-                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -721,10 +767,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
     return InputDecoration(
       filled: true,
       fillColor: const Color(0xFFF7F7FA),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 12,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
         borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
@@ -760,6 +803,48 @@ class _FormLabel extends StatelessWidget {
   }
 }
 
+List<String> _normalizedDescriptions(List<TextEditingController> controllers) {
+  return controllers
+      .map((controller) => controller.text.trim())
+      .where((description) => description.isNotEmpty)
+      .toList(growable: false);
+}
+
+bool _sameStrings(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  for (var index = 0; index < a.length; index += 1) {
+    if (a[index] != b[index]) return false;
+  }
+  return true;
+}
+
+Future<bool> _confirmDiscardWikiChanges(BuildContext context) async {
+  return await showSoftDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Quitter sans enregistrer ?'),
+          content: const Text(
+            'Les modifications en cours seront perdues si vous quittez maintenant.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Continuer l’édition'),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFB91C1C),
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Quitter sans enregistrer'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+}
+
 class _WikiItemDraft {
   final String title;
   final String description;
@@ -788,8 +873,9 @@ class _WikiCreateDialog extends StatefulWidget {
 class _WikiCreateDialogState extends State<_WikiCreateDialog> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _categoryController =
-      TextEditingController(text: 'Autre');
+  final TextEditingController _categoryController = TextEditingController(
+    text: 'Autre',
+  );
   final ImagePicker _imagePicker = ImagePicker();
   final List<String> _selectedTags = [];
   bool _submitting = false;
@@ -828,9 +914,9 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
       });
     } catch (err) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Image indisponible : $err')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Image indisponible : $err')));
     } finally {
       if (mounted) setState(() => _pickingImage = false);
     }
@@ -847,24 +933,45 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
     return 'data:$mime;base64,${base64Encode(_pickedImageBytes!)}';
   }
 
+  bool get _hasUnsavedChanges {
+    return _titleController.text.trim().isNotEmpty ||
+        _descriptionController.text.trim().isNotEmpty ||
+        _categoryController.text.trim() != 'Autre' ||
+        _selectedTags.isNotEmpty ||
+        _pickedImageBytes != null;
+  }
+
+  Future<void> _requestClose() async {
+    if (!_hasUnsavedChanges) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final shouldDiscard = await _confirmDiscardWikiChanges(context);
+    if (!mounted || shouldDiscard != true) return;
+    Navigator.of(context).pop();
+  }
+
   void _submit() {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Le titre est obligatoire')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Le titre est obligatoire')));
       return;
     }
     setState(() => _submitting = true);
-    Navigator.of(context).pop(_WikiItemDraft(
-      title: title,
-      description: _descriptionController.text.trim(),
-      category: _categoryController.text.trim().isEmpty
-          ? 'Autre'
-          : _categoryController.text.trim(),
-      tags: List.unmodifiable(_selectedTags),
-      imageDataUrl: _buildImageDataUrl(),
-    ));
+    Navigator.of(context).pop(
+      _WikiItemDraft(
+        title: title,
+        description: _descriptionController.text.trim(),
+        category: _categoryController.text.trim().isEmpty
+            ? 'Autre'
+            : _categoryController.text.trim(),
+        tags: List.unmodifiable(_selectedTags),
+        imageDataUrl: _buildImageDataUrl(),
+      ),
+    );
   }
 
   @override
@@ -872,141 +979,144 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
     // Design refondu 2026-05-12 : parité avec les dialogs « Nouvelle
     // caisse de retraite » (header icône + titre + X, champs labelisés
     // violet 12px avec OutlineInputBorder radius 10, bouton X de close).
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.all(24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: kBrandPurple.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      LucideIcons.plus,
-                      color: kBrandPurple,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Nouvel élément',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0E1116),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (!_submitting) _requestClose();
+      },
+      child: Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        insetPadding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: kBrandPurple.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        LucideIcons.plus,
+                        color: kBrandPurple,
+                        size: 22,
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(LucideIcons.x, size: 20),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _buildImageSection(),
-              const SizedBox(height: 16),
-              _WikiLabeledField(
-                label: 'Titre *',
-                controller: _titleController,
-                hint: 'ex. Barre d\'appui salle de bain',
-                autofocus: true,
-                enabled: !_submitting,
-              ),
-              const SizedBox(height: 12),
-              _WikiLabeledField(
-                label: 'Description',
-                controller: _descriptionController,
-                hint: 'Détails de l\'aménagement, dimensions, conseils…',
-                maxLines: 4,
-                enabled: !_submitting,
-              ),
-              const SizedBox(height: 12),
-              _WikiLabeledField(
-                label: 'Catégorie',
-                controller: _categoryController,
-                hint: 'ex. Salle de bain, WC, Cuisine, Chambre…',
-                enabled: !_submitting,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Tags',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: kBrandPurple,
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Nouvel élément',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0E1116),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(LucideIcons.x, size: 20),
+                      onPressed: _submitting ? null : _requestClose,
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: widget.availableTags
-                    .map(
-                      (tag) => FilterChip(
-                        label: Text(tag),
-                        selected: _selectedTags.contains(tag),
-                        onSelected: _submitting
-                            ? null
-                            : (_) {
-                                setState(() {
-                                  if (_selectedTags.contains(tag)) {
-                                    _selectedTags.remove(tag);
-                                  } else {
-                                    _selectedTags.add(tag);
-                                  }
-                                });
-                              },
-                      ),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                    child: const Text('Annuler'),
+                const SizedBox(height: 16),
+                _buildImageSection(),
+                const SizedBox(height: 16),
+                _WikiLabeledField(
+                  label: 'Titre *',
+                  controller: _titleController,
+                  hint: 'ex. Barre d\'appui salle de bain',
+                  autofocus: true,
+                  enabled: !_submitting,
+                ),
+                const SizedBox(height: 12),
+                _WikiLabeledField(
+                  label: 'Description',
+                  controller: _descriptionController,
+                  hint: 'Détails de l\'aménagement, dimensions, conseils…',
+                  maxLines: 4,
+                  enabled: !_submitting,
+                ),
+                const SizedBox(height: 12),
+                _WikiLabeledField(
+                  label: 'Catégorie',
+                  controller: _categoryController,
+                  hint: 'ex. Salle de bain, WC, Cuisine, Chambre…',
+                  enabled: !_submitting,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Tags',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: kBrandPurple,
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: kBrandPurple,
-                      foregroundColor: Colors.white,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: widget.availableTags
+                      .map(
+                        (tag) => FilterChip(
+                          label: Text(tag),
+                          selected: _selectedTags.contains(tag),
+                          onSelected: _submitting
+                              ? null
+                              : (_) {
+                                  setState(() {
+                                    if (_selectedTags.contains(tag)) {
+                                      _selectedTags.remove(tag);
+                                    } else {
+                                      _selectedTags.add(tag);
+                                    }
+                                  });
+                                },
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: _submitting ? null : _requestClose,
+                      child: const Text('Annuler'),
                     ),
-                    onPressed: _submitting ? null : _submit,
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Créer'),
-                  ),
-                ],
-              ),
-            ],
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kBrandPurple,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: _submitting ? null : _submit,
+                      child: _submitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Créer'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1048,7 +1158,9 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                 Row(
                   children: [
                     TextButton.icon(
-                      onPressed: _submitting || _pickingImage ? null : _pickImage,
+                      onPressed: _submitting || _pickingImage
+                          ? null
+                          : _pickImage,
                       icon: const Icon(LucideIcons.refreshCw, size: 14),
                       label: const Text('Changer'),
                       style: TextButton.styleFrom(
@@ -1187,7 +1299,8 @@ class _FilterChip extends StatelessWidget {
 String _wikiDateLabel(WikiItem item) {
   final created = item.createdAt;
   final updated = item.updatedAt;
-  final hasUpdate = updated.isNotEmpty &&
+  final hasUpdate =
+      updated.isNotEmpty &&
       updated != created &&
       DateTime.tryParse(updated) != null;
   if (hasUpdate) {
@@ -1286,7 +1399,8 @@ class _WikiCardState extends State<_WikiCard> {
                 height: 140,
                 width: double.infinity,
                 color: widget.heroBg,
-                child: (item.imageUrl.isNotEmpty ||
+                child:
+                    (item.imageUrl.isNotEmpty ||
                         item.pendingImageDataUrl.isNotEmpty)
                     ? CachedRemoteImage(
                         url: resolveMediaUrl(item.imageUrl),
@@ -1430,8 +1544,10 @@ class _WikiLabeledField extends StatelessWidget {
             hintText: hint,
             hintStyle: const TextStyle(color: Color(0xFF8A939D)),
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: Color(0xFFE4E7EB)),
