@@ -4882,7 +4882,7 @@ app.get('/api/mobile-sync/schema-check', requireAuth, async (_req, res, next) =>
   }
 });
 
-app.post('/api/mobile-sync/migrate', requireAuth, async (_req, res, next) => {
+app.post('/api/mobile-sync/migrate', requireAdmin, async (_req, res, next) => {
   try {
     res.json({
       success: true,

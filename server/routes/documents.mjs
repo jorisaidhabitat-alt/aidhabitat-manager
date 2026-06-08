@@ -234,30 +234,33 @@ router.get('/api/mobile-documents/:documentId/content', requireAuth, async (req,
   }
 });
 
-// Endpoint public (sans auth) : l'UUID du document sert de token d'accès.
-// Permet de glisser-déposer des images vers le bureau / Finder / un autre onglet
-// en conservant un URL cliquable depuis n'importe quel navigateur.
-router.get('/public/documents/:documentId/content', async (req, res, next) => {
+router.get('/public/documents/:documentId/content', requireAuth, async (req, res, next) => {
   try {
     const content = await mobileSyncStore.getDocumentContent(req.params.documentId);
     if (!content) {
       throw httpError(404, 'Document introuvable');
     }
+    await resolveBeneficiaryAccess(req.appUser, content.patientId);
     res.setHeader('Content-Type', content.mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.send(content.buffer);
   } catch (error) {
     next(error);
   }
 });
 
-router.get('/public/note-pages/:notePageId/preview', async (req, res, next) => {
+router.get('/public/note-pages/:notePageId/preview', requireAuth, async (req, res, next) => {
   try {
     const notePage = await mobileSyncStore.getNotePageById(req.params.notePageId);
     if (!notePage) {
       throw httpError(404, 'Note introuvable');
     }
+    const notePatientId = stringValue(notePage.patientId).trim();
+    if (!notePatientId) {
+      throw httpError(409, 'Note sans bénéficiaire');
+    }
+    await resolveBeneficiaryAccess(req.appUser, notePatientId);
 
     const previewDataUrl = stringValue(notePage.previewDataUrl).trim();
     const noteTitle = [

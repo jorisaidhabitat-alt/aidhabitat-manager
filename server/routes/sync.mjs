@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAuth } from '../middleware/auth.mjs';
+import { requireAuth, requireAdmin } from '../middleware/auth.mjs';
 import { mobileSyncStore } from '../helpers.mjs';
 
 const router = express.Router();
@@ -43,7 +43,7 @@ router.get('/api/mobile-sync/schema-check', requireAuth, async (_req, res, next)
   }
 });
 
-router.post('/api/mobile-sync/migrate', requireAuth, async (_req, res, next) => {
+router.post('/api/mobile-sync/migrate', requireAdmin, async (_req, res, next) => {
   try {
     res.json({
       success: true,

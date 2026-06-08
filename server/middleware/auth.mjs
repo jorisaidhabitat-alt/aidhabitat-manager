@@ -7,7 +7,8 @@ export const requireAuth = async (req, res, next) => {
       res.status(401).json({ success: false, error: 'Session invalide ou expirée' });
       return;
     }
-    req.appUser = user;
+    const { nocoPassword: _omit, ...safeUser } = user;
+    req.appUser = safeUser;
     next();
   } catch (error) {
     next(error);
@@ -25,7 +26,8 @@ export const requireAdmin = async (req, res, next) => {
       res.status(403).json({ success: false, error: 'Accès administrateur requis' });
       return;
     }
-    req.appUser = user;
+    const { nocoPassword: _omit, ...safeUser } = user;
+    req.appUser = safeUser;
     next();
   } catch (error) {
     next(error);

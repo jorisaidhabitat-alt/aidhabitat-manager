@@ -461,6 +461,14 @@ export const splitDisplayName = (displayName) => {
 };
 export const randomSecret = (size = 48) => crypto.randomBytes(size).toString('base64url');
 export const hashPassword = (password, salt) => crypto.scryptSync(String(password), salt, 64).toString('hex');
+export const resolveCredentialSessionVersion = (credentials, secret) => {
+  const numericVersion = Number(credentials?.sessionVersion) || 0;
+  const passwordMarker = stringValue(credentials?.nocoPasswordChecksum || credentials?.passwordHash || '');
+  const passwordFingerprint = crypto.createHmac('sha256', secret)
+    .update(passwordMarker || 'no-password-marker')
+    .digest('base64url');
+  return `${numericVersion}:${passwordFingerprint}`;
+};
 export const generatePassword = (displayName) => {
   const base = String(displayName || 'AidHabitat').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'AidHab';
   return `${base}-${crypto.randomBytes(4).toString('hex')}`;
@@ -2104,9 +2112,11 @@ export const loadMemberRegistryForAuth = async () => {
 
 export const signSessionToken = async (email) => {
   const { store } = await loadMemberRegistryForAuth();
+  const sessionVersion = resolveCredentialSessionVersion(store.users[email], store.secret);
   const payload = {
     email,
     exp: Date.now() + SESSION_TTL_MS,
+    sv: sessionVersion,
   };
   const encodedPayload = encodeBase64Url(payload);
   const signature = crypto.createHmac('sha256', store.secret).update(encodedPayload).digest('base64url');
@@ -2137,7 +2147,12 @@ export const resolveSessionUser = async (req) => {
   const payload = decodeBase64Url(encodedPayload);
   if (!payload?.email || Number(payload.exp) < Date.now()) return null;
 
-  return members.find((member) => member.email === normalizeEmail(payload.email)) || null;
+  const email = normalizeEmail(payload.email);
+  const currentSv = resolveCredentialSessionVersion(store.users[email], store.secret);
+  const tokenSv = stringValue(payload.sv);
+  if (tokenSv !== currentSv) return null;
+
+  return members.find((member) => member.email === email) || null;
 };
 
 export const getAdminAccessMembers = async () => {
