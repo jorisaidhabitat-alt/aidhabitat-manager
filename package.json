@@ -19,6 +19,7 @@
     "staging:export-import-batches": "node tools/export-nocodb-import-batches.mjs",
     "staging:import-batches": "node tools/import-nocodb-batches.mjs",
     "commercial:preflight": "node tools/run-commercial-readiness-check.mjs",
+    "data:stability-check": "node tools/check-data-sync-stability.mjs",
     "cleanup:artifacts": "node tools/cleanup-local-artifacts.mjs",
     "nocodb:api-audit": "node tools/audit-nocodb-api-usage.mjs",
     "secrets:audit": "node tools/audit-env-secrets.mjs",
