@@ -974,6 +974,10 @@ class DataService {
     return _nocodbSyncService.pushPendingChanges();
   }
 
+  Future<int> countPendingSyncOperations() {
+    return _syncRepository.countPendingOperations();
+  }
+
   Future<Dossier?> fetchRemoteDossierById(String dossierId) async {
     try {
       final remoteDossiers = await _nocodbApiClient.fetchDossiers();

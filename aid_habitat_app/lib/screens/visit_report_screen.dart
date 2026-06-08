@@ -1310,11 +1310,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // contient toujours les dernières données saisies.
       try {
         final syncResult = await _dataService.runSync();
+        final pendingAfterSync = await _dataService.countPendingSyncOperations();
         // ignore: avoid_print
         print(
           '[report] runSync : pushed=${syncResult.pushedOperations} '
           'failed=${syncResult.failedOperations} '
+          'deferred=${syncResult.deferredOperations} '
           'conflicts=${syncResult.conflictCount} '
+          'pendingAfter=$pendingAfterSync '
           'msg="${syncResult.message}"',
         );
         if (syncResult.conflictCount > 0) {
@@ -1334,12 +1337,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           );
           return;
         }
-        if (syncResult.failedOperations > 0) {
+        final waitingOperations = pendingAfterSync > 0
+            ? pendingAfterSync
+            : syncResult.failedOperations + syncResult.deferredOperations;
+        if (waitingOperations > 0) {
           // Échec transitoire (réseau, 5xx serveur) → queue différée.
           await _enqueueReportForLater(
             reason:
-                'Synchronisation interrompue '
-                '(${syncResult.failedOperations} échec(s)) — votre '
+                'Synchronisation encore en cours '
+                '($waitingOperations opération(s) restante(s)) — votre '
                 'rapport sera généré automatiquement à la prochaine '
                 'reprise de la sync.',
           );
@@ -1347,7 +1353,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             ReportGenerationFailure(
               dossierId: _dossier.id,
               patientLabel: patientLabel,
-              message: 'Sync interrompue — rapport en attente.',
+              message: 'Sync en cours — rapport en attente.',
               deferred: true,
               occurredAt: DateTime.now(),
             ),

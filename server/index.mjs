@@ -7884,9 +7884,18 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
 
 app.use((error, _req, res, _next) => {
   console.error('[nocodb-api]', error);
-  res.status(Number(error?.statusCode) || 500).json({
+  const isMulterLimit = error?.name === 'MulterError' &&
+    ['LIMIT_FILE_SIZE', 'LIMIT_FILE_COUNT', 'LIMIT_PART_COUNT'].includes(error?.code);
+  const isBodyTooLarge = error?.type === 'entity.too.large';
+  const statusCode = isMulterLimit || isBodyTooLarge
+    ? 413
+    : Number(error?.statusCode) || 500;
+  const message = isMulterLimit
+    ? 'Payload Too Large: trop de fichiers ou fichier trop volumineux'
+    : error instanceof Error ? error.message : 'Erreur serveur inconnue';
+  res.status(statusCode).json({
     success: false,
-    error: error instanceof Error ? error.message : 'Erreur serveur inconnue',
+    error: message,
   });
 });
 

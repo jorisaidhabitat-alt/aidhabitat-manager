@@ -98,6 +98,26 @@ bool isTransientErrorLike(Object error) {
       _kAuthFailureStatusPattern.hasMatch(s);
 }
 
+String _reportGenerationDeferredMessage(Object error) {
+  final raw = error.toString();
+  final lower = raw.toLowerCase();
+  if (lower.contains('(413)') ||
+      lower.contains('payload too large') ||
+      lower.contains('content too large')) {
+    return 'Rapport trop lourd pour l\'envoi direct — la sync termine '
+        'les fichiers puis relance automatiquement.';
+  }
+  if (isTransientErrorLike(error) ||
+      lower.contains('(500)') ||
+      lower.contains('(502)') ||
+      lower.contains('(503)') ||
+      lower.contains('(504)')) {
+    return 'Serveur PDF temporairement indisponible — réessai automatique '
+        'en arrière-plan.';
+  }
+  return 'Génération différée — réessai automatique.';
+}
+
 /// Indicates that a sync operation was rejected due to a conflict (HTTP 409).
 /// The engine should NOT retry these -- they require user resolution.
 class SyncConflictException implements Exception {
@@ -261,10 +281,12 @@ class NocodbSyncService {
     // Agrégation finale des résultats par groupe.
     var pushed = 0;
     var failed = 0;
+    var deferred = 0;
     final failures = <String>[];
     for (final r in results) {
       pushed += r.pushed;
       failed += r.failed;
+      deferred += r.deferred;
       failures.addAll(r.failures);
     }
     // Le compteur `conflicts` était déjà toujours 0 dans l'ancien
@@ -274,7 +296,10 @@ class NocodbSyncService {
     const conflicts = 0;
 
     final message = (failed == 0 && conflicts == 0)
-        ? 'Synchronisation terminée'
+        ? deferred > 0
+            ? 'Synchronisation en attente de reprise '
+                '($deferred opération${deferred > 1 ? 's' : ''})'
+            : 'Synchronisation terminée'
         : conflicts > 0
             ? 'Synchronisation : $conflicts conflit${conflicts > 1 ? 's' : ''} à résoudre'
             : 'Synchronisation partielle. Échecs: ${failures.join(', ')}';
@@ -282,6 +307,7 @@ class NocodbSyncService {
     return SyncRunResult(
       pushedOperations: pushed,
       failedOperations: failed,
+      deferredOperations: deferred,
       conflictCount: conflicts,
       message: message,
     );
@@ -290,6 +316,7 @@ class NocodbSyncService {
   Future<_GroupResult> _processGroup(List<SyncOperation> group) async {
     var pushed = 0;
     var failed = 0;
+    var deferred = 0;
     final failures = <String>[];
 
     for (final operation in group) {
@@ -320,6 +347,7 @@ class NocodbSyncService {
           entityLocalId: operation.entityLocalId,
           error: e.toString(),
         );
+        deferred += 1;
         // Pas de break : les ops transitoires n'invalident pas la suite
         // (le serveur peut avoir juste un hoquet éphémère).
       } catch (error, stack) {
@@ -343,6 +371,7 @@ class NocodbSyncService {
             entityLocalId: operation.entityLocalId,
             error: error.toString(),
           );
+          deferred += 1;
           // Ne casse PAS le groupe sur transient — les ops suivantes
           // peuvent passer (le serveur a peut-être juste un hoquet
           // éphémère).
@@ -369,7 +398,12 @@ class NocodbSyncService {
       }
     }
 
-    return _GroupResult(pushed: pushed, failed: failed, failures: failures);
+    return _GroupResult(
+      pushed: pushed,
+      failed: failed,
+      deferred: deferred,
+      failures: failures,
+    );
   }
 
   /// Résout automatiquement un conflit 409 en faisant gagner la
@@ -615,9 +649,7 @@ class NocodbSyncService {
         ReportGenerationFailure(
           dossierId: dossierId,
           patientLabel: patientLabel,
-          message: isTransientErrorLike(error)
-              ? 'Connexion lente — réessai automatique en arrière-plan.'
-              : 'Génération différée — réessai automatique.',
+          message: _reportGenerationDeferredMessage(error),
           deferred: true,
           occurredAt: DateTime.now(),
         ),
@@ -1625,12 +1657,14 @@ class NocodbSyncService {
 class SyncRunResult {
   final int pushedOperations;
   final int failedOperations;
+  final int deferredOperations;
   final int conflictCount;
   final String message;
 
   const SyncRunResult({
     required this.pushedOperations,
     required this.failedOperations,
+    this.deferredOperations = 0,
     this.conflictCount = 0,
     required this.message,
   });
@@ -1639,11 +1673,13 @@ class SyncRunResult {
 class _GroupResult {
   final int pushed;
   final int failed;
+  final int deferred;
   final List<String> failures;
 
   const _GroupResult({
     required this.pushed,
     required this.failed,
+    required this.deferred,
     required this.failures,
   });
 }

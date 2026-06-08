@@ -3,6 +3,19 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import 'local_database.dart';
 
+const Set<String> _kReportPrerequisiteEntityTypes = {
+  'dossier',
+  'patient',
+  'housing',
+  'document',
+  'note_page',
+  'contexte_de_vie',
+  'diagnostic_sanitaires',
+  'mesures_anthropometriques',
+  'observations_synthese',
+  'visit_recommendations',
+};
+
 class SyncRepository {
   SyncRepository({LocalDatabase? database})
     : _database = database ?? LocalDatabase.instance;
@@ -44,9 +57,23 @@ class SyncRepository {
       orderBy: 'created_at ASC',
     );
 
+    final hasBlockingNonReportOperation = rows.any(
+      (row) => _kReportPrerequisiteEntityTypes.contains(row['entity_type']),
+    );
+
     final now = DateTime.now();
     final eligibleRows = <Map<String, Object?>>[];
     for (final row in rows) {
+      // Une génération PDF différée ne doit jamais doubler les écritures
+      // locales encore en file. Le serveur lit NocoDB pour construire le PDF :
+      // si un upload photo / une note / une saisie dossier est encore pending
+      // ou en backoff, lancer le rapport maintenant produit un PDF incomplet
+      // ou un retry trompeur ("connexion lente"). On ne rend les rapports
+      // exécutables que lorsque la file d'écritures utile au rapport est vide.
+      if (row['entity_type'] == 'report_generation' &&
+          hasBlockingNonReportOperation) {
+        continue;
+      }
       final attempts = row['attempt_count'] as int? ?? 0;
       final updatedAt = DateTime.tryParse(row['updated_at'] as String? ?? '');
       // Backoff par op dès la 1ère tentative échouée. Evite la boucle
