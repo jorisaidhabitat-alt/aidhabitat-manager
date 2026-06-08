@@ -16,15 +16,21 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PDFDocument } from 'pdf-lib';
 
 import { generateVisitReport, buildReportFileName } from '../server/reports/generateVisitReport.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(__dirname, '../tmp');
+const reportErgoProfile = {
+  displayName: 'Coralie Demenais',
+  email: 'c.demenais@aidhabitat.fr',
+  establishmentLabel: "Aid'Habitat",
+};
 
 const baseDossier = {
   id: 'test-dossier-1',
-  ergoId: 'Christelle',
+  ergoId: 'Coralie',
   visitDate: '2026-04-28',
   natureAccompagnement: 'complet',
   personnesPresentesVisite: 'Mme Dupont (fille du bénéficiaire)',
@@ -144,6 +150,7 @@ async function generate(filename, occupationStatus) {
     notePages: [],
     contexteNotes,
     recommendations: [],
+    ergoProfile: reportErgoProfile,
     fetchImageBytes: async () => null,
   });
   const outPath = path.resolve(OUT_DIR, filename);
@@ -155,8 +162,35 @@ async function generate(filename, occupationStatus) {
   return outPath;
 }
 
+async function assertDynamicErgoFields() {
+  const { bytes } = await generateVisitReport({
+    dossier: baseDossier,
+    sanitaires,
+    observations,
+    documents: [],
+    notePages: [],
+    contexteNotes,
+    recommendations: [],
+    ergoProfile: reportErgoProfile,
+    fetchImageBytes: async () => null,
+    flatten: false,
+  });
+  const pdf = await PDFDocument.load(bytes);
+  const form = pdf.getForm();
+  const name = form.getTextField('Nom et prénom').getText();
+  const contact = form.getTextField('contact').getText();
+  if (name !== reportErgoProfile.displayName) {
+    throw new Error(`Champ ergo Nom et prénom incorrect: "${name}"`);
+  }
+  if (contact !== reportErgoProfile.email) {
+    throw new Error(`Champ ergo contact incorrect: "${contact}"`);
+  }
+  console.log('✅ champs ergo dynamiques OK');
+}
+
 (async () => {
   console.log('🛠  Génération de 3 versions test du PDF rapport...\n');
+  await assertDynamicErgoFields();
   const empty = await generate('test-report-empty-occupation.pdf', '');
   const locat = await generate('test-report-locataire.pdf', 'Locataire');
   const prop  = await generate('test-report-proprietaire.pdf', 'Propriétaire');

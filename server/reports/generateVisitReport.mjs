@@ -53,80 +53,6 @@ const MAPPING_PATH = path.resolve(
   '../templates/visitReport.mapping.json',
 );
 
-/**
- * Mapping ergothérapeute → chemin du PDF template dédié. La clé est
- * normalisée (lowercase + sans diacritiques) sur le prénom de l'ergo
- * dans NocoDB. Les ergos sans entrée explicite tombent sur
- * `DEFAULT_TEMPLATE_PATH` (Christelle = template historique).
- *
- * Convention de nommage : `visitReport.<prénom>.pdf` dans
- * `server/templates/`. Pour ajouter un ergo, drop le fichier + ajouter
- * une ligne ici.
- */
-const ERGO_TEMPLATE_MAP = {
-  // 'christelle' utilise le template par défaut (pas besoin d'entrée)
-  coralie: path.resolve(
-    __dirname,
-    '../templates/visitReport.coralie.pdf',
-  ),
-};
-
-/**
- * Normalise une chaîne pour le lookup `ERGO_TEMPLATE_MAP` : lowercase,
- * retire les diacritiques (accents), trim. Tolère les variantes
- * d'encoding NFC/NFD et les casses incohérentes côté NocoDB.
- */
-function normalizeErgoKey(raw) {
-  return String(raw || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .trim();
-}
-
-/**
- * Résout le PDF template à utiliser pour un dossier donné, en se
- * basant sur le prénom de l'ergothérapeute. Sources de candidats
- * essayées dans l'ordre :
- *   1. `dossier.ergo.firstName` / `prenom` / `name` / `label` (objet
- *      ergo embarqué — pas toujours présent dans la payload).
- *   2. `dossier.ergoId` — string label défini côté NocoDB
- *      (`dossiers.ergo_id`), souvent égal au prénom de l'ergo
- *      (« Coralie », « Christelle », …). C'est ce que renvoie
- *      `getDossiersForApp` aujourd'hui pour la VAD.
- *   3. `dossier.assignedErgoLabel` (alias historique).
- *
- * Sans cette extension #2, un dossier avec `ergoId='Coralie'` mais
- * sans objet `ergo` populé tombait sur `DEFAULT_TEMPLATE_PATH`
- * (Christelle) — bug reporté 2026-04-29 : « j'ai généré un rapport
- * depuis le compte de Coralie et ça m'a quand meme mis les
- * coodonnées de Christelle sur le rapport ».
- *
- * Fallback sur `DEFAULT_TEMPLATE_PATH` si aucun candidat ne matche
- * une entrée d'`ERGO_TEMPLATE_MAP` (ergo non encore configuré).
- *
- * Cette résolution se fait à chaque appel (pas cachée par dossier)
- * pour rester réactive aux changements d'attribution d'ergo.
- */
-function resolveTemplatePath(dossier) {
-  const ergo = dossier?.ergo;
-  const candidates = [
-    ergo?.firstName,
-    ergo?.prenom,
-    ergo?.name,
-    ergo?.label,
-    dossier?.ergoId,
-    dossier?.assignedErgoLabel,
-  ];
-  for (const candidate of candidates) {
-    const key = normalizeErgoKey(candidate);
-    if (key && ERGO_TEMPLATE_MAP[key]) {
-      return ERGO_TEMPLATE_MAP[key];
-    }
-  }
-  return DEFAULT_TEMPLATE_PATH;
-}
-
 // ---------------------------------------------------------------------------
 // Adresse Aid'Habitat — utilisée à 2 endroits dans le rapport :
 //
@@ -157,6 +83,41 @@ function resolveTemplatePath(dossier) {
 const ERGO_CONTACT = {
   page3OneLine: '16 rue Léo Lagrange, 35131 Chartres-de-Bretagne',
 };
+
+const DEFAULT_ERGO_PROFILE = {
+  displayName: 'Christelle Jeuland',
+  email: 'c.jeuland@aidhabitat.fr',
+  phone: '',
+  establishmentLabel: "Aid'Habitat",
+};
+
+function buildErgoView(ergoProfile = null, dossier = null) {
+  const dossierErgoLabel = String(dossier?.ergoId || dossier?.assignedErgoLabel || '').trim();
+  const displayName = String(
+    ergoProfile?.displayName ||
+    ergoProfile?.name ||
+    ergoProfile?.label ||
+    dossierErgoLabel ||
+    DEFAULT_ERGO_PROFILE.displayName
+  ).trim();
+  const email = String(ergoProfile?.email || '').trim();
+  const phone = String(ergoProfile?.phone || '').trim();
+  const establishmentLabel = String(
+    ergoProfile?.establishmentLabel ||
+    ergoProfile?.establishment ||
+    DEFAULT_ERGO_PROFILE.establishmentLabel
+  ).trim();
+  const contactParts = [email, phone].filter(Boolean);
+  return {
+    displayName,
+    email,
+    phone,
+    establishmentLabel,
+    contactLine: contactParts.length > 0
+      ? contactParts.join(' - ')
+      : DEFAULT_ERGO_PROFILE.email,
+  };
+}
 
 /// Cache mémoire des bytes de PDF templates, keyed par chemin absolu.
 /// Chaque template fait ~2,7 Mo — on évite la relecture disque à chaque
@@ -584,8 +545,10 @@ function buildViewModel({
   observations,
   contexteNotes = [],
   caisseComplementaireResolved = null,
+  ergoProfile = null,
 }) {
   const patient = dossier?.patient || {};
+  const ergoView = buildErgoView(ergoProfile, dossier);
   const housing = dossier?.housing || {};
   const firstName = String(patient.firstName || '').trim();
   const lastName = String(patient.lastName || '').trim();
@@ -813,6 +776,7 @@ function buildViewModel({
   };
 
   return {
+    ergo: ergoView,
     patient: {
       firstName,
       lastName,
@@ -2467,20 +2431,20 @@ export async function generateVisitReport({
   contexteNotes = [],
   recommendations = [],
   caisseComplementaireResolved = null,
+  ergoProfile = null,
   fetchImageBytes,
   flatten = true,
 }) {
-  // Résolution du template PDF en fonction de l'ergothérapeute du
-  // dossier (cf. ERGO_TEMPLATE_MAP). Les ergos sans entrée explicite
-  // tombent sur DEFAULT_TEMPLATE_PATH (Christelle).
-  const templatePath = resolveTemplatePath(dossier);
-  const { templateBytes, mapping } = await loadTemplate(templatePath);
+  // Un seul template PDF : les coordonnées de l'ergo sont injectées
+  // dynamiquement via le mapping AcroForm (`view.ergo.*`).
+  const { templateBytes, mapping } = await loadTemplate(DEFAULT_TEMPLATE_PATH);
   const view = buildViewModel({
     dossier,
     sanitaires,
     observations,
     contexteNotes,
     caisseComplementaireResolved,
+    ergoProfile,
   });
 
   // pdf-lib ne supporte pas un updateFieldAppearances "léger" sur un

@@ -2370,6 +2370,86 @@ const buildFallbackMembers = () => (
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 );
 
+const normalizeReportErgoKey = (value) => stringValue(value)
+  .normalize('NFD')
+  .replace(/[̀-ͯ]/g, '')
+  .trim()
+  .toLowerCase();
+
+const memberToReportErgoProfile = (member) => {
+  if (!member) return null;
+  return {
+    displayName: stringValue(member.displayName || member.ergoLabel).trim(),
+    email: normalizeEmail(member.email),
+    establishmentLabel: stringValue(member.establishmentLabel).trim() || "Aid'Habitat",
+  };
+};
+
+const ergoRecordToReportProfile = (record) => {
+  if (!record) return null;
+  const email = normalizeEmail(field(record, 'email') || asArray(field(record, 'User')).at(0)?.email);
+  const firstName = stringValue(field(record, 'prenom')).trim();
+  const lastName = stringValue(field(record, 'nom')).trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  return {
+    displayName: fullName || refLabel(record) || email,
+    email,
+    establishmentLabel: refLabel(field(record, 'etablissement')) || "Aid'Habitat",
+  };
+};
+
+const resolveReportErgoProfile = async ({ dossier, appUser }) => {
+  const candidates = [
+    dossier?.ergo?.displayName,
+    dossier?.ergo?.name,
+    dossier?.ergo?.label,
+    dossier?.ergoId,
+    dossier?.assignedErgoLabel,
+  ].map(normalizeReportErgoKey).filter(Boolean);
+
+  try {
+    const records = await queryAll(TABLES.ergotherapeutes, {
+      fields: FIELD_SETS.ergotherapeutes,
+    });
+    for (const candidate of candidates) {
+      const record = records.find((entry) => [
+        field(entry, 'prenom'),
+        field(entry, 'nom'),
+        [field(entry, 'prenom'), field(entry, 'nom')].filter(Boolean).join(' '),
+        refLabel(entry),
+        field(entry, 'email'),
+        asArray(field(entry, 'User')).at(0)?.email,
+      ].map(normalizeReportErgoKey).includes(candidate));
+      if (record) return ergoRecordToReportProfile(record);
+    }
+
+    const { members } = await loadMemberRegistry();
+    for (const candidate of candidates) {
+      const member = members.find((entry) => [
+        entry.displayName,
+        entry.ergoLabel,
+        entry.email,
+      ].map(normalizeReportErgoKey).includes(candidate));
+      if (member) return memberToReportErgoProfile(member);
+    }
+  } catch (error) {
+    console.warn('[report] résolution profil ergo échouée :', error?.message || error);
+  }
+
+  if (appUser?.role === 'ERGO') {
+    return memberToReportErgoProfile(appUser);
+  }
+  const fallbackLabel = stringValue(dossier?.ergoId || dossier?.assignedErgoLabel).trim();
+  if (fallbackLabel) {
+    return {
+      displayName: fallbackLabel,
+      email: '',
+      establishmentLabel: "Aid'Habitat",
+    };
+  }
+  return memberToReportErgoProfile(appUser);
+};
+
 const resolveStoredProfilePhotoUrl = (store, email) => {
   const rawValue = stringValue(store?.users?.[email]?.profilePhotoUrl).trim();
   if (!rawValue) return '';
@@ -6223,6 +6303,8 @@ app.post(
       };
     })();
 
+    const ergoProfile = await resolveReportErgoProfile({ dossier, appUser: req.appUser });
+
     const { bytes, stats } = await generateVisitReport({
       dossier,
       sanitaires,
@@ -6242,6 +6324,7 @@ app.post(
       // côté `index.mjs` car le générateur n'accède pas directement à
       // NocoDB.
       caisseComplementaireResolved,
+      ergoProfile,
       // Wrapper inline-first : si le descriptor cible un asset embarqué
       // dans la requête multipart, on lit le buffer en mémoire (zéro
       // round-trip). Fallback sur le fetcher d'origine (NocoDB / URL).
