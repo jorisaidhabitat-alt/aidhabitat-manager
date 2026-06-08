@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../components/confirmation_dialog.dart';
 import '../../components/plan_canvas.dart';
-import '../../components/soft_transitions.dart';
 import '../../models/types.dart';
 import '../../models/visit_report_categories.dart';
 import '../../services/data_service.dart';
@@ -182,28 +182,13 @@ class _PlansTabState extends State<PlansTab> {
 
   Future<void> _deleteCurrentPage() async {
     if (_totalPages <= 1) return;
-    final confirm = await showSoftDialog<bool>(
+    final confirm = await showAppDestructiveConfirmation(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Supprimer la page ?'),
-        content: Text(
+      title: 'Supprimer la page ?',
+      message:
           'Page ${_currentPage + 1} sur $_totalPages. Le dessin de cette page sera supprimé.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB91C1C),
-            ),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Supprimer',
+      icon: LucideIcons.fileX2,
     );
     if (confirm != true) return;
 
@@ -269,10 +254,7 @@ class _PlansTabState extends State<PlansTab> {
         Positioned(
           right: 16,
           bottom: 16,
-          child: _PhasePill(
-            phase: _currentPhase,
-            onTap: _showPhaseMenu,
-          ),
+          child: _PhasePill(phase: _currentPhase, onTap: _showPhaseMenu),
         ),
       ],
     );
@@ -307,10 +289,7 @@ class _PlansTabState extends State<PlansTab> {
                 'Détermine si le dessin alimente la page « Plans avant '
                 'travaux » (page 9) ou « Plans des travaux préconisés » '
                 '(page 10) du rapport PDF.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF2B323A),
-                ),
+                style: TextStyle(fontSize: 12, color: Color(0xFF2B323A)),
               ),
               const SizedBox(height: 14),
               _phaseMenuItem(
@@ -370,7 +349,9 @@ class _PlansTabState extends State<PlansTab> {
           color: isCurrent ? bg.withValues(alpha: 0.6) : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isCurrent ? fg.withValues(alpha: 0.4) : const Color(0xFFE4E7EB),
+            color: isCurrent
+                ? fg.withValues(alpha: 0.4)
+                : const Color(0xFFE4E7EB),
             width: isCurrent ? 1.5 : 1,
           ),
         ),
@@ -402,16 +383,12 @@ class _PlansTabState extends State<PlansTab> {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF2B323A),
-                    ),
+                    style: TextStyle(fontSize: 11, color: Color(0xFF2B323A)),
                   ),
                 ],
               ),
             ),
-            if (isCurrent)
-              Icon(LucideIcons.check, size: 18, color: fg),
+            if (isCurrent) Icon(LucideIcons.check, size: 18, color: fg),
           ],
         ),
       ),

@@ -17,11 +17,11 @@ import 'package:share_plus/share_plus.dart';
 
 import '../components/beneficiary_header.dart';
 import '../components/brand_colors.dart';
+import '../components/confirmation_dialog.dart';
 import '../components/dashed_border_painter.dart';
 import '../components/doc_card.dart';
 import '../components/doc_thumbnails.dart';
 import '../components/file_drop_zone.dart';
-import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
 import '../services/file_drop_listener.dart' show DroppedFile;
@@ -578,25 +578,13 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   // ----- Delete flow -----
 
   Future<void> _deleteDocument(DocItem doc) async {
-    final confirmed = await showSoftDialog<bool>(
+    final confirmed = await showAppDestructiveConfirmation(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer le document ?'),
-        content: Text(
+      title: 'Supprimer le document ?',
+      message:
           'Le document « ${doc.title} » sera supprimé localement et marqué pour suppression distante.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Supprimer',
+      icon: LucideIcons.fileX2,
     );
     if (confirmed != true || !mounted) return;
     await _documentRepository.deleteDocument(doc.id);
@@ -1229,29 +1217,15 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   Future<void> _bulkDelete() async {
     if (_selectedIds.isEmpty) return;
     final count = _selectedIds.length;
-    final confirmed = await showSoftDialog<bool>(
+    final confirmed = await showAppDestructiveConfirmation(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Supprimer $count document${count > 1 ? 's' : ''} ?'),
-        content: Text(
+      title: 'Supprimer $count document${count > 1 ? 's' : ''} ?',
+      message:
           'Cette action supprimera $count document${count > 1 ? 's' : ''} '
           'localement et les marquera pour suppression distante. Elle est '
           'irréversible.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Supprimer',
+      icon: LucideIcons.files,
     );
     if (confirmed != true || !mounted) return;
     // Supprimer en parallèle pour aller vite.
@@ -2039,82 +2013,30 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       Navigator.pop(context);
       return;
     }
-    // Confirmation custom : X en haut-droite (annule la sortie),
-    // « Ignorer les modifications » (ferme sans sauver), « Enregistrer »
-    // (sauve puis ferme). barrierDismissible:false sur ce dialog aussi
-    // pour forcer un choix explicite.
-    final choice = await showSoftDialog<_UnsavedChoice>(
+    final choice = await showAppConfirmationDialog<_UnsavedChoice>(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 16, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Modifications non enregistrées',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // X en haut-droite : annule la sortie de l'édition,
-                    // l'utilisateur reste sur le doc avec ses annotations
-                    // intactes.
-                    IconButton(
-                      tooltip: 'Annuler',
-                      icon: const Icon(LucideIcons.x, size: 20),
-                      onPressed: () =>
-                          Navigator.pop(ctx, _UnsavedChoice.cancel),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Vous avez des annotations en cours. Que souhaitez-vous faire ?',
-                  style: TextStyle(fontSize: 14, color: Color(0xFF5C6670)),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () =>
-                          Navigator.pop(ctx, _UnsavedChoice.discard),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFB91C1C),
-                      ),
-                      child: const Text('Ignorer les modifications'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.icon(
-                      onPressed: () => Navigator.pop(ctx, _UnsavedChoice.save),
-                      icon: const Icon(LucideIcons.save, size: 16),
-                      label: const Text('Enregistrer'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kBrandPurple,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+      title: 'Modifications non enregistrées',
+      message: 'Vous avez des annotations en cours. Que souhaitez-vous faire ?',
+      tone: AppConfirmationTone.warning,
+      icon: LucideIcons.fileWarning,
+      actions: const [
+        AppConfirmationAction(
+          label: 'Continuer l’édition',
+          value: _UnsavedChoice.cancel,
         ),
-      ),
+        AppConfirmationAction(
+          label: 'Ignorer les modifications',
+          value: _UnsavedChoice.discard,
+          icon: LucideIcons.trash2,
+          isDestructive: true,
+        ),
+        AppConfirmationAction(
+          label: 'Enregistrer',
+          value: _UnsavedChoice.save,
+          icon: LucideIcons.save,
+          isPrimary: true,
+        ),
+      ],
     );
     if (!mounted || choice == null || choice == _UnsavedChoice.cancel) return;
     if (choice == _UnsavedChoice.save) {

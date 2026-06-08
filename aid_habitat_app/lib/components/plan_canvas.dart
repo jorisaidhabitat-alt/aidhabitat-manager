@@ -13,7 +13,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../services/data_service.dart';
 import '../services/pencil_interaction_service.dart';
-import 'soft_transitions.dart';
+import 'confirmation_dialog.dart';
 
 // ---------------------------------------------------------------------------
 // Grid constants — 1 cell = 20cm in real world, major line every 5 cells
@@ -258,15 +258,15 @@ class _PlanCanvasState extends State<PlanCanvas> {
   void initState() {
     super.initState();
     _loadStrokes();
-    _pencilDoubleTapSubscription =
-        PencilInteractionService.instance.onDoubleTap.listen((_) {
-      if (!mounted) return;
-      if (_tool == PlanTool.eraser) return;
-      setState(() {
-        _tool = PlanTool.eraser;
-        _thicknessPopoverTool = null;
-      });
-    });
+    _pencilDoubleTapSubscription = PencilInteractionService.instance.onDoubleTap
+        .listen((_) {
+          if (!mounted) return;
+          if (_tool == PlanTool.eraser) return;
+          setState(() {
+            _tool = PlanTool.eraser;
+            _thicknessPopoverTool = null;
+          });
+        });
   }
 
   @override
@@ -561,25 +561,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
   // ----- Actions -----
 
   void _clearAll() async {
-    final confirmed = await showSoftDialog<bool>(
+    final confirmed = await showAppDestructiveConfirmation(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Effacer le plan ?'),
-        content: const Text(
-          'Toutes les annotations seront supprimées définitivement.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Effacer'),
-          ),
-        ],
-      ),
+      title: 'Effacer le plan ?',
+      message: 'Toutes les annotations seront supprimées définitivement.',
+      confirmLabel: 'Effacer',
+      icon: LucideIcons.eraser,
     );
     if (confirmed != true) return;
     _pushUndo();

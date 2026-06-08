@@ -6,6 +6,7 @@ import '../../models/types.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/brand_colors.dart';
+import '../../components/confirmation_dialog.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
 
@@ -1100,10 +1101,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           'Volets persiennes',
           _voletsPersStatus,
           _voletsPersLoc,
-          const [
-            'volets_persiennes_entier',
-            'volets_persiennes_localisation',
-          ],
+          const ['volets_persiennes_entier', 'volets_persiennes_localisation'],
           (s) => setState(() {
             _voletsPersStatus = s;
             if (s != 'Localisé') _voletsPersLoc = '';
@@ -1656,32 +1654,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                     // 2026-04-28 : "si je supprime le niveau ça doit
                     // tout réinitialiser, pas garder les boutons cochés
                     // au prochain ajout".
-                    final confirm = await showSoftDialog<bool>(
+                    final confirm = await showAppDestructiveConfirmation(
                       context: context,
-                      builder: (ctx) => AlertDialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        title: const Text('Supprimer ce niveau ?'),
-                        content: Text(
-                          'Le niveau « ${cfg.label} » et toutes les '
-                          'pièces cochées dessus seront supprimés du '
-                          'foyer. Cette action est définitive.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Annuler'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFFB91C1C),
-                            ),
-                            child: const Text('Supprimer'),
-                          ),
-                        ],
-                      ),
+                      title: 'Supprimer ce niveau ?',
+                      message:
+                          'Le niveau « ${cfg.label} » et toutes les pièces '
+                          'cochées dessus seront supprimés du foyer. Cette '
+                          'action est définitive.',
+                      confirmLabel: 'Supprimer',
+                      icon: LucideIcons.layers,
                     );
                     if (confirm != true || !mounted) return;
 

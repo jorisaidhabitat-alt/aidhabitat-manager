@@ -9,8 +9,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../components/brand_colors.dart';
+import '../../components/confirmation_dialog.dart';
 import '../../components/file_drop_zone.dart';
-import '../../components/soft_transitions.dart';
 import '../../models/types.dart';
 import '../../models/visit_report_categories.dart';
 import '../../services/app_config.dart';
@@ -763,32 +763,15 @@ class _PhotosTabState extends State<PhotosTab>
   Future<void> _removeExtraSection(_ExtraSection section) async {
     final photosInSection = _photosForSectionTag(_tagForSection(section));
     if (photosInSection.isNotEmpty) {
-      final confirm = await showDialog<bool>(
+      final confirm = await showAppDestructiveConfirmation(
         context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text('Supprimer cette partie ?'),
-          content: Text(
+        title: 'Supprimer cette partie ?',
+        message:
             'Cette section contient ${photosInSection.length} '
             'photo${photosInSection.length > 1 ? 's' : ''} qui seront '
             'aussi supprimées définitivement.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFB91C1C),
-              ),
-              child: const Text('Supprimer'),
-            ),
-          ],
-        ),
+        confirmLabel: 'Supprimer',
+        icon: LucideIcons.imageMinus,
       );
       if (confirm != true) return;
       for (final p in photosInSection) {
@@ -1812,32 +1795,16 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
 
   /// Affiche la confirmation puis délègue à `widget.onDelete` qui se
   /// charge de fermer la dialog après validation. La confirmation
-  /// utilise `showSoftDialog` (transitions cohérentes avec le reste
-  /// de l'app — cf. `components/soft_transitions.dart`).
+  /// utilise la bannière de confirmation commune de l'app.
   Future<void> _confirmAndDelete(BuildContext context) async {
-    final confirm = await showSoftDialog<bool>(
+    final confirm = await showAppDestructiveConfirmation(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Supprimer cette photo ?'),
-        content: Text(
+      title: 'Supprimer cette photo ?',
+      message:
           'La photo "${widget.doc.title}" sera supprimée définitivement '
           '(localement et sur le serveur).',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB91C1C),
-            ),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Supprimer',
+      icon: LucideIcons.imageOff,
     );
     if (confirm != true) return;
     final cb = widget.onDelete;

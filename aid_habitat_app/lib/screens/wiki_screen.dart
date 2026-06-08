@@ -9,6 +9,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/brand_colors.dart';
 import '../components/cached_remote_image.dart';
+import '../components/confirmation_dialog.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
@@ -819,30 +820,7 @@ bool _sameStrings(List<String> a, List<String> b) {
 }
 
 Future<bool> _confirmDiscardWikiChanges(BuildContext context) async {
-  return await showSoftDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Quitter sans enregistrer ?'),
-          content: const Text(
-            'Les modifications en cours seront perdues si vous quittez maintenant.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Continuer l’édition'),
-            ),
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFB91C1C),
-              ),
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Quitter sans enregistrer'),
-            ),
-          ],
-        ),
-      ) ??
-      false;
+  return showAppDiscardChangesConfirmation(context: context);
 }
 
 class _WikiItemDraft {
