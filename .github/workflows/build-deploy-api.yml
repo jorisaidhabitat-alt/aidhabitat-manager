@@ -104,10 +104,13 @@ jobs:
       # 5. Trigger redéploiement Easypanel
       # --------------------------------------------------------------
       - name: Trigger Easypanel redeploy
-        if: ${{ env.EASYPANEL_WEBHOOK != '' }}
         env:
           EASYPANEL_WEBHOOK: ${{ secrets.EASYPANEL_API_WEBHOOK }}
         run: |
+          if [ -z "$EASYPANEL_WEBHOOK" ]; then
+            echo "No EASYPANEL_API_WEBHOOK secret configured; image published only."
+            exit 0
+          fi
           echo "Triggering Easypanel redeploy…"
           response=$(curl -sS -o /tmp/easypanel-resp -w "%{http_code}" \
             -X POST "$EASYPANEL_WEBHOOK")
