@@ -1209,6 +1209,7 @@ const normalizeVisitRecommendationItem = (item, wikiMap = new Map()) => {
     wikiTitle: stringValue(wikiItem?.title || item?.wikiTitle).trim(),
     wikiImageUrl: stringValue(wikiItem?.imageUrl || absoluteUrl(item?.wikiImageUrl)).trim(),
     wikiTag: stringValue(wikiItem?.tags?.[0] || item?.wikiTag).trim(),
+    customTitle: stringValue(item?.customTitle).trim(),
     note: stringValue(item?.note),
     createdAt: item?.createdAt || now,
     updatedAt: now,

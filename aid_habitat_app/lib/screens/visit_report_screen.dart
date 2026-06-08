@@ -1287,7 +1287,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         final localRecos = await _repository.fetchVisitRecommendations(
           _dossier.id,
         );
-        await _repository.saveVisitRecommendations(_dossier.id, localRecos);
+        await _repository.saveVisitRecommendations(
+          _dossier.id,
+          localRecos,
+          forceSync: true,
+        );
       } catch (_) {
         // Pas bloquant : si la fetch/save échoue, on tombe sur
         // l'ancienne sémantique (NocoDB tel quel).

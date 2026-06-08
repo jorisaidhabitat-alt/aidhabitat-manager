@@ -2798,8 +2798,9 @@ class DossierRepository {
 
   Future<void> saveVisitRecommendations(
     String dossierId,
-    List<VisitRecommendationItem> items,
-  ) async {
+    List<VisitRecommendationItem> items, {
+    bool forceSync = false,
+  }) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final existing = await db.query(
@@ -2823,7 +2824,7 @@ class DossierRepository {
     // vraiment changé (ex. focus/blur sur un champ texte).
     if (existing.isNotEmpty) {
       final existingItemsJson = existing.first['items_json'] as String?;
-      if (existingItemsJson == newItemsJsonString) {
+      if (!forceSync && existingItemsJson == newItemsJsonString) {
         return; // rien changé → no-op total
       }
     }
