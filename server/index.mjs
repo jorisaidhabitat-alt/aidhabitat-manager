@@ -115,6 +115,35 @@ const ALLOWED_ORIGINS = new Set([
   ...parseCorsOrigins(process.env.CORS_EXTRA_ORIGIN),
 ].filter(Boolean));
 
+const parsePositiveNumber = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const REPORT_INLINE_FILE_MAX_BYTES = parsePositiveNumber(
+  process.env.REPORT_INLINE_FILE_MAX_BYTES,
+  24 * 1024 * 1024,
+);
+const REPORT_INLINE_TOTAL_MAX_BYTES = parsePositiveNumber(
+  process.env.REPORT_INLINE_TOTAL_MAX_BYTES,
+  80 * 1024 * 1024,
+);
+const REPORT_INLINE_MAX_FILES = Math.max(
+  1,
+  Math.floor(parsePositiveNumber(process.env.REPORT_INLINE_MAX_FILES, 32)),
+);
+const REPORT_INLINE_FIELD_MAX_BYTES = parsePositiveNumber(
+  process.env.REPORT_INLINE_FIELD_MAX_BYTES,
+  256 * 1024,
+);
+const REPORT_DIRECT_SAVE_RETRIES = Math.max(
+  1,
+  Math.floor(parsePositiveNumber(process.env.REPORT_DIRECT_SAVE_RETRIES, 3)),
+);
+const REPORT_DIRECT_SAVE_RETRY_DELAY_MS = parsePositiveNumber(
+  process.env.REPORT_DIRECT_SAVE_RETRY_DELAY_MS,
+  400,
+);
+
 function isOriginAllowed(origin) {
   if (!origin) return true; // same-origin / non-browser requests
   if (ALLOWED_ORIGINS.has(origin)) return true;
@@ -184,8 +213,9 @@ const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileS
 const reportInlineUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 30 * 1024 * 1024, // par fichier
-    files: 32,                  // 8 photos + 4 plans + 8 reco-images + marge
+    fileSize: REPORT_INLINE_FILE_MAX_BYTES, // par fichier
+    files: REPORT_INLINE_MAX_FILES,         // photos + plans + reco-images + marge
+    fieldSize: REPORT_INLINE_FIELD_MAX_BYTES,
   },
 });
 
@@ -5801,6 +5831,17 @@ const parseInlineReportAssets = (req) => {
   return { documents, plans };
 };
 
+const inlineReportAssetBytes = (inlineAssets) => {
+  let total = 0;
+  for (const asset of inlineAssets.documents.values()) {
+    total += Number(asset?.buffer?.byteLength || asset?.buffer?.length || 0);
+  }
+  for (const asset of inlineAssets.plans.values()) {
+    total += Number(asset?.buffer?.byteLength || asset?.buffer?.length || 0);
+  }
+  return total;
+};
+
 /**
  * Construit un wrapper de `fetchImageBytesForReport` qui privilégie le
  * cache inline. Si le descriptor cible un document/plan que le client
@@ -5959,6 +6000,28 @@ const deleteObsoleteReportDocuments = async ({
   return deletedCount;
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const retryReportPersistence = async (label, callback) => {
+  let lastError;
+  for (let attempt = 1; attempt <= REPORT_DIRECT_SAVE_RETRIES; attempt += 1) {
+    try {
+      return await callback();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= REPORT_DIRECT_SAVE_RETRIES) break;
+      const delayMs = Math.round(REPORT_DIRECT_SAVE_RETRY_DELAY_MS * attempt);
+      console.warn(
+        `[report] ${label} échoué tentative ${attempt}/${REPORT_DIRECT_SAVE_RETRIES}, ` +
+        `retry dans ${delayMs}ms :`,
+        error?.message || error,
+      );
+      await sleep(delayMs);
+    }
+  }
+  throw lastError;
+};
+
 app.post(
   '/api/reports/visit/:dossierId',
   requireAuth,
@@ -5975,9 +6038,18 @@ app.post(
     // comportement est strictement identique à l'ancien endpoint.
     const inlineAssets = parseInlineReportAssets(req);
     if (inlineAssets.documents.size > 0 || inlineAssets.plans.size > 0) {
+      const inlineBytes = inlineReportAssetBytes(inlineAssets);
+      if (inlineBytes > REPORT_INLINE_TOTAL_MAX_BYTES) {
+        throw httpError(
+          413,
+          'Trop de photos/plans à embarquer directement dans le rapport. '
+          + 'La synchronisation doit terminer les fichiers avant la génération PDF.',
+        );
+      }
       console.log(
         `[report] inline assets reçus pour ${dossierId} : ` +
-        `${inlineAssets.documents.size} doc(s) + ${inlineAssets.plans.size} plan(s)`
+        `${inlineAssets.documents.size} doc(s) + ${inlineAssets.plans.size} plan(s), ` +
+        `${inlineBytes} bytes`
       );
     }
 
@@ -6212,35 +6284,49 @@ app.post(
         // legacy), et chaque clic « Régénérer » ajoute encore 2 lignes.
         const documentLocalId = `doc_report_${dossierId}`;
         const titleNoExt = fileName.replace(/\.pdf$/i, '');
-        const savedDoc = await mobileSyncStore.upsertDocument({
-          patientId,
-          dossierId,
-          documentLocalId,
-          title: titleNoExt,
-          fileName,
-          mimeType: 'application/pdf',
-          tags: ['Rapport'],
-          contentBase64,
-          patientFirstName: dossier?.patient?.firstName || '',
-          patientLastName: dossier?.patient?.lastName || '',
-          patientDisplayName:
-            [dossier?.patient?.firstName, dossier?.patient?.lastName]
-              .filter(Boolean)
-              .join(' ')
-              .trim(),
-          dossierLabel:
-            [dossier?.patient?.firstName, dossier?.patient?.lastName]
-              .filter(Boolean)
-              .join(' ')
-              .trim(),
-        });
+        const savedDoc = await retryReportPersistence(
+          'sauvegarde PDF NocoDB',
+          () => mobileSyncStore.upsertDocument({
+            patientId,
+            dossierId,
+            documentLocalId,
+            title: titleNoExt,
+            fileName,
+            mimeType: 'application/pdf',
+            tags: ['Rapport'],
+            contentBase64,
+            patientFirstName: dossier?.patient?.firstName || '',
+            patientLastName: dossier?.patient?.lastName || '',
+            patientDisplayName:
+              [dossier?.patient?.firstName, dossier?.patient?.lastName]
+                .filter(Boolean)
+                .join(' ')
+                .trim(),
+            dossierLabel:
+              [dossier?.patient?.firstName, dossier?.patient?.lastName]
+                .filter(Boolean)
+                .join(' ')
+                .trim(),
+          }),
+        );
         savedDocUuid = stringValue(savedDoc?.id || savedDoc?.uuid_source);
-        const deletedReports = await deleteObsoleteReportDocuments({
-          patientId,
-          dossierId,
-          keepDocumentId: savedDocUuid,
-          keepClientDocumentId: documentLocalId,
-        });
+        let deletedReports = 0;
+        try {
+          deletedReports = await retryReportPersistence(
+            'nettoyage anciens rapports',
+            () => deleteObsoleteReportDocuments({
+              patientId,
+              dossierId,
+              keepDocumentId: savedDocUuid,
+              keepClientDocumentId: documentLocalId,
+            }),
+          );
+        } catch (cleanupErr) {
+          console.warn(
+            `[report] nettoyage anciens rapports échoué (dossier=${dossierId}) :`,
+            cleanupErr?.message || cleanupErr,
+          );
+        }
         console.log(
           `[report] PDF sauvegardé directement dans NocoDB ` +
           `(dossier=${dossierId}, uuid=${savedDocUuid.slice(0, 8)}…, ` +

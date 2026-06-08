@@ -73,6 +73,17 @@ const checks = [
     assert: (source) => source.includes('void warmupRuntime();') && !source.includes('await warmupRuntime();'),
   },
   {
+    name: 'Visit report endpoint guards inline assets and retries NocoDB save',
+    file: 'server/index.mjs',
+    assert: (source) => [
+      'REPORT_INLINE_TOTAL_MAX_BYTES',
+      'inlineReportAssetBytes(inlineAssets)',
+      'retryReportPersistence',
+      'sauvegarde PDF NocoDB',
+      'X-Saved-Doc-Uuid',
+    ].every((needle) => source.includes(needle)),
+  },
+  {
     name: 'Root web build no longer references a missing index.css',
     file: 'index.html',
     assert: (source) => !source.includes('/index.css'),
