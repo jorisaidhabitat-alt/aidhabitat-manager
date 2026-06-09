@@ -1604,6 +1604,23 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     _scheduleSave(_levelDirtyKeys(cfg, includeGarage: room == 'Garage'));
   }
 
+  void _activateRoomTile(_LevelConfig cfg, String room, int count) {
+    if (count > 0) {
+      setState(() => _activeRoomByLevel[cfg.field] = room);
+      return;
+    }
+
+    final current = List<String>.from(_levelRooms[cfg.field] ?? [])..add(room);
+    setState(() {
+      _levelRooms[cfg.field] = current;
+      _activeRoomByLevel[cfg.field] = room;
+      if (room == 'Garage') {
+        _syncGarageAnnexeFromLevels();
+      }
+    });
+    _scheduleSave(_levelDirtyKeys(cfg, includeGarage: room == 'Garage'));
+  }
+
   Widget _buildLevelRoomAdjuster({
     required _LevelConfig cfg,
     required String room,
@@ -1709,7 +1726,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     final isSelected = count > 0;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _activeRoomByLevel[cfg.field] = room),
+      onTap: () => _activateRoomTile(cfg, room, count),
       child: AnimatedContainer(
         duration: kSoftMedium,
         curve: kSoftCurve,
