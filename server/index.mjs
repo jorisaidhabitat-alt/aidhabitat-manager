@@ -2385,6 +2385,85 @@ const mapVisitRecommendationRecord = (record) => ({
   updatedAt: field(record, 'updated_at') || field(record, 'created_at') || new Date().toISOString(),
 });
 
+const visitRecommendationRecordFields = (item, metadata) => ({
+  uuid_source: item.id,
+  dossier_id: metadata.dossierId,
+  beneficiaire_id: metadata.patientId,
+  beneficiaire_prenom: metadata.patientFirstName || null,
+  beneficiaire_nom: metadata.patientLastName || null,
+  beneficiaire_nom_complet: metadata.patientDisplayName || null,
+  dossier_libelle: metadata.dossierLabel || null,
+  wiki_item_id: item.wikiItemId,
+  wiki_title: item.wikiTitle || null,
+  wiki_image_url: item.wikiImageUrl || null,
+  wiki_tag: item.wikiTag || null,
+  custom_title: item.customTitle || null,
+  note: item.note || null,
+  created_at: item.createdAt,
+  updated_at: item.updatedAt,
+});
+
+const persistVisitRecommendationsInNocodb = async ({
+  tableId,
+  dossierId,
+  metadata,
+  items,
+}) => {
+  const existingRecords = await queryAll(tableId, {
+    fields: ['uuid_source'],
+    where: `(dossier_id,eq,${JSON.stringify(String(dossierId))})`,
+  });
+  const existingByUuid = new Map(
+    existingRecords
+      .map((record) => [stringValue(field(record, 'uuid_source')).trim(), record])
+      .filter(([uuid]) => uuid),
+  );
+  const desiredIds = new Set(items.map((item) => stringValue(item.id).trim()).filter(Boolean));
+
+  const recordsToCreate = [];
+  const recordsToUpdate = [];
+
+  for (const item of items) {
+    const fields = visitRecommendationRecordFields(item, metadata);
+    const existing = existingByUuid.get(stringValue(item.id).trim());
+    if (existing?.id) {
+      recordsToUpdate.push({
+        id: String(existing.id),
+        fields,
+      });
+    } else {
+      recordsToCreate.push({ fields });
+    }
+  }
+
+  const recordsToDelete = existingRecords
+    .filter((record) => !desiredIds.has(stringValue(field(record, 'uuid_source')).trim()))
+    .map((record) => ({ id: String(record.id) }))
+    .filter((record) => record.id);
+
+  // Upsert différentiel au lieu de delete-all/create-all :
+  // moins de round-trips, pas de fenêtre où les préconisations disparaissent,
+  // et surtout moins de risques de 500 NocoDB pendant la génération PDF.
+  for (const record of recordsToUpdate) {
+    await callNocoTool('updateRecords', {
+      tableId,
+      records: [record],
+    });
+  }
+  if (recordsToCreate.length > 0) {
+    await callNocoTool('createRecords', {
+      tableId,
+      records: recordsToCreate,
+    });
+  }
+  if (recordsToDelete.length > 0) {
+    await callNocoTool('deleteRecords', {
+      tableId,
+      records: recordsToDelete,
+    });
+  }
+};
+
 const buildMemberFromErgoRecord = (record) => {
   const email = normalizeEmail(field(record, 'email') || asArray(field(record, 'User')).at(0)?.email);
   if (!email) return null;
@@ -8156,47 +8235,12 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
 
     if (tableId) {
       const metadata = await buildVisitRecommendationMetadata(dossierRecord);
-      const existingRecords = await queryAll(tableId, {
-        fields: ['uuid_source'],
-        where: `(dossier_id,eq,${JSON.stringify(String(dossierId))})`,
+      await persistVisitRecommendationsInNocodb({
+        tableId,
+        dossierId,
+        metadata,
+        items: normalizedItems,
       });
-
-      // Suppression en LOT (un seul appel NocoDB) au lieu d'un appel
-      // par record. Avant ce fix, une liste de 10 anciennes préco
-      // déclenchait 10 round-trips séquentiels — sur iPad PWA, le
-      // browser hit le timeout 20s côté client avant que le serveur
-      // finisse, d'où le "Load failed" rapporté 2026-05-04.
-      if (existingRecords.length > 0) {
-        await callNocoTool('deleteRecords', {
-          tableId,
-          records: existingRecords.map((record) => ({ id: String(record.id) })),
-        });
-      }
-
-      // Créations EN PARALLÈLE — chaque createRecord est indépendant
-      // (uuid_source unique, pas de FK croisée). Promise.all transforme
-      // une boucle 10×500ms (= 5s) en ~500ms.
-      await Promise.all(
-        normalizedItems.map((item) =>
-          createRecord(tableId, {
-            uuid_source: item.id,
-            dossier_id: metadata.dossierId,
-            beneficiaire_id: metadata.patientId,
-            beneficiaire_prenom: metadata.patientFirstName || null,
-            beneficiaire_nom: metadata.patientLastName || null,
-            beneficiaire_nom_complet: metadata.patientDisplayName || null,
-            dossier_libelle: metadata.dossierLabel || null,
-            wiki_item_id: item.wikiItemId,
-            wiki_title: item.wikiTitle || null,
-            wiki_image_url: item.wikiImageUrl || null,
-            wiki_tag: item.wikiTag || null,
-            custom_title: item.customTitle || null,
-            note: item.note || null,
-            created_at: item.createdAt,
-            updated_at: item.updatedAt,
-          }),
-        ),
-      );
     } else {
       const store = await readVisitRecommendationsStore();
       store.dossiers[dossierId] = {
