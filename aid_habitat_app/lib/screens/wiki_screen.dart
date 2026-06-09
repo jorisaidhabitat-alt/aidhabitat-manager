@@ -494,271 +494,296 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
         if (didPop) return;
         _requestClose();
       },
-      child: Dialog(
-        backgroundColor: Colors.white,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        clipBehavior: Clip.antiAlias,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 960, maxHeight: 680),
-          // Pas de `StackFit.expand` (demande utilisateur 2026-04-29 v2 :
-          // « c'est la hauteur de la partie de droite qui doit réduire »
-          // — pas l'inverse). Sans ce fit, le Stack se dimensionne sur la
-          // hauteur intrinsèque de son enfant Row → la Row prend la
-          // hauteur naturelle du formulaire de droite (Column avec
-          // mainAxisSize.min ci-dessous), et l'image (Expanded gauche)
-          // s'aligne sur cette même hauteur côté Row. Résultat : popup
-          // compacte sans espace vide vertical.
-          child: Stack(
-            children: [
-              Row(
-                children: [
-                  // Left side: image on neutral slate-100 background (matches React)
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      color: const Color(0xFFF2F4F6),
-                      // BoxFit.cover (au lieu de contain) — demande
-                      // utilisateur 2026-04-29 : « aligne bien la hauteur
-                      // à l'image sans prendre en compte le blanc autour
-                      // (haut et bas de l'image) ». Avec contain, on
-                      // gardait des bandes slate-100 au-dessus/dessous
-                      // quand le ratio de l'image différait du conteneur.
-                      // Avec cover, l'image remplit toute la moitié
-                      // gauche → la hauteur visible = la hauteur du
-                      // formulaire de droite, sans blanc parasite.
-                      child:
-                          (widget.item.imageUrl.isNotEmpty ||
-                              widget.item.pendingImageDataUrl.isNotEmpty)
-                          ? CachedRemoteImage(
-                              url: resolveMediaUrl(widget.item.imageUrl),
-                              pendingDataUrl: widget.item.pendingImageDataUrl,
-                              fit: BoxFit.cover,
-                              errorWidget: const Center(
-                                child: Icon(
-                                  LucideIcons.image,
-                                  size: 72,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            )
-                          : const Center(
-                              child: Icon(
-                                LucideIcons.image,
-                                size: 72,
-                                color: Colors.black54,
-                              ),
-                            ),
-                    ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _requestClose,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            Center(
+              child: TapRegion(
+                onTapOutside: (_) => _requestClose(),
+                child: Dialog(
+                  backgroundColor: Colors.white,
+                  insetPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 24,
                   ),
-                  // Right side: form on white background
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      color: Colors.white,
-                      padding: const EdgeInsets.all(28),
-                      // `mainAxisSize.min` → la Column shrink-wrap à la
-                      // hauteur naturelle de ses enfants, ce qui devient
-                      // la hauteur de la popup. L'Expanded sur le
-                      // TextField description est remplacé par une
-                      // hauteur fixe (180 pt) pour que la Column ait bien
-                      // une hauteur intrinsèque finie (sinon Expanded
-                      // dans une Column non-bornée → erreur layout).
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _FormLabel(text: 'Titre'),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _titleController,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0E1116),
-                            ),
-                            decoration: _inputDecoration(),
-                          ),
-                          const SizedBox(height: 20),
-                          _FormLabel(text: 'Tag'),
-                          const SizedBox(height: 8),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: const Color(0xFFE4E7EB),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 960,
+                      maxHeight: 680,
+                    ),
+                    child: Stack(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: Container(
+                                color: const Color(0xFFF2F4F6),
+                                child:
+                                    (widget.item.imageUrl.isNotEmpty ||
+                                        widget
+                                            .item
+                                            .pendingImageDataUrl
+                                            .isNotEmpty)
+                                    ? CachedRemoteImage(
+                                        url: resolveMediaUrl(
+                                          widget.item.imageUrl,
+                                        ),
+                                        pendingDataUrl:
+                                            widget.item.pendingImageDataUrl,
+                                        fit: BoxFit.cover,
+                                        errorWidget: const Center(
+                                          child: Icon(
+                                            LucideIcons.image,
+                                            size: 72,
+                                            color: Colors.black54,
+                                          ),
+                                        ),
+                                      )
+                                    : const Center(
+                                        child: Icon(
+                                          LucideIcons.image,
+                                          size: 72,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
                               ),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value:
-                                    widget.availableTags.contains(selectedTag)
-                                    ? selectedTag
-                                    : (selectedTag.isEmpty ? '' : null),
-                                isExpanded: true,
-                                hint: const Text('Aucun tag'),
-                                items: [
-                                  const DropdownMenuItem(
-                                    value: '',
-                                    child: Text('Aucun tag'),
-                                  ),
-                                  ...widget.availableTags.map(
-                                    (tag) => DropdownMenuItem(
-                                      value: tag,
-                                      child: Text(tag),
-                                    ),
-                                  ),
-                                ],
-                                onChanged: (value) {
-                                  setState(() {
-                                    _selectedTags =
-                                        (value == null || value.isEmpty)
-                                        ? []
-                                        : [value];
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(child: _FormLabel(text: 'Descriptions')),
-                              // Bouton « + » discret pour ajouter une
-                              // description supplémentaire (l'ergo pourra
-                              // ensuite cocher celles qui s'appliquent
-                              // depuis l'écran préconisations).
-                              Material(
-                                color: const Color(0xFFEDE8F5),
-                                shape: const CircleBorder(),
-                                child: InkWell(
-                                  onTap: _addDescription,
-                                  customBorder: const CircleBorder(),
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(6),
-                                    child: Icon(
-                                      Icons.add,
-                                      size: 18,
-                                      color: kBrandPurple,
-                                      semanticLabel: 'Ajouter une description',
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // Liste des descriptions — hauteur globale fixe
-                          // (180 pt) en scroll vertical pour pouvoir héberger
-                          // 1 à N champs sans déformer la popup.
-                          SizedBox(
-                            height: 180,
-                            child: ListView.separated(
-                              itemCount: _descCtrls.length,
-                              separatorBuilder: (context, index) =>
-                                  const SizedBox(height: 8),
-                              itemBuilder: (context, i) {
-                                return Row(
+                            Expanded(
+                              flex: 1,
+                              child: Container(
+                                color: Colors.white,
+                                padding: const EdgeInsets.all(28),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _descCtrls[i],
-                                        maxLines: 3,
-                                        minLines: 2,
-                                        textAlignVertical:
-                                            TextAlignVertical.top,
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          color: Color(0xFF5C6670),
-                                          height: 1.5,
+                                    _FormLabel(text: 'Titre'),
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: _titleController,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0E1116),
+                                      ),
+                                      decoration: _inputDecoration(),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    _FormLabel(text: 'Tag'),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: const Color(0xFFE4E7EB),
                                         ),
-                                        decoration: _inputDecoration(),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          value:
+                                              widget.availableTags.contains(
+                                                selectedTag,
+                                              )
+                                              ? selectedTag
+                                              : (selectedTag.isEmpty
+                                                    ? ''
+                                                    : null),
+                                          isExpanded: true,
+                                          hint: const Text('Aucun tag'),
+                                          items: [
+                                            const DropdownMenuItem(
+                                              value: '',
+                                              child: Text('Aucun tag'),
+                                            ),
+                                            ...widget.availableTags.map(
+                                              (tag) => DropdownMenuItem(
+                                                value: tag,
+                                                child: Text(tag),
+                                              ),
+                                            ),
+                                          ],
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _selectedTags =
+                                                  (value == null ||
+                                                      value.isEmpty)
+                                                  ? []
+                                                  : [value];
+                                            });
+                                          },
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
-                                    IconButton(
-                                      onPressed: () => _removeDescription(i),
-                                      icon: const Icon(
-                                        Icons.delete_outline,
-                                        size: 18,
-                                        color: Color(0xFF8A939D),
+                                    const SizedBox(height: 20),
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Expanded(
+                                          child: _FormLabel(
+                                            text: 'Descriptions',
+                                          ),
+                                        ),
+                                        Material(
+                                          color: const Color(0xFFEDE8F5),
+                                          shape: const CircleBorder(),
+                                          child: InkWell(
+                                            onTap: _addDescription,
+                                            customBorder: const CircleBorder(),
+                                            child: const Padding(
+                                              padding: EdgeInsets.all(6),
+                                              child: Icon(
+                                                Icons.add,
+                                                size: 18,
+                                                color: kBrandPurple,
+                                                semanticLabel:
+                                                    'Ajouter une description',
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    SizedBox(
+                                      height: 180,
+                                      child: ListView.separated(
+                                        itemCount: _descCtrls.length,
+                                        separatorBuilder: (context, index) =>
+                                            const SizedBox(height: 8),
+                                        itemBuilder: (context, i) {
+                                          return Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: TextField(
+                                                  controller: _descCtrls[i],
+                                                  maxLines: 3,
+                                                  minLines: 2,
+                                                  textAlignVertical:
+                                                      TextAlignVertical.top,
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    color: Color(0xFF5C6670),
+                                                    height: 1.5,
+                                                  ),
+                                                  decoration:
+                                                      _inputDecoration(),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              IconButton(
+                                                onPressed: () =>
+                                                    _removeDescription(i),
+                                                icon: const Icon(
+                                                  Icons.delete_outline,
+                                                  size: 18,
+                                                  color: Color(0xFF8A939D),
+                                                ),
+                                                tooltip:
+                                                    'Supprimer cette description',
+                                                visualDensity:
+                                                    VisualDensity.compact,
+                                                splashRadius: 18,
+                                              ),
+                                            ],
+                                          );
+                                        },
                                       ),
-                                      tooltip: 'Supprimer cette description',
-                                      visualDensity: VisualDensity.compact,
-                                      splashRadius: 18,
+                                    ),
+                                    const SizedBox(height: 20),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: FilledButton(
+                                        onPressed: () {
+                                          final descriptions = _descCtrls
+                                              .map((c) => c.text.trim())
+                                              .where((s) => s.isNotEmpty)
+                                              .toList();
+                                          Navigator.of(context).pop(
+                                            widget.item.copyWith(
+                                              title: _titleController.text
+                                                  .trim(),
+                                              description:
+                                                  WikiItem.serializeDescriptions(
+                                                    descriptions,
+                                                  ),
+                                              tags: _selectedTags,
+                                            ),
+                                          );
+                                        },
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: kBrandPurple,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 16,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Enregistrer',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ],
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton(
-                              onPressed: () {
-                                final descriptions = _descCtrls
-                                    .map((c) => c.text.trim())
-                                    .where((s) => s.isNotEmpty)
-                                    .toList();
-                                Navigator.of(context).pop(
-                                  widget.item.copyWith(
-                                    title: _titleController.text.trim(),
-                                    description: WikiItem.serializeDescriptions(
-                                      descriptions,
-                                    ),
-                                    tags: _selectedTags,
-                                  ),
-                                );
-                              },
-                              style: FilledButton.styleFrom(
-                                backgroundColor: kBrandPurple,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
                                 ),
                               ),
-                              child: const Text(
-                                'Enregistrer',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
+                            ),
+                          ],
+                        ),
+                        Positioned(
+                          top: 16,
+                          right: 16,
+                          child: Material(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _requestClose,
+                              child: const Padding(
+                                padding: EdgeInsets.all(8),
+                                child: Icon(
+                                  Icons.close,
+                                  color: Colors.white,
+                                  size: 18,
                                 ),
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              // Close button top-right (over the image)
-              Positioned(
-                top: 16,
-                right: 16,
-                child: Material(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: _requestClose,
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(Icons.close, color: Colors.white, size: 18),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -963,139 +988,163 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
         if (didPop) return;
         if (!_submitting) _requestClose();
       },
-      child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        insetPadding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: kBrandPurple.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        LucideIcons.plus,
-                        color: kBrandPurple,
-                        size: 22,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _submitting ? null : _requestClose,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            Center(
+              child: TapRegion(
+                onTapOutside: (_) {
+                  if (!_submitting) _requestClose();
+                },
+                child: Dialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  insetPadding: const EdgeInsets.all(24),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: kBrandPurple.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  LucideIcons.plus,
+                                  color: kBrandPurple,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Nouvel élément',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0E1116),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(LucideIcons.x, size: 20),
+                                onPressed: _submitting ? null : _requestClose,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          _buildImageSection(),
+                          const SizedBox(height: 16),
+                          _WikiLabeledField(
+                            label: 'Titre *',
+                            controller: _titleController,
+                            hint: 'ex. Barre d\'appui salle de bain',
+                            autofocus: true,
+                            enabled: !_submitting,
+                          ),
+                          const SizedBox(height: 12),
+                          _WikiLabeledField(
+                            label: 'Description',
+                            controller: _descriptionController,
+                            hint:
+                                'Détails de l\'aménagement, dimensions, conseils…',
+                            maxLines: 4,
+                            enabled: !_submitting,
+                          ),
+                          const SizedBox(height: 12),
+                          _WikiLabeledField(
+                            label: 'Catégorie',
+                            controller: _categoryController,
+                            hint: 'ex. Salle de bain, WC, Cuisine, Chambre…',
+                            enabled: !_submitting,
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Tags',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: kBrandPurple,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: widget.availableTags
+                                .map(
+                                  (tag) => FilterChip(
+                                    label: Text(tag),
+                                    selected: _selectedTags.contains(tag),
+                                    onSelected: _submitting
+                                        ? null
+                                        : (_) {
+                                            setState(() {
+                                              if (_selectedTags.contains(tag)) {
+                                                _selectedTags.remove(tag);
+                                              } else {
+                                                _selectedTags.add(tag);
+                                              }
+                                            });
+                                          },
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: _submitting ? null : _requestClose,
+                                child: const Text('Annuler'),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: kBrandPurple,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: _submitting ? null : _submit,
+                                child: _submitting
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text('Créer'),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Nouvel élément',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0E1116),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(LucideIcons.x, size: 20),
-                      onPressed: _submitting ? null : _requestClose,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildImageSection(),
-                const SizedBox(height: 16),
-                _WikiLabeledField(
-                  label: 'Titre *',
-                  controller: _titleController,
-                  hint: 'ex. Barre d\'appui salle de bain',
-                  autofocus: true,
-                  enabled: !_submitting,
-                ),
-                const SizedBox(height: 12),
-                _WikiLabeledField(
-                  label: 'Description',
-                  controller: _descriptionController,
-                  hint: 'Détails de l\'aménagement, dimensions, conseils…',
-                  maxLines: 4,
-                  enabled: !_submitting,
-                ),
-                const SizedBox(height: 12),
-                _WikiLabeledField(
-                  label: 'Catégorie',
-                  controller: _categoryController,
-                  hint: 'ex. Salle de bain, WC, Cuisine, Chambre…',
-                  enabled: !_submitting,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Tags',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: kBrandPurple,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: widget.availableTags
-                      .map(
-                        (tag) => FilterChip(
-                          label: Text(tag),
-                          selected: _selectedTags.contains(tag),
-                          onSelected: _submitting
-                              ? null
-                              : (_) {
-                                  setState(() {
-                                    if (_selectedTags.contains(tag)) {
-                                      _selectedTags.remove(tag);
-                                    } else {
-                                      _selectedTags.add(tag);
-                                    }
-                                  });
-                                },
-                        ),
-                      )
-                      .toList(),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: _submitting ? null : _requestClose,
-                      child: const Text('Annuler'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kBrandPurple,
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: _submitting ? null : _submit,
-                      child: _submitting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('Créer'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

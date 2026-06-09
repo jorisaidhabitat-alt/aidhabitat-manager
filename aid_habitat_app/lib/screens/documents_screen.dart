@@ -2018,7 +2018,8 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       title: 'Modifications non enregistrées',
       message: 'Vous avez des annotations en cours. Que souhaitez-vous faire ?',
       tone: AppConfirmationTone.warning,
-      icon: LucideIcons.fileWarning,
+      showCloseButton: true,
+      closeValue: _UnsavedChoice.cancel,
       actions: const [
         AppConfirmationAction(
           label: 'Continuer l’édition',
@@ -2027,7 +2028,6 @@ class _PreviewScreenState extends State<_PreviewScreen> {
         AppConfirmationAction(
           label: 'Ignorer les modifications',
           value: _UnsavedChoice.discard,
-          icon: LucideIcons.trash2,
           isDestructive: true,
         ),
         AppConfirmationAction(
