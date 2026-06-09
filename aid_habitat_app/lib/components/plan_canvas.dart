@@ -19,8 +19,10 @@ import 'confirmation_dialog.dart';
 // Grid constants — 1 cell = 20cm in real world, major line every 5 cells
 // ---------------------------------------------------------------------------
 
-// Brand color.
-const Color _kTeal = Color(0xFF597E8D);
+const Color _kToolbarActiveBg = Color(0xFFF2ECF5);
+const Color _kToolbarActiveText = Color(0xFF554265);
+const Color _kToolbarIcon = Color(0xFF2B323A);
+const Color _kToolbarHoverBg = Color(0xFFF2F4F6);
 
 // ---------------------------------------------------------------------------
 // Stroke model
@@ -198,22 +200,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   PlanTool _tool = PlanTool.pen;
   int _penColor = 0xFF1A1A1A;
-  // Épaisseur PAR OUTIL — chaque outil (crayon, surligneur, gomme,
-  // ligne, rectangle) mémorise sa propre taille. Modifier l'épaisseur
-  // d'un outil n'affecte pas les autres. Les symboles (équipements)
-  // utilisent leur propre taille fixée à l'insertion et ne sont pas
-  // impactés par ces valeurs.
-  final Map<PlanTool, double> _thicknessByTool = {
-    PlanTool.pen: 2.0,
-    PlanTool.highlighter: 6.0,
-    PlanTool.line: 2.0,
-    PlanTool.rect: 2.0,
-    PlanTool.eraser: 14.0,
-  };
-  double get _penSize => _thicknessByTool[_tool] ?? 2.0;
-  // Si non-null, on affiche en overlay un slider d'épaisseur pour cet
-  // outil. Déclenché par un 2e tap sur un outil de tracé déjà actif.
-  PlanTool? _thicknessPopoverTool;
+  double get _penSize => _defaultStrokeSizeFor(_tool);
 
   // Sélection d'un symbole architectural placé — -1 = rien de sélectionné.
   int _selectedIndex = -1;
@@ -254,6 +241,26 @@ class _PlanCanvasState extends State<PlanCanvas> {
     0xFFD69E2E,
   ];
 
+  static double _defaultStrokeSizeFor(PlanTool tool) {
+    switch (tool) {
+      case PlanTool.highlighter:
+        return 6.0;
+      case PlanTool.eraser:
+        return 14.0;
+      case PlanTool.pen:
+      case PlanTool.line:
+      case PlanTool.rect:
+      case PlanTool.wall:
+      case PlanTool.window:
+      case PlanTool.door:
+      case PlanTool.toilet:
+      case PlanTool.shower:
+      case PlanTool.bath:
+      case PlanTool.sink:
+        return 2.0;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -262,10 +269,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
         .listen((_) {
           if (!mounted) return;
           if (_tool == PlanTool.eraser) return;
-          setState(() {
-            _tool = PlanTool.eraser;
-            _thicknessPopoverTool = null;
-          });
+          setState(() => _tool = PlanTool.eraser);
         });
   }
 
@@ -276,9 +280,11 @@ class _PlanCanvasState extends State<PlanCanvas> {
         oldWidget.patientId != widget.patientId ||
         oldWidget.tabKey != widget.tabKey) {
       // Flush any pending save for the previous page before we switch.
+      final hadPendingSave = _saveTimer?.isActive ?? false;
       _saveTimer?.cancel();
-      if (_strokes.isNotEmpty) {
-        // Persist synchronously-ish; small best-effort.
+      if (hadPendingSave) {
+        // Persist synchronously-ish; small best-effort. Important même si
+        // `_strokes` est vide : un "effacer tout" doit aussi être sauvé.
         _persistForKey(
           oldWidget.patientId,
           oldWidget.tabKey,
@@ -300,7 +306,11 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   @override
   void dispose() {
+    final hadPendingSave = _saveTimer?.isActive ?? false;
     _saveTimer?.cancel();
+    if (hadPendingSave) {
+      unawaited(_persist());
+    }
     _pencilDoubleTapSubscription?.cancel();
     _pencilDoubleTapSubscription = null;
     super.dispose();
@@ -763,344 +773,272 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   @override
   Widget build(BuildContext context) {
-    // On empile en Stack pour que le popover d'épaisseur soit un
-    // OVERLAY flottant au-dessus du canvas — sans shifter la mise
-    // en page (demande utilisateur : ne pas faire bouger le plan
-    // quand on règle l'épaisseur).
-    return Column(
+    // Le canvas prend toute la place. Les outils génériques restent dans
+    // le dock bas, les symboles flottent en haut-gauche et la pagination
+    // en haut-droite.
+    return Stack(
       children: [
-        _buildTopToolbar(),
-        _buildSymbolsRow(),
-        Expanded(
-          child: Stack(
-            children: [
-              Positioned.fill(child: _buildCanvas()),
-              if (_thicknessPopoverTool != null)
-                Positioned(
-                  top: 8,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: TapRegion(
-                      // Ferme le popover dès qu'on tape ailleurs
-                      // (canvas, autre outil, n'importe quelle zone
-                      // hors de cette bulle).
-                      onTapOutside: (_) {
-                        if (_thicknessPopoverTool != null) {
-                          setState(() => _thicknessPopoverTool = null);
-                        }
-                      },
-                      child: _buildThicknessPopover(),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
+        Positioned.fill(child: _buildCanvas()),
+        Positioned(top: 16, left: 16, child: _buildSymbolOverlayTools()),
+        Positioned(top: 16, right: 16, child: _buildPaginationOverlayTools()),
+        Positioned(left: 0, right: 0, bottom: 16, child: _buildToolbarDock()),
       ],
     );
   }
 
-  /// Toolbar principale (1ère ligne). Ordre :
-  ///   [Crayon][Surligneur][Gomme][Ligne][Rect]  [Couleur]
-  ///   [Undo][Redo][Effacer tout]  …  [Pagination]  [⋮]
-  /// Les boutons sont plus grands et plus espacés qu'avant pour un
-  /// toucher plus confortable sur iPad.
-  Widget _buildTopToolbar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Row(
-        children: [
-          _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
-          const SizedBox(width: 10),
-          _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
-          const SizedBox(width: 10),
-          // Gomme placée juste à côté du surligneur (demande utilisateur)
-          _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
-          const SizedBox(width: 10),
-          _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
-          const SizedBox(width: 10),
-          _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
-          const SizedBox(width: 14),
-          _buildActiveColorDot(),
-          const SizedBox(width: 14),
-          _iconBtn(
-            icon: LucideIcons.undo2,
-            tooltip: 'Annuler',
-            onTap: _undoStack.isEmpty ? null : _undo,
-          ),
-          const SizedBox(width: 4),
-          _iconBtn(
-            icon: LucideIcons.redo2,
-            tooltip: 'Rétablir',
-            onTap: _redoStack.isEmpty ? null : _redo,
-          ),
-          const SizedBox(width: 4),
-          _iconBtn(
-            icon: LucideIcons.trash2,
-            tooltip: 'Effacer tout le plan',
-            onTap: _clearAll,
-            activeColor: Colors.red.shade400,
-          ),
-          const Spacer(),
-          // Pagination d'abord (chevrons + "1/3")…
-          if (widget.currentPage != null && widget.totalPages != null) ...[
-            _iconBtn(
-              icon: LucideIcons.chevronLeft,
-              tooltip: 'Page précédente',
-              onTap: (widget.currentPage! > 0) ? widget.onPrevPage : null,
+  Widget _buildToolbarDock() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                '${widget.currentPage! + 1}/${widget.totalPages}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF2B323A),
-                ),
-              ),
-            ),
-            _iconBtn(
-              icon: LucideIcons.chevronRight,
-              tooltip: 'Page suivante',
-              onTap: (widget.currentPage! < widget.totalPages! - 1)
-                  ? widget.onNextPage
-                  : null,
-            ),
-            const SizedBox(width: 6),
           ],
-          // … puis 3 points tout au bout à droite.
-          _buildMoreMenu(),
-        ],
-      ),
-    );
-  }
-
-  /// 2ème ligne d'outils : symboles architecturaux, alignés à gauche
-  /// sous les outils de tracé.
-  Widget _buildSymbolsRow() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      color: Colors.white,
-      child: Row(
-        children: [
-          // Fenêtre : icône "columns" = panneaux verticaux, évoque bien
-          // une fenêtre à montants.
-          _symbolInsertBtn(
-            PlanTool.window,
-            Icon(LucideIcons.columns, size: 22, color: Color(0xFF2B323A)),
-            'Fenêtre',
-          ),
-          const SizedBox(width: 8),
-          _symbolInsertBtn(
-            PlanTool.door,
-            Icon(LucideIcons.doorClosed, size: 22, color: Color(0xFF2B323A)),
-            'Porte',
-          ),
-          const SizedBox(width: 8),
-          // WC : pictogramme dessiné (réservoir + cuvette) identique
-          // au symbole tracé sur le plan — l'utilisateur reconnaît
-          // immédiatement l'élément, comme la baignoire pour la
-          // baignoire (demande utilisateur).
-          _symbolInsertBtn(
-            PlanTool.toilet,
-            _ToiletPictogram(size: 22, color: Color(0xFF2B323A)),
-            'WC',
-          ),
-          const SizedBox(width: 8),
-          _symbolInsertBtn(
-            PlanTool.shower,
-            Icon(LucideIcons.showerHead, size: 22, color: Color(0xFF2B323A)),
-            'Douche',
-          ),
-          const SizedBox(width: 8),
-          _symbolInsertBtn(
-            PlanTool.bath,
-            Icon(LucideIcons.bath, size: 22, color: Color(0xFF2B323A)),
-            'Baignoire',
-          ),
-          const SizedBox(width: 8),
-          // Lavabo : simples gouttes d'eau (demande utilisateur).
-          _symbolInsertBtn(
-            PlanTool.sink,
-            Icon(LucideIcons.droplets, size: 22, color: Color(0xFF2B323A)),
-            'Lavabo',
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Popover d'épaisseur flottant au-dessus du canvas : petit fond
-  /// blanc arrondi avec ombre, NE shifte PAS la mise en page (ouvert
-  /// en overlay via un Stack dans build()). Aperçu = trait qui
-  /// grossit progressivement dans la couleur courante, glisser dessus
-  /// ajuste l'épaisseur entre 1 et 24 px.
-  Widget _buildThicknessPopover() {
-    const minThickness = 1.0;
-    const maxThickness = 24.0;
-    const sliderWidth = 220.0;
-    // On lit la taille de l'outil ciblé par le popover (et pas _tool /
-    // _penSize), pour que le slider reste cohérent même si l'outil
-    // actif venait à changer juste avant l'ouverture.
-    final target = _thicknessPopoverTool ?? _tool;
-    final size = _thicknessByTool[target] ?? 2.0;
-    final pos = ((size - minThickness) / (maxThickness - minThickness)).clamp(
-      0.0,
-      1.0,
-    );
-    return Material(
-      elevation: 6,
-      shadowColor: Colors.black26,
-      borderRadius: BorderRadius.circular(16),
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (d) => _updateThicknessFromOffset(
-            d.localPosition.dx,
-            sliderWidth,
-            minThickness,
-            maxThickness,
-          ),
-          onPanUpdate: (d) => _updateThicknessFromOffset(
-            d.localPosition.dx,
-            sliderWidth,
-            minThickness,
-            maxThickness,
-          ),
-          child: SizedBox(
-            width: sliderWidth,
-            height: 36,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CustomPaint(
-                  size: const Size(sliderWidth, 36),
-                  painter: _ThicknessTrackPainter(
-                    color: Color(_penColor),
-                    min: minThickness,
-                    max: maxThickness,
-                  ),
-                ),
-                Positioned(
-                  left: (sliderWidth * pos) - 10,
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Color(_penColor), width: 2.5),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 2,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: _buildPlanToolbar(),
         ),
       ),
     );
   }
 
-  void _updateThicknessFromOffset(
-    double dx,
-    double width,
-    double minT,
-    double maxT,
-  ) {
-    final t = (dx / width).clamp(0.0, 1.0);
-    final target = _thicknessPopoverTool ?? _tool;
-    setState(() {
-      _thicknessByTool[target] = minT + (maxT - minT) * t;
-    });
+  /// Toolbar principale. Ordre :
+  ///   [Crayon][Surligneur][Gomme][Ligne][Rect] [Couleur]
+  ///   [Undo][Redo][Effacer tout]
+  /// Style volontairement aligné sur la barre Mesures (NotesWidget) :
+  /// pill blanc, boutons 36×36, actif violet clair, icônes ink-700.
+  Widget _buildPlanToolbar() {
+    final buttons = <Widget>[
+      _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
+      _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
+      _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
+      _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
+      _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
+      _buildActiveColorDot(),
+      _iconBtn(
+        icon: LucideIcons.undo2,
+        tooltip: 'Annuler',
+        onTap: _undoStack.isEmpty ? null : _undo,
+      ),
+      _iconBtn(
+        icon: LucideIcons.redo2,
+        tooltip: 'Rétablir',
+        onTap: _redoStack.isEmpty ? null : _redo,
+      ),
+      _iconBtn(
+        icon: LucideIcons.x,
+        tooltip: 'Effacer tout le plan',
+        onTap: _clearAll,
+        activeColor: const Color(0xFFB4232F),
+        backgroundColor: const Color(0xFFFFE4E6),
+      ),
+    ];
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < buttons.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          buttons[i],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSymbolOverlayTools() {
+    return _buildOverlayDock(_symbolButtons());
+  }
+
+  Widget _buildPaginationOverlayTools() {
+    if (widget.currentPage == null || widget.totalPages == null) {
+      return const SizedBox.shrink();
+    }
+    return _buildOverlayDock([
+      _iconBtn(
+        icon: LucideIcons.chevronLeft,
+        tooltip: 'Page précédente',
+        onTap: (widget.currentPage! > 0) ? widget.onPrevPage : null,
+      ),
+      _buildPageCounter(),
+      _iconBtn(
+        icon: LucideIcons.chevronRight,
+        tooltip: 'Page suivante',
+        onTap: (widget.currentPage! < widget.totalPages! - 1)
+            ? widget.onNextPage
+            : null,
+      ),
+      _buildMoreMenu(),
+    ]);
+  }
+
+  Widget _buildOverlayDock(List<Widget> buttons) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < buttons.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              buttons[i],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _symbolButtons() {
+    return [
+      _symbolInsertBtn(
+        PlanTool.window,
+        Icon(LucideIcons.columns, size: 18, color: _kToolbarIcon),
+        'Fenêtre',
+      ),
+      _symbolInsertBtn(
+        PlanTool.door,
+        Icon(LucideIcons.doorClosed, size: 18, color: _kToolbarIcon),
+        'Porte',
+      ),
+      _symbolInsertBtn(
+        PlanTool.toilet,
+        ToiletPictogram(size: 18, color: _kToolbarIcon),
+        'WC',
+      ),
+      _symbolInsertBtn(
+        PlanTool.shower,
+        Icon(LucideIcons.showerHead, size: 18, color: _kToolbarIcon),
+        'Douche',
+      ),
+      _symbolInsertBtn(
+        PlanTool.bath,
+        Icon(LucideIcons.bath, size: 18, color: _kToolbarIcon),
+        'Baignoire',
+      ),
+      _symbolInsertBtn(
+        PlanTool.sink,
+        Icon(LucideIcons.droplets, size: 18, color: _kToolbarIcon),
+        'Lavabo',
+      ),
+    ];
+  }
+
+  Widget _buildPageCounter() {
+    return SizedBox(
+      height: 36,
+      child: Center(
+        child: Text(
+          '${widget.currentPage! + 1}/${widget.totalPages}',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+            color: _kToolbarIcon,
+          ),
+        ),
+      ),
+    );
   }
 
   /// Menu "trois points verticaux" avec téléchargement, ajout/
   /// suppression de page et effacement complet du plan.
   Widget _buildMoreMenu() {
-    return PopupMenuButton<String>(
-      tooltip: 'Plus d\'actions',
-      icon: const Icon(LucideIcons.moreVertical, size: 18),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      onSelected: (v) {
-        switch (v) {
-          case 'download':
-            _downloadPng();
-            break;
-          case 'addPage':
-            widget.onAddPage?.call();
-            break;
-          case 'duplicatePage':
-            widget.onDuplicatePage?.call();
-            break;
-          case 'deletePage':
-            widget.onDeletePage?.call();
-            break;
-        }
-      },
-      itemBuilder: (ctx) => [
-        const PopupMenuItem(
-          value: 'download',
-          child: Row(
-            children: [
-              Icon(LucideIcons.download, size: 16, color: Color(0xFF2B323A)),
-              SizedBox(width: 10),
-              Text('Télécharger le plan'),
-            ],
-          ),
-        ),
-        if (widget.onAddPage != null)
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: PopupMenuButton<String>(
+        tooltip: 'Plus d\'actions',
+        padding: EdgeInsets.zero,
+        icon: const Icon(LucideIcons.moreVertical, size: 18),
+        color: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        onSelected: (v) {
+          switch (v) {
+            case 'download':
+              _downloadPng();
+              break;
+            case 'addPage':
+              widget.onAddPage?.call();
+              break;
+            case 'duplicatePage':
+              widget.onDuplicatePage?.call();
+              break;
+            case 'deletePage':
+              widget.onDeletePage?.call();
+              break;
+          }
+        },
+        itemBuilder: (ctx) => [
           const PopupMenuItem(
-            value: 'addPage',
+            value: 'download',
             child: Row(
               children: [
-                Icon(LucideIcons.filePlus, size: 16, color: Color(0xFF2B323A)),
+                Icon(LucideIcons.download, size: 16, color: Color(0xFF2B323A)),
                 SizedBox(width: 10),
-                Text('Ajouter une page vierge'),
+                Text('Télécharger le plan'),
               ],
             ),
           ),
-        if (widget.onDuplicatePage != null)
-          const PopupMenuItem(
-            value: 'duplicatePage',
-            child: Row(
-              children: [
-                Icon(LucideIcons.copy, size: 16, color: Color(0xFF2B323A)),
-                SizedBox(width: 10),
-                Text('Dupliquer la page actuelle'),
-              ],
+          if (widget.onAddPage != null)
+            const PopupMenuItem(
+              value: 'addPage',
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.filePlus,
+                    size: 16,
+                    color: Color(0xFF2B323A),
+                  ),
+                  SizedBox(width: 10),
+                  Text('Ajouter une page vierge'),
+                ],
+              ),
             ),
-          ),
-        if (widget.onDeletePage != null && (widget.totalPages ?? 1) > 1)
-          const PopupMenuItem(
-            value: 'deletePage',
-            child: Row(
-              children: [
-                Icon(LucideIcons.fileX, size: 16, color: Color(0xFFB91C1C)),
-                SizedBox(width: 10),
-                Text(
-                  'Supprimer la page',
-                  style: TextStyle(color: Color(0xFFB91C1C)),
-                ),
-              ],
+          if (widget.onDuplicatePage != null)
+            const PopupMenuItem(
+              value: 'duplicatePage',
+              child: Row(
+                children: [
+                  Icon(LucideIcons.copy, size: 16, color: Color(0xFF2B323A)),
+                  SizedBox(width: 10),
+                  Text('Dupliquer la page actuelle'),
+                ],
+              ),
             ),
-          ),
-      ],
+          if (widget.onDeletePage != null && (widget.totalPages ?? 1) > 1)
+            const PopupMenuItem(
+              value: 'deletePage',
+              child: Row(
+                children: [
+                  Icon(LucideIcons.fileX, size: 16, color: Color(0xFFB91C1C)),
+                  SizedBox(width: 10),
+                  Text(
+                    'Supprimer la page',
+                    style: TextStyle(color: Color(0xFFB91C1C)),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1109,27 +1047,52 @@ class _PlanCanvasState extends State<PlanCanvas> {
   /// bleu, vert, jaune) — pas de HSL/hex pour éviter la confusion.
   final GlobalKey _colorDotKey = GlobalKey();
   Widget _buildActiveColorDot() {
-    // Le rond couleur est ramené à la même taille visuelle que les
-    // icônes (poubelle, undo/redo, chevrons) : ~20 px de footprint
-    // dans une zone tactile de 40 × 40 — confort tactile préservé,
-    // empreinte visuelle alignée avec le reste de la barre d'outils.
+    final disabled = _tool == PlanTool.eraser;
     return Tooltip(
       message: 'Changer la couleur',
-      child: GestureDetector(
-        key: _colorDotKey,
-        onTap: _openColorPresetMenu,
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Center(
-            child: Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: Color(_penColor),
-                shape: BoxShape.circle,
-                border: Border.all(color: Color(0xFFB9C0C7), width: 1.5),
-              ),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          key: _colorDotKey,
+          onTap: _openColorPresetMenu,
+          borderRadius: BorderRadius.circular(999),
+          hoverColor: disabled ? Colors.transparent : _kToolbarHoverBg,
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  LucideIcons.palette,
+                  size: 18,
+                  color: disabled ? const Color(0xFFB9C0C7) : _kToolbarIcon,
+                ),
+                Positioned(
+                  top: 3,
+                  right: 3,
+                  child: Opacity(
+                    opacity: disabled ? 0.35 : 1,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Color(_penColor),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.10),
+                            blurRadius: 3,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1206,74 +1169,68 @@ class _PlanCanvasState extends State<PlanCanvas> {
     required String tooltip,
     required VoidCallback? onTap,
     Color? activeColor,
+    Color? backgroundColor,
   }) {
     final enabled = onTap != null;
-    final enabledColor = activeColor ?? Color(0xFF2B323A);
+    final enabledColor = activeColor ?? _kToolbarIcon;
     return Tooltip(
       message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Icon(
-            icon,
-            size: 20,
-            color: enabled ? enabledColor : Color(0xFFB9C0C7),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          hoverColor: backgroundColor == null
+              ? _kToolbarHoverBg
+              : Colors.transparent,
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: backgroundColor ?? Colors.transparent,
+              shape: BoxShape.circle,
+            ),
+            child: Opacity(
+              opacity: enabled ? 1 : 0.4,
+              child: Icon(icon, size: 18, color: enabledColor),
+            ),
           ),
         ),
       ),
     );
   }
 
-  // (Ancien pill d'épaisseur [− | N | +] retiré — remplacé par le
-  // popover flottant activé au 2e tap sur un outil de tracé.)
-
   Widget _toolBtn(PlanTool tool, IconData icon, String label) {
     // Bouton rond (cercle plein quand l'outil est actif), tooltip au
-    // survol. Un 2e tap sur un outil crayon / surligneur déjà actif
-    // ouvre un slider d'épaisseur sous la toolbar (voir _thicknessPopover).
+    // survol. Les tailles de tracé sont fixes pour rester cohérentes
+    // avec les autres barres d'outils.
     final active = _tool == tool;
-    // Tous les outils de tracé ont maintenant leur propre épaisseur
-    // réglable via 2e tap (popover slider) — chaque valeur est
-    // mémorisée indépendamment dans `_thicknessByTool`.
-    final supportsThickness =
-        tool == PlanTool.pen ||
-        tool == PlanTool.highlighter ||
-        tool == PlanTool.line ||
-        tool == PlanTool.rect ||
-        tool == PlanTool.eraser;
     return Tooltip(
       message: label,
-      child: InkWell(
-        onTap: () {
-          if (active && supportsThickness) {
-            setState(() {
-              _thicknessPopoverTool = _thicknessPopoverTool == tool
-                  ? null
-                  : tool;
-            });
-            return;
-          }
-          setState(() {
-            _tool = tool;
-            _thicknessPopoverTool = null;
-          });
-        },
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: active ? _kTeal : Colors.transparent,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            icon,
-            size: 22,
-            color: active ? Colors.white : Color(0xFF2B323A),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: () => setState(() => _tool = tool),
+          customBorder: const CircleBorder(),
+          hoverColor: active ? Colors.transparent : _kToolbarHoverBg,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          child: Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: active ? _kToolbarActiveBg : Colors.transparent,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: active ? _kToolbarActiveText : _kToolbarIcon,
+            ),
           ),
         ),
       ),
@@ -1287,19 +1244,20 @@ class _PlanCanvasState extends State<PlanCanvas> {
   Widget _symbolInsertBtn(PlanTool tool, Widget iconChild, String label) {
     return Tooltip(
       message: 'Insérer : $label',
-      child: InkWell(
-        onTap: () => _insertSymbolAtCenter(tool),
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 46,
-          height: 46,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFE4E7EB), width: 1),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: () => _insertSymbolAtCenter(tool),
+          customBorder: const CircleBorder(),
+          hoverColor: _kToolbarHoverBg,
+          child: Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(shape: BoxShape.circle),
+            child: iconChild,
           ),
-          child: iconChild,
         ),
       ),
     );
@@ -1808,41 +1766,6 @@ class _HandlesPainter extends CustomPainter {
 // Grid + ruler painter
 // ---------------------------------------------------------------------------
 
-/// Quadrillage simple (parité React) — pas de règles, pas d'échelle.
-/// Peint un trait qui grossit progressivement de gauche à droite,
-/// utilisé comme aperçu visuel dans le slider d'épaisseur.
-class _ThicknessTrackPainter extends CustomPainter {
-  _ThicknessTrackPainter({
-    required this.color,
-    required this.min,
-    required this.max,
-  });
-  final Color color;
-  final double min;
-  final double max;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path();
-    final centerY = size.height / 2;
-    // On dessine une forme rectangulaire où la hauteur varie linéairement
-    // de `min` à `max` de gauche à droite.
-    path.moveTo(0, centerY - min / 2);
-    path.lineTo(size.width, centerY - max / 2);
-    path.lineTo(size.width, centerY + max / 2);
-    path.lineTo(0, centerY + min / 2);
-    path.close();
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _ThicknessTrackPainter old) =>
-      old.color != color || old.min != min || old.max != max;
-}
-
 class _GridPainter extends CustomPainter {
   static const double _cellPx = 24;
 
@@ -2168,8 +2091,9 @@ Uint8List _unusedTypedData() => Uint8List(0);
 // montrait pas l'élément. Cohérent avec `LucideIcons.bath` pour la
 // baignoire : on voit immédiatement de quel équipement il s'agit.
 // ---------------------------------------------------------------------------
-class _ToiletPictogram extends StatelessWidget {
-  const _ToiletPictogram({
+class ToiletPictogram extends StatelessWidget {
+  const ToiletPictogram({
+    super.key,
     this.size = 22,
     this.color = const Color(0xFF2B323A),
   });

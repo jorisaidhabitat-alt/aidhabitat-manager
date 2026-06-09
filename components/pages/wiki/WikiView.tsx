@@ -19,10 +19,50 @@ const FILTER_TAGS = [
 ];
 
 const STATIC_ITEMS = (wikiLibraryStatic.items as WikiLibraryItem[]).slice().sort((a, b) => a.title.localeCompare(b.title));
+const MAX_WIKI_DESCRIPTIONS = 3;
+
+const parseWikiDescriptions = (value: string): string[] => {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  if (raw.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((entry) => String(entry || '').trim())
+          .filter(Boolean)
+          .slice(0, MAX_WIKI_DESCRIPTIONS);
+      }
+    } catch {
+      // Legacy plain text fallback below.
+    }
+  }
+  return [raw].slice(0, MAX_WIKI_DESCRIPTIONS);
+};
+
+const ensureDescriptionFields = (values: string[]): string[] => {
+  const next = values.slice(0, MAX_WIKI_DESCRIPTIONS);
+  return next.length > 0 ? next : [''];
+};
+
+const serializeWikiDescriptions = (values: string[]): string => {
+  const clean = values
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, MAX_WIKI_DESCRIPTIONS);
+  if (clean.length === 0) return '';
+  if (clean.length === 1) return clean[0];
+  return JSON.stringify(clean);
+};
+
+const searchableDescriptionText = (value: string): string => {
+  const descriptions = parseWikiDescriptions(value);
+  return descriptions.length > 0 ? descriptions.join(' ') : value;
+};
 
 const EMPTY_CREATE_ITEM = {
   title: '',
-  description: '',
+  descriptions: [''],
   tag: '',
   imageFile: null as File | null,
 };
@@ -36,8 +76,10 @@ export const WikiView: React.FC = () => {
   const [createDraft, setCreateDraft] = useState(EMPTY_CREATE_ITEM);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [editDraft, setEditDraft] = useState<{ title: string; description: string; tag: string } | null>(null);
+  const [editDraft, setEditDraft] = useState<{ title: string; descriptions: string[]; tag: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [draggedEditDescriptionIndex, setDraggedEditDescriptionIndex] = useState<number | null>(null);
+  const [draggedCreateDescriptionIndex, setDraggedCreateDescriptionIndex] = useState<number | null>(null);
 
   const availableTags = useMemo(() => {
     const tags = new Set(FILTER_TAGS);
@@ -51,7 +93,7 @@ export const WikiView: React.FC = () => {
     const normalized = search.trim().toLowerCase();
     return items.filter((item) => {
       const matchesTag = selectedTag ? item.tags.includes(selectedTag) : true;
-      const haystack = `${item.title} ${item.description} ${item.tags.join(' ')}`.toLowerCase();
+      const haystack = `${item.title} ${searchableDescriptionText(item.description)} ${item.tags.join(' ')}`.toLowerCase();
       const matchesSearch = normalized ? haystack.includes(normalized) : true;
       return matchesTag && matchesSearch;
     });
@@ -82,6 +124,31 @@ export const WikiView: React.FC = () => {
     setIsCreating(false);
   };
 
+  const updateCreateDescriptions = (updater: (values: string[]) => string[]) => {
+    setCreateDraft((prev) => ({
+      ...prev,
+      descriptions: ensureDescriptionFields(updater(prev.descriptions)).slice(0, MAX_WIKI_DESCRIPTIONS),
+    }));
+  };
+
+  const updateEditDescriptions = (updater: (values: string[]) => string[]) => {
+    if (!selectedItem) return;
+    const fallbackDescriptions = ensureDescriptionFields(parseWikiDescriptions(selectedItem.description));
+    setEditDraft((prev) => ({
+      title: prev?.title ?? selectedItem.title,
+      descriptions: ensureDescriptionFields(updater(prev?.descriptions ?? fallbackDescriptions)).slice(0, MAX_WIKI_DESCRIPTIONS),
+      tag: prev?.tag ?? (selectedItem.tags[0] || ''),
+    }));
+  };
+
+  const moveDescription = (values: string[], fromIndex: number, toIndex: number) => {
+    if (fromIndex < 0 || fromIndex >= values.length || toIndex < 0 || toIndex >= values.length) return values;
+    const next = [...values];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  };
+
   const handleCreateItem = async () => {
     const title = createDraft.title.trim();
     if (!title) {
@@ -96,7 +163,7 @@ export const WikiView: React.FC = () => {
       const tags = createDraft.tag ? [createDraft.tag] : [];
       const createdItem = await createWikiLibraryItem({
         title,
-        description: createDraft.description.trim(),
+        description: serializeWikiDescriptions(createDraft.descriptions),
         category: createDraft.tag || 'Autre',
         tags,
         imageDataUrl,
@@ -109,6 +176,17 @@ export const WikiView: React.FC = () => {
       setIsCreating(false);
     }
   };
+
+  const selectedDescriptionFields = selectedItem
+    ? ensureDescriptionFields(parseWikiDescriptions(selectedItem.description))
+    : [''];
+  const activeEditDraft = selectedItem
+    ? editDraft ?? {
+        title: selectedItem.title,
+        descriptions: selectedDescriptionFields,
+        tag: selectedItem.tags[0] || '',
+      }
+    : null;
 
   return (
     <div className="space-y-6 h-full flex flex-col pb-24">
@@ -215,16 +293,24 @@ export const WikiView: React.FC = () => {
             <div className="w-full md:w-1/3 p-6 flex flex-col gap-5 overflow-y-auto bg-white">
               <FormBlock label="Titre">
                 <input
-                  value={editDraft?.title ?? selectedItem.title}
-                  onChange={(e) => setEditDraft((prev) => ({ title: e.target.value, description: prev?.description ?? selectedItem.description, tag: prev?.tag ?? (selectedItem.tags[0] || '') }))}
+                  value={activeEditDraft?.title ?? selectedItem.title}
+                  onChange={(e) => setEditDraft((prev) => ({
+                    title: e.target.value,
+                    descriptions: prev?.descriptions ?? selectedDescriptionFields,
+                    tag: prev?.tag ?? (selectedItem.tags[0] || ''),
+                  }))}
                   className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-lg font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#907CA1]"
                 />
               </FormBlock>
 
               <FormBlock label="Tag">
                 <select
-                  value={editDraft?.tag ?? (selectedItem.tags[0] || '')}
-                  onChange={(e) => setEditDraft((prev) => ({ title: prev?.title ?? selectedItem.title, description: prev?.description ?? selectedItem.description, tag: e.target.value }))}
+                  value={activeEditDraft?.tag ?? (selectedItem.tags[0] || '')}
+                  onChange={(e) => setEditDraft((prev) => ({
+                    title: prev?.title ?? selectedItem.title,
+                    descriptions: prev?.descriptions ?? selectedDescriptionFields,
+                    tag: e.target.value,
+                  }))}
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-[#907CA1]"
                 >
                   <option value="">Aucun tag</option>
@@ -235,12 +321,50 @@ export const WikiView: React.FC = () => {
               </FormBlock>
 
               <div className="flex-1">
-                <FormBlock label="Description">
-                  <textarea
-                    value={editDraft?.description ?? selectedItem.description}
-                    onChange={(e) => setEditDraft((prev) => ({ title: prev?.title ?? selectedItem.title, description: e.target.value, tag: prev?.tag ?? (selectedItem.tags[0] || '') }))}
-                    className="w-full min-h-[120px] rounded-2xl border border-slate-200 px-4 py-3 outline-none resize-y focus:ring-2 focus:ring-[#907CA1] text-slate-700 leading-relaxed"
-                  />
+                <FormBlock label={`Descriptions (${activeEditDraft?.descriptions.length ?? selectedDescriptionFields.length}/${MAX_WIKI_DESCRIPTIONS})`}>
+                  <div className="space-y-3">
+                    {(activeEditDraft?.descriptions ?? selectedDescriptionFields).map((description, index, descriptions) => (
+                      <div
+                        key={index}
+                        draggable={descriptions.length > 1}
+                        onDragStart={(event) => {
+                          setDraggedEditDescriptionIndex(index);
+                          event.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragOver={(event) => {
+                          if (draggedEditDescriptionIndex !== null) event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          if (draggedEditDescriptionIndex === null || draggedEditDescriptionIndex === index) return;
+                          updateEditDescriptions((values) => moveDescription(values, draggedEditDescriptionIndex, index));
+                          setDraggedEditDescriptionIndex(null);
+                        }}
+                        onDragEnd={() => setDraggedEditDescriptionIndex(null)}
+                        className=""
+                      >
+                        <textarea
+                          value={description}
+                          onChange={(event) => {
+                            const next = [...descriptions];
+                            next[index] = event.target.value;
+                            updateEditDescriptions(() => next);
+                          }}
+                          className="min-h-[92px] w-full resize-y rounded-2xl border border-slate-200 px-4 py-3 text-slate-700 leading-relaxed outline-none focus:ring-2 focus:ring-[#907CA1]"
+                        />
+                      </div>
+                    ))}
+                    {(activeEditDraft?.descriptions.length ?? selectedDescriptionFields.length) < MAX_WIKI_DESCRIPTIONS && (
+                      <button
+                        type="button"
+                        onClick={() => updateEditDescriptions((values) => [...values, ''])}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:border-[#907CA1] hover:text-slate-900"
+                      >
+                        <Plus size={14} />
+                        Ajouter une description
+                      </button>
+                    )}
+                  </div>
                 </FormBlock>
               </div>
 
@@ -253,7 +377,7 @@ export const WikiView: React.FC = () => {
                     try {
                       const saved = await updateWikiLibraryItem(selectedItem.id, {
                         title: editDraft.title.trim(),
-                        description: editDraft.description.trim(),
+                        description: serializeWikiDescriptions(editDraft.descriptions),
                         tags: editDraft.tag ? [editDraft.tag] : [],
                         category: editDraft.tag || 'Autre',
                       });
@@ -344,12 +468,50 @@ export const WikiView: React.FC = () => {
               </FormBlock>
 
               <div className="md:col-span-2">
-                <FormBlock label="Description">
-                  <textarea
-                    value={createDraft.description}
-                    onChange={(event) => setCreateDraft((prev) => ({ ...prev, description: event.target.value }))}
-                    className="w-full min-h-[120px] rounded-2xl border border-slate-200 px-4 py-3 outline-none resize-y focus:ring-2 focus:ring-[#907CA1]"
-                  />
+                <FormBlock label={`Descriptions (${createDraft.descriptions.length}/${MAX_WIKI_DESCRIPTIONS})`}>
+                  <div className="space-y-3">
+                    {createDraft.descriptions.map((description, index, descriptions) => (
+                      <div
+                        key={index}
+                        draggable={descriptions.length > 1}
+                        onDragStart={(event) => {
+                          setDraggedCreateDescriptionIndex(index);
+                          event.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragOver={(event) => {
+                          if (draggedCreateDescriptionIndex !== null) event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          if (draggedCreateDescriptionIndex === null || draggedCreateDescriptionIndex === index) return;
+                          updateCreateDescriptions((values) => moveDescription(values, draggedCreateDescriptionIndex, index));
+                          setDraggedCreateDescriptionIndex(null);
+                        }}
+                        onDragEnd={() => setDraggedCreateDescriptionIndex(null)}
+                        className=""
+                      >
+                        <textarea
+                          value={description}
+                          onChange={(event) => {
+                            const next = [...descriptions];
+                            next[index] = event.target.value;
+                            updateCreateDescriptions(() => next);
+                          }}
+                          className="min-h-[92px] w-full resize-y rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#907CA1]"
+                        />
+                      </div>
+                    ))}
+                    {createDraft.descriptions.length < MAX_WIKI_DESCRIPTIONS && (
+                      <button
+                        type="button"
+                        onClick={() => updateCreateDescriptions((values) => [...values, ''])}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:border-[#907CA1] hover:text-slate-900"
+                      >
+                        <Plus size={14} />
+                        Ajouter une description
+                      </button>
+                    )}
+                  </div>
                 </FormBlock>
               </div>
 

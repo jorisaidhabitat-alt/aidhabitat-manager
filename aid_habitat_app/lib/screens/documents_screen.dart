@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:open_filex/open_filex.dart';
@@ -1475,47 +1476,10 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
         onTap: widget.disabled ? null : () => _showMenu(context),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          transform: _hovering && !widget.disabled
-              ? (Matrix4.identity()..translateByDouble(0.0, -3.0, 0.0, 1.0))
-              : Matrix4.identity(),
+          transform: Matrix4.identity(),
           decoration: BoxDecoration(
-            color: widget.disabled
-                ? const Color(0xFFF2F4F6)
-                : _hovering
-                ? kBrandPurple.withValues(alpha: 0.14)
-                : kBrandPurple.withValues(alpha: 0.07),
+            color: kBrandPurple.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: widget.disabled
-                  ? const Color(0xFFD6DAE0)
-                  : _hovering
-                  ? kBrandPurple.withValues(alpha: 0.34)
-                  : const Color(0xFFDADDE3),
-              width: 1.2,
-            ),
-            boxShadow: widget.disabled
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : _hovering
-                ? [
-                    BoxShadow(
-                      color: kBrandPurple.withValues(alpha: 0.18),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 14,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
           ),
           child: CustomPaint(
             painter: DashedBorderPainter(
@@ -1548,10 +1512,11 @@ class _AddDocumentTileState extends State<_AddDocumentTile> {
                   Text(
                     'Déposer un fichier\nou prendre une photo',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: GoogleFonts.nunito(
                       fontSize: 16,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w400,
                       height: 1.35,
+                      letterSpacing: 0,
                       color: widget.disabled ? Color(0xFF8A939D) : kBrandPurple,
                     ),
                   ),
@@ -2022,11 +1987,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       closeValue: _UnsavedChoice.cancel,
       actions: const [
         AppConfirmationAction(
-          label: 'Continuer l’édition',
-          value: _UnsavedChoice.cancel,
-        ),
-        AppConfirmationAction(
-          label: 'Ignorer les modifications',
+          label: 'Quitter sans enregistrer',
           value: _UnsavedChoice.discard,
           isDestructive: true,
         ),
@@ -3377,18 +3338,22 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
     return Stack(
       children: [
         Positioned.fill(
-          child: _ImageAnnotator(
-            // Recrée un annotator à chaque changement de page. La key
-            // change pour forcer Flutter à détruire l'ancien state et
-            // démarrer un nouveau, seeded depuis notre map mémoire si on
-            // a déjà visité cette page.
-            key: ValueKey('pdf-page-$_currentPage-${widget.annotatorKey}'),
-            imagePath: pngPath,
-            onChanged: widget.onChanged,
-            initialStrokes: seeded,
-            // Le save est piloté par le wrapper (`saveAll()`), pas par
-            // chaque annotator individuel.
-            autoPersistToDisk: false,
+          child: KeyedSubtree(
+            // Recrée le sous-arbre à chaque page tout en gardant la
+            // GlobalKey sur l'annotator lui-même. Sans cette GlobalKey,
+            // _PreviewScreen ne voyait pas le dirty-state live : le
+            // bouton Enregistrer et le prompt de sortie restaient cachés
+            // après un dessin sur PDF macOS.
+            key: ValueKey('pdf-page-$_currentPage'),
+            child: _ImageAnnotator(
+              key: widget.annotatorKey,
+              imagePath: pngPath,
+              onChanged: widget.onChanged,
+              initialStrokes: seeded,
+              // Le save est piloté par le wrapper (`saveAll()`), pas par
+              // chaque annotator individuel.
+              autoPersistToDisk: false,
+            ),
           ),
         ),
         // Navigation entre pages (seulement si > 1 page).

@@ -58,7 +58,7 @@ class _PhotosTabState extends State<PhotosTab>
     with AutomaticKeepAliveClientMixin {
   static const Color _kPurpleLight = Color(0xFFF2ECF5);
   static const Color _kSlate = Color(0xFF2B323A);
-  static const Color _kSectionBackground = Color(0xFFFDFCFB);
+  static final Color _kSectionBackground = kBrandPurple.withValues(alpha: 0.08);
   // _kSlateMuted retiré le 2026-05-12 (servait au badge count
   // supprimé, cf. _buildCountBadge également retiré).
 
@@ -701,31 +701,35 @@ class _PhotosTabState extends State<PhotosTab>
     // « il sert à rien car on ajoute direct les images supplémentaires
     // à la suite en drag and drop »). Les sections supplémentaires sont
     // désormais créées automatiquement quand une catégorie déborde.
-    final allCells = <Widget>[
-      for (final section in allSections)
-        _buildCategorySection(
-          tag: _tagForSection(section),
-          icon: _iconForCategory(section.baseTag),
-          maxSlots: kVisitPhotoSlotCount[section.baseTag] ?? 0,
-          titleOverride: planApresProjectNumbers.containsKey(section)
-              ? 'Travaux préconisés du projet '
-                    '${planApresProjectNumbers[section]}'
-              : (section.index == 0
-                    ? null
-                    : '${visitPhotoTagShortLabel(section.baseTag)} '
-                          '#${section.index + 1}'),
-          onRemove: section.index == 0
-              ? null
-              : () => _removeExtraSection(section),
-        ),
-    ];
     const spacing = 14.0;
     final rows = <Widget>[];
-    for (var i = 0; i < allCells.length; i += 3) {
-      final rowCells = allCells.sublist(
+    for (var i = 0; i < allSections.length; i += 3) {
+      final rowSections = allSections.sublist(
         i,
-        i + 3 > allCells.length ? allCells.length : i + 3,
+        i + 3 > allSections.length ? allSections.length : i + 3,
       );
+      final minSlotRows = rowSections
+          .map(_slotRowsForSection)
+          .fold<int>(1, (maxRows, rows) => rows > maxRows ? rows : maxRows);
+      final rowCells = <Widget>[
+        for (final section in rowSections)
+          _buildCategorySection(
+            tag: _tagForSection(section),
+            icon: _iconForCategory(section.baseTag),
+            maxSlots: kVisitPhotoSlotCount[section.baseTag] ?? 0,
+            minSlotRows: minSlotRows,
+            titleOverride: planApresProjectNumbers.containsKey(section)
+                ? 'Travaux préconisés du projet '
+                      '${planApresProjectNumbers[section]}'
+                : (section.index == 0
+                      ? null
+                      : '${visitPhotoTagShortLabel(section.baseTag)} '
+                            '#${section.index + 1}'),
+            onRemove: section.index == 0
+                ? null
+                : () => _removeExtraSection(section),
+          ),
+      ];
       // Pad la dernière ligne avec des Expanded vides pour garder les
       // cellules à 1/3 de la largeur (sinon elles s'étirent).
       while (rowCells.length < 3) {
@@ -755,6 +759,14 @@ class _PhotosTabState extends State<PhotosTab>
         ),
       ),
     );
+  }
+
+  int _slotRowsForSection(_ExtraSection section) {
+    final tag = _tagForSection(section);
+    final photosCount = _photosForCategory(tag).length;
+    final maxSlots = kVisitPhotoSlotCount[section.baseTag] ?? 0;
+    final totalSlots = photosCount + 1 > maxSlots ? photosCount + 1 : maxSlots;
+    return ((totalSlots + 2) ~/ 3).clamp(1, 999);
   }
 
   /// Retire une section supplémentaire (en mémoire + photos
@@ -815,6 +827,7 @@ class _PhotosTabState extends State<PhotosTab>
     required String tag,
     required IconData icon,
     required int maxSlots,
+    required int minSlotRows,
 
     /// Si fourni, override le label par défaut (utilisé pour
     /// distinguer les extras « Logement #2 » des bases).
@@ -857,7 +870,7 @@ class _PhotosTabState extends State<PhotosTab>
           return AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(
-              color: hovering ? const Color(0xFFF2ECF5) : _kSectionBackground,
+              color: hovering ? _kPurpleLight : _kSectionBackground,
               borderRadius: BorderRadius.circular(16),
               border: hovering
                   ? Border.all(color: kBrandPurple, width: 2)
@@ -928,7 +941,12 @@ class _PhotosTabState extends State<PhotosTab>
                 // galerie pour ajouter une photo). Plus de boutons
                 // « Prendre / Galerie » dédiés — demande utilisateur
                 // 2026-04-28.
-                _buildSlotsGrid(tag: tag, photos: photos, maxSlots: maxSlots),
+                _buildSlotsGrid(
+                  tag: tag,
+                  photos: photos,
+                  maxSlots: maxSlots,
+                  minRows: minSlotRows,
+                ),
               ],
             ),
           );
@@ -952,6 +970,7 @@ class _PhotosTabState extends State<PhotosTab>
     required String tag,
     required List<DocItem> photos,
     required int maxSlots,
+    required int minRows,
   }) {
     const spacing = 6.0;
     // Nombre total d'emplacements visibles :
@@ -1003,9 +1022,23 @@ class _PhotosTabState extends State<PhotosTab>
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: rows,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tileWidth = (constraints.maxWidth - spacing * 2) / 3;
+        final safeTileWidth = tileWidth.isFinite && tileWidth > 0
+            ? tileWidth
+            : 0.0;
+        final safeMinRows = minRows < 1 ? 1 : minRows;
+        final minHeight =
+            safeTileWidth * safeMinRows + spacing * (safeMinRows - 1);
+        return ConstrainedBox(
+          constraints: BoxConstraints(minHeight: minHeight),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: rows,
+          ),
+        );
+      },
     );
   }
 
@@ -1345,42 +1378,33 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Refonte 2026-05-13 (visit-pages.js `.vp-poly` lignes 265-280) :
-    //  - Style polaroid : fond blanc, padding 9px (top/sides) 0 (bottom),
-    //    radius très petit (2px), shadow douce double couche
-    //  - Photo clipée en quasi-rectangle (radius 1px)
+    // Les photos remplissent désormais directement leur carré :
+    // pas de cadre blanc/padding type polaroid autour de la preview.
     //  - Aspect ratio 1:1 préservé pour matcher les cadres vides
     //  - Highlight au drag : border mauve-500 1.5px sur l'extérieur
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(2),
-          border: highlight
-              ? Border.all(color: kBrandPurple, width: 1.5)
-              : null,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0x141F1E14).withValues(alpha: 0.08),
-              blurRadius: 22,
-              offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: const Color(0x141F1E14).withValues(alpha: 0.06),
-              blurRadius: 3,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-        child: AspectRatio(
-          aspectRatio: 1,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(1),
-            child: _PhotoThumbnail(doc: doc),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: highlight
+                ? Border.all(color: kBrandPurple, width: 1.5)
+                : null,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0x141F1E14).withValues(alpha: 0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
+          child: _PhotoThumbnail(doc: doc),
         ),
       ),
     );

@@ -59,6 +59,31 @@ const WIKI_FILTER_TAGS = [
 const STATIC_WIKI_ITEMS: WikiLibraryItem[] = (wikiLibraryStatic.items as WikiLibraryItem[])
     .slice()
     .sort((left, right) => left.title.localeCompare(right.title));
+const MAX_WIKI_DESCRIPTIONS = 3;
+
+const parseWikiDescriptions = (value: string): string[] => {
+    const raw = String(value || '').trim();
+    if (!raw) return [];
+    if (raw.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                return parsed
+                    .map((entry) => String(entry || '').trim())
+                    .filter(Boolean)
+                    .slice(0, MAX_WIKI_DESCRIPTIONS);
+            }
+        } catch {
+            // Legacy plain text fallback below.
+        }
+    }
+    return [raw].slice(0, MAX_WIKI_DESCRIPTIONS);
+};
+
+const searchableWikiDescriptionText = (value: string): string => {
+    const descriptions = parseWikiDescriptions(value);
+    return descriptions.length > 0 ? descriptions.join(' ') : value;
+};
 
 const createDefaultVisitReportLocation = (): VisitReportLocation => ({
     activeTab: 'Bénéficiaire',
@@ -4705,6 +4730,12 @@ const PreconisationsForm: React.FC<{
     onUpdate: (itemId: string, updates: Partial<VisitRecommendationItem>) => void;
 }> = ({ items, wikiItems, onAdd, onRemove, onUpdate }) => {
     const [activePickerId, setActivePickerId] = useState<string | null>(null);
+    const [pendingDescriptionChoice, setPendingDescriptionChoice] = useState<{
+        itemId: string;
+        wikiItem: WikiLibraryItem;
+        descriptions: string[];
+        selectedIndex: number;
+    } | null>(null);
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const availableImages = wikiItems.filter((item) => Boolean(item.imageUrl));
@@ -4720,11 +4751,26 @@ const PreconisationsForm: React.FC<{
         const normalized = search.trim().toLowerCase();
         return availableImages.filter((item) => {
             const matchesTag = selectedTag ? item.tags.includes(selectedTag) : true;
-            const haystack = `${item.title} ${item.description} ${item.tags.join(' ')}`.toLowerCase();
+            const haystack = `${item.title} ${searchableWikiDescriptionText(item.description)} ${item.tags.join(' ')}`.toLowerCase();
             const matchesSearch = normalized ? haystack.includes(normalized) : true;
             return matchesTag && matchesSearch;
         });
     }, [availableImages, search, selectedTag]);
+
+    const applyWikiSelection = (targetItem: VisitRecommendationItem, wikiItem: WikiLibraryItem, selectedDescription: string) => {
+        onUpdate(targetItem.id, {
+            wikiItemId: wikiItem.id,
+            wikiTitle: wikiItem.title,
+            wikiImageUrl: wikiItem.imageUrl,
+            wikiTag: wikiItem.tags?.[0] || '',
+            note: targetItem.note || selectedDescription || '',
+        });
+        setActivePickerId(null);
+        setPendingDescriptionChoice(null);
+    };
+    const pendingTargetItem = pendingDescriptionChoice
+        ? items.find((item) => item.id === pendingDescriptionChoice.itemId) || null
+        : null;
 
     return (
         <div className="space-y-6">
@@ -4899,14 +4945,17 @@ const PreconisationsForm: React.FC<{
                                                 key={wikiItem.id}
                                                 type="button"
                                                 onClick={() => {
-                                                    onUpdate(activePickerItem.id, {
-                                                        wikiItemId: wikiItem.id,
-                                                        wikiTitle: wikiItem.title,
-                                                        wikiImageUrl: wikiItem.imageUrl,
-                                                        wikiTag: wikiItem.tags?.[0] || '',
-                                                        note: activePickerItem.note || wikiItem.description || '',
-                                                    });
-                                                    setActivePickerId(null);
+                                                    const descriptions = parseWikiDescriptions(wikiItem.description);
+                                                    if (descriptions.length > 1) {
+                                                        setPendingDescriptionChoice({
+                                                            itemId: activePickerItem.id,
+                                                            wikiItem,
+                                                            descriptions,
+                                                            selectedIndex: 0,
+                                                        });
+                                                        return;
+                                                    }
+                                                    applyWikiSelection(activePickerItem, wikiItem, descriptions[0] || wikiItem.description || '');
                                                 }}
                                                 className={`overflow-hidden rounded-2xl border bg-white text-left transition ${
                                                     isSelected
@@ -4926,6 +4975,78 @@ const PreconisationsForm: React.FC<{
                                     })}
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </ViewportOverlay>
+            )}
+
+            {pendingDescriptionChoice && pendingTargetItem && (
+                <ViewportOverlay
+                    className="fixed inset-0 z-[100] flex min-h-screen w-screen items-center justify-center bg-slate-900/50 px-4 py-6 backdrop-blur-[2px]"
+                    onClick={() => setPendingDescriptionChoice(null)}
+                >
+                    <div
+                        className="w-full max-w-xl rounded-[24px] border border-slate-200 bg-white p-5 shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h5 className="text-base font-semibold text-slate-800">Choisir la description</h5>
+                                <p className="mt-1 text-sm text-slate-500">{pendingDescriptionChoice.wikiItem.title}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setPendingDescriptionChoice(null)}
+                                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                                aria-label="Fermer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="mt-4 space-y-2">
+                            {pendingDescriptionChoice.descriptions.map((description, index) => {
+                                const selected = index === pendingDescriptionChoice.selectedIndex;
+                                return (
+                                    <button
+                                        key={index}
+                                        type="button"
+                                        onClick={() => setPendingDescriptionChoice((prev) => prev ? { ...prev, selectedIndex: index } : prev)}
+                                        className={`flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition ${
+                                            selected
+                                                ? 'border-[#907CA1] bg-[#F4EFF7]'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                                            selected ? 'border-[#907CA1] bg-[#907CA1]' : 'border-slate-300 bg-white'
+                                        }`}>
+                                            {selected ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
+                                        </span>
+                                        <span className="text-sm leading-relaxed text-slate-700">{description}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setPendingDescriptionChoice(null)}
+                                className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const selected = pendingDescriptionChoice.descriptions[pendingDescriptionChoice.selectedIndex] || '';
+                                    applyWikiSelection(pendingTargetItem, pendingDescriptionChoice.wikiItem, selected);
+                                }}
+                                className="rounded-xl bg-[#907CA1] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#7f6c90]"
+                            >
+                                Valider
+                            </button>
                         </div>
                     </div>
                 </ViewportOverlay>

@@ -8,6 +8,7 @@ import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
 import '../../components/brand_colors.dart';
 import '../../components/cached_remote_image.dart';
+import '../../components/dashed_border_painter.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
 
@@ -60,6 +61,8 @@ class RecommendationsTabController {
 
 class _RecommendationsTabState extends State<RecommendationsTab>
     with AutomaticKeepAliveClientMixin {
+  static const int _maxRecommendations = 8;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -148,12 +151,23 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       return <WikiItem>[];
     });
     final hydratedItems = _hydrateDescriptionsFromWiki(localItems, localWiki);
+    final visibleItems = hydratedItems
+        .where(_hasSelectedLibraryItem)
+        .toList(growable: false);
+    final removedEmptyItems = visibleItems.length != hydratedItems.length;
     if (!mounted) return;
     setState(() {
-      _items = hydratedItems;
+      _items = visibleItems;
       _wikiItems = localWiki;
       _loaded = true;
     });
+    if (removedEmptyItems) _scheduleSave();
+  }
+
+  bool _hasSelectedLibraryItem(VisitRecommendationItem item) {
+    return item.wikiItemId.trim().isNotEmpty ||
+        item.wikiTitle.trim().isNotEmpty ||
+        item.wikiImageUrl.trim().isNotEmpty;
   }
 
   List<VisitRecommendationItem> _hydrateDescriptionsFromWiki(
@@ -174,7 +188,10 @@ class _RecommendationsTabState extends State<RecommendationsTab>
           byId[item.wikiItemId.trim()] ??
           byTitle[item.wikiTitle.trim().toLowerCase()];
       if (wiki == null) return item;
-      final description = wiki.description.trim();
+      final descriptions = wiki.descriptionsList;
+      final description = descriptions.isNotEmpty
+          ? descriptions.first
+          : wiki.description.trim();
       if (description.isEmpty || description == item.wikiDescription) {
         return item;
       }
@@ -237,21 +254,34 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   // Mutations
   // ---------------------------------------------------------------------------
 
-  void _addItem() {
+  Future<void> _addItem() async {
+    if (_items.length >= _maxRecommendations) {
+      _showMaxRecommendationsReached();
+      return;
+    }
     final now = DateTime.now().toIso8601String();
     final id = 'rec_${DateTime.now().millisecondsSinceEpoch}_${_items.length}';
+    final draft = VisitRecommendationItem(
+      id: id,
+      createdAt: now,
+      updatedAt: now,
+    );
+    final selected = await _pickLibraryItemFor(draft);
+    if (!mounted || selected == null) return;
     setState(() {
-      _items = [
-        ..._items,
-        VisitRecommendationItem(id: id, createdAt: now, updatedAt: now),
-      ];
+      _items = [..._items, selected];
     });
     _scheduleSave();
-    // Auto-open picker for the newly added item.
-    Future.delayed(const Duration(milliseconds: 120), () {
-      if (!mounted) return;
-      _openPicker(_items.length - 1);
-    });
+  }
+
+  void _showMaxRecommendationsReached() {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Maximum 8 préconisations dans le rapport.'),
+        ),
+      );
   }
 
   void _updateItem(int index, VisitRecommendationItem updated) {
@@ -275,15 +305,20 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     _scheduleSave();
   }
 
-  /// Déplace un item depuis [oldIndex] vers [newIndex] (insertion au
-  /// nouvel index après suppression). Utilisé par le drag-to-reorder
-  /// custom de la grille 3 colonnes (cf. `_buildRecommendationsGrid`).
+  /// Déplace un item depuis [oldIndex] vers le slot d'insertion [newIndex].
+  /// [newIndex] est exprimé dans la liste avant suppression : 0 = tout au
+  /// début, `_items.length` = tout à la fin.
   void _reorderItem(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _items.length) return;
+    final insertionIndex = newIndex.clamp(0, _items.length);
+    if (insertionIndex == oldIndex || insertionIndex == oldIndex + 1) return;
     setState(() {
       final next = List<VisitRecommendationItem>.from(_items);
-      if (newIndex > oldIndex) newIndex -= 1;
+      final targetIndex = insertionIndex > oldIndex
+          ? insertionIndex - 1
+          : insertionIndex;
       final moved = next.removeAt(oldIndex);
-      next.insert(newIndex, moved);
+      next.insert(targetIndex.clamp(0, next.length), moved);
       _items = next;
     });
     _scheduleSave();
@@ -291,17 +326,23 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   Future<void> _openPicker(int index) async {
     if (index < 0 || index >= _items.length) return;
+    final selected = await _pickLibraryItemFor(_items[index]);
+    if (selected == null) return;
+    _updateItem(index, selected);
+  }
+
+  Future<VisitRecommendationItem?> _pickLibraryItemFor(
+    VisitRecommendationItem current,
+  ) async {
     final picked = await showSoftDialog<WikiItem>(
       context: context,
       builder: (_) => _WikiPickerDialog(items: _wikiItems),
     );
-    if (picked == null) return;
-    final current = _items[index];
+    if (picked == null) return null;
 
-    // Si la fiche wiki a plusieurs descriptions (demande utilisateur
-    // 2026-05-04), ouvrir une 2e popup avec checkboxes pour permettre
-    // à l'ergo de choisir celles qui s'appliquent. Une seule
-    // description → comportement historique (pré-remplissage direct).
+    // Si la fiche wiki a plusieurs descriptions, ouvrir une 2e popup
+    // pour choisir exactement celle qui s'applique à cette visite. La
+    // première est sélectionnée par défaut.
     final descriptions = picked.descriptionsList;
     String prefillNote = '';
     String wikiDescription = picked.description;
@@ -310,45 +351,36 @@ class _RecommendationsTabState extends State<RecommendationsTab>
           ? picked.description
           : descriptions.first;
     } else {
-      if (!mounted) return;
-      final selected = await showSoftDialog<List<String>>(
+      if (!mounted) return null;
+      final selected = await showSoftDialog<String>(
         context: context,
         builder: (_) => _DescriptionsPickerDialog(
           title: picked.title,
           descriptions: descriptions,
         ),
       );
-      // Annulation → on garde la fiche choisie mais sans pré-remplir
-      // la note (l'ergo pourra la rééditer). Si selected est vide
-      // (toutes décochées), idem note vide.
-      if (selected != null && selected.isNotEmpty) {
-        // Format : 1 description par ligne, séparées par une ligne
-        // vide pour respirer (le TextField multi-lignes du card les
-        // affichera l'une sous l'autre, modifiables).
-        prefillNote = selected.join('\n\n');
-        wikiDescription = prefillNote;
-      }
+      if (selected == null) return null;
+      prefillNote = selected;
+      wikiDescription = selected;
     }
 
-    _updateItem(
-      index,
-      current.copyWith(
-        wikiItemId: picked.id,
-        wikiTitle: picked.title,
-        wikiImageUrl: picked.imageUrl,
-        wikiTag: picked.tags.isNotEmpty ? picked.tags.first : picked.category,
-        wikiDescription: wikiDescription,
-        // Pré-remplit le titre personnalisé avec le titre wiki uniquement
-        // si l'utilisateur n'a encore rien tapé (ne pas écraser une
-        // saisie manuelle).
-        customTitle: current.customTitle.isNotEmpty
-            ? current.customTitle
-            : picked.title,
-        // Pour une description simple, on garde la bibliothèque comme
-        // source vivante via wikiDescription. Les choix multi-description
-        // restent une note dossier, car ils sont spécifiques à la visite.
-        note: current.note.isNotEmpty ? current.note : prefillNote,
-      ),
+    return current.copyWith(
+      wikiItemId: picked.id,
+      wikiTitle: picked.title,
+      wikiImageUrl: picked.imageUrl,
+      wikiTag: picked.tags.isNotEmpty ? picked.tags.first : picked.category,
+      wikiDescription: wikiDescription,
+      // Pré-remplit le titre personnalisé avec le titre wiki uniquement
+      // si l'utilisateur n'a encore rien tapé (ne pas écraser une
+      // saisie manuelle).
+      customTitle: current.customTitle.isNotEmpty
+          ? current.customTitle
+          : picked.title,
+      // Pour une description simple, on garde la bibliothèque comme
+      // source vivante via wikiDescription. Les choix multi-description
+      // restent une note dossier, car ils sont spécifiques à la visite.
+      note: current.note.isNotEmpty ? current.note : prefillNote,
+      updatedAt: DateTime.now().toIso8601String(),
     );
   }
 
@@ -365,8 +397,9 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     // Layout — depuis 2026-05-04, l'onglet a été allégé : les 2 cadres
     // notes (Projet de l'usager + Résumé des préconisations) ont
     // déménagé dans le nouvel onglet « Résumé » (cf. summary_tab.dart).
-    // Cet onglet ne contient plus que la grille de préconisations + le
-    // bouton d'ajout. Les tabKeys 'Préconisations-Projet' et
+    // Cet onglet ne contient plus que la grille de préconisations avec
+    // la card d'ajout intégrée en fin de grille. Les tabKeys
+    // 'Préconisations-Projet' et
     // 'Préconisations-Résumé' restent intacts et continuent d'alimenter
     // les pages 7 du PDF — ils sont juste affichés ailleurs maintenant.
     return Column(
@@ -387,33 +420,12 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                       child: SaveStatusIndicator(saving: true),
                     ),
                   ),
-                if (_items.isEmpty)
-                  _buildEmpty()
-                else
-                  // Grille 3 colonnes : chaque préconisation est ajoutée
-                  // sur la même ligne jusqu'à 3, puis on saute à une
-                  // nouvelle ligne (demande utilisateur 2026-04-28).
-                  // Le drag-to-reorder est désactivé dans ce mode (la
-                  // grille manuelle Row+Expanded est incompatible avec
-                  // ReorderableListView qui est mono-axial).
-                  _buildRecommendationsGrid(),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: ElevatedButton.icon(
-                    onPressed: _addItem,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Ajouter une préconisation'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kBrandPurple,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                    ),
-                  ),
-                ),
+                // Grille 3 colonnes : chaque préconisation est ajoutée
+                // sur la même ligne jusqu'à 3, puis on saute à une
+                // nouvelle ligne (demande utilisateur 2026-04-28).
+                // La card "Ajouter" reste toujours visible en fin de
+                // grille, même après l'ajout d'une préconisation.
+                _buildRecommendationsGrid(),
               ],
             ),
           ),
@@ -430,10 +442,10 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   ///   - Long press sur n'importe quelle zone d'une carte → début du drag
   ///   - Pendant le drag : la carte source devient semi-transparente,
   ///     un fantôme suit le doigt (Material elevation 12 + radius 16)
-  ///   - Pendant le hover sur une autre carte : bordure violette qui
-  ///     indique le slot d'insertion
+  ///   - Pendant le hover sur une autre carte : bordure violette + repère
+  ///     latéral indiquant si l'insertion se fera avant ou après la cible
   ///   - Drop : `_reorderItem` est appelé pour réorganiser la liste
-  ///     (la carte se retrouve insérée AVANT la carte cible)
+  ///     (la carte se retrouve insérée avant/après selon la moitié ciblée)
   ///
   /// Le drag handle dédié (icône en haut de la carte) est masqué — la
   /// carte entière est draggable, plus besoin d'un espace dédié
@@ -445,6 +457,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       builder: (context, constraints) {
         final available = constraints.maxWidth;
         final cardWidth = (available - gap * (columns - 1)) / columns;
+        final cardHeight = _recommendationCardHeight(cardWidth);
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -452,24 +465,33 @@ class _RecommendationsTabState extends State<RecommendationsTab>
             for (int i = 0; i < _items.length; i++)
               SizedBox(
                 width: cardWidth,
-                child: _DraggableRecoSlot(
-                  key: ValueKey('slot-${_items[i].id}'),
-                  index: i,
-                  cardWidth: cardWidth,
-                  itemsCount: _items.length,
-                  onReorder: _reorderItem,
-                  child: _RecommendationCard(
-                    key: ValueKey(_items[i].id),
-                    item: _items[i],
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: cardHeight),
+                  child: _DraggableRecoSlot(
+                    key: ValueKey('slot-${_items[i].id}'),
                     index: i,
-                    // Drag handle dédié masqué : la carte entière est
-                    // déjà draggable via LongPressDraggable du parent.
-                    reorderable: false,
-                    onChange: (updated) => _updateItem(i, updated),
-                    onRemove: () => _removeItem(i),
-                    onPickWiki: () => _openPicker(i),
+                    cardWidth: cardWidth,
+                    itemsCount: _items.length,
+                    onReorder: _reorderItem,
+                    child: _RecommendationCard(
+                      key: ValueKey(_items[i].id),
+                      item: _items[i],
+                      index: i,
+                      // Drag handle dédié masqué : la carte entière est
+                      // déjà draggable via LongPressDraggable du parent.
+                      reorderable: false,
+                      onChange: (updated) => _updateItem(i, updated),
+                      onRemove: () => _removeItem(i),
+                      onPickWiki: () => _openPicker(i),
+                    ),
                   ),
                 ),
+              ),
+            if (_items.length < _maxRecommendations)
+              SizedBox(
+                width: cardWidth,
+                height: cardHeight,
+                child: _buildAddRecommendationCard(),
               ),
           ],
         );
@@ -477,23 +499,60 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     );
   }
 
-  Widget _buildEmpty() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F7FA),
+  double _recommendationCardHeight(double cardWidth) {
+    final imageHeight = (cardWidth - 24) / 1.5;
+    return imageHeight + 142;
+  }
+
+  Widget _buildAddRecommendationCard() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _addItem,
         borderRadius: BorderRadius.circular(16),
-      ),
-      child: const Column(
-        children: [
-          Icon(Icons.auto_awesome_outlined, size: 36, color: Color(0xFF8A939D)),
-          SizedBox(height: 8),
-          Text(
-            'Aucune préconisation pour l\'instant.',
-            style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: kBrandPurple.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
           ),
-        ],
+          child: CustomPaint(
+            painter: DashedBorderPainter(
+              color: kBrandPurple.withValues(alpha: 0.8),
+              strokeWidth: 2,
+              radius: 16,
+              dashLength: 8,
+              dashGap: 5,
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: kBrandPurple.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.add, size: 28, color: kBrandPurple),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Ajouter une\npréconisation',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.nunito(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w400,
+                      height: 1.35,
+                      letterSpacing: 0,
+                      color: kBrandPurple,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -536,9 +595,8 @@ class _RecommendationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: kBrandPurple.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE4E7EB), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -592,6 +650,27 @@ class _RecommendationCard extends StatelessWidget {
                               size: 40,
                             ),
                           ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 6,
+                left: 6,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF2ECF5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: kBrandPurple,
+                    ),
                   ),
                 ),
               ),
@@ -932,19 +1011,30 @@ class _InlineTitleFieldState extends State<_InlineTitleField> {
       minLines: 1,
       stylusHandwritingEnabled: true,
       style: const TextStyle(
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: FontWeight.w700,
         color: Color(0xFF2B323A),
       ),
       decoration: InputDecoration(
         isDense: true,
-        contentPadding: EdgeInsets.zero,
-        border: InputBorder.none,
-        focusedBorder: InputBorder.none,
-        enabledBorder: InputBorder.none,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFB9C0C7)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFB9C0C7)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kBrandPurple, width: 1.5),
+        ),
         hintText: widget.hint,
         hintStyle: const TextStyle(
-          fontSize: 16,
+          fontSize: 14,
           fontWeight: FontWeight.w700,
           color: Color(0xFF8A939D),
         ),
@@ -967,12 +1057,10 @@ class _InlineTitleFieldState extends State<_InlineTitleField> {
 ///   - Fantôme sous le doigt : Material elevation 12 + radius 16
 ///   - Carte cible (hover) : bordure violette 2 px + radius 16
 ///
-/// Au drop : `onReorder(fromIndex, toIndex)` est appelé. La carte
-/// déplacée est insérée AVANT la carte cible. Pour mettre une carte
-/// tout à la fin, l'ergo peut la déposer sur la dernière + utiliser
-/// l'ordre naturel (les cards sont 1-3-5 par ligne, pas de slot
-/// fantôme final pour le moment).
-class _DraggableRecoSlot extends StatelessWidget {
+/// Au drop : `onReorder(fromIndex, insertionIndex)` est appelé. La carte
+/// déplacée est insérée avant la cible si le drop est sur la moitié gauche,
+/// après la cible si le drop est sur la moitié droite.
+class _DraggableRecoSlot extends StatefulWidget {
   const _DraggableRecoSlot({
     super.key,
     required this.index,
@@ -989,34 +1077,91 @@ class _DraggableRecoSlot extends StatelessWidget {
   final Widget child;
 
   @override
+  State<_DraggableRecoSlot> createState() => _DraggableRecoSlotState();
+}
+
+class _DraggableRecoSlotState extends State<_DraggableRecoSlot> {
+  bool? _insertAfter;
+
+  bool _isAfterTarget(Offset globalOffset) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+    final local = renderObject.globalToLocal(globalOffset);
+    return local.dx > renderObject.size.width / 2;
+  }
+
+  void _updateInsertionSide(Offset globalOffset) {
+    final next = _isAfterTarget(globalOffset);
+    if (_insertAfter == next) return;
+    setState(() => _insertAfter = next);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return DragTarget<int>(
       onWillAcceptWithDetails: (details) {
         // On accepte tout sauf un drop sur soi-même.
-        return details.data != index;
+        return details.data != widget.index;
+      },
+      onMove: (details) {
+        _updateInsertionSide(details.offset);
+      },
+      onLeave: (_) {
+        if (_insertAfter != null) {
+          setState(() => _insertAfter = null);
+        }
       },
       onAcceptWithDetails: (details) {
         final from = details.data;
-        // L'index "newIndex" attendu par `_reorderItem` est l'index
-        // d'INSERTION dans la liste post-removal — donc juste `index`.
-        onReorder(from, index);
+        final insertAfter = _isAfterTarget(details.offset);
+        final insertionIndex = widget.index + (insertAfter ? 1 : 0);
+        widget.onReorder(from, insertionIndex);
+        if (_insertAfter != null) {
+          setState(() => _insertAfter = null);
+        }
       },
       builder: (context, candidates, rejected) {
         final isHovered = candidates.isNotEmpty;
-        final highlight = Container(
-          decoration: isHovered
-              ? BoxDecoration(
-                  border: Border.all(color: kBrandPurple, width: 2),
-                  borderRadius: BorderRadius.circular(16),
-                )
-              : null,
-          child: child,
+        final insertAfter = _insertAfter ?? false;
+        final highlight = Stack(
+          clipBehavior: Clip.none,
+          children: [
+            widget.child,
+            if (isHovered)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: kBrandPurple, width: 2),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            if (isHovered)
+              Positioned(
+                top: 8,
+                bottom: 8,
+                left: insertAfter ? null : -3,
+                right: insertAfter ? -3 : null,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 6,
+                    decoration: BoxDecoration(
+                      color: kBrandPurple,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
         return LongPressDraggable<int>(
-          data: index,
+          data: widget.index,
           // Délai court — réactivité améliorée sur tactile sans
           // déclencher de drags accidentels lors de simples taps.
           delay: const Duration(milliseconds: 250),
+          maxSimultaneousDrags: 1,
           // Le fantôme est un clone visuel de la carte avec une
           // élévation prononcée pour suggérer "elle flotte".
           feedback: Material(
@@ -1024,12 +1169,12 @@ class _DraggableRecoSlot extends StatelessWidget {
             elevation: 12,
             borderRadius: BorderRadius.circular(16),
             clipBehavior: Clip.antiAlias,
-            child: SizedBox(width: cardWidth, child: child),
+            child: SizedBox(width: widget.cardWidth, child: widget.child),
           ),
           // Pendant que la carte est draggée, la version "originale"
           // reste à sa place (pour préserver le layout de la grille)
           // mais en semi-transparence.
-          childWhenDragging: Opacity(opacity: 0.3, child: child),
+          childWhenDragging: Opacity(opacity: 0.3, child: widget.child),
           child: highlight,
         );
       },
@@ -1040,11 +1185,9 @@ class _DraggableRecoSlot extends StatelessWidget {
 // =============================================================================
 // Descriptions picker dialog — apparaît APRÈS le wiki picker quand la
 // fiche choisie contient plusieurs descriptions (cf.
-// WikiItem.descriptionsList). L'ergo coche celle(s) qu'il veut voir
-// pré-remplies dans la note de la préconisation. Toutes cochées par
-// défaut. Les descriptions sélectionnées sont jointes par un saut de
-// ligne double avant d'alimenter le champ note (modifiable ensuite
-// depuis la card).
+// WikiItem.descriptionsList). L'ergo en choisit une seule pour
+// pré-remplir la note de la préconisation. La première est sélectionnée
+// par défaut, puis chaque nouveau choix remplace le précédent.
 // =============================================================================
 
 class _DescriptionsPickerDialog extends StatefulWidget {
@@ -1061,16 +1204,12 @@ class _DescriptionsPickerDialog extends StatefulWidget {
 }
 
 class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
-  late Set<int> _selectedIndexes;
+  int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    // Toutes cochées par défaut — l'ergo décoche celles qui ne
-    // s'appliquent pas plutôt que de tout cocher manuellement.
-    _selectedIndexes = Set<int>.from(
-      List<int>.generate(widget.descriptions.length, (i) => i),
-    );
+    _selectedIndex = widget.descriptions.isEmpty ? -1 : 0;
   }
 
   @override
@@ -1121,17 +1260,11 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: 8),
                   itemBuilder: (context, i) {
-                    final selected = _selectedIndexes.contains(i);
+                    final selected = _selectedIndex == i;
                     return InkWell(
                       borderRadius: BorderRadius.circular(10),
                       onTap: () {
-                        setState(() {
-                          if (selected) {
-                            _selectedIndexes.remove(i);
-                          } else {
-                            _selectedIndexes.add(i);
-                          }
-                        });
+                        setState(() => _selectedIndex = i);
                       },
                       child: Container(
                         padding: const EdgeInsets.all(12),
@@ -1153,7 +1286,7 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                               margin: const EdgeInsets.only(top: 1),
                               decoration: BoxDecoration(
                                 color: selected ? kBrandPurple : Colors.white,
-                                borderRadius: BorderRadius.circular(4),
+                                shape: BoxShape.circle,
                                 border: Border.all(
                                   color: selected
                                       ? kBrandPurple
@@ -1163,8 +1296,8 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                               ),
                               child: selected
                                   ? const Icon(
-                                      Icons.check,
-                                      size: 14,
+                                      Icons.circle,
+                                      size: 8,
                                       color: Colors.white,
                                     )
                                   : null,
@@ -1202,15 +1335,15 @@ class _DescriptionsPickerDialogState extends State<_DescriptionsPickerDialog> {
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () {
-                      // On renvoie les descriptions sélectionnées
-                      // dans l'ordre original (pas l'ordre de clic).
-                      final selected = <String>[];
-                      for (var i = 0; i < widget.descriptions.length; i++) {
-                        if (_selectedIndexes.contains(i)) {
-                          selected.add(widget.descriptions[i]);
-                        }
+                      if (_selectedIndex < 0 ||
+                          _selectedIndex >= widget.descriptions.length) {
+                        Navigator.pop(context);
+                        return;
                       }
-                      Navigator.pop(context, selected);
+                      Navigator.pop(
+                        context,
+                        widget.descriptions[_selectedIndex],
+                      );
                     },
                     child: const Text('Valider'),
                   ),

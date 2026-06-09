@@ -384,11 +384,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // depuis la popup « Champs manquants »), bascule la sous-section
     // courante. Doit fonctionner même si l'onglet a déjà été visité,
     // donc on ne peut pas se contenter de l'init dans `initState`.
+    // `didUpdateWidget` est suivi d'un build : assignation directe,
+    // sans `setState` ni callback parent pendant la reconstruction.
     if (oldWidget.initialSubSection != widget.initialSubSection) {
       final next = widget.initialSubSection.clamp(0, 3);
       if (next != _subSectionIndex) {
-        setState(() => _subSectionIndex = next);
-        widget.onSubSectionChanged?.call(next);
+        _subSectionIndex = next;
       }
     }
     // If the parent pushes a fresh dossier (e.g. after an external edit) AND
@@ -425,7 +426,11 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   @override
   void dispose() {
     _refSub?.cancel();
+    final hadPendingSave = _saveTimer?.isActive ?? false;
     _saveTimer?.cancel();
+    if (hadPendingSave) {
+      unawaited(_save());
+    }
     super.dispose();
   }
 
@@ -1237,6 +1242,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             selected: hasValue ? optionLabel(value) : '',
             columns: optionColumns,
             onChanged: (picked) {
+              if (picked.isEmpty) {
+                onValueChanged('');
+                return;
+              }
               final idx = pillLabels.indexOf(picked);
               if (idx >= 0) onValueChanged(options[idx]);
             },
@@ -1618,16 +1627,16 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   /// Ouvre le picker visuel pour la caisse de retraite PRINCIPALE.
-  /// Source : table NocoDB `caisses_de_retraite` (champ `logoUrl` +
-  /// `phone` disponibles ; pas d'`audience` / `aidAmount` côté
-  /// principal, donc la card affiche logo + nom + téléphone).
+  /// Source : table NocoDB `caisses_de_retraite` (champ `logoUrl`
+  /// disponible). Le téléphone n'est pas affiché dans le picker pour
+  /// garder des cards compactes dans le relevé.
   Future<String?> _openPrincipalFundPicker(String currentValue) async {
     final items = _principalFunds
         .map(
           (f) => _RetirementFundPickerItem(
             name: f['name'] ?? '',
             logoUrl: f['logoUrl'] ?? '',
-            subtitle: (f['phone'] ?? '').trim(),
+            subtitle: '',
           ),
         )
         .where((it) => it.name.isNotEmpty)
@@ -1650,7 +1659,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           (f) => _RetirementFundPickerItem(
             name: f.name,
             logoUrl: f.logoUrl,
-            subtitle: _buildSubtitleForFund(f),
+            subtitle: '',
           ),
         )
         .where((it) => it.name.isNotEmpty)
@@ -1661,18 +1670,6 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       initialSelected: currentValue,
       emptyMessage: 'Aucune caisse trouvée.',
     );
-  }
-
-  /// Concatène `audience` + `aidAmount` en une ligne courte affichée
-  /// sous le titre dans chaque card. Sépare par " · " si les deux
-  /// champs sont renseignés, sinon affiche celui qui existe.
-  String _buildSubtitleForFund(RetirementFund f) {
-    final aud = f.audience.trim();
-    final amount = f.aidAmount.trim();
-    if (aud.isNotEmpty && amount.isNotEmpty) {
-      return '$aud · $amount';
-    }
-    return aud.isNotEmpty ? aud : amount;
   }
 
   /// Ouvre le dialog picker. Renvoie `null` si l'utilisateur ferme
@@ -2247,13 +2244,6 @@ class _RetirementFundFieldButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             onTap: onTap,
             child: Container(
-              // Taille de texte alignée sur Occupation (FormToggleGroup
-              // pill : fontSize 14, height 32, padding h:14). Demande
-              // utilisateur 2026-05-13 : « la taille de texte de ces
-              // deux parties de boutons doit être la même que celle
-              // d'Occupation ». On garde le pill radius 999 et on
-              // ajuste le padding vertical (7) pour reproduire la
-              // hauteur ~32 px du pill Occupation.
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
                 // Refonte 2026-05-13 : pill radius 999 uniforme.
@@ -2297,7 +2287,7 @@ class _RetirementFundFieldButton extends StatelessWidget {
   }
 }
 
-/// Dialog modal qui présente les caisses de retraite en grille 3-cols.
+/// Dialog modal qui présente les caisses de retraite en grille 4-cols.
 /// Recherche par nom (uniquement, demande utilisateur). Tap sur une
 /// card → renvoie le nom de la caisse sélectionnée. En bas, un champ
 /// de saisie libre permet d'ajouter un nom non listé.
@@ -2430,7 +2420,7 @@ class _RetirementFundPickerDialogState
                 ],
               ),
             ),
-            // Grid de cards 3-cols
+            // Grid de cards 4-cols compactes.
             Expanded(
               child: filtered.isEmpty
                   ? Center(
@@ -2441,13 +2431,13 @@ class _RetirementFundPickerDialogState
                       ),
                     )
                   : GridView.builder(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
-                            childAspectRatio: 1.45,
+                            crossAxisCount: 4,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                            childAspectRatio: 1.85,
                           ),
                       itemCount: filtered.length,
                       itemBuilder: (context, i) => _buildTile(filtered[i]),
@@ -2540,11 +2530,11 @@ class _RetirementFundPickerDialogState
     final isSelected = it.name == widget.initialSelected.trim();
     return InkWell(
       onTap: () => Navigator.pop(context, it.name),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? kBrandPurple : const Color(0xFFE4E7EB),
             width: isSelected ? 2 : 1,
@@ -2552,8 +2542,8 @@ class _RetirementFundPickerDialogState
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+              blurRadius: 5,
+              offset: const Offset(0, 1),
             ),
           ],
         ),
@@ -2564,25 +2554,30 @@ class _RetirementFundPickerDialogState
             // Logo en haut — soit l'image distante (CachedRemoteImage),
             // soit un avatar avec les initiales si pas de logoUrl
             // (demande utilisateur option 5).
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(6),
-                color: const Color(0xFFFAFAFC),
-                child: it.logoUrl.trim().isNotEmpty
-                    ? CachedRemoteImage(
-                        key: ValueKey(it.logoUrl),
-                        url: it.logoUrl,
-                        fit: BoxFit.contain,
-                        placeholder: _FundInitialsAvatar(name: it.name),
-                        errorWidget: _FundInitialsAvatar(name: it.name),
-                      )
-                    : _FundInitialsAvatar(name: it.name),
+            Container(
+              height: 68,
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+              color: const Color(0xFFFAFAFC),
+              child: Center(
+                child: SizedBox(
+                  width: 112,
+                  height: 54,
+                  child: it.logoUrl.trim().isNotEmpty
+                      ? CachedRemoteImage(
+                          key: ValueKey(it.logoUrl),
+                          url: it.logoUrl,
+                          fit: BoxFit.contain,
+                          placeholder: _FundInitialsAvatar(name: it.name),
+                          errorWidget: _FundInitialsAvatar(name: it.name),
+                        )
+                      : _FundInitialsAvatar(name: it.name),
+                ),
               ),
             ),
             // Titre + sous-titre
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+              padding: const EdgeInsets.fromLTRB(9, 5, 9, 7),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2594,18 +2589,19 @@ class _RetirementFundPickerDialogState
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF1E293B),
+                      height: 1.15,
                     ),
                   ),
                   if (it.subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       it.subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 10,
                         color: Color(0xFF5C6670),
-                        height: 1.3,
+                        height: 1.15,
                       ),
                     ),
                   ],
@@ -2636,17 +2632,17 @@ class _FundInitialsAvatar extends StatelessWidget {
         : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     return Center(
       child: Container(
-        width: 52,
-        height: 52,
+        width: 54,
+        height: 54,
         decoration: BoxDecoration(
           color: const Color(0xFFEEE7F2),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
         ),
         alignment: Alignment.center,
         child: Text(
           initials,
           style: const TextStyle(
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.w700,
             color: Color(0xFF554265),
           ),

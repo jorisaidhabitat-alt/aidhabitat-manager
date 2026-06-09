@@ -408,11 +408,9 @@ class _WikiItemDialog extends StatefulWidget {
 class _WikiItemDialogState extends State<_WikiItemDialog> {
   late final TextEditingController _titleController;
 
-  /// Une description = un controller. La fiche peut en contenir plusieurs
-  /// (demande utilisateur 2026-05-04) — l'ergo peut alors cocher
-  /// celle(s) qui s'appliquent à la préconisation au moment de
-  /// l'ajouter dans le relevé de visite. Stockage : JSON array dans
-  /// la colonne `description` (cf. WikiItem.serializeDescriptions).
+  /// Une description = un controller. La fiche peut en contenir jusqu'à
+  /// trois (demande utilisateur 2026-06-09), réordonnables pour choisir
+  /// celle qui sera proposée en premier dans les préconisations.
   late List<TextEditingController> _descCtrls;
   late List<String> _selectedTags;
 
@@ -439,20 +437,21 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
   }
 
   void _addDescription() {
+    if (_descCtrls.length >= WikiItem.maxDescriptions) return;
     setState(() => _descCtrls.add(TextEditingController()));
   }
 
-  void _removeDescription(int index) {
-    if (index < 0 || index >= _descCtrls.length) return;
-    if (_descCtrls.length == 1) {
-      // Au lieu de supprimer le dernier, on le vide → garde au moins
-      // un champ visible (cf. initState).
-      _descCtrls[0].clear();
-      setState(() {});
+  void _moveDescription(int fromIndex, int toIndex) {
+    if (fromIndex < 0 ||
+        fromIndex >= _descCtrls.length ||
+        toIndex < 0 ||
+        toIndex >= _descCtrls.length ||
+        fromIndex == toIndex) {
       return;
     }
     setState(() {
-      _descCtrls.removeAt(index).dispose();
+      final moved = _descCtrls.removeAt(fromIndex);
+      _descCtrls.insert(toIndex, moved);
     });
   }
 
@@ -484,6 +483,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
   @override
   Widget build(BuildContext context) {
     final selectedTag = _selectedTags.isNotEmpty ? _selectedTags.first : '';
+    final canAddDescription = _descCtrls.length < WikiItem.maxDescriptions;
 
     // Taille alignée sur la popup Caisses de retraite (demande
     // utilisateur 2026-04-29 : « fait la même taille de pop up pour la
@@ -638,21 +638,28 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                       children: [
                                         Expanded(
                                           child: _FormLabel(
-                                            text: 'Descriptions',
+                                            text:
+                                                'Descriptions (${_descCtrls.length}/${WikiItem.maxDescriptions})',
                                           ),
                                         ),
                                         Material(
-                                          color: const Color(0xFFEDE8F5),
+                                          color: canAddDescription
+                                              ? const Color(0xFFEDE8F5)
+                                              : const Color(0xFFF1F2F4),
                                           shape: const CircleBorder(),
                                           child: InkWell(
-                                            onTap: _addDescription,
+                                            onTap: canAddDescription
+                                                ? _addDescription
+                                                : null,
                                             customBorder: const CircleBorder(),
-                                            child: const Padding(
-                                              padding: EdgeInsets.all(6),
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(6),
                                               child: Icon(
                                                 Icons.add,
                                                 size: 18,
-                                                color: kBrandPurple,
+                                                color: canAddDescription
+                                                    ? kBrandPurple
+                                                    : const Color(0xFFB8C0C8),
                                                 semanticLabel:
                                                     'Ajouter une description',
                                               ),
@@ -664,16 +671,29 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                     const SizedBox(height: 8),
                                     SizedBox(
                                       height: 180,
-                                      child: ListView.separated(
+                                      child: ReorderableListView.builder(
+                                        buildDefaultDragHandles: false,
+                                        proxyDecorator:
+                                            _descriptionReorderProxy,
+                                        onReorder: (oldIndex, newIndex) {
+                                          if (newIndex > oldIndex) {
+                                            newIndex -= 1;
+                                          }
+                                          _moveDescription(oldIndex, newIndex);
+                                        },
                                         itemCount: _descCtrls.length,
-                                        separatorBuilder: (context, index) =>
-                                            const SizedBox(height: 8),
                                         itemBuilder: (context, i) {
-                                          return Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Expanded(
+                                          return Padding(
+                                            key: ObjectKey(_descCtrls[i]),
+                                            padding: EdgeInsets.only(
+                                              bottom: i == _descCtrls.length - 1
+                                                  ? 0
+                                                  : 8,
+                                            ),
+                                            child: ReorderableDragStartListener(
+                                              index: i,
+                                              child: MouseRegion(
+                                                cursor: SystemMouseCursors.text,
                                                 child: TextField(
                                                   controller: _descCtrls[i],
                                                   maxLines: 3,
@@ -689,22 +709,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                                       _inputDecoration(),
                                                 ),
                                               ),
-                                              const SizedBox(width: 6),
-                                              IconButton(
-                                                onPressed: () =>
-                                                    _removeDescription(i),
-                                                icon: const Icon(
-                                                  Icons.delete_outline,
-                                                  size: 18,
-                                                  color: Color(0xFF8A939D),
-                                                ),
-                                                tooltip:
-                                                    'Supprimer cette description',
-                                                visualDensity:
-                                                    VisualDensity.compact,
-                                                splashRadius: 18,
-                                              ),
-                                            ],
+                                            ),
                                           );
                                         },
                                       ),
@@ -829,6 +834,14 @@ class _FormLabel extends StatelessWidget {
   }
 }
 
+Widget _descriptionReorderProxy(
+  Widget child,
+  int index,
+  Animation<double> animation,
+) {
+  return Material(type: MaterialType.transparency, child: child);
+}
+
 List<String> _normalizedDescriptions(List<TextEditingController> controllers) {
   return controllers
       .map((controller) => controller.text.trim())
@@ -875,7 +888,9 @@ class _WikiCreateDialog extends StatefulWidget {
 
 class _WikiCreateDialogState extends State<_WikiCreateDialog> {
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
+  final List<TextEditingController> _descriptionControllers = [
+    TextEditingController(),
+  ];
   final TextEditingController _categoryController = TextEditingController(
     text: 'Autre',
   );
@@ -889,9 +904,30 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
   @override
   void dispose() {
     _titleController.dispose();
-    _descriptionController.dispose();
+    for (final controller in _descriptionControllers) {
+      controller.dispose();
+    }
     _categoryController.dispose();
     super.dispose();
+  }
+
+  void _addDescription() {
+    if (_descriptionControllers.length >= WikiItem.maxDescriptions) return;
+    setState(() => _descriptionControllers.add(TextEditingController()));
+  }
+
+  void _moveDescription(int fromIndex, int toIndex) {
+    if (fromIndex < 0 ||
+        fromIndex >= _descriptionControllers.length ||
+        toIndex < 0 ||
+        toIndex >= _descriptionControllers.length ||
+        fromIndex == toIndex) {
+      return;
+    }
+    setState(() {
+      final moved = _descriptionControllers.removeAt(fromIndex);
+      _descriptionControllers.insert(toIndex, moved);
+    });
   }
 
   Future<void> _pickImage() async {
@@ -938,7 +974,9 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
 
   bool get _hasUnsavedChanges {
     return _titleController.text.trim().isNotEmpty ||
-        _descriptionController.text.trim().isNotEmpty ||
+        _descriptionControllers.any(
+          (controller) => controller.text.trim().isNotEmpty,
+        ) ||
         _categoryController.text.trim() != 'Autre' ||
         _selectedTags.isNotEmpty ||
         _pickedImageBytes != null;
@@ -967,7 +1005,12 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
     Navigator.of(context).pop(
       _WikiItemDraft(
         title: title,
-        description: _descriptionController.text.trim(),
+        description: WikiItem.serializeDescriptions(
+          _descriptionControllers
+              .map((controller) => controller.text.trim())
+              .where((description) => description.isNotEmpty)
+              .toList(growable: false),
+        ),
         category: _categoryController.text.trim().isEmpty
             ? 'Autre'
             : _categoryController.text.trim(),
@@ -979,6 +1022,8 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final canAddDescription =
+        _descriptionControllers.length < WikiItem.maxDescriptions;
     // Design refondu 2026-05-12 : parité avec les dialogs « Nouvelle
     // caisse de retraite » (header icône + titre + X, champs labelisés
     // violet 12px avec OutlineInputBorder radius 10, bouton X de close).
@@ -1062,19 +1107,111 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                           ),
                           const SizedBox(height: 12),
                           _WikiLabeledField(
-                            label: 'Description',
-                            controller: _descriptionController,
-                            hint:
-                                'Détails de l\'aménagement, dimensions, conseils…',
-                            maxLines: 4,
-                            enabled: !_submitting,
-                          ),
-                          const SizedBox(height: 12),
-                          _WikiLabeledField(
                             label: 'Catégorie',
                             controller: _categoryController,
                             hint: 'ex. Salle de bain, WC, Cuisine, Chambre…',
                             enabled: !_submitting,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Descriptions (${_descriptionControllers.length}/${WikiItem.maxDescriptions})',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: kBrandPurple,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: !_submitting && canAddDescription
+                                    ? _addDescription
+                                    : null,
+                                icon: const Icon(Icons.add, size: 20),
+                                tooltip: 'Ajouter une description',
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          SizedBox(
+                            height: 150,
+                            child: ReorderableListView.builder(
+                              buildDefaultDragHandles: false,
+                              proxyDecorator: _descriptionReorderProxy,
+                              onReorder: (oldIndex, newIndex) {
+                                if (_submitting) return;
+                                if (newIndex > oldIndex) newIndex -= 1;
+                                _moveDescription(oldIndex, newIndex);
+                              },
+                              itemCount: _descriptionControllers.length,
+                              itemBuilder: (context, i) {
+                                return Padding(
+                                  key: ObjectKey(_descriptionControllers[i]),
+                                  padding: EdgeInsets.only(
+                                    bottom:
+                                        i == _descriptionControllers.length - 1
+                                        ? 0
+                                        : 8,
+                                  ),
+                                  child: ReorderableDragStartListener(
+                                    index: i,
+                                    enabled: !_submitting,
+                                    child: MouseRegion(
+                                      cursor: SystemMouseCursors.text,
+                                      child: TextField(
+                                        controller: _descriptionControllers[i],
+                                        enabled: !_submitting,
+                                        maxLines: 3,
+                                        minLines: 2,
+                                        decoration: InputDecoration(
+                                          filled: true,
+                                          fillColor: const Color(0xFFF7F7FA),
+                                          hintText:
+                                              'Détails de l\'aménagement, dimensions, conseils…',
+                                          hintStyle: const TextStyle(
+                                            color: Color(0xFF8A939D),
+                                          ),
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 12,
+                                              ),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            borderSide: const BorderSide(
+                                              color: Color(0xFFE4E7EB),
+                                            ),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            borderSide: const BorderSide(
+                                              color: Color(0xFFE4E7EB),
+                                            ),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            borderSide: const BorderSide(
+                                              color: kBrandPurple,
+                                              width: 1.4,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                           const SizedBox(height: 16),
                           const Text(
@@ -1536,7 +1673,6 @@ class _WikiLabeledField extends StatelessWidget {
     required this.label,
     required this.controller,
     this.hint,
-    this.maxLines = 1,
     this.autofocus = false,
     this.enabled = true,
   });
@@ -1544,7 +1680,6 @@ class _WikiLabeledField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
   final String? hint;
-  final int maxLines;
   final bool autofocus;
   final bool enabled;
 
@@ -1566,7 +1701,6 @@ class _WikiLabeledField extends StatelessWidget {
           controller: controller,
           autofocus: autofocus,
           enabled: enabled,
-          maxLines: maxLines,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(color: Color(0xFF8A939D)),

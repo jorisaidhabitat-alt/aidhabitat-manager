@@ -12,7 +12,7 @@ import '../../services/data_service.dart';
 ///  - Each page persists its own strokes under the same `tabKey='Plans'`
 ///    discriminated by `pageNumber`
 ///  - Each page can be tagged "Avant travaux" / "Après travaux" /
-///    non classé via le pill flottant en haut à droite. La valeur est
+///    non classé via le pill flottant en bas à droite. La valeur est
 ///    persistée dans `note_pages.plan_phase` (cf. v11→v12 migration)
 ///    et alimente les pages 9 (avant) / 10 (après) du rapport PDF.
 class PlansTab extends StatefulWidget {
@@ -36,7 +36,7 @@ class _PlansTabState extends State<PlansTab> {
   /// Phase de la page courante (avant / après / null). Mise à jour à
   /// chaque navigation via [_loadPhaseForCurrentPage], ré-écrite côté
   /// SQLite + sync engine via [_setPhaseForCurrentPage].
-  PlanPhase? _currentPhase;
+  PlanPhase? _currentPhase = PlanPhase.avant;
 
   /// Cache local des phases déjà fetched pour éviter un round-trip
   /// SQLite à chaque changement de page. Invalidé lors d'un setPhase.
@@ -89,14 +89,14 @@ class _PlansTabState extends State<PlansTab> {
       _totalPages += 1;
       _currentPage = _totalPages - 1;
     });
-    // Page neuve → pas de phase enregistrée encore.
-    _phaseCache[_currentPage] = null;
-    setState(() => _currentPhase = null);
+    // Page neuve → par défaut elle alimente le plan "Avant travaux".
+    _phaseCache[_currentPage] = PlanPhase.avant;
+    setState(() => _currentPhase = PlanPhase.avant);
   }
 
   /// Duplique la page courante : crée une nouvelle page après la
   /// dernière, avec exactement le même `drawingJson` (strokes +
-  /// symboles + texte) et la même phase. Demande utilisateur
+  /// symboles + texte) et la phase "Après travaux". Demande utilisateur
   /// 2026-05-04 : « possibilité d'ajouter une page (vierge) ou de
   /// dupliquer la page actuelle ». Le clone est immédiat (lecture +
   /// écriture SQLite) puis on bascule l'utilisateur dessus.
@@ -108,39 +108,30 @@ class _PlansTabState extends State<PlansTab> {
       tabKey: _kTabKey,
       pageNumber: sourcePage,
     );
-    final sourcePhase = _phaseCache[sourcePage];
     if (!mounted) return;
     final newIndex = _totalPages; // page index 0-based de la nouvelle page
     setState(() {
       _totalPages += 1;
       _currentPage = newIndex;
     });
-    // Persiste le clone du drawingJson sur la nouvelle page (vide si la
-    // source était vide — pas d'erreur, juste une page vierge).
-    if (sourceJson != null && sourceJson.isNotEmpty) {
-      await _dataService.saveNoteDrawingJson(
-        patientId: widget.dossier.patient.id,
-        tabKey: _kTabKey,
-        pageNumber: newIndex,
-        drawingJson: sourceJson,
-      );
-    }
-    // Reproduit la phase si elle était posée (avant/après travaux) —
-    // l'ergo qui duplique « avant » pour préparer un « après » devra
-    // basculer manuellement, mais par défaut on garde la phase pour
-    // que les pages clonées sans modification ne perdent pas leur
-    // classification.
-    if (sourcePhase != null) {
-      _phaseCache[newIndex] = sourcePhase;
-      await _dataService.setNotePlanPhase(
-        patientId: widget.dossier.patient.id,
-        tabKey: _kTabKey,
-        pageNumber: newIndex,
-        phase: sourcePhase,
-      );
-    }
+    // Persiste le clone du drawingJson sur la nouvelle page. Même si la
+    // source est vide, on crée la ligne pour pouvoir enregistrer la phase.
+    await _dataService.saveNoteDrawingJson(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: newIndex,
+      drawingJson: sourceJson ?? '',
+    );
+    const duplicatedPhase = PlanPhase.apres;
+    _phaseCache[newIndex] = duplicatedPhase;
+    await _dataService.setNotePlanPhase(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: newIndex,
+      phase: duplicatedPhase,
+    );
     if (!mounted) return;
-    setState(() => _currentPhase = sourcePhase);
+    setState(() => _currentPhase = duplicatedPhase);
   }
 
   /// Charge la phase de la page courante depuis le cache (instantané)
@@ -153,11 +144,12 @@ class _PlansTabState extends State<PlansTab> {
       setState(() => _currentPhase = _phaseCache[page]);
       return;
     }
-    final phase = await _dataService.fetchNotePlanPhase(
+    final persistedPhase = await _dataService.fetchNotePlanPhase(
       patientId: widget.dossier.patient.id,
       tabKey: _kTabKey,
       pageNumber: page,
     );
+    final phase = persistedPhase ?? PlanPhase.avant;
     _phaseCache[page] = phase;
     if (!mounted || page != _currentPage) return;
     setState(() => _currentPhase = phase);
@@ -224,10 +216,9 @@ class _PlansTabState extends State<PlansTab> {
 
   @override
   Widget build(BuildContext context) {
-    // Pagination et outils sont fusionnés dans la toolbar du canvas
-    // (une seule ligne en haut). On wrap le canvas dans un Stack pour
-    // y faire flotter le pill « Phase » dans le coin bas-droit, hors
-    // de la zone de toolbar du canvas.
+    // Pagination et outils sont fusionnés dans la toolbar flottante du canvas.
+    // On wrap le canvas dans un Stack pour y faire flotter le pill « Phase »
+    // hors de la zone d'outils.
     if (!_probed) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -248,9 +239,8 @@ class _PlansTabState extends State<PlansTab> {
             onDeletePage: _deleteCurrentPage,
           ),
         ),
-        // Pill « Phase » : positionné en bas-droite pour ne pas
-        // empiéter sur la toolbar du canvas (en haut). Tap → menu
-        // avec 3 choix (avant / après / non classé).
+        // Pill « Phase » : positionné en bas-droite, séparé de la
+        // pagination qui vit en haut-droite dans le canvas.
         Positioned(
           right: 16,
           bottom: 16,

@@ -1441,10 +1441,34 @@ const resolveWikiPrimaryTag = ({ title, description, category, tags }) => {
   return 'Equipements';
 };
 
+const MAX_WIKI_DESCRIPTIONS = 3;
+
+const normalizeWikiDescriptionsValue = (value) => {
+  const raw = stringValue(value).trim();
+  if (!raw) return '';
+  if (raw.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const clean = parsed
+          .map((entry) => stringValue(entry).trim())
+          .filter(Boolean)
+          .slice(0, MAX_WIKI_DESCRIPTIONS);
+        if (clean.length === 0) return '';
+        if (clean.length === 1) return clean[0];
+        return JSON.stringify(clean);
+      }
+    } catch {
+      // Legacy plain text fallback below.
+    }
+  }
+  return raw;
+};
+
 const normalizeWikiItemPayload = (item) => ({
   ...item,
   title: stringValue(item.title),
-  description: stringValue(item.description),
+  description: normalizeWikiDescriptionsValue(item.description),
   imageUrl: stringValue(item.imageUrl),
   category: stringValue(item.category) || 'Autre',
   tags: [resolveWikiPrimaryTag(item)],
@@ -1553,7 +1577,7 @@ const parseWikiContent = (value) => {
 };
 
 const serializeWikiContent = ({ description, category, tags }) => JSON.stringify({
-  description: stringValue(description),
+  description: normalizeWikiDescriptionsValue(description),
   category: stringValue(category) || 'Autre',
   tags: asArray(tags).slice(0, 1).map((tag) => String(tag)),
 });

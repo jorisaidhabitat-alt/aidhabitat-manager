@@ -86,6 +86,8 @@ List<SanitaryLevel> buildSanitaryLevelSelections(
 class BathroomTab extends StatefulWidget {
   final Dossier dossier;
   final DossierRepository repository;
+  final BathroomTabController? controller;
+  final VoidCallback? onAddRoomRequested;
 
   /// Incremented by the parent each time the housing (Accessibilité >
   /// Intérieur) changes, so the tab can re-derive its instances from the
@@ -96,11 +98,54 @@ class BathroomTab extends StatefulWidget {
     super.key,
     required this.dossier,
     required this.repository,
+    this.controller,
+    this.onAddRoomRequested,
     this.housingRefreshToken = 0,
   });
 
   @override
   State<BathroomTab> createState() => _BathroomTabState();
+}
+
+class BathroomTabController {
+  Future<void> Function()? _flushPendingSave;
+  void Function(String levelField)? _selectLevelField;
+  String? _pendingLevelField;
+
+  Future<void> flushPendingSave() async {
+    final flush = _flushPendingSave;
+    if (flush == null) return;
+    await flush();
+  }
+
+  void selectLevelField(String levelField) {
+    final select = _selectLevelField;
+    if (select == null) {
+      _pendingLevelField = levelField;
+      return;
+    }
+    select(levelField);
+  }
+
+  void _attach(
+    Future<void> Function() flush,
+    void Function(String levelField) selectLevelField,
+  ) {
+    _flushPendingSave = flush;
+    _selectLevelField = selectLevelField;
+    final pending = _pendingLevelField;
+    if (pending != null) {
+      _pendingLevelField = null;
+      selectLevelField(pending);
+    }
+  }
+
+  void _detach(Future<void> Function() flush) {
+    if (_flushPendingSave == flush) {
+      _flushPendingSave = null;
+      _selectLevelField = null;
+    }
+  }
 }
 
 // =============================================================================
@@ -133,10 +178,11 @@ class _BathroomTabState extends State<BathroomTab>
   bool get wantKeepAlive => true;
 
   DiagnosticSanitaire? _diagnostic;
-  final bool _saving = false;
   bool _loaded = false;
   Timer? _saveTimer;
+  Future<void>? _saveFuture;
   int _activeLevelIndex = 0;
+  String? _pendingLevelField;
   // (Anciens Sets d'édition/repli retirés : les toggles et listes
   // d'équipements restent maintenant toujours visibles.)
 
@@ -145,6 +191,7 @@ class _BathroomTabState extends State<BathroomTab>
   @override
   void initState() {
     super.initState();
+    widget.controller?._attach(_flushPendingSave, _selectLevelField);
     _load();
     // Refactor 2026-05-12 : suppression du polling 2 s. Sanitaires
     // charge au mount + à chaque changement d'onglet. Modifs distantes
@@ -153,8 +200,24 @@ class _BathroomTabState extends State<BathroomTab>
 
   @override
   void dispose() {
+    widget.controller?._detach(_flushPendingSave);
+    final hadPendingSave = _saveTimer?.isActive ?? false;
     _saveTimer?.cancel();
+    if (hadPendingSave) unawaited(_save());
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant BathroomTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(_flushPendingSave);
+      widget.controller?._attach(_flushPendingSave, _selectLevelField);
+    }
+    if (oldWidget.dossier.id != widget.dossier.id ||
+        oldWidget.housingRefreshToken != widget.housingRefreshToken) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -237,6 +300,18 @@ class _BathroomTabState extends State<BathroomTab>
       }
     }
 
+    final pendingLevelField = _pendingLevelField;
+    var nextActiveLevelIndex = _activeLevelIndex;
+    if (pendingLevelField != null) {
+      final idx = nextInstances.indexWhere(
+        (instance) => instance.levelField == pendingLevelField,
+      );
+      if (idx >= 0) {
+        nextActiveLevelIndex = idx;
+        _pendingLevelField = null;
+      }
+    }
+
     setState(() {
       _diagnostic = DiagnosticSanitaire(
         dossierId: widget.dossier.id,
@@ -244,6 +319,7 @@ class _BathroomTabState extends State<BathroomTab>
         wcInstances: result?.wcInstances ?? const [],
       );
       // Keep activeLevelIndex in range.
+      _activeLevelIndex = nextActiveLevelIndex;
       if (_activeLevelIndex >= nextInstances.length) {
         _activeLevelIndex = 0;
       }
@@ -253,15 +329,6 @@ class _BathroomTabState extends State<BathroomTab>
 
   /// Called when the parent pushes a refreshed dossier (e.g. after the user
   /// toggled a bathroom in Accessibilité > Intérieur). Re-derives instances.
-  @override
-  void didUpdateWidget(covariant BathroomTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.dossier.id != widget.dossier.id ||
-        oldWidget.housingRefreshToken != widget.housingRefreshToken) {
-      _load();
-    }
-  }
-
   List<BathroomInstance> get _instances => _diagnostic?.sdbInstances ?? [];
 
   BathroomInstance? get _active {
@@ -276,12 +343,55 @@ class _BathroomTabState extends State<BathroomTab>
   }
 
   Future<void> _save() async {
-    if (_diagnostic == null) return;
+    final diagnostic = _diagnostic;
+    if (diagnostic == null) return;
     // Pas de setState(_saving) — voir dossier_screen.dart.
+    final saveFuture = _saveMergedDiagnostic(diagnostic);
+    _saveFuture = saveFuture;
+    try {
+      await saveFuture;
+    } finally {
+      if (_saveFuture == saveFuture) {
+        _saveFuture = null;
+      }
+    }
+  }
+
+  Future<void> _saveMergedDiagnostic(DiagnosticSanitaire diagnostic) async {
+    final current = await widget.repository.fetchDiagnosticSanitaire(
+      widget.dossier.id,
+    );
     await widget.repository.upsertDiagnosticSanitaire(
       widget.dossier.id,
-      _diagnostic!,
+      DiagnosticSanitaire(
+        dossierId: widget.dossier.id,
+        sdbInstances: diagnostic.sdbInstances,
+        wcInstances: current?.wcInstances ?? diagnostic.wcInstances,
+      ),
     );
+  }
+
+  Future<void> _flushPendingSave() async {
+    _saveTimer?.cancel();
+    final inFlight = _saveFuture;
+    if (inFlight != null) await inFlight;
+    await _save();
+  }
+
+  void _selectLevelField(String levelField) {
+    final idx = _instances.indexWhere((i) => i.levelField == levelField);
+    if (idx < 0) {
+      _pendingLevelField = levelField;
+      return;
+    }
+    if (_activeLevelIndex == idx) return;
+    if (!mounted) {
+      _activeLevelIndex = idx;
+      return;
+    }
+    setState(() {
+      _activeLevelIndex = idx;
+    });
   }
 
   void _updateActive(BathroomInstance updated) {
@@ -370,69 +480,88 @@ class _BathroomTabState extends State<BathroomTab>
     // bascule entre les niveaux (SDB RDC / étage / …) uniquement via
     // les pills `_buildLevelPills()` (tap). Pas d'occupants dans cet
     // onglet → plus aucun swipe horizontal câblé.
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Align(
-            alignment: Alignment.topRight,
-            child: SaveStatusIndicator(saving: _saving),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildLevelPills(),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_instances.isEmpty)
+                  _buildEmptyState()
+                else ...[
+                  _buildEquipment(),
+                  const SizedBox(height: 16),
+                  _buildDoor(),
+                ],
+              ],
+            ),
           ),
-          const SizedBox(height: 4),
-          _buildLevelPills(),
-          if (_instances.isEmpty)
-            _buildEmptyState()
-          else ...[
-            const SizedBox(height: 16),
-            _buildEquipment(),
-            const SizedBox(height: 16),
-            _buildDoor(),
-          ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildEmptyState() {
-    return Container(
-      margin: const EdgeInsets.only(top: 24),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F7FA),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: const Column(
-        children: [
-          Icon(Icons.bathtub_outlined, size: 40, color: Color(0xFF8A939D)),
-          SizedBox(height: 10),
-          Text(
-            "Aucune salle de bain renseignée pour ce logement.\n"
-            "Cochez « Salle de bain » dans Accessibilité › Intérieur › Niveaux & pièces "
-            "pour afficher les sections correspondantes ici.",
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Center(
+        child: SizedBox(
+          width: 260,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => widget.onAddRoomRequested?.call(),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2ECF5),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add, size: 16, color: Color(0xFF554265)),
+                  SizedBox(width: 8),
+                  Text(
+                    'Ajouter une salle de bain',
+                    style: TextStyle(
+                      color: Color(0xFF554265),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildLevelPills() {
-    if (_instances.isEmpty) return const SizedBox.shrink();
+    final labels = _instances.isEmpty
+        ? const ['Salle de bain']
+        : _instances.map((instance) => instance.levelLabel).toList();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8),
       color: const Color(0xFFF2ECF5),
       child: Row(
         children: [
-          for (var i = 0; i < _instances.length; i++)
+          for (var i = 0; i < labels.length; i++)
             Expanded(
               child: _buildLevelNavItem(
                 icon: LucideIcons.bath,
-                label: _instances[i].levelLabel,
-                active: _activeLevelIndex == i,
-                onTap: () => setState(() => _activeLevelIndex = i),
+                label: labels[i],
+                active: _instances.isEmpty || _activeLevelIndex == i,
+                onTap: _instances.isEmpty
+                    ? () {}
+                    : () => setState(() => _activeLevelIndex = i),
               ),
             ),
         ],

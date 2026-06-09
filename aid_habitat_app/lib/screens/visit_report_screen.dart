@@ -84,6 +84,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       AccessibilityTabController();
   final RecommendationsTabController _recommendationsController =
       RecommendationsTabController();
+  final BathroomTabController _bathroomController = BathroomTabController();
+  final WcTabController _wcController = WcTabController();
   late Dossier _dossier;
   int _housingVersion = 0;
   // Maps (patientId::tabKey) -> secondary OS windowId, so when the user
@@ -990,6 +992,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                             // Cf. `_MedicalPageNumberBadge` + `_medicalCurrentPage`
                             // (demande utilisateur 2026-05-04).
                             totalPages: isMedical ? 3 : 1,
+                            // Médical : le texte "Environnement" est unique
+                            // pour les 3 pages. Seuls les dessins/repères de
+                            // page restent distincts.
+                            sharedText: isMedical,
                             backgroundContent: isMedical
                                 ? _MedicalPageNumberBadge(
                                     currentPage: _medicalCurrentPage,
@@ -1225,14 +1231,19 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // directement en SQLite via leur propre `_save()`. On force ici un
     // re-fetch pour aligner le modèle in-memory avec le disque.
     await _accessibilityController.flushPendingSave();
+    await _bathroomController.flushPendingSave();
+    await _wcController.flushPendingSave();
     await _recommendationsController.flushPendingSave();
     await _refreshDossier();
     final missing = await _collectMissingFields();
     if (missing.isNotEmpty) {
       final shouldContinue = await _showMissingFieldsDialog(missing);
+      if (shouldContinue == false) {
+        _scheduleNavigateToMissingField(missing.first);
+        return;
+      }
       if (shouldContinue != true) {
-        // L'utilisateur a choisi « Remplir les champs » (ou fermé la
-        // popup) → on a déjà navigué vers le 1er champ manquant.
+        // L'utilisateur a fermé la popup → pas de génération.
         return;
       }
     }
@@ -2050,6 +2061,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           _MissingField(
             label: 'Salle de bain$lvl — sélectionner douche ou baignoire',
             tabIndex: tab,
+            levelField: s.levelField,
           ),
         );
       } else {
@@ -2059,6 +2071,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             _MissingField(
               label: 'Salle de bain$lvl — hauteur baignoire',
               tabIndex: tab,
+              levelField: s.levelField,
             ),
           );
         }
@@ -2068,6 +2081,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             _MissingField(
               label: 'Salle de bain$lvl — hauteur bac à douche',
               tabIndex: tab,
+              levelField: s.levelField,
             ),
           );
         }
@@ -2079,6 +2093,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           _MissingField(
             label: 'Salle de bain$lvl — dimension de la porte',
             tabIndex: tab,
+            levelField: s.levelField,
           ),
         );
       }
@@ -2098,12 +2113,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // ont des défauts donc on ne peut pas les valider.
       if (w.wcCuvetteHauteur == null || w.wcCuvetteHauteur! <= 0) {
         missing.add(
-          _MissingField(label: 'WC$lvl — hauteur de cuvette', tabIndex: tab),
+          _MissingField(
+            label: 'WC$lvl — hauteur de cuvette',
+            tabIndex: tab,
+            levelField: w.levelField,
+          ),
         );
       }
       if (w.porteWcDimension == null || w.porteWcDimension! <= 0) {
         missing.add(
-          _MissingField(label: 'WC$lvl — dimension de la porte', tabIndex: tab),
+          _MissingField(
+            label: 'WC$lvl — dimension de la porte',
+            tabIndex: tab,
+            levelField: w.levelField,
+          ),
         );
       }
     }
@@ -2222,8 +2245,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   /// Affiche la popup « Champs manquants ». Renvoie :
   ///   - `true` si l'ergo clique « Valider » → continuer la génération
-  ///   - `false` si « Remplir les champs » → on a navigué vers le 1er
-  ///     champ manquant, abort la génération
+  ///   - `false` si « Remplir les champs » → navigation vers le 1er
+  ///     champ manquant après fermeture de la popup, abort génération
   ///   - `null` si l'ergo ferme la popup (= équivalent annuler, pas
   ///     de génération)
   Future<bool?> _showMissingFieldsDialog(List<_MissingField> missing) async {
@@ -2311,10 +2334,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
-                      onPressed: () {
-                        Navigator.pop(ctx, false);
-                        _navigateToMissingField(missing.first);
-                      },
+                      onPressed: () => Navigator.pop(ctx, false),
                       child: const Text('Remplir les champs'),
                     ),
                     const SizedBox(width: 8),
@@ -2338,15 +2358,63 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// Navigue vers l'onglet (et la sous-section quand applicable) du
   /// champ manquant pour permettre à l'ergo de le remplir directement
   /// sans chercher.
+  void _scheduleNavigateToMissingField(_MissingField missing) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _navigateToMissingField(missing);
+    });
+  }
+
   void _navigateToMissingField(_MissingField missing) {
     if (missing.tabIndex < 0 || missing.tabIndex >= _tabs.length) return;
     _tabController.animateTo(missing.tabIndex);
     if (missing.subSectionIndex != null) {
       final tabName = _tabs[missing.tabIndex];
-      setState(() {
-        _activeSubsectionByTab[tabName] = missing.subSectionIndex!;
-      });
+      _setActiveSubsection(tabName, missing.subSectionIndex!);
     }
+    if (missing.levelField != null) {
+      _scheduleSelectMissingLevel(missing);
+    }
+  }
+
+  void _scheduleSelectMissingLevel(_MissingField missing) {
+    void selectLevel() {
+      if (!mounted || missing.levelField == null) return;
+      final tabName = _tabs[missing.tabIndex];
+      if (tabName == 'Salle de bain') {
+        _bathroomController.selectLevelField(missing.levelField!);
+      } else if (tabName == 'WC') {
+        _wcController.selectLevelField(missing.levelField!);
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      selectLevel();
+      Future<void>.delayed(const Duration(milliseconds: 120), selectLevel);
+    });
+  }
+
+  void _setActiveSubsection(String tabName, int index) {
+    if (_activeSubsectionByTab[tabName] == index) return;
+    setState(() {
+      _activeSubsectionByTab[tabName] = index;
+    });
+  }
+
+  void _navigateToAccessibilityLevels() {
+    final accessibilityIndex = _tabs.indexOf('Accessibilité');
+    if (accessibilityIndex < 0) return;
+    setState(() {
+      _activeSubsectionByTab['Accessibilité'] = 1;
+    });
+    _tabController.animateTo(accessibilityIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _accessibilityController.openLevelsAndAddLevel();
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted) return;
+        _accessibilityController.openLevelsAndAddLevel();
+      });
+    });
   }
 
   /// Met en file d'attente la génération du rapport pour traitement
@@ -2520,8 +2588,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             repository: _repository,
             onPatientChanged: _refreshDossier,
             initialSubSection: _activeSubsectionByTab['Bénéficiaire'] ?? 0,
-            onSubSectionChanged: (i) =>
-                setState(() => _activeSubsectionByTab['Bénéficiaire'] = i),
+            onSubSectionChanged: (i) => _setActiveSubsection('Bénéficiaire', i),
           ),
         ),
         _wrapTabWithNotes(
@@ -2543,7 +2610,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // Autonomie existait. Demande utilisateur 2026-04-30.
             initialSubSection: _activeSubsectionByTab['Contexte de vie'] ?? 0,
             onSubSectionChanged: (i) =>
-                setState(() => _activeSubsectionByTab['Contexte de vie'] = i),
+                _setActiveSubsection('Contexte de vie', i),
           ),
         ),
         _wrapTabWithNotes(
@@ -2566,7 +2633,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // contenant le champ vide).
             initialSubSection: _activeSubsectionByTab['Accessibilité'] ?? 0,
             onSubSectionChanged: (i) =>
-                setState(() => _activeSubsectionByTab['Accessibilité'] = i),
+                _setActiveSubsection('Accessibilité', i),
           ),
         ),
         _wrapTabWithNotes(
@@ -2574,7 +2641,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           BathroomTab(
             dossier: _dossier,
             repository: _repository,
+            controller: _bathroomController,
             housingRefreshToken: _housingVersion,
+            onAddRoomRequested: _navigateToAccessibilityLevels,
           ),
         ),
         _wrapTabWithNotes(
@@ -2582,7 +2651,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           WcTab(
             dossier: _dossier,
             repository: _repository,
+            controller: _wcController,
             housingRefreshToken: _housingVersion,
+            onAddRoomRequested: _navigateToAccessibilityLevels,
           ),
         ),
         // Plans déplacé juste après WC (demande utilisateur 2026-05-04) —
@@ -2791,9 +2862,15 @@ class _MissingField {
   /// pas toutes les tabs ont des sous-sections, ex. Photos).
   final int? subSectionIndex;
 
+  /// Niveau sanitaire concerné (`rdc`, `basement`, etc.) pour permettre
+  /// au bouton « Remplir les champs » de sélectionner directement la
+  /// bonne instance Salle de bain / WC.
+  final String? levelField;
+
   const _MissingField({
     required this.label,
     required this.tabIndex,
     this.subSectionIndex,
+    this.levelField,
   });
 }

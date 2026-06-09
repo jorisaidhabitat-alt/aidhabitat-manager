@@ -100,11 +100,12 @@ class _ContextTabState extends State<ContextTab>
     // Sync de la sous-section quand le parent change
     // `initialSubSection` programmatiquement — ex. navigation depuis
     // la popup « Champs manquants » du flow de génération PDF.
+    // `didUpdateWidget` est suivi d'un build : assignation directe,
+    // sans `setState` ni callback parent pendant la reconstruction.
     if (oldWidget.initialSubSection != widget.initialSubSection) {
       final next = widget.initialSubSection.clamp(0, 1);
       if (next != _subSection) {
-        setState(() => _subSection = next);
-        widget.onSubSectionChanged?.call(next);
+        _subSection = next;
       }
     }
     // When the parent pushes a refreshed dossier (e.g. after the user
@@ -140,7 +141,11 @@ class _ContextTabState extends State<ContextTab>
 
   @override
   void dispose() {
+    final hadPendingSave = _saveTimer?.isActive ?? false;
     _saveTimer?.cancel();
+    if (hadPendingSave) {
+      unawaited(_save());
+    }
     super.dispose();
   }
 
@@ -600,12 +605,7 @@ class _ContextTabState extends State<ContextTab>
                           Container(
                             color: Colors.white,
                             padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                            child: _buildOccupantHeader(
-                              idx,
-                              extra: _subSection == 1
-                                  ? _buildValidateAllSmallButton()
-                                  : null,
-                            ),
+                            child: _buildOccupantHeader(idx),
                           ),
                         Expanded(
                           // Légère animation entre Médicale ↔ Autonomie —
@@ -860,6 +860,18 @@ class _ContextTabState extends State<ContextTab>
   // Medical section
   // ---------------------------------------------------------------------------
 
+  Widget _buildSoftListSurface({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF7FB),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: child,
+    );
+  }
+
   Widget _buildMedical() {
     final occ = _active;
     // Les cases à cocher Pathologie / Suivi / Sensoriel représentent
@@ -891,16 +903,18 @@ class _ContextTabState extends State<ContextTab>
         // Sélecteur d'occupant retiré : l'occupant courant est désormais
         // identifié par le header du cadre + les points de pagination en
         // bas, avec navigation par swipe horizontal (parité Bénéficiaire).
-        Column(
-          children: [
-            for (var i = 0; i < flags.length; i++)
-              _MedicalFlagRow(
-                index: i + 1,
-                label: flags[i].label,
-                completed: flags[i].completed,
-                onToggle: () => _toggleMedicalFlag(flags[i].key),
-              ),
-          ],
+        _buildSoftListSurface(
+          child: Column(
+            children: [
+              for (var i = 0; i < flags.length; i++)
+                _MedicalFlagRow(
+                  index: i + 1,
+                  label: flags[i].label,
+                  completed: flags[i].completed,
+                  onToggle: () => _toggleMedicalFlag(flags[i].key),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         // Titre "Mesures" + divider retirés — on garde juste les deux
@@ -941,49 +955,50 @@ class _ContextTabState extends State<ContextTab>
   // Autonomy section
   // ---------------------------------------------------------------------------
 
-  /// Petit bouton rond « Tout valider — usager autonome » destiné au
-  /// slot `extra` du occupant header (refonte 2026-05-13, visit-pages.js
-  /// l.622-626). 26×26, border-radius 9999, mauve-500 plein quand actif,
-  /// transparent + border mauve-400 sinon. Tap = bascule tous les items
-  /// d'autonomie sur ✓ (ou tous sur none si déjà tous validés).
-  Widget _buildValidateAllSmallButton() {
+  /// Première ligne de la liste Autonomie : libellé + bouton ✓ aligné
+  /// exactement sur la colonne des autres boutons de validation.
+  Widget _buildValidateAllRow() {
     final occ = _active;
     final total = kAutonomyItemNames.length;
     var allAutonomous = occ.autonomy.length == total;
     for (var i = 0; i < total && allAutonomous; i++) {
       if (!_itemState(i).autonomous) allAutonomous = false;
     }
-    return Tooltip(
-      message: 'Tout valider — usager autonome',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _setAllAutonomyItems(!allAutonomous),
-          borderRadius: BorderRadius.circular(999),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: allAutonomous
-                  ? kBrandPurple // mauve-500
-                  : Colors.transparent,
-              border: Border.all(
-                color: allAutonomous
-                    ? kBrandPurple
-                    : const Color(0xFFA98DBE), // mauve-400
-                width: 1.5,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _setAllAutonomyItems(!allAutonomous),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        decoration: BoxDecoration(
+          color: kBrandPurple,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kBrandPurple, width: 1),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 22),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Personne autonome',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.25,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.check,
-              size: 13,
-              color: allAutonomous ? Colors.white : kBrandPurple,
-            ),
-          ),
+            _GlobalAutonomyButton(active: allAutonomous),
+            const SizedBox(width: 6),
+            const SizedBox(width: 28),
+            if (_occupantHomeHelpEnabled(_safeIndex)) ...[
+              const SizedBox(width: 6),
+              const SizedBox(width: 28),
+            ],
+          ],
         ),
       ),
     );
@@ -992,49 +1007,28 @@ class _ContextTabState extends State<ContextTab>
   Widget _buildAutonomy() {
     final occ = _active;
     final homeHelpEnabled = _occupantHomeHelpEnabled(_safeIndex);
-    // Note 2026-05-13 : le texte de synthèse « Profil considéré comme
-    // autonome ! / Diagnostic complet ! » a été retiré → plus besoin
-    // de dériver `allAutonomous` / `allFilled` ici (la logique reste
-    // utilisée par `_buildValidateAllSmallButton()` qui la calcule en
-    // interne).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Bundle « Aide humaine » jaune retiré (demande utilisateur
-        // 2026-05-04). Plus aucun indicateur global de statut au-dessus
-        // de la liste — l'info reste visible item par item via le
-        // bouton 👥 sur chaque ligne quand `homeHelpEnabled`.
-        // Raccourci « Tout valider — usager autonome ». Coché : les 11
-        // items passent en ✓ d'un coup ; décoché : tous repassent à
-        // none. État dérivé de `allAutonomous`. Demande utilisateur
-        // 2026-04-29.
-        // Refonte 2026-05-13 (visit-pages.js l.625-635) :
-        //   - Plus de container gris autour des rows (style flat)
-        //   - Les rows actifs (ok/warn) ont leur propre fond tinté
-        //   - « Tout valider — usager autonome » est désormais un petit
-        //     rond 26×26 dans le occupant header (cf.
-        //     `_buildValidateAllSmallButton`)
-        if (_contextOccupants.length <= 1)
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _buildValidateAllSmallButton(),
-            ),
+        _buildValidateAllRow(),
+        const SizedBox(height: 10),
+        _buildSoftListSurface(
+          child: Column(
+            children: [
+              ...List.generate(occ.autonomy.length, (i) {
+                final state = _itemState(i);
+                return _NumberedCheckRow(
+                  index: i + 1,
+                  label: occ.autonomy[i].name,
+                  state: state,
+                  showHumanHelp: homeHelpEnabled,
+                  onToggleAutonomous: () => _toggleAutonomyItem(i),
+                  onToggleAttention: () => _toggleAttentionItem(i),
+                  onToggleHumanHelp: () => _toggleHumanHelpItem(i),
+                );
+              }),
+            ],
           ),
-        Column(
-          children: List.generate(occ.autonomy.length, (i) {
-            final state = _itemState(i);
-            return _NumberedCheckRow(
-              index: i + 1,
-              label: occ.autonomy[i].name,
-              state: state,
-              showHumanHelp: homeHelpEnabled,
-              onToggleAutonomous: () => _toggleAutonomyItem(i),
-              onToggleAttention: () => _toggleAttentionItem(i),
-              onToggleHumanHelp: () => _toggleHumanHelpItem(i),
-            );
-          }),
         ),
         // Texte de synthèse retiré 2026-05-13 sur demande utilisateur —
         // « Profil considéré comme autonome ! » / « Diagnostic complet ! »
@@ -1066,9 +1060,9 @@ class _AutonomyItemState {
   bool get isEmpty => !autonomous && !attention && !humanHelp;
 }
 
-// `_AutonomyValidateAllRow` retiré 2026-05-13 — remplacé par un petit
-// bouton rond 26×26 injecté dans le occupant header via
-// `_buildValidateAllSmallButton()` (cf. maquette visit-pages.js l.622-626).
+// `_AutonomyValidateAllRow` retiré 2026-05-13 puis réintroduit en version
+// alignée sur la liste le 2026-06-09 : libellé "personne autonome" +
+// bouton ✓ dans la même colonne que les autres validations.
 
 // =============================================================================
 // Sub-widgets
@@ -1286,6 +1280,33 @@ class _NumberedCheckRow extends StatelessWidget {
 }
 
 enum _ActionButtonKind { autonomous, attention, humanHelp }
+
+class _GlobalAutonomyButton extends StatelessWidget {
+  final bool active;
+
+  const _GlobalAutonomyButton({required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: active ? Colors.white : Colors.white.withValues(alpha: 0.18),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 1),
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.check,
+        size: 14,
+        color: active ? kBrandPurple : Colors.white,
+      ),
+    );
+  }
+}
 
 class _ActionButton extends StatelessWidget {
   final _ActionButtonKind kind;

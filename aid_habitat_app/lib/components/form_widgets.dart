@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 
 import 'brand_colors.dart';
 
+/// Hauteur commune des contrôles "boutons/pills" du relevé de visite.
+const double kVisitControlHeight = 40.0;
+
 /// Section header with optional icon
 class FormSectionHeader extends StatelessWidget {
   final String title;
@@ -62,11 +65,7 @@ class VpDivider extends StatelessWidget {
 class VpCheckboxSquare extends StatelessWidget {
   final bool completed;
   final double size;
-  const VpCheckboxSquare({
-    super.key,
-    required this.completed,
-    this.size = 20,
-  });
+  const VpCheckboxSquare({super.key, required this.completed, this.size = 20});
 
   @override
   Widget build(BuildContext context) {
@@ -78,8 +77,8 @@ class VpCheckboxSquare extends StatelessWidget {
       builder: (context, t, _) {
         final double scale = completed
             ? (t < 0.55
-                ? (0.85 + (1.12 - 0.85) * (t / 0.55))
-                : (1.12 - (1.12 - 1.0) * ((t - 0.55) / 0.45)))
+                  ? (0.85 + (1.12 - 0.85) * (t / 0.55))
+                  : (1.12 - (1.12 - 1.0) * ((t - 0.55) / 0.45)))
             : 1.0;
         return Transform.scale(
           scale: scale,
@@ -103,11 +102,7 @@ class VpCheckboxSquare extends StatelessWidget {
               opacity: completed ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              child: Icon(
-                Icons.check,
-                size: size * 0.6,
-                color: Colors.white,
-              ),
+              child: Icon(Icons.check, size: size * 0.6, color: Colors.white),
             ),
           ),
         );
@@ -124,11 +119,7 @@ class VpCheckboxSquare extends StatelessWidget {
 class VpCheckboxDot extends StatelessWidget {
   final bool completed;
   final double size;
-  const VpCheckboxDot({
-    super.key,
-    required this.completed,
-    this.size = 18,
-  });
+  const VpCheckboxDot({super.key, required this.completed, this.size = 18});
 
   @override
   Widget build(BuildContext context) {
@@ -140,8 +131,8 @@ class VpCheckboxDot extends StatelessWidget {
       builder: (context, t, _) {
         final double scale = completed
             ? (t < 0.55
-                ? (0.55 + (1.08 - 0.55) * (t / 0.55))
-                : (1.08 - (1.08 - 1.0) * ((t - 0.55) / 0.45)))
+                  ? (0.55 + (1.08 - 0.55) * (t / 0.55))
+                  : (1.08 - (1.08 - 1.0) * ((t - 0.55) / 0.45)))
             : 1.0;
         return Transform.scale(
           scale: scale,
@@ -165,11 +156,7 @@ class VpCheckboxDot extends StatelessWidget {
               opacity: completed ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              child: Icon(
-                Icons.check,
-                size: size * 0.55,
-                color: Colors.white,
-              ),
+              child: Icon(Icons.check, size: size * 0.55, color: Colors.white),
             ),
           ),
         );
@@ -242,6 +229,7 @@ class FormTextField extends StatefulWidget {
   final bool readOnly;
   final TextInputType? keyboardType;
   final String? suffix;
+
   /// Hauteur max en lignes. `null` = pas de limite (le champ grandit
   /// avec le contenu, toutes les lignes restent visibles). Refonte
   /// 2026-05-13 : nullable pour permettre l'auto-grow sur les zones
@@ -348,59 +336,62 @@ class _FormTextFieldState extends State<FormTextField> {
         // mode multi-line = radius léger 12 + auto-grow (minLines à 2
         // par défaut pour donner un look « text area »). Toutes les
         // lignes saisies restent visibles si maxLines=null.
-        Builder(builder: (context) {
-          final isMultiline = widget.maxLines == null || widget.maxLines! > 1;
-          final radius = isMultiline ? 12.0 : 999.0;
-          return TextFormField(
-            controller: _controller,
-            focusNode: _focusNode,
-            readOnly: widget.readOnly,
-            autofocus: widget.autofocus,
-            keyboardType: widget.keyboardType,
-            maxLines: widget.maxLines,
-            minLines: widget.minLines ?? (isMultiline ? 2 : 1),
-            style: TextStyle(
-              fontSize: widget.valueSize ?? 14,
-              color: const Color(0xFF2B323A),
-            ),
-            stylusHandwritingEnabled: true,
-            onFieldSubmitted: widget.onSubmitted,
-            onTapOutside: widget.onTapOutside == null
-                ? null
-                : (_) {
-                    _focusNode.unfocus();
-                    widget.onTapOutside!();
-                  },
-            decoration: InputDecoration(
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: isMultiline ? 12 : 10,
+        Builder(
+          builder: (context) {
+            final isMultiline = widget.maxLines == null || widget.maxLines! > 1;
+            final radius = isMultiline ? 12.0 : 999.0;
+            return TextFormField(
+              controller: _controller,
+              focusNode: _focusNode,
+              readOnly: widget.readOnly,
+              autofocus: widget.autofocus,
+              keyboardType: widget.keyboardType,
+              maxLines: widget.maxLines,
+              minLines: widget.minLines ?? (isMultiline ? 2 : 1),
+              style: TextStyle(
+                fontSize: widget.valueSize ?? 14,
+                color: const Color(0xFF2B323A),
               ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(radius),
-                borderSide: BorderSide(color: Color(0xFFB9C0C7)),
+              stylusHandwritingEnabled: true,
+              onFieldSubmitted: widget.onSubmitted,
+              onTapOutside: widget.onTapOutside == null
+                  ? null
+                  : (_) {
+                      _focusNode.unfocus();
+                      widget.onTapOutside!();
+                    },
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: isMultiline ? 12 : 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radius),
+                  borderSide: BorderSide(color: Color(0xFFB9C0C7)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radius),
+                  borderSide: BorderSide(color: Color(0xFFB9C0C7)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radius),
+                  borderSide: const BorderSide(color: kBrandPurple, width: 1.5),
+                ),
+                filled: true,
+                fillColor: widget.readOnly
+                    ? const Color(0xFFF2ECF5)
+                    : Colors.white,
+                suffixText: widget.suffix,
+                suffixStyle: const TextStyle(
+                  color: Color(0xFF8A939D),
+                  fontSize: 13,
+                ),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(radius),
-                borderSide: BorderSide(color: Color(0xFFB9C0C7)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(radius),
-                borderSide:
-                    const BorderSide(color: kBrandPurple, width: 1.5),
-              ),
-              filled: true,
-              fillColor: widget.readOnly
-                  ? const Color(0xFFF2ECF5)
-                  : Colors.white,
-              suffixText: widget.suffix,
-              suffixStyle:
-                  const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
-            ),
-            onChanged: widget.onChanged,
-          );
-        }),
+              onChanged: widget.onChanged,
+            );
+          },
+        ),
       ],
     );
   }
@@ -457,7 +448,13 @@ class _FormNumberFieldState extends State<FormNumberField> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.value != null ? widget.value!.toStringAsFixed(widget.value! == widget.value!.roundToDouble() ? 0 : 1) : '');
+    _controller = TextEditingController(
+      text: widget.value != null
+          ? widget.value!.toStringAsFixed(
+              widget.value! == widget.value!.roundToDouble() ? 0 : 1,
+            )
+          : '',
+    );
     _focusNode = FocusNode();
   }
 
@@ -465,7 +462,11 @@ class _FormNumberFieldState extends State<FormNumberField> {
   void didUpdateWidget(covariant FormNumberField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.value != widget.value) {
-      final newText = widget.value != null ? widget.value!.toStringAsFixed(widget.value! == widget.value!.roundToDouble() ? 0 : 1) : '';
+      final newText = widget.value != null
+          ? widget.value!.toStringAsFixed(
+              widget.value! == widget.value!.roundToDouble() ? 0 : 1,
+            )
+          : '';
       if (_controller.text != newText) _controller.text = newText;
     }
   }
@@ -500,7 +501,9 @@ class _FormNumberFieldState extends State<FormNumberField> {
           focusNode: _focusNode,
           autofocus: widget.autofocus,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+          ],
           style: TextStyle(
             fontSize: widget.valueSize ?? 14,
             color: const Color(0xFF2B323A),
@@ -515,33 +518,31 @@ class _FormNumberFieldState extends State<FormNumberField> {
                   _focusNode.unfocus();
                   widget.onTapOutside!();
                 },
-          // Refonte 2026-05-13 (demande user) — cf. FormTextField :
-          // fond blanc, border gris léger, radius 10, focus violet.
           decoration: InputDecoration(
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 10,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
               borderSide: BorderSide(color: Color(0xFFB9C0C7)),
             ),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
               borderSide: BorderSide(color: Color(0xFFB9C0C7)),
             ),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
-              borderSide:
-                  const BorderSide(color: kBrandPurple, width: 1.5),
+              borderSide: const BorderSide(color: kBrandPurple, width: 1.5),
             ),
             filled: true,
             fillColor: Colors.white,
             suffixText: widget.unit,
-            suffixStyle:
-                const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
+            suffixStyle: const TextStyle(
+              color: Color(0xFF8A939D),
+              fontSize: 13,
+            ),
           ),
           onChanged: (text) {
             final parsed = double.tryParse(text.replaceAll(',', '.'));
@@ -605,9 +606,7 @@ class TogglePillButton extends StatelessWidget {
               // Refonte 2026-05-13 : pill radius 999 uniforme.
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
-                color: active
-                    ? kBrandPurple
-                    : Color(0xFFB9C0C7),
+                color: active ? kBrandPurple : Color(0xFFB9C0C7),
                 width: 1.2,
               ),
             ),
@@ -632,10 +631,7 @@ class TogglePillButton extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: kBrandPurple,
-                    width: 1.4,
-                  ),
+                  border: Border.all(color: kBrandPurple, width: 1.4),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.08),
@@ -682,7 +678,8 @@ class CollapsedValueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveLabelStyle = labelStyle ??
+    final effectiveLabelStyle =
+        labelStyle ??
         const TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 13,
@@ -714,11 +711,7 @@ class CollapsedValueRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            const Icon(
-              Icons.edit_outlined,
-              size: 14,
-              color: kBrandPurple,
-            ),
+            const Icon(Icons.edit_outlined, size: 14, color: kBrandPurple),
           ],
         ),
       ),
@@ -799,9 +792,7 @@ class FormToggleGroup extends StatelessWidget {
                 : const Color(0xFFFAF7FB), // mauve-50
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color: isSelected
-                  ? kBrandPurple
-                  : Colors.transparent,
+              color: isSelected ? kBrandPurple : Colors.transparent,
             ),
           ),
           child: AnimatedDefaultTextStyle(
@@ -814,14 +805,9 @@ class FormToggleGroup extends StatelessWidget {
                   ? Colors.white
                   : const Color(0xFF2B323A), // ink-700
               fontSize: 14,
-              fontWeight: isSelected
-                  ? FontWeight.w500
-                  : FontWeight.w400,
+              fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
             ),
-            child: Text(
-              opt,
-              textAlign: TextAlign.center,
-            ),
+            child: Text(opt, textAlign: TextAlign.center),
           ),
         ),
       );
@@ -963,9 +949,7 @@ class FormMultiToggleGroup extends StatelessWidget {
                 : const Color(0xFFFAF7FB), // mauve-50 (idem Occupation)
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color: isSelected
-                  ? kBrandPurple
-                  : Colors.transparent,
+              color: isSelected ? kBrandPurple : Colors.transparent,
             ),
           ),
           child: AnimatedDefaultTextStyle(
@@ -978,13 +962,9 @@ class FormMultiToggleGroup extends StatelessWidget {
                   ? Colors.white
                   : const Color(0xFF2B323A), // ink-700
               fontSize: 14,
-              fontWeight:
-                  isSelected ? FontWeight.w500 : FontWeight.w400,
+              fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
             ),
-            child: Text(
-              opt,
-              textAlign: TextAlign.center,
-            ),
+            child: Text(opt, textAlign: TextAlign.center),
           ),
         ),
       );
@@ -1058,17 +1038,20 @@ class FormCheckbox extends StatelessWidget {
                 color: value ? kBrandPurple : Colors.white,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: value
-                      ? kBrandPurple
-                      : Color(0xFF8A939D),
+                  color: value ? kBrandPurple : Color(0xFF8A939D),
                   width: 1.5,
                 ),
               ),
-              child: value ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
+              child: value
+                  ? const Icon(Icons.check, size: 14, color: Colors.white)
+                  : null,
             ),
             const SizedBox(width: 10),
             Flexible(
-              child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF2B323A))),
+              child: Text(
+                label,
+                style: const TextStyle(fontSize: 13, color: Color(0xFF2B323A)),
+              ),
             ),
           ],
         ),
@@ -1192,10 +1175,7 @@ class FormSection extends StatelessWidget {
           title,
           // Ligne de séparation pleine largeur sous le titre.
           const SizedBox(height: 8),
-          Container(
-            height: 1,
-            color: const Color(0xFFE4E7EB),
-          ),
+          Container(height: 1, color: const Color(0xFFE4E7EB)),
           const SizedBox(height: 12),
           child,
         ],
@@ -1294,40 +1274,32 @@ class _FormTextFieldWithWarningState extends State<FormTextFieldWithWarning> {
                   _focusNode.unfocus();
                   widget.onTapOutside!();
                 },
-          // Refonte 2026-05-13 (demande user) — cf. FormTextField :
-          // fond blanc, border gris léger, radius 10. État warning =
-          // border ambre 1.5px (au lieu de gris), y compris au focus.
           decoration: InputDecoration(
             isDense: true,
             filled: true,
             fillColor: Colors.white,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 10,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
               borderSide: BorderSide(color: Color(0xFFB9C0C7)),
             ),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
               borderSide: widget.showWarning
                   ? const BorderSide(color: Color(0xFFC48429), width: 1.5)
                   : BorderSide(color: Color(0xFFB9C0C7)),
             ),
-            // Refonte 2026-05-13 : pill radius 999 uniforme.
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(999),
               borderSide: widget.showWarning
                   ? const BorderSide(color: Color(0xFFC48429), width: 1.5)
-                  : const BorderSide(
-                      color: kBrandPurple,
-                      width: 1.5,
-                    ),
+                  : const BorderSide(color: kBrandPurple, width: 1.5),
             ),
             hintText: widget.placeholder,
-            hintStyle:
-                const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
+            hintStyle: const TextStyle(color: Color(0xFF8A939D), fontSize: 13),
             suffixIcon: widget.showWarning
                 ? Tooltip(
                     message: widget.warningText ?? 'Valeur invalide',
@@ -1495,8 +1467,7 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
           borderRadius: BorderRadius.circular(999),
           onTap: () => setState(() => _open = !_open),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.white,
               // Refonte 2026-05-13 : pill radius 999 uniforme.
@@ -1560,21 +1531,24 @@ class _FormMultiSelectDropdownState extends State<FormMultiSelectDropdown> {
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       child: Row(
                         children: [
                           Container(
                             width: 18,
                             height: 18,
                             decoration: BoxDecoration(
-                              color: checked
-                                  ? kBrandPurple
-                                  : Colors.white,
+                              color: checked ? kBrandPurple : Colors.white,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: checked
-                                ? const Icon(Icons.check,
-                                    size: 13, color: Colors.white)
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 13,
+                                    color: Colors.white,
+                                  )
                                 : null,
                           ),
                           const SizedBox(width: 10),
@@ -1638,8 +1612,10 @@ class OccupantSwitcher extends StatelessWidget {
                 onTap: () => onChanged?.call(i),
                 child: Container(
                   constraints: const BoxConstraints(minWidth: 72),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: active

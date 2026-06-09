@@ -548,6 +548,7 @@ List<String> _descriptionsFromStored(String raw) {
         return decoded
             .map((entry) => entry?.toString().trim() ?? '')
             .where((entry) => entry.isNotEmpty)
+            .take(WikiItem.maxDescriptions)
             .toList(growable: false);
       }
     } catch (_) {
@@ -560,7 +561,7 @@ List<String> _descriptionsFromStored(String raw) {
 String _joinedDescriptions(String raw) {
   final descriptions = _descriptionsFromStored(raw);
   if (descriptions.isEmpty) return '';
-  return descriptions.join('\n\n');
+  return descriptions.first;
 }
 
 Set<String> _descriptionSyncOptions(String raw) {

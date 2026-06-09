@@ -7,7 +7,7 @@ import '../../components/notes_widget.dart';
 
 /// Mesures tab — deux silhouettes (assise + debout) sur fond blanc.
 /// Si le foyer compte plusieurs occupants, un sélecteur "Occupant 1 /
-/// Occupant 2" apparaît à gauche sur la même ligne que les flèches undo/redo,
+/// Occupant 2" apparaît au-dessus du dessin, centré dans la barre haute,
 /// exactement comme dans les autres onglets.
 class MesuresTab extends StatefulWidget {
   final Dossier dossier;
@@ -42,11 +42,9 @@ class _MesuresTabState extends State<MesuresTab>
   // complet (Prénom NOM) de l'occupant courant via `_buildOccupantHeader`.
 
   /// Occupant 0 → 'Mesures' (rétrocompatibilité). Occupant N → 'Mesures-N'.
-  String _tabKeyFor(int index) =>
-      index == 0 ? 'Mesures' : 'Mesures-$index';
+  String _tabKeyFor(int index) => index == 0 ? 'Mesures' : 'Mesures-$index';
 
-  int get _safeIndex =>
-      _activeOccupantIndex.clamp(0, _occupantCount - 1);
+  int get _safeIndex => _activeOccupantIndex.clamp(0, _occupantCount - 1);
 
   @override
   Widget build(BuildContext context) {
@@ -55,10 +53,8 @@ class _MesuresTabState extends State<MesuresTab>
     final idx = _safeIndex;
 
     // Refonte 2026-05-12 : la bannière occupant est désormais injectée
-    // dans le NotesWidget via `leadingNavWidget` — elle apparaît sur
-    // LA MÊME LIGNE que les flèches undo/redo internes du widget.
-    // Demande utilisateur : « met cette bannière sur la même ligne que
-    // les flèches ». Plus de header séparé au-dessus du canvas.
+    // dans le NotesWidget via `leadingNavWidget`, sans header séparé
+    // au-dessus du canvas.
     // Note clé importante : la `key` du NotesWidget NE doit PAS varier
     // avec `idx`. Si elle changeait, Flutter détruirait/recréerait la
     // State à chaque switch d'occupant et l'ancien arbre canvas (qui
@@ -82,13 +78,16 @@ class _MesuresTabState extends State<MesuresTab>
       showSaveButton: false,
       fillParentHeight: true,
       embedded: false,
+      showCanvasTopDivider: false,
+      showHeaderUndoRedo: false,
+      undoRedoInToolbar: true,
       backgroundContent: const _MesuresBackground(),
       // Bannière occupant uniquement quand il y en a plusieurs —
       // sinon on évite d'encombrer la barre de navigation pour rien.
       leadingNavWidget: hasMultiple ? _buildOccupantHeader(idx) : null,
       // Slide horizontal uniquement sur la zone canvas (dessin).
-      // La bannière + flèches undo/redo restent fixes dans la barre
-      // de nav au-dessus. Mono-occupant : pas d'animation utile.
+      // La bannière reste fixe dans la barre de nav au-dessus.
+      // Mono-occupant : pas d'animation utile.
       canvasSlideIndex: hasMultiple ? idx : null,
     );
   }
@@ -127,9 +126,7 @@ class _MesuresTabState extends State<MesuresTab>
     }
     final display = (first.isEmpty && last.isEmpty)
         ? 'Occupant ${idx + 1}'
-        : [first, last.toUpperCase()]
-            .where((s) => s.isNotEmpty)
-            .join(' ');
+        : [first, last.toUpperCase()].where((s) => s.isNotEmpty).join(' ');
     // Note : `_buildOccupantHeader` n'est appelé que quand `hasMultiple`
     // est vrai (cf. build()), donc l'ancien ternaire `hasNav ? ... : ...`
     // était toujours dans la branche "vrai". Simplifié 2026-05-15.
@@ -143,9 +140,7 @@ class _MesuresTabState extends State<MesuresTab>
             width: 30,
             height: 30,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-            ),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(999)),
             child: Icon(icon, size: 16, color: const Color(0xFF2B323A)),
           ),
         ),

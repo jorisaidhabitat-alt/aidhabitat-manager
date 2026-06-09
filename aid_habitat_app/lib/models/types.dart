@@ -188,6 +188,8 @@ class RetirementFund {
 }
 
 class WikiItem {
+  static const int maxDescriptions = 3;
+
   final String id;
   final String title;
 
@@ -220,6 +222,7 @@ class WikiItem {
           return decoded
               .map((e) => e?.toString().trim() ?? '')
               .where((s) => s.isNotEmpty)
+              .take(maxDescriptions)
               .toList();
         }
       } catch (_) {
@@ -238,6 +241,7 @@ class WikiItem {
     final clean = values
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
+        .take(maxDescriptions)
         .toList();
     if (clean.isEmpty) return '';
     if (clean.length == 1) return clean.first;

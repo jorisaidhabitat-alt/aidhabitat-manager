@@ -197,7 +197,7 @@ class NoteRepository {
     );
     final preservedPhase = existing.isNotEmpty
         ? existing.first['plan_phase'] as String?
-        : null;
+        : (tabKey == 'Plans' ? planPhaseToDb(PlanPhase.avant) : null);
 
     final drawingJsonAtRest = await OfflineVault.instance.sealString(
       drawingJson,

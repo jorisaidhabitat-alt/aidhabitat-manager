@@ -354,16 +354,15 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     }
     // Quand le parent change `initialSubSection` (programmatic nav
     // depuis _navigateToMissingField), on bascule la sous-section
-    // courante. Filtre par `oldWidget.initialSubSection !=
-    // widget.initialSubSection` pour ne pas écraser le tap manuel
-    // de l'utilisateur lors d'un rebuild banal du parent.
+    // courante. `didUpdateWidget` est suivi d'un build, donc une
+    // assignation directe suffit et évite un setState inutile.
     final next = widget.initialSubSection;
     if (next != null &&
         next != oldWidget.initialSubSection &&
         next >= 0 &&
         next < 4 &&
         next != _subSection) {
-      setState(() => _subSection = next);
+      _subSection = next;
     }
   }
 

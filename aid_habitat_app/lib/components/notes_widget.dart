@@ -11,6 +11,7 @@ import '../services/pencil_interaction_service.dart';
 import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
 import 'brand_colors.dart';
+import 'confirmation_dialog.dart';
 import 'notes_canvas_painters.dart';
 import 'soft_transitions.dart';
 
@@ -92,7 +93,6 @@ const double _kDefaultHighlighterSize = 10.0;
 const double _kDefaultEraserSize = 18.0;
 const double _kMinEraserSize = 8.0;
 const double _kMaxEraserSize = 44.0;
-const List<double> _kEraserSizePresets = [12.0, 18.0, 28.0, 40.0];
 // Refonte 2026-05-13 : couleurs alignées sur le nouveau design system.
 //  - _kActiveText : mauve-700 (#554265, légère nuance plus chaude)
 //  - kBrandPurpleSoft : mauve-100 (#F2ECF5)
@@ -155,6 +155,8 @@ class NotesWidget extends StatefulWidget {
     this.toolbarPlacement = NoteToolbarPlacement.bottomCenter,
     this.toolbarDockedToBorder = false,
     this.toolbarInFooter = false,
+    this.showHeaderUndoRedo = true,
+    this.undoRedoInToolbar = false,
     this.fillParentHeight = false,
     this.activeTool,
     this.onToolChange,
@@ -172,6 +174,7 @@ class NotesWidget extends StatefulWidget {
     this.stackedCards = false,
     this.attachedToTitleBanner = false,
     this.canvasSlideIndex,
+    this.showCanvasTopDivider = true,
   });
 
   // Identifiants / titre
@@ -221,6 +224,11 @@ class NotesWidget extends StatefulWidget {
   /// rendu par l'AnimatedSwitcher pendant la transition, peignant la
   /// référence stroke capturée à l'ancien build.
   final int? canvasSlideIndex;
+
+  /// Affiche le séparateur fin entre la barre d'outils haute et le canvas
+  /// dans les notes non intégrées. Désactivé pour Mesures, où la ligne noire
+  /// au-dessus du dessin est visuellement inutile.
+  final bool showCanvasTopDivider;
 
   // Contenu initial
   final String initialText;
@@ -279,6 +287,8 @@ class NotesWidget extends StatefulWidget {
   final NoteToolbarPlacement toolbarPlacement;
   final bool toolbarDockedToBorder;
   final bool toolbarInFooter;
+  final bool showHeaderUndoRedo;
+  final bool undoRedoInToolbar;
   final bool fillParentHeight;
 
   // Contrôle externe de l'outil
@@ -387,7 +397,8 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   // UI pop-ups
   bool _showColorPalette = false;
-  bool _showEraserSizePicker = false;
+  bool _showEraserSizeGauge = false;
+  final Object _eraserSizeTapRegion = Object();
 
   // Text area height (splitter) — équivalent de `textAreaHeight` (default 92px).
   double _textAreaHeight = 92.0;
@@ -635,7 +646,42 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   @override
   void dispose() {
+    final shouldFlushDirtyDraft =
+        _isDirty && !_isSaving && widget.autoSaveToService;
+    final disposePatientId = widget.patientId;
+    final disposeTabKey = widget.tabKey;
+    final disposeCurrentPage = _currentPage;
+    final disposeTotalPages = _totalPages;
+    final disposeSharedText = widget.sharedText;
+    final disposeText = _textController.text;
+    final disposeCurrentJson = _currentDrawingJson();
+    final disposePageTexts = Map<int, String>.from(_pageTexts);
+    final disposePageStrokes = {
+      for (final entry in _pageStrokes.entries)
+        entry.key: List<Stroke>.from(entry.value),
+    };
+    final disposePageMedicalFlags = {
+      for (final entry in _pageMedicalFlags.entries)
+        entry.key: Set<int>.from(entry.value),
+    };
+
     _autoSaveDebounce?.cancel();
+    if (shouldFlushDirtyDraft) {
+      unawaited(
+        _persistDirtyDraftOnDispose(
+          patientId: disposePatientId,
+          tabKey: disposeTabKey,
+          currentPage: disposeCurrentPage,
+          totalPages: disposeTotalPages,
+          sharedText: disposeSharedText,
+          text: disposeText,
+          currentDrawingJson: disposeCurrentJson,
+          pageTexts: disposePageTexts,
+          pageStrokes: disposePageStrokes,
+          pageMedicalFlags: disposePageMedicalFlags,
+        ),
+      );
+    }
     _notePollTimer?.cancel();
     _notePollTimer = null;
     _textController.removeListener(_onTextChanged);
@@ -651,6 +697,101 @@ class _NotesWidgetState extends State<NotesWidget> {
     _textModalEntry?.remove();
     _textModalEntry = null;
     super.dispose();
+  }
+
+  Future<void> _persistDirtyDraftOnDispose({
+    required String patientId,
+    required String tabKey,
+    required int currentPage,
+    required int totalPages,
+    required bool sharedText,
+    required String text,
+    required String currentDrawingJson,
+    required Map<int, String> pageTexts,
+    required Map<int, List<Stroke>> pageStrokes,
+    required Map<int, Set<int>> pageMedicalFlags,
+  }) async {
+    try {
+      if (!sharedText) {
+        await _dataService.saveNoteDrawingJson(
+          patientId: patientId,
+          tabKey: tabKey,
+          pageNumber: currentPage,
+          drawingJson: currentDrawingJson,
+        );
+        return;
+      }
+
+      for (var page = 0; page < totalPages; page++) {
+        if (page == currentPage) {
+          await _dataService.saveNoteDrawingJson(
+            patientId: patientId,
+            tabKey: tabKey,
+            pageNumber: page,
+            drawingJson: currentDrawingJson,
+          );
+          continue;
+        }
+
+        final strokes = pageStrokes[page];
+        final flags = pageMedicalFlags[page];
+        final hasLoadedPage = strokes != null || flags != null;
+        if (hasLoadedPage) {
+          await _dataService.saveNoteDrawingJson(
+            patientId: patientId,
+            tabKey: tabKey,
+            pageNumber: page,
+            drawingJson: jsonEncode({
+              'version': 1,
+              'text': text,
+              'strokes': (strokes ?? const <Stroke>[])
+                  .map((s) => s.toJson())
+                  .toList(),
+              if (flags != null && flags.isNotEmpty)
+                'medicalFlags': (flags.toList()..sort()),
+            }),
+          );
+          continue;
+        }
+
+        var drawingJson = jsonEncode({
+          'version': 1,
+          'text': pageTexts[page] ?? text,
+          'strokes': const <dynamic>[],
+        });
+        final existing = await _dataService.fetchNoteDrawingJson(
+          patientId: patientId,
+          tabKey: tabKey,
+          pageNumber: page,
+        );
+        if (existing != null && existing.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(existing);
+            if (decoded is Map) {
+              final map = <String, dynamic>{
+                for (final entry in decoded.entries)
+                  entry.key.toString(): entry.value,
+              };
+              map['version'] = map['version'] ?? 1;
+              map['text'] = text;
+              if (map['strokes'] is! List) map['strokes'] = const <dynamic>[];
+              drawingJson = jsonEncode(map);
+            }
+          } catch (_) {
+            // Si l'ancien JSON est illisible, on sauvegarde le texte courant.
+          }
+        }
+
+        await _dataService.saveNoteDrawingJson(
+          patientId: patientId,
+          tabKey: tabKey,
+          pageNumber: page,
+          drawingJson: drawingJson,
+        );
+      }
+    } catch (_) {
+      // Best-effort au démontage : la prochaine saisie relancera une sauvegarde.
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -766,6 +907,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// l'affichage de la première page.
   Future<void> _probeAdditionalPages({required int startFrom}) async {
     var probe = startFrom;
+    final minimumPages = math.max(1, widget.totalPages);
     while (probe < widget.maxPages) {
       final json = await _dataService.fetchNoteDrawingJson(
         patientId: widget.patientId,
@@ -773,7 +915,16 @@ class _NotesWidgetState extends State<NotesWidget> {
         pageNumber: probe,
       );
       if (!mounted) return;
-      if (json == null || json.isEmpty) break;
+      if (json == null || json.isEmpty) {
+        if (probe < minimumPages) {
+          _pageStrokes.putIfAbsent(probe, () => <Stroke>[]);
+          _pageTexts.putIfAbsent(probe, () => '');
+          _pageMedicalFlags.putIfAbsent(probe, () => <int>{});
+          probe += 1;
+          continue;
+        }
+        break;
+      }
       _applyJson(probe, json, hydrateController: false);
       probe += 1;
     }
@@ -935,12 +1086,16 @@ class _NotesWidgetState extends State<NotesWidget> {
   Future<void> _autoSavePersist() async {
     if (!mounted) return;
     try {
-      await _dataService.saveNoteDrawingJson(
-        patientId: widget.patientId,
-        tabKey: widget.tabKey,
-        pageNumber: _currentPage,
-        drawingJson: _currentDrawingJson(),
-      );
+      if (widget.sharedText) {
+        await _persistSharedTextAcrossPages();
+      } else {
+        await _dataService.saveNoteDrawingJson(
+          patientId: widget.patientId,
+          tabKey: widget.tabKey,
+          pageNumber: _currentPage,
+          drawingJson: _currentDrawingJson(),
+        );
+      }
       // Reset _isDirty après l'auto-save réussi — sans ça, le flag
       // restait true éternellement (seul le bouton Save manuel le
       // remettait à false), ce qui bloquait le polling cross-device
@@ -971,12 +1126,16 @@ class _NotesWidgetState extends State<NotesWidget> {
       if (widget.onSave != null) {
         await widget.onSave!(payload);
       } else if (widget.autoSaveToService) {
-        await _dataService.saveNoteDrawingJson(
-          patientId: widget.patientId,
-          tabKey: widget.tabKey,
-          pageNumber: _currentPage,
-          drawingJson: payload.drawingJson,
-        );
+        if (widget.sharedText) {
+          await _persistSharedTextAcrossPages();
+        } else {
+          await _dataService.saveNoteDrawingJson(
+            patientId: widget.patientId,
+            tabKey: widget.tabKey,
+            pageNumber: _currentPage,
+            drawingJson: payload.drawingJson,
+          );
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -1043,6 +1202,20 @@ class _NotesWidgetState extends State<NotesWidget> {
     _markDirty();
   }
 
+  Future<void> _confirmClearStrokes() async {
+    if (_strokes.isEmpty) return;
+    _hideEraserSizeGauge();
+    final confirmed = await showAppDestructiveConfirmation(
+      context: context,
+      title: 'Tout effacer ?',
+      message: 'Les éléments dessinés sur cette page seront supprimés.',
+      confirmLabel: 'Tout effacer',
+      icon: LucideIcons.x,
+    );
+    if (!mounted || !confirmed) return;
+    _clearStrokes();
+  }
+
   // ---------------------------------------------------------------------------
   // Dessin
   // ---------------------------------------------------------------------------
@@ -1072,6 +1245,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (!_isInsideCanvas(details.localPosition)) return;
     _pushUndo();
     setState(() {
+      if (_activeTool == NoteTool.eraser) _showEraserSizeGauge = false;
       _activeStroke = Stroke(
         tool: _activeTool,
         color: _activeColor,
@@ -1406,6 +1580,69 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
   }
 
+  Future<void> _persistSharedTextAcrossPages() async {
+    final text = _textController.text;
+    for (var page = 0; page < _totalPages; page++) {
+      if (!mounted) return;
+      _pageTexts[page] = text;
+      if (page == _currentPage) {
+        await _dataService.saveNoteDrawingJson(
+          patientId: widget.patientId,
+          tabKey: widget.tabKey,
+          pageNumber: page,
+          drawingJson: _currentDrawingJson(),
+        );
+      } else {
+        await _persistSharedTextPage(page, text);
+      }
+    }
+  }
+
+  Future<void> _persistSharedTextPage(int pageIndex, String text) async {
+    final hasLoadedPage =
+        _pageStrokes.containsKey(pageIndex) ||
+        _pageMedicalFlags.containsKey(pageIndex);
+    if (hasLoadedPage) {
+      await _persistPage(pageIndex);
+      return;
+    }
+
+    var drawingJson = jsonEncode({
+      'version': 1,
+      'text': text,
+      'strokes': const <dynamic>[],
+    });
+    final existing = await _dataService.fetchNoteDrawingJson(
+      patientId: widget.patientId,
+      tabKey: widget.tabKey,
+      pageNumber: pageIndex,
+    );
+    if (existing != null && existing.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(existing);
+        if (decoded is Map) {
+          final map = <String, dynamic>{
+            for (final entry in decoded.entries)
+              entry.key.toString(): entry.value,
+          };
+          map['version'] = map['version'] ?? 1;
+          map['text'] = text;
+          if (map['strokes'] is! List) map['strokes'] = const <dynamic>[];
+          drawingJson = jsonEncode(map);
+        }
+      } catch (_) {
+        // Si l'ancien JSON est illisible, on repart sur une page texte saine.
+      }
+    }
+
+    await _dataService.saveNoteDrawingJson(
+      patientId: widget.patientId,
+      tabKey: widget.tabKey,
+      pageNumber: pageIndex,
+      drawingJson: drawingJson,
+    );
+  }
+
   Future<void> _persistEmptyAt(int pageIndex) async {
     try {
       await _dataService.saveNoteDrawingJson(
@@ -1513,7 +1750,8 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (widget.showText) _buildTextEditor(),
         if (widget.showText) _buildSplitter(),
         if (widget.allowPagination || !widget.embedded) _buildPageNavRow(),
-        if (!widget.embedded) const Divider(height: 1),
+        if (!widget.embedded && widget.showCanvasTopDivider)
+          const Divider(height: 1),
         // Parité React : réserver au moins ~88px au canvas quand le texte est
         // visible (espace nécessaire pour que la toolbar reste en place).
         // Quand `canvasSlideIndex` est fourni, le canvas est wrappé dans
@@ -1798,10 +2036,9 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
-  /// Actions flottantes en haut-droite du canvas : bouton `+` (cercle
-  /// violet **clair** avec `+` violet **foncé`) + suppression dans la même
-  /// empreinte visuelle.
-  /// Taille 44×44 pour respecter les guidelines tactiles tablette.
+  /// Actions flottantes en haut-droite du canvas : boutons `+` et suppression
+  /// alignés sur la taille visible des outils de dessin (36×36), avec une
+  /// zone tactile élargie pour rester confortable sur tablette.
   Widget _buildTopRightPageActions() {
     final canAdd = _totalPages < widget.maxPages;
     final canDelete = widget.onDeletePage != null
@@ -1810,23 +2047,18 @@ class _NotesWidgetState extends State<NotesWidget> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // "+" : cercle violet **clair** (#EDE8F5) de 26px avec un `+`
-        // violet **foncé** (#7C6DAA) de 16px à l'intérieur — même
-        // grammaire pastel que la sub-nav du relevé de visite.
-        // GestureDetector pour éviter le halo Material (même traitement
-        // que la corbeille).
         Tooltip(
           message: 'Nouvelle page',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: canAdd ? _addPage : null,
             child: Padding(
-              padding: const EdgeInsets.all(9), // tap area ≈ 44×44
+              padding: const EdgeInsets.all(4),
               child: Opacity(
                 opacity: canAdd ? 1 : 0.4,
                 child: Container(
-                  width: 26,
-                  height: 26,
+                  width: 36,
+                  height: 36,
                   decoration: const BoxDecoration(
                     color: _kStackedSplitterBg, // violet clair #EDE8F5
                     shape: BoxShape.circle,
@@ -1834,7 +2066,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   alignment: Alignment.center,
                   child: const Icon(
                     LucideIcons.plus,
-                    size: 16,
+                    size: 18,
                     color: kBrandPurple, // violet foncé #7C6DAA
                   ),
                 ),
@@ -1843,21 +2075,18 @@ class _NotesWidgetState extends State<NotesWidget> {
           ),
         ),
         const SizedBox(width: 4),
-        // Suppression : même empreinte 26×26 que le cercle violet du bouton
-        // +, avec une icône Material plus nette que le pictogramme Lucide en
-        // petite taille.
         Tooltip(
           message: 'Supprimer la page',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: canDelete ? () => _deletePage() : null,
             child: Padding(
-              padding: const EdgeInsets.all(9), // tap area ≈ 44×44
+              padding: const EdgeInsets.all(4),
               child: Opacity(
                 opacity: canDelete ? 1 : 0.4,
                 child: Container(
-                  width: 26,
-                  height: 26,
+                  width: 36,
+                  height: 36,
                   decoration: const BoxDecoration(
                     color: Color(0xFFFFE4E6),
                     shape: BoxShape.circle,
@@ -1865,7 +2094,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   child: const Center(
                     child: Icon(
                       Icons.delete_outline,
-                      size: 19,
+                      size: 18,
                       color: _kStackedPinkSoft,
                     ),
                   ),
@@ -1892,25 +2121,26 @@ class _NotesWidgetState extends State<NotesWidget> {
           children: [
             // Bannière centrée sur la pleine largeur de la barre.
             widget.leadingNavWidget!,
-            // Undo/redo collés à droite, par-dessus le stack.
-            Align(
-              alignment: Alignment.centerRight,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _HeaderIconButton(
-                    icon: LucideIcons.undo2,
-                    onTap: _undoStack.isEmpty ? null : _undo,
-                    tooltip: 'Annuler',
-                  ),
-                  _HeaderIconButton(
-                    icon: LucideIcons.redo2,
-                    onTap: _redoStack.isEmpty ? null : _redo,
-                    tooltip: 'Rétablir',
-                  ),
-                ],
+            if (widget.showHeaderUndoRedo)
+              // Undo/redo collés à droite, par-dessus le stack.
+              Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _HeaderIconButton(
+                      icon: LucideIcons.undo2,
+                      onTap: _undoStack.isEmpty ? null : _undo,
+                      tooltip: 'Annuler',
+                    ),
+                    _HeaderIconButton(
+                      icon: LucideIcons.redo2,
+                      onTap: _redoStack.isEmpty ? null : _redo,
+                      tooltip: 'Rétablir',
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       );
@@ -1967,16 +2197,18 @@ class _NotesWidgetState extends State<NotesWidget> {
             ),
           ],
           const Spacer(),
-          _HeaderIconButton(
-            icon: LucideIcons.undo2,
-            onTap: _undoStack.isEmpty ? null : _undo,
-            tooltip: 'Annuler',
-          ),
-          _HeaderIconButton(
-            icon: LucideIcons.redo2,
-            onTap: _redoStack.isEmpty ? null : _redo,
-            tooltip: 'Rétablir',
-          ),
+          if (widget.showHeaderUndoRedo) ...[
+            _HeaderIconButton(
+              icon: LucideIcons.undo2,
+              onTap: _undoStack.isEmpty ? null : _undo,
+              tooltip: 'Annuler',
+            ),
+            _HeaderIconButton(
+              icon: LucideIcons.redo2,
+              onTap: _redoStack.isEmpty ? null : _redo,
+              tooltip: 'Rétablir',
+            ),
+          ],
         ],
       ),
     );
@@ -2146,6 +2378,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                       Positioned.fill(
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
+                          onTapDown: (_) => _hideEraserSizeGauge(),
                           onPanStart: _onDrawStart,
                           onPanUpdate: _onDrawUpdate,
                           onPanEnd: _onDrawEnd,
@@ -2171,8 +2404,8 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (!widget.toolbarInFooter) _positionedToolbar(),
         // Popover palette couleur (positionnée au-dessus/en-dessous de la toolbar).
         if (!widget.toolbarInFooter && _showColorPalette) _positionedPalette(),
-        if (!widget.toolbarInFooter && _showEraserSizePicker)
-          _positionedEraserSizePicker(),
+        if (!widget.toolbarInFooter && _showEraserSizeGauge)
+          _positionedEraserSizeGauge(),
         // Le "+" pour ajouter une page est désormais dans le header à
         // côté de la pagination (cf. _buildPageNavRow) — plus de FAB.
       ],
@@ -2214,12 +2447,15 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
   }
 
-  Widget _positionedEraserSizePicker() {
-    final picker = _buildEraserSizePopover();
+  Widget _positionedEraserSizeGauge() {
+    final gauge = TapRegion(
+      groupId: _eraserSizeTapRegion,
+      child: _buildEraserSizePopover(),
+    );
     const margin = 12.0;
     switch (widget.toolbarPlacement) {
       case NoteToolbarPlacement.topRight:
-        return Positioned(top: 74, right: 12, child: picker);
+        return Positioned(top: 74, right: 12, child: gauge);
       case NoteToolbarPlacement.bottomCenter:
         final bottomOffset = widget.toolbarDockedToBorder
             ? 40.0
@@ -2228,18 +2464,57 @@ class _NotesWidgetState extends State<NotesWidget> {
           left: 0,
           right: 0,
           bottom: bottomOffset,
-          child: Center(child: picker),
+          child: Center(child: gauge),
         );
     }
   }
 
   Widget _buildFooterToolbar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-      decoration: BoxDecoration(),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [_buildToolbar()],
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          decoration: BoxDecoration(),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [_buildToolbar()],
+          ),
+        ),
+        if (_showEraserSizeGauge)
+          Positioned(
+            bottom: 64,
+            child: TapRegion(
+              groupId: _eraserSizeTapRegion,
+              child: _buildEraserSizePopover(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _wrapEraserTapRegion(Widget child) {
+    return TapRegion(
+      groupId: _eraserSizeTapRegion,
+      onTapOutside: (_) => _hideEraserSizeGauge(),
+      child: child,
+    );
+  }
+
+  Widget _sizedToolbarButton(Widget child) {
+    return SizedBox(width: 36, height: 36, child: Center(child: child));
+  }
+
+  Widget _eraserToolButton() {
+    return _wrapEraserTapRegion(
+      _sizedToolbarButton(
+        _circularToolButton(
+          icon: LucideIcons.eraser,
+          tooltip: _labelForTool(NoteTool.eraser),
+          isActive: _activeTool == NoteTool.eraser,
+          onTap: _activateEraserTool,
+        ),
       ),
     );
   }
@@ -2248,9 +2523,6 @@ class _NotesWidgetState extends State<NotesWidget> {
     final buttons = <Widget>[];
     for (final tool in _availableTools) {
       buttons.add(_toolButtonFor(tool));
-    }
-    if (_activeTool == NoteTool.eraser) {
-      buttons.add(_eraserSizeButton());
     }
     // Palette — toujours visible en mode advanced. Désactivée (grisée)
     // quand la gomme est active, mais le bouton reste dans la toolbar.
@@ -2262,16 +2534,16 @@ class _NotesWidgetState extends State<NotesWidget> {
       _circularToolButton(
         icon: LucideIcons.x,
         tooltip: 'Tout effacer',
-        onTap: _clearStrokes,
+        onTap: () => unawaited(_confirmClearStrokes()),
         disabled: _strokes.isEmpty,
         backgroundColor: const Color(0xFFFFE4E6),
         foregroundColor: const Color(0xFFB4232F),
       ),
     );
-    // Undo / Redo — inclus uniquement dans la nouvelle mise en page
-    // "deux cartes" (la mise en page historique les affiche dans la
-    // barre d'en-tête `_buildPageNavRow`).
-    if (widget.stackedCards) {
+    // Undo / Redo — inclus dans la nouvelle mise en page "deux cartes"
+    // ou explicitement demandé par un écran qui veut les intégrer à la
+    // toolbar plutôt qu'à la barre d'en-tête.
+    if (widget.stackedCards || widget.undoRedoInToolbar) {
       buttons.add(
         _circularToolButton(
           icon: LucideIcons.undo2,
@@ -2319,9 +2591,9 @@ class _NotesWidgetState extends State<NotesWidget> {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 0; i < buttons.length; i++) ...[
-              // Espace inter-boutons 8 px — aération maximale entre
+              // Espace inter-boutons 12 px — respiration plus nette entre
               // les outils stylo / surligneur / gomme / palette.
-              if (i > 0) const SizedBox(width: 8),
+              if (i > 0) const SizedBox(width: 12),
               buttons[i],
             ],
           ],
@@ -2331,6 +2603,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   Widget _toolButtonFor(NoteTool tool) {
+    if (tool == NoteTool.eraser) return _eraserToolButton();
     final icon = _iconForTool(tool);
     final isActive = _activeTool == tool;
     return _circularToolButton(
@@ -2341,30 +2614,31 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
+  void _activateEraserTool() {
+    setState(() {
+      _activeTool = NoteTool.eraser;
+      _showColorPalette = false;
+      _showEraserSizeGauge = true;
+    });
+    widget.onToolChange?.call(NoteTool.eraser);
+  }
+
   void _setActiveTool(NoteTool tool) {
     setState(() {
       _activeTool = tool;
       if (tool == NoteTool.eraser) {
         _showColorPalette = false;
+        _showEraserSizeGauge = true;
       } else {
-        _showEraserSizePicker = false;
+        _showEraserSizeGauge = false;
       }
     });
     widget.onToolChange?.call(tool);
   }
 
-  Widget _eraserSizeButton() {
-    return _circularToolButton(
-      icon: Icons.line_weight,
-      tooltip: 'Taille gomme : ${_eraserSize.round()} px',
-      isActive: _showEraserSizePicker,
-      onTap: () {
-        setState(() {
-          _showColorPalette = false;
-          _showEraserSizePicker = !_showEraserSizePicker;
-        });
-      },
-    );
+  void _hideEraserSizeGauge() {
+    if (!_showEraserSizeGauge || !mounted) return;
+    setState(() => _showEraserSizeGauge = false);
   }
 
   Widget _paletteButton() {
@@ -2494,7 +2768,7 @@ class _NotesWidgetState extends State<NotesWidget> {
               opacity: disabled ? 0.4 : 1,
               child: Icon(
                 icon,
-                size: icon == LucideIcons.x ? 22 : 18,
+                size: 18,
                 color:
                     foregroundColor ??
                     (isActive
@@ -2567,11 +2841,11 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   Widget _buildEraserSizePopover() {
     return Container(
-      width: 260,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      width: 188,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(999),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.12),
@@ -2583,89 +2857,47 @@ class _NotesWidgetState extends State<NotesWidget> {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.line_weight, size: 16, color: _kActiveText),
-              const SizedBox(width: 8),
+              const Icon(LucideIcons.eraser, size: 14, color: _kActiveText),
+              const SizedBox(width: 6),
               Expanded(
-                child: Text(
-                  'Taille de la gomme',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1E24),
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: _kActiveText,
+                    inactiveTrackColor: kBrandPurpleSoft,
+                    thumbColor: _kActiveText,
+                    overlayColor: _kActiveText.withValues(alpha: 0.12),
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 6,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 13,
+                    ),
+                  ),
+                  child: Slider(
+                    min: _kMinEraserSize,
+                    max: _kMaxEraserSize,
+                    divisions: (_kMaxEraserSize - _kMinEraserSize).round(),
+                    value: _eraserSize.clamp(_kMinEraserSize, _kMaxEraserSize),
+                    onChanged: (value) => setState(() => _eraserSize = value),
                   ),
                 ),
               ),
+              const SizedBox(width: 4),
               Text(
                 '${_eraserSize.round()} px',
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                   color: _kActiveText,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              for (final size in _kEraserSizePresets) _eraserPresetButton(size),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: _kActiveText,
-              inactiveTrackColor: kBrandPurpleSoft,
-              thumbColor: _kActiveText,
-              overlayColor: _kActiveText.withValues(alpha: 0.12),
-              trackHeight: 3,
-            ),
-            child: Slider(
-              min: _kMinEraserSize,
-              max: _kMaxEraserSize,
-              divisions: (_kMaxEraserSize - _kMinEraserSize).round(),
-              value: _eraserSize.clamp(_kMinEraserSize, _kMaxEraserSize),
-              onChanged: (value) => setState(() => _eraserSize = value),
-            ),
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget _eraserPresetButton(double size) {
-    final active = (_eraserSize - size).abs() < 0.5;
-    final previewSize = (size / 2.5).clamp(5.0, 16.0);
-    return Tooltip(
-      message: '${size.round()} px',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: () => setState(() => _eraserSize = size),
-          child: Container(
-            width: 42,
-            height: 34,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: active ? kBrandPurpleSoft : Colors.transparent,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Container(
-              width: previewSize,
-              height: previewSize,
-              decoration: BoxDecoration(
-                color: active ? _kActiveText : const Color(0xFF8A939D),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

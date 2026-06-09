@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/types.dart';
+import '../../components/plan_canvas.dart' show ToiletPictogram;
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/brand_colors.dart';
@@ -19,6 +19,8 @@ import 'bathroom_tab.dart' show buildSanitaryLevelSelections;
 class WcTab extends StatefulWidget {
   final Dossier dossier;
   final DossierRepository repository;
+  final WcTabController? controller;
+  final VoidCallback? onAddRoomRequested;
 
   /// Incremented by the parent when the housing (Accessibilité > Intérieur)
   /// changes so this tab re-derives its instances from the latest selections.
@@ -28,6 +30,8 @@ class WcTab extends StatefulWidget {
     super.key,
     required this.dossier,
     required this.repository,
+    this.controller,
+    this.onAddRoomRequested,
     this.housingRefreshToken = 0,
   });
 
@@ -35,15 +39,57 @@ class WcTab extends StatefulWidget {
   State<WcTab> createState() => _WcTabState();
 }
 
+class WcTabController {
+  Future<void> Function()? _flushPendingSave;
+  void Function(String levelField)? _selectLevelField;
+  String? _pendingLevelField;
+
+  Future<void> flushPendingSave() async {
+    final flush = _flushPendingSave;
+    if (flush == null) return;
+    await flush();
+  }
+
+  void selectLevelField(String levelField) {
+    final select = _selectLevelField;
+    if (select == null) {
+      _pendingLevelField = levelField;
+      return;
+    }
+    select(levelField);
+  }
+
+  void _attach(
+    Future<void> Function() flush,
+    void Function(String levelField) selectLevelField,
+  ) {
+    _flushPendingSave = flush;
+    _selectLevelField = selectLevelField;
+    final pending = _pendingLevelField;
+    if (pending != null) {
+      _pendingLevelField = null;
+      selectLevelField(pending);
+    }
+  }
+
+  void _detach(Future<void> Function() flush) {
+    if (_flushPendingSave == flush) {
+      _flushPendingSave = null;
+      _selectLevelField = null;
+    }
+  }
+}
+
 class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
   DiagnosticSanitaire? _diagnostic;
-  final bool _saving = false;
   bool _loaded = false;
   Timer? _saveTimer;
+  Future<void>? _saveFuture;
   int _activeLevelIndex = 0;
+  String? _pendingLevelField;
   // (Ancien Set de clés d'édition pour le repli "CollapsedValueRow"
   // retiré : les toggles restent maintenant toujours visibles.)
 
@@ -52,6 +98,7 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
   @override
   void initState() {
     super.initState();
+    widget.controller?._attach(_flushPendingSave, _selectLevelField);
     _load();
     // Refactor 2026-05-12 : suppression du polling 2 s. L'onglet WC
     // charge ses données au mount + à chaque changement d'onglet
@@ -62,7 +109,10 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
 
   @override
   void dispose() {
+    widget.controller?._detach(_flushPendingSave);
+    final hadPendingSave = _saveTimer?.isActive ?? false;
     _saveTimer?.cancel();
+    if (hadPendingSave) unawaited(_save());
     super.dispose();
   }
 
@@ -127,12 +177,25 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
       }
     }
 
+    final pendingLevelField = _pendingLevelField;
+    var nextActiveLevelIndex = _activeLevelIndex;
+    if (pendingLevelField != null) {
+      final idx = nextInstances.indexWhere(
+        (instance) => instance.levelField == pendingLevelField,
+      );
+      if (idx >= 0) {
+        nextActiveLevelIndex = idx;
+        _pendingLevelField = null;
+      }
+    }
+
     setState(() {
       _diagnostic = DiagnosticSanitaire(
         dossierId: widget.dossier.id,
         sdbInstances: result?.sdbInstances ?? const [],
         wcInstances: nextInstances,
       );
+      _activeLevelIndex = nextActiveLevelIndex;
       if (_activeLevelIndex >= nextInstances.length) {
         _activeLevelIndex = 0;
       }
@@ -143,6 +206,10 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
   @override
   void didUpdateWidget(covariant WcTab oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(_flushPendingSave);
+      widget.controller?._attach(_flushPendingSave, _selectLevelField);
+    }
     if (oldWidget.dossier.id != widget.dossier.id ||
         oldWidget.housingRefreshToken != widget.housingRefreshToken) {
       _load();
@@ -163,12 +230,55 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
   }
 
   Future<void> _save() async {
-    if (_diagnostic == null) return;
+    final diagnostic = _diagnostic;
+    if (diagnostic == null) return;
     // Pas de setState(_saving) — voir dossier_screen.dart.
+    final saveFuture = _saveMergedDiagnostic(diagnostic);
+    _saveFuture = saveFuture;
+    try {
+      await saveFuture;
+    } finally {
+      if (_saveFuture == saveFuture) {
+        _saveFuture = null;
+      }
+    }
+  }
+
+  Future<void> _saveMergedDiagnostic(DiagnosticSanitaire diagnostic) async {
+    final current = await widget.repository.fetchDiagnosticSanitaire(
+      widget.dossier.id,
+    );
     await widget.repository.upsertDiagnosticSanitaire(
       widget.dossier.id,
-      _diagnostic!,
+      DiagnosticSanitaire(
+        dossierId: widget.dossier.id,
+        sdbInstances: current?.sdbInstances ?? diagnostic.sdbInstances,
+        wcInstances: diagnostic.wcInstances,
+      ),
     );
+  }
+
+  Future<void> _flushPendingSave() async {
+    _saveTimer?.cancel();
+    final inFlight = _saveFuture;
+    if (inFlight != null) await inFlight;
+    await _save();
+  }
+
+  void _selectLevelField(String levelField) {
+    final idx = _instances.indexWhere((i) => i.levelField == levelField);
+    if (idx < 0) {
+      _pendingLevelField = levelField;
+      return;
+    }
+    if (_activeLevelIndex == idx) return;
+    if (!mounted) {
+      _activeLevelIndex = idx;
+      return;
+    }
+    setState(() {
+      _activeLevelIndex = idx;
+    });
   }
 
   void _updateActive(WcInstance updated) {
@@ -202,69 +312,88 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
     // bascule entre les niveaux (WC RDC / étage / …) uniquement via
     // les pills `_buildLevelPills()` (tap). Pas d'occupants dans cet
     // onglet → plus aucun swipe horizontal câblé.
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Align(
-            alignment: Alignment.topRight,
-            child: SaveStatusIndicator(saving: _saving),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildLevelPills(),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_instances.isEmpty)
+                  _buildEmptyState()
+                else ...[
+                  _buildMain(),
+                  const SizedBox(height: 16),
+                  _buildDoor(),
+                ],
+              ],
+            ),
           ),
-          const SizedBox(height: 4),
-          _buildLevelPills(),
-          if (_instances.isEmpty)
-            _buildEmptyState()
-          else ...[
-            const SizedBox(height: 16),
-            _buildMain(),
-            const SizedBox(height: 16),
-            _buildDoor(),
-          ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildEmptyState() {
-    return Container(
-      margin: const EdgeInsets.only(top: 24),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F7FA),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: const Column(
-        children: [
-          Icon(LucideIcons.squareAsterisk, size: 38, color: Color(0xFF8A939D)),
-          SizedBox(height: 10),
-          Text(
-            "Aucun WC renseigné pour ce logement.\n"
-            "Cochez « WC » dans Accessibilité › Intérieur › Niveaux & pièces "
-            "pour afficher les sections correspondantes ici.",
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Center(
+        child: SizedBox(
+          width: 220,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => widget.onAddRoomRequested?.call(),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2ECF5),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add, size: 16, color: Color(0xFF554265)),
+                  SizedBox(width: 8),
+                  Text(
+                    'Ajouter un wc',
+                    style: TextStyle(
+                      color: Color(0xFF554265),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildLevelPills() {
-    if (_instances.isEmpty) return const SizedBox.shrink();
+    final labels = _instances.isEmpty
+        ? const ['WC']
+        : _instances.map((instance) => instance.levelLabel).toList();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8),
       color: const Color(0xFFF2ECF5),
       child: Row(
         children: [
-          for (var i = 0; i < _instances.length; i++)
+          for (var i = 0; i < labels.length; i++)
             Expanded(
               child: _buildLevelNavItem(
-                icon: LucideIcons.squareAsterisk,
-                label: _instances[i].levelLabel,
-                active: _activeLevelIndex == i,
-                onTap: () => setState(() => _activeLevelIndex = i),
+                icon: const ToiletPictogram(size: 18, color: Color(0xFF0E1116)),
+                label: labels[i],
+                active: _instances.isEmpty || _activeLevelIndex == i,
+                onTap: _instances.isEmpty
+                    ? () {}
+                    : () => setState(() => _activeLevelIndex = i),
               ),
             ),
         ],
@@ -273,7 +402,7 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
   }
 
   Widget _buildLevelNavItem({
-    required IconData icon,
+    required Widget icon,
     required String label,
     required bool active,
     required VoidCallback onTap,
@@ -288,7 +417,7 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: labelColor),
+            SizedBox(height: 16, child: Center(child: icon)),
             const SizedBox(height: 2),
             Text(
               label,
