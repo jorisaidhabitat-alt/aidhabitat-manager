@@ -208,8 +208,16 @@ function mapLegacyPageIndexToFlat2026(legacyPageIndex) {
   // Sanitaires + Projet/Résumé. Dans le PDF 2026, cette zone change
   // structurellement : elle est redessinée manuellement plus bas.
   if (legacyPageIndex === 5 || legacyPageIndex === 6) return -1;
-  // L'insertion d'une page Résumé avant les photos décale toutes les
-  // pages techniques suivantes (photos, plans, préconisations, aides).
+  // Le template 2026 ajoute :
+  //   - une page Résumé dédiée avant Photos (+1 à partir des photos) ;
+  //   - une page préconisation statique supplémentaire juste avant le
+  //     descriptif des aides (+1 supplémentaire à partir des aides).
+  //
+  // Sans le second décalage, les champs "AMO" / "Caisse de retraite
+  // complémentaire" étaient recréés sur la dernière page préconisations
+  // au lieu de la page "Descriptif des aides prévisionnelles".
+  if (legacyPageIndex >= 14) return legacyPageIndex + 2;
+  // L'insertion de la page Résumé décale photos, plans et préconisations.
   if (legacyPageIndex >= 7) return legacyPageIndex + 1;
   return legacyPageIndex;
 }
@@ -219,6 +227,7 @@ function flat2026FieldFontSize(fieldName, rect) {
   if (['Environnement', 'Habitudes', 'Observations1'].includes(fieldName)) return 9.5;
   if (fieldName === 'Text1') return 13;
   if (fieldName === 'Caisse de retraite complémentaire') return 8.5;
+  if (fieldName === 'EPCI') return 8.5;
   if (fieldName === 'AMO') return 10;
   if (/^page\d+$/.test(fieldName)) return 9;
   if (rect.height <= 18) return 9.5;
@@ -701,6 +710,7 @@ function buildViewModel({
   observations,
   contexteNotes = [],
   caisseComplementaireResolved = null,
+  epciResolved = null,
   ergoProfile = null,
 }) {
   const patient = dossier?.patient || {};
@@ -1077,6 +1087,10 @@ function buildViewModel({
       caisseComplementaireLabel: caisseComplementaireResolved == null
         ? ''
         : String(caisseComplementaireResolved),
+      epciLabel: (() => {
+        const label = String(epciResolved ?? patient.epciLabel ?? '').trim();
+        return label || '/';
+      })(),
     },
     dossier: {
       personnesPresentesVisite: String(dossier?.personnesPresentesVisite || '').trim(),
@@ -3016,6 +3030,7 @@ export async function generateVisitReport({
   contexteNotes = [],
   recommendations = [],
   caisseComplementaireResolved = null,
+  epciResolved = null,
   ergoProfile = null,
   fetchImageBytes,
   flatten = true,
@@ -3029,6 +3044,7 @@ export async function generateVisitReport({
     observations,
     contexteNotes,
     caisseComplementaireResolved,
+    epciResolved,
     ergoProfile,
   });
 
@@ -3743,11 +3759,19 @@ export async function generateVisitReport({
   // page logique qu'au moment de la capture.
   // ---------------------------------------------------------------
   const allRemovals = [...emptyPageIndices];
+  if (isFlat2026Template && descriptifPageIdx > 0) {
+    // Le template 2026 contient une page préconisation statique
+    // supplémentaire juste avant "Descriptif des aides prévisionnelles".
+    // Elle ne reçoit aucun slot dynamique (v1.1 limite les recos à 8)
+    // et faisait apparaître les valeurs d'aides sur la mauvaise page
+    // tant que le remapping des champs pointait trop tôt.
+    allRemovals.push(descriptifPageIdx - 1);
+  }
   if (stats.descriptifMerged && descriptifPageIdx !== -1) {
     allRemovals.push(descriptifPageIdx);
   }
-  allRemovals.sort((a, b) => b - a);
-  for (const idx of allRemovals) {
+  const uniqueRemovals = [...new Set(allRemovals)].sort((a, b) => b - a);
+  for (const idx of uniqueRemovals) {
     try {
       pdfDoc.removePage(idx);
     } catch (error) {

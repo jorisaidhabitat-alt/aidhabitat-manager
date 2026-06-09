@@ -5372,6 +5372,36 @@ const resolveCaisseComplementaireLabel = async (caisseInput) => {
 };
 
 /**
+ * Résout la communauté de communes associée à la commune du bénéficiaire
+ * pour la ligne EPCI du descriptif des aides prévisionnelles.
+ *
+ * Le dossier expose `patient.cityId` (= row Id de la table `communes`)
+ * quand la commune est liée à NocoDB. Si la commune a été saisie en
+ * libre ou que la relation EPCI est absente, on affiche `/` plutôt que
+ * de laisser un champ vide ou une ancienne valeur du template.
+ */
+const resolveEpciLabelForPatient = async (patient) => {
+  const cityId = String(patient?.cityId || '').trim();
+  if (!cityId) return '/';
+
+  try {
+    const records = await queryAll(TABLES.communes, {
+      fields: FIELD_SETS.communes,
+      where: `(Id,eq,${cityId.replace(/[(),]/g, '')})`,
+    });
+    const record = records[0];
+    const label = refLabel(field(record, 'epci')).trim();
+    return label || '/';
+  } catch (error) {
+    console.warn(
+      `[report] échec résolution EPCI pour commune=${cityId} :`,
+      error?.message || error,
+    );
+    return '/';
+  }
+};
+
+/**
  * Mapping `categorie` (colonne NocoDB de mobile_visit_photos) → tag
  * canonique attendu par le générateur PDF (`generateVisitReport.mjs`
  * branche les photos par tag pour les slots de la page 8 et 9-10).
@@ -6389,6 +6419,7 @@ app.post(
       recommendations,
       vadOverlayNotes,
       caisseComplementaireResolved,
+      epciResolved,
     ] = await Promise.all([
       fetchSanitairesForDossier(dossierId).catch((err) => {
         console.warn(`[report] échec fetch sanitaires pour ${dossierId}:`, err?.message || err);
@@ -6427,6 +6458,7 @@ app.post(
             )
           : [dossier?.patient?.caissesRetraiteComplementaires || ''],
       ),
+      resolveEpciLabelForPatient(dossier?.patient),
     ]);
 
     // 3) Merge inline + remote. Inline gagne en cas de doublon (state
@@ -6555,6 +6587,7 @@ app.post(
       // côté `index.mjs` car le générateur n'accède pas directement à
       // NocoDB.
       caisseComplementaireResolved,
+      epciResolved,
       ergoProfile,
       // Wrapper inline-first : si le descriptor cible un asset embarqué
       // dans la requête multipart, on lit le buffer en mémoire (zéro
