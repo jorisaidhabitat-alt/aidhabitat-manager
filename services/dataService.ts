@@ -1294,9 +1294,54 @@ export const fetchCurrentAppUser = async (): Promise<AppUser | null> => {
   }
 };
 
+const deleteIndexedDbDatabase = (databaseName: string): Promise<void> => {
+  if (typeof window === 'undefined' || typeof window.indexedDB === 'undefined') {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const request = window.indexedDB.deleteDatabase(databaseName);
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+  });
+};
+
+const clearBrowserPiiCaches = async (): Promise<void> => {
+  if (typeof window === 'undefined') return;
+
+  for (const key of Object.keys(window.localStorage)) {
+    if (key.startsWith('aidhabitat.')) {
+      window.localStorage.removeItem(key);
+    }
+  }
+
+  if (typeof URL !== 'undefined') {
+    profilePhotoObjectUrlCache.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+  }
+  profilePhotoObjectUrlCache.clear();
+  beneficiaryPatchCacheMemory = null;
+  dossierPatchCacheMemory = null;
+  housingPatchCacheMemory = null;
+  visitRecommendationsCacheMemory = null;
+  documentBlobCache.clear();
+
+  if (typeof window.caches !== 'undefined') {
+    await Promise.all([
+      window.caches.delete(PROFILE_PHOTO_CACHE_NAME),
+      window.caches.delete(LOCAL_DOCUMENT_BLOB_CACHE_NAME),
+    ]);
+  }
+
+  const noteDb = await noteOfflineDbPromise?.catch(() => null);
+  noteDb?.close();
+  noteOfflineDbPromise = null;
+  await deleteIndexedDbDatabase(NOTES_OFFLINE_DB_NAME);
+};
+
 export const logoutApp = async (): Promise<void> => {
   clearSessionToken();
   clearLocalAppUser();
+  await clearBrowserPiiCaches();
 };
 
 export const uploadProfilePhoto = async (imageDataUrl: string): Promise<{ success: boolean; error: string | null; user?: AppUser; photoUrl?: string }> => {
@@ -1883,9 +1928,16 @@ export const mapVirtualDossierFromBeneficiary = (beneficiaryData: any): Dossier 
 
 
 export const fetchLocalSnapshot = async (): Promise<Dossier[]> => {
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean | undefined> }).env;
+  const localSnapshotEnabled = env?.DEV === true || env?.VITE_ENABLE_LOCAL_SNAPSHOT === 'true';
+  if (!localSnapshotEnabled) {
+    return [];
+  }
+
   try {
     const response = await fetch('/snapshot.json');
-    if (response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    if (response.ok && contentType.toLowerCase().includes('application/json')) {
       const snapshot = await response.json();
       console.log(`[DataService] Snapshot loaded. ${snapshot.beneficiaries?.length || 0} beneficiaries, ${snapshot.dossiers?.length || 0} dossiers.`);
 

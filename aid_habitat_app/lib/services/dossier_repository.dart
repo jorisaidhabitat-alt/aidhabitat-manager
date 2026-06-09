@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import 'local_database.dart';
 import 'nocodb_api_client.dart';
+import 'offline_vault.dart';
 import 'sync_engine.dart';
 
 class DossierRepository {
@@ -139,20 +140,22 @@ class DossierRepository {
         'entity_type': 'dossier',
         'entity_local_id': dossierLocalId,
         'operation_type': 'create',
-        'payload_json': jsonEncode({
-          'dossierLocalId': dossierLocalId,
-          'patientLocalId': patientLocalId,
-          'housingLocalId': housingLocalId,
-          'firstName': firstName,
-          'lastName': lastName,
-          'ergoId': ergoId,
-          'natureAccompagnement': natureAccompagnement,
-          'numberPeople': numberPeople,
-          if (fiscalRevenue != null) 'fiscalRevenue': fiscalRevenue,
-          'address': address,
-          'city': city,
-          'zipCode': zipCode,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'dossierLocalId': dossierLocalId,
+            'patientLocalId': patientLocalId,
+            'housingLocalId': housingLocalId,
+            'firstName': firstName,
+            'lastName': lastName,
+            'ergoId': ergoId,
+            'natureAccompagnement': natureAccompagnement,
+            'numberPeople': numberPeople,
+            if (fiscalRevenue != null) 'fiscalRevenue': fiscalRevenue,
+            'address': address,
+            'city': city,
+            'zipCode': zipCode,
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -250,10 +253,9 @@ class DossierRepository {
       'entity_type': 'patient',
       'entity_local_id': patientLocalId,
       'operation_type': 'update',
-      'payload_json': jsonEncode({
-        'patientLocalId': patientLocalId,
-        'updates': updates,
-      }),
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({'patientLocalId': patientLocalId, 'updates': updates}),
+      ),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,
       'last_error': null,
@@ -413,20 +415,26 @@ class DossierRepository {
       orderBy: 'created_at ASC',
     );
 
-    return rows.map((row) {
-      return SyncOperation(
-        id: row['id'] as String,
-        entityType: row['entity_type'] as String,
-        entityLocalId: row['entity_local_id'] as String,
-        operationType: row['operation_type'] as String,
-        payloadJson: row['payload_json'] as String,
-        status: SyncOperationStatus.values.byName(row['status'] as String),
-        attemptCount: row['attempt_count'] as int? ?? 0,
-        lastError: row['last_error'] as String?,
-        createdAt: DateTime.parse(row['created_at'] as String),
-        updatedAt: DateTime.parse(row['updated_at'] as String),
+    final out = <SyncOperation>[];
+    for (final row in rows) {
+      out.add(
+        SyncOperation(
+          id: row['id'] as String,
+          entityType: row['entity_type'] as String,
+          entityLocalId: row['entity_local_id'] as String,
+          operationType: row['operation_type'] as String,
+          payloadJson: await OfflineVault.instance.openString(
+            row['payload_json'] as String,
+          ),
+          status: SyncOperationStatus.values.byName(row['status'] as String),
+          attemptCount: row['attempt_count'] as int? ?? 0,
+          lastError: row['last_error'] as String?,
+          createdAt: DateTime.parse(row['created_at'] as String),
+          updatedAt: DateTime.parse(row['updated_at'] as String),
+        ),
       );
-    }).toList();
+    }
+    return out;
   }
 
   Future<void> mergeRemoteDossiers(List<Dossier> remoteDossiers) async {
@@ -1530,7 +1538,9 @@ class DossierRepository {
       'entity_type': entityType,
       'entity_local_id': entityLocalId,
       'operation_type': 'update',
-      'payload_json': jsonEncode(payloadMap),
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode(payloadMap),
+      ),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,
       'last_error': null,
@@ -1572,9 +1582,10 @@ class DossierRepository {
     if (existing.isEmpty) return nextUpdates;
 
     try {
-      final prev =
-          jsonDecode(existing.first['payload_json'] as String)
-              as Map<String, dynamic>;
+      final prevRaw = await OfflineVault.instance.openString(
+        existing.first['payload_json'] as String,
+      );
+      final prev = jsonDecode(prevRaw) as Map<String, dynamic>;
       final prevUpdates = (prev['updates'] as Map?)?.cast<String, dynamic>();
       if (prevUpdates == null || prevUpdates.isEmpty) return nextUpdates;
       return {...prevUpdates, ...nextUpdates};
@@ -1596,7 +1607,9 @@ class DossierRepository {
       limit: 1,
     );
     if (rows.isEmpty) return {};
-    final text = rows.first['text_content'] as String? ?? '';
+    final text = await OfflineVault.instance.openString(
+      rows.first['text_content'] as String? ?? '',
+    );
     if (text.isEmpty) return {};
     return jsonDecode(text) as Map<String, dynamic>;
   }
@@ -1614,7 +1627,7 @@ class DossierRepository {
       'patient_local_id': patientId,
       'tab_key': 'form_$formKey',
       'page_number': 0,
-      'text_content': jsonEncode(data),
+      'text_content': await OfflineVault.instance.sealString(jsonEncode(data)),
       'drawing_json': null,
       'drawing_local_path': null,
       'drawing_remote_path': null,
@@ -1913,10 +1926,9 @@ class DossierRepository {
         'entity_type': 'patient',
         'entity_local_id': patientId,
         'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'patientLocalId': patientId,
-          'updates': mergedUpdates,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({'patientLocalId': patientId, 'updates': mergedUpdates}),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -2457,7 +2469,9 @@ class DossierRepository {
         'entity_type': 'contexte_de_vie',
         'entity_local_id': dossierId,
         'operation_type': 'update',
-        'payload_json': jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -2537,11 +2551,13 @@ class DossierRepository {
         'entity_type': 'diagnostic_sanitaires',
         'entity_local_id': dossierId,
         'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'dossierId': dossierId,
-          'sdbInstances': sdbJson,
-          'wcInstances': wcJson,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'dossierId': dossierId,
+            'sdbInstances': sdbJson,
+            'wcInstances': wcJson,
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -2662,7 +2678,9 @@ class DossierRepository {
         'entity_type': 'mesures_anthropometriques',
         'entity_local_id': dossierId,
         'operation_type': 'update',
-        'payload_json': jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -2767,7 +2785,9 @@ class DossierRepository {
         'entity_type': 'observations_synthese',
         'entity_local_id': dossierId,
         'operation_type': 'update',
-        'payload_json': jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({'dossierId': dossierId, 'updates': merged}),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -2878,10 +2898,9 @@ class DossierRepository {
           'entity_type': 'visit_recommendations',
           'entity_local_id': dossierId,
           'operation_type': 'update',
-          'payload_json': jsonEncode({
-            'dossierId': dossierId,
-            'items': syncItems,
-          }),
+          'payload_json': await OfflineVault.instance.sealString(
+            jsonEncode({'dossierId': dossierId, 'items': syncItems}),
+          ),
           'status': SyncOperationStatus.pending.name,
           'attempt_count': 0,
           'last_error': null,
@@ -2926,10 +2945,9 @@ class DossierRepository {
       'entity_type': 'report_generation',
       'entity_local_id': dossierId,
       'operation_type': 'generate',
-      'payload_json': jsonEncode({
-        'dossierId': dossierId,
-        'patientId': patientId,
-      }),
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({'dossierId': dossierId, 'patientId': patientId}),
+      ),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,
       'last_error': null,

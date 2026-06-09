@@ -52,6 +52,7 @@ class LocalAppUser {
   final String email;
   final String displayName;
   final LocalUserRole role;
+  final String organisationId;
   final String? establishmentId;
   final String? ergoLabel;
   final List<LocalAccessScope> scopes;
@@ -67,6 +68,7 @@ class LocalAppUser {
     required this.email,
     required this.displayName,
     required this.role,
+    this.organisationId = 'org_aidhabitat',
     this.establishmentId,
     this.ergoLabel,
     this.scopes = const [],
@@ -79,6 +81,7 @@ class LocalAppUser {
     String? email,
     String? displayName,
     LocalUserRole? role,
+    String? organisationId,
     String? establishmentId,
     String? ergoLabel,
     List<LocalAccessScope>? scopes,
@@ -90,6 +93,7 @@ class LocalAppUser {
       email: email ?? this.email,
       displayName: displayName ?? this.displayName,
       role: role ?? this.role,
+      organisationId: organisationId ?? this.organisationId,
       establishmentId: establishmentId ?? this.establishmentId,
       ergoLabel: ergoLabel ?? this.ergoLabel,
       scopes: scopes ?? this.scopes,
@@ -1076,6 +1080,7 @@ class VisitRecommendationItem {
   final String wikiTitle;
   final String wikiImageUrl;
   final String wikiTag;
+  final String wikiDescription;
   final String customTitle;
   final String note;
   final String createdAt;
@@ -1087,6 +1092,7 @@ class VisitRecommendationItem {
     this.wikiTitle = '',
     this.wikiImageUrl = '',
     this.wikiTag = '',
+    this.wikiDescription = '',
     this.customTitle = '',
     this.note = '',
     this.createdAt = '',
@@ -1100,6 +1106,7 @@ class VisitRecommendationItem {
         wikiTitle: json['wikiTitle'] as String? ?? '',
         wikiImageUrl: json['wikiImageUrl'] as String? ?? '',
         wikiTag: json['wikiTag'] as String? ?? '',
+        wikiDescription: json['wikiDescription'] as String? ?? '',
         customTitle: json['customTitle'] as String? ?? '',
         note: json['note'] as String? ?? '',
         createdAt: json['createdAt'] as String? ?? '',
@@ -1112,6 +1119,7 @@ class VisitRecommendationItem {
     'wikiTitle': wikiTitle,
     'wikiImageUrl': wikiImageUrl,
     'wikiTag': wikiTag,
+    'wikiDescription': wikiDescription,
     'customTitle': customTitle,
     'note': note,
     'createdAt': createdAt,
@@ -1123,6 +1131,7 @@ class VisitRecommendationItem {
     String? wikiTitle,
     String? wikiImageUrl,
     String? wikiTag,
+    String? wikiDescription,
     String? customTitle,
     String? note,
     String? updatedAt,
@@ -1133,6 +1142,7 @@ class VisitRecommendationItem {
       wikiTitle: wikiTitle ?? this.wikiTitle,
       wikiImageUrl: wikiImageUrl ?? this.wikiImageUrl,
       wikiTag: wikiTag ?? this.wikiTag,
+      wikiDescription: wikiDescription ?? this.wikiDescription,
       customTitle: customTitle ?? this.customTitle,
       note: note ?? this.note,
       createdAt: createdAt,

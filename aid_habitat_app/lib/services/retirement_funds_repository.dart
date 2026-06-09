@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import 'local_database.dart';
 import 'media_cache_service.dart';
+import 'offline_vault.dart';
 import 'sync_engine.dart';
 
 class RetirementFundsRepository {
@@ -155,25 +156,28 @@ class RetirementFundsRepository {
       );
 
       await txn.insert('sync_operations', {
-        'id': 'rfund_update_${fund.id}_'
+        'id':
+            'rfund_update_${fund.id}_'
             '${DateTime.now().microsecondsSinceEpoch}',
         'entity_type': 'retirement_fund',
         'entity_local_id': fund.id,
         'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'fundId': fund.id,
-          'fund': {
-            'name': fund.name,
-            'phone': fund.phone,
-            'audience': fund.audience,
-            'requestMethod': fund.requestMethod,
-            'requestDelay': fund.requestDelay,
-            'aidAmount': fund.aidAmount,
-            'therapistNote': fund.therapistNote,
-            'website': fund.website,
-            'logoUrl': fund.logoUrl,
-          },
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'fundId': fund.id,
+            'fund': {
+              'name': fund.name,
+              'phone': fund.phone,
+              'audience': fund.audience,
+              'requestMethod': fund.requestMethod,
+              'requestDelay': fund.requestDelay,
+              'aidAmount': fund.aidAmount,
+              'therapistNote': fund.therapistNote,
+              'website': fund.website,
+              'logoUrl': fund.logoUrl,
+            },
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,

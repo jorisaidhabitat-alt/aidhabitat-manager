@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'local_database.dart';
+import 'offline_vault.dart';
 
 const Set<String> _kReportPrerequisiteEntityTypes = {
   'dossier',
@@ -69,7 +70,7 @@ class SyncRepository {
       // si un upload photo / une note / une saisie dossier est encore pending
       // ou en backoff, lancer le rapport maintenant produit un PDF incomplet
       // ou un retry trompeur ("connexion lente"). On ne rend les rapports
-      // exécutables que lorsque la file d'écritures utile au rapport est vide.
+      // exécutables que lorsque la file d'écritures est vide.
       if (row['entity_type'] == 'report_generation' &&
           hasBlockingNonReportOperation) {
         continue;
@@ -103,13 +104,16 @@ class SyncRepository {
         limit: 1,
       );
       if (payloadRows.isEmpty) continue;
+      final payloadJson = await OfflineVault.instance.openString(
+        payloadRows.first['payload_json'] as String,
+      );
       out.add(
         SyncOperation(
           id: id,
           entityType: row['entity_type'] as String,
           entityLocalId: row['entity_local_id'] as String,
           operationType: row['operation_type'] as String,
-          payloadJson: payloadRows.first['payload_json'] as String,
+          payloadJson: payloadJson,
           status: SyncOperationStatus.values.byName(row['status'] as String),
           attemptCount: row['attempt_count'] as int? ?? 0,
           lastError: row['last_error'] as String?,

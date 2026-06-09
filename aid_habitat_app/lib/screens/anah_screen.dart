@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../components/brand_colors.dart';
 import '../services/data_service.dart';
@@ -18,6 +19,12 @@ class AnahScreen extends StatefulWidget {
 }
 
 class _AnahScreenState extends State<AnahScreen> {
+  // Le portail Anah est servi derrière un bouclier/certificat que WKWebView
+  // iPad rejette parfois malgré une chaîne TLS valide côté Safari/curl.
+  // On garde l'implémentation WebView pour tests futurs, mais le mode natif
+  // par défaut passe par SFSafariViewController (`inAppBrowserView`).
+  static const bool _useEmbeddedWebView = false;
+
   final DataService _dataService = DataService();
 
   // Démarre en `false` avec les valeurs par défaut (URLs officielles
@@ -62,12 +69,6 @@ class _AnahScreenState extends State<AnahScreen> {
       }
     }
     return false;
-  }
-
-  String _buildSecureConnectionRefusedMessage(String host) {
-    final safeHost = host.trim().isEmpty ? 'ce portail' : host.trim();
-    return 'La connexion securisee avec $safeHost a ete refusee. '
-        'Ouvrez le portail dans Safari pour poursuivre.';
   }
 
   String _buildMainFrameLoadErrorMessage({
@@ -151,11 +152,22 @@ class _AnahScreenState extends State<AnahScreen> {
     }
   }
 
-  Future<void> _openExternal(String url) async {
+  Future<void> _openPortal(String url) async {
     // Sur web PWA iPad, `url_launcher` passe par `window.open` que iOS
     // Safari standalone signale parfois comme "connexion non sécurisée /
     // se fait passer pour …" (faux positif). `openExternalUrl` crée et
     // clique un `<a target="_blank">` — pattern accepté sans prompt.
+    if (!kIsWeb) {
+      final uri = Uri.tryParse(url);
+      if (uri != null) {
+        try {
+          final ok = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+          if (ok) return;
+        } catch (_) {
+          // Fallback externe plus bas.
+        }
+      }
+    }
     final ok = await openExternalUrl(url);
     if (!ok && mounted) {
       ScaffoldMessenger.of(
@@ -179,7 +191,11 @@ class _AnahScreenState extends State<AnahScreen> {
           // deux liens officiels + un CTA qui ouvre MaPrimeAdapt' dans un
           // nouvel onglet Safari — la seule solution réaliste côté web.
           Expanded(
-            child: kIsWeb ? _buildWebExternalCard() : _buildWebViewCard(),
+            child: kIsWeb
+                ? _buildWebExternalCard()
+                : (_useEmbeddedWebView
+                      ? _buildWebViewCard()
+                      : _buildNativeBrowserCard()),
           ),
         ],
       ),
@@ -252,7 +268,7 @@ class _AnahScreenState extends State<AnahScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: () => _openExternal(_registrationUrl),
+                    onPressed: () => _openPortal(_registrationUrl),
                     icon: const Icon(LucideIcons.externalLink, size: 18),
                     label: const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
@@ -274,7 +290,7 @@ class _AnahScreenState extends State<AnahScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: () => _openExternal(_publicUrl),
+                    onPressed: () => _openPortal(_publicUrl),
                     icon: const Icon(LucideIcons.globe, size: 16),
                     label: const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
@@ -305,6 +321,120 @@ class _AnahScreenState extends State<AnahScreen> {
     );
   }
 
+  /// Carte native iPad : ouvre le portail via SFSafariViewController.
+  ///
+  /// C'est le compromis robuste pour MaPrimeAdapt' : l'utilisateur reste dans
+  /// l'app (modal iOS), mais la validation certificat et le bouclier du portail
+  /// passent par la pile Safari au lieu d'une WKWebView embarquée.
+  Widget _buildNativeBrowserCard() {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE4E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Padding(
+            padding: const EdgeInsets.all(36),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEE7F2),
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    LucideIcons.shieldCheck,
+                    size: 44,
+                    color: kBrandPurple,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  "Portail MaPrimeAdapt'",
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0E1116),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  "Le portail officiel refuse le chargement direct dans la "
+                  "WebView iPad. L'ouverture se fait donc dans le navigateur "
+                  "sécurisé intégré d'iOS, sans quitter l'application.",
+                  style: TextStyle(
+                    color: Color(0xFF2B323A),
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 26),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _openPortal(_registrationUrl),
+                    icon: const Icon(LucideIcons.externalLink, size: 18),
+                    label: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        "Ouvrir MaPrimeAdapt'",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: kBrandPurple,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openPortal(_publicUrl),
+                    icon: const Icon(LucideIcons.globe, size: 16),
+                    label: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Text(
+                        "Site institutionnel anah.gouv.fr",
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF2B323A),
+                      side: const BorderSide(color: Color(0xFFB9C0C7)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // -----------------------------------------------------------------------
   // Header (titre + statut + boutons)
   // -----------------------------------------------------------------------
@@ -326,7 +456,7 @@ class _AnahScreenState extends State<AnahScreen> {
         _buildStatusBadge(),
         // Les boutons back/forward/reload n'ont de sens qu'avec la WebView
         // native — sur web la carte affiche simplement le CTA externe.
-        if (!kIsWeb) ...[
+        if (!kIsWeb && _useEmbeddedWebView) ...[
           const SizedBox(width: 12),
           IconButton(
             onPressed: _webController == null
@@ -351,7 +481,7 @@ class _AnahScreenState extends State<AnahScreen> {
           ),
           const SizedBox(width: 8),
           OutlinedButton.icon(
-            onPressed: () => _openExternal(
+            onPressed: () => _openPortal(
               _currentUrl.isEmpty ? _registrationUrl : _currentUrl,
             ),
             icon: const Icon(LucideIcons.externalLink, size: 16),
@@ -368,7 +498,11 @@ class _AnahScreenState extends State<AnahScreen> {
 
   Widget _buildStatusBadge() {
     final bool shouldShowRuntimeCheck =
-        !kIsWeb && _webLoading && !_portalRuntimeKnown && _statusError == null;
+        !kIsWeb &&
+        _useEmbeddedWebView &&
+        _webLoading &&
+        !_portalRuntimeKnown &&
+        _statusError == null;
     if (_loadingStatus || shouldShowRuntimeCheck) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -582,16 +716,6 @@ class _AnahScreenState extends State<AnahScreen> {
             _statusError = message;
           });
         },
-        onServerTrustError: (host) {
-          if (!mounted || !_matchesPrimaryPortalHost(host)) return;
-          setState(() {
-            _webLoading = false;
-            _webProgress = 0;
-            final message = _buildSecureConnectionRefusedMessage(host);
-            _markPortalUnavailable(message, host: host);
-            _statusError = message;
-          });
-        },
         onControllerCreated: (ctrl) => _webController = ctrl,
       ),
     );
@@ -632,7 +756,7 @@ class _AnahScreenState extends State<AnahScreen> {
                   ),
                   const SizedBox(width: 10),
                   FilledButton.icon(
-                    onPressed: () => _openExternal(_publicUrl),
+                    onPressed: () => _openPortal(_publicUrl),
                     icon: const Icon(LucideIcons.externalLink, size: 16),
                     label: const Text('Ouvrir dans Safari'),
                     style: FilledButton.styleFrom(
@@ -669,7 +793,6 @@ class _WebViewHost extends StatefulWidget {
   onError;
   final void Function(int statusCode, String? url, bool isMainFrame)?
   onHttpError;
-  final void Function(String host)? onServerTrustError;
   final void Function(InAppWebViewController ctrl)? onControllerCreated;
 
   const _WebViewHost({
@@ -679,7 +802,6 @@ class _WebViewHost extends StatefulWidget {
     this.onProgress,
     this.onError,
     this.onHttpError,
-    this.onServerTrustError,
     this.onControllerCreated,
   });
 
@@ -703,8 +825,8 @@ class _WebViewHostState extends State<_WebViewHost> {
               javaScriptEnabled: true,
               transparentBackground: false,
               userAgent:
-                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 '
-                  '(KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+                  'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 '
+                  '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
               javaScriptCanOpenWindowsAutomatically: true,
               mediaPlaybackRequiresUserGesture: false,
               allowsInlineMediaPlayback: true,
@@ -766,11 +888,24 @@ class _WebViewHostState extends State<_WebViewHost> {
             ),
             onReceivedServerTrustAuthRequest: (c, challenge) async {
               final host = challenge.protectionSpace.host.toLowerCase();
-              widget.onServerTrustError?.call(host);
+              final allowedHosts = {
+                'monprojet.anah.gouv.fr',
+                'www.anah.gouv.fr',
+              };
+              if (!allowedHosts.contains(host)) {
+                // Keep WebKit's default certificate handling for every
+                // external domain. The exception below is intentionally
+                // scoped to the official Anah portal hosts only.
+                return null;
+              }
+              // WKWebView on iPad can reject the Certigna chain used by the
+              // Anah portal while macOS/Safari/curl validate it. Proceed only
+              // for the official Anah hosts so the integrated portal remains
+              // usable without weakening trust globally.
               // ignore: avoid_print
-              print('[ANAH] trust challenge for $host -> CANCEL');
+              print('[ANAH] trust challenge for $host -> PROCEED');
               return ServerTrustAuthResponse(
-                action: ServerTrustAuthResponseAction.CANCEL,
+                action: ServerTrustAuthResponseAction.PROCEED,
               );
             },
             onConsoleMessage: (c, m) {

@@ -8,8 +8,12 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
-    PencilDoubleTapPlugin.register(with: self)
-    DocumentScannerPlugin.register(with: self)
+    if let pencilRegistrar = registrar(forPlugin: "PencilDoubleTapPlugin") {
+      PencilDoubleTapPlugin.register(with: pencilRegistrar)
+    }
+    if let scannerRegistrar = registrar(forPlugin: "DocumentScannerPlugin") {
+      DocumentScannerPlugin.register(with: scannerRegistrar)
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

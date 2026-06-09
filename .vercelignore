@@ -8,6 +8,8 @@ node_modules
 .npm-cache
 dist
 tmp
+public/snapshot.json
+server/data/
 
 # The entire Flutter subproject is deployed separately. Keeping it out of
 # the root upload cut the last deploy from 3+ GB down to just React + API.

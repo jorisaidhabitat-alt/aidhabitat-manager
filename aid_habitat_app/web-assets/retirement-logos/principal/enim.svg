@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="ENIM">
+  <defs>
+    <linearGradient id="enimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A6B9C"/>
+      <stop offset="100%" stop-color="#003B5C"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="44" fill="url(#enimGrad)"/>
+  <path d="M174 38 L190 38 L190 58 L196 58 L196 64 L190 64 L190 78 L196 90 Q182 96 174 90 L168 78 L168 64 L162 64 L162 58 L168 58 Z" fill="rgba(255,255,255,0.18)"/>
+  <circle cx="46" cy="196" r="26" fill="rgba(255,255,255,0.08)"/>
+  <text x="120" y="142" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="72" font-weight="900" fill="#ffffff" letter-spacing="0">ENIM</text>
+  <text x="120" y="178" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="2">MARINS</text>
+</svg>

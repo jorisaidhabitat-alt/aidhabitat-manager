@@ -11,6 +11,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import 'local_database.dart';
 import 'media_cache_service.dart';
+import 'offline_vault.dart';
 import 'sync_engine.dart';
 
 class DocumentRepositoryChange {
@@ -60,7 +61,11 @@ class DocumentRepository {
       orderBy: 'updated_at DESC, created_at DESC',
     );
 
-    return rows.map(_mapRow).toList();
+    final out = <DocItem>[];
+    for (final row in rows) {
+      out.add(await _mapRow(row));
+    }
+    return out;
   }
 
   /// Charge les bytes locaux des documents VAD (tags `Visite - …`) pour
@@ -107,7 +112,9 @@ class DocumentRepository {
       Uint8List? bytes;
 
       // 1) Web/PWA : bytes encodés en base64 dans `local_file_data_url`.
-      final dataUrl = row['local_file_data_url'] as String?;
+      final dataUrl = await OfflineVault.instance.openNullableString(
+        row['local_file_data_url'] as String?,
+      );
       if (dataUrl != null && dataUrl.isNotEmpty) {
         final match = RegExp(r'^data:[^;]+;base64,(.+)$').firstMatch(dataUrl);
         if (match != null) {
@@ -201,6 +208,7 @@ class DocumentRepository {
         : remoteUuid;
     final mimeType = _mimeTypeFor(extension);
     final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
+    final dataUrlAtRest = await OfflineVault.instance.sealString(dataUrl);
 
     // Native (macOS/iOS/iPad) : on persiste les bytes sur disque pour
     // que le PDF annotator puisse les ouvrir. Sans ça, `localPath`
@@ -246,7 +254,7 @@ class DocumentRepository {
       'local_file_path': localFilePath,
       // Bytes en local pour vignette immédiate, sans avoir à pull
       // depuis NocoDB le binaire (qui passerait par /api/mobile-documents/.../content).
-      'local_file_data_url': dataUrl,
+      'local_file_data_url': dataUrlAtRest,
       // remote_file_path = UUID NocoDB → permet à mergeRemoteDocuments
       // de matcher au prochain pull sans dupliquer.
       'remote_file_path': remoteUuid,
@@ -270,7 +278,7 @@ class DocumentRepository {
       dossierId: dossierId,
       reason: 'import_remote_only',
     );
-    return _mapRow(row);
+    return await _mapRow(row);
   }
 
   Future<DocItem> importDocumentBytes({
@@ -301,6 +309,7 @@ class DocumentRepository {
     final resolvedLocalId = localId ?? 'doc_${now.microsecondsSinceEpoch}';
     final mimeType = _mimeTypeFor(extension);
     final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
+    final dataUrlAtRest = await OfflineVault.instance.sealString(dataUrl);
 
     // Native : persiste les bytes sur disque pour que le PDF annotator
     // puisse les ouvrir (cf. importDocumentRemoteOnly pour le rationale
@@ -358,7 +367,7 @@ class DocumentRepository {
       'file_ext': extension,
       'mime_type': mimeType,
       'local_file_path': localFilePath,
-      'local_file_data_url': dataUrl,
+      'local_file_data_url': dataUrlAtRest,
       'remote_file_path': null,
       'remote_public_url': null,
       'tags_json': jsonEncode(tags),
@@ -387,21 +396,23 @@ class DocumentRepository {
         'entity_type': 'document',
         'entity_local_id': resolvedLocalId,
         'operation_type': 'upload_file',
-        'payload_json': jsonEncode({
-          'patientLocalId': patientId,
-          // IMPORTANT : on envoie `resolvedLocalId` (et pas `localId`)
-          // pour que le serveur dedupe correctement via
-          // `client_document_id`. Sans ça, un retry de regénération
-          // de rapport créait une 2e ligne NocoDB malgré le replace
-          // local — bug reporté 2026-04-30 (« 15 documents dans le
-          // dossier alors que j'en vois seulement un »).
-          'documentLocalId': resolvedLocalId,
-          'dataUrl': dataUrl,
-          'title': resolvedTitle,
-          'fileName': fileName,
-          'mimeType': mimeType,
-          'tags': tags,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'patientLocalId': patientId,
+            // IMPORTANT : on envoie `resolvedLocalId` (et pas `localId`)
+            // pour que le serveur dedupe correctement via
+            // `client_document_id`. Sans ça, un retry de regénération
+            // de rapport créait une 2e ligne NocoDB malgré le replace
+            // local — bug reporté 2026-04-30 (« 15 documents dans le
+            // dossier alors que j'en vois seulement un »).
+            'documentLocalId': resolvedLocalId,
+            'dataUrl': dataUrl,
+            'title': resolvedTitle,
+            'fileName': fileName,
+            'mimeType': mimeType,
+            'tags': tags,
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -420,7 +431,7 @@ class DocumentRepository {
       dossierId: dossierId,
       reason: 'import_bytes',
     );
-    return _mapRow(row);
+    return await _mapRow(row);
   }
 
   Future<DocItem> importDocument({
@@ -476,15 +487,17 @@ class DocumentRepository {
       'entity_type': 'document',
       'entity_local_id': localId,
       'operation_type': 'upload_file',
-      'payload_json': jsonEncode({
-        'patientLocalId': patientId,
-        'documentLocalId': localId,
-        'localPath': storedPath,
-        'title': resolvedTitle,
-        'fileName': baseName,
-        'mimeType': row['mime_type'],
-        'tags': tags,
-      }),
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({
+          'patientLocalId': patientId,
+          'documentLocalId': localId,
+          'localPath': storedPath,
+          'title': resolvedTitle,
+          'fileName': baseName,
+          'mimeType': row['mime_type'],
+          'tags': tags,
+        }),
+      ),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,
       'last_error': null,
@@ -495,7 +508,7 @@ class DocumentRepository {
     SyncEngine().notify();
     _notifyChanged(patientId: patientId, reason: 'import_file');
 
-    return _mapRow(row);
+    return await _mapRow(row);
   }
 
   /// Variante **web** : prend les bytes flattened directement (pas de
@@ -543,7 +556,9 @@ class DocumentRepository {
     if (rows.isEmpty) return;
 
     // Lit la map existante, ajoute/écrase l'entrée de la page courante.
-    final existingJson = rows.first['annotations_json'] as String? ?? '';
+    final existingJson = await OfflineVault.instance.openString(
+      rows.first['annotations_json'] as String? ?? '',
+    );
     Map<String, dynamic> map = {};
     if (existingJson.isNotEmpty) {
       try {
@@ -562,7 +577,9 @@ class DocumentRepository {
     await db.update(
       'documents',
       {
-        'annotations_json': jsonEncode(map),
+        'annotations_json': await OfflineVault.instance.sealString(
+          jsonEncode(map),
+        ),
         'updated_at': now,
         // Pas de `sync_state = pendingSync` — les annotations restent
         // local-only en v1, pas de push NocoDB. Le doc PDF original
@@ -591,6 +608,7 @@ class DocumentRepository {
     final originalName = row['file_name'] as String? ?? 'document.bin';
     final flatName = '${p.basenameWithoutExtension(originalName)}-annoté.png';
     final dataUrl = 'data:image/png;base64,${base64Encode(bytes)}';
+    final dataUrlAtRest = await OfflineVault.instance.sealString(dataUrl);
     final now = DateTime.now().toIso8601String();
     final tagsJson = row['tags_json'] as String? ?? '[]';
     final tags = (jsonDecode(tagsJson) as List<dynamic>).cast<String>();
@@ -623,7 +641,7 @@ class DocumentRepository {
     await db.update(
       'documents',
       {
-        'local_file_data_url': dataUrl,
+        'local_file_data_url': dataUrlAtRest,
         'file_ext': 'png',
         'mime_type': 'image/png',
         'file_name': flatName,
@@ -639,15 +657,17 @@ class DocumentRepository {
       'entity_type': 'document',
       'entity_local_id': documentId,
       'operation_type': 'upload_file',
-      'payload_json': jsonEncode({
-        'patientLocalId': patientId,
-        'documentLocalId': documentId,
-        'dataUrl': dataUrl,
-        'title': title,
-        'fileName': flatName,
-        'mimeType': 'image/png',
-        'tags': tags,
-      }),
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({
+          'patientLocalId': patientId,
+          'documentLocalId': documentId,
+          'dataUrl': dataUrl,
+          'title': title,
+          'fileName': flatName,
+          'mimeType': 'image/png',
+          'tags': tags,
+        }),
+      ),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,
       'last_error': null,
@@ -729,15 +749,17 @@ class DocumentRepository {
       'entity_type': 'document',
       'entity_local_id': documentId,
       'operation_type': 'upload_file',
-      'payload_json': jsonEncode({
-        'patientLocalId': patientId,
-        'documentLocalId': documentId,
-        'localPath': flattenedPath,
-        'title': title,
-        'fileName': flatName,
-        'mimeType': 'image/png',
-        'tags': tags,
-      }),
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({
+          'patientLocalId': patientId,
+          'documentLocalId': documentId,
+          'localPath': flattenedPath,
+          'title': title,
+          'fileName': flatName,
+          'mimeType': 'image/png',
+          'tags': tags,
+        }),
+      ),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,
       'last_error': null,
@@ -917,7 +939,9 @@ class DocumentRepository {
             'entity_type': 'document',
             'entity_local_id': localId,
             'operation_type': 'delete_document',
-            'payload_json': jsonEncode({'remoteDocumentId': remoteId}),
+            'payload_json': await OfflineVault.instance.sealString(
+              jsonEncode({'remoteDocumentId': remoteId}),
+            ),
             'status': SyncOperationStatus.pending.name,
             'attempt_count': 0,
             'last_error': null,
@@ -1008,7 +1032,9 @@ class DocumentRepository {
           'entity_type': 'document',
           'entity_local_id': documentId,
           'operation_type': 'delete_document',
-          'payload_json': jsonEncode({'remoteDocumentId': remoteId}),
+          'payload_json': await OfflineVault.instance.sealString(
+            jsonEncode({'remoteDocumentId': remoteId}),
+          ),
           'status': SyncOperationStatus.pending.name,
           'attempt_count': 0,
           'last_error': null,
@@ -1029,10 +1055,7 @@ class DocumentRepository {
     }
 
     SyncEngine().notify();
-    _notifyChanged(
-      patientId: patientId,
-      reason: 'delete',
-    );
+    _notifyChanged(patientId: patientId, reason: 'delete');
   }
 
   bool _documentRowHasTag(Map<String, Object?> row, String tag) {
@@ -1423,7 +1446,7 @@ class DocumentRepository {
     }
   }
 
-  DocItem _mapRow(Map<String, Object?> row) {
+  Future<DocItem> _mapRow(Map<String, Object?> row) async {
     final ext = (row['file_ext'] as String? ?? '').toLowerCase();
     final type = _typeForExtension(ext);
     final rawTags = row['tags_json'] as String? ?? '[]';
@@ -1433,6 +1456,13 @@ class DocumentRepository {
     );
     final createdAt = row['created_at'] as String;
     final updatedAt = row['updated_at'] as String? ?? createdAt;
+
+    final dataUrl = await OfflineVault.instance.openNullableString(
+      row['local_file_data_url'] as String?,
+    );
+    final annotationsJson = await OfflineVault.instance.openNullableString(
+      row['annotations_json'] as String?,
+    );
 
     return DocItem(
       id: row['local_id'] as String,
@@ -1445,11 +1475,11 @@ class DocumentRepository {
       // Web-only: the freshly captured bytes as a data URL. Populated by
       // `importDocumentBytes` on web and cleared once the sync processor
       // uploads them.
-      dataUrl: row['local_file_data_url'] as String?,
+      dataUrl: dataUrl,
       tags: decodedTags,
       syncState: SyncState.values.byName(row['sync_state'] as String),
       categoryOrder: (row['category_order'] as num?)?.toInt(),
-      annotationsJson: row['annotations_json'] as String?,
+      annotationsJson: annotationsJson,
     );
   }
 

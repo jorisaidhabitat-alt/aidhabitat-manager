@@ -12,6 +12,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'app_config.dart';
 import 'local_database.dart';
+import 'offline_vault.dart';
 import 'url_resolver.dart';
 
 /// Downloads remote images once and persists them to the app's documents
@@ -141,9 +142,9 @@ class MediaCacheService {
     Map<String, String>? headers,
   }) async {
     try {
-      final response = await http.get(Uri.parse(url), headers: headers).timeout(
-            const Duration(seconds: 20),
-          );
+      final response = await http
+          .get(Uri.parse(url), headers: headers)
+          .timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;
       }
@@ -151,8 +152,7 @@ class MediaCacheService {
       // SPA fallback guard: some servers (Vite / Express) return HTTP 200
       // with the HTML index page for any unknown path. We must treat such
       // responses as failures when the caller expected an image.
-      final contentType =
-          response.headers['content-type']?.toLowerCase() ?? '';
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
       if (contentType.contains('text/html') ||
           contentType.contains('application/xhtml')) {
         return null;
@@ -182,7 +182,10 @@ class MediaCacheService {
   ///
   /// [headers] propagés à [fetch] pour les URLs qui exigent l'auth
   /// (`/uploads/*` depuis le gating sécurité 2026-05-15).
-  Future<List<int>?> readBytes(String url, {Map<String, String>? headers}) async {
+  Future<List<int>?> readBytes(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
     final file = await fetch(url, headers: headers);
     if (file == null) return null;
     try {
@@ -215,9 +218,7 @@ class MediaCacheService {
           webCachedFetch(url, headers: headers).then((_) {}, onError: (_) {}),
         );
       } else {
-        unawaited(
-          fetch(url, headers: headers).then((_) {}, onError: (_) {}),
-        );
+        unawaited(fetch(url, headers: headers).then((_) {}, onError: (_) {}));
       }
     }
   }
@@ -268,7 +269,9 @@ class MediaCacheService {
         where: 'url_hash = ?',
         whereArgs: [hash],
       );
-    } catch (_) {/* best-effort, ignore SQLite errors */}
+    } catch (_) {
+      /* best-effort, ignore SQLite errors */
+    }
   }
 
   Future<Uint8List?> webCachedFetch(
@@ -297,12 +300,8 @@ class MediaCacheService {
     );
     if (rows.isNotEmpty) {
       final raw = rows.first['bytes'];
-      if (raw is List<int>) {
-        return Uint8List.fromList(raw);
-      }
-      if (raw is Uint8List) {
-        return raw;
-      }
+      final opened = await OfflineVault.instance.openBytes(raw);
+      if (opened.isNotEmpty) return opened;
     }
 
     final existingFetch = _webInFlight[resolved];
@@ -355,8 +354,7 @@ class MediaCacheService {
         return null;
       }
       // SPA fallback guard (same as native _download).
-      final contentType =
-          response.headers['content-type']?.toLowerCase() ?? '';
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
       if (contentType.contains('text/html') ||
           contentType.contains('application/xhtml')) {
         // ignore: avoid_print
@@ -365,16 +363,13 @@ class MediaCacheService {
         );
         return null;
       }
-      await db.insert(
-        'web_media_cache',
-        {
-          'url_hash': hash,
-          'url': resolved,
-          'bytes': bytes,
-          'fetched_at': DateTime.now().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      final bytesAtRest = await OfflineVault.instance.sealBytes(bytes);
+      await db.insert('web_media_cache', {
+        'url_hash': hash,
+        'url': resolved,
+        'bytes': bytesAtRest,
+        'fetched_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
       return bytes;
     } catch (e) {
       // ignore: avoid_print
@@ -417,10 +412,7 @@ class MediaCacheService {
         body: body,
       );
     } catch (e) {
-      return MediaFetchDiagnosis(
-        statusCode: -1,
-        message: e.toString(),
-      );
+      return MediaFetchDiagnosis(statusCode: -1, message: e.toString());
     }
   }
 

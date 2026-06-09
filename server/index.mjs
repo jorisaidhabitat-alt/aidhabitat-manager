@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
 import fs from 'node:fs/promises';
+import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
 import express from 'express';
@@ -115,6 +117,24 @@ const ALLOWED_ORIGINS = new Set([
   ...parseCorsOrigins(process.env.CORS_EXTRA_ORIGIN),
 ].filter(Boolean));
 
+const parseHostAllowlist = (value) => String(value || '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean)
+  .map((entry) => {
+    try {
+      return new URL(/^https?:\/\//i.test(entry) ? entry : `https://${entry}`).hostname.toLowerCase();
+    } catch {
+      return '';
+    }
+  })
+  .filter(Boolean);
+
+const REPORT_IMAGE_ALLOWED_HOSTS = new Set([
+  ...parseHostAllowlist(APP_PUBLIC_BASE_URL),
+  ...parseHostAllowlist(process.env.REPORT_IMAGE_ALLOWED_HOSTS),
+]);
+const REPORT_IMAGE_MAX_BYTES = Number(process.env.REPORT_IMAGE_MAX_BYTES || 5 * 1024 * 1024);
 const parsePositiveNumber = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -270,8 +290,8 @@ const requireAuthForUploads = async (req, res, next) => {
       return res.status(401).json({ error: 'unauthorized' });
     }
     const email = normalizeEmail(payload.email);
-    const currentSv = Number(store.users[email]?.sessionVersion) || 0;
-    const tokenSv = Number(payload.sv) || 0;
+    const currentSv = resolveCredentialSessionVersion(store.users[email], store.secret);
+    const tokenSv = stringValue(payload.sv);
     if (tokenSv !== currentSv) {
       return res.status(401).json({ error: 'unauthorized' });
     }
@@ -816,6 +836,14 @@ const splitDisplayName = (displayName) => {
 };
 const randomSecret = (size = 48) => crypto.randomBytes(size).toString('base64url');
 const hashPassword = (password, salt) => crypto.scryptSync(String(password), salt, 64).toString('hex');
+const resolveCredentialSessionVersion = (credentials, secret) => {
+  const numericVersion = Number(credentials?.sessionVersion) || 0;
+  const passwordMarker = stringValue(credentials?.nocoPasswordChecksum || credentials?.passwordHash || '');
+  const passwordFingerprint = crypto.createHmac('sha256', secret)
+    .update(passwordMarker || 'no-password-marker')
+    .digest('base64url');
+  return `${numericVersion}:${passwordFingerprint}`;
+};
 const generatePassword = (displayName) => {
   const base = String(displayName || 'AidHabitat').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'AidHab';
   return `${base}-${crypto.randomBytes(4).toString('hex')}`;
@@ -839,6 +867,34 @@ const getTokenFromRequest = (req) => {
   }
   return String(req.get('x-app-session') || '').trim();
 };
+const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_RATE_LIMIT_MAX_FAILURES = 8;
+const loginFailureBuckets = new Map();
+const loginRateLimitKey = (req, email) => {
+  const forwardedFor = String(req.headers['x-forwarded-for'] || '').split(',', 1)[0].trim();
+  const ip = forwardedFor || req.ip || req.socket?.remoteAddress || 'unknown-ip';
+  return `${ip}:${normalizeEmail(email) || 'unknown-email'}`;
+};
+const getLoginFailureBucket = (req, email) => {
+  const key = loginRateLimitKey(req, email);
+  const now = Date.now();
+  const current = loginFailureBuckets.get(key);
+  if (!current || current.resetAt <= now) {
+    const fresh = { key, count: 0, resetAt: now + LOGIN_RATE_LIMIT_WINDOW_MS };
+    loginFailureBuckets.set(key, fresh);
+    return fresh;
+  }
+  return current;
+};
+const isLoginRateLimited = (bucket) => bucket.count >= LOGIN_RATE_LIMIT_MAX_FAILURES && bucket.resetAt > Date.now();
+const recordLoginFailure = (bucket) => {
+  bucket.count += 1;
+  loginFailureBuckets.set(bucket.key, bucket);
+};
+const clearLoginFailures = (req, email) => {
+  loginFailureBuckets.delete(loginRateLimitKey(req, email));
+};
+const uploadOwnerKeyForUser = (user) => `user:${normalizeEmail(user?.email)}`;
 const syntheticBeneficiaryId = (recordId) => `nocodb-beneficiaire-${recordId}`;
 const parseSyntheticBeneficiaryId = (value) => {
   const match = String(value || '').match(/^nocodb-beneficiaire-(\d+)$/);
@@ -1239,6 +1295,7 @@ const normalizeVisitRecommendationItem = (item, wikiMap = new Map()) => {
     wikiTitle: stringValue(wikiItem?.title || item?.wikiTitle).trim(),
     wikiImageUrl: stringValue(wikiItem?.imageUrl || absoluteUrl(item?.wikiImageUrl)).trim(),
     wikiTag: stringValue(wikiItem?.tags?.[0] || item?.wikiTag).trim(),
+    wikiDescription: stringValue(wikiItem?.description || item?.wikiDescription).trim(),
     customTitle: stringValue(item?.customTitle).trim(),
     note: stringValue(item?.note),
     createdAt: item?.createdAt || now,
@@ -2297,6 +2354,7 @@ const mapVisitRecommendationRecord = (record) => ({
   wikiTitle: stringValue(field(record, 'wiki_title')),
   wikiImageUrl: absoluteUrl(field(record, 'wiki_image_url')),
   wikiTag: stringValue(field(record, 'wiki_tag')),
+  wikiDescription: stringValue(field(record, 'wiki_description')),
   customTitle: stringValue(field(record, 'custom_title')),
   note: stringValue(field(record, 'note')),
   createdAt: field(record, 'created_at') || field(record, 'updated_at') || new Date().toISOString(),
@@ -2684,11 +2742,10 @@ const loadMemberRegistryForAuth = async () => {
 
 const signSessionToken = async (email) => {
   const { store } = await loadMemberRegistryForAuth();
-  // Per-user `sessionVersion` (cf. resolveSessionUser) : permet de
-  // révoquer toutes les sessions d'un user sans toucher aux autres.
-  // Bump automatique quand `mot_de_passe` NocoDB change (cf.
-  // loadMemberRegistry) ou via POST /api/auth/revoke-sessions/:email.
-  const sessionVersion = Number(store.users[email]?.sessionVersion) || 0;
+  // Per-user `sessionVersion` + empreinte HMAC du mot de passe courant.
+  // L'empreinte rend les changements de `mot_de_passe` durables à travers
+  // les cold restarts : le checksum vient de NocoDB, pas seulement de la RAM.
+  const sessionVersion = resolveCredentialSessionVersion(store.users[email], store.secret);
   const payload = {
     email,
     exp: Date.now() + SESSION_TTL_MS,
@@ -2727,8 +2784,8 @@ const resolveSessionUser = async (req) => {
   // (changement mdp NocoDB ou révocation admin explicite), le token
   // antérieur a une `sv` plus ancienne que celle stockée → invalide.
   const email = normalizeEmail(payload.email);
-  const currentSv = Number(store.users[email]?.sessionVersion) || 0;
-  const tokenSv = Number(payload.sv) || 0;
+  const currentSv = resolveCredentialSessionVersion(store.users[email], store.secret);
+  const tokenSv = stringValue(payload.sv);
   if (tokenSv !== currentSv) return null;
 
   return members.find((member) => member.email === email) || null;
@@ -3790,6 +3847,15 @@ app.post('/api/auth/login', async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
+    const loginBucket = getLoginFailureBucket(req, email);
+    if (isLoginRateLimited(loginBucket)) {
+      res.status(429).json({ success: false, error: 'Trop de tentatives, réessayez plus tard' });
+      return;
+    }
+    const rejectLogin = (status, error) => {
+      recordLoginFailure(loginBucket);
+      res.status(status).json({ success: false, error });
+    };
     // 2026-05-07 — fix login intermittent. Avant : `loadMemberRegistryForAuth`
     // se contentait du cache RAM, retournait un store VIDE
     // (`users: {}`) si l'instance Vercel n'avait pas encore hydraté le
@@ -3803,13 +3869,13 @@ app.post('/api/auth/login', async (req, res, next) => {
     const member = members.find((entry) => entry.email === email);
 
     if (!member) {
-      res.status(401).json({ success: false, error: 'Adresse mail non autorisée' });
+      rejectLogin(401, 'Adresse mail non autorisée');
       return;
     }
 
     const credentials = store.users[email];
     if (!credentials) {
-      res.status(401).json({ success: false, error: 'Aucun mot de passe généré pour ce membre' });
+      rejectLogin(401, 'Aucun mot de passe généré pour ce membre');
       return;
     }
 
@@ -3823,10 +3889,11 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
 
     if (!isValid) {
-      res.status(401).json({ success: false, error: 'Mot de passe incorrect' });
+      rejectLogin(401, 'Mot de passe incorrect');
       return;
     }
 
+    clearLoginFailures(req, email);
     const token = await signSessionToken(email);
     res.json({
       success: true,
@@ -5686,6 +5753,7 @@ const fetchVisitRecommendationsForDossier = async (dossierId) => {
         wikiTitle: stringValue(matchedWikiItem.title),
         wikiImageUrl: absoluteUrl(matchedWikiItem.imageUrl),
         wikiTag: stringValue(matchedWikiItem.tags?.[0] || item?.wikiTag),
+        wikiDescription: stringValue(matchedWikiItem.description),
       };
     });
   } catch (error) {
@@ -5733,8 +5801,61 @@ const readBundledWikiOfflineImage = async (urlValue) => {
   }
 };
 
+const isPrivateIpAddress = (address) => {
+  const raw = String(address || '').trim().toLowerCase().replace(/^::ffff:/, '');
+  if (!raw) return true;
+  const version = net.isIP(raw);
+  if (version === 4) {
+    const parts = raw.split('.').map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+    const [a, b] = parts;
+    return a === 0
+      || a === 10
+      || a === 127
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168)
+      || a >= 224;
+  }
+  if (version === 6) {
+    return raw === '::1'
+      || raw === '::'
+      || raw.startsWith('fe80:')
+      || raw.startsWith('fc')
+      || raw.startsWith('fd');
+  }
+  return false;
+};
+
+const isAllowedReportImageHost = (hostname) => {
+  const normalized = String(hostname || '').trim().toLowerCase();
+  if (!normalized || normalized === 'localhost' || normalized.endsWith('.localhost')) return false;
+  if (REPORT_IMAGE_ALLOWED_HOSTS.has(normalized)) return true;
+  return PROJECT_VERCEL_HOST_PATTERN.test(normalized);
+};
+
+const resolveSafeRemoteReportImageUrl = async (rawUrl) => {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl || '').trim());
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== 'https:') return null;
+  if (parsed.username || parsed.password) return null;
+  if (!isAllowedReportImageHost(parsed.hostname)) return null;
+  if (isPrivateIpAddress(parsed.hostname)) return null;
+
+  const resolvedAddresses = await dns.lookup(parsed.hostname, { all: true }).catch(() => []);
+  if (resolvedAddresses.length === 0) return null;
+  if (resolvedAddresses.some((entry) => isPrivateIpAddress(entry.address))) return null;
+  return parsed;
+};
+
 /**
- * Récupère les bytes d'une image (document, URL HTTP, data URL) sous
+ * Récupère les bytes d'une image (document, URL allowlistée, data URL) sous
  * forme de Buffer + mimeType. Renvoie `null` si l'image n'est pas
  * accessible / le format ne convient pas. Appelé par le générateur
  * via le callback `fetchImageBytes`.
@@ -5809,12 +5930,19 @@ const fetchImageBytesForReport = async (descriptor) => {
       }
       const bundledWikiImage = await readBundledWikiOfflineImage(rawUrl);
       if (bundledWikiImage) return bundledWikiImage;
-      const res = await fetch(rawUrl);
+      const safeUrl = await resolveSafeRemoteReportImageUrl(rawUrl);
+      if (!safeUrl) return null;
+      const res = await fetch(safeUrl, { redirect: 'manual' });
       if (!res.ok) return null;
+      const contentLength = Number(res.headers.get('content-length') || 0);
+      if (contentLength > REPORT_IMAGE_MAX_BYTES) return null;
+      const mimeType = String(res.headers.get('content-type') || 'image/jpeg').split(';', 1)[0].trim().toLowerCase();
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mimeType)) return null;
       const arrayBuffer = await res.arrayBuffer();
+      if (arrayBuffer.byteLength > REPORT_IMAGE_MAX_BYTES) return null;
       return {
         buffer: Buffer.from(arrayBuffer),
-        mimeType: res.headers.get('content-type') || 'image/jpeg',
+        mimeType,
       };
     }
     return null;
@@ -6334,23 +6462,17 @@ app.post(
 
     // Sauvegarde IMMÉDIATE du PDF dans NocoDB côté serveur.
     //
-    // Pourquoi : Vercel Hobby a une limite de body de ~4.5 MB qui faisait
-    // échouer en 413 le re-upload Flutter→serveur du PDF rapport.
-    // Symptôme reporté 2026-04-29 : « Rapport - DENA Paul » apparaît en
-    // local sur les 2 devices mais jamais en NocoDB → divergence entre
-    // macOS web et iPad PWA. En sauvant directement ici (no HTTP body
-    // limit, on est dans la même fonction serverless qui a déjà chargé
-    // le PDF en mémoire), on contourne complètement le 413.
+    // Pourquoi : le PDF est déjà en mémoire côté API. Le sauvegarder ici
+    // évite au client Flutter de le ré-uploader ensuite, ce qui réduit les
+    // risques terrain (connexion lente, gros PDF, proxy qui coupe le body).
     //
     // L'UUID du doc créé est retourné via le header `X-Saved-Doc-Uuid`
     // pour que Flutter puisse l'insérer directement comme `synced`
     // localement (sans queuer un upload qui ferait 413).
     //
-    // Best-effort : si la sauvegarde NocoDB échoue (rare — cf. limite
-    // 5 MB interne ou erreur réseau NocoDB), on log un warning mais on
-    // retourne quand même les bytes au Flutter qui retombera sur son
-    // ancien chemin (upload via /api/documents → fail 413 → marqué
-    // failed, l'utilisateur regénère).
+    // Best-effort : si la sauvegarde NocoDB échoue malgré les retries, on
+    // retourne quand même les bytes au Flutter. Il les importera localement
+    // puis retentera l'upload via la file de sync au lieu de bloquer l'ergo.
     let savedDocUuid = '';
     try {
       const patientId = stringValue(dossier?.patient?.id);
@@ -7100,6 +7222,7 @@ app.post(
         uploadId,
         chunkIndex,
         buffer: req.file.buffer,
+        ownerKey: uploadOwnerKeyForUser(req.appUser),
       });
       // On ne compte pas les chunks reçus en base — le client connaît
       // le total et envoie séquentiellement. Si tu veux supporter le
@@ -7156,7 +7279,8 @@ app.post(
       if (!patientId) throw httpError(400, 'patientId manquant');
 
       // Reassemble — fail-fast si chunks manquants ou non contigus.
-      const buffer = await reassembleChunks(uploadId);
+      const uploadOwnerKey = uploadOwnerKeyForUser(req.appUser);
+      const buffer = await reassembleChunks(uploadId, uploadOwnerKey);
 
       // Garde-fou anti-corruption : si l'image réassemblée est tronquée
       // (chunk manquant en fin → IEND/EOI absent), on refuse plutôt que
@@ -7178,7 +7302,7 @@ app.post(
         // Cleanup tout de suite — pas la peine de garder les chunks
         // d'un upload qu'on refuse. Le client va retenter avec un
         // nouvel uploadId.
-        await deleteChunks(uploadId);
+        await deleteChunks(uploadId, uploadOwnerKey);
         throw httpError(
           422,
           `Fichier image corrompu / incomplet `
@@ -7211,7 +7335,7 @@ app.post(
       });
 
       // Cleanup. Best-effort — un chunk orphelin n'est pas critique.
-      await deleteChunks(uploadId);
+      await deleteChunks(uploadId, uploadOwnerKey);
 
       res.status(201).json({
         success: true,
@@ -7235,7 +7359,7 @@ app.get(
     try {
       const uploadId = stringValue(req.params.uploadId).trim();
       if (!uploadId) throw httpError(400, 'uploadId manquant');
-      const chunks = await listChunks(uploadId);
+      const chunks = await listChunks(uploadId, uploadOwnerKeyForUser(req.appUser));
       res.json({
         success: true,
         error: null,
@@ -7329,12 +7453,17 @@ app.get('/api/mobile-documents/:documentId/content', requireAuth, async (req, re
   }
 });
 
-app.get('/public/note-pages/:notePageId/preview', async (req, res, next) => {
+app.get('/public/note-pages/:notePageId/preview', requireAuth, async (req, res, next) => {
   try {
     const notePage = await mobileSyncStore.getNotePageById(req.params.notePageId);
     if (!notePage) {
       throw httpError(404, 'Note introuvable');
     }
+    const notePatientId = stringValue(notePage.patientId).trim();
+    if (!notePatientId) {
+      throw httpError(409, 'Note sans bénéficiaire');
+    }
+    await resolveBeneficiaryAccess(req.appUser, notePatientId);
 
     const previewDataUrl = stringValue(notePage.previewDataUrl).trim();
     const noteTitle = [
@@ -7448,15 +7577,27 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
       throw httpError(400, 'pageNumber invalide');
     }
 
-    const access = await resolveBeneficiaryAccess(req.appUser, patientId);
+    let targetPatientId = patientId;
+    if (notePageId) {
+      const existingNotePage = await mobileSyncStore.getNotePageById(notePageId);
+      if (existingNotePage) {
+        const storedPatientId = stringValue(existingNotePage.patientId).trim();
+        if (!storedPatientId || storedPatientId !== patientId) {
+          throw httpError(403, 'Note hors bénéficiaire');
+        }
+        targetPatientId = storedPatientId;
+      }
+    }
+
+    const access = await resolveBeneficiaryAccess(req.appUser, targetPatientId);
     const notePageContext = buildBeneficiaryDocumentContext({
       beneficiaryRecord: access.beneficiaryRecord,
       dossierRecord: access.dossierRecord,
-      patientId,
+      patientId: targetPatientId,
     });
     const notePage = await mobileSyncStore.upsertNotePage({
       notePageId: notePageId || null,
-      patientId,
+      patientId: targetPatientId,
       dossierId: field(access.dossierRecord, 'uuid_source') || null,
       scopeType,
       scopeId,
@@ -7533,12 +7674,20 @@ app.post('/api/note-pages', requireAuth, async (req, res, next) => {
 app.delete('/api/note-pages/:notePageId', requireAuth, async (req, res, next) => {
   try {
     const patientId = stringValue(req.query?.patientId).trim();
-    if (!patientId) {
-      throw httpError(400, 'patientId manquant');
+    const existingNotePage = await mobileSyncStore.getNotePageById(req.params.notePageId);
+    if (!existingNotePage) {
+      throw httpError(404, 'Note introuvable');
+    }
+    const storedPatientId = stringValue(existingNotePage.patientId).trim();
+    if (!storedPatientId) {
+      throw httpError(409, 'Note sans bénéficiaire');
+    }
+    if (patientId && patientId !== storedPatientId) {
+      throw httpError(403, 'Note hors bénéficiaire');
     }
 
-    await resolveBeneficiaryAccess(req.appUser, patientId);
-    const deleted = await mobileSyncStore.deleteNotePage(req.params.notePageId);
+    await resolveBeneficiaryAccess(req.appUser, storedPatientId);
+    const deleted = await mobileSyncStore.deleteNotePage(req.params.notePageId, storedPatientId);
     if (!deleted) {
       throw httpError(404, 'Note introuvable');
     }
@@ -7944,6 +8093,7 @@ app.get('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
         wikiTitle: stringValue(matchedWikiItem.title),
         wikiImageUrl: stringValue(matchedWikiItem.imageUrl),
         wikiTag: stringValue(matchedWikiItem.tags?.[0] || item?.wikiTag),
+        wikiDescription: stringValue(matchedWikiItem.description),
       };
     });
 

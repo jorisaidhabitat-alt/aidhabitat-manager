@@ -181,8 +181,7 @@ class NocodbSyncService {
     // un correctif serveur (et empêche le bandeau rouge de persister
     // sur des ops que la prochaine tentative ferait réussir).
     try {
-      final rehabCount =
-          await _syncRepository.rehabilitateTransientFailures();
+      final rehabCount = await _syncRepository.rehabilitateTransientFailures();
       if (rehabCount > 0) {
         // ignore: avoid_print
         print('[sync] $rehabCount opération(s) réhabilitée(s) depuis failed');
@@ -297,12 +296,12 @@ class NocodbSyncService {
 
     final message = (failed == 0 && conflicts == 0)
         ? deferred > 0
-            ? 'Synchronisation en attente de reprise '
-                '($deferred opération${deferred > 1 ? 's' : ''})'
-            : 'Synchronisation terminée'
+              ? 'Synchronisation en attente de reprise '
+                    '($deferred opération${deferred > 1 ? 's' : ''})'
+              : 'Synchronisation terminée'
         : conflicts > 0
-            ? 'Synchronisation : $conflicts conflit${conflicts > 1 ? 's' : ''} à résoudre'
-            : 'Synchronisation partielle. Échecs: ${failures.join(', ')}';
+        ? 'Synchronisation : $conflicts conflit${conflicts > 1 ? 's' : ''} à résoudre'
+        : 'Synchronisation partielle. Échecs: ${failures.join(', ')}';
 
     return SyncRunResult(
       pushedOperations: pushed,
@@ -338,9 +337,11 @@ class NocodbSyncService {
         pushed += 1;
       } on TransientRemoteException catch (e) {
         // ignore: avoid_print
-        print('[sync] transient ${operation.entityType}:'
-            '${operation.operationType} id=${operation.entityLocalId} '
-            'err=$e — retry au prochain cycle');
+        print(
+          '[sync] transient ${operation.entityType}:'
+          '${operation.operationType} id=${operation.entityLocalId} '
+          'err=$e — retry au prochain cycle',
+        );
         await _syncRepository.markTransientFailure(
           operationId: operation.id,
           entityType: operation.entityType,
@@ -362,9 +363,11 @@ class NocodbSyncService {
         // en pool de workers parallèles 2026-05-06.
         if (isTransientErrorLike(error)) {
           // ignore: avoid_print
-          print('[sync] reclassed-as-transient ${operation.entityType}:'
-              '${operation.operationType} id=${operation.entityLocalId} '
-              'err=$error — retry au prochain cycle');
+          print(
+            '[sync] reclassed-as-transient ${operation.entityType}:'
+            '${operation.operationType} id=${operation.entityLocalId} '
+            'err=$error — retry au prochain cycle',
+          );
           await _syncRepository.markTransientFailure(
             operationId: operation.id,
             entityType: operation.entityType,
@@ -505,16 +508,25 @@ class NocodbSyncService {
 
     switch (operation.entityType) {
       case 'dossier':
-        await _processDossierOperation(operation, payload,
-            forceWrite: forceWrite);
+        await _processDossierOperation(
+          operation,
+          payload,
+          forceWrite: forceWrite,
+        );
         return;
       case 'patient':
-        await _processPatientOperation(operation, payload,
-            forceWrite: forceWrite);
+        await _processPatientOperation(
+          operation,
+          payload,
+          forceWrite: forceWrite,
+        );
         return;
       case 'housing':
-        await _processHousingOperation(operation, payload,
-            forceWrite: forceWrite);
+        await _processHousingOperation(
+          operation,
+          payload,
+          forceWrite: forceWrite,
+        );
         return;
       case 'document':
         await _processDocumentOperation(operation, payload);
@@ -523,19 +535,28 @@ class NocodbSyncService {
         await _processNotePageOperation(operation, payload);
         return;
       case 'contexte_de_vie':
-        await _processContexteDeVieOperation(operation, payload,
-            forceWrite: forceWrite);
+        await _processContexteDeVieOperation(
+          operation,
+          payload,
+          forceWrite: forceWrite,
+        );
         return;
       case 'diagnostic_sanitaires':
         await _processDiagnosticSanitairesOperation(operation, payload);
         return;
       case 'mesures_anthropometriques':
-        await _processMesuresOperation(operation, payload,
-            forceWrite: forceWrite);
+        await _processMesuresOperation(
+          operation,
+          payload,
+          forceWrite: forceWrite,
+        );
         return;
       case 'observations_synthese':
-        await _processObservationsOperation(operation, payload,
-            forceWrite: forceWrite);
+        await _processObservationsOperation(
+          operation,
+          payload,
+          forceWrite: forceWrite,
+        );
         return;
       case 'visit_recommendations':
         await _processVisitRecommendationsOperation(operation, payload);
@@ -596,8 +617,10 @@ class NocodbSyncService {
     final dossierId = payload['dossierId']?.toString() ?? '';
     final patientId = payload['patientId']?.toString() ?? '';
     if (dossierId.isEmpty || patientId.isEmpty) {
-      throw Exception('Payload report_generation incomplet '
-          '(dossierId="$dossierId", patientId="$patientId")');
+      throw Exception(
+        'Payload report_generation incomplet '
+        '(dossierId="$dossierId", patientId="$patientId")',
+      );
     }
 
     // Lookup du nom patient pour pouvoir l'inclure dans la notification
@@ -634,7 +657,8 @@ class NocodbSyncService {
       String fileName,
       Map<String, dynamic>? stats,
       String? savedDocUuid,
-    }) result;
+    })
+    result;
     try {
       // ignore: avoid_print
       print('[sync] POST /api/reports/visit/$dossierId (generation différée)');
@@ -659,7 +683,10 @@ class NocodbSyncService {
     // ignore: avoid_print
     print('[sync] PDF reçu (${result.bytes.length} bytes), import local…');
     final fileName = result.fileName;
-    final title = fileName.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '');
+    final title = fileName.replaceAll(
+      RegExp(r'\.pdf$', caseSensitive: false),
+      '',
+    );
 
     // DEUX CHEMINS selon que le serveur a sauvegardé le PDF directement
     // dans NocoDB (header X-Saved-Doc-Uuid) ou non. Bug fix 2026-05-11 :
@@ -671,8 +698,10 @@ class NocodbSyncService {
     // `synced` (le serveur a déjà tout sauvegardé).
     if (result.savedDocUuid != null && result.savedDocUuid!.isNotEmpty) {
       // ignore: avoid_print
-      print('[sync] doc déjà en NocoDB (uuid=${result.savedDocUuid}) '
-          '→ import remote-only synced (pas de re-upload)');
+      print(
+        '[sync] doc déjà en NocoDB (uuid=${result.savedDocUuid}) '
+        '→ import remote-only synced (pas de re-upload)',
+      );
       await DocumentRepository().importDocumentRemoteOnly(
         patientId: patientId,
         dossierId: dossierId,
@@ -707,7 +736,9 @@ class NocodbSyncService {
       keepLocalId: 'doc_report_$dossierId',
     );
     // ignore: avoid_print
-    print('[sync] document "Rapport" inséré localement (id=doc_report_$dossierId)');
+    print(
+      '[sync] document "Rapport" inséré localement (id=doc_report_$dossierId)',
+    );
 
     // Notifie le succès — l'overlay global affiche le bandeau vert
     // "Rapport ajouté à l'espace Documents (<fileName>)", peu importe
@@ -763,9 +794,11 @@ class NocodbSyncService {
       if (expected != null) 'expectedUpdatedAt': expected,
     };
     // ignore: avoid_print
-    print('[sync] PATCH /api/dossiers/$dossierId (contexte) '
-        'keys=${updates.keys.toList()} '
-        'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}');
+    print(
+      '[sync] PATCH /api/dossiers/$dossierId (contexte) '
+      'keys=${updates.keys.toList()} '
+      'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}',
+    );
     final newUpdatedAt = await _apiClient.updateDossier(
       dossierId: dossierId,
       updates: updatesWithGuard,
@@ -815,12 +848,11 @@ class NocodbSyncService {
       throw Exception('Payload mesures incomplet');
     }
     // ignore: avoid_print
-    print('[sync] PUT /api/mesures/$dossierId '
-        'keys=${updates.keys.toList()}');
-    await _apiClient.updateMesures(
-      dossierId: dossierId,
-      updates: updates,
+    print(
+      '[sync] PUT /api/mesures/$dossierId '
+      'keys=${updates.keys.toList()}',
     );
+    await _apiClient.updateMesures(dossierId: dossierId, updates: updates);
     final db = await LocalDatabase.instance.database;
     await db.update(
       'mesures_anthropometriques',
@@ -853,12 +885,11 @@ class NocodbSyncService {
       throw Exception('Payload observations incomplet');
     }
     // ignore: avoid_print
-    print('[sync] PUT /api/observations/$dossierId '
-        'keys=${updates.keys.toList()}');
-    await _apiClient.updateObservations(
-      dossierId: dossierId,
-      updates: updates,
+    print(
+      '[sync] PUT /api/observations/$dossierId '
+      'keys=${updates.keys.toList()}',
     );
+    await _apiClient.updateObservations(dossierId: dossierId, updates: updates);
     final db = await LocalDatabase.instance.database;
     await db.update(
       'observations_synthese',
@@ -883,12 +914,14 @@ class NocodbSyncService {
     if (dossierId == null || dossierId.isEmpty) {
       throw Exception('Payload diagnostic sanitaires incomplet');
     }
-    final sdb = (payload['sdbInstances'] as List?)
+    final sdb =
+        (payload['sdbInstances'] as List?)
             ?.whereType<Map>()
             .map((e) => e.cast<String, dynamic>())
             .toList() ??
         const <Map<String, dynamic>>[];
-    final wc = (payload['wcInstances'] as List?)
+    final wc =
+        (payload['wcInstances'] as List?)
             ?.whereType<Map>()
             .map((e) => e.cast<String, dynamic>())
             .toList() ??
@@ -927,14 +960,17 @@ class NocodbSyncService {
     if (dossierId == null || dossierId.isEmpty) {
       throw Exception('Payload visit recommendations incomplet');
     }
-    final items = (payload['items'] as List?)
+    final items =
+        (payload['items'] as List?)
             ?.whereType<Map>()
             .map((e) => e.cast<String, dynamic>())
             .toList() ??
         const <Map<String, dynamic>>[];
     // ignore: avoid_print
-    print('[sync] PUT /api/visit-recommendations/$dossierId '
-        'count=${items.length}');
+    print(
+      '[sync] PUT /api/visit-recommendations/$dossierId '
+      'count=${items.length}',
+    );
     await _apiClient.updateVisitRecommendations(
       dossierId: dossierId,
       items: items,
@@ -985,9 +1021,11 @@ class NocodbSyncService {
       if (expected != null) 'expectedUpdatedAt': expected,
     };
     // ignore: avoid_print
-    print('[sync] PATCH /api/beneficiaires/$remoteId '
-        'updates=${updates.keys.toList()} '
-        'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}');
+    print(
+      '[sync] PATCH /api/beneficiaires/$remoteId '
+      'updates=${updates.keys.toList()} '
+      'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}',
+    );
     final newUpdatedAt = await _apiClient.updateBeneficiary(
       patientId: remoteId,
       updates: updatesWithGuard,
@@ -1025,14 +1063,12 @@ class NocodbSyncService {
     }
     final dossierLocalId = payload['dossierLocalId']?.toString();
     final updates = (payload['updates'] as Map?)?.cast<String, dynamic>();
-    if (dossierLocalId == null ||
-        dossierLocalId.isEmpty ||
-        updates == null) {
+    if (dossierLocalId == null || dossierLocalId.isEmpty || updates == null) {
       throw Exception('Payload housing incomplet');
     }
     final remoteId =
         await _resolveRemoteBeneficiaryIdFromDossier(dossierLocalId) ??
-            dossierLocalId;
+        dossierLocalId;
     // Optimistic concurrency : on s'appuie sur la `housing_local_id`
     // référencée par le dossier pour récupérer le timestamp serveur du
     // logement (le `local_id` du logement est `housing_<dossierId>`).
@@ -1060,9 +1096,11 @@ class NocodbSyncService {
       if (expected != null) 'expectedUpdatedAt': expected,
     };
     // ignore: avoid_print
-    print('[sync] PATCH /api/logements/by-beneficiary/$remoteId '
-        'updates=${updates.keys.toList()} '
-        'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}');
+    print(
+      '[sync] PATCH /api/logements/by-beneficiary/$remoteId '
+      'updates=${updates.keys.toList()} '
+      'expectedUpdatedAt=${expected ?? (forceWrite ? "skipped (force)" : "null")}',
+    );
     final newUpdatedAt = await _apiClient.updateLogement(
       beneficiaryId: remoteId,
       updates: updatesWithGuard,
@@ -1101,15 +1139,19 @@ class NocodbSyncService {
   }
 
   Future<String?> _resolveRemoteBeneficiaryIdFromDossier(
-      String dossierLocalId) async {
+    String dossierLocalId,
+  ) async {
     final db = await LocalDatabase.instance.database;
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT p.remote_patient_id
       FROM dossiers d
       INNER JOIN patients p ON p.local_id = d.patient_local_id
       WHERE d.local_id = ?
       LIMIT 1
-    ''', [dossierLocalId]);
+    ''',
+      [dossierLocalId],
+    );
     if (rows.isEmpty) return null;
     final remote = rows.first['remote_patient_id'] as String?;
     if (remote == null || remote.isEmpty) return null;
@@ -1144,12 +1186,15 @@ class NocodbSyncService {
       // l'op create rejouait, créait une 2e ligne orpheline, et l'update
       // tapait sur la 2e (la 1ère gardait l'ancien nom).
       if (patientLocalId.isNotEmpty) {
-        final existingRemoteId =
-            await _syncRepository.resolveRemotePatientId(patientLocalId);
+        final existingRemoteId = await _syncRepository.resolveRemotePatientId(
+          patientLocalId,
+        );
         if (existingRemoteId != null && existingRemoteId.isNotEmpty) {
           // ignore: avoid_print
-          print('[sync] dossier:create skip — déjà créé côté serveur '
-              '(patientLocalId=$patientLocalId remoteId=$existingRemoteId)');
+          print(
+            '[sync] dossier:create skip — déjà créé côté serveur '
+            '(patientLocalId=$patientLocalId remoteId=$existingRemoteId)',
+          );
           return;
         }
       }
@@ -1158,7 +1203,8 @@ class NocodbSyncService {
       // depuis 2026-04-30). Tous optionnels pour rester compat avec
       // les sync_operations héritées d'avant cette date — qui ont
       // juste firstName/lastName/ergoId.
-      final natureAccompagnement = payload['natureAccompagnement']?.toString() ?? '';
+      final natureAccompagnement =
+          payload['natureAccompagnement']?.toString() ?? '';
       final numberPeopleRaw = payload['numberPeople'];
       final numberPeople = numberPeopleRaw is num
           ? numberPeopleRaw.toInt()
@@ -1166,29 +1212,33 @@ class NocodbSyncService {
       final fiscalRevenueRaw = payload['fiscalRevenue'];
       final fiscalRevenue = fiscalRevenueRaw is num
           ? fiscalRevenueRaw.toDouble()
-          : (fiscalRevenueRaw is String ? double.tryParse(fiscalRevenueRaw) : null);
+          : (fiscalRevenueRaw is String
+                ? double.tryParse(fiscalRevenueRaw)
+                : null);
       final address = payload['address']?.toString() ?? '';
       final city = payload['city']?.toString() ?? '';
       final zipCode = payload['zipCode']?.toString() ?? '';
 
-      final result = await _apiClient.createBeneficiary(fields: {
-        'firstName': firstName,
-        'lastName': lastName,
-        'ergoId': ergoId,
-        // Clé d'idempotence — le serveur l'utilise pour retrouver une
-        // création précédente partiellement aboutie (cf. patch serveur
-        // associé dans `server/index.mjs`). Sans cette clé, le serveur
-        // n'a aucun moyen de distinguer un retry d'un vrai nouveau dossier.
-        if (patientLocalId.isNotEmpty) 'clientLocalId': patientLocalId,
-        if (natureAccompagnement.isNotEmpty)
-          'natureAccompagnement': natureAccompagnement,
-        if (numberPeople != null && numberPeople > 0)
-          'numberPeople': numberPeople,
-        if (fiscalRevenue != null) 'fiscalRevenue': fiscalRevenue,
-        if (address.isNotEmpty) 'address': address,
-        if (city.isNotEmpty) 'city': city,
-        if (zipCode.isNotEmpty) 'zipCode': zipCode,
-      });
+      final result = await _apiClient.createBeneficiary(
+        fields: {
+          'firstName': firstName,
+          'lastName': lastName,
+          'ergoId': ergoId,
+          // Clé d'idempotence — le serveur l'utilise pour retrouver une
+          // création précédente partiellement aboutie (cf. patch serveur
+          // associé dans `server/index.mjs`). Sans cette clé, le serveur
+          // n'a aucun moyen de distinguer un retry d'un vrai nouveau dossier.
+          if (patientLocalId.isNotEmpty) 'clientLocalId': patientLocalId,
+          if (natureAccompagnement.isNotEmpty)
+            'natureAccompagnement': natureAccompagnement,
+          if (numberPeople != null && numberPeople > 0)
+            'numberPeople': numberPeople,
+          if (fiscalRevenue != null) 'fiscalRevenue': fiscalRevenue,
+          if (address.isNotEmpty) 'address': address,
+          if (city.isNotEmpty) 'city': city,
+          if (zipCode.isNotEmpty) 'zipCode': zipCode,
+        },
+      );
 
       // Store the remote IDs locally so future updates reference them.
       final remotePatientId = result['id']?.toString();
@@ -1259,8 +1309,6 @@ class NocodbSyncService {
     );
   }
 
-
-
   Future<void> _processDocumentOperation(
     SyncOperation operation,
     Map<String, dynamic> payload,
@@ -1322,9 +1370,7 @@ class NocodbSyncService {
       }
       bytes = base64Decode(dataUrl.substring(comma + 1));
     } else {
-      throw Exception(
-        'Payload document: ni localPath ni dataUrl fourni',
-      );
+      throw Exception('Payload document: ni localPath ni dataUrl fourni');
     }
 
     final uploaded = await _apiClient.uploadDocument(
@@ -1354,11 +1400,7 @@ class NocodbSyncService {
   Future<void> _purgeLocalDocument(String localId) async {
     if (localId.isEmpty) return;
     final db = await LocalDatabase.instance.database;
-    await db.delete(
-      'documents',
-      where: 'local_id = ?',
-      whereArgs: [localId],
-    );
+    await db.delete('documents', where: 'local_id = ?', whereArgs: [localId]);
   }
 
   /// Pushes a wiki item create/update. For `create`, the local row was
@@ -1377,9 +1419,8 @@ class NocodbSyncService {
       final title = payload['title']?.toString() ?? '';
       final description = payload['description']?.toString() ?? '';
       final category = payload['category']?.toString() ?? '';
-      final tags = (payload['tags'] as List?)
-              ?.map((t) => t.toString())
-              .toList() ??
+      final tags =
+          (payload['tags'] as List?)?.map((t) => t.toString()).toList() ??
           const <String>[];
       final localId = operation.entityLocalId;
 
@@ -1394,11 +1435,7 @@ class NocodbSyncService {
       );
       // Replace the local draft row (id = localId) with the remote one.
       await db.transaction((txn) async {
-        await txn.delete(
-          'wiki_items',
-          where: 'id = ?',
-          whereArgs: [localId],
-        );
+        await txn.delete('wiki_items', where: 'id = ?', whereArgs: [localId]);
         final now = DateTime.now().toIso8601String();
         await txn.insert('wiki_items', {
           'id': saved.id,
@@ -1422,9 +1459,8 @@ class NocodbSyncService {
       final title = payload['title']?.toString() ?? '';
       final description = payload['description']?.toString() ?? '';
       final category = payload['category']?.toString() ?? '';
-      final tags = (payload['tags'] as List?)
-              ?.map((t) => t.toString())
-              .toList() ??
+      final tags =
+          (payload['tags'] as List?)?.map((t) => t.toString()).toList() ??
           const <String>[];
 
       final saved = await _apiClient.updateWikiItem(
@@ -1461,7 +1497,9 @@ class NocodbSyncService {
       return;
     }
 
-    throw Exception('Opération wiki_item non supportée: ${operation.operationType}');
+    throw Exception(
+      'Opération wiki_item non supportée: ${operation.operationType}',
+    );
   }
 
   /// Pushes a retirement fund update. The fund payload comes fully serialized
@@ -1545,8 +1583,8 @@ class NocodbSyncService {
         'Opération profile_photo non supportée: ${operation.operationType}',
       );
     }
-    final userLocalId = payload['userLocalId']?.toString() ??
-        operation.entityLocalId;
+    final userLocalId =
+        payload['userLocalId']?.toString() ?? operation.entityLocalId;
     final dataUrl = payload['imageDataUrl']?.toString() ?? '';
     if (dataUrl.isEmpty) throw Exception('Payload profile_photo incomplet');
 
@@ -1598,18 +1636,23 @@ class NocodbSyncService {
     //  - onglet Plans → 'visit_grid'
     //  - tout le reste (notes rapides du dossier, etc.) → 'dossier_detail'
     const visitReportTabs = {
-      'Bénéficiaire', 'Contexte de vie', 'Mesures',
-      'Accessibilité', 'Salle de bain', 'WC', 'Préconisations',
+      'Bénéficiaire',
+      'Contexte de vie',
+      'Mesures',
+      'Accessibilité',
+      'Salle de bain',
+      'WC',
+      'Préconisations',
     };
     final scopeTypeFromPayload = payload['scopeType']?.toString();
     final scopeIdFromPayload = payload['scopeId']?.toString();
     final scopeType = scopeTypeFromPayload?.isNotEmpty == true
         ? scopeTypeFromPayload!
         : (tabKey == 'Plans'
-            ? 'visit_grid'
-            : visitReportTabs.contains(tabKey)
-                ? 'visit_report'
-                : 'dossier_detail');
+              ? 'visit_grid'
+              : visitReportTabs.contains(tabKey)
+              ? 'visit_report'
+              : 'dossier_detail');
     final scopeId = scopeIdFromPayload?.isNotEmpty == true
         ? scopeIdFromPayload
         : (payload['dossierId']?.toString() ?? patientId);
@@ -1618,7 +1661,8 @@ class NocodbSyncService {
     // on saute la sync pour éviter une boucle d'échecs 404 stériles. Les
     // patients remote ont un id de la forme "nocodb-beneficiaire-<n>" ou un
     // UUID ; les mocks locaux ont des id courts comme "p1", "p2", etc.
-    final looksRemote = patientId.startsWith('nocodb-') ||
+    final looksRemote =
+        patientId.startsWith('nocodb-') ||
         patientId.contains('-') && patientId.length > 20;
     if (!looksRemote) {
       // On ne fait rien — l'opération est considérée comme traitée.

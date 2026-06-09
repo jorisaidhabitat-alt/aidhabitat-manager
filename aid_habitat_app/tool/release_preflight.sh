@@ -130,10 +130,16 @@ else
   warn "UIRequiresFullScreen ne permet pas clairement le multitache iPad."
 fi
 
-if rg -Fq 'PencilDoubleTapPlugin.register(with: self)' ios/Runner/AppDelegate.swift; then
+if rg -q 'PencilDoubleTapPlugin\.register\(with: (self|pencilRegistrar)\)' ios/Runner/AppDelegate.swift; then
   ok "Le bridge Apple Pencil natif est branche."
 else
   warn "Le bridge Apple Pencil n'est pas encore enregistre dans AppDelegate.swift."
+fi
+
+if rg -q 'DocumentScannerPlugin\.register\(with: (self|scannerRegistrar)\)' ios/Runner/AppDelegate.swift; then
+  ok "Le scanner de documents natif iPad est branche."
+else
+  warn "Le scanner de documents natif n'est pas encore enregistre dans AppDelegate.swift."
 fi
 
 echo

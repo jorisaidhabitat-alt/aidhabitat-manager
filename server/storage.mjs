@@ -104,9 +104,11 @@ const getDocumentChunksTableId = async () => {
  */
 const field = (record, name) => record?.fields?.[name];
 
-const queryUploadChunks = async (uploadId) => {
+const queryUploadChunks = async (uploadId, ownerKey = null) => {
   const tableId = await getDocumentChunksTableId();
   const tmpKey = `${TMP_DOC_UUID_PREFIX}${uploadId}`;
+  const where = `(document_uuid_source,eq,${JSON.stringify(tmpKey)})`
+    + (ownerKey ? `~and(beneficiaire_id,eq,${JSON.stringify(String(ownerKey))})` : '');
   const records = [];
   let page = 1;
   while (true) {
@@ -115,7 +117,7 @@ const queryUploadChunks = async (uploadId) => {
       page,
       pageSize: 100,
       fields: ['uuid_source', 'chunk_index', 'chunk_base64', 'updated_at'],
-      where: `(document_uuid_source,eq,${JSON.stringify(tmpKey)})`,
+      where,
     });
     const batch = Array.isArray(payload?.records) ? payload.records : [];
     records.push(...batch);
@@ -133,7 +135,7 @@ const queryUploadChunks = async (uploadId) => {
  * `upload_` pour ne pas se confondre avec les chunks d'un vrai
  * document finalisé (qui ont un UUID v4).
  */
-export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
+export const putChunk = async ({ uploadId, chunkIndex, buffer, ownerKey = null }) => {
   const tableId = await getDocumentChunksTableId();
   const tmpKey = `${TMP_DOC_UUID_PREFIX}${uploadId}`;
   const base64 = buffer.toString('base64');
@@ -168,6 +170,7 @@ export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
       fields: {
         uuid_source: `chunk_${uploadId}_${chunkIndex}_${subIdx}_${ts}`,
         document_uuid_source: tmpKey,
+        beneficiaire_id: ownerKey ? String(ownerKey) : null,
         chunk_index: chunkIndex * SUBCHUNK_STRIDE + subIdx,
         chunk_base64: sub,
         updated_at: now,
@@ -185,8 +188,8 @@ export const putChunk = async ({ uploadId, chunkIndex, buffer }) => {
  * Liste les chunks d'un upload, triés par index croissant. Le champ
  * `size` est la longueur du base64 (= 4/3 × taille binaire).
  */
-export const listChunks = async (uploadId) => {
-  const records = await queryUploadChunks(uploadId);
+export const listChunks = async (uploadId, ownerKey = null) => {
+  const records = await queryUploadChunks(uploadId, ownerKey);
   return records.map((r) => ({
     url: `nocodb://chunks/${TMP_DOC_UUID_PREFIX}${uploadId}/${Number(field(r, 'chunk_index'))}`,
     size: String(field(r, 'chunk_base64') || '').length,
@@ -198,13 +201,13 @@ export const listChunks = async (uploadId) => {
  * Concatène tous les chunks d'un upload en un Buffer unique.
  * Throw si aucun chunk trouvé OU indices non contigus.
  */
-export const reassembleChunks = async (uploadId) => {
-  const records = await queryUploadChunks(uploadId);
+export const reassembleChunks = async (uploadId, ownerKey = null) => {
+  const records = await queryUploadChunks(uploadId, ownerKey);
   if (records.length === 0) {
-    throw new Error(
+    throw Object.assign(new Error(
       `Aucun chunk trouvé pour uploadId="${uploadId}" — `
       + 'le client doit retry l\'upload (chunks expirés ou jamais reçus).',
-    );
+    ), { statusCode: 404 });
   }
   // `queryUploadChunks` renvoie déjà trié par `chunk_index` croissant.
   // L'encodage est `clientChunkIdx * SUBCHUNK_STRIDE + subIdx`.
@@ -245,8 +248,8 @@ export const reassembleChunks = async (uploadId) => {
  *
  * Delete par batch de 100 pour limiter la taille du payload NocoDB.
  */
-export const deleteChunks = async (uploadId) => {
-  const records = await queryUploadChunks(uploadId);
+export const deleteChunks = async (uploadId, ownerKey = null) => {
+  const records = await queryUploadChunks(uploadId, ownerKey);
   if (records.length === 0) return;
   const tableId = await getDocumentChunksTableId();
   for (let i = 0; i < records.length; i += 100) {

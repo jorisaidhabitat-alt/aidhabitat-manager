@@ -9,6 +9,7 @@ import '../models/types.dart';
 import 'app_config.dart';
 import 'local_database.dart';
 import 'nocodb_api_client.dart';
+import 'offline_vault.dart';
 import 'secure_session_storage.dart';
 
 class AuthService {
@@ -25,6 +26,7 @@ class AuthService {
       StreamController<void>.broadcast();
 
   static const String bootstrapPassword = 'AidHabitat!Local';
+  static const String defaultOrganisationId = 'org_aidhabitat';
 
   static String? consumePendingSessionNotice() {
     final notice = _pendingSessionNotice;
@@ -91,6 +93,7 @@ class AuthService {
       final salt = _generateSalt();
       batch.insert('app_users', {
         'local_id': seed.id,
+        'organisation_id': seed.organisationId,
         'email': seed.email,
         'display_name': seed.displayName,
         'role': seed.role.name,
@@ -124,6 +127,12 @@ class AuthService {
         value: '*',
       ),
       for (final seed in _seedUsers) ...[
+        _SeedAccessScope(
+          id: '${seed.id}_organisation',
+          userId: seed.id,
+          type: 'organisation_id',
+          value: seed.organisationId,
+        ),
         if (seed.establishmentId != null)
           _SeedAccessScope(
             id: '${seed.id}_establishment',
@@ -153,6 +162,7 @@ class AuthService {
       if (existingIds.contains(scope.id)) continue;
       batch.insert('user_access_scopes', {
         'local_id': scope.id,
+        'organisation_id': defaultOrganisationId,
         'user_local_id': scope.userId,
         'scope_type': scope.type,
         'scope_value': scope.value,
@@ -170,9 +180,11 @@ class AuthService {
       orderBy: 'display_name ASC',
     );
     final scopes = await _fetchScopesByUserId(db);
-    return rows
-        .map((row) => _mapUser(row, scopes[row['local_id']] ?? []))
-        .toList();
+    final out = <LocalAppUser>[];
+    for (final row in rows) {
+      out.add(await _mapUser(row, scopes[row['local_id']] ?? []));
+    }
+    return out;
   }
 
   /// Persists [photoUrl] as the current user's profile photo in SQLite
@@ -210,7 +222,9 @@ class AuthService {
       await txn.update(
         'app_users',
         {
-          'pending_photo_data_url': dataUrl,
+          'pending_photo_data_url': await OfflineVault.instance.sealString(
+            dataUrl,
+          ),
           'sync_state': SyncState.pendingSync.name,
           'updated_at': now,
         },
@@ -224,10 +238,9 @@ class AuthService {
         'entity_type': 'profile_photo',
         'entity_local_id': userLocalId,
         'operation_type': 'upload',
-        'payload_json': jsonEncode({
-          'userLocalId': userLocalId,
-          'imageDataUrl': dataUrl,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({'userLocalId': userLocalId, 'imageDataUrl': dataUrl}),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -252,7 +265,7 @@ class AuthService {
     if (userRows.isEmpty) return null;
     final scopes = await _fetchScopesByUserId(db);
     final row = userRows.first;
-    return _mapUser(row, scopes[row['local_id']] ?? []);
+    return await _mapUser(row, scopes[row['local_id']] ?? []);
   }
 
   Future<LocalSignInResult> signIn({
@@ -365,7 +378,7 @@ class AuthService {
     final scopes = await _fetchScopesByUserId(db);
     return LocalSignInResult(
       success: true,
-      user: _mapUser(row, scopes[row['local_id']] ?? []),
+      user: await _mapUser(row, scopes[row['local_id']] ?? []),
       hasRemoteSession: remoteToken != null,
     );
   }
@@ -694,6 +707,7 @@ class AuthService {
         final salt = _generateSalt();
         await db.insert('app_users', {
           'local_id': localUserId,
+          'organisation_id': _remoteOrganisationId(remoteUser),
           'email': email,
           'display_name': remoteUser['displayName']?.toString() ?? email,
           'role': _mapRemoteRole(remoteUser['role']?.toString()).name,
@@ -708,6 +722,7 @@ class AuthService {
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       } else {
         final updates = <String, Object?>{
+          'organisation_id': _remoteOrganisationId(remoteUser),
           'display_name': remoteUser['displayName']?.toString() ?? email,
           'role': _mapRemoteRole(remoteUser['role']?.toString()).name,
           'establishment_id': _nullableValue(remoteUser['establishmentId']),
@@ -745,6 +760,7 @@ class AuthService {
         if (type.isEmpty || value.isEmpty) continue;
         await db.insert('user_access_scopes', {
           'local_id': '${localUserId}_scope_$index',
+          'organisation_id': _remoteOrganisationId(remoteUser),
           'user_local_id': localUserId,
           'scope_type': type,
           'scope_value': value,
@@ -815,20 +831,23 @@ class AuthService {
     );
   }
 
-  LocalAppUser _mapUser(
+  Future<LocalAppUser> _mapUser(
     Map<String, Object?> row,
     List<LocalAccessScope> scopes,
-  ) {
+  ) async {
     return LocalAppUser(
       id: row['local_id'] as String,
       email: row['email'] as String,
       displayName: row['display_name'] as String,
       role: LocalUserRole.values.byName(row['role'] as String),
       establishmentId: row['establishment_id'] as String?,
+      organisationId:
+          (row['organisation_id'] as String?) ?? defaultOrganisationId,
       ergoLabel: row['ergo_label'] as String?,
       profilePhotoUrl: (row['profile_photo_url'] as String?) ?? '',
-      pendingProfilePhotoDataUrl:
-          (row['pending_photo_data_url'] as String?) ?? '',
+      pendingProfilePhotoDataUrl: await OfflineVault.instance.openString(
+        (row['pending_photo_data_url'] as String?) ?? '',
+      ),
       scopes: scopes,
     );
   }
@@ -863,6 +882,13 @@ class AuthService {
     final normalized = value?.toString().trim() ?? '';
     return normalized.isEmpty ? null : normalized;
   }
+
+  String _remoteOrganisationId(Map<String, dynamic> remoteUser) {
+    return _nullableValue(remoteUser['organisationId']) ??
+        _nullableValue(remoteUser['organizationId']) ??
+        _nullableValue(remoteUser['organisation_id']) ??
+        defaultOrganisationId;
+  }
 }
 
 class LocalSignInResult {
@@ -894,6 +920,8 @@ class _SeedUser {
   final String? establishmentId;
   final String? ergoLabel;
   final String? dossierErgoScope;
+
+  String get organisationId => AuthService.defaultOrganisationId;
 
   const _SeedUser({
     required this.id,

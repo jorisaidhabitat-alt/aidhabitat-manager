@@ -38,6 +38,7 @@ tmp/
 
 # Sensitive runtime data
 server/data/auth-store.json
+public/snapshot.json
 
 # Claude Code runtime
 .claude/worktrees/

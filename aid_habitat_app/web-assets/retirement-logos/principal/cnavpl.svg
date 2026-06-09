@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="CNAVPL">
+  <defs>
+    <linearGradient id="cnavplGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3E7AB5"/>
+      <stop offset="100%" stop-color="#1E4C7D"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="44" fill="url(#cnavplGrad)"/>
+  <circle cx="190" cy="50" r="22" fill="rgba(255,255,255,0.10)"/>
+  <circle cx="46" cy="196" r="26" fill="rgba(255,255,255,0.08)"/>
+  <text x="120" y="124" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="46" font-weight="900" fill="#ffffff" letter-spacing="-1">CNAVPL</text>
+  <text x="120" y="162" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="2">PROFESSIONS</text>
+  <text x="120" y="182" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="2">LIBÉRALES</text>
+</svg>

@@ -147,12 +147,39 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     final localWiki = await _wikiRepo.fetchAllItems().catchError((_) {
       return <WikiItem>[];
     });
+    final hydratedItems = _hydrateDescriptionsFromWiki(localItems, localWiki);
     if (!mounted) return;
     setState(() {
-      _items = localItems;
+      _items = hydratedItems;
       _wikiItems = localWiki;
       _loaded = true;
     });
+  }
+
+  List<VisitRecommendationItem> _hydrateDescriptionsFromWiki(
+    List<VisitRecommendationItem> items,
+    List<WikiItem> wikiItems,
+  ) {
+    if (items.isEmpty || wikiItems.isEmpty) return items;
+    final byId = {
+      for (final item in wikiItems)
+        if (item.id.trim().isNotEmpty) item.id.trim(): item,
+    };
+    final byTitle = {
+      for (final item in wikiItems)
+        if (item.title.trim().isNotEmpty) item.title.trim().toLowerCase(): item,
+    };
+    return items.map((item) {
+      final wiki =
+          byId[item.wikiItemId.trim()] ??
+          byTitle[item.wikiTitle.trim().toLowerCase()];
+      if (wiki == null) return item;
+      final description = wiki.description.trim();
+      if (description.isEmpty || description == item.wikiDescription) {
+        return item;
+      }
+      return item.copyWith(wikiDescription: description);
+    }).toList();
   }
 
   void _scheduleSave() {
@@ -277,8 +304,11 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     // description → comportement historique (pré-remplissage direct).
     final descriptions = picked.descriptionsList;
     String prefillNote = '';
+    String wikiDescription = picked.description;
     if (descriptions.length <= 1) {
-      prefillNote = descriptions.isEmpty ? '' : descriptions.first;
+      wikiDescription = descriptions.isEmpty
+          ? picked.description
+          : descriptions.first;
     } else {
       if (!mounted) return;
       final selected = await showSoftDialog<List<String>>(
@@ -296,6 +326,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
         // vide pour respirer (le TextField multi-lignes du card les
         // affichera l'une sous l'autre, modifiables).
         prefillNote = selected.join('\n\n');
+        wikiDescription = prefillNote;
       }
     }
 
@@ -306,13 +337,16 @@ class _RecommendationsTabState extends State<RecommendationsTab>
         wikiTitle: picked.title,
         wikiImageUrl: picked.imageUrl,
         wikiTag: picked.tags.isNotEmpty ? picked.tags.first : picked.category,
+        wikiDescription: wikiDescription,
         // Pré-remplit le titre personnalisé avec le titre wiki uniquement
         // si l'utilisateur n'a encore rien tapé (ne pas écraser une
         // saisie manuelle).
         customTitle: current.customTitle.isNotEmpty
             ? current.customTitle
             : picked.title,
-        // Only pre-fill note if empty (don't overwrite user input).
+        // Pour une description simple, on garde la bibliothèque comme
+        // source vivante via wikiDescription. Les choix multi-description
+        // restent une note dossier, car ils sont spécifiques à la visite.
         note: current.note.isNotEmpty ? current.note : prefillNote,
       ),
     );
@@ -496,6 +530,9 @@ class _RecommendationCard extends StatelessWidget {
     final title = item.customTitle.trim().isNotEmpty
         ? item.customTitle.trim()
         : item.wikiTitle.trim();
+    final descriptionValue = item.note.trim().isNotEmpty
+        ? item.note
+        : item.wikiDescription;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -623,7 +660,7 @@ class _RecommendationCard extends StatelessWidget {
           // multi-ligne (vs pill 999 pour single-line).
           FormTextField(
             label: '',
-            value: item.note,
+            value: descriptionValue,
             maxLines: null,
             minLines: 2,
             valueSize: 14,

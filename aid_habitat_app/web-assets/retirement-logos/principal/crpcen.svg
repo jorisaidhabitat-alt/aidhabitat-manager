@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="CRPCEN">
+  <defs>
+    <linearGradient id="crpcenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2A5294"/>
+      <stop offset="100%" stop-color="#13315B"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="44" fill="url(#crpcenGrad)"/>
+  <path d="M178 40 L196 58 L186 68 L168 50 Z M174 56 L182 64 L156 90 L148 82 Z" fill="rgba(255,255,255,0.18)"/>
+  <circle cx="46" cy="196" r="26" fill="rgba(255,255,255,0.08)"/>
+  <text x="120" y="138" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="50" font-weight="900" fill="#ffffff" letter-spacing="-1">CRPCEN</text>
+  <text x="120" y="174" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="2">CLERCS &amp; EMPLOYÉS</text>
+  <text x="120" y="192" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="2">DE NOTAIRES</text>
+</svg>

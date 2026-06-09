@@ -834,6 +834,7 @@ router.get('/api/visit-recommendations/:dossierId', requireAuth, async (req, res
         wikiTitle: stringValue(matchedWikiItem.title),
         wikiImageUrl: stringValue(matchedWikiItem.imageUrl),
         wikiTag: stringValue(matchedWikiItem.tags?.[0] || item?.wikiTag),
+        wikiDescription: stringValue(matchedWikiItem.description),
       };
     });
 
@@ -897,6 +898,7 @@ router.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res
           wiki_title: item.wikiTitle || null,
           wiki_image_url: item.wikiImageUrl || null,
           wiki_tag: item.wikiTag || null,
+          custom_title: item.customTitle || null,
           note: item.note || null,
           created_at: item.createdAt,
           updated_at: item.updatedAt,

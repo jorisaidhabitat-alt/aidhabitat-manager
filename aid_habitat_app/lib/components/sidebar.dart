@@ -49,19 +49,14 @@ class _SidebarState extends State<Sidebar> {
     // Si le parent push un user fraîchement chargé qui contient déjà
     // les nouveaux champs photo, on jette l'override pour revenir à
     // la source de vérité du parent.
-    if (_userOverride != null &&
-        oldWidget.currentUser != widget.currentUser) {
+    if (_userOverride != null && oldWidget.currentUser != widget.currentUser) {
       // Parent a poussé une nouvelle instance → trust it.
       _userOverride = null;
     }
   }
 
   List<Map<String, dynamic>> get _menuItems => [
-    {
-      'id': 'dashboard',
-      'label': 'Accueil',
-      'icon': LucideIcons.home,
-    },
+    {'id': 'dashboard', 'label': 'Accueil', 'icon': LucideIcons.home},
     // Refonte 2026-05-13 : icônes fermées (folder/book) au lieu de
     // folderOpen/bookOpen pour matcher la maquette Refonte.html l.870-871.
     {'id': 'dossiers', 'label': 'Dossiers', 'icon': LucideIcons.folder},
@@ -99,237 +94,268 @@ class _SidebarState extends State<Sidebar> {
           right: BorderSide(color: Color(0xFFE4E7EB), width: 1), // ink-200
         ),
       ),
-      child: SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: MediaQuery.of(context).size.height,
-          ),
-          child: IntrinsicHeight(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-          // App'Ergo mark — square noir avec mauve dot, retour dashboard
-          Padding(
-            padding: const EdgeInsets.only(top: 16.0),
-            child: Tooltip(
-              message: 'Accueil',
-              preferBelow: false,
-              margin: const EdgeInsets.only(left: 60),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              textStyle: const TextStyle(color: Colors.white, fontSize: 12),
-              child: InkWell(
-                onTap: () => widget.onNavigate('dashboard'),
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0E1116), // ink-900
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Cercle blanc outline — signature App'Ergo
-                      // (cf. favicon.svg : cercle 5px stroke autour du
-                      // centre + dot top-right). Ici en négatif sur
-                      // fond noir.
-                      Container(
-                        width: 22,
-                        height: 22,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // App'Ergo mark — square noir avec mauve dot, retour dashboard
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: Tooltip(
+                        message: 'Accueil',
+                        preferBelow: false,
+                        margin: const EdgeInsets.only(left: 60),
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                      ),
-                      // Mauve-500 dot top-right.
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: kBrandPurple, // mauve-500
-                            shape: BoxShape.circle,
-                          ),
+                        textStyle: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Navigation — items carrés rounded-12 + indicator stripe à gauche.
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: _menuItems.map((item) {
-              final bool isActive =
-                  widget.currentView == item['id'] ||
-                  (widget.currentView == 'visit' && item['id'] == 'dossiers');
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Tooltip(
-                  message: item['label'],
-                  preferBelow: false,
-                  margin: const EdgeInsets.only(left: 60),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  textStyle: const TextStyle(color: Colors.white, fontSize: 12),
-                  child: SoftTapScale(
-                    onTap: () => widget.onNavigate(item['id']),
-                    // Stack pour superposer l'indicator stripe gauche
-                    // mauve-500 (visible quand actif) au bouton carré.
-                    child: SizedBox(
-                      width: 60,
-                      height: 48,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Indicator stripe gauche (3px × 32px) — mauve-500
-                          // visible quand l'item est actif, sinon invisible
-                          // via alpha 0 (interpolation propre, cf. note
-                          // 2026-04-29 sur le « flash gris »).
-                          Positioned(
-                            left: 0,
-                            top: 8,
-                            bottom: 8,
-                            child: AnimatedContainer(
-                              duration: kSoftMedium,
-                              curve: kSoftCurve,
-                              width: 3,
-                              decoration: BoxDecoration(
-                                color: isActive
-                                    ? kBrandPurple // mauve-500
-                                    : const Color(0x008B6FA0), // alpha 0
-                                borderRadius: const BorderRadius.only(
-                                  topRight: Radius.circular(3),
-                                  bottomRight: Radius.circular(3),
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Bouton carré rounded-12 (uniforme pour tous
-                          // les items, y compris ANAH depuis refonte
-                          // 2026-05-13).
-                          AnimatedContainer(
-                            duration: kSoftMedium,
-                            curve: kSoftCurve,
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              // mauve-100 si actif, transparent (alpha 0
-                              // du mauve-100 pour éviter le flash gris
-                              // pendant l'interpolation) si inactif.
-                              color: isActive
-                                  ? const Color(0xFFF2ECF5) // mauve-100
-                                  : const Color(0x00F2ECF5),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              item['icon'],
-                              size: 20,
-                              color: isActive
-                                  ? const Color(0xFF554265) // mauve-700
-                                  : const Color(0xFF8A939D), // ink-400
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-
-
-          // Profile / Bottom — avatar 36×36 rounded-10 mauve-200 bg
-          // (Refonte.html `.rail .avatar`). Ouvre l'AccountDialog au tap.
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: Tooltip(
-              message:
-                  "${widget.currentUser.displayName} • ${widget.currentUser.role.label}",
-              preferBelow: false,
-              margin: const EdgeInsets.only(left: 60),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              textStyle: const TextStyle(color: Colors.white, fontSize: 12),
-              child: InkWell(
-                onTap: _openAccountDialog,
-                // Refonte 2026-05-15 : avatar rond complet (demande
-                // user : « pour la photo de profil en bas à gauche
-                // augmente les radius pour avoir un format rond »).
-                // 36×36 + radius 999 = cercle parfait.
-                borderRadius: BorderRadius.circular(999),
-                child: Builder(builder: (_) {
-                  // Source vérité avatar : `_effectiveUser` (override
-                  // post-dialog → fallback widget.currentUser). Permet
-                  // au carré de refléter immédiatement une nouvelle
-                  // photo après l'AccountDialog sans attendre que le
-                  // parent re-propage le user.
-                  final user = _effectiveUser;
-                  return Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      // Sans photo : fond mauve-200 + texte mauve-700
-                      // (initiales). Avec photo : la photo prend toute
-                      // la place (le fond mauve-200 ne se voit pas).
-                      color: const Color(0xFFE3D9EA), // mauve-200
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: (user.profilePhotoUrl.isNotEmpty ||
-                            user.pendingProfilePhotoDataUrl.isNotEmpty)
-                        ? CachedRemoteImage(
-                            url: user.profilePhotoUrl,
-                            pendingDataUrl:
-                                user.pendingProfilePhotoDataUrl,
-                            fit: BoxFit.cover,
+                        child: InkWell(
+                          onTap: () => widget.onNavigate('dashboard'),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
                             width: 36,
                             height: 36,
-                            errorWidget: Center(
-                              child: Text(
-                                _initials(user.displayName),
-                                style: const TextStyle(
-                                  color: Color(0xFF554265), // mauve-700
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0E1116), // ink-900
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Cercle blanc outline — signature App'Ergo
+                                // (cf. favicon.svg : cercle 5px stroke autour du
+                                // centre + dot top-right). Ici en négatif sur
+                                // fond noir.
+                                Container(
+                                  width: 22,
+                                  height: 22,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                                // Mauve-500 dot top-right.
+                                Positioned(
+                                  top: 6,
+                                  right: 6,
+                                  child: Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: kBrandPurple, // mauve-500
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Navigation — items carrés rounded-12 + indicator stripe à gauche.
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: _menuItems.map((item) {
+                        final bool isActive =
+                            widget.currentView == item['id'] ||
+                            (widget.currentView == 'visit' &&
+                                item['id'] == 'dossiers');
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Tooltip(
+                            message: item['label'],
+                            preferBelow: false,
+                            margin: const EdgeInsets.only(left: 60),
+                            decoration: BoxDecoration(
+                              color: Colors.black,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            textStyle: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                            child: SoftTapScale(
+                              onTap: () => widget.onNavigate(item['id']),
+                              // Stack pour superposer l'indicator stripe gauche
+                              // mauve-500 (visible quand actif) au bouton carré.
+                              child: SizedBox(
+                                width: 60,
+                                height: 48,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    // Indicator stripe gauche (3px × 32px) — mauve-500
+                                    // visible quand l'item est actif, sinon invisible
+                                    // via alpha 0 (interpolation propre, cf. note
+                                    // 2026-04-29 sur le « flash gris »).
+                                    Positioned(
+                                      left: 0,
+                                      top: 8,
+                                      bottom: 8,
+                                      child: AnimatedContainer(
+                                        duration: kSoftMedium,
+                                        curve: kSoftCurve,
+                                        width: 3,
+                                        decoration: BoxDecoration(
+                                          color: isActive
+                                              ? kBrandPurple // mauve-500
+                                              : const Color(
+                                                  0x008B6FA0,
+                                                ), // alpha 0
+                                          borderRadius: const BorderRadius.only(
+                                            topRight: Radius.circular(3),
+                                            bottomRight: Radius.circular(3),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Bouton carré rounded-12 (uniforme pour tous
+                                    // les items, y compris ANAH depuis refonte
+                                    // 2026-05-13).
+                                    AnimatedContainer(
+                                      duration: kSoftMedium,
+                                      curve: kSoftCurve,
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        // mauve-100 si actif, transparent (alpha 0
+                                        // du mauve-100 pour éviter le flash gris
+                                        // pendant l'interpolation) si inactif.
+                                        color: isActive
+                                            ? const Color(
+                                                0xFFF2ECF5,
+                                              ) // mauve-100
+                                            : const Color(0x00F2ECF5),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Icon(
+                                        item['icon'],
+                                        size: 20,
+                                        color: isActive
+                                            ? const Color(
+                                                0xFF554265,
+                                              ) // mauve-700
+                                            : const Color(
+                                                0xFF8A939D,
+                                              ), // ink-400
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          )
-                        : Center(
-                            child: Text(
-                              _initials(user.displayName),
-                              style: const TextStyle(
-                                color: Color(0xFF554265), // mauve-700
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
                           ),
-                  );
-                }),
+                        );
+                      }).toList(),
+                    ),
+
+                    // Profile / Bottom — avatar 36×36 rounded-10 mauve-200 bg
+                    // (Refonte.html `.rail .avatar`). Ouvre l'AccountDialog au tap.
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: Tooltip(
+                        message:
+                            "${widget.currentUser.displayName} • ${widget.currentUser.role.label}",
+                        preferBelow: false,
+                        margin: const EdgeInsets.only(left: 60),
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        textStyle: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                        child: InkWell(
+                          onTap: _openAccountDialog,
+                          // Refonte 2026-05-15 : avatar rond complet (demande
+                          // user : « pour la photo de profil en bas à gauche
+                          // augmente les radius pour avoir un format rond »).
+                          // 36×36 + radius 999 = cercle parfait.
+                          borderRadius: BorderRadius.circular(999),
+                          child: Builder(
+                            builder: (_) {
+                              // Source vérité avatar : `_effectiveUser` (override
+                              // post-dialog → fallback widget.currentUser). Permet
+                              // au carré de refléter immédiatement une nouvelle
+                              // photo après l'AccountDialog sans attendre que le
+                              // parent re-propage le user.
+                              final user = _effectiveUser;
+                              return Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  // Sans photo : fond mauve-200 + texte mauve-700
+                                  // (initiales). Avec photo : la photo prend toute
+                                  // la place (le fond mauve-200 ne se voit pas).
+                                  color: const Color(0xFFE3D9EA), // mauve-200
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child:
+                                    (user.profilePhotoUrl.isNotEmpty ||
+                                        user
+                                            .pendingProfilePhotoDataUrl
+                                            .isNotEmpty)
+                                    ? CachedRemoteImage(
+                                        url: user.profilePhotoUrl,
+                                        pendingDataUrl:
+                                            user.pendingProfilePhotoDataUrl,
+                                        fit: BoxFit.cover,
+                                        width: 36,
+                                        height: 36,
+                                        errorWidget: Center(
+                                          child: Text(
+                                            _initials(user.displayName),
+                                            style: const TextStyle(
+                                              color: Color(
+                                                0xFF554265,
+                                              ), // mauve-700
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          _initials(user.displayName),
+                                          style: const TextStyle(
+                                            color: Color(
+                                              0xFF554265,
+                                            ), // mauve-700
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

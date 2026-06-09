@@ -115,6 +115,23 @@ flutter:
   assets:
     - assets/measurements/
     - assets/logos/
+    - web-assets/wiki-offline/preco-illustrations/ascenseur/
+    - web-assets/wiki-offline/preco-illustrations/barres-appui/
+    - web-assets/wiki-offline/preco-illustrations/chambre/
+    - web-assets/wiki-offline/preco-illustrations/chauffage/
+    - web-assets/wiki-offline/preco-illustrations/circulation/
+    - web-assets/wiki-offline/preco-illustrations/cuisine/
+    - web-assets/wiki-offline/preco-illustrations/domotique/
+    - web-assets/wiki-offline/preco-illustrations/eclairage/
+    - web-assets/wiki-offline/preco-illustrations/escaliers/
+    - web-assets/wiki-offline/preco-illustrations/exterieur/
+    - web-assets/wiki-offline/preco-illustrations/fenetres-volets/
+    - web-assets/wiki-offline/preco-illustrations/isolation/
+    - web-assets/wiki-offline/preco-illustrations/portes/
+    - web-assets/wiki-offline/preco-illustrations/salle-de-bain/
+    - web-assets/wiki-offline/preco-illustrations/wc/
+    - web-assets/retirement-logos/
+    - web-assets/retirement-logos/principal/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

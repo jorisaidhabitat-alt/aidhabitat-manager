@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import '../models/visit_report_categories.dart';
 import 'local_database.dart';
+import 'offline_vault.dart';
 import 'sync_engine.dart';
 
 /// Container plat pour un plan (page de l'onglet Plans) à embarquer
@@ -74,7 +75,9 @@ class NoteRepository {
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return rows.first['drawing_json'] as String?;
+    return OfflineVault.instance.openNullableString(
+      rows.first['drawing_json'] as String?,
+    );
   }
 
   /// Charge les bytes PNG des plans VAD (onglet Plans, phase non-null)
@@ -103,7 +106,8 @@ class NoteRepository {
         'dossier_local_id',
         'sync_state',
       ],
-      where: 'patient_local_id = ? AND tab_key = ? '
+      where:
+          'patient_local_id = ? AND tab_key = ? '
           'AND plan_phase IS NOT NULL '
           'AND sync_state != ?',
       whereArgs: [patientId, 'Plans', SyncState.synced.name],
@@ -131,7 +135,9 @@ class NoteRepository {
         limit: 1,
       );
       if (opRows.isEmpty) continue;
-      final payloadRaw = opRows.first['payload_json'] as String? ?? '{}';
+      final payloadRaw = await OfflineVault.instance.openString(
+        opRows.first['payload_json'] as String? ?? '{}',
+      );
       Map<String, dynamic> payload;
       try {
         payload = jsonDecode(payloadRaw) as Map<String, dynamic>;
@@ -141,8 +147,9 @@ class NoteRepository {
       final previewDataUrl = payload['previewDataUrl']?.toString();
       if (previewDataUrl == null || previewDataUrl.isEmpty) continue;
 
-      final match = RegExp(r'^data:([^;]+);base64,(.+)$')
-          .firstMatch(previewDataUrl);
+      final match = RegExp(
+        r'^data:([^;]+);base64,(.+)$',
+      ).firstMatch(previewDataUrl);
       if (match == null) continue;
       Uint8List bytes;
       try {
@@ -192,13 +199,17 @@ class NoteRepository {
         ? existing.first['plan_phase'] as String?
         : null;
 
+    final drawingJsonAtRest = await OfflineVault.instance.sealString(
+      drawingJson,
+    );
+
     await db.insert('note_pages', {
       'local_id': noteId,
       'patient_local_id': patientId,
       'tab_key': tabKey,
       'page_number': pageNumber,
       'text_content': '',
-      'drawing_json': drawingJson,
+      'drawing_json': drawingJsonAtRest,
       'drawing_local_path': null,
       'drawing_remote_path': null,
       'drawing_remote_url': null,
@@ -212,20 +223,22 @@ class NoteRepository {
       'entity_type': 'note_page',
       'entity_local_id': noteId,
       'operation_type': 'upsert',
-      'payload_json': jsonEncode({
-        'patientLocalId': patientId,
-        'tabKey': tabKey,
-        'pageNumber': pageNumber,
-        'drawingJson': drawingJson,
-        if (preservedPhase != null) 'planPhase': preservedPhase,
-        // `previewDataUrl` rasterisé côté Flutter (PNG base64). Stocké
-        // uniquement dans le payload de la sync_op (pas en SQLite
-        // local — gros volume) : le serveur le persiste dans
-        // mobile_note_pages.preview_data_url, et le générateur PDF y
-        // pioche pour les pages 9/10 (plans avant/après).
-        if (previewDataUrl != null && previewDataUrl.isNotEmpty)
-          'previewDataUrl': previewDataUrl,
-      }),
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({
+          'patientLocalId': patientId,
+          'tabKey': tabKey,
+          'pageNumber': pageNumber,
+          'drawingJson': drawingJson,
+          if (preservedPhase != null) 'planPhase': preservedPhase,
+          // `previewDataUrl` rasterisé côté Flutter (PNG base64). Stocké
+          // uniquement dans le payload de la sync_op (pas en SQLite
+          // local — gros volume) : le serveur le persiste dans
+          // mobile_note_pages.preview_data_url, et le générateur PDF y
+          // pioche pour les pages 9/10 (plans avant/après).
+          if (previewDataUrl != null && previewDataUrl.isNotEmpty)
+            'previewDataUrl': previewDataUrl,
+        }),
+      ),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,
       'last_error': null,
@@ -276,21 +289,26 @@ class NoteRepository {
       whereArgs: [patientId, tabKey, pageNumber],
       limit: 1,
     );
-    final drawingJson =
-        row.isNotEmpty ? (row.first['drawing_json'] as String? ?? '') : '';
+    final drawingJson = row.isNotEmpty
+        ? await OfflineVault.instance.openString(
+            row.first['drawing_json'] as String? ?? '',
+          )
+        : '';
 
     await db.insert('sync_operations', {
       'id': operationId,
       'entity_type': 'note_page',
       'entity_local_id': noteId,
       'operation_type': 'upsert',
-      'payload_json': jsonEncode({
-        'patientLocalId': patientId,
-        'tabKey': tabKey,
-        'pageNumber': pageNumber,
-        'drawingJson': drawingJson,
-        'planPhase': planPhaseToDb(phase),
-      }),
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({
+          'patientLocalId': patientId,
+          'tabKey': tabKey,
+          'pageNumber': pageNumber,
+          'drawingJson': drawingJson,
+          'planPhase': planPhaseToDb(phase),
+        }),
+      ),
       'status': SyncOperationStatus.pending.name,
       'attempt_count': 0,
       'last_error': null,
@@ -337,8 +355,12 @@ class NoteRepository {
     );
     if (rows.isEmpty) return null;
     return NoteRow(
-      textContent: rows.first['text_content'] as String? ?? '',
-      drawingJson: rows.first['drawing_json'] as String?,
+      textContent: await OfflineVault.instance.openString(
+        rows.first['text_content'] as String? ?? '',
+      ),
+      drawingJson: await OfflineVault.instance.openNullableString(
+        rows.first['drawing_json'] as String?,
+      ),
       planPhase: planPhaseFromDb(rows.first['plan_phase'] as String?),
     );
   }
@@ -362,28 +384,27 @@ class NoteRepository {
       limit: 1,
     );
     final drawingJson = existing.isNotEmpty
-        ? (existing.first['drawing_json'] as String? ?? '')
+        ? await OfflineVault.instance.openString(
+            existing.first['drawing_json'] as String? ?? '',
+          )
         : '';
-    final preservedPhase =
-        existing.isNotEmpty ? existing.first['plan_phase'] as String? : null;
-    await db.insert(
-      'note_pages',
-      {
-        'local_id': noteId,
-        'patient_local_id': patientId,
-        'tab_key': tabKey,
-        'page_number': pageNumber,
-        'text_content': textContent,
-        'drawing_json': drawingJson,
-        'drawing_local_path': null,
-        'drawing_remote_path': null,
-        'drawing_remote_url': null,
-        'plan_phase': preservedPhase,
-        'updated_at': now,
-        'sync_state': SyncState.pendingSync.name,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final preservedPhase = existing.isNotEmpty
+        ? existing.first['plan_phase'] as String?
+        : null;
+    await db.insert('note_pages', {
+      'local_id': noteId,
+      'patient_local_id': patientId,
+      'tab_key': tabKey,
+      'page_number': pageNumber,
+      'text_content': await OfflineVault.instance.sealString(textContent),
+      'drawing_json': await OfflineVault.instance.sealString(drawingJson),
+      'drawing_local_path': null,
+      'drawing_remote_path': null,
+      'drawing_remote_url': null,
+      'plan_phase': preservedPhase,
+      'updated_at': now,
+      'sync_state': SyncState.pendingSync.name,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<bool> mergeRemoteNotePage({
@@ -445,8 +466,15 @@ class NoteRepository {
     // Si le serveur ne nous renvoie pas explicitement de planPhase
     // (clé absente du payload), on garde celle qui était en local —
     // évite de perdre la catégorisation lors d'un sync passif.
-    final mergedPlanPhase = planPhase ??
-        (existing?['plan_phase'] as String?);
+    final mergedPlanPhase = planPhase ?? (existing?['plan_phase'] as String?);
+
+    final preservedTextContent = existing?['text_content'] as String? ?? '';
+    final textContentAtRest = await OfflineVault.instance.sealString(
+      await OfflineVault.instance.openString(preservedTextContent),
+    );
+    final drawingJsonAtRest = await OfflineVault.instance.sealString(
+      drawingJson,
+    );
 
     await db.insert('note_pages', {
       'local_id':
@@ -455,8 +483,8 @@ class NoteRepository {
       'patient_local_id': patientId,
       'tab_key': tabKey,
       'page_number': pageNumber,
-      'text_content': existing?['text_content'] as String? ?? '',
-      'drawing_json': drawingJson,
+      'text_content': textContentAtRest,
+      'drawing_json': drawingJsonAtRest,
       'drawing_local_path': existing?['drawing_local_path'],
       'drawing_remote_path': remotePath,
       'drawing_remote_url': remoteUrl,

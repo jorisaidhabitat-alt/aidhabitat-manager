@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="CNAV / Assurance retraite">
+  <defs>
+    <linearGradient id="cnavGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0055A4"/>
+      <stop offset="100%" stop-color="#003781"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="44" fill="url(#cnavGrad)"/>
+  <circle cx="190" cy="50" r="22" fill="rgba(255,255,255,0.10)"/>
+  <circle cx="46" cy="196" r="28" fill="rgba(255,255,255,0.08)"/>
+  <text x="120" y="118" text-anchor="middle" font-family="Arial Black, Helvetica, sans-serif" font-size="58" font-weight="900" fill="#ffffff" letter-spacing="-2">CNAV</text>
+  <text x="120" y="158" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="2">CARSAT</text>
+  <rect x="60" y="180" width="120" height="3" rx="1.5" fill="rgba(255,255,255,0.7)"/>
+</svg>

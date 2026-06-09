@@ -109,7 +109,7 @@ class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegat
   // Conversion enum iOS → string portable. Évite de hardcoder des
   // entiers Swift dans le code Dart.
   private static func encodePreferredTapAction(
-    _ action: UIPencilInteraction.PreferredTapAction
+    _ action: UIPencilPreferredAction
   ) -> String {
     switch action {
     case .ignore: return "ignore"
@@ -117,6 +117,7 @@ class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegat
     case .switchPrevious: return "switchPrevious"
     case .showColorPalette: return "showColorPalette"
     case .showInkAttributes: return "showInkAttributes"
+    case .showContextualPalette: return "showContextualPalette"
     case .runSystemShortcut: return "runSystemShortcut"
     @unknown default: return "unknown"
     }

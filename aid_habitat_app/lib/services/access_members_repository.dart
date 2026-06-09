@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'local_database.dart';
+import 'offline_vault.dart';
 import 'sync_engine.dart';
 
 /// Offline-first repository for the admin access-members list. Reads always
@@ -23,7 +24,11 @@ class AccessMembersRepository {
       where: 'pending_delete = 0',
       orderBy: 'display_name ASC',
     );
-    return rows.map(_mapRow).toList();
+    final out = <AdminAccessMember>[];
+    for (final row in rows) {
+      out.add(await _mapRow(row));
+    }
+    return out;
   }
 
   /// Overwrites the local cache with [remoteMembers]. Rows whose
@@ -85,7 +90,9 @@ class AccessMembersRepository {
             limit: 1,
           );
           if (localRow.isNotEmpty) {
-            incomingPassword = (localRow.first['generated_password'] as String?) ?? '';
+            incomingPassword = await OfflineVault.instance.openString(
+              (localRow.first['generated_password'] as String?) ?? '',
+            );
           }
         }
         await txn.insert('access_members', {
@@ -96,7 +103,9 @@ class AccessMembersRepository {
           'establishment_label': m.establishmentLabel,
           'ergo_label': m.ergoLabel,
           'has_password': m.hasPassword ? 1 : 0,
-          'generated_password': incomingPassword,
+          'generated_password': await OfflineVault.instance.sealString(
+            incomingPassword,
+          ),
           'created_at': m.createdAt,
           'updated_at': now,
           'last_synced_at': now,
@@ -161,13 +170,17 @@ class AccessMembersRepository {
         'establishment_label': establishmentId ?? '',
         'ergo_label': '',
         'has_password': (password != null && password.isNotEmpty) ? 1 : 0,
-        'generated_password': password ?? '',
+        'generated_password': await OfflineVault.instance.sealString(
+          password ?? '',
+        ),
         'created_at': now,
         'updated_at': now,
         'last_synced_at': now,
         'sync_state': SyncState.pendingSync.name,
         'pending_delete': 0,
-        'pending_password': password,
+        'pending_password': await OfflineVault.instance.sealNullableString(
+          password,
+        ),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
       await _enqueueOperation(txn, {
@@ -175,14 +188,16 @@ class AccessMembersRepository {
         'entity_type': 'access_member',
         'entity_local_id': email,
         'operation_type': 'create',
-        'payload_json': jsonEncode({
-          'email': email,
-          'displayName': displayName,
-          'role': role == LocalUserRole.admin ? 'ADMIN' : 'ERGO',
-          if (establishmentId != null && establishmentId.isNotEmpty)
-            'establishmentId': establishmentId,
-          if (password != null && password.isNotEmpty) 'password': password,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'email': email,
+            'displayName': displayName,
+            'role': role == LocalUserRole.admin ? 'ADMIN' : 'ERGO',
+            if (establishmentId != null && establishmentId.isNotEmpty)
+              'establishmentId': establishmentId,
+            if (password != null && password.isNotEmpty) 'password': password,
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -222,16 +237,19 @@ class AccessMembersRepository {
       );
 
       await _enqueueOperation(txn, {
-        'id': 'access_update_${_sanitize(email)}_'
+        'id':
+            'access_update_${_sanitize(email)}_'
             '${DateTime.now().microsecondsSinceEpoch}',
         'entity_type': 'access_member',
         'entity_local_id': email,
         'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'email': email,
-          if (displayName != null) 'displayName': displayName,
-          if (establishmentId != null) 'establishmentId': establishmentId,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'email': email,
+            if (displayName != null) 'displayName': displayName,
+            if (establishmentId != null) 'establishmentId': establishmentId,
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -250,7 +268,7 @@ class AccessMembersRepository {
     if (rows.isEmpty) {
       throw Exception('Membre introuvable après mise à jour locale');
     }
-    return _mapRow(rows.first);
+    return await _mapRow(rows.first);
   }
 
   /// Marks the row as `pending_delete` (so [fetchAll] hides it), then
@@ -277,7 +295,9 @@ class AccessMembersRepository {
         'entity_type': 'access_member',
         'entity_local_id': email,
         'operation_type': 'delete',
-        'payload_json': jsonEncode({'email': email}),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({'email': email}),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -303,13 +323,17 @@ class AccessMembersRepository {
       await txn.update(
         'access_members',
         {
-          'pending_password': password,
+          'pending_password': await OfflineVault.instance.sealNullableString(
+            password,
+          ),
           'sync_state': SyncState.pendingSync.name,
           'updated_at': now,
           // When the caller explicitly sets a password, reflect it locally
           // so it shows up in the admin UI before the sync completes.
           if (password != null && password.isNotEmpty)
-            'generated_password': password,
+            'generated_password': await OfflineVault.instance.sealString(
+              password,
+            ),
           if (password != null && password.isNotEmpty) 'has_password': 1,
         },
         where: 'email = ?',
@@ -317,15 +341,18 @@ class AccessMembersRepository {
       );
 
       await _enqueueOperation(txn, {
-        'id': 'access_password_${_sanitize(email)}_'
+        'id':
+            'access_password_${_sanitize(email)}_'
             '${DateTime.now().microsecondsSinceEpoch}',
         'entity_type': 'access_member',
         'entity_local_id': email,
         'operation_type': 'set_password',
-        'payload_json': jsonEncode({
-          'email': email,
-          if (password != null && password.isNotEmpty) 'password': password,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'email': email,
+            if (password != null && password.isNotEmpty) 'password': password,
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -350,9 +377,13 @@ class AccessMembersRepository {
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    final pending = rows.first['pending_password'] as String?;
+    final pending = await OfflineVault.instance.openNullableString(
+      rows.first['pending_password'] as String?,
+    );
     if (pending != null && pending.isNotEmpty) return pending;
-    final generated = rows.first['generated_password'] as String?;
+    final generated = await OfflineVault.instance.openNullableString(
+      rows.first['generated_password'] as String?,
+    );
     return (generated == null || generated.isEmpty) ? null : generated;
   }
 
@@ -360,9 +391,16 @@ class AccessMembersRepository {
     Transaction txn,
     Map<String, Object?> row,
   ) async {
+    final rowAtRest = Map<String, Object?>.from(row);
+    final payload = rowAtRest['payload_json'];
+    if (payload is String && payload.isNotEmpty) {
+      rowAtRest['payload_json'] = await OfflineVault.instance.sealString(
+        payload,
+      );
+    }
     await txn.insert(
       'sync_operations',
-      row,
+      rowAtRest,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -370,7 +408,7 @@ class AccessMembersRepository {
   String _sanitize(String email) =>
       email.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 
-  AdminAccessMember _mapRow(Map<String, Object?> row) {
+  Future<AdminAccessMember> _mapRow(Map<String, Object?> row) async {
     return AdminAccessMember(
       email: row['email'] as String,
       displayName: row['display_name'] as String,
@@ -379,7 +417,9 @@ class AccessMembersRepository {
       establishmentLabel: (row['establishment_label'] as String?) ?? '',
       ergoLabel: (row['ergo_label'] as String?) ?? '',
       hasPassword: (row['has_password'] as int? ?? 0) == 1,
-      generatedPassword: (row['generated_password'] as String?) ?? '',
+      generatedPassword: await OfflineVault.instance.openString(
+        (row['generated_password'] as String?) ?? '',
+      ),
       createdAt: row['created_at'] as String?,
     );
   }

@@ -30,6 +30,31 @@ String resolveMediaUrl(String url) {
   return '$base/$url';
 }
 
+/// Maps static media URLs served by the PWA/API to bundled Flutter assets.
+///
+/// Native iPad builds do not have the web origin that serves
+/// `/wiki-offline/...` and `/retirement-logos/...`. Those files are vendored
+/// under `web-assets/` and declared in `pubspec.yaml`, so the native app can
+/// render them instantly without waiting for a remote cache warmup.
+String? bundledMediaAssetPath(String url) {
+  if (kIsWeb) return null;
+  final raw = url.trim();
+  if (raw.isEmpty || raw.startsWith('data:') || raw.startsWith('blob:')) {
+    return null;
+  }
+
+  final parsed = Uri.tryParse(raw);
+  var path = parsed?.hasScheme == true ? parsed!.path : raw;
+  if (path.isEmpty) return null;
+  if (!path.startsWith('/')) path = '/$path';
+
+  if (path.startsWith('/wiki-offline/') ||
+      path.startsWith('/retirement-logos/')) {
+    return 'web-assets$path';
+  }
+  return null;
+}
+
 /// Returns true if the URL (resolved or not) points to an SVG file —
 /// soit une URL classique `.svg`, soit une data URI inline
 /// `data:image/svg+xml;...` (que le serveur émet pour les logos de

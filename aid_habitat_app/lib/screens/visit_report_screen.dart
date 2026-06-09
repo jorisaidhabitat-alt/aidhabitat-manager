@@ -1310,7 +1310,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // contient toujours les dernières données saisies.
       try {
         final syncResult = await _dataService.runSync();
-        final pendingAfterSync = await _dataService.countPendingSyncOperations();
+        final pendingAfterSync = await _dataService
+            .countPendingSyncOperations();
         // ignore: avoid_print
         print(
           '[report] runSync : pushed=${syncResult.pushedOperations} '

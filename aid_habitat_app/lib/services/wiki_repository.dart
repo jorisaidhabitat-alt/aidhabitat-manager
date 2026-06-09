@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import 'local_database.dart';
 import 'media_cache_service.dart';
+import 'offline_vault.dart';
 import 'sync_engine.dart';
 
 class WikiRepository {
@@ -20,11 +21,12 @@ class WikiRepository {
     // Alphabetical by title, case-insensitive (default collation folds
     // accents too on SQLite). Matches the user's expectation that the
     // Bibliothèque reads like a dictionary.
-    final rows = await db.query(
-      'wiki_items',
-      orderBy: 'LOWER(title) ASC',
-    );
-    return rows.map(_mapRow).toList();
+    final rows = await db.query('wiki_items', orderBy: 'LOWER(title) ASC');
+    final out = <WikiItem>[];
+    for (final row in rows) {
+      out.add(await _mapRow(row));
+    }
+    return out;
   }
 
   /// Merges remote items into the local cache. Rows whose `sync_state` is
@@ -161,7 +163,9 @@ class WikiRepository {
         'created_at': now,
         'updated_at': now,
         'last_synced_at': now,
-        'pending_image_data_url': imageDataUrl.isEmpty ? null : imageDataUrl,
+        'pending_image_data_url': imageDataUrl.isEmpty
+            ? null
+            : await OfflineVault.instance.sealString(imageDataUrl),
         'sync_state': SyncState.pendingSync.name,
       });
 
@@ -170,13 +174,15 @@ class WikiRepository {
         'entity_type': 'wiki_item',
         'entity_local_id': localId,
         'operation_type': 'create',
-        'payload_json': jsonEncode({
-          'title': title,
-          'description': description,
-          'category': category,
-          'tags': tags,
-          'imageDataUrl': imageDataUrl,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'title': title,
+            'description': description,
+            'category': category,
+            'tags': tags,
+            'imageDataUrl': imageDataUrl,
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -199,6 +205,19 @@ class WikiRepository {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final isDraft = item.id.startsWith('local_draft_');
+    final previousRows = await db.query(
+      'wiki_items',
+      columns: ['title', 'description'],
+      where: 'id = ?',
+      whereArgs: [item.id],
+      limit: 1,
+    );
+    final previousTitle = previousRows.isEmpty
+        ? item.title
+        : (previousRows.first['title'] as String? ?? item.title);
+    final previousDescription = previousRows.isEmpty
+        ? item.description
+        : (previousRows.first['description'] as String? ?? item.description);
 
     await db.transaction((txn) async {
       final updates = <String, Object?>{
@@ -210,7 +229,8 @@ class WikiRepository {
         'sync_state': SyncState.pendingSync.name,
       };
       if (imageDataUrl != null && imageDataUrl.isNotEmpty) {
-        updates['pending_image_data_url'] = imageDataUrl;
+        updates['pending_image_data_url'] = await OfflineVault.instance
+            .sealString(imageDataUrl);
       }
       await txn.update(
         'wiki_items',
@@ -226,7 +246,8 @@ class WikiRepository {
         final existingOps = await txn.query(
           'sync_operations',
           columns: ['id', 'payload_json', 'status'],
-          where: 'entity_type = ? AND entity_local_id = ? '
+          where:
+              'entity_type = ? AND entity_local_id = ? '
               'AND operation_type = ? AND status != ?',
           whereArgs: [
             'wiki_item',
@@ -238,9 +259,10 @@ class WikiRepository {
         );
         if (existingOps.isNotEmpty) {
           final opId = existingOps.first['id'] as String;
-          final oldPayload = jsonDecode(
+          final oldPayloadRaw = await OfflineVault.instance.openString(
             existingOps.first['payload_json'] as String,
-          ) as Map<String, dynamic>;
+          );
+          final oldPayload = jsonDecode(oldPayloadRaw) as Map<String, dynamic>;
           final mergedPayload = {
             'title': item.title,
             'description': item.description,
@@ -251,7 +273,9 @@ class WikiRepository {
           await txn.update(
             'sync_operations',
             {
-              'payload_json': jsonEncode(mergedPayload),
+              'payload_json': await OfflineVault.instance.sealString(
+                jsonEncode(mergedPayload),
+              ),
               'status': SyncOperationStatus.pending.name,
               'updated_at': now,
               'last_error': null,
@@ -268,14 +292,16 @@ class WikiRepository {
         'entity_type': 'wiki_item',
         'entity_local_id': item.id,
         'operation_type': 'update',
-        'payload_json': jsonEncode({
-          'itemId': item.id,
-          'title': item.title,
-          'description': item.description,
-          'category': item.category,
-          'tags': item.tags,
-          if (imageDataUrl != null) 'imageDataUrl': imageDataUrl,
-        }),
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'itemId': item.id,
+            'title': item.title,
+            'description': item.description,
+            'category': item.category,
+            'tags': item.tags,
+            if (imageDataUrl != null) 'imageDataUrl': imageDataUrl,
+          }),
+        ),
         'status': SyncOperationStatus.pending.name,
         'attempt_count': 0,
         'last_error': null,
@@ -284,8 +310,137 @@ class WikiRepository {
       });
     });
 
+    await _propagateUpdateToVisitRecommendations(
+      updatedItem: item.copyWith(updatedAt: now),
+      previousTitle: previousTitle,
+      previousDescription: previousDescription,
+      now: now,
+    );
+
     SyncEngine().notify();
     return item.copyWith(updatedAt: now);
+  }
+
+  Future<void> _propagateUpdateToVisitRecommendations({
+    required WikiItem updatedItem,
+    required String previousTitle,
+    required String previousDescription,
+    required String now,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query('visit_recommendations');
+    if (rows.isEmpty) return;
+
+    final updatedTitle = updatedItem.title.trim();
+    final previousTitleTrimmed = previousTitle.trim();
+    final updatedDescription = _joinedDescriptions(updatedItem.description);
+    final previousDescriptionOptions = _descriptionSyncOptions(
+      previousDescription,
+    );
+    final updatedTags = updatedItem.tags;
+    final updatedTag = updatedTags.isNotEmpty
+        ? updatedTags.first
+        : updatedItem.category;
+
+    var changedAny = false;
+    final rowUpdates = <_VisitRecommendationRowUpdate>[];
+
+    for (final row in rows) {
+      final dossierId = (row['dossier_local_id'] as String? ?? '').trim();
+      final rawItemsJson = row['items_json'] as String? ?? '[]';
+      if (dossierId.isEmpty) continue;
+
+      final decoded = jsonDecode(rawItemsJson);
+      if (decoded is! List) continue;
+
+      var changedRow = false;
+      final nextItems = decoded
+          .map((entry) {
+            if (entry is! Map<String, dynamic>) return entry;
+            final item = VisitRecommendationItem.fromJson(entry);
+            if (item.wikiItemId.trim() != updatedItem.id.trim()) {
+              return item.toJson();
+            }
+
+            final currentCustomTitle = item.customTitle.trim();
+            final shouldSyncTitle =
+                currentCustomTitle.isEmpty ||
+                currentCustomTitle == previousTitleTrimmed ||
+                currentCustomTitle == item.wikiTitle.trim();
+            final nextCustomTitle = shouldSyncTitle
+                ? updatedTitle
+                : item.customTitle;
+            final nextNote = _syncedRecommendationNote(
+              currentNote: item.note,
+              previousOptions: previousDescriptionOptions,
+              updatedDescription: updatedDescription,
+            );
+            final nextItem = item.copyWith(
+              wikiTitle: updatedTitle,
+              wikiImageUrl: updatedItem.imageUrl,
+              wikiTag: updatedTag,
+              wikiDescription: updatedDescription,
+              customTitle: nextCustomTitle,
+              note: nextNote,
+              updatedAt: now,
+            );
+
+            final nextJson = nextItem.toJson();
+            if (jsonEncode(nextJson) != jsonEncode(item.toJson())) {
+              changedRow = true;
+            }
+            return nextJson;
+          })
+          .toList(growable: false);
+
+      if (!changedRow) continue;
+      changedAny = true;
+      rowUpdates.add(
+        _VisitRecommendationRowUpdate(
+          dossierId: dossierId,
+          itemsJson: jsonEncode(nextItems),
+          syncItems: nextItems
+              .whereType<Map<String, dynamic>>()
+              .where((item) => (item['wikiItemId'] as String? ?? '').isNotEmpty)
+              .toList(growable: false),
+        ),
+      );
+    }
+
+    if (!changedAny || rowUpdates.isEmpty) return;
+
+    await db.transaction((txn) async {
+      for (final update in rowUpdates) {
+        await txn.update(
+          'visit_recommendations',
+          {
+            'items_json': update.itemsJson,
+            'updated_at': now,
+            'sync_state': SyncState.pendingSync.name,
+          },
+          where: 'dossier_local_id = ?',
+          whereArgs: [update.dossierId],
+        );
+
+        await txn.insert('sync_operations', {
+          'id': 'visitrec_update_${update.dossierId}',
+          'entity_type': 'visit_recommendations',
+          'entity_local_id': update.dossierId,
+          'operation_type': 'update',
+          'payload_json': await OfflineVault.instance.sealString(
+            jsonEncode({
+              'dossierId': update.dossierId,
+              'items': update.syncItems,
+            }),
+          ),
+          'status': SyncOperationStatus.pending.name,
+          'attempt_count': 0,
+          'last_error': null,
+          'created_at': now,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
   }
 
   /// Returns the base64 data URL of the locally-stored pending image for
@@ -303,30 +458,37 @@ class WikiRepository {
     if (rows.isEmpty) return null;
     final value = rows.first['pending_image_data_url'] as String?;
     if (value == null || value.isEmpty) return null;
-    return value;
+    return OfflineVault.instance.openString(value);
   }
 
   Future<void> _enqueueOperation(
     Transaction txn,
     Map<String, Object?> row,
   ) async {
+    final rowAtRest = Map<String, Object?>.from(row);
+    final payload = rowAtRest['payload_json'];
+    if (payload is String && payload.isNotEmpty) {
+      rowAtRest['payload_json'] = await OfflineVault.instance.sealString(
+        payload,
+      );
+    }
     await txn.insert(
       'sync_operations',
-      row,
+      rowAtRest,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
   String _generateLocalDraftId() {
     final rand = Random.secure();
-    final suffix =
-        List<int>.generate(8, (_) => rand.nextInt(256))
-            .map((b) => b.toRadixString(16).padLeft(2, '0'))
-            .join();
+    final suffix = List<int>.generate(
+      8,
+      (_) => rand.nextInt(256),
+    ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     return 'local_draft_$suffix';
   }
 
-  WikiItem _mapRow(Map<String, Object?> row) {
+  Future<WikiItem> _mapRow(Map<String, Object?> row) async {
     final tagsJson = row['tags_json'] as String? ?? '[]';
     final tags = (jsonDecode(tagsJson) as List)
         .map((tag) => tag.toString())
@@ -341,8 +503,9 @@ class WikiRepository {
       category: row['category'] as String,
       createdAt: row['created_at'] as String,
       updatedAt: row['updated_at'] as String,
-      pendingImageDataUrl:
-          (row['pending_image_data_url'] as String?) ?? '',
+      pendingImageDataUrl: await OfflineVault.instance.openString(
+        (row['pending_image_data_url'] as String?) ?? '',
+      ),
     );
   }
 
@@ -363,3 +526,61 @@ class WikiRepository {
   }
 }
 
+class _VisitRecommendationRowUpdate {
+  const _VisitRecommendationRowUpdate({
+    required this.dossierId,
+    required this.itemsJson,
+    required this.syncItems,
+  });
+
+  final String dossierId;
+  final String itemsJson;
+  final List<Map<String, dynamic>> syncItems;
+}
+
+List<String> _descriptionsFromStored(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return const [];
+  if (trimmed.startsWith('[')) {
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is List) {
+        return decoded
+            .map((entry) => entry?.toString().trim() ?? '')
+            .where((entry) => entry.isNotEmpty)
+            .toList(growable: false);
+      }
+    } catch (_) {
+      // Legacy plain text fallback below.
+    }
+  }
+  return [trimmed];
+}
+
+String _joinedDescriptions(String raw) {
+  final descriptions = _descriptionsFromStored(raw);
+  if (descriptions.isEmpty) return '';
+  return descriptions.join('\n\n');
+}
+
+Set<String> _descriptionSyncOptions(String raw) {
+  final descriptions = _descriptionsFromStored(raw);
+  final options = <String>{};
+  final trimmed = raw.trim();
+  if (trimmed.isNotEmpty) options.add(trimmed);
+  options.addAll(descriptions);
+  final joined = descriptions.join('\n\n').trim();
+  if (joined.isNotEmpty) options.add(joined);
+  return options;
+}
+
+String _syncedRecommendationNote({
+  required String currentNote,
+  required Set<String> previousOptions,
+  required String updatedDescription,
+}) {
+  final trimmed = currentNote.trim();
+  if (trimmed.isEmpty) return currentNote;
+  if (!previousOptions.contains(trimmed)) return currentNote;
+  return updatedDescription;
+}

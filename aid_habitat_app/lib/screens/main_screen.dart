@@ -35,8 +35,7 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen>
-    with WidgetsBindingObserver {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final DataService _dataService = DataService();
   final AuthService _authService = AuthService();
   late final SyncEngine _syncEngine;
@@ -157,8 +156,8 @@ class _MainScreenState extends State<MainScreen>
     //     même si isSyncing n'a jamais été true) — propagation cross-
     //     device des changements arrivés depuis l'autre appareil.
     final newOpEnqueued = state.pendingCount > previousPendingCount;
-    final syncAtChanged = state.lastSyncAt != null &&
-        state.lastSyncAt != _lastObservedSyncAt;
+    final syncAtChanged =
+        state.lastSyncAt != null && state.lastSyncAt != _lastObservedSyncAt;
     if (syncAtChanged) _lastObservedSyncAt = state.lastSyncAt;
     if ((wasSyncing && !state.isSyncing) || newOpEnqueued || syncAtChanged) {
       _refreshDossiers();
@@ -236,14 +235,14 @@ class _MainScreenState extends State<MainScreen>
     setState(() {
       // Cas spécial : clic sur "Dossiers" dans la sidebar.
       if (view == 'dossiers') {
-        final comingFromOutside = !_isDossierTreeView(_activeView)
-            && _activeView != 'dossiers';
+        final comingFromOutside =
+            !_isDossierTreeView(_activeView) && _activeView != 'dossiers';
         // 1er clic après être parti ailleurs + un état profond sauvegardé
         // → restaurer exactement la page où on était (dossier_detail ou
         // visit_report du dernier bénéficiaire ouvert).
-        if (comingFromOutside
-            && _lastDossierTreeView != null
-            && _lastDossierTreeSelected != null) {
+        if (comingFromOutside &&
+            _lastDossierTreeView != null &&
+            _lastDossierTreeSelected != null) {
           _activeView = _lastDossierTreeView!;
           _selectedDossier = _lastDossierTreeSelected;
           return;
@@ -353,9 +352,7 @@ class _MainScreenState extends State<MainScreen>
     setState(() => _activeView = 'create_beneficiary');
   }
 
-  Future<void> _handleBeneficiaryCreated(
-    BeneficiaryDraft draft,
-  ) async {
+  Future<void> _handleBeneficiaryCreated(BeneficiaryDraft draft) async {
     final ergoId = widget.currentUser.ergoLabel ?? '';
     final dossier = await _dataService.createDossierOffline(
       firstName: draft.firstName,
@@ -386,73 +383,79 @@ class _MainScreenState extends State<MainScreen>
   Widget build(BuildContext context) {
     return ReportGenerationOverlay(
       child: Scaffold(
-      body: Row(
-        children: [
-          Sidebar(
-            currentUser: widget.currentUser,
-            // "dossier_detail", "visit_report" et "documents" remappent
-            // à l'entrée Dossiers du menu latéral pour que la mise en
-            // surbrillance reste cohérente — la sidebar est visible
-            // pendant ces 3 écrans (cf. demande utilisateur 2026-04-29
-            // qui voulait voir la sidebar sur Documents aussi).
-            currentView: (_activeView == 'dossier_detail' ||
-                    _activeView == 'visit_report' ||
-                    _activeView == 'documents')
-                ? 'dossiers'
-                : _activeView,
-            onNavigate: _handleViewChange,
-            onLogout: widget.onLogout,
-            pendingSyncCount: _pendingSyncCount,
-            isSyncing: _isSyncing,
-            onSyncTap: _handleSyncNow,
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                // Offline banner
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 250),
-                  child: _buildConnectivityBanner(),
-                ),
-                Expanded(
-                  child: _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : Stack(
-                          children: [
-                            // Transition douce (fade + slide 8 px) entre
-                            // chaque vue — on assigne une Key unique à
-                            // `_buildContent()` pour que l'AnimatedSwitcher
-                            // détecte un changement et joue l'animation.
-                            Positioned.fill(
-                              child: SoftSwitcher(
-                                child: KeyedSubtree(
-                                  key: ValueKey<String>(_contentKey()),
-                                  child: _buildContent(),
-                                ),
-                              ),
-                            ),
-                            // Anah WebView : on la garde en arrière-plan dès
-                            // qu'elle a été visitée au moins une fois, pour
-                            // préserver la session et le scroll entre deux
-                            // visites.
-                            if (_anahEverVisited)
-                              Positioned.fill(
-                                child: Offstage(
-                                  offstage: _activeView != 'anah',
-                                  child: TickerMode(
-                                    enabled: _activeView == 'anah',
-                                    child: const AnahScreen(),
+        body: SafeArea(
+          left: false,
+          right: false,
+          bottom: false,
+          child: Row(
+            children: [
+              Sidebar(
+                currentUser: widget.currentUser,
+                // "dossier_detail", "visit_report" et "documents" remappent
+                // à l'entrée Dossiers du menu latéral pour que la mise en
+                // surbrillance reste cohérente — la sidebar est visible
+                // pendant ces 3 écrans (cf. demande utilisateur 2026-04-29
+                // qui voulait voir la sidebar sur Documents aussi).
+                currentView:
+                    (_activeView == 'dossier_detail' ||
+                        _activeView == 'visit_report' ||
+                        _activeView == 'documents')
+                    ? 'dossiers'
+                    : _activeView,
+                onNavigate: _handleViewChange,
+                onLogout: widget.onLogout,
+                pendingSyncCount: _pendingSyncCount,
+                isSyncing: _isSyncing,
+                onSyncTap: _handleSyncNow,
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    // Offline banner
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 250),
+                      child: _buildConnectivityBanner(),
+                    ),
+                    Expanded(
+                      child: _isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : Stack(
+                              children: [
+                                // Transition douce (fade + slide 8 px) entre
+                                // chaque vue — on assigne une Key unique à
+                                // `_buildContent()` pour que l'AnimatedSwitcher
+                                // détecte un changement et joue l'animation.
+                                Positioned.fill(
+                                  child: SoftSwitcher(
+                                    child: KeyedSubtree(
+                                      key: ValueKey<String>(_contentKey()),
+                                      child: _buildContent(),
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
-                        ),
+                                // Anah WebView : on la garde en arrière-plan dès
+                                // qu'elle a été visitée au moins une fois, pour
+                                // préserver la session et le scroll entre deux
+                                // visites.
+                                if (_anahEverVisited)
+                                  Positioned.fill(
+                                    child: Offstage(
+                                      offstage: _activeView != 'anah',
+                                      child: TickerMode(
+                                        enabled: _activeView == 'anah',
+                                        child: const AnahScreen(),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -510,7 +513,9 @@ class _MainScreenState extends State<MainScreen>
               style: TextButton.styleFrom(
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 2),
+                  horizontal: 10,
+                  vertical: 2,
+                ),
               ),
               child: const Text('Détails'),
             ),
@@ -519,7 +524,9 @@ class _MainScreenState extends State<MainScreen>
               style: TextButton.styleFrom(
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 2),
+                  horizontal: 10,
+                  vertical: 2,
+                ),
               ),
               child: const Text('Réessayer'),
             ),
@@ -627,8 +634,9 @@ class _MainScreenState extends State<MainScreen>
                   d,
             ];
             if (_selectedDossier?.id == id) {
-              _selectedDossier =
-                  _selectedDossier!.copyWith(beneficiaryPrepared: prepared);
+              _selectedDossier = _selectedDossier!.copyWith(
+                beneficiaryPrepared: prepared,
+              );
             }
           });
         },
@@ -760,10 +768,7 @@ class _MainScreenState extends State<MainScreen>
   /// changer de vue (ex: Dashboard → ouvre un dossier). La flèche de
   /// retour dépile pour restaurer exactement cet état.
   void _pushHistory() {
-    _navHistory.add(_NavEntry(
-      view: _activeView,
-      dossier: _selectedDossier,
-    ));
+    _navHistory.add(_NavEntry(view: _activeView, dossier: _selectedDossier));
     if (_navHistory.length > 50) _navHistory.removeAt(0);
   }
 
@@ -835,9 +840,9 @@ class _FailingOpsSheetState extends State<_FailingOpsSheet> {
     await _refreshList();
     if (!mounted) return;
     setState(() => _busyIds.remove(opId));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Opération relancée')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Opération relancée')));
   }
 
   Future<void> _discard(String opId) async {
@@ -847,9 +852,9 @@ class _FailingOpsSheetState extends State<_FailingOpsSheet> {
     if (!mounted) return;
     setState(() => _busyIds.remove(opId));
     if (removed > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Opération abandonnée')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Opération abandonnée')));
     }
     // Auto-close si plus rien en échec — l'utilisateur n'a aucune
     // raison de garder le drawer ouvert.
@@ -890,8 +895,11 @@ class _FailingOpsSheetState extends State<_FailingOpsSheet> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Icon(Icons.error_outline,
-                      color: Color(0xFFDC2626), size: 22),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Color(0xFFDC2626),
+                    size: 22,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1008,8 +1016,7 @@ class _FailingOpCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFECACA),
                   borderRadius: BorderRadius.circular(999),
@@ -1030,9 +1037,10 @@ class _FailingOpCard extends StatelessWidget {
             Text(
               'ID : $entityLocalId',
               style: const TextStyle(
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: Color(0xFF991B1B)),
+                fontSize: 11,
+                fontFamily: 'monospace',
+                color: Color(0xFF991B1B),
+              ),
             ),
           ],
           const SizedBox(height: 8),

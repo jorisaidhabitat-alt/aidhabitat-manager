@@ -2107,9 +2107,9 @@ const RECO_IMAGE_FIELDS = [
  */
 function formatRecoText(reco) {
   const title = sanitizeForPdfFont(reco?.customTitle || reco?.wikiTitle || '').trim();
-  const note = sanitizeForPdfFont(reco?.note || '').trim();
-  if (title && note) return `${title}\n\n${note}`;
-  return title || note;
+  const body = sanitizeForPdfFont(reco?.note || reco?.wikiDescription || '').trim();
+  if (title && body) return `${title}\n\n${body}`;
+  return title || body;
 }
 
 /**

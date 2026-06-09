@@ -51,6 +51,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
   File? _file;
   Uint8List? _svgBytes;
   Uint8List? _pendingBytes;
+  String? _assetPath;
 
   /// Raster (png/jpg/webp/gif) bytes downloaded via http — used on web where
   /// [File] isn't available. On native we rely on [MediaCacheService] + [_file].
@@ -61,7 +62,7 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
   @override
   void initState() {
     super.initState();
-    if (!_primeInlineImage()) {
+    if (!_primeImmediateImage()) {
       _load();
     }
   }
@@ -74,9 +75,10 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
       _svgBytes = null;
       _pendingBytes = null;
       _webBytes = null;
+      _assetPath = null;
       _loading = true;
       _failed = false;
-      final primed = _primeInlineImage();
+      final primed = _primeImmediateImage();
       if (mounted) {
         setState(() {});
       }
@@ -84,6 +86,11 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
         _load();
       }
     }
+  }
+
+  bool _primeImmediateImage() {
+    if (_primeInlineImage()) return true;
+    return _primeBundledAsset();
   }
 
   Uint8List? _decodeDataUrl(String dataUrl) {
@@ -128,11 +135,20 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
     return true;
   }
 
+  bool _primeBundledAsset() {
+    final assetPath = bundledMediaAssetPath(widget.url);
+    if (assetPath == null) return false;
+    _assetPath = assetPath;
+    _loading = false;
+    _failed = false;
+    return true;
+  }
+
   Future<void> _load() async {
     // Les data URLs inline (logos générés, images pending locales) sont
     // déjà prises en charge synchroniquement par `_primeInlineImage()`
     // afin d'éviter le flash placeholder → image au premier rendu.
-    if (_primeInlineImage()) {
+    if (_primeImmediateImage()) {
       if (mounted) {
         setState(() {});
       }
@@ -249,6 +265,31 @@ class _CachedRemoteImageState extends State<CachedRemoteImage> {
       );
     }
     if (_failed) return widget.errorWidget ?? const _DefaultError();
+    if (_assetPath != null) {
+      if (isSvgUrl(_assetPath!)) {
+        return SvgPicture.asset(
+          _assetPath!,
+          fit: widget.fit,
+          width: widget.width,
+          height: widget.height,
+          placeholderBuilder: (context) =>
+              widget.placeholder ?? const _DefaultPlaceholder(),
+        );
+      }
+      return Image.asset(
+        _assetPath!,
+        fit: widget.fit,
+        width: widget.width,
+        height: widget.height,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            widget.onError?.call();
+          });
+          return widget.errorWidget ?? const _DefaultError();
+        },
+      );
+    }
     if (_svgBytes != null) {
       return SvgPicture.memory(
         _svgBytes!,

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show File;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart'
     show kDebugMode, kIsWeb, debugPrint, defaultTargetPlatform, TargetPlatform;
@@ -9,10 +10,11 @@ import 'package:sqflite/sqflite.dart';
 // `openDatabase(password: ...)` pour chiffrer toute la base SQLite
 // avec AES-256 (SQLCipher 4 par défaut). Compatible iOS, macOS,
 // Android. Sur web, on retombe sur `sqflite_common_ffi_web` qui n'a
-// pas de support SQLCipher → la PWA reste non chiffrée mais protégée
-// par l'origin isolation Safari + sandbox iOS.
+// pas de support SQLCipher ; les champs sensibles web sont donc chiffrés
+// au niveau applicatif via `OfflineVault`.
 import 'package:sqflite_sqlcipher/sqflite.dart' as sqlcipher;
 
+import 'offline_vault.dart';
 import 'secure_session_storage.dart';
 
 class LocalDatabase {
@@ -21,10 +23,11 @@ class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
   static const _debugFallbackDbName = 'aid_habitat_offline.debug_fallback.db';
-  static const _dbVersion = 18;
+  static const _dbVersion = 19;
 
   Database? _database;
   bool _forceDebugPlaintextFallback = false;
+  bool _webOfflineVaultMigrationChecked = false;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -58,8 +61,8 @@ class LocalDatabase {
           ? fallbackPath
           : encryptedPath;
       // Web (PWA) : sqflite_common_ffi_web ne supporte pas SQLCipher.
-      // On garde l'ouverture historique non chiffrée. Origin isolation
-      // Safari + sandbox iOS limitent l'exposition.
+      // La base s'ouvre donc avec SQLite WASM standard ; les colonnes
+      // sensibles utilisées offline passent par OfflineVault avant écriture.
       _database = await openDatabase(
         plainPath,
         version: _dbVersion,
@@ -67,6 +70,7 @@ class LocalDatabase {
         onUpgrade: _onUpgrade,
       );
     }
+    await _sealExistingWebOfflineVaultData(_database!);
     return _database!;
   }
 
@@ -96,6 +100,142 @@ class LocalDatabase {
     return message.contains('-34018') ||
         message.contains('A required entitlement isn\'t present') ||
         message.contains('Impossible de stocker la master key SQLCipher');
+  }
+
+  Future<void> _sealExistingWebOfflineVaultData(Database db) async {
+    if (!kIsWeb || _webOfflineVaultMigrationChecked) return;
+    _webOfflineVaultMigrationChecked = true;
+
+    const marker = '__offline_vault_web_v1';
+    try {
+      final done = await db.query(
+        'reference_sync_meta',
+        columns: const ['last_synced_at'],
+        where: 'table_name = ?',
+        whereArgs: const [marker],
+        limit: 1,
+      );
+      if (done.isNotEmpty) return;
+    } catch (_) {
+      // La table existe depuis v4, mais on ne bloque jamais le boot si
+      // une base legacy partiellement migrée ne l'a pas encore.
+    }
+
+    await _sealTextColumns(
+      db,
+      table: 'documents',
+      idColumn: 'local_id',
+      columns: const ['local_file_data_url', 'annotations_json'],
+    );
+    await _sealTextColumns(
+      db,
+      table: 'note_pages',
+      idColumn: 'local_id',
+      columns: const ['text_content', 'drawing_json'],
+    );
+    await _sealTextColumns(
+      db,
+      table: 'sync_operations',
+      idColumn: 'id',
+      columns: const ['payload_json'],
+    );
+    await _sealTextColumns(
+      db,
+      table: 'wiki_items',
+      idColumn: 'id',
+      columns: const ['pending_image_data_url'],
+    );
+    await _sealTextColumns(
+      db,
+      table: 'app_users',
+      idColumn: 'local_id',
+      columns: const ['pending_photo_data_url'],
+    );
+    await _sealTextColumns(
+      db,
+      table: 'access_members',
+      idColumn: 'email',
+      columns: const ['generated_password', 'pending_password'],
+    );
+    await _sealBlobColumn(
+      db,
+      table: 'web_media_cache',
+      idColumn: 'url_hash',
+      column: 'bytes',
+    );
+
+    try {
+      await db.insert('reference_sync_meta', {
+        'table_name': marker,
+        'last_synced_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    } catch (_) {
+      // Best effort : les nouvelles écritures restent chiffrées même si le
+      // marqueur n'a pas pu être écrit.
+    }
+  }
+
+  Future<void> _sealTextColumns(
+    Database db, {
+    required String table,
+    required String idColumn,
+    required List<String> columns,
+  }) async {
+    try {
+      final rows = await db.query(table, columns: [idColumn, ...columns]);
+      for (final row in rows) {
+        final id = row[idColumn];
+        if (id == null) continue;
+        final updates = <String, Object?>{};
+        for (final column in columns) {
+          final value = row[column] as String?;
+          if (value == null || value.isEmpty) continue;
+          final sealed = await OfflineVault.instance.sealString(value);
+          if (sealed != value) updates[column] = sealed;
+        }
+        if (updates.isNotEmpty) {
+          await db.update(
+            table,
+            updates,
+            where: '$idColumn = ?',
+            whereArgs: [id],
+          );
+        }
+      }
+    } catch (_) {
+      // Table/colonne absente sur une base legacy : la migration applicative
+      // reste best-effort et les futures écritures seront chiffrées.
+    }
+  }
+
+  Future<void> _sealBlobColumn(
+    Database db, {
+    required String table,
+    required String idColumn,
+    required String column,
+  }) async {
+    try {
+      final rows = await db.query(table, columns: [idColumn, column]);
+      for (final row in rows) {
+        final id = row[idColumn];
+        final value = row[column];
+        if (id == null || value == null) continue;
+        final raw = value is List<int>
+            ? value
+            : value is Uint8List
+            ? value
+            : null;
+        if (raw == null || raw.isEmpty) continue;
+        await db.update(
+          table,
+          {column: await OfflineVault.instance.sealBytes(raw)},
+          where: '$idColumn = ?',
+          whereArgs: [id],
+        );
+      }
+    } catch (_) {
+      // Best-effort pour les mêmes raisons que _sealTextColumns.
+    }
   }
 
   /// Ouvre la base via SQLCipher avec la master key stockée dans
@@ -241,6 +381,68 @@ class LocalDatabase {
     if (oldVersion < 18) {
       await _migrateV17ToV18(db);
     }
+    if (oldVersion < 19) {
+      await _migrateV18ToV19(db);
+    }
+  }
+
+  /// v18 → v19 : socle commercial multi-organisation.
+  ///
+  /// Les données restent rattachées par défaut à Aid'Habitat. Cette migration
+  /// ne change pas encore les filtres UI/serveur ; elle prépare la séparation
+  /// stricte par client sans casser l'offline actuel.
+  Future<void> _migrateV18ToV19(Database db) async {
+    const defaultOrganisationId = 'org_aidhabitat';
+    final tenantTables = [
+      'app_users',
+      'user_access_scopes',
+      'patients',
+      'housings',
+      'dossiers',
+      'documents',
+      'note_pages',
+      'sync_operations',
+      'access_members',
+      'contexte_de_vie',
+      'diagnostic_sanitaires',
+      'mesures_anthropometriques',
+      'observations_synthese',
+      'visit_recommendations',
+    ];
+
+    for (final table in tenantTables) {
+      await _addColumnIfMissing(
+        db,
+        table,
+        'organisation_id',
+        "TEXT NOT NULL DEFAULT '$defaultOrganisationId'",
+      );
+    }
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_patients_organisation '
+      'ON patients(organisation_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dossiers_organisation '
+      'ON dossiers(organisation_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_documents_organisation '
+      'ON documents(organisation_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_note_pages_organisation '
+      'ON note_pages(organisation_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_ops_organisation '
+      'ON sync_operations(organisation_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_user_scopes_organisation '
+      'ON user_access_scopes(organisation_id)',
+    );
   }
 
   /// v17 → v18 : sécurité — purge des mots de passe `access_members.
@@ -549,10 +751,22 @@ class LocalDatabase {
       'CREATE INDEX IF NOT EXISTS idx_dossiers_patient ON dossiers(patient_local_id)',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_patients_organisation '
+      'ON patients(organisation_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dossiers_organisation '
+      'ON dossiers(organisation_id)',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_dossiers_sync ON dossiers(sync_state)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_documents_organisation '
+      'ON documents(organisation_id)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_documents_sync ON documents(sync_state)',
@@ -561,10 +775,22 @@ class LocalDatabase {
       'CREATE INDEX IF NOT EXISTS idx_note_pages_patient ON note_pages(patient_local_id)',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_note_pages_organisation '
+      'ON note_pages(organisation_id)',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_sync_ops_status ON sync_operations(status)',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_ops_organisation '
+      'ON sync_operations(organisation_id)',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_access_scopes(user_local_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_user_scopes_organisation '
+      'ON user_access_scopes(organisation_id)',
     );
   }
 
@@ -707,10 +933,11 @@ class LocalDatabase {
   ''';
 
   static const _createAccessMembersSQL = '''
-    CREATE TABLE access_members (
-      email TEXT PRIMARY KEY,
-      display_name TEXT NOT NULL,
-      role TEXT NOT NULL,
+      CREATE TABLE access_members (
+        email TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
+        display_name TEXT NOT NULL,
+        role TEXT NOT NULL,
       selectable INTEGER NOT NULL DEFAULT 1,
       establishment_label TEXT NOT NULL DEFAULT '',
       ergo_label TEXT NOT NULL DEFAULT '',
@@ -735,6 +962,7 @@ class LocalDatabase {
   static const _createContexteDeVieSQL = '''
     CREATE TABLE contexte_de_vie (
       local_id TEXT PRIMARY KEY,
+      organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
       dossier_local_id TEXT NOT NULL UNIQUE,
       patient_local_id TEXT,
       medical_context_json TEXT,
@@ -747,6 +975,7 @@ class LocalDatabase {
   static const _createDiagnosticSanitairesSQL = '''
     CREATE TABLE diagnostic_sanitaires (
       local_id TEXT PRIMARY KEY,
+      organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
       dossier_local_id TEXT NOT NULL UNIQUE,
       sdb_instances_json TEXT,
       wc_instances_json TEXT,
@@ -758,6 +987,7 @@ class LocalDatabase {
   static const _createMesuresAnthropometriquesSQL = '''
     CREATE TABLE mesures_anthropometriques (
       local_id TEXT PRIMARY KEY,
+      organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
       dossier_local_id TEXT NOT NULL UNIQUE,
       debout_hauteur_coude REAL,
       assis_hauteur_assise REAL,
@@ -772,6 +1002,7 @@ class LocalDatabase {
   static const _createObservationsSyntheseSQL = '''
     CREATE TABLE observations_synthese (
       local_id TEXT PRIMARY KEY,
+      organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
       dossier_local_id TEXT NOT NULL UNIQUE,
       observation_equipements TEXT,
       projet_souhait_usage TEXT,
@@ -784,6 +1015,7 @@ class LocalDatabase {
   static const _createVisitRecommendationsSQL = '''
     CREATE TABLE visit_recommendations (
       local_id TEXT PRIMARY KEY,
+      organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
       dossier_local_id TEXT NOT NULL UNIQUE,
       items_json TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL,
@@ -830,6 +1062,7 @@ class LocalDatabase {
     await db.execute('''
       CREATE TABLE app_users (
         local_id TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
         email TEXT NOT NULL UNIQUE,
         display_name TEXT NOT NULL,
         role TEXT NOT NULL,
@@ -859,6 +1092,7 @@ class LocalDatabase {
     await db.execute('''
       CREATE TABLE user_access_scopes (
         local_id TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
         user_local_id TEXT NOT NULL,
         scope_type TEXT NOT NULL,
         scope_value TEXT NOT NULL,
@@ -869,6 +1103,7 @@ class LocalDatabase {
     await db.execute('''
       CREATE TABLE patients (
         local_id TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
         remote_patient_id TEXT,
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
@@ -905,6 +1140,7 @@ class LocalDatabase {
     await db.execute('''
       CREATE TABLE housings (
         local_id TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
         remote_housing_id TEXT,
         patient_local_id TEXT NOT NULL,
         type TEXT NOT NULL,
@@ -967,6 +1203,7 @@ class LocalDatabase {
     await db.execute('''
       CREATE TABLE dossiers (
         local_id TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
         remote_dossier_id TEXT,
         patient_local_id TEXT NOT NULL,
         housing_local_id TEXT NOT NULL,
@@ -992,6 +1229,7 @@ class LocalDatabase {
     await db.execute('''
       CREATE TABLE documents (
         local_id TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
         patient_local_id TEXT NOT NULL,
         dossier_local_id TEXT,
         title TEXT NOT NULL,
@@ -1015,6 +1253,7 @@ class LocalDatabase {
     await db.execute('''
       CREATE TABLE note_pages (
         local_id TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
         patient_local_id TEXT NOT NULL,
         dossier_local_id TEXT,
         tab_key TEXT NOT NULL,
@@ -1034,6 +1273,7 @@ class LocalDatabase {
     await db.execute('''
       CREATE TABLE sync_operations (
         id TEXT PRIMARY KEY,
+        organisation_id TEXT NOT NULL DEFAULT 'org_aidhabitat',
         entity_type TEXT NOT NULL,
         entity_local_id TEXT NOT NULL,
         operation_type TEXT NOT NULL,

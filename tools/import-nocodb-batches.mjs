@@ -31,6 +31,8 @@ const BASE_ID = String(process.env.NOCODB_BASE_ID || '').trim();
 const ALLOW_APPLY = process.env.NOCODB_RESTORE_ALLOW_APPLY === '1';
 const RESTORE_TARGET = String(process.env.NOCODB_RESTORE_TARGET || '').trim().toLowerCase();
 const MAX_BATCH_RECORDS = Math.min(1000, Math.max(1, Number(process.env.NOCODB_RESTORE_MAX_BATCH_RECORDS) || 1000));
+const BATCH_DELAY_MS = Math.max(0, Number(process.env.NOCODB_RESTORE_BATCH_DELAY_MS) || 0);
+const MAX_RETRIES = Math.min(8, Math.max(0, Number(process.env.NOCODB_RESTORE_MAX_RETRIES) || 3));
 
 const SYSTEM_FIELDS = new Set(['Id', 'CreatedAt', 'UpdatedAt', 'Id1']);
 
@@ -161,6 +163,17 @@ const headers = {
   Accept: 'application/json',
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableError = (error) => {
+  const message = String(error?.message || '');
+  if (/\b(429|500|502|503|504)\b/.test(message)) return true;
+  // NocoDB/Easypanel peut répondre temporairement ERR_BASE_NOT_FOUND pendant
+  // une rafale d'import, alors que la base existe. On retry avant d'échouer.
+  if (/ERR_BASE_NOT_FOUND/i.test(message)) return true;
+  return false;
+};
+
 const postBatch = async (tableId, payload) => {
   const response = await fetch(`${API_URL}/api/v2/tables/${encodeURIComponent(tableId)}/records`, {
     method: 'POST',
@@ -172,6 +185,22 @@ const postBatch = async (tableId, payload) => {
     throw new Error(`HTTP ${response.status} ${response.statusText}: ${text.slice(0, 500)}`);
   }
   return response.json().catch(() => ({}));
+};
+
+const postBatchWithRetry = async (tableId, payload) => {
+  let lastError = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    try {
+      return await postBatch(tableId, payload);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= MAX_RETRIES || !isRetryableError(error)) break;
+      const backoff = Math.min(10_000, 500 * (2 ** attempt));
+      console.warn(`[import-nocodb-batches] retry ${attempt + 1}/${MAX_RETRIES} dans ${backoff}ms: ${error.message}`);
+      await sleep(backoff);
+    }
+  }
+  throw lastError;
 };
 
 if (!apply) {
@@ -191,7 +220,8 @@ let importedRecords = 0;
 let importedBatches = 0;
 for (const item of planned) {
   try {
-    await postBatch(item.stagingTableId, item.payload);
+    if (BATCH_DELAY_MS > 0) await sleep(BATCH_DELAY_MS);
+    await postBatchWithRetry(item.stagingTableId, item.payload);
     importedRecords += item.records;
     importedBatches += 1;
     console.log(`[import-nocodb-batches] importé ${item.tableName} ${item.file} (${item.records} records)`);
