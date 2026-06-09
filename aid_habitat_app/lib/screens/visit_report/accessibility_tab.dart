@@ -1497,6 +1497,156 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     );
   }
 
+  void _syncGarageAnnexeFromLevels() {
+    final stillPresent = _levelRooms.values.any(
+      (rooms) => rooms.contains('Garage'),
+    );
+    if (stillPresent) {
+      _annexes.add('Garage');
+    } else {
+      _annexes.remove('Garage');
+    }
+  }
+
+  void _collapseLevelEditor(_LevelConfig cfg) {
+    setState(() {
+      if (_pendingLevelField == cfg.field) {
+        _pendingLevelField = null;
+      }
+      _expandedLevel = null;
+    });
+    _scheduleSave(_levelDirtyKeys(cfg));
+  }
+
+  Future<void> _deleteLevel(_LevelConfig cfg) async {
+    final confirm = await showAppDestructiveConfirmation(
+      context: context,
+      title: 'Supprimer ce niveau ?',
+      message:
+          'Le niveau « ${cfg.label} » et toutes les pièces '
+          'cochées dessus seront supprimés du foyer. Cette '
+          'action est définitive.',
+      confirmLabel: 'Supprimer',
+      icon: LucideIcons.layers,
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() {
+      _orderedLevels.remove(cfg.field);
+      _levelRooms[cfg.field] = [];
+      _syncGarageAnnexeFromLevels();
+    });
+    _scheduleSave(_levelDirtyKeys(cfg, includeGarage: true));
+  }
+
+  void _changeRoomCount(_LevelConfig cfg, String room, int delta) {
+    final current = List<String>.from(_levelRooms[cfg.field] ?? []);
+    final count = current.where((r) => r == room).length;
+    if (delta > 0) {
+      if (count >= 4) return;
+      current.add(room);
+    } else {
+      if (count <= 0) return;
+      for (var i = current.length - 1; i >= 0; i--) {
+        if (current[i] == room) {
+          current.removeAt(i);
+          break;
+        }
+      }
+    }
+    setState(() {
+      _levelRooms[cfg.field] = current;
+      if (room == 'Garage') {
+        _syncGarageAnnexeFromLevels();
+      }
+    });
+    _scheduleSave(_levelDirtyKeys(cfg, includeGarage: room == 'Garage'));
+  }
+
+  Widget _buildLevelRoomAdjuster({
+    required _LevelConfig cfg,
+    required String room,
+    required int count,
+  }) {
+    final isActive = count > 0;
+    final canRemove = count > 0;
+    final canAdd = count < 4;
+    final labelColor = isActive
+        ? const Color(0xFF3F3451)
+        : const Color(0xFF2B323A);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: isActive ? const Color(0xFFF7F1FB) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isActive ? const Color(0xFFDCCFE7) : const Color(0xFFD8DDE3),
+        ),
+      ),
+      child: Row(
+        children: [
+          _LevelRoomActionButton(
+            icon: LucideIcons.minus,
+            enabled: canRemove,
+            onTap: canRemove ? () => _changeRoomCount(cfg, room, -1) : null,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    room,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: labelColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (count > 0) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    constraints: const BoxConstraints(minWidth: 18),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isActive ? kBrandPurple : const Color(0xFFE4E7EB),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$count',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          _LevelRoomActionButton(
+            icon: LucideIcons.plus,
+            enabled: canAdd,
+            onTap: canAdd ? () => _changeRoomCount(cfg, room, 1) : null,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLevelCard(_LevelConfig cfg) {
     final rooms = _levelRooms[cfg.field] ?? [];
     final allItems = <String>[
@@ -1509,77 +1659,67 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     final isExpanded = _expandedLevel == cfg.field;
 
     if (!isExpanded) {
-      // Vue repliée (style menu déroulant) : "Sous-sol (Salle de bain,
-      // WC ²)" + chevron vers le bas. Pas de crayon ni de croix — la
-      // croix n'apparaît qu'une fois la card rouverte (mode édition).
-      // Les doublons sont groupés avec un exposant (² ou ³) pour
-      // refléter le compteur des pills.
-      final displayRooms = rooms.isEmpty ? '—' : _formatRoomsWithCounts(rooms);
+      final displayRooms = rooms.isEmpty
+          ? 'Aucune pièce sélectionnée'
+          : _formatRoomsWithCounts(rooms);
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _expandedLevel = cfg.field),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: const Color(0xFFF7F7FA),
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE4E7EB)),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF2B323A),
-                    ),
-                    children: [
-                      TextSpan(text: cfg.label),
-                      TextSpan(
-                        text: ' ($displayRooms)',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF2B323A),
-                        ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      cfg.label,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF3F3451),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      displayRooms,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF5C6670),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 6),
-              const Icon(Icons.expand_more, size: 20, color: Color(0xFF5C6670)),
+              const SizedBox(width: 8),
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(
+                  Icons.expand_more,
+                  size: 20,
+                  color: Color(0xFF5C6670),
+                ),
+              ),
             ],
           ),
         ),
       );
     }
 
-    // Tap-to-fold sur tout le container violet de l'éditeur — même
-    // pattern que le picker (« Choisir un niveau ») : tap sur une pill
-    // de pièce ou sur le champ texte « Ajouter une pièce » est absorbé
-    // par le widget concerné (gagne l'arène) ; tap n'importe où ailleurs
-    // (titre, padding, espace inter-pills) replie l'éditeur. Demande
-    // utilisateur 2026-04-28 (« fait la meme fonctionnalité une fois
-    // que j'ai choisi un niveau pour la partie choix des types de
-    // pieces »).
-    //
-    // **Action toujours = collapse, jamais delete** : le tap n'importe
-    // où ne fait QUE replier (équivalent du chevron). La suppression
-    // reste exclusive à la croix top-right (intention explicite, à
-    // l'abri des taps accidentels). Pour un niveau pending →
-    // settle+collapse ; pour un niveau ré-ouvert → simple collapse.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () {
-        setState(() {
-          if (_pendingLevelField == cfg.field) {
-            _pendingLevelField = null;
-          }
-          _expandedLevel = null;
-        });
-        _scheduleSave();
-      },
+      onTap: () => _collapseLevelEditor(cfg),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -1589,177 +1729,69 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête niveau + bouton fermer/supprimer.
-            //
-            // L'icône change selon le « moment » de l'édition (demande
-            // utilisateur 2026-04-28 : « on doit simplement avoir un
-            // chevron pour refermer mais pas une croix, la croix apparait
-            // seulement quand on reclique dessus si on souhaite supprimer
-            // le niveau ajouté precedemment ») :
-            //   - Niveau qui vient d'être ajouté (encore dans le container
-            //     morphant, `_pendingLevelField == cfg.field`) → chevron
-            //     vers le haut. Le tap "settle" le niveau dans la liste
-            //     principale et collapse l'éditeur en pill (donnée
-            //     préservée).
-            //   - Niveau ré-ouvert depuis sa pill (déjà settle dans la
-            //     liste, `_pendingLevelField != cfg.field`) → croix. Le
-            //     tap retire le niveau du foyer (intention destructive
-            //     explicite, utilisateur a choisi de re-cliquer dessus).
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  cfg.label.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF8A939D),
-                    letterSpacing: 0.5,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        cfg.label,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF3F3451),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        rooms.isEmpty
+                            ? 'Aucune pièce sélectionnée'
+                            : _formatRoomsWithCounts(rooms),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF6B7280),
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const Spacer(),
-                // Bouton fermer/supprimer.
-                //
-                // **Hit area agrandie en mode croix** : comme le reste du
-                // container violet replie l'éditeur (cf. GestureDetector
-                // parent), il faut que la croix de suppression ait une
-                // zone tactile généreuse pour être atteignable sans
-                // déclencher le repli par accident. Demande utilisateur
-                // 2026-04-28 : « rend la croix plus facilement cliquable
-                // si elle est présente car le reste du container le
-                // repli ». Padding 12 + icon 18 → ~42 × 42 pt de hit
-                // area, au-dessus du seuil HIG (44 pt) sans couper
-                // visuellement avec le reste du header.
-                //
-                // En mode chevron, on garde la hit area d'origine (le
-                // tap-anywhere du parent absorbe les ratés).
-                InkWell(
-                  onTap: () async {
-                    if (_pendingLevelField == cfg.field) {
-                      // Pending = juste créé, pas de confirmation
-                      // nécessaire — le chevron up "settle" sans
-                      // perdre de données saisies.
-                      setState(() {
-                        _pendingLevelField = null;
-                        _expandedLevel = null;
-                      });
-                      _scheduleSave(_levelDirtyKeys(cfg));
-                      return;
-                    }
-
-                    // Niveau déjà settled : la croix est destructive.
-                    // Confirmation explicite avant de supprimer + reset
-                    // total des données (pièces cochées, descriptions)
-                    // pour que le niveau parte sur un état vierge si
-                    // l'ergo le ré-ajoute plus tard. Demande user
-                    // 2026-04-28 : "si je supprime le niveau ça doit
-                    // tout réinitialiser, pas garder les boutons cochés
-                    // au prochain ajout".
-                    final confirm = await showAppDestructiveConfirmation(
-                      context: context,
-                      title: 'Supprimer ce niveau ?',
-                      message:
-                          'Le niveau « ${cfg.label} » et toutes les pièces '
-                          'cochées dessus seront supprimés du foyer. Cette '
-                          'action est définitive.',
-                      confirmLabel: 'Supprimer',
-                      icon: LucideIcons.layers,
-                    );
-                    if (confirm != true || !mounted) return;
-
-                    setState(() {
-                      _orderedLevels.remove(cfg.field);
-                      // Reset complet des données du niveau — sans ça
-                      // un re-add ressort les anciennes pills cochées.
-                      _levelRooms[cfg.field] = [];
-                      // Sync annexe Garage : si le Garage était coché
-                      // uniquement parce qu'il était dans ce niveau, on
-                      // doit le retirer aussi de la liste annexes.
-                      final stillPresent = _levelRooms.values.any(
-                        (rooms) => rooms.contains('Garage'),
-                      );
-                      if (!stillPresent) _annexes.remove('Garage');
-                    });
-                    _scheduleSave(_levelDirtyKeys(cfg, includeGarage: true));
-                  },
-                  // Refonte 2026-05-13 : pill radius 999 uniforme.
-                  borderRadius: BorderRadius.circular(999),
-                  child: Padding(
-                    padding: EdgeInsets.all(
-                      _pendingLevelField == cfg.field ? 4 : 12,
-                    ),
-                    child: Icon(
-                      _pendingLevelField == cfg.field
-                          ? Icons.expand_less
-                          : Icons.close,
-                      size: _pendingLevelField == cfg.field ? 20 : 18,
-                      color: const Color(0xFF8A939D),
-                    ),
-                  ),
+                const SizedBox(width: 8),
+                _LevelHeaderIconButton(
+                  icon: Icons.expand_less,
+                  tooltip: 'Replier',
+                  onTap: () => _collapseLevelEditor(cfg),
                 ),
+                if (_pendingLevelField != cfg.field) ...[
+                  const SizedBox(width: 6),
+                  _LevelHeaderIconButton(
+                    icon: LucideIcons.trash2,
+                    tooltip: 'Supprimer le niveau',
+                    onTap: () => _deleteLevel(cfg),
+                    destructive: true,
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 8),
-            // Pièces — boutons-pilules multi-sélection (plus de
-            // cases à cocher). Un tap bascule l'état de la pièce dans
-            // le niveau courant.
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              // Demande utilisateur : boutons des pièces nettement plus
-              // grands (ils étaient si compressés que les libellés
-              // longs comme "Salle de bain" se faisaient tronquer).
-              // Aspect ratio 3.2 = environ 60 px de haut pour ~190 px
-              // de large → place pour un libellé d'une ligne avec
-              // confort tactile sur iPad.
-              childAspectRatio: 3.2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
+              childAspectRatio: 4.3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
               children: allItems.map((room) {
-                // Compte les occurrences de cette pièce dans le niveau
-                // courant. Le tap cycle 0 → 1 → 2 → 3 → 4 → 0 (max 4
-                // pour couvrir les maisons familiales avec jusqu'à
-                // 4 chambres sur un même étage — demande utilisateur
-                // 2026-05-04). Bump global à toutes les pièces, pas
-                // juste « Chambre » : permet aussi 4 SDB / 4 WC sur le
-                // même niveau si besoin (rare mais cohérent).
                 final count = rooms.where((r) => r == room).length;
-                final checked = count > 0;
-                return TogglePillButton(
-                  label: room,
-                  active: checked,
-                  countBadge: count,
-                  expand: true,
-                  onTap: () {
-                    setState(() {
-                      final next = List<String>.from(
-                        _levelRooms[cfg.field] ?? [],
-                      );
-                      if (count >= 4) {
-                        // Cycle complet : on retire toutes les
-                        // occurrences (retour à 0 = pill désactivée).
-                        next.removeWhere((r) => r == room);
-                      } else {
-                        // Incrément : ajoute une occurrence (la pill
-                        // affiche ² ³ ⁴ via TogglePillButton).
-                        next.add(room);
-                      }
-                      _levelRooms[cfg.field] = next;
-                      // Sync Garage annexe : présent dans n'importe quel
-                      // niveau → coché dans Annexes ; sinon décoché.
-                      if (room == 'Garage') {
-                        final stillPresent = _levelRooms.values.any(
-                          (rooms) => rooms.contains('Garage'),
-                        );
-                        if (stillPresent) {
-                          _annexes.add('Garage');
-                        } else {
-                          _annexes.remove('Garage');
-                        }
-                      }
-                    });
-                    _scheduleSave(_levelDirtyKeys(cfg, includeGarage: true));
-                  },
+                return _buildLevelRoomAdjuster(
+                  cfg: cfg,
+                  room: room,
+                  count: count,
                 );
               }).toList(),
             ),
@@ -2070,4 +2102,76 @@ class _QuickNavItem {
   final IconData icon;
   final String label;
   const _QuickNavItem({required this.icon, required this.label});
+}
+
+class _LevelRoomActionButton extends StatelessWidget {
+  const _LevelRoomActionButton({
+    required this.icon,
+    required this.enabled,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? onTap : null,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.35,
+        child: Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: const Color(0xFFEDE8F5),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 13, color: const Color(0xFF554265)),
+        ),
+      ),
+    );
+  }
+}
+
+class _LevelHeaderIconButton extends StatelessWidget {
+  const _LevelHeaderIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = destructive
+        ? const Color(0xFFB42318)
+        : const Color(0xFF5C6670);
+    final background = destructive
+        ? const Color(0xFFFEECEC)
+        : Colors.white.withValues(alpha: 0.85);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(icon, size: 16, color: foreground),
+          ),
+        ),
+      ),
+    );
+  }
 }
