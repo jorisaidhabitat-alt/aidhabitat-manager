@@ -35,8 +35,7 @@ class WcTab extends StatefulWidget {
   State<WcTab> createState() => _WcTabState();
 }
 
-class _WcTabState extends State<WcTab>
-    with AutomaticKeepAliveClientMixin {
+class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -73,8 +72,9 @@ class _WcTabState extends State<WcTab>
     // Phase 2 — refresh serveur en arrière-plan ; rehydrate si nouvelles
     // données. En offline on reste sur le cache local.
     try {
-      await widget.repository
-          .refreshDiagnosticSanitaireFromRemote(widget.dossier.id);
+      await widget.repository.refreshDiagnosticSanitaireFromRemote(
+        widget.dossier.id,
+      );
     } catch (_) {
       return;
     }
@@ -83,41 +83,47 @@ class _WcTabState extends State<WcTab>
   }
 
   Future<void> _hydrateFromLocal() async {
-    final result =
-        await widget.repository.fetchDiagnosticSanitaire(widget.dossier.id);
-    final housingRow =
-        await widget.repository.fetchHousingRaw(widget.dossier.id);
-    final selectedLevels =
-        buildSanitaryLevelSelections(housingRow, 'WC');
+    final result = await widget.repository.fetchDiagnosticSanitaire(
+      widget.dossier.id,
+    );
+    final housingRow = await widget.repository.fetchHousingRaw(
+      widget.dossier.id,
+    );
+    final selectedLevels = buildSanitaryLevelSelections(housingRow, 'WC');
     if (!mounted) return;
 
     final previous = result?.wcInstances ?? const <WcInstance>[];
     final nextInstances = <WcInstance>[];
     for (final lvl in selectedLevels) {
-      final existing =
-          previous.where((i) => i.levelField == lvl.field).toList();
+      final existing = previous
+          .where((i) => i.levelField == lvl.field)
+          .toList();
       if (existing.isNotEmpty) {
-        nextInstances.add(WcInstance(
-          id: existing.first.id,
-          levelField: lvl.field,
-          levelLabel: lvl.label,
-          wcCuvetteBonneHauteur: existing.first.wcCuvetteBonneHauteur,
-          wcCuvetteTropBasse: existing.first.wcCuvetteTropBasse,
-          wcCuvetteTropHaute: existing.first.wcCuvetteTropHaute,
-          wcCuvetteHauteur: existing.first.wcCuvetteHauteur,
-          wcBarreRelevement: existing.first.wcBarreRelevement,
-          porteWcLargeurSuffisante: existing.first.porteWcLargeurSuffisante,
-          porteWcDimension: existing.first.porteWcDimension,
-          porteWcSensAdapte: existing.first.porteWcSensAdapte,
-          observationEquipementsUtilisation:
-              existing.first.observationEquipementsUtilisation,
-        ));
+        nextInstances.add(
+          WcInstance(
+            id: existing.first.id,
+            levelField: lvl.field,
+            levelLabel: lvl.label,
+            wcCuvetteBonneHauteur: existing.first.wcCuvetteBonneHauteur,
+            wcCuvetteTropBasse: existing.first.wcCuvetteTropBasse,
+            wcCuvetteTropHaute: existing.first.wcCuvetteTropHaute,
+            wcCuvetteHauteur: existing.first.wcCuvetteHauteur,
+            wcBarreRelevement: existing.first.wcBarreRelevement,
+            porteWcLargeurSuffisante: existing.first.porteWcLargeurSuffisante,
+            porteWcDimension: existing.first.porteWcDimension,
+            porteWcSensAdapte: existing.first.porteWcSensAdapte,
+            observationEquipementsUtilisation:
+                existing.first.observationEquipementsUtilisation,
+          ),
+        );
       } else {
-        nextInstances.add(WcInstance(
-          id: 'wc_${lvl.field}',
-          levelField: lvl.field,
-          levelLabel: lvl.label,
-        ));
+        nextInstances.add(
+          WcInstance(
+            id: 'wc_${lvl.field}',
+            levelField: lvl.field,
+            levelLabel: lvl.label,
+          ),
+        );
       }
     }
 
@@ -159,8 +165,10 @@ class _WcTabState extends State<WcTab>
   Future<void> _save() async {
     if (_diagnostic == null) return;
     // Pas de setState(_saving) — voir dossier_screen.dart.
-    await widget.repository
-        .upsertDiagnosticSanitaire(widget.dossier.id, _diagnostic!);
+    await widget.repository.upsertDiagnosticSanitaire(
+      widget.dossier.id,
+      _diagnostic!,
+    );
   }
 
   void _updateActive(WcInstance updated) {
@@ -228,8 +236,7 @@ class _WcTabState extends State<WcTab>
       ),
       child: const Column(
         children: [
-          Icon(LucideIcons.squareAsterisk,
-              size: 38, color: Color(0xFF8A939D)),
+          Icon(LucideIcons.squareAsterisk, size: 38, color: Color(0xFF8A939D)),
           SizedBox(height: 10),
           Text(
             "Aucun WC renseigné pour ce logement.\n"
@@ -244,40 +251,68 @@ class _WcTabState extends State<WcTab>
   }
 
   Widget _buildLevelPills() {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (var i = 0; i < _instances.length; i++)
-          GestureDetector(
-            onTap: () => setState(() => _activeLevelIndex = i),
-            child: Container(
-              // Padding bumpé pour rester proportionné au fontSize 12
-              // (avant 10 + 12/6 → maintenant 12 + 14/8).
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: _activeLevelIndex == i
-                    ? const Color(0xFFF2ECF5)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                _instances[i].levelLabel.toUpperCase(),
-                style: TextStyle(
-                  // 10 → 12 (demande utilisateur 2026-04-28 : "met les
-                  // en taille légèrement plus grande").
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
-                  color: _activeLevelIndex == i
-                      ? const Color(0xFF554265)
-                      : const Color(0xFF8A939D),
-                ),
+    if (_instances.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      color: const Color(0xFFF2ECF5),
+      child: Row(
+        children: [
+          for (var i = 0; i < _instances.length; i++)
+            Expanded(
+              child: _buildLevelNavItem(
+                icon: LucideIcons.squareAsterisk,
+                label: _instances[i].levelLabel,
+                active: _activeLevelIndex == i,
+                onTap: () => setState(() => _activeLevelIndex = i),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLevelNavItem({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    const labelColor = Color(0xFF0E1116);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: labelColor),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: labelColor,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              height: 1.5,
+              width: 28,
+              decoration: BoxDecoration(
+                color: active ? kBrandPurple : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -303,8 +338,9 @@ class _WcTabState extends State<WcTab>
           label: 'Hauteur cuvette',
           value: a.wcCuvetteHauteur,
           unit: 'cm',
-          onChanged: (v) => _updateActive(_copy(a,
-              wcCuvetteHauteur: v, wcCuvetteHauteurNull: v == null)),
+          onChanged: (v) => _updateActive(
+            _copy(a, wcCuvetteHauteur: v, wcCuvetteHauteurNull: v == null),
+          ),
         ),
         const SizedBox(height: 14),
         _collapsibleToggle(
@@ -313,8 +349,8 @@ class _WcTabState extends State<WcTab>
           label: 'Barre de relèvement',
           options: const ['Présente', 'Absente'],
           selected: a.wcBarreRelevement ? 'Présente' : 'Absente',
-          onChanged: (v) => _updateActive(
-              _copy(a, wcBarreRelevement: v == 'Présente')),
+          onChanged: (v) =>
+              _updateActive(_copy(a, wcBarreRelevement: v == 'Présente')),
         ),
         const SizedBox(height: 8),
       ],
@@ -339,19 +375,22 @@ class _WcTabState extends State<WcTab>
             trueLabel: 'Suffisante',
             falseLabel: 'À revoir',
           ),
-          onChanged: (v) => _updateActive(_copy(
-            a,
-            porteWcLargeurSuffisante: v.isEmpty ? null : v == 'Suffisante',
-            porteWcLargeurSuffisanteNull: v.isEmpty,
-          )),
+          onChanged: (v) => _updateActive(
+            _copy(
+              a,
+              porteWcLargeurSuffisante: v.isEmpty ? null : v == 'Suffisante',
+              porteWcLargeurSuffisanteNull: v.isEmpty,
+            ),
+          ),
         ),
         const SizedBox(height: 14),
         FormNumberField(
           label: 'Dimension de porte',
           value: a.porteWcDimension,
           unit: 'cm',
-          onChanged: (v) => _updateActive(_copy(a,
-              porteWcDimension: v, porteWcDimensionNull: v == null)),
+          onChanged: (v) => _updateActive(
+            _copy(a, porteWcDimension: v, porteWcDimensionNull: v == null),
+          ),
         ),
         const SizedBox(height: 14),
         _collapsibleToggle(
@@ -364,11 +403,13 @@ class _WcTabState extends State<WcTab>
             trueLabel: 'Intérieur',
             falseLabel: 'Extérieur',
           ),
-          onChanged: (v) => _updateActive(_copy(
-            a,
-            porteWcSensAdapte: v.isEmpty ? null : v == 'Intérieur',
-            porteWcSensAdapteNull: v.isEmpty,
-          )),
+          onChanged: (v) => _updateActive(
+            _copy(
+              a,
+              porteWcSensAdapte: v.isEmpty ? null : v == 'Intérieur',
+              porteWcSensAdapteNull: v.isEmpty,
+            ),
+          ),
         ),
         const SizedBox(height: 24),
       ],
@@ -429,12 +470,14 @@ class _WcTabState extends State<WcTab>
       // Sinon, le label cliqué devient l'unique true (les 2 autres
       // basculent à false comme avant).
       final wasActive = label == selected;
-      _updateActive(_copy(
-        a,
-        wcCuvetteTropBasse: !wasActive && label == 'Trop basse',
-        wcCuvetteTropHaute: !wasActive && label == 'Trop haute',
-        wcCuvetteBonneHauteur: !wasActive && label == 'Bonne hauteur',
-      ));
+      _updateActive(
+        _copy(
+          a,
+          wcCuvetteTropBasse: !wasActive && label == 'Trop basse',
+          wcCuvetteTropHaute: !wasActive && label == 'Trop haute',
+          wcCuvetteBonneHauteur: !wasActive && label == 'Bonne hauteur',
+        ),
+      );
     }
 
     return Column(
@@ -507,8 +550,7 @@ class _WcTabState extends State<WcTab>
       id: i.id,
       levelField: i.levelField,
       levelLabel: i.levelLabel,
-      wcCuvetteBonneHauteur:
-          wcCuvetteBonneHauteur ?? i.wcCuvetteBonneHauteur,
+      wcCuvetteBonneHauteur: wcCuvetteBonneHauteur ?? i.wcCuvetteBonneHauteur,
       wcCuvetteTropBasse: wcCuvetteTropBasse ?? i.wcCuvetteTropBasse,
       wcCuvetteTropHaute: wcCuvetteTropHaute ?? i.wcCuvetteTropHaute,
       wcCuvetteHauteur: wcCuvetteHauteurNull
@@ -524,7 +566,8 @@ class _WcTabState extends State<WcTab>
       porteWcSensAdapte: porteWcSensAdapteNull
           ? null
           : (porteWcSensAdapte ?? i.porteWcSensAdapte),
-      observationEquipementsUtilisation: observationEquipementsUtilisation ??
+      observationEquipementsUtilisation:
+          observationEquipementsUtilisation ??
           i.observationEquipementsUtilisation,
     );
   }
@@ -577,11 +620,7 @@ class _CuvettePill extends StatelessWidget {
               ? kBrandPurple // mauve-500
               : const Color(0xFFFAF7FB), // mauve-50
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: active
-                ? kBrandPurple
-                : Colors.transparent,
-          ),
+          border: Border.all(color: active ? kBrandPurple : Colors.transparent),
         ),
         child: Text(
           label,
@@ -589,9 +628,7 @@ class _CuvettePill extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: active ? FontWeight.w500 : FontWeight.w400,
-            color: active
-                ? Colors.white
-                : const Color(0xFF2B323A), // ink-700
+            color: active ? Colors.white : const Color(0xFF2B323A), // ink-700
           ),
         ),
       ),

@@ -419,39 +419,68 @@ class _BathroomTabState extends State<BathroomTab>
   }
 
   Widget _buildLevelPills() {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (var i = 0; i < _instances.length; i++)
-          GestureDetector(
-            onTap: () => setState(() => _activeLevelIndex = i),
-            child: Container(
-              // Padding bumpé pour rester proportionné au fontSize 12
-              // (avant 10 + 12/6 → maintenant 12 + 14/8).
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: _activeLevelIndex == i
-                    ? const Color(0xFFF2ECF5)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                _instances[i].levelLabel.toUpperCase(),
-                style: TextStyle(
-                  // 10 → 12 (demande utilisateur 2026-04-28 : "met les
-                  // en taille légèrement plus grande").
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
-                  color: _activeLevelIndex == i
-                      ? const Color(0xFF554265)
-                      : const Color(0xFF8A939D),
-                ),
+    if (_instances.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      color: const Color(0xFFF2ECF5),
+      child: Row(
+        children: [
+          for (var i = 0; i < _instances.length; i++)
+            Expanded(
+              child: _buildLevelNavItem(
+                icon: LucideIcons.bath,
+                label: _instances[i].levelLabel,
+                active: _activeLevelIndex == i,
+                onTap: () => setState(() => _activeLevelIndex = i),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLevelNavItem({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    const labelColor = Color(0xFF0E1116);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: labelColor),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: labelColor,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              height: 1.5,
+              width: 28,
+              decoration: BoxDecoration(
+                color: active ? kBrandPurple : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
