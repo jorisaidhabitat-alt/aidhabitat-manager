@@ -106,45 +106,49 @@ class _SummaryTabState extends State<SummaryTab>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const NotesPanelTitleBanner(title: "Projet de l'usager"),
-                      const SizedBox(height: 6),
+                      const NotesPanelTitleBanner(
+                        title: "Projet de l'usager",
+                        attachedToBelow: true,
+                      ),
                       Expanded(
                         child: NotesWidget(
-                    key: ValueKey('summary-note-projet-$patientId'),
-                    patientId: patientId,
-                    tabKey: 'Préconisations-Projet',
-                    placeholder: '',
-                    showCanvas: false,
-                    embedded: true,
-                    showSaveButton: false,
-                    allowPagination: false,
-                    allowTextModal: true,
-                    // Si le parent a fourni `onExpandTextNote`, le tap
-                    // sur agrandir ouvre une fenêtre détachée (parité
-                    // avec les notes VAD classiques). Sinon fallback
-                    // sur le modal fullscreen in-app.
-                    onExpandToTab: widget.onExpandTextNote == null
-                        ? null
-                        : () => widget.onExpandTextNote!(
-                              'Préconisations-Projet',
-                            ),
-                    expandModalFullscreen: widget.onExpandTextNote == null,
-                    // Sync bi-directionnel avec la fenêtre détachée :
-                    // - liveText : reflète chaque keystroke poussé par
-                    //   la popup → met à jour le cadre in-app en
-                    //   temps réel (fix demande utilisateur 2026-05-05).
-                    // - onDraftChange : réciproque — chaque tape dans
-                    //   le cadre in-app est poussée vers la popup
-                    //   ouverte (`_pushDraftToOpenWindow`).
-                    liveText: widget.liveTextProjet,
-                    onDraftChange: widget.onDraftChange == null
-                        ? null
-                        : (draft) => widget.onDraftChange!(
-                              'Préconisations-Projet',
-                              draft.text,
-                            ),
-                    fillParentHeight: true,
-                  ),
+                          key: ValueKey('summary-note-projet-$patientId'),
+                          patientId: patientId,
+                          tabKey: 'Préconisations-Projet',
+                          placeholder: '',
+                          showCanvas: false,
+                          embedded: true,
+                          showSaveButton: false,
+                          allowPagination: false,
+                          allowTextModal: true,
+                          // Si le parent a fourni `onExpandTextNote`, le tap
+                          // sur agrandir ouvre une fenêtre détachée (parité
+                          // avec les notes VAD classiques). Sinon fallback
+                          // sur le modal fullscreen in-app.
+                          onExpandToTab: widget.onExpandTextNote == null
+                              ? null
+                              : () => widget.onExpandTextNote!(
+                                  'Préconisations-Projet',
+                                ),
+                          expandModalFullscreen:
+                              widget.onExpandTextNote == null,
+                          // Sync bi-directionnel avec la fenêtre détachée :
+                          // - liveText : reflète chaque keystroke poussé par
+                          //   la popup → met à jour le cadre in-app en
+                          //   temps réel (fix demande utilisateur 2026-05-05).
+                          // - onDraftChange : réciproque — chaque tape dans
+                          //   le cadre in-app est poussée vers la popup
+                          //   ouverte (`_pushDraftToOpenWindow`).
+                          liveText: widget.liveTextProjet,
+                          onDraftChange: widget.onDraftChange == null
+                              ? null
+                              : (draft) => widget.onDraftChange!(
+                                  'Préconisations-Projet',
+                                  draft.text,
+                                ),
+                          attachedToTitleBanner: true,
+                          fillParentHeight: true,
+                        ),
                       ),
                     ],
                   ),
@@ -155,34 +159,37 @@ class _SummaryTabState extends State<SummaryTab>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const NotesPanelTitleBanner(
-                          title: 'Résumé des préconisations'),
-                      const SizedBox(height: 6),
+                        title: 'Résumé des préconisations',
+                        attachedToBelow: true,
+                      ),
                       Expanded(
                         child: NotesWidget(
-                    key: ValueKey('summary-note-resume-$patientId'),
-                    patientId: patientId,
-                    tabKey: 'Préconisations-Résumé',
-                    placeholder: '',
-                    showCanvas: false,
-                    embedded: true,
-                    showSaveButton: false,
-                    allowPagination: false,
-                    allowTextModal: true,
-                    onExpandToTab: widget.onExpandTextNote == null
-                        ? null
-                        : () => widget.onExpandTextNote!(
-                              'Préconisations-Résumé',
-                            ),
-                    expandModalFullscreen: widget.onExpandTextNote == null,
-                    liveText: widget.liveTextResume,
-                    onDraftChange: widget.onDraftChange == null
-                        ? null
-                        : (draft) => widget.onDraftChange!(
-                              'Préconisations-Résumé',
-                              draft.text,
-                            ),
-                    fillParentHeight: true,
-                  ),
+                          key: ValueKey('summary-note-resume-$patientId'),
+                          patientId: patientId,
+                          tabKey: 'Préconisations-Résumé',
+                          placeholder: '',
+                          showCanvas: false,
+                          embedded: true,
+                          showSaveButton: false,
+                          allowPagination: false,
+                          allowTextModal: true,
+                          onExpandToTab: widget.onExpandTextNote == null
+                              ? null
+                              : () => widget.onExpandTextNote!(
+                                  'Préconisations-Résumé',
+                                ),
+                          expandModalFullscreen:
+                              widget.onExpandTextNote == null,
+                          liveText: widget.liveTextResume,
+                          onDraftChange: widget.onDraftChange == null
+                              ? null
+                              : (draft) => widget.onDraftChange!(
+                                  'Préconisations-Résumé',
+                                  draft.text,
+                                ),
+                          attachedToTitleBanner: true,
+                          fillParentHeight: true,
+                        ),
                       ),
                     ],
                   ),

@@ -955,8 +955,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        NotesPanelTitleBanner(title: bannerTitle),
-                        const SizedBox(height: 8),
+                        NotesPanelTitleBanner(
+                          title: bannerTitle,
+                          attachedToBelow: true,
+                        ),
                         Expanded(
                           child: NotesWidget(
                             key: ValueKey(liveKey),
@@ -979,6 +981,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                             fillParentHeight: true,
                             allowPagination: true,
                             stackedCards: true,
+                            attachedToTitleBanner: true,
                             // Médical : 3 pages fixes, chaque page affiche son
                             // numéro (1/2/3) en background. Plus aucun couplage
                             // avec les checkboxes à gauche (Pathologie / Suivi /

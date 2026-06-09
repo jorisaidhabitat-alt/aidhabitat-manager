@@ -15,17 +15,39 @@ import 'package:flutter/material.dart';
 ///  - `summary_tab.dart` pour les cadres compacts « Projet de l'usager »
 ///    et « Résumé des préconisations » en haut du Résumé.
 class NotesPanelTitleBanner extends StatelessWidget {
-  const NotesPanelTitleBanner({super.key, required this.title});
+  const NotesPanelTitleBanner({
+    super.key,
+    required this.title,
+    this.attachedToBelow = false,
+  });
   final String title;
+  final bool attachedToBelow;
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = attachedToBelow
+        ? const BorderRadius.only(
+            topLeft: Radius.circular(12),
+            topRight: Radius.circular(12),
+          )
+        : BorderRadius.circular(12);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFEDE8F5), // mauve-100 (brand light)
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: borderRadius,
+        border: Border(
+          top: const BorderSide(color: Color(0xFFEDE9EF), width: 1),
+          left: const BorderSide(color: Color(0xFFEDE9EF), width: 1),
+          right: const BorderSide(color: Color(0xFFEDE9EF), width: 1),
+          bottom: BorderSide(
+            color: attachedToBelow
+                ? Colors.transparent
+                : const Color(0xFFEDE9EF),
+            width: 1,
+          ),
+        ),
       ),
       child: Text(
         title,

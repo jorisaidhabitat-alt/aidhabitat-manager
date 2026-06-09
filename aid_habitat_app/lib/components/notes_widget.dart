@@ -167,6 +167,7 @@ class NotesWidget extends StatefulWidget {
     this.medicalFlags,
     this.onMedicalFlagsChanged,
     this.stackedCards = false,
+    this.attachedToTitleBanner = false,
     this.canvasSlideIndex,
   });
 
@@ -318,6 +319,11 @@ class NotesWidget extends StatefulWidget {
   /// Utilisé par les notes du relevé de visite et la note rapide du
   /// dossier pour converger vers le nouveau design.
   final bool stackedCards;
+
+  /// Raccorde visuellement la carte de note à une bannière de titre
+  /// immédiatement au-dessus : coins supérieurs aplatis et suppression
+  /// du padding haut externe pour former un seul ensemble.
+  final bool attachedToTitleBanner;
 
   @override
   State<NotesWidget> createState() => _NotesWidgetState();
@@ -1576,17 +1582,23 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// arrondis pour matcher la maquette utilisateur.
   Widget _buildStackedTextCard() {
     const double kSplitterHeight = 22.0;
+    final borderRadius = widget.attachedToTitleBanner
+        ? const BorderRadius.only(
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(16),
+          )
+        : BorderRadius.circular(16);
     return Container(
       height: _textAreaHeight + kSplitterHeight,
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         // Charte "Équilibrée" — 16 px (juste milieu densité / respiration).
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: borderRadius,
         border: Border.all(color: _kStackedBorder, width: 1),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: borderRadius,
         child: Stack(
           children: [
             Column(
@@ -1783,8 +1795,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   /// Actions flottantes en haut-droite du canvas : bouton `+` (cercle
-  /// violet **clair** avec `+` violet **foncé`) + corbeille (icône rose,
-  /// aucun fond). Sans conteneur englobant, sans ombre — parité maquette.
+  /// violet **clair** avec `+` violet **foncé`) + suppression dans la même
+  /// empreinte visuelle.
   /// Taille 44×44 pour respecter les guidelines tactiles tablette.
   Widget _buildTopRightPageActions() {
     final canAdd = _totalPages < widget.maxPages;
@@ -1827,9 +1839,9 @@ class _NotesWidgetState extends State<NotesWidget> {
           ),
         ),
         const SizedBox(width: 10),
-        // Corbeille : même empreinte 26×26 que le cercle violet du
-        // bouton + à gauche, pour que les deux aient la même taille
-        // visuelle. GestureDetector (pas d'InkWell) → pas de halo.
+        // Suppression : même empreinte 26×26 que le cercle violet du bouton
+        // +, avec une icône Material plus nette que le pictogramme Lucide en
+        // petite taille.
         Tooltip(
           message: 'Supprimer la page',
           child: GestureDetector(
@@ -1839,13 +1851,17 @@ class _NotesWidgetState extends State<NotesWidget> {
               padding: const EdgeInsets.all(9), // tap area ≈ 44×44
               child: Opacity(
                 opacity: canDelete ? 1 : 0.4,
-                child: const SizedBox(
+                child: Container(
                   width: 26,
                   height: 26,
-                  child: Center(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFE4E6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
                     child: Icon(
-                      LucideIcons.trash2,
-                      size: 26,
+                      Icons.delete_outline,
+                      size: 16,
                       color: _kStackedPinkSoft,
                     ),
                   ),
@@ -1936,8 +1952,8 @@ class _NotesWidgetState extends State<NotesWidget> {
               onTap: _totalPages < widget.maxPages ? _addPage : null,
               tooltip: 'Nouvelle page (dessin)',
             ),
-            _HeaderIconButton(
-              icon: LucideIcons.trash2,
+            _RoseHeaderIconButton(
+              icon: Icons.delete_outline,
               onTap:
                   (_totalPages > 1 &&
                       (widget.onDeletePage == null || widget.canDeletePage))
@@ -2014,11 +2030,17 @@ class _NotesWidgetState extends State<NotesWidget> {
       ],
     );
 
+    final boxedRadius = widget.attachedToTitleBanner
+        ? const BorderRadius.only(
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(16),
+          )
+        : BorderRadius.circular(16);
     final boxedContainer = Container(
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: Color(0xFFE4E7EB)),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: boxedRadius,
       ),
       // En mode texte-seul (fillHeight: true), pas de hauteur intrinsèque
       // : le parent (SizedBox.expand dans la branche showCanvas: false)
@@ -2032,8 +2054,10 @@ class _NotesWidgetState extends State<NotesWidget> {
     // En mode texte-seul (fillHeight) on resserre le padding externe
     // pour que la carte prenne le minimum d'espace autour.
     final outerPadding = fillHeight
-        ? const EdgeInsets.fromLTRB(4, 4, 4, 4)
-        : const EdgeInsets.fromLTRB(16, 12, 16, 8);
+        ? (widget.attachedToTitleBanner
+              ? EdgeInsets.zero
+              : const EdgeInsets.fromLTRB(4, 4, 4, 4))
+        : EdgeInsets.fromLTRB(16, widget.attachedToTitleBanner ? 0 : 12, 16, 8);
     return Padding(padding: outerPadding, child: boxedContainer);
   }
 
@@ -2208,10 +2232,12 @@ class _NotesWidgetState extends State<NotesWidget> {
     // Clear
     buttons.add(
       _circularToolButton(
-        icon: LucideIcons.trash2,
+        icon: LucideIcons.x,
         tooltip: 'Tout effacer',
         onTap: _clearStrokes,
         disabled: _strokes.isEmpty,
+        backgroundColor: const Color(0xFFFFE4E6),
+        foregroundColor: const Color(0xFFB4232F),
       ),
     );
     // Undo / Redo — inclus uniquement dans la nouvelle mise en page
@@ -2383,6 +2409,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     required VoidCallback onTap,
     bool isActive = false,
     bool disabled = false,
+    Color? backgroundColor,
+    Color? foregroundColor,
   }) {
     return Tooltip(
       message: tooltip,
@@ -2411,7 +2439,9 @@ class _NotesWidgetState extends State<NotesWidget> {
               // fond gris pour les boutons inactifs ». L'icône ink-700
               // (foncée) reste parfaitement lisible sur fond blanc /
               // light de la toolbar. Le ripple Material apparaît au tap.
-              color: isActive ? kBrandPurpleSoft : Colors.transparent,
+              color:
+                  backgroundColor ??
+                  (isActive ? kBrandPurpleSoft : Colors.transparent),
               shape: BoxShape.circle,
             ),
             child: Opacity(
@@ -2419,9 +2449,11 @@ class _NotesWidgetState extends State<NotesWidget> {
               child: Icon(
                 icon,
                 size: 18,
-                color: isActive
-                    ? _kActiveText
-                    : const Color(0xFF2B323A), // ink-700
+                color:
+                    foregroundColor ??
+                    (isActive
+                        ? _kActiveText
+                        : const Color(0xFF2B323A)), // ink-700
               ),
             ),
           ),
@@ -2995,6 +3027,48 @@ class _VioletHeaderIconButton extends StatelessWidget {
     final enabled = onTap != null;
     const bg = Color(0xFFEDE8F5); // violet clair
     const fg = kBrandPurple; // violet foncé #7C6DAA
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: enabled ? bg : bg.withValues(alpha: 0.5),
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Icon(
+              icon,
+              size: 18,
+              color: enabled ? fg : fg.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Variante rose de `_VioletHeaderIconButton` pour les actions de suppression.
+/// Même diamètre que le bouton `+`, afin que les deux actions gardent une
+/// présence visuelle équilibrée.
+class _RoseHeaderIconButton extends StatelessWidget {
+  const _RoseHeaderIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    const bg = Color(0xFFFFE4E6);
+    const fg = Color(0xFFB4232F);
     return Tooltip(
       message: tooltip,
       child: Material(
