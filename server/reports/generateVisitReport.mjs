@@ -1,11 +1,13 @@
-// Génère un rapport de visite PDF en remplissant les champs AcroForm
-// du template `server/templates/visitReport.template.pdf` avec les
-// données du dossier (récupérées depuis NocoDB).
+// Génère un rapport de visite PDF depuis le template
+// `server/templates/visitReport.template.pdf` avec les données du
+// dossier (récupérées depuis NocoDB).
 //
 // Approche choisie (cf. discussion projet) : on n'écrase JAMAIS le
-// PDF original au rendu — on remplit juste les champs nommés via
-// pdf-lib puis on aplatit (form.flatten()). La fidélité visuelle au
-// pixel près est garantie, aucune police n'est resubstituée.
+// PDF original au rendu. Le template 2026 est un PDF "plat" (sans
+// AcroForm) ; on recrée donc à la volée une couche de champs invisible
+// à partir de l'ancien gabarit technique, puis on aplatit
+// (form.flatten()). La page Sanitaires est, elle, redessinée en table
+// dynamique pour supporter 1 à 3 SDB/WC.
 //
 // Couverture POC actuelle (chunk 4.1) : ~10 champs page 1 + page 3
 // pour valider la chaîne. L'extension aux 130 champs (logement,
@@ -39,6 +41,10 @@ const DEFAULT_TEMPLATE_PATH = path.resolve(
   __dirname,
   '../templates/visitReport.template.pdf',
 );
+const LEGACY_ACROFORM_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  '../templates/visitReport.legacy-acroform.pdf',
+);
 
 // Inter Medium — substitut open-source de HelveticaNeue Medium (Apple
 // proprio) utilisé par les titres baked du template Affinity. Bundlé
@@ -52,6 +58,52 @@ const MAPPING_PATH = path.resolve(
   __dirname,
   '../templates/visitReport.mapping.json',
 );
+
+const FLAT_2026_CUSTOM_FIELDS = new Set([
+  'obs',
+  'Oui_2',
+  'Non_2',
+  'Vasque suspendue',
+  'Vasque sur colonne',
+  'Meuble vasque',
+  'Baignoire',
+  'Bac à douche',
+  'Bidet',
+  'Paroi de douche',
+  'Sol glissant',
+  'Oui_3',
+  'Non_3',
+  'Cuvette à bonne hauteur',
+  'Cuvette trop basse',
+  'Oui_4',
+  'Non_4',
+  'hauteur1',
+  'hauteur2',
+  'hauteur3',
+  'Non_2589',
+  'ffferze',
+  'Projet ou souhait de lusager',
+  'Résumé des préconisations',
+  'Check Box1',
+  'Check Box2',
+  'Check Box3',
+  'Check Box4',
+  'Check Box5',
+  'Check Box6',
+  'Check Box7',
+  'Check Box8',
+  'Check Box9',
+  'Check Box10',
+  'Check Box11',
+  'Check Box12',
+  'Check Box13',
+  'Check Box14',
+  'Check Box15',
+  'Check Box16',
+  'Check Box17',
+  'Text9',
+  'Text10',
+]);
 
 // ---------------------------------------------------------------------------
 // Adresse Aid'Habitat — utilisée à 2 endroits dans le rapport :
@@ -142,6 +194,100 @@ async function loadTemplate(templatePath = DEFAULT_TEMPLATE_PATH) {
     templateBytes: templateBytesCache.get(templatePath),
     mapping: cachedMapping,
   };
+}
+
+function findPageIndexForWidgetRef(pdfDoc, widget) {
+  const pageRef = widget?.P?.();
+  if (!pageRef) return -1;
+  const pages = pdfDoc.getPages();
+  return pages.findIndex((p) => p.ref === pageRef);
+}
+
+function mapLegacyPageIndexToFlat2026(legacyPageIndex) {
+  // Pages 6-7 de l'ancien gabarit contenaient l'ancienne section
+  // Sanitaires + Projet/Résumé. Dans le PDF 2026, cette zone change
+  // structurellement : elle est redessinée manuellement plus bas.
+  if (legacyPageIndex === 5 || legacyPageIndex === 6) return -1;
+  // L'insertion d'une page Résumé avant les photos décale toutes les
+  // pages techniques suivantes (photos, plans, préconisations, aides).
+  if (legacyPageIndex >= 7) return legacyPageIndex + 1;
+  return legacyPageIndex;
+}
+
+function flat2026FieldFontSize(fieldName, rect) {
+  if (RECO_TEXT_FIELDS.includes(fieldName)) return 8.5;
+  if (['Environnement', 'Habitudes', 'Observations1'].includes(fieldName)) return 9.5;
+  if (fieldName === 'Text1') return 13;
+  if (fieldName === 'Caisse de retraite complémentaire') return 8.5;
+  if (fieldName === 'AMO') return 10;
+  if (/^page\d+$/.test(fieldName)) return 9;
+  if (rect.height <= 18) return 9.5;
+  return 10.5;
+}
+
+async function ensureFlat2026CompatibilityFields(pdfDoc) {
+  const form = pdfDoc.getForm();
+  if (form.getFields().length > 0) return false;
+
+  const legacyBytes = await fs.readFile(LEGACY_ACROFORM_TEMPLATE_PATH);
+  const legacyPdf = await PDFDocument.load(legacyBytes);
+  const legacyForm = legacyPdf.getForm();
+
+  for (const legacyField of legacyForm.getFields()) {
+    const widgets = legacyField.acroField.getWidgets?.() || [];
+    const widget = widgets[0];
+    const rect = widget?.getRectangle?.();
+    if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+
+    const legacyPageIndex = findPageIndexForWidgetRef(legacyPdf, widget);
+    const targetPageIndex = mapLegacyPageIndexToFlat2026(legacyPageIndex);
+    if (targetPageIndex < 0 || targetPageIndex >= pdfDoc.getPageCount()) {
+      continue;
+    }
+
+    const fieldName = legacyField.getName();
+    if (FLAT_2026_CUSTOM_FIELDS.has(fieldName)) continue;
+    const page = pdfDoc.getPage(targetPageIndex);
+    const baseOptions = {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      textColor: rgb(0, 0, 0),
+      backgroundColor: rgb(1, 1, 1),
+      borderColor: rgb(1, 1, 1),
+      borderWidth: 0,
+    };
+
+    try {
+      if (legacyField instanceof PDFButton) {
+        const field = form.createButton(fieldName);
+        field.addToPage('', page, baseOptions);
+      } else if (legacyField instanceof PDFCheckBox) {
+        const field = form.createCheckBox(fieldName);
+        field.addToPage(page, {
+          ...baseOptions,
+          borderColor: rgb(0, 0, 0),
+          borderWidth: 0.4,
+        });
+      } else {
+        // Les dropdowns historiques sont recréées en champs texte :
+        // l'utilisateur ne voit jamais le formulaire final, et cela
+        // évite de dépendre des options figées de l'ancien AcroForm.
+        const field = form.createTextField(fieldName);
+        if (rect.height > 35) field.enableMultiline();
+        field.addToPage(page, baseOptions);
+        field.setFontSize(flat2026FieldFontSize(fieldName, rect));
+      }
+    } catch (error) {
+      console.warn(
+        `[generateVisitReport] création champ 2026 "${fieldName}" :`,
+        error?.message || error,
+      );
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -654,6 +800,24 @@ function buildViewModel({
       pellet: Boolean(heat.pellet),
       other: Boolean(heat.other),
     },
+    heatingSummary: (() => {
+      const primary = String(housing?.heating?.name || '').trim().toLowerCase();
+      const enabled = (key) => Boolean(heat[key]) || primary === key;
+      const labels = [
+        ['Électrique', enabled('electric')],
+        ['Gaz', enabled('gas')],
+        ['Fioul', enabled('oil')],
+        ['Pompe à chaleur', enabled('heatPump') || primary === 'heat_pump'],
+        ['Collectif', enabled('collective')],
+        ['Bois', enabled('wood')],
+        ['Granulés', enabled('pellet')],
+        ['Autre', enabled('other')],
+      ]
+        .filter(([, active]) => active)
+        .map(([label]) => label);
+      if (labels.length > 0) return labels.join(', ');
+      return housing.heatingMain ? 'Oui' : '';
+    })(),
     // Champ `Observations1` page 5 — « Observations sur l'accessibilité ».
     //
     // Source UNIQUE (demande utilisateur 2026-04-29) : la note écrite
@@ -703,12 +867,77 @@ function buildViewModel({
   const isRdc = (lvl) => /(^|_)(rdc|pieces_de_vie)(_|$)/i.test(
     String(lvl || ''),
   );
+  const boolToOuiNon = (value) => {
+    if (value === undefined || value === null || value === '') return '';
+    return value ? 'Oui' : 'Non';
+  };
+  const levelLabel = (lvl) => {
+    if (!lvl) return '';
+    return isRdc(lvl) ? 'À niveau' : "À l'étage";
+  };
+  const joinEnabledLabels = (entries) => entries
+    .filter(([, enabled]) => Boolean(enabled))
+    .map(([label]) => label)
+    .join('\n');
+  const doorSenseLabel = (item, key) => {
+    const value = item?.[key];
+    if (value === undefined || value === null || value === '') return '';
+    return value ? 'Intérieur' : 'Extérieur';
+  };
+  const sdbTableInstances = sdbInstancesArr.slice(0, 3).map((item) => {
+    const bathHeight = formatHeightCm(item?.sdbBaignoireHauteur);
+    const showerHeight = formatHeightCm(item?.sdbBacDoucheHauteur);
+    const heights = [];
+    if (item?.sdbBaignoire && bathHeight) heights.push(`Baignoire : ${bathHeight}`);
+    if (item?.sdbBacDouche && showerHeight) heights.push(`Douche : ${showerHeight}`);
+    if (heights.length === 0) {
+      if (bathHeight) heights.push(bathHeight);
+      else if (showerHeight) heights.push(showerHeight);
+    }
+    return {
+      title: '',
+      localisation: levelLabel(item?.levelField),
+      equipement: joinEnabledLabels([
+        ['Baignoire', item?.sdbBaignoire],
+        ['Bac à douche', item?.sdbBacDouche],
+      ]),
+      hauteurSeuil: heights.join('\n'),
+      vasque: joinEnabledLabels([
+        ['Suspendue', item?.sdbVasqueSuspendue],
+        ['Sur colonne', item?.sdbVasqueColonne],
+        ['Meuble vasque', item?.sdbMeubleVasque],
+      ]),
+      complementaires: joinEnabledLabels([
+        ['Bidet', item?.sdbBidet],
+        ['Paroi de douche', item?.sdbParoiDouche],
+        ['Sol glissant', item?.sdbSolGlissant],
+      ]),
+      machineALaver: boolToOuiNon(item?.sdbMachineALaver),
+      porteAcces: formatWidthCm(item?.porteSdbDimension),
+      sensOuverture: doorSenseLabel(item, 'porteSdbSensAdapte'),
+    };
+  });
+  const wcTableInstances = wcInstancesArr.slice(0, 3).map((item) => ({
+    title: '',
+    localisation: levelLabel(item?.levelField),
+    hauteurCuvette: formatHeightCm(item?.wcCuvetteHauteur),
+    utilisation: joinEnabledLabels([
+      ['Trop haute', item?.wcCuvetteTropHaute],
+      ['Trop basse', item?.wcCuvetteTropBasse],
+      ['À bonne hauteur', item?.wcCuvetteBonneHauteur],
+    ]),
+    barreRelevement: boolToOuiNon(item?.wcBarreRelevement),
+    porteAcces: formatWidthCm(item?.porteWcDimension),
+    sensOuverture: doorSenseLabel(item, 'porteWcSensAdapte'),
+  }));
   const sdbAtRdc = sdbInstancesArr.some((s) => isRdc(s?.levelField));
   const wcAtRdc = wcInstancesArr.some((w) => isRdc(w?.levelField));
   const wcAtEtage = wcInstancesArr.some(
     (w) => Boolean(w?.levelField) && !isRdc(w?.levelField),
   );
   const sanitairesView = {
+    sdbInstances: sdbTableInstances,
+    wcInstances: wcTableInstances,
     // SDB située au niveau pièces de vie : Oui si au moins une SDB
     // est au RDC. Fallback sur le legacy `sdbNiveauPiecesVie` (booléen
     // sur l'instance) pour les dossiers historiques sans `levelField`.
@@ -964,8 +1193,12 @@ function applyEntryToField(field, entry, value) {
         field.select(entry.match);
       }
     } else if (type === 'dropdown') {
-      if (!(field instanceof PDFDropdown)) return;
-      if (value != null && value !== '') field.select(String(value));
+      if (value == null || value === '') return;
+      if (field instanceof PDFDropdown) {
+        field.select(String(value));
+      } else if (field instanceof PDFTextField) {
+        field.setText(sanitizeForPdfFont(value));
+      }
     }
   } catch (error) {
     console.warn(`[generateVisitReport] échec écriture "${field.getName()}" (${type}) :`, error?.message || error);
@@ -2171,6 +2404,348 @@ function findPageIndexForField(pdfDoc, field) {
   return -1;
 }
 
+function splitTextToLines(text, font, fontSize, maxWidth) {
+  const normalized = sanitizeForPdfFont(text)
+    .replace(/\r/g, '')
+    .split('\n');
+  const lines = [];
+  for (const paragraph of normalized) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push('');
+      continue;
+    }
+    let current = '';
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
+        current = candidate;
+      } else {
+        if (current) lines.push(current);
+        current = word;
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines;
+}
+
+function drawWrappedText(page, text, {
+  x,
+  yTop,
+  width,
+  font,
+  fontSize = 9,
+  lineHeight = 11,
+  color = rgb(0, 0, 0),
+  maxLines = 100,
+}) {
+  const lines = splitTextToLines(text || '', font, fontSize, width)
+    .slice(0, maxLines);
+  let y = yTop - fontSize;
+  for (const line of lines) {
+    if (line) {
+      page.drawText(line, {
+        x,
+        y,
+        size: fontSize,
+        font,
+        color,
+      });
+    }
+    y -= lineHeight;
+  }
+}
+
+function drawFlat2026Table(page, {
+  x,
+  yTop,
+  width,
+  labelWidth,
+  headers,
+  rows,
+  fonts,
+}) {
+  const { regular, bold } = fonts;
+  const orange = rgb(0xED / 255, 0x98 / 255, 0x44 / 255);
+  const lightOrange = rgb(0xFA / 255, 0xE8 / 255, 0xD6 / 255);
+  const lineColor = rgb(0.72, 0.72, 0.72);
+  const colCount = Math.max(1, headers.length);
+  const valueWidth = (width - labelWidth) / colCount;
+  const headerHeight = 26;
+  const rowHeights = rows.map((row) => row.height);
+  const totalHeight = headerHeight + rowHeights.reduce((sum, h) => sum + h, 0);
+  const yBottom = yTop - totalHeight;
+
+  page.drawRectangle({
+    x,
+    y: yBottom,
+    width,
+    height: totalHeight,
+    color: rgb(1, 1, 1),
+    borderColor: orange,
+    borderWidth: 0.7,
+  });
+  page.drawRectangle({
+    x,
+    y: yTop - headerHeight,
+    width,
+    height: headerHeight,
+    color: lightOrange,
+  });
+
+  const verticals = [x, x + labelWidth];
+  for (let i = 1; i <= colCount; i += 1) {
+    verticals.push(x + labelWidth + valueWidth * i);
+  }
+  for (const vx of verticals) {
+    page.drawRectangle({
+      x: vx,
+      y: yBottom,
+      width: 0.35,
+      height: totalHeight,
+      color: lineColor,
+    });
+  }
+  let cursor = yTop;
+  page.drawRectangle({
+    x,
+    y: cursor - 0.35,
+    width,
+    height: 0.35,
+    color: lineColor,
+  });
+  cursor -= headerHeight;
+  page.drawRectangle({
+    x,
+    y: cursor - 0.35,
+    width,
+    height: 0.35,
+    color: lineColor,
+  });
+  for (const h of rowHeights) {
+    cursor -= h;
+    page.drawRectangle({
+      x,
+      y: cursor - 0.35,
+      width,
+      height: 0.35,
+      color: lineColor,
+    });
+  }
+
+  drawWrappedText(page, 'Éléments évalués', {
+    x: x + 8,
+    yTop: yTop - 7,
+    width: labelWidth - 14,
+    font: bold,
+    fontSize: 8.6,
+    lineHeight: 10,
+    maxLines: 2,
+  });
+  headers.forEach((header, index) => {
+    drawWrappedText(page, header, {
+      x: x + labelWidth + valueWidth * index + 7,
+      yTop: yTop - 7,
+      width: valueWidth - 14,
+      font: bold,
+      fontSize: 8.6,
+      lineHeight: 10,
+      maxLines: 2,
+    });
+  });
+
+  cursor = yTop - headerHeight;
+  rows.forEach((row) => {
+    const rowTop = cursor;
+    drawWrappedText(page, row.label, {
+      x: x + 8,
+      yTop: rowTop - 7,
+      width: labelWidth - 14,
+      font: bold,
+      fontSize: 8.2,
+      lineHeight: 9.6,
+      maxLines: Math.max(1, Math.floor((row.height - 8) / 9.6)),
+    });
+    headers.forEach((_, index) => {
+      drawWrappedText(page, row.values[index] || '', {
+        x: x + labelWidth + valueWidth * index + 7,
+        yTop: rowTop - 7,
+        width: valueWidth - 14,
+        font: regular,
+        fontSize: 8,
+        lineHeight: 9.3,
+        maxLines: Math.max(1, Math.floor((row.height - 8) / 9.3)),
+      });
+    });
+    cursor -= row.height;
+  });
+}
+
+async function drawFlat2026Sanitaires({ pdfDoc, view }) {
+  const pages = pdfDoc.getPages();
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const textColor = rgb(0, 0, 0);
+
+  const sdbInstances = Array.isArray(view?.sanitaires?.sdbInstances)
+    ? view.sanitaires.sdbInstances
+    : [];
+  const wcInstances = Array.isArray(view?.sanitaires?.wcInstances)
+    ? view.sanitaires.wcInstances
+    : [];
+  const sdbCount = Math.max(1, Math.min(3, sdbInstances.length || 1));
+  const wcCount = Math.max(1, Math.min(3, wcInstances.length || 1));
+  const sdbCols = Array.from({ length: sdbCount }, (_, i) => (
+    sdbInstances[i] || {}
+  ));
+  const wcCols = Array.from({ length: wcCount }, (_, i) => (
+    wcInstances[i] || {}
+  ));
+
+  const page6 = pages[5];
+  if (page6) {
+    page6.drawRectangle({
+      x: 36,
+      y: 70,
+      width: 523,
+      height: 705,
+      color: rgb(1, 1, 1),
+    });
+    page6.drawText('Salle de bain', {
+      x: 41.8,
+      y: 754,
+      size: 12,
+      font: bold,
+      color: textColor,
+    });
+    drawFlat2026Table(page6, {
+      x: 42,
+      yTop: 733,
+      width: 511,
+      labelWidth: 118,
+      headers: sdbCols.map((_, i) => `Salle de bain ${i + 1}`),
+      fonts: { regular, bold },
+      rows: [
+        { label: 'Localisation', height: 34, values: sdbCols.map((s) => s.localisation) },
+        { label: 'Équipement', height: 36, values: sdbCols.map((s) => s.equipement) },
+        { label: 'Hauteur / seuil', height: 34, values: sdbCols.map((s) => s.hauteurSeuil) },
+        { label: 'Type de vasque', height: 50, values: sdbCols.map((s) => s.vasque) },
+        { label: 'Équipements complémentaires', height: 50, values: sdbCols.map((s) => s.complementaires) },
+        { label: 'Machine à laver dans la pièce', height: 34, values: sdbCols.map((s) => s.machineALaver) },
+        { label: 'Porte d’accès', height: 34, values: sdbCols.map((s) => s.porteAcces) },
+        { label: 'Sens d’ouverture', height: 34, values: sdbCols.map((s) => s.sensOuverture) },
+      ],
+    });
+
+    page6.drawText('WC', {
+      x: 41.8,
+      y: 354,
+      size: 12,
+      font: bold,
+      color: textColor,
+    });
+    drawFlat2026Table(page6, {
+      x: 42,
+      yTop: 333,
+      width: 511,
+      labelWidth: 118,
+      headers: wcCols.map((_, i) => `WC ${i + 1}`),
+      fonts: { regular, bold },
+      rows: [
+        { label: 'Localisation', height: 35, values: wcCols.map((w) => w.localisation) },
+        { label: 'Hauteur cuvette', height: 35, values: wcCols.map((w) => w.hauteurCuvette) },
+        { label: 'Utilisation', height: 54, values: wcCols.map((w) => w.utilisation) },
+        { label: 'Barre de relèvement', height: 35, values: wcCols.map((w) => w.barreRelevement) },
+        { label: 'Porte d’accès', height: 35, values: wcCols.map((w) => w.porteAcces) },
+        { label: 'Sens d’ouverture', height: 35, values: wcCols.map((w) => w.sensOuverture) },
+      ],
+    });
+  }
+
+  const page7 = pages[6];
+  if (page7) {
+    drawWrappedText(page7, view?.observations?.observationEquipements || '', {
+      x: 48,
+      yTop: 716,
+      width: 500,
+      font: regular,
+      fontSize: 10,
+      lineHeight: 13,
+      maxLines: 29,
+    });
+    drawWrappedText(page7, view?.observations?.projetSouhaitUsage || '', {
+      x: 48,
+      yTop: 258,
+      width: 500,
+      font: regular,
+      fontSize: 10,
+      lineHeight: 13,
+      maxLines: 15,
+    });
+  }
+
+  const page8 = pages[7];
+  if (page8) {
+    drawWrappedText(page8, view?.observations?.resumePreconisations || '', {
+      x: 48,
+      yTop: 760,
+      width: 500,
+      font: regular,
+      fontSize: 10,
+      lineHeight: 13,
+      maxLines: 52,
+    });
+  }
+}
+
+async function drawFlat2026Logement({ pdfDoc, view }) {
+  const page = pdfDoc.getPages()[4];
+  if (!page) return;
+  const heatingSummary = String(view?.housing?.heatingSummary || '').trim();
+  if (!heatingSummary) return;
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  drawWrappedText(page, heatingSummary, {
+    x: 230,
+    yTop: 485,
+    width: 320,
+    font: regular,
+    fontSize: 10.5,
+    lineHeight: 13,
+    maxLines: 3,
+  });
+}
+
+async function drawGeneratedPageNumbers(pdfDoc) {
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pages = pdfDoc.getPages();
+  for (let pageIndex = 1; pageIndex < pages.length; pageIndex += 1) {
+    const page = pages[pageIndex];
+    const { width } = page.getSize();
+    const label = String(pageIndex);
+    const fontSize = 11;
+    const textWidth = font.widthOfTextAtSize(label, fontSize);
+
+    // Le PDF 2026 contient des numéros baked dans le fond de page.
+    // On les masque puis on redessine le numéro réel après les
+    // insertions/suppressions de pages.
+    page.drawRectangle({
+      x: width - 70,
+      y: 0,
+      width: 60,
+      height: 34,
+      color: rgb(1, 1, 1),
+    });
+    page.drawText(label, {
+      x: width - 31 - textWidth,
+      y: 13,
+      size: fontSize,
+      font,
+      color: rgb(0, 0, 0),
+    });
+  }
+}
+
 /**
  * Génère un PDF rempli pour le dossier fourni.
  *
@@ -2452,6 +3027,7 @@ export async function generateVisitReport({
   // template n'est pas chiffré.
   const pdfDoc = await PDFDocument.load(templateBytes);
   const form = pdfDoc.getForm();
+  const isFlat2026Template = await ensureFlat2026CompatibilityFields(pdfDoc);
 
   // Index par nom pour éviter le for-each * field-by-name.
   const fieldsByName = new Map();
@@ -2475,6 +3051,9 @@ export async function generateVisitReport({
 
   for (const [fieldName, entry] of Object.entries(mapping)) {
     if (fieldName.startsWith('$')) continue; // commentaires/meta dans le JSON
+    if (isFlat2026Template && FLAT_2026_CUSTOM_FIELDS.has(fieldName)) {
+      continue;
+    }
     const field = fieldsByName.get(fieldName);
     if (!field) {
       stats.missingField += 1;
@@ -2981,7 +3560,14 @@ export async function generateVisitReport({
   // template en « Étage 1 / 2 / 3 ». Cf. `applyMultiEtageOverlay`.
   // S'exécute AVANT le flatten pour superposer aux widgets AcroForm
   // déjà rendus.
-  applyMultiEtageOverlay({ pdfDoc, view });
+  if (!isFlat2026Template) {
+    applyMultiEtageOverlay({ pdfDoc, view });
+  }
+
+  if (isFlat2026Template) {
+    await drawFlat2026Logement({ pdfDoc, view });
+    await drawFlat2026Sanitaires({ pdfDoc, view });
+  }
 
   // Aplatissement final : convertit chaque champ en contenu fixe (le
   // texte/cocheur devient un objet graphique inerte). Le résultat n'est
@@ -3162,6 +3748,8 @@ export async function generateVisitReport({
     }
   }
   stats.recoPagesRemoved = emptyPageIndices.length;
+
+  await drawGeneratedPageNumbers(pdfDoc);
 
   const bytes = await pdfDoc.save({
     // On garde les xref tables compactes pour sortir un PDF d'environ
