@@ -1367,7 +1367,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           onChanged: (v) =>
               _updateOccupant(index, occ.copyWith(numeroSecuriteSociale: v)),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         // Caisse principale + caisse complémentaire sur la même ligne.
         // Refactor 2026-05-12 : remplacement des FormSelectDropdown par
         // un bouton cliquable qui ouvre un picker visuel style "cards"
@@ -1589,7 +1589,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // Afficher même les âges 0 (nouveau-né / enfant < 1 an). On filtre
     // seulement les dates futures (négatives).
     if (age < 0) return '';
-    return '$age ans !';
+    return '$age ans';
   }
 
   /// Accepts either an ISO date (YYYY-MM-DD) or a French date (DD/MM/YYYY).
@@ -2441,13 +2441,13 @@ class _RetirementFundPickerDialogState
                       ),
                     )
                   : GridView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(12),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 3,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                            childAspectRatio: 0.85,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            childAspectRatio: 1.45,
                           ),
                       itemCount: filtered.length,
                       itemBuilder: (context, i) => _buildTile(filtered[i]),
@@ -2567,7 +2567,7 @@ class _RetirementFundPickerDialogState
             Expanded(
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(6),
                 color: const Color(0xFFFAFAFC),
                 child: it.logoUrl.trim().isNotEmpty
                     ? CachedRemoteImage(
@@ -2582,7 +2582,7 @@ class _RetirementFundPickerDialogState
             ),
             // Titre + sous-titre
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2597,10 +2597,10 @@ class _RetirementFundPickerDialogState
                     ),
                   ),
                   if (it.subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       it.subtitle,
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 11,
@@ -2636,8 +2636,8 @@ class _FundInitialsAvatar extends StatelessWidget {
         : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     return Center(
       child: Container(
-        width: 64,
-        height: 64,
+        width: 52,
+        height: 52,
         decoration: BoxDecoration(
           color: const Color(0xFFEEE7F2),
           borderRadius: BorderRadius.circular(20),

@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../components/beneficiary_badges.dart'
-    show formatAccompanimentType, accompanimentPaletteFor, IncomeCategoryBadge;
+    show formatAccompanimentType, IncomeCategoryBadge;
 import '../components/beneficiary_palettes.dart';
 import '../components/brand_colors.dart';
 import '../components/soft_transitions.dart';
@@ -491,9 +491,8 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        // Pastel stable par bénéficiaire — même palette et
-                        // même couleur que sur l'écran "Mes dossiers" (hash
-                        // des initiales, cf. `beneficiaryAvatarBgFor`).
+                        // Fond mauve clair uniforme, aligné sur la sidebar
+                        // active et l'écran "Mes dossiers".
                         color: beneficiaryAvatarBgFor(initials),
                         shape: BoxShape.circle,
                       ),
@@ -1686,11 +1685,6 @@ class _PendingReportRow extends StatelessWidget {
     // Demande utilisateur 2026-05-12.
     final income = p.incomeCategory.trim();
 
-    // Palette d'avatar identique à `DossiersListScreen` (basée sur la
-    // nature d'accompagnement Diag/MPA) + contour vert/jaune selon le
-    // flag `beneficiaryPrepared` — parité totale avec Mes dossiers.
-    // Demande utilisateur 2026-05-12.
-    final avatarPalette = accompanimentPaletteFor(dossier.natureAccompagnement);
     final borderColor = dossier.beneficiaryPrepared
         ? const Color(0xFF86EFAC) // green-300, bénéficiaire prêt
         : const Color(0xFFFDE047); // yellow-300, en attente
@@ -1701,24 +1695,24 @@ class _PendingReportRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
         child: Row(
           children: [
-            // Initiales sur fond coloré (palette d'accompagnement) +
-            // bordure vert/jaune comme dans Mes dossiers.
+            // Initiales sur fond mauve clair + bordure vert/jaune comme
+            // dans Mes dossiers.
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: avatarPalette.bg,
+                color: kBeneficiaryAvatarBg,
                 shape: BoxShape.circle,
                 border: Border.all(color: borderColor, width: 1.8),
               ),
               alignment: Alignment.center,
               child: Text(
                 initials,
-                style: TextStyle(
+                style: const TextStyle(
                   // Bump 2026-05-13 : 15→17, w700→w800.
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
-                  color: avatarPalette.fg,
+                  color: kBeneficiaryAvatarFg,
                 ),
               ),
             ),

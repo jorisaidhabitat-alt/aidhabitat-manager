@@ -819,29 +819,13 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Row(
             children: [
-              // Avatar — couleur dérivée du TYPE D'ACCOMPAGNEMENT du
-              // dossier (rose pour Diag ergo, vert pour MPA ergo, violet
-              // pour MPA complet, gris pour vide). Demande utilisateur
-              // 2026-05-04 : "la même couleur sur la photo de profil que
-              // le type d'accompagnement". Permet à l'ergo de reconnaître
-              // la nature d'un dossier d'un seul coup d'œil dans la liste,
-              // sans avoir à le scanner colonne par colonne.
-              //
-              // Si l'avatar a une vraie photo de profil un jour, ce
-              // Container sert de bordure/halo coloré autour de la photo
-              // (à câbler quand le champ photo de bénéficiaire existera —
-              // pour l'instant, fallback initiales).
-              //
-              // Avant : couleur dérivée des initiales (mint/pêche/ciel)
-              // qui ne portait aucune info métier, juste de la variété
-              // visuelle.
+              // Avatar bénéficiaire : fond mauve clair uniforme, aligné
+              // sur l'état actif de la sidebar. Les couleurs métier restent
+              // portées par les badges, pas par la photo de profil.
               SizedBox(
                 width: 64,
                 child: Builder(
                   builder: (_) {
-                    final palette = accompanimentPaletteFor(
-                      dossier.natureAccompagnement,
-                    );
                     // Bordure jaune (non préparé) / verte (préparé) autour
                     // de l'avatar — demande utilisateur 2026-05-05. Reflète
                     // le flag `beneficiary_prepared` togglé dans le bandeau
@@ -853,16 +837,16 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: palette.bg,
+                        color: kBeneficiaryAvatarBg,
                         shape: BoxShape.circle,
                         border: Border.all(color: borderColor, width: 1.5),
                       ),
                       alignment: Alignment.center,
                       child: Text(
                         _initials(p),
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: palette.fg,
+                          color: kBeneficiaryAvatarFg,
                           fontSize: 16,
                         ),
                       ),

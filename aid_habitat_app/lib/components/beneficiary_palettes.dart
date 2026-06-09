@@ -7,24 +7,14 @@ import 'package:google_fonts/google_fonts.dart';
 /// tous les écrans de l'app.
 
 // ---------------------------------------------------------------------------
-// Avatar bénéficiaire — mint / pêche / ciel
+// Avatar bénéficiaire — mauve clair uniforme, aligné sur la sidebar active.
 // ---------------------------------------------------------------------------
 
-const List<Color> kBeneficiaryAvatarBgs = [
-  Color(0xFFB8DDCC), // mint
-  Color(0xFFF4D5C4), // pêche
-  Color(0xFFCFE3F0), // ciel
-];
-
+const Color kBeneficiaryAvatarBg = Color(0xFFF2ECF5); // mauve-100
 const Color kBeneficiaryAvatarFg = Color(0xFF554265);
 
-Color beneficiaryAvatarBgFor(String seed) {
-  if (seed.isEmpty) return kBeneficiaryAvatarBgs.first;
-  int hash = 0;
-  for (final rune in seed.runes) {
-    hash = (hash * 31 + rune) & 0x7FFFFFFF;
-  }
-  return kBeneficiaryAvatarBgs[hash % kBeneficiaryAvatarBgs.length];
+Color beneficiaryAvatarBgFor(String _) {
+  return kBeneficiaryAvatarBg;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,10 +49,7 @@ EpciPalette epciPaletteFor(String label) {
   if (label.isEmpty) {
     // Pas de libellé → gris neutre slate-100. Distinct visuellement
     // d'un vrai EPCI pour signaler "non renseigné".
-    return const EpciPalette(
-      bg: Color(0xFFF2F4F6),
-      fg: _kPastelEpciFg,
-    );
+    return const EpciPalette(bg: Color(0xFFF2F4F6), fg: _kPastelEpciFg);
   }
   int hash = 0;
   for (final rune in label.runes) {
@@ -72,12 +59,7 @@ EpciPalette epciPaletteFor(String label) {
   // proche de l'angle d'or (137° ≈ 137.508° / golden angle) pour que
   // deux hashes consécutifs donnent des teintes éloignées.
   final hue = ((hash * 137) % 360).toDouble();
-  final hsl = HSLColor.fromAHSL(
-    1.0,
-    hue,
-    _kEpciSaturation,
-    _kEpciLightness,
-  );
+  final hsl = HSLColor.fromAHSL(1.0, hue, _kEpciSaturation, _kEpciLightness);
   return EpciPalette(bg: hsl.toColor(), fg: _kPastelEpciFg);
 }
 
