@@ -31,31 +31,28 @@ class NotesPanelTitleBanner extends StatelessWidget {
             topRight: Radius.circular(12),
           )
         : BorderRadius.circular(12);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFEDE8F5), // mauve-100 (brand light)
         borderRadius: borderRadius,
-        border: Border(
-          top: const BorderSide(color: Color(0xFFEDE9EF), width: 1),
-          left: const BorderSide(color: Color(0xFFEDE9EF), width: 1),
-          right: const BorderSide(color: Color(0xFFEDE9EF), width: 1),
-          bottom: BorderSide(
-            color: attachedToBelow
-                ? Colors.transparent
-                : const Color(0xFFEDE9EF),
-            width: 1,
-          ),
-        ),
+        border: Border.all(color: const Color(0xFFEDE9EF), width: 1),
       ),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF554265), // mauve-700
-          letterSpacing: 0.1,
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 42),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          color: const Color(0xFFEDE8F5), // mauve-100 (brand light)
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF554265), // mauve-700
+              letterSpacing: 0.1,
+            ),
+          ),
         ),
       ),
     );
