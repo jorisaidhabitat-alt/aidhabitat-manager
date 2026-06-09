@@ -54,6 +54,7 @@ class AccessibilityTab extends StatefulWidget {
 /// validation reads the same value the user sees on screen.
 class AccessibilityTabController {
   Future<void> Function()? _flushPendingSave;
+  VoidCallback? _openLevelsAndAddLevel;
 
   Future<void> flushPendingSave() async {
     final flush = _flushPendingSave;
@@ -61,13 +62,22 @@ class AccessibilityTabController {
     await flush();
   }
 
-  void _attach(Future<void> Function() flush) {
+  void openLevelsAndAddLevel() {
+    _openLevelsAndAddLevel?.call();
+  }
+
+  void _attach(
+    Future<void> Function() flush,
+    VoidCallback openLevelsAndAddLevel,
+  ) {
     _flushPendingSave = flush;
+    _openLevelsAndAddLevel = openLevelsAndAddLevel;
   }
 
   void _detach(Future<void> Function() flush) {
     if (_flushPendingSave == flush) {
       _flushPendingSave = null;
+      _openLevelsAndAddLevel = null;
     }
   }
 }
@@ -182,6 +192,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   List<String> _orderedLevels = [];
   final Map<String, List<String>> _levelRooms = {};
   final Map<String, TextEditingController> _customRoomCtrls = {};
+  final Map<String, String?> _activeRoomByLevel = {};
 
   // Volets : '' | 'Aucun' | 'Entier' | 'Localisé'.
   // '' = jamais répondu (aucun pill highlight UI). L'ergo doit cliquer
@@ -322,7 +333,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
   @override
   void initState() {
     super.initState();
-    widget.controller?._attach(_flushPendingSave);
+    widget.controller?._attach(_flushPendingSave, _openLevelsAndAddLevel);
     // Honore la sous-section initiale demandée par le parent (utile
     // pour que « Remplir les champs » dans la popup de validation
     // pointe directement sur la bonne sous-section, pas seulement
@@ -339,7 +350,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?._detach(_flushPendingSave);
-      widget.controller?._attach(_flushPendingSave);
+      widget.controller?._attach(_flushPendingSave, _openLevelsAndAddLevel);
     }
     // Quand le parent change `initialSubSection` (programmatic nav
     // depuis _navigateToMissingField), on bascule la sous-section
@@ -365,6 +376,26 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       c.dispose();
     }
     super.dispose();
+  }
+
+  void _openLevelsAndAddLevel() {
+    if (!mounted) return;
+    setState(() {
+      _subSection = 1;
+      _addLevelMode = true;
+      _pendingLevelField = null;
+      _expandedLevel = null;
+    });
+    widget.onSubSectionChanged?.call(1);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1370,6 +1401,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       _orderedLevels.insert(0, cfg.field);
       _levelRooms[cfg.field] ??= [];
       _customRoomCtrls.putIfAbsent(cfg.field, () => TextEditingController());
+      _activeRoomByLevel[cfg.field] = null;
       _expandedLevel = cfg.field;
       _addLevelMode = false;
       _pendingLevelField = cfg.field;
@@ -1513,6 +1545,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
       if (_pendingLevelField == cfg.field) {
         _pendingLevelField = null;
       }
+      _activeRoomByLevel.remove(cfg.field);
       _expandedLevel = null;
     });
     _scheduleSave(_levelDirtyKeys(cfg));
@@ -1534,6 +1567,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     setState(() {
       _orderedLevels.remove(cfg.field);
       _levelRooms[cfg.field] = [];
+      _activeRoomByLevel.remove(cfg.field);
       _syncGarageAnnexeFromLevels();
     });
     _scheduleSave(_levelDirtyKeys(cfg, includeGarage: true));
@@ -1556,6 +1590,13 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     }
     setState(() {
       _levelRooms[cfg.field] = current;
+      final roomKey = room.toLowerCase();
+      final roomStillVisible =
+          cfg.presetRooms.any((preset) => preset.toLowerCase() == roomKey) ||
+          current.any((value) => value.toLowerCase() == roomKey);
+      if (!roomStillVisible && _activeRoomByLevel[cfg.field] == room) {
+        _activeRoomByLevel[cfg.field] = null;
+      }
       if (room == 'Garage') {
         _syncGarageAnnexeFromLevels();
       }
@@ -1575,7 +1616,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         ? const Color(0xFF3F3451)
         : const Color(0xFF2B323A);
 
-    return Container(
+    return AnimatedContainer(
+      duration: kSoftMedium,
+      curve: kSoftCurve,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: isActive ? const Color(0xFFF7F1FB) : Colors.white,
@@ -1593,47 +1636,58 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           ),
           const SizedBox(width: 6),
           Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: Text(
-                    room,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: labelColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (count > 0) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    constraints: const BoxConstraints(minWidth: 18),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isActive ? kBrandPurple : const Color(0xFFE4E7EB),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() {
+                _activeRoomByLevel[cfg.field] =
+                    _activeRoomByLevel[cfg.field] == room ? null : room;
+              }),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
                     child: Text(
-                      '$count',
+                      room,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        height: 1.0,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: labelColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
+                  if (count > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      constraints: const BoxConstraints(minWidth: 18),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? kBrandPurple
+                            : const Color(0xFFE4E7EB),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '$count',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isActive
+                              ? Colors.white
+                              : const Color(0xFF5C6670),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 6),
@@ -1643,6 +1697,73 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             onTap: canAdd ? () => _changeRoomCount(cfg, room, 1) : null,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLevelRoomTile({
+    required _LevelConfig cfg,
+    required String room,
+    required int count,
+  }) {
+    final isSelected = count > 0;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _activeRoomByLevel[cfg.field] = room),
+      child: AnimatedContainer(
+        duration: kSoftMedium,
+        curve: kSoftCurve,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFF7F1FB) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFFDCCFE7)
+                : const Color(0xFFD8DDE3),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                room,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isSelected
+                      ? const Color(0xFF3F3451)
+                      : const Color(0xFF2B323A),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                constraints: const BoxConstraints(minWidth: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: kBrandPurple,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1657,67 +1778,71 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     ];
     final ctrl = _customRoomCtrls[cfg.field]!;
     final isExpanded = _expandedLevel == cfg.field;
+    final displayRooms = rooms.isEmpty
+        ? 'Aucune pièce sélectionnée'
+        : _formatRoomsWithCounts(rooms);
+    final activeRoom = _activeRoomByLevel[cfg.field];
 
-    if (!isExpanded) {
-      final displayRooms = rooms.isEmpty
-          ? 'Aucune pièce sélectionnée'
-          : _formatRoomsWithCounts(rooms);
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => _expandedLevel = cfg.field),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7FA),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE4E7EB)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      cfg.label,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF3F3451),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      displayRooms,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF5C6670),
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Padding(
-                padding: EdgeInsets.only(top: 2),
-                child: Icon(
-                  Icons.expand_more,
-                  size: 20,
-                  color: Color(0xFF5C6670),
-                ),
-              ),
-            ],
-          ),
+    final collapsedCard = GestureDetector(
+      key: ValueKey<String>('collapsed-${cfg.field}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() {
+        _expandedLevel = cfg.field;
+        _activeRoomByLevel[cfg.field] = null;
+      }),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F7FA),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE4E7EB)),
         ),
-      );
-    }
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    cfg.label,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF3F3451),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    displayRooms,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF5C6670),
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(
+                Icons.expand_more,
+                size: 20,
+                color: Color(0xFF5C6670),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
 
-    return GestureDetector(
+    final expandedCard = GestureDetector(
+      key: ValueKey<String>('expanded-${cfg.field}'),
       behavior: HitTestBehavior.opaque,
       onTap: () => _collapseLevelEditor(cfg),
       child: Container(
@@ -1746,9 +1871,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        rooms.isEmpty
-                            ? 'Aucune pièce sélectionnée'
-                            : _formatRoomsWithCounts(rooms),
+                        displayRooms,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -1768,12 +1891,11 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                   onTap: () => _collapseLevelEditor(cfg),
                 ),
                 if (_pendingLevelField != cfg.field) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 4),
                   _LevelHeaderIconButton(
                     icon: LucideIcons.trash2,
                     tooltip: 'Supprimer le niveau',
                     onTap: () => _deleteLevel(cfg),
-                    destructive: true,
                   ),
                 ],
               ],
@@ -1788,83 +1910,183 @@ class _AccessibilityTabState extends State<AccessibilityTab>
               crossAxisSpacing: 8,
               children: allItems.map((room) {
                 final count = rooms.where((r) => r == room).length;
-                return _buildLevelRoomAdjuster(
-                  cfg: cfg,
-                  room: room,
-                  count: count,
+                final isAdjusting = activeRoom == room;
+                return AnimatedSwitcher(
+                  duration: kSoftMedium,
+                  switchInCurve: kSoftCurve,
+                  switchOutCurve: kSoftCurveIn,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SizeTransition(
+                        sizeFactor: animation,
+                        axisAlignment: -1,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: isAdjusting
+                      ? KeyedSubtree(
+                          key: ValueKey<String>('adjuster-${cfg.field}-$room'),
+                          child: _buildLevelRoomAdjuster(
+                            cfg: cfg,
+                            room: room,
+                            count: count,
+                          ),
+                        )
+                      : KeyedSubtree(
+                          key: ValueKey<String>('tile-${cfg.field}-$room'),
+                          child: _buildLevelRoomTile(
+                            cfg: cfg,
+                            room: room,
+                            count: count,
+                          ),
+                        ),
                 );
               }).toList(),
             ),
             const SizedBox(height: 10),
-            // Ajout pièce personnalisée
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: ctrl,
-                    stylusHandwritingEnabled: true,
-                    // fontSize 12 + padding vertical 10 → même hauteur que
-                    // le pill "Vasque suspendue" (référence du relevé).
-                    style: const TextStyle(fontSize: 12),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      hintText: 'Ajouter une pièce',
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF8A939D),
-                        fontSize: 12,
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      // Refonte 2026-05-13 (demande user) — border gris léger
-                      // partout, focus violet, parité avec FormTextField et
-                      // le champ Ville du dossier.
-                      // Refonte 2026-05-13 : pill radius 999 uniforme.
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: BorderSide(color: Color(0xFFB9C0C7)),
-                      ),
-                      // Refonte 2026-05-13 : pill radius 999 uniforme.
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: BorderSide(color: Color(0xFFB9C0C7)),
-                      ),
-                      // Refonte 2026-05-13 : pill radius 999 uniforme.
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: const BorderSide(
-                          color: kBrandPurple,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                    onSubmitted: (_) => _addCustomRoom(cfg),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: ctrl,
+              builder: (context, value, _) {
+                final hasPendingText = value.text.trim().isNotEmpty;
+                return SizedBox(
+                  height: 34,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      const buttonSize = 34.0;
+                      const gap = 8.0;
+                      final fieldWidth = hasPendingText
+                          ? constraints.maxWidth - buttonSize - gap
+                          : constraints.maxWidth;
+                      return Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [
+                          AnimatedPositioned(
+                            duration: kSoftMedium,
+                            curve: kSoftCurve,
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: fieldWidth,
+                            child: TextField(
+                              controller: ctrl,
+                              stylusHandwritingEnabled: true,
+                              style: const TextStyle(fontSize: 12),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                hintText: 'Ajouter une pièce',
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFF8A939D),
+                                  fontSize: 12,
+                                ),
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFB9C0C7),
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFB9C0C7),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: const BorderSide(
+                                    color: kBrandPurple,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                              onSubmitted: (_) => _addCustomRoom(cfg),
+                            ),
+                          ),
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                            child: AnimatedSlide(
+                              duration: kSoftMedium,
+                              curve: kSoftCurve,
+                              offset: hasPendingText
+                                  ? Offset.zero
+                                  : const Offset(0.18, 0),
+                              child: AnimatedOpacity(
+                                duration: kSoftMedium,
+                                curve: kSoftCurve,
+                                opacity: hasPendingText ? 1 : 0,
+                                child: IgnorePointer(
+                                  ignoring: !hasPendingText,
+                                  child: GestureDetector(
+                                    onTap: () => _addCustomRoom(cfg),
+                                    child: Container(
+                                      width: buttonSize,
+                                      height: buttonSize,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFF2ECF5),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        color: Color(0xFF554265),
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _addCustomRoom(cfg),
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF2ECF5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.add,
-                      color: Color(0xFF554265),
-                      size: 18,
-                    ),
-                  ),
-                ),
-              ],
+                );
+              },
             ),
           ],
         ),
+      ),
+    );
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOutCubic,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: kSoftMedium,
+        switchInCurve: kSoftCurve,
+        switchOutCurve: kSoftCurveIn,
+        layoutBuilder: (currentChild, previousChildren) {
+          return Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
+        transitionBuilder: (child, animation) {
+          final slide = Tween<Offset>(
+            begin: const Offset(0, -0.04),
+            end: Offset.zero,
+          ).animate(animation);
+          return ClipRect(
+            child: FadeTransition(
+              opacity: animation,
+              child: SlideTransition(position: slide, child: child),
+            ),
+          );
+        },
+        child: isExpanded ? expandedCard : collapsedCard,
       ),
     );
   }
@@ -1879,9 +2101,17 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         !cfg.presetRooms.any((p) => p.toLowerCase() == lc)) {
       current.add(val);
     }
+    ctrl.clear();
+    final activeRoom = cfg.presetRooms.cast<String?>().firstWhere(
+      (room) => room?.toLowerCase() == lc,
+      orElse: () => current.cast<String?>().firstWhere(
+        (room) => room?.toLowerCase() == lc,
+        orElse: () => val,
+      ),
+    )!;
     setState(() {
       _levelRooms[cfg.field] = current;
-      ctrl.clear();
+      _activeRoomByLevel[cfg.field] = activeRoom;
     });
     _scheduleSave(_levelDirtyKeys(cfg));
   }
@@ -2142,33 +2372,25 @@ class _LevelHeaderIconButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onTap,
-    this.destructive = false,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
-  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
-    final foreground = destructive
-        ? const Color(0xFFB42318)
-        : const Color(0xFF5C6670);
-    final background = destructive
-        ? const Color(0xFFFEECEC)
-        : Colors.white.withValues(alpha: 0.85);
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: background,
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(999),
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Icon(icon, size: 16, color: foreground),
+            padding: const EdgeInsets.all(6),
+            child: Icon(icon, size: 18, color: const Color(0xFF5C6670)),
           ),
         ),
       ),
