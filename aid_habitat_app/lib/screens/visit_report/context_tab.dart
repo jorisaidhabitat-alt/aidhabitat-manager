@@ -28,7 +28,7 @@ class ContextTab extends StatefulWidget {
   /// (les numéros sont désormais par-page, plus globaux — un onglet
   /// Médical peut afficher {1} sur page 1 et {2, 3} sur page 2).
   final Future<void> Function(int flagNumber, bool checked)?
-      onMedicalFlagToggled;
+  onMedicalFlagToggled;
 
   /// Flags médicaux actuellement visibles sur la PAGE COURANTE de la
   /// note "Contexte de vie > Médical". Source unique de vérité pour
@@ -112,7 +112,8 @@ class _ContextTabState extends State<ContextTab>
     // occupants so the pills and names shown here track the new values.
     final oldP = oldWidget.dossier.patient;
     final newP = widget.dossier.patient;
-    final nameChanged = oldP.firstName != newP.firstName ||
+    final nameChanged =
+        oldP.firstName != newP.firstName ||
         oldP.lastName != newP.lastName ||
         oldP.secondFirstName != newP.secondFirstName ||
         oldP.secondLastName != newP.secondLastName ||
@@ -144,19 +145,20 @@ class _ContextTabState extends State<ContextTab>
   }
 
   Future<void> _load() async {
-    final data =
-        await widget.repository.fetchContexteDeVie(widget.dossier.id);
+    final data = await widget.repository.fetchContexteDeVie(widget.dossier.id);
 
     AutonomyData autonomy = const AutonomyData();
     MedicalContext medical = const MedicalContext();
     if (data != null) {
       if (data['medicalContext'] != null) {
         medical = MedicalContext.fromJson(
-            data['medicalContext'] as Map<String, dynamic>);
+          data['medicalContext'] as Map<String, dynamic>,
+        );
       }
       if (data['autonomy'] != null) {
-        autonomy =
-            AutonomyData.fromJson(data['autonomy'] as Map<String, dynamic>);
+        autonomy = AutonomyData.fromJson(
+          data['autonomy'] as Map<String, dynamic>,
+        );
       }
     }
 
@@ -175,27 +177,34 @@ class _ContextTabState extends State<ContextTab>
     final count = math.max(1, patient.numberPeople ?? 1);
     final out = <OccupantAutonomy>[];
     for (var i = 0; i < count; i++) {
-      final existing =
-          i < autonomy.occupants.length ? autonomy.occupants[i] : null;
+      final existing = i < autonomy.occupants.length
+          ? autonomy.occupants[i]
+          : null;
 
       final homeHelpTxt = _occupantHomeHelpText(i);
 
       if (existing != null) {
-        out.add(OccupantAutonomy(
-          medical: existing.medical,
-          autonomyDone: existing.autonomyDone,
-          autonomy: _mergeAutonomyItems(existing.autonomy),
-          humanHelp: _mergeHumanHelpItems(existing.humanHelp, homeHelpTxt),
-          attention: _mergeAutonomyItems(existing.attention),
-        ));
+        out.add(
+          OccupantAutonomy(
+            medical: existing.medical,
+            autonomyDone: existing.autonomyDone,
+            autonomy: _mergeAutonomyItems(existing.autonomy),
+            humanHelp: _mergeHumanHelpItems(existing.humanHelp, homeHelpTxt),
+            attention: _mergeAutonomyItems(existing.attention),
+          ),
+        );
       } else {
-        out.add(OccupantAutonomy(
-          medical: i == 0 ? medical : const MedicalContext(),
-          autonomyDone: i == 0 ? autonomy.done : false,
-          autonomy: _mergeAutonomyItems(i == 0 ? autonomy.checklist : const []),
-          humanHelp: _mergeHumanHelpItems(const [], homeHelpTxt),
-          attention: _mergeAutonomyItems(const []),
-        ));
+        out.add(
+          OccupantAutonomy(
+            medical: i == 0 ? medical : const MedicalContext(),
+            autonomyDone: i == 0 ? autonomy.done : false,
+            autonomy: _mergeAutonomyItems(
+              i == 0 ? autonomy.checklist : const [],
+            ),
+            humanHelp: _mergeHumanHelpItems(const [], homeHelpTxt),
+            attention: _mergeAutonomyItems(const []),
+          ),
+        );
       }
     }
     return out;
@@ -222,15 +231,16 @@ class _ContextTabState extends State<ContextTab>
   List<AutonomyItem> _mergeAutonomyItems(List<AutonomyItem> existing) {
     final map = {for (final e in existing) e.name: e};
     return kAutonomyItemNames
-        .map((name) =>
-            map[name] ?? AutonomyItem(name: name))
+        .map((name) => map[name] ?? AutonomyItem(name: name))
         .toList();
   }
 
   /// Reconstitue la liste des 11 items humanHelp à partir d'un texte
   /// séparé par virgules (comme React `parseHumanHelpItems`).
   List<AutonomyItem> _mergeHumanHelpItems(
-      List<AutonomyItem> existing, String rawHomeHelpTxt) {
+    List<AutonomyItem> existing,
+    String rawHomeHelpTxt,
+  ) {
     if (existing.isNotEmpty) {
       final map = {for (final e in existing) e.name: e};
       return kAutonomyItemNames
@@ -239,10 +249,12 @@ class _ContextTabState extends State<ContextTab>
     }
     final normalized = rawHomeHelpTxt.toLowerCase();
     return kAutonomyItemNames
-        .map((name) => AutonomyItem(
-              name: name,
-              checked: normalized.contains(name.toLowerCase()),
-            ))
+        .map(
+          (name) => AutonomyItem(
+            name: name,
+            checked: normalized.contains(name.toLowerCase()),
+          ),
+        )
         .toList();
   }
 
@@ -257,26 +269,29 @@ class _ContextTabState extends State<ContextTab>
     _scheduleSave();
   }
 
-  void _updateMedical(
-      {String? pathology,
-      String? followUp,
-      String? sensory,
-      String? heightCm,
-      String? weightKg}) {
+  void _updateMedical({
+    String? pathology,
+    String? followUp,
+    String? sensory,
+    String? heightCm,
+    String? weightKg,
+  }) {
     final occ = _active;
     final m = occ.medical;
-    _updateActive(OccupantAutonomy(
-      medical: MedicalContext(
-        pathology: pathology ?? m.pathology,
-        followUp: followUp ?? m.followUp,
-        sensory: sensory ?? m.sensory,
-        heightCm: heightCm ?? m.heightCm,
-        weightKg: weightKg ?? m.weightKg,
+    _updateActive(
+      OccupantAutonomy(
+        medical: MedicalContext(
+          pathology: pathology ?? m.pathology,
+          followUp: followUp ?? m.followUp,
+          sensory: sensory ?? m.sensory,
+          heightCm: heightCm ?? m.heightCm,
+          weightKg: weightKg ?? m.weightKg,
+        ),
+        autonomyDone: occ.autonomyDone,
+        autonomy: occ.autonomy,
+        humanHelp: occ.humanHelp,
       ),
-      autonomyDone: occ.autonomyDone,
-      autonomy: occ.autonomy,
-      humanHelp: occ.humanHelp,
-    ));
+    );
   }
 
   /// Toggle d'un flag médical. Les flags sont désormais PAR PAGE de note
@@ -348,10 +363,7 @@ class _ContextTabState extends State<ContextTab>
       );
     }
     if (index < att.length) {
-      att[index] = AutonomyItem(
-        name: att[index].name,
-        checked: newAttention,
-      );
+      att[index] = AutonomyItem(name: att[index].name, checked: newAttention);
     }
     if (index < help.length) {
       help[index] = AutonomyItem(
@@ -360,14 +372,17 @@ class _ContextTabState extends State<ContextTab>
       );
     }
     final allAutonomous =
-        auto.length == kAutonomyItemNames.length && auto.every((i) => i.checked);
-    _updateActive(OccupantAutonomy(
-      medical: occ.medical,
-      autonomyDone: allAutonomous,
-      autonomy: auto,
-      humanHelp: help,
-      attention: att,
-    ));
+        auto.length == kAutonomyItemNames.length &&
+        auto.every((i) => i.checked);
+    _updateActive(
+      OccupantAutonomy(
+        medical: occ.medical,
+        autonomyDone: allAutonomous,
+        autonomy: auto,
+        humanHelp: help,
+        attention: att,
+      ),
+    );
   }
 
   void _toggleAutonomyItem(int index) {
@@ -428,31 +443,39 @@ class _ContextTabState extends State<ContextTab>
     final auto = List<AutonomyItem>.generate(
       total,
       (i) => AutonomyItem(
-        name: i < occ.autonomy.length ? occ.autonomy[i].name : kAutonomyItemNames[i],
+        name: i < occ.autonomy.length
+            ? occ.autonomy[i].name
+            : kAutonomyItemNames[i],
         checked: setAll,
       ),
     );
     final att = List<AutonomyItem>.generate(
       total,
       (i) => AutonomyItem(
-        name: i < occ.attention.length ? occ.attention[i].name : kAutonomyItemNames[i],
+        name: i < occ.attention.length
+            ? occ.attention[i].name
+            : kAutonomyItemNames[i],
         checked: false,
       ),
     );
     final help = List<AutonomyItem>.generate(
       total,
       (i) => AutonomyItem(
-        name: i < occ.humanHelp.length ? occ.humanHelp[i].name : kAutonomyItemNames[i],
+        name: i < occ.humanHelp.length
+            ? occ.humanHelp[i].name
+            : kAutonomyItemNames[i],
         checked: false,
       ),
     );
-    _updateActive(OccupantAutonomy(
-      medical: occ.medical,
-      autonomyDone: setAll,
-      autonomy: auto,
-      humanHelp: help,
-      attention: att,
-    ));
+    _updateActive(
+      OccupantAutonomy(
+        medical: occ.medical,
+        autonomyDone: setAll,
+        autonomy: auto,
+        humanHelp: help,
+        attention: att,
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -489,9 +512,7 @@ class _ContextTabState extends State<ContextTab>
 
   int get _safeIndex {
     if (_contextOccupants.isEmpty) return 0;
-    return _activeOccupantIndex
-        .clamp(0, _contextOccupants.length - 1)
-        .toInt();
+    return _activeOccupantIndex.clamp(0, _contextOccupants.length - 1).toInt();
   }
 
   OccupantAutonomy get _active {
@@ -528,32 +549,40 @@ class _ContextTabState extends State<ContextTab>
           // uniquement via le QuickNav (tap) (demande utilisateur
           // 2026-04-29).
           child: TwoThresholdSwipe(
-            onLightSwipeLeft: !hasMultiple ? null : () {
-              setState(() {
-                _activeOccupantIndex =
-                    (idx + 1) % _contextOccupants.length;
-              });
-            },
-            onLightSwipeRight: !hasMultiple ? null : () {
-              setState(() {
-                _activeOccupantIndex = (idx - 1 +
-                        _contextOccupants.length) %
-                    _contextOccupants.length;
-              });
-            },
-            onWideSwipeLeft: !hasMultiple ? null : () {
-              setState(() {
-                _activeOccupantIndex =
-                    (idx + 1) % _contextOccupants.length;
-              });
-            },
-            onWideSwipeRight: !hasMultiple ? null : () {
-              setState(() {
-                _activeOccupantIndex = (idx - 1 +
-                        _contextOccupants.length) %
-                    _contextOccupants.length;
-              });
-            },
+            onLightSwipeLeft: !hasMultiple
+                ? null
+                : () {
+                    setState(() {
+                      _activeOccupantIndex =
+                          (idx + 1) % _contextOccupants.length;
+                    });
+                  },
+            onLightSwipeRight: !hasMultiple
+                ? null
+                : () {
+                    setState(() {
+                      _activeOccupantIndex =
+                          (idx - 1 + _contextOccupants.length) %
+                          _contextOccupants.length;
+                    });
+                  },
+            onWideSwipeLeft: !hasMultiple
+                ? null
+                : () {
+                    setState(() {
+                      _activeOccupantIndex =
+                          (idx + 1) % _contextOccupants.length;
+                    });
+                  },
+            onWideSwipeRight: !hasMultiple
+                ? null
+                : () {
+                    setState(() {
+                      _activeOccupantIndex =
+                          (idx - 1 + _contextOccupants.length) %
+                          _contextOccupants.length;
+                    });
+                  },
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -567,22 +596,17 @@ class _ContextTabState extends State<ContextTab>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Header occupant TOUJOURS visible (visit-pages.js
-                        // l.452-465 : ne masque pas le bandeau pour 1
-                        // occupant, désactive juste les chevrons).
-                        // Sur Autonomie : injecte le bouton « Tout valider »
-                        // comme petit rond dans le header.
-                        Container(
-                          color: Colors.white,
-                          padding:
-                              const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                          child: _buildOccupantHeader(
-                            idx,
-                            extra: _subSection == 1
-                                ? _buildValidateAllSmallButton()
-                                : null,
+                        if (hasMultiple)
+                          Container(
+                            color: Colors.white,
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                            child: _buildOccupantHeader(
+                              idx,
+                              extra: _subSection == 1
+                                  ? _buildValidateAllSmallButton()
+                                  : null,
+                            ),
                           ),
-                        ),
                         Expanded(
                           // Légère animation entre Médicale ↔ Autonomie —
                           // fade + apparition vers le haut, identique
@@ -598,8 +622,7 @@ class _ContextTabState extends State<ContextTab>
                                   12,
                                 ),
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     if (_subSection == 0)
                                       _buildMedical()
@@ -651,9 +674,7 @@ class _ContextTabState extends State<ContextTab>
     }
     final display = (first.isEmpty && last.isEmpty)
         ? 'Occupant ${idx + 1}'
-        : [first, last.toUpperCase()]
-            .where((s) => s.isNotEmpty)
-            .join(' ');
+        : [first, last.toUpperCase()].where((s) => s.isNotEmpty).join(' ');
     final total = _contextOccupants.length;
     final hasNav = total > 1;
     // `role` (BÉNÉFICIAIRE PRINCIPAL / CONJOINT·E) retiré sur demande user
@@ -727,10 +748,7 @@ class _ContextTabState extends State<ContextTab>
           // Slot `extra` (cf. maquette visit-pages.js l.461-462) : permet
           // d'injecter un widget compact entre le nom et le chevron next.
           // Utilisé par Autonomie pour le bouton « Tout valider ».
-          if (extra != null) ...[
-            extra,
-            const SizedBox(width: 4),
-          ],
+          if (extra != null) ...[extra, const SizedBox(width: 4)],
           arrow(LucideIcons.chevronRight, next),
         ],
       ),
@@ -777,9 +795,7 @@ class _ContextTabState extends State<ContextTab>
       color: const Color(0xFFF2ECF5),
       child: Row(
         children: [
-          Expanded(
-            child: _buildNavBtn(LucideIcons.heart, 'Médicale', 0),
-          ),
+          Expanded(child: _buildNavBtn(LucideIcons.heart, 'Médicale', 0)),
           Expanded(child: _buildNavBtn(LucideIcons.user, 'Autonomie', 1)),
           const SizedBox(width: 8),
           Padding(
@@ -854,17 +870,20 @@ class _ContextTabState extends State<ContextTab>
     final pageFlags = widget.currentMedicalFlags ?? const <int>{};
     final flags = <_MedicalFlag>[
       _MedicalFlag(
-          key: 'pathology',
-          label: 'Pathologie',
-          completed: pageFlags.contains(1)),
+        key: 'pathology',
+        label: 'Pathologie',
+        completed: pageFlags.contains(1),
+      ),
       _MedicalFlag(
-          key: 'followUp',
-          label: 'Suivi médical',
-          completed: pageFlags.contains(2)),
+        key: 'followUp',
+        label: 'Suivi médical',
+        completed: pageFlags.contains(2),
+      ),
       _MedicalFlag(
-          key: 'sensory',
-          label: 'Sensoriel',
-          completed: pageFlags.contains(3)),
+        key: 'sensory',
+        label: 'Sensoriel',
+        completed: pageFlags.contains(3),
+      ),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -872,23 +891,16 @@ class _ContextTabState extends State<ContextTab>
         // Sélecteur d'occupant retiré : l'occupant courant est désormais
         // identifié par le header du cadre + les points de pagination en
         // bas, avec navigation par swipe horizontal (parité Bénéficiaire).
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7FA),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < flags.length; i++)
-                _MedicalFlagRow(
-                  index: i + 1,
-                  label: flags[i].label,
-                  completed: flags[i].completed,
-                  onToggle: () => _toggleMedicalFlag(flags[i].key),
-                ),
-            ],
-          ),
+        Column(
+          children: [
+            for (var i = 0; i < flags.length; i++)
+              _MedicalFlagRow(
+                index: i + 1,
+                label: flags[i].label,
+                completed: flags[i].completed,
+                onToggle: () => _toggleMedicalFlag(flags[i].key),
+              ),
+          ],
         ),
         const SizedBox(height: 16),
         // Titre "Mesures" + divider retirés — on garde juste les deux
@@ -899,7 +911,8 @@ class _ContextTabState extends State<ContextTab>
               child: FormNumberField(
                 label: 'Taille',
                 value: double.tryParse(
-                    occ.medical.heightCm.replaceAll(',', '.')),
+                  occ.medical.heightCm.replaceAll(',', '.'),
+                ),
                 unit: 'cm',
                 onChanged: (v) =>
                     _updateMedical(heightCm: v?.toStringAsFixed(0) ?? ''),
@@ -910,7 +923,8 @@ class _ContextTabState extends State<ContextTab>
               child: FormNumberField(
                 label: 'Poids',
                 value: double.tryParse(
-                    occ.medical.weightKg.replaceAll(',', '.')),
+                  occ.medical.weightKg.replaceAll(',', '.'),
+                ),
                 unit: 'kg',
                 onChanged: (v) =>
                     _updateMedical(weightKg: v?.toStringAsFixed(1) ?? ''),
@@ -967,9 +981,7 @@ class _ContextTabState extends State<ContextTab>
             child: Icon(
               Icons.check,
               size: 13,
-              color: allAutonomous
-                  ? Colors.white
-                  : kBrandPurple,
+              color: allAutonomous ? Colors.white : kBrandPurple,
             ),
           ),
         ),
@@ -1002,6 +1014,14 @@ class _ContextTabState extends State<ContextTab>
         //   - « Tout valider — usager autonome » est désormais un petit
         //     rond 26×26 dans le occupant header (cf.
         //     `_buildValidateAllSmallButton`)
+        if (_contextOccupants.length <= 1)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _buildValidateAllSmallButton(),
+            ),
+          ),
         Column(
           children: List.generate(occ.autonomy.length, (i) {
             final state = _itemState(i);
@@ -1058,8 +1078,11 @@ class _MedicalFlag {
   final String key;
   final String label;
   final bool completed;
-  const _MedicalFlag(
-      {required this.key, required this.label, required this.completed});
+  const _MedicalFlag({
+    required this.key,
+    required this.label,
+    required this.completed,
+  });
 }
 
 class _MedicalFlagRow extends StatelessWidget {
@@ -1077,33 +1100,31 @@ class _MedicalFlagRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final rowBg = completed ? const Color(0xFFF2EDF5) : null;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onToggle,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.symmetric(vertical: 1),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+        decoration: BoxDecoration(
+          color: rowBg,
+          borderRadius: BorderRadius.circular(10),
+        ),
         child: Row(
           children: [
-            // Animated square checkbox (refonte 2026-05-13, vp-sq-fill).
-            VpCheckboxSquare(completed: completed),
-            const SizedBox(width: 10),
-            // Numbered circle
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: completed
-                    ? const Color(0xFFE9DFF0)
-                    : const Color(0xFFF2ECF5),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
+            SizedBox(
+              width: 22,
               child: Text(
-                index.toString().padLeft(2, '0'),
+                index.toString(),
+                textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF554265),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6E5583),
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
             ),
@@ -1111,16 +1132,19 @@ class _MedicalFlagRow extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: completed ? FontWeight.w500 : FontWeight.w600,
-                  color: completed
-                      ? const Color(0xFF8A939D)
-                      : const Color(0xFF2B323A),
-                  decoration:
-                      completed ? TextDecoration.lineThrough : null,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  height: 1.25,
+                  color: Color(0xFF1A1E24),
+                  fontWeight: FontWeight.w500,
                 ),
               ),
+            ),
+            _ActionButton(
+              kind: _ActionButtonKind.autonomous,
+              active: completed,
+              disabled: false,
+              onTap: onToggle,
             ),
           ],
         ),
@@ -1191,71 +1215,71 @@ class _NumberedCheckRow extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onToggleAutonomous,
       child: AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      margin: const EdgeInsets.symmetric(vertical: 1),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-      decoration: BoxDecoration(
-        color: rowBg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          // Numéro sans pastille — juste du texte mauve-600 12px.
-          SizedBox(
-            width: 22,
-            child: Text(
-              index.toString(),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF6E5583), // mauve-600
-                fontFeatures: [FontFeature.tabularFigures()],
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.symmetric(vertical: 1),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+        decoration: BoxDecoration(
+          color: rowBg,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            // Numéro sans pastille — juste du texte mauve-600 12px.
+            SizedBox(
+              width: 22,
+              child: Text(
+                index.toString(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6E5583), // mauve-600
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          // Libellé de l'item.
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13.5,
-                height: 1.25,
-                color: Color(0xFF1A1E24), // ink-800
-                fontWeight: FontWeight.w500,
+            const SizedBox(width: 12),
+            // Libellé de l'item.
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  height: 1.25,
+                  color: Color(0xFF1A1E24), // ink-800
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ),
-          // Bouton ✓ rond — mauve-500 quand actif, blanc avec border ink-200 sinon.
-          _ActionButton(
-            kind: _ActionButtonKind.autonomous,
-            active: state.autonomous,
-            disabled: false,
-            onTap: onToggleAutonomous,
-          ),
-          const SizedBox(width: 6),
-          // Bouton ! rond — red #D85C42 quand actif.
-          _ActionButton(
-            kind: _ActionButtonKind.attention,
-            active: state.attention,
-            disabled: false,
-            onTap: onToggleAttention,
-          ),
-          // Bouton 👥 "aide humaine" — feature legacy de l'app, non présente
-          // dans la maquette. Affiché uniquement si Aide à domicile activée.
-          if (showHumanHelp) ...[
-            const SizedBox(width: 6),
+            // Bouton ✓ rond — mauve-500 quand actif, blanc avec border ink-200 sinon.
             _ActionButton(
-              kind: _ActionButtonKind.humanHelp,
-              active: state.humanHelp,
+              kind: _ActionButtonKind.autonomous,
+              active: state.autonomous,
               disabled: false,
-              onTap: onToggleHumanHelp,
+              onTap: onToggleAutonomous,
             ),
+            const SizedBox(width: 6),
+            // Bouton ! rond — red #D85C42 quand actif.
+            _ActionButton(
+              kind: _ActionButtonKind.attention,
+              active: state.attention,
+              disabled: false,
+              onTap: onToggleAttention,
+            ),
+            // Bouton 👥 "aide humaine" — feature legacy de l'app, non présente
+            // dans la maquette. Affiché uniquement si Aide à domicile activée.
+            if (showHumanHelp) ...[
+              const SizedBox(width: 6),
+              _ActionButton(
+                kind: _ActionButtonKind.humanHelp,
+                active: state.humanHelp,
+                disabled: false,
+                onTap: onToggleHumanHelp,
+              ),
+            ],
           ],
-        ],
-      ),
+        ),
       ),
     );
   }

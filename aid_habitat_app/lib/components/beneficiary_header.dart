@@ -42,14 +42,16 @@ class BeneficiaryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final patient = dossier.patient;
-    final accompanimentLabel =
-        formatAccompanimentType(dossier.natureAccompagnement).trim();
+    final accompanimentLabel = formatAccompanimentType(
+      dossier.natureAccompagnement,
+    ).trim();
     final incomeLabel = patient.incomeCategory.trim();
     final addressLine = [
       patient.address.trim(),
-      [patient.zipCode.trim(), patient.city.trim()]
-          .where((s) => s.isNotEmpty)
-          .join(' '),
+      [
+        patient.zipCode.trim(),
+        patient.city.trim(),
+      ].where((s) => s.isNotEmpty).join(' '),
     ].where((s) => s.isNotEmpty).join(' · ');
 
     // Statut Anah parsé depuis le JSON compteAnah (cf.
@@ -65,7 +67,9 @@ class BeneficiaryHeader extends StatelessWidget {
           if (decoded is Map) {
             anahStatus = (decoded['status']?.toString() ?? '').trim();
           }
-        } catch (_) {/* laisse vide */}
+        } catch (_) {
+          /* laisse vide */
+        }
       } else if (anahRaw != 'Mandat') {
         anahStatus = anahRaw;
       }
@@ -141,19 +145,17 @@ class BeneficiaryHeader extends StatelessWidget {
           const SizedBox(width: 12),
           AnahStatusBadge(status: anahStatus, large: true),
         ],
-        if (trailing != null) ...[
-          const SizedBox(width: 12),
-          trailing!,
-        ],
+        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
       ],
     );
   }
 
-  /// Bouton retour 30×30 rounded-8 transparent (style aligné sur les
-  /// chevrons prev/next de la bannière occupant — refonte 2026-05-13).
+  /// Bouton retour 30×30 rounded-8 avec fond permanent. Le fond reprend la
+  /// couleur qui n'apparaissait auparavant qu'au survol.
   Widget _buildBackButton() {
     return Material(
-      color: Colors.transparent,
+      color: const Color(0xFFF2ECF5),
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onBack,
         borderRadius: BorderRadius.circular(8),
@@ -161,6 +163,7 @@ class BeneficiaryHeader extends StatelessWidget {
           width: 30,
           height: 30,
           decoration: BoxDecoration(
+            color: const Color(0xFFF2ECF5),
             borderRadius: BorderRadius.circular(8),
           ),
           alignment: Alignment.center,

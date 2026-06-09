@@ -90,6 +90,9 @@ const int _kDefaultHighlighterColor = 0xffFDE047; // yellow-300
 const double _kDefaultPenSize = 2.0;
 const double _kDefaultHighlighterSize = 10.0;
 const double _kDefaultEraserSize = 18.0;
+const double _kMinEraserSize = 8.0;
+const double _kMaxEraserSize = 44.0;
+const List<double> _kEraserSizePresets = [12.0, 18.0, 28.0, 40.0];
 // Refonte 2026-05-13 : couleurs alignées sur le nouveau design system.
 //  - _kActiveText : mauve-700 (#554265, légère nuance plus chaude)
 //  - kBrandPurpleSoft : mauve-100 (#F2ECF5)
@@ -360,7 +363,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   int _highlighterColor = _kDefaultHighlighterColor;
   final double _penSize = _kDefaultPenSize;
   final double _highlighterSize = _kDefaultHighlighterSize;
-  final double _eraserSize = _kDefaultEraserSize;
+  double _eraserSize = _kDefaultEraserSize;
 
   // Stroke en cours
   Stroke? _activeStroke;
@@ -384,6 +387,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   // UI pop-ups
   bool _showColorPalette = false;
+  bool _showEraserSizePicker = false;
 
   // Text area height (splitter) — équivalent de `textAreaHeight` (default 92px).
   double _textAreaHeight = 92.0;
@@ -1838,7 +1842,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 4),
         // Suppression : même empreinte 26×26 que le cercle violet du bouton
         // +, avec une icône Material plus nette que le pictogramme Lucide en
         // petite taille.
@@ -1861,7 +1865,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   child: const Center(
                     child: Icon(
                       Icons.delete_outline,
-                      size: 16,
+                      size: 19,
                       color: _kStackedPinkSoft,
                     ),
                   ),
@@ -2167,6 +2171,8 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (!widget.toolbarInFooter) _positionedToolbar(),
         // Popover palette couleur (positionnée au-dessus/en-dessous de la toolbar).
         if (!widget.toolbarInFooter && _showColorPalette) _positionedPalette(),
+        if (!widget.toolbarInFooter && _showEraserSizePicker)
+          _positionedEraserSizePicker(),
         // Le "+" pour ajouter une page est désormais dans le header à
         // côté de la pagination (cf. _buildPageNavRow) — plus de FAB.
       ],
@@ -2208,6 +2214,25 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
   }
 
+  Widget _positionedEraserSizePicker() {
+    final picker = _buildEraserSizePopover();
+    const margin = 12.0;
+    switch (widget.toolbarPlacement) {
+      case NoteToolbarPlacement.topRight:
+        return Positioned(top: 74, right: 12, child: picker);
+      case NoteToolbarPlacement.bottomCenter:
+        final bottomOffset = widget.toolbarDockedToBorder
+            ? 40.0
+            : 80.0 + margin;
+        return Positioned(
+          left: 0,
+          right: 0,
+          bottom: bottomOffset,
+          child: Center(child: picker),
+        );
+    }
+  }
+
   Widget _buildFooterToolbar() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
@@ -2223,6 +2248,9 @@ class _NotesWidgetState extends State<NotesWidget> {
     final buttons = <Widget>[];
     for (final tool in _availableTools) {
       buttons.add(_toolButtonFor(tool));
+    }
+    if (_activeTool == NoteTool.eraser) {
+      buttons.add(_eraserSizeButton());
     }
     // Palette — toujours visible en mode advanced. Désactivée (grisée)
     // quand la gomme est active, mais le bouton reste dans la toolbar.
@@ -2316,9 +2344,27 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _setActiveTool(NoteTool tool) {
     setState(() {
       _activeTool = tool;
-      if (tool == NoteTool.eraser) _showColorPalette = false;
+      if (tool == NoteTool.eraser) {
+        _showColorPalette = false;
+      } else {
+        _showEraserSizePicker = false;
+      }
     });
     widget.onToolChange?.call(tool);
+  }
+
+  Widget _eraserSizeButton() {
+    return _circularToolButton(
+      icon: Icons.line_weight,
+      tooltip: 'Taille gomme : ${_eraserSize.round()} px',
+      isActive: _showEraserSizePicker,
+      onTap: () {
+        setState(() {
+          _showColorPalette = false;
+          _showEraserSizePicker = !_showEraserSizePicker;
+        });
+      },
+    );
   }
 
   Widget _paletteButton() {
@@ -2448,7 +2494,7 @@ class _NotesWidgetState extends State<NotesWidget> {
               opacity: disabled ? 0.4 : 1,
               child: Icon(
                 icon,
-                size: 18,
+                size: icon == LucideIcons.x ? 22 : 18,
                 color:
                     foregroundColor ??
                     (isActive
@@ -2515,6 +2561,111 @@ class _NotesWidgetState extends State<NotesWidget> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEraserSizePopover() {
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.line_weight, size: 16, color: _kActiveText),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Taille de la gomme',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A1E24),
+                  ),
+                ),
+              ),
+              Text(
+                '${_eraserSize.round()} px',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: _kActiveText,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (final size in _kEraserSizePresets) _eraserPresetButton(size),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: _kActiveText,
+              inactiveTrackColor: kBrandPurpleSoft,
+              thumbColor: _kActiveText,
+              overlayColor: _kActiveText.withValues(alpha: 0.12),
+              trackHeight: 3,
+            ),
+            child: Slider(
+              min: _kMinEraserSize,
+              max: _kMaxEraserSize,
+              divisions: (_kMaxEraserSize - _kMinEraserSize).round(),
+              value: _eraserSize.clamp(_kMinEraserSize, _kMaxEraserSize),
+              onChanged: (value) => setState(() => _eraserSize = value),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _eraserPresetButton(double size) {
+    final active = (_eraserSize - size).abs() < 0.5;
+    final previewSize = (size / 2.5).clamp(5.0, 16.0);
+    return Tooltip(
+      message: '${size.round()} px',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => setState(() => _eraserSize = size),
+          child: Container(
+            width: 42,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: active ? kBrandPurpleSoft : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Container(
+              width: previewSize,
+              height: previewSize,
+              decoration: BoxDecoration(
+                color: active ? _kActiveText : const Color(0xFF8A939D),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

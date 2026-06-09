@@ -45,12 +45,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   String _activeView = 'dashboard';
   Dossier? _selectedDossier;
   List<Dossier> _dossiers = [];
-  // Pile d'historique de navigation : chaque entrée capture (view,
-  // dossier) de l'écran quitté. La flèche "retour" des écrans profonds
-  // (DossierScreen / VisitReportScreen) dépile pour ramener l'utilisateur
-  // exactement où il était avant — ex. Dashboard → dossier → retour
-  // revient sur le Dashboard, Dossiers → dossier → retour revient à la
-  // liste. Limité à 50 entrées pour éviter la dérive mémoire.
+  // Pile d'historique de navigation utilisée pour certains changements de
+  // vues internes. La flèche retour des écrans dossier, elle, suit désormais
+  // la hiérarchie métier (Relevé/Documents → fiche dossier → liste dossiers)
+  // plutôt que l'écran d'origine.
   final List<_NavEntry> _navHistory = [];
   // Dernier état "profond" visité dans l'arbre Dossiers (dossier_detail
   // ou visit_report). Utilisé pour restaurer le contexte quand l'user
@@ -772,21 +770,28 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_navHistory.length > 50) _navHistory.removeAt(0);
   }
 
-  /// Dépile l'entrée précédente et y navigue. Si la pile est vide, on
-  /// retombe sur le Dashboard (défaut raisonnable pour éviter un écran
-  /// bloqué).
+  /// Retour hiérarchique dans l'arbre Dossiers.
+  ///
+  /// Avant, on dépilait l'historique et un dossier ouvert depuis le Dashboard
+  /// revenait au Dashboard. Le comportement attendu est maintenant stable :
+  /// Relevé/Documents → fiche dossier → liste dossiers.
   void _goBack() {
-    if (_navHistory.isEmpty) {
-      setState(() {
-        _activeView = 'dashboard';
-        _selectedDossier = null;
-      });
-      return;
-    }
-    final prev = _navHistory.removeLast();
     setState(() {
-      _activeView = prev.view;
-      _selectedDossier = prev.dossier;
+      if (_activeView == 'visit_report' || _activeView == 'documents') {
+        _activeView = 'dossier_detail';
+        _lastDossierTreeView = 'dossier_detail';
+        _lastDossierTreeSelected = _selectedDossier;
+        return;
+      }
+      if (_activeView == 'dossier_detail') {
+        _activeView = 'dossiers';
+        _selectedDossier = null;
+        _lastDossierTreeView = null;
+        _lastDossierTreeSelected = null;
+        return;
+      }
+      _activeView = 'dossiers';
+      _selectedDossier = null;
     });
   }
 }
