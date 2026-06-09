@@ -650,9 +650,19 @@ function joinNotePagesText(pages) {
     }
     return String(pg?.textContent || '').trim();
   };
+  const seen = new Set();
   return pages
     .map(extractText)
     .filter((s) => s.length > 0)
+    .filter((s) => {
+      // Les NotesWidget partagées peuvent produire la même note pour
+      // plusieurs pages internes. Dans le rapport, on ne l'imprime qu'une
+      // fois pour éviter "note A" répétée 3 fois dans Environnement.
+      const key = s.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .join('\n\n')
     .trim();
 }
@@ -2718,9 +2728,9 @@ async function drawFlat2026Logement({ pdfDoc, view }) {
 
 async function drawGeneratedPageNumbers(pdfDoc) {
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const pages = pdfDoc.getPages();
-  for (let pageIndex = 1; pageIndex < pages.length; pageIndex += 1) {
-    const page = pages[pageIndex];
+  const pageCount = pdfDoc.getPageCount();
+  for (let pageIndex = 1; pageIndex < pageCount; pageIndex += 1) {
+    const page = pdfDoc.getPage(pageIndex);
     const { width } = page.getSize();
     const label = String(pageIndex);
     const fontSize = 11;
@@ -2730,10 +2740,10 @@ async function drawGeneratedPageNumbers(pdfDoc) {
     // On les masque puis on redessine le numéro réel après les
     // insertions/suppressions de pages.
     page.drawRectangle({
-      x: width - 70,
+      x: width - 130,
       y: 0,
-      width: 60,
-      height: 34,
+      width: 125,
+      height: 70,
       color: rgb(1, 1, 1),
     });
     page.drawText(label, {
@@ -3628,12 +3638,11 @@ export async function generateVisitReport({
   }
 
   // ---------------------------------------------------------------
-  // Remontée du "Descriptif des aides prévisionnelles" sur la même
-  // page que la dernière préconisation, quand celle-ci est seule sur
-  // sa page (impair = 1, 3, 5, 7). Demande utilisateur : utiliser
-  // l'espace libre laissé par la case BOT vide pour caser le tableau
-  // descriptif au lieu d'imprimer une page presque blanche suivie
-  // d'une page descriptif quasi vide elle aussi.
+  // Remontée du "Descriptif des aides prévisionnelles" désactivée.
+  // Elle faisait fuir la valeur de caisse complémentaire (ex. "/ Klesia
+  // Retraite sous conditions*") dans la page "Détails des préconisations".
+  // Le descriptif reste donc sur sa page dédiée, où ces informations ont
+  // leur place métier.
   //
   // Méthode :
   //   1. On localise dynamiquement la page descriptif via un de ses
@@ -3646,7 +3655,8 @@ export async function generateVisitReport({
   //   4. removePage de la page descriptif d'origine pour ne pas la
   //      voir apparaître deux fois.
   // ---------------------------------------------------------------
-  if (pendingBotCovers.length === 1 && descriptifPageIdx !== -1) {
+  const shouldMergeDescriptifWithRecoPage = false;
+  if (shouldMergeDescriptifWithRecoPage && pendingBotCovers.length === 1 && descriptifPageIdx !== -1) {
     try {
       const descriptifPage = pdfDoc.getPage(descriptifPageIdx);
       // Bbox du tableau orange sur la page descriptif (coordonnées
@@ -3749,9 +3759,16 @@ export async function generateVisitReport({
   }
   stats.recoPagesRemoved = emptyPageIndices.length;
 
-  await drawGeneratedPageNumbers(pdfDoc);
+  // pdf-lib garde parfois un cache de pages après removePage(). On
+  // sauvegarde/recharge avant numérotation pour repartir d'un page tree
+  // canonique, sinon les anciennes pages 16/18/21 peuvent réapparaître.
+  const unnumberedBytes = await pdfDoc.save({
+    useObjectStreams: true,
+  });
+  const numberedDoc = await PDFDocument.load(unnumberedBytes);
+  await drawGeneratedPageNumbers(numberedDoc);
 
-  const bytes = await pdfDoc.save({
+  const bytes = await numberedDoc.save({
     // On garde les xref tables compactes pour sortir un PDF d'environ
     // la même taille que le template (~2,7 Mo) sans bloat.
     useObjectStreams: true,
