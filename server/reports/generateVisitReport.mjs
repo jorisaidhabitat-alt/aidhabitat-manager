@@ -2288,9 +2288,10 @@ async function drawVisitPhotosWithFlow({
 }
 
 /**
- * Filtre + trie les photos d'une catégorie visite donnée. Le serveur
- * ne synchronise pas `categoryOrder` (local-only en v1) — on retombe
- * sur l'ordre date DESC fourni par `listDocumentsByPatient`.
+ * Filtre + trie les photos d'une catégorie visite donnée.
+ * L'ordre local `categoryOrder` est envoyé en inline par Flutter au
+ * moment de la génération : il gagne sur l'ordre distant NocoDB pour
+ * refléter immédiatement les drag/reorder de l'onglet Photos.
  */
 function photosForVisitTag(documents, tag) {
   // Comparaison normalisée (lowercase + NFD strip-accents + spaces
@@ -2308,7 +2309,19 @@ function photosForVisitTag(documents, tag) {
   return documents.filter((doc) =>
     Array.isArray(doc?.tags) &&
     doc.tags.some((t) => normalize(t) === target),
-  );
+  ).sort((a, b) => {
+    const ao = Number(a?.categoryOrder);
+    const bo = Number(b?.categoryOrder);
+    const hasAo = Number.isFinite(ao);
+    const hasBo = Number.isFinite(bo);
+    if (hasAo && hasBo && ao !== bo) return ao - bo;
+    if (hasAo && !hasBo) return -1;
+    if (!hasAo && hasBo) return 1;
+    const ad = Date.parse(a?.updatedAt || a?.createdAt || a?.date || 0) || 0;
+    const bd = Date.parse(b?.updatedAt || b?.createdAt || b?.date || 0) || 0;
+    if (ad !== bd) return bd - ad;
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  });
 }
 
 /**

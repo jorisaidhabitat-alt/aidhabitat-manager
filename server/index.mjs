@@ -5481,7 +5481,9 @@ const fetchVisitPhotosForPatient = async (patientId) => {
         fileName: field(r, 'nom_fichier') || '',
         mimeType: field(r, 'mime_type') || 'image/jpeg',
         tags: [tag],
-        categoryOrder: Number(field(r, 'category_order') || 0),
+        categoryOrder: Number.isFinite(Number(field(r, 'category_order')))
+          ? Number(field(r, 'category_order'))
+          : null,
         updatedAt:
             field(r, 'updated_at1') || field(r, 'UpdatedAt') || null,
         // Marqueur consommé par fetchImageBytesForReport pour router
@@ -6141,10 +6143,14 @@ const parseInlineReportAssets = (req) => {
       const tags = Array.isArray(meta.tags) ? meta.tags.map(String) : [];
       documents.set(localId, {
         id: localId,
+        clientDocumentId: localId,
         fileName: String(meta.fileName || file.originalname || `${localId}.bin`),
         mimeType: String(meta.mimeType || file.mimetype || 'application/octet-stream'),
         tags,
         title: typeof meta.title === 'string' ? meta.title : '',
+        categoryOrder: Number.isFinite(Number(meta.categoryOrder))
+          ? Number(meta.categoryOrder)
+          : null,
         dossierId: typeof meta.dossierId === 'string' ? meta.dossierId : null,
         buffer: file.buffer,
       });
@@ -6241,27 +6247,40 @@ const mergeInlineDocuments = (remoteDocs, inlineMap) => {
     .replace(/\s+/g, ' ')
     .trim();
   const hasVisitTag = (tags) =>
-    Array.isArray(tags) && tags.some((tag) => visitTagsNormalized.has(normalizeTag(tag)));
+    Array.isArray(tags) && tags.some((tag) => {
+      const tn = normalizeTag(tag);
+      if (visitTagsNormalized.has(tn)) return true;
+      const match = tn.match(/^(.+) \(#\d+\)$/);
+      return Boolean(match && visitTagsNormalized.has(match[1]));
+    });
 
   const merged = [];
   const seenIds = new Set();
+  const seenClientIds = new Set();
   // 1) inline d'abord (priorité), filtrés par tag visite
   for (const inline of inlineMap.values()) {
     if (!hasVisitTag(inline.tags)) continue;
     merged.push({
       id: inline.id,
+      clientDocumentId: inline.clientDocumentId || inline.id,
       title: inline.title || '',
       fileName: inline.fileName,
       mimeType: inline.mimeType,
       tags: inline.tags,
+      categoryOrder: Number.isFinite(Number(inline.categoryOrder))
+        ? Number(inline.categoryOrder)
+        : null,
       dossierId: inline.dossierId,
     });
     seenIds.add(String(inline.id));
+    seenClientIds.add(String(inline.clientDocumentId || inline.id));
   }
   // 2) puis les remotes pas en doublon
   for (const doc of Array.isArray(remoteDocs) ? remoteDocs : []) {
     if (!doc) continue;
     if (seenIds.has(String(doc.id))) continue;
+    const cid = String(doc.clientDocumentId || '');
+    if (cid && seenClientIds.has(cid)) continue;
     merged.push(doc);
   }
   return merged;
