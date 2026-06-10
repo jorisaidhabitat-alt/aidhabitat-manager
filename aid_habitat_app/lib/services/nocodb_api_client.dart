@@ -1155,6 +1155,7 @@ class NocodbApiClient {
         'tags': doc.tags,
         if (doc.dossierId != null) 'dossierId': doc.dossierId,
         'title': doc.title,
+        if (doc.categoryOrder != null) 'categoryOrder': doc.categoryOrder,
       });
     }
 

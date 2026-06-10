@@ -81,8 +81,10 @@ class DocumentRepository {
   ///   - `pending_delete = 0`
   ///   - bytes disponibles localement (`local_file_data_url` web ou
   ///     `local_file_path` natif)
-  ///   - `sync_state != synced` — les docs déjà sur NocoDB n'ont pas
-  ///     besoin d'être renvoyés (le serveur les fetche en parallèle)
+  ///   - bytes disponibles localement (`local_file_data_url` web ou
+  ///     `local_file_path` natif), même si le document est déjà syncé :
+  ///     l'ordre `category_order` est local et doit être envoyé au
+  ///     générateur PDF immédiatement après un drag/reorder.
   ///
   /// Renvoie une liste de `InlineDocumentBytes`, prête à être convertie
   /// en `MultipartFile` par [NocodbApiClient.downloadVisitReport].
@@ -94,11 +96,11 @@ class DocumentRepository {
       'documents',
       where:
           'patient_local_id = ? AND pending_delete = 0 '
-          "AND sync_state != ? "
           "AND mime_type LIKE 'image/%' "
           "AND tags_json LIKE '%Visite - %'",
-      whereArgs: [patientId, SyncState.synced.name],
-      orderBy: 'created_at DESC',
+      whereArgs: [patientId],
+      orderBy:
+          'category_order IS NULL ASC, category_order ASC, created_at DESC',
     );
 
     final result = <InlineDocumentBytes>[];
@@ -150,6 +152,7 @@ class DocumentRepository {
           mimeType: row['mime_type'] as String,
           tags: tags,
           title: row['title'] as String? ?? '',
+          categoryOrder: (row['category_order'] as num?)?.toInt(),
           dossierId: row['dossier_local_id'] as String?,
           bytes: bytes,
         ),
@@ -1541,6 +1544,7 @@ class InlineDocumentBytes {
     required this.tags,
     required this.bytes,
     this.title = '',
+    this.categoryOrder,
     this.dossierId,
   });
 
@@ -1549,6 +1553,7 @@ class InlineDocumentBytes {
   final String mimeType;
   final List<String> tags;
   final String title;
+  final int? categoryOrder;
   final String? dossierId;
   final Uint8List bytes;
 }
