@@ -1326,6 +1326,18 @@ class _PhotoDragSlotState extends State<_PhotoDragSlot> {
     return local.dx > renderObject.size.width / 2;
   }
 
+  bool _isCloseEnoughToTarget(Offset globalOffset) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+    final local = renderObject.globalToLocal(globalOffset);
+    final normalizedX = local.dx / renderObject.size.width;
+    final normalizedY = local.dy / renderObject.size.height;
+    return normalizedX >= 0.18 &&
+        normalizedX <= 0.82 &&
+        normalizedY >= 0.18 &&
+        normalizedY <= 0.82;
+  }
+
   void _updateInsertionSide(Offset globalOffset) {
     final next = _isAfterTarget(globalOffset);
     if (_insertAfter == next) return;
@@ -1340,6 +1352,7 @@ class _PhotoDragSlotState extends State<_PhotoDragSlot> {
         return DragTarget<_DragPhotoPayload>(
           onWillAcceptWithDetails: (details) => details.data.doc.id != _doc.id,
           onMove: (details) {
+            if (!_isCloseEnoughToTarget(details.offset)) return;
             final insertAfter = _isAfterTarget(details.offset);
             _updateInsertionSide(details.offset);
             if (details.data.fromTag == widget.tag) {
@@ -1403,9 +1416,9 @@ class _PhotoDragSlotState extends State<_PhotoDragSlot> {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.16),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
+                          color: Colors.black.withValues(alpha: 0.22),
+                          blurRadius: 24,
+                          offset: const Offset(0, 12),
                         ),
                       ],
                     ),
