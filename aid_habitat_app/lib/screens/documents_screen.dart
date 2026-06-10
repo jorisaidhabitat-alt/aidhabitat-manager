@@ -122,6 +122,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   List<DocItem> _documents = const [];
   List<String>? _documentPreviewOrderIds;
   String? _draggingDocumentId;
+  String? _lastDocumentReorderTargetId;
   int _loadGeneration = 0;
   StreamSubscription<DocumentRepositoryChange>? _documentChangeSubscription;
 
@@ -960,6 +961,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     final docs = _filteredDocuments;
     setState(() {
       _draggingDocumentId = docId;
+      _lastDocumentReorderTargetId = null;
       _documentPreviewOrderIds = docs.map((doc) => doc.id).toList();
     });
   }
@@ -970,6 +972,11 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     required bool insertAfter,
   }) {
     if (_isSelectionMode || draggedId == targetId) return;
+    if (_draggingDocumentId != draggedId) {
+      _draggingDocumentId = draggedId;
+      _lastDocumentReorderTargetId = null;
+    }
+    if (_lastDocumentReorderTargetId == targetId) return;
     final orderIds =
         _documentPreviewOrderIds ??
         _filteredDocuments.map((doc) => doc.id).toList();
@@ -987,6 +994,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     reorderedIds.insert(nextIndex.clamp(0, reorderedIds.length), movedId);
     setState(() {
       _documentPreviewOrderIds = reorderedIds;
+      _lastDocumentReorderTargetId = targetId;
     });
   }
 
@@ -1009,6 +1017,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
           .toList(growable: false);
       _documentPreviewOrderIds = null;
       _draggingDocumentId = null;
+      _lastDocumentReorderTargetId = null;
     });
     await _dataService.reorderVisitCategoryDocuments(
       orderedDocumentIds: orderIds,

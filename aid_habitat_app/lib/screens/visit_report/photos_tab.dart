@@ -73,6 +73,8 @@ class _PhotosTabState extends State<PhotosTab>
   bool _isImporting = false;
   List<DocItem> _photos = const [];
   int _refreshGeneration = 0;
+  String? _activePhotoDragId;
+  String? _lastPhotoReorderTargetKey;
 
   /// Sections SUPPLÉMENTAIRES ajoutées par l'ergo via le bouton
   /// « + Ajouter une partie » (en plus des 5 sections de base toujours
@@ -625,6 +627,12 @@ class _PhotosTabState extends State<PhotosTab>
     required bool insertAfter,
   }) {
     if (draggedId == targetId) return;
+    final targetKey = '$tag::$targetId';
+    if (_activePhotoDragId != draggedId) {
+      _activePhotoDragId = draggedId;
+      _lastPhotoReorderTargetKey = null;
+    }
+    if (_lastPhotoReorderTargetKey == targetKey) return;
     final current = _photosForCategory(tag);
     final fromIndex = current.indexWhere((doc) => doc.id == draggedId);
     final targetIndex = current.indexWhere((doc) => doc.id == targetId);
@@ -649,10 +657,18 @@ class _PhotosTabState extends State<PhotosTab>
             return doc.copyWith(categoryOrder: nextOrder);
           })
           .toList(growable: false);
+      _lastPhotoReorderTargetKey = targetKey;
     });
   }
 
+  void _startPhotoReorder(String draggedId) {
+    _activePhotoDragId = draggedId;
+    _lastPhotoReorderTargetKey = null;
+  }
+
   Future<void> _commitPhotoOrder(String tag) async {
+    _activePhotoDragId = null;
+    _lastPhotoReorderTargetKey = null;
     final current = _photosForCategory(tag);
     await _dataService.reorderVisitCategoryDocuments(
       orderedDocumentIds: current.map((doc) => doc.id).toList(),
@@ -1063,6 +1079,7 @@ class _PhotosTabState extends State<PhotosTab>
       tag: tag,
       photos: photos,
       index: index,
+      onDragStarted: _startPhotoReorder,
       onPreviewReorder: _previewPhotoReorder,
       onCommitOrder: _commitPhotoOrder,
       onMoveToCategory: _moveToCategory,
@@ -1289,6 +1306,7 @@ class _PhotoDragSlot extends StatefulWidget {
     required this.tag,
     required this.photos,
     required this.index,
+    required this.onDragStarted,
     required this.onPreviewReorder,
     required this.onCommitOrder,
     required this.onMoveToCategory,
@@ -1298,6 +1316,7 @@ class _PhotoDragSlot extends StatefulWidget {
   final String tag;
   final List<DocItem> photos;
   final int index;
+  final void Function(String draggedId) onDragStarted;
   final void Function({
     required String tag,
     required String draggedId,
@@ -1404,6 +1423,7 @@ class _PhotoDragSlotState extends State<_PhotoDragSlot> {
                 feedbackOffset: Offset.zero,
                 hitTestBehavior: HitTestBehavior.opaque,
                 maxSimultaneousDrags: 1,
+                onDragStarted: () => widget.onDragStarted(_doc.id),
                 onDragEnd: (_) => widget.onCommitOrder(widget.tag),
                 feedback: Material(
                   color: Colors.transparent,

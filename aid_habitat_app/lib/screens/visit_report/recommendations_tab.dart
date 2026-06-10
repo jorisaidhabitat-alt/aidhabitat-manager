@@ -76,6 +76,8 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   int _saveGeneration = 0;
   Future<void>? _saveInFlight;
   final WikiRepository _wikiRepo = WikiRepository();
+  String? _activeRecommendationDragId;
+  String? _lastRecommendationReorderTargetId;
 
   /// Polling cross-device 2 s. Demande utilisateur 2026-05-07 :
   /// les préconisations doivent se synchroniser comme les autres
@@ -312,6 +314,11 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     bool insertAfter,
   ) {
     if (draggedId == targetId) return;
+    if (_activeRecommendationDragId != draggedId) {
+      _activeRecommendationDragId = draggedId;
+      _lastRecommendationReorderTargetId = null;
+    }
+    if (_lastRecommendationReorderTargetId == targetId) return;
     final fromIndex = _items.indexWhere((item) => item.id == draggedId);
     final targetIndex = _items.indexWhere((item) => item.id == targetId);
     if (fromIndex < 0 || targetIndex < 0) return;
@@ -326,10 +333,18 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       final moved = next.removeAt(fromIndex);
       next.insert(nextIndex.clamp(0, next.length), moved);
       _items = next;
+      _lastRecommendationReorderTargetId = targetId;
     });
   }
 
+  void _startReorderPreview(String draggedId) {
+    _activeRecommendationDragId = draggedId;
+    _lastRecommendationReorderTargetId = null;
+  }
+
   void _commitReorderPreview() {
+    _activeRecommendationDragId = null;
+    _lastRecommendationReorderTargetId = null;
     _scheduleSave();
   }
 
@@ -490,6 +505,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                     key: ValueKey('slot-${_items[i].id}'),
                     itemId: _items[i].id,
                     cardWidth: cardWidth,
+                    onDragStarted: _startReorderPreview,
                     onPreviewReorder: _previewReorderItem,
                     onCommitReorder: _commitReorderPreview,
                     child: _RecommendationCard(
@@ -1089,6 +1105,7 @@ class _DraggableRecoSlot extends StatefulWidget {
     super.key,
     required this.itemId,
     required this.cardWidth,
+    required this.onDragStarted,
     required this.onPreviewReorder,
     required this.onCommitReorder,
     required this.child,
@@ -1096,6 +1113,7 @@ class _DraggableRecoSlot extends StatefulWidget {
 
   final String itemId;
   final double cardWidth;
+  final void Function(String draggedId) onDragStarted;
   final void Function(String draggedId, String targetId, bool insertAfter)
   onPreviewReorder;
   final VoidCallback onCommitReorder;
@@ -1175,6 +1193,7 @@ class _DraggableRecoSlotState extends State<_DraggableRecoSlot> {
             feedbackOffset: Offset.zero,
             hitTestBehavior: HitTestBehavior.opaque,
             maxSimultaneousDrags: 1,
+            onDragStarted: () => widget.onDragStarted(widget.itemId),
             onDragEnd: (_) => widget.onCommitReorder(),
             // Le fantôme garde exactement le même fond violet clair que
             // la carte réelle. Pas d'opacité ni de voile sombre pendant

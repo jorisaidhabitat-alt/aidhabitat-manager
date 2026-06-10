@@ -1098,9 +1098,12 @@ function buildViewModel({
       // `index.mjs` (cf. `resolveCaisseComplementaireLabel`). Vaut
       // soit `'/'` soit `'<nom de caisse> sous conditions*'`.
       // Demande utilisateur 2026-04-29.
-      caisseComplementaireLabel: caisseComplementaireResolved == null
-        ? ''
-        : String(caisseComplementaireResolved),
+      caisseComplementaireLabel: (() => {
+        const label = String(
+          caisseComplementaireResolved ?? patient.caisseComplementaireLabel ?? '',
+        ).trim();
+        return label || '/';
+      })(),
       epciLabel: (() => {
         const label = String(epciResolved ?? patient.epciLabel ?? '').trim();
         return label || '/';
@@ -2760,6 +2763,7 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
   const cells = [
     {
       value: view?.dossier?.amoLabel,
+      fallback: '/',
       x: 382.7,
       y: 611.8,
       width: 156.6,
@@ -2770,6 +2774,7 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
     },
     {
       value: view?.patient?.caisseComplementaireLabel,
+      fallback: '/',
       x: 383.2,
       y: 569.8,
       width: 156.6,
@@ -2780,6 +2785,7 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
     },
     {
       value: view?.patient?.epciLabel,
+      fallback: '/',
       x: 383.2,
       y: 526.8,
       width: 156.6,
@@ -2798,8 +2804,7 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
       height: cell.height + 4,
       color: rgb(1, 1, 1),
     });
-    const value = String(cell.value ?? '').trim();
-    if (!value) continue;
+    const value = String(cell.value ?? '').trim() || cell.fallback || '/';
     drawWrappedText(page, value, {
       x: cell.x,
       yTop: cell.y + cell.height - 5,
