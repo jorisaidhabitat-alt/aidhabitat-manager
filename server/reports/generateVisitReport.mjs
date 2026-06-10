@@ -3566,11 +3566,9 @@ export async function generateVisitReport({
   // prévisionnelles" — pareil, AVANT toute removePage et AVANT flatten
   // (les widgets sont consommés par flatten).
   let descriptifPageIdx = -1;
-  if (pendingBotCovers.length === 1) {
-    const descriptifAnchor =
-      fieldsByName.get('Caisse de retraite complémentaire');
-    descriptifPageIdx = findPageIndexForField(pdfDoc, descriptifAnchor);
-  }
+  const descriptifAnchor =
+    fieldsByName.get('Caisse de retraite complémentaire');
+  descriptifPageIdx = findPageIndexForField(pdfDoc, descriptifAnchor);
 
   // (Plus d'overlay page 1 — l'adresse est désormais correcte dans
   // le PDF source Affinity directement, plus besoin de patcher.)
