@@ -1393,7 +1393,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                     top: offsetFor(docIndex + 1).dy,
                     width: tileWidth,
                     height: tileHeight,
-                    child: _buildDocumentGridCard(docs[docIndex]),
+                    child: _buildDocumentGridCard(
+                      docs[docIndex],
+                      tileHeight: tileHeight,
+                    ),
                   ),
               ],
             ),
@@ -1403,7 +1406,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     );
   }
 
-  Widget _buildDocumentGridCard(DocItem doc) {
+  Widget _buildDocumentGridCard(DocItem doc, {required double tileHeight}) {
     final selected = _selectedIds.contains(doc.id);
     final card = DocCard(
       doc: doc,
@@ -1440,6 +1443,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     return _DraggableDocumentSlot(
       key: ValueKey('doc_drag_${doc.id}'),
       doc: doc,
+      height: tileHeight,
       isDragging: _draggingDocumentId == doc.id,
       onDragStarted: () => _startDocumentDrag(doc.id),
       onPreviewReorder: _previewDocumentReorder,
@@ -1467,6 +1471,7 @@ class _DraggableDocumentSlot extends StatefulWidget {
   const _DraggableDocumentSlot({
     super.key,
     required this.doc,
+    required this.height,
     required this.isDragging,
     required this.onDragStarted,
     required this.child,
@@ -1475,6 +1480,7 @@ class _DraggableDocumentSlot extends StatefulWidget {
   });
 
   final DocItem doc;
+  final double height;
   final bool isDragging;
   final VoidCallback onDragStarted;
   final Widget child;
@@ -1500,6 +1506,18 @@ class _DraggableDocumentSlotState extends State<_DraggableDocumentSlot> {
     return local.dx > renderObject.size.width / 2;
   }
 
+  bool _isCloseEnoughToTarget(Offset globalOffset) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+    final local = renderObject.globalToLocal(globalOffset);
+    final normalizedX = local.dx / renderObject.size.width;
+    final normalizedY = local.dy / renderObject.size.height;
+    return normalizedX >= 0.18 &&
+        normalizedX <= 0.82 &&
+        normalizedY >= 0.18 &&
+        normalizedY <= 0.82;
+  }
+
   void _updateInsertionSide(Offset globalOffset) {
     final next = _isAfterTarget(globalOffset);
     if (_insertAfter == next) return;
@@ -1517,6 +1535,7 @@ class _DraggableDocumentSlotState extends State<_DraggableDocumentSlot> {
           onWillAcceptWithDetails: (details) =>
               details.data.doc.id != widget.doc.id,
           onMove: (details) {
+            if (!_isCloseEnoughToTarget(details.offset)) return;
             final insertAfter = _isAfterTarget(details.offset);
             _updateInsertionSide(details.offset);
             widget.onPreviewReorder(
@@ -1552,10 +1571,27 @@ class _DraggableDocumentSlotState extends State<_DraggableDocumentSlot> {
                 onDragEnd: (_) => widget.onCommitReorder(),
                 feedback: Material(
                   color: Colors.transparent,
-                  elevation: 12,
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
                   clipBehavior: Clip.antiAlias,
-                  child: SizedBox(width: width, child: widget.child),
+                  child: IgnorePointer(
+                    child: Container(
+                      width: width,
+                      height: widget.height,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.22),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: widget.child,
+                    ),
+                  ),
                 ),
                 childWhenDragging: Opacity(opacity: 0.25, child: widget.child),
                 child: decoratedChild,

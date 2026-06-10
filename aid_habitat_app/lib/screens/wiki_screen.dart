@@ -654,8 +654,7 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                       children: [
                                         Expanded(
                                           child: _FormLabel(
-                                            text:
-                                                'Descriptions (${_descCtrls.length}/${WikiItem.maxDescriptions})',
+                                            text: 'Descriptions',
                                           ),
                                         ),
                                         Material(
@@ -706,25 +705,39 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                                   ? 0
                                                   : 8,
                                             ),
-                                            child: ReorderableDragStartListener(
-                                              index: i,
-                                              child: MouseRegion(
-                                                cursor: SystemMouseCursors.text,
-                                                child: TextField(
-                                                  controller: _descCtrls[i],
-                                                  maxLines: 3,
-                                                  minLines: 2,
-                                                  textAlignVertical:
-                                                      TextAlignVertical.top,
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    color: Color(0xFF5C6670),
-                                                    height: 1.5,
-                                                  ),
-                                                  decoration:
-                                                      _inputDecoration(),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                ReorderableDragStartListener(
+                                                  index: i,
+                                                  child:
+                                                      const _DescriptionDragHandle(),
                                                 ),
-                                              ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: MouseRegion(
+                                                    cursor:
+                                                        SystemMouseCursors.text,
+                                                    child: TextField(
+                                                      controller: _descCtrls[i],
+                                                      maxLines: 3,
+                                                      minLines: 2,
+                                                      textAlignVertical:
+                                                          TextAlignVertical.top,
+                                                      style: const TextStyle(
+                                                        fontSize: 14,
+                                                        color: Color(
+                                                          0xFF5C6670,
+                                                        ),
+                                                        height: 1.5,
+                                                      ),
+                                                      decoration:
+                                                          _inputDecoration(),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           );
                                         },
@@ -846,6 +859,48 @@ Widget _descriptionReorderProxy(
   return Material(type: MaterialType.transparency, child: child);
 }
 
+class _DescriptionDragHandle extends StatelessWidget {
+  const _DescriptionDragHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.grab,
+      child: Tooltip(
+        message: 'Déplacer la description',
+        child: SizedBox(
+          width: 22,
+          height: 64,
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 2,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8A939D),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Container(
+                  width: 2,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8A939D),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 List<String> _normalizedDescriptions(List<TextEditingController> controllers) {
   return controllers
       .map((controller) => controller.text.trim())
@@ -869,7 +924,8 @@ Future<_WikiUnsavedChoice?> _confirmWikiUnsavedChanges(
   return showAppConfirmationDialog<_WikiUnsavedChoice>(
     context: context,
     title: 'Quitter sans enregistrer ?',
-    message: 'Les modifications en cours seront perdues si vous quittez maintenant.',
+    message:
+        'Les modifications en cours seront perdues si vous quittez maintenant.',
     tone: AppConfirmationTone.warning,
     showCloseButton: true,
     actions: const [
@@ -1148,7 +1204,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  'Descriptions (${_descriptionControllers.length}/${WikiItem.maxDescriptions})',
+                                  'Descriptions',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
@@ -1187,58 +1243,68 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                                         ? 0
                                         : 8,
                                   ),
-                                  child: ReorderableDragStartListener(
-                                    index: i,
-                                    enabled: !_submitting,
-                                    child: MouseRegion(
-                                      cursor: SystemMouseCursors.text,
-                                      child: TextField(
-                                        controller: _descriptionControllers[i],
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      ReorderableDragStartListener(
+                                        index: i,
                                         enabled: !_submitting,
-                                        maxLines: 3,
-                                        minLines: 2,
-                                        decoration: InputDecoration(
-                                          filled: true,
-                                          fillColor: const Color(0xFFF7F7FA),
-                                          hintText:
-                                              'Détails de l\'aménagement, dimensions, conseils…',
-                                          hintStyle: const TextStyle(
-                                            color: Color(0xFF8A939D),
-                                          ),
-                                          isDense: true,
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 12,
-                                                vertical: 12,
+                                        child: const _DescriptionDragHandle(),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: MouseRegion(
+                                          cursor: SystemMouseCursors.text,
+                                          child: TextField(
+                                            controller:
+                                                _descriptionControllers[i],
+                                            enabled: !_submitting,
+                                            maxLines: 3,
+                                            minLines: 2,
+                                            decoration: InputDecoration(
+                                              filled: true,
+                                              fillColor: const Color(
+                                                0xFFF7F7FA,
                                               ),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            borderSide: const BorderSide(
-                                              color: Color(0xFFE4E7EB),
-                                            ),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            borderSide: const BorderSide(
-                                              color: Color(0xFFE4E7EB),
-                                            ),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            borderSide: const BorderSide(
-                                              color: kBrandPurple,
-                                              width: 1.4,
+                                              hintText:
+                                                  'Détails de l\'aménagement, dimensions, conseils…',
+                                              hintStyle: const TextStyle(
+                                                color: Color(0xFF8A939D),
+                                              ),
+                                              isDense: true,
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 12,
+                                                  ),
+                                              border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                borderSide: const BorderSide(
+                                                  color: Color(0xFFE4E7EB),
+                                                ),
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                borderSide: const BorderSide(
+                                                  color: Color(0xFFE4E7EB),
+                                                ),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                borderSide: const BorderSide(
+                                                  color: kBrandPurple,
+                                                  width: 1.4,
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 );
                               },
