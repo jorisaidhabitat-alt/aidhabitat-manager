@@ -5481,9 +5481,13 @@ const fetchVisitPhotosForPatient = async (patientId) => {
         fileName: field(r, 'nom_fichier') || '',
         mimeType: field(r, 'mime_type') || 'image/jpeg',
         tags: [tag],
-        categoryOrder: Number.isFinite(Number(field(r, 'category_order')))
-          ? Number(field(r, 'category_order'))
-          : null,
+        categoryOrder: (() => {
+          const raw = field(r, 'category_order');
+          const value = Number(raw);
+          return raw !== null && raw !== undefined && raw !== '' && Number.isFinite(value)
+            ? value
+            : null;
+        })(),
         updatedAt:
             field(r, 'updated_at1') || field(r, 'UpdatedAt') || null,
         // Marqueur consommé par fetchImageBytesForReport pour router
@@ -6148,9 +6152,13 @@ const parseInlineReportAssets = (req) => {
         mimeType: String(meta.mimeType || file.mimetype || 'application/octet-stream'),
         tags,
         title: typeof meta.title === 'string' ? meta.title : '',
-        categoryOrder: Number.isFinite(Number(meta.categoryOrder))
-          ? Number(meta.categoryOrder)
-          : null,
+        categoryOrder: (() => {
+          const raw = meta.categoryOrder;
+          const value = Number(raw);
+          return raw !== null && raw !== undefined && raw !== '' && Number.isFinite(value)
+            ? value
+            : null;
+        })(),
         dossierId: typeof meta.dossierId === 'string' ? meta.dossierId : null,
         buffer: file.buffer,
       });
@@ -6267,9 +6275,13 @@ const mergeInlineDocuments = (remoteDocs, inlineMap) => {
       fileName: inline.fileName,
       mimeType: inline.mimeType,
       tags: inline.tags,
-      categoryOrder: Number.isFinite(Number(inline.categoryOrder))
-        ? Number(inline.categoryOrder)
-        : null,
+      categoryOrder: (() => {
+        const raw = inline.categoryOrder;
+        const value = Number(raw);
+        return raw !== null && raw !== undefined && raw !== '' && Number.isFinite(value)
+          ? value
+          : null;
+      })(),
       dossierId: inline.dossierId,
     });
     seenIds.add(String(inline.id));

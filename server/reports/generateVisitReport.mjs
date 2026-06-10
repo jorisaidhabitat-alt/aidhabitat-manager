@@ -2310,10 +2310,12 @@ function photosForVisitTag(documents, tag) {
     Array.isArray(doc?.tags) &&
     doc.tags.some((t) => normalize(t) === target),
   ).sort((a, b) => {
-    const ao = Number(a?.categoryOrder);
-    const bo = Number(b?.categoryOrder);
-    const hasAo = Number.isFinite(ao);
-    const hasBo = Number.isFinite(bo);
+    const rawAo = a?.categoryOrder;
+    const rawBo = b?.categoryOrder;
+    const ao = Number(rawAo);
+    const bo = Number(rawBo);
+    const hasAo = rawAo !== null && rawAo !== undefined && rawAo !== '' && Number.isFinite(ao);
+    const hasBo = rawBo !== null && rawBo !== undefined && rawBo !== '' && Number.isFinite(bo);
     if (hasAo && hasBo && ao !== bo) return ao - bo;
     if (hasAo && !hasBo) return -1;
     if (!hasAo && hasBo) return 1;
