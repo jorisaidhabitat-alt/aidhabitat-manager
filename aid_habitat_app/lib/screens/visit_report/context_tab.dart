@@ -955,8 +955,8 @@ class _ContextTabState extends State<ContextTab>
   // Autonomy section
   // ---------------------------------------------------------------------------
 
-  /// Première ligne de la liste Autonomie : libellé + bouton ✓ aligné
-  /// exactement sur la colonne des autres boutons de validation.
+  /// Bouton global Autonomie, aligné visuellement sur la pill
+  /// "+ Ajouter un niveau" de l'onglet Accessibilité > Niveaux.
   Widget _buildValidateAllRow() {
     final occ = _active;
     final total = kAutonomyItemNames.length;
@@ -970,34 +970,34 @@ class _ContextTabState extends State<ContextTab>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: kBrandPurple,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: kBrandPurple, width: 1),
+          color: allAutonomous ? kBrandPurple : const Color(0xFFF2ECF5),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: allAutonomous ? kBrandPurple : const Color(0xFFD8D0DC),
+            width: 1.5,
+          ),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox(width: 22),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Personne autonome',
-                style: TextStyle(
-                  fontSize: 13.5,
-                  height: 1.25,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
+            Icon(
+              Icons.check,
+              size: 16,
+              color: allAutonomous ? Colors.white : const Color(0xFF554265),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Personne autonome',
+              style: TextStyle(
+                color: allAutonomous ? Colors.white : const Color(0xFF554265),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
             ),
-            _GlobalAutonomyButton(active: allAutonomous),
-            const SizedBox(width: 6),
-            const SizedBox(width: 28),
-            if (_occupantHomeHelpEnabled(_safeIndex)) ...[
-              const SizedBox(width: 6),
-              const SizedBox(width: 28),
-            ],
           ],
         ),
       ),
@@ -1280,33 +1280,6 @@ class _NumberedCheckRow extends StatelessWidget {
 }
 
 enum _ActionButtonKind { autonomous, attention, humanHelp }
-
-class _GlobalAutonomyButton extends StatelessWidget {
-  final bool active;
-
-  const _GlobalAutonomyButton({required this.active});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: active ? Colors.white : Colors.white.withValues(alpha: 0.18),
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 1),
-      ),
-      alignment: Alignment.center,
-      child: Icon(
-        Icons.check,
-        size: 14,
-        color: active ? kBrandPurple : Colors.white,
-      ),
-    );
-  }
-}
 
 class _ActionButton extends StatelessWidget {
   final _ActionButtonKind kind;
