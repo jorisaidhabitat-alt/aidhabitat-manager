@@ -629,7 +629,8 @@ class _PhotosTabState extends State<PhotosTab>
     final fromIndex = current.indexWhere((doc) => doc.id == draggedId);
     final targetIndex = current.indexWhere((doc) => doc.id == targetId);
     if (fromIndex < 0 || targetIndex < 0) return;
-    final insertionIndex = targetIndex + (insertAfter ? 1 : 0);
+    final naturalInsertAfter = fromIndex < targetIndex;
+    final insertionIndex = targetIndex + (naturalInsertAfter ? 1 : 0);
     final nextIndex = insertionIndex > fromIndex
         ? insertionIndex - 1
         : insertionIndex;
@@ -1396,8 +1397,18 @@ class _PhotoDragSlotState extends State<_PhotoDragSlot> {
                   shadowColor: Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                   clipBehavior: Clip.antiAlias,
-                  child: SizedBox(
+                  child: Container(
                     width: tileWidth,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.16),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
                     child: _PhotoTile(
                       key: ValueKey('photo_drag_${_doc.id}'),
                       doc: _doc,
