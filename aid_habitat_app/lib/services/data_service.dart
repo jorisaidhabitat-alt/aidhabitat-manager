@@ -679,6 +679,7 @@ class DataService {
     }
 
     var inlineDocs = const <InlineDocumentBytes>[];
+    var inlineDocOrder = const <InlineDocumentOrder>[];
     var inlinePlans = const <InlinePlanBytes>[];
     if (patientId != null && patientId.isNotEmpty) {
       try {
@@ -688,6 +689,14 @@ class DataService {
       } catch (e) {
         // ignore: avoid_print
         print('[report] inline docs lookup failed: $e');
+      }
+      try {
+        inlineDocOrder = await _documentRepository.fetchVisitReportPhotoOrder(
+          patientId,
+        );
+      } catch (e) {
+        // ignore: avoid_print
+        print('[report] inline doc order lookup failed: $e');
       }
       try {
         inlinePlans = await _noteRepository.fetchPlanReportInlineBytes(
@@ -711,6 +720,7 @@ class DataService {
     return _nocodbApiClient.downloadVisitReport(
       dossierId: dossierId,
       inlineDocuments: inlineDocs,
+      inlineDocumentOrder: inlineDocOrder,
       inlinePlans: inlinePlans,
     );
   }

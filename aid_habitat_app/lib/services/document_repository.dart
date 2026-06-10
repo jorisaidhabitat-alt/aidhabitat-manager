@@ -161,6 +161,42 @@ class DocumentRepository {
     return result;
   }
 
+  /// Ordre local des photos VAD, même quand les bytes ne sont plus
+  /// disponibles en local. Le PDF serveur peut ainsi trier les photos
+  /// déjà présentes dans NocoDB selon le dernier drag/reorder de l'app.
+  Future<List<InlineDocumentOrder>> fetchVisitReportPhotoOrder(
+    String patientId,
+  ) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      columns: ['local_id', 'category_order', 'tags_json'],
+      where:
+          'patient_local_id = ? AND pending_delete = 0 '
+          "AND mime_type LIKE 'image/%' "
+          "AND tags_json LIKE '%Visite - %' "
+          'AND category_order IS NOT NULL',
+      whereArgs: [patientId],
+      orderBy: 'category_order ASC, created_at DESC',
+    );
+
+    final result = <InlineDocumentOrder>[];
+    for (final row in rows) {
+      final tagsRaw = row['tags_json'] as String? ?? '[]';
+      final tags = (jsonDecode(tagsRaw) as List<dynamic>).cast<String>();
+      if (!tags.any((t) => t.startsWith('Visite - '))) continue;
+      final order = (row['category_order'] as num?)?.toInt();
+      if (order == null) continue;
+      result.add(
+        InlineDocumentOrder(
+          localId: row['local_id'] as String,
+          categoryOrder: order,
+        ),
+      );
+    }
+    return result;
+  }
+
   /// Web-friendly import that takes bytes + metadata directly (no
   /// [File]) since PWAs don't have a filesystem. The bytes are stored as
   /// a `data:<mime>;base64,…` URL in `documents.local_file_data_url` and
@@ -1556,4 +1592,16 @@ class InlineDocumentBytes {
   final int? categoryOrder;
   final String? dossierId;
   final Uint8List bytes;
+}
+
+/// Métadonnée légère envoyée avec la génération PDF pour refléter
+/// immédiatement l'ordre local des photos déjà synchronisées.
+class InlineDocumentOrder {
+  const InlineDocumentOrder({
+    required this.localId,
+    required this.categoryOrder,
+  });
+
+  final String localId;
+  final int categoryOrder;
 }

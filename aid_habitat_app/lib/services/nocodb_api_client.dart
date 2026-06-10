@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/types.dart';
 import 'app_config.dart';
-import 'document_repository.dart' show InlineDocumentBytes;
+import 'document_repository.dart' show InlineDocumentBytes, InlineDocumentOrder;
 import 'note_repository.dart' show InlinePlanBytes;
 
 class _AuthAwareHttpClient extends http.BaseClient {
@@ -1044,6 +1044,7 @@ class NocodbApiClient {
   downloadVisitReport({
     required String dossierId,
     List<InlineDocumentBytes> inlineDocuments = const [],
+    List<InlineDocumentOrder> inlineDocumentOrder = const [],
     List<InlinePlanBytes> inlinePlans = const [],
   }) async {
     if (!AppConfig.hasRemoteConfig) {
@@ -1051,7 +1052,9 @@ class NocodbApiClient {
     }
 
     final hasInlineAssets =
-        inlineDocuments.isNotEmpty || inlinePlans.isNotEmpty;
+        inlineDocuments.isNotEmpty ||
+        inlineDocumentOrder.isNotEmpty ||
+        inlinePlans.isNotEmpty;
 
     final http.Response response;
     if (hasInlineAssets) {
@@ -1060,6 +1063,7 @@ class NocodbApiClient {
       response = await _sendReportMultipart(
         dossierId: dossierId,
         inlineDocuments: inlineDocuments,
+        inlineDocumentOrder: inlineDocumentOrder,
         inlinePlans: inlinePlans,
       );
     } else {
@@ -1127,6 +1131,7 @@ class NocodbApiClient {
   Future<http.Response> _sendReportMultipart({
     required String dossierId,
     required List<InlineDocumentBytes> inlineDocuments,
+    required List<InlineDocumentOrder> inlineDocumentOrder,
     required List<InlinePlanBytes> inlinePlans,
   }) async {
     final request = http.MultipartRequest(
@@ -1157,6 +1162,19 @@ class NocodbApiClient {
         'title': doc.title,
         if (doc.categoryOrder != null) 'categoryOrder': doc.categoryOrder,
       });
+    }
+
+    if (inlineDocumentOrder.isNotEmpty) {
+      request.fields['inline_doc_order'] = jsonEncode(
+        inlineDocumentOrder
+            .map(
+              (item) => {
+                'id': item.localId,
+                'categoryOrder': item.categoryOrder,
+              },
+            )
+            .toList(growable: false),
+      );
     }
 
     for (final plan in inlinePlans) {

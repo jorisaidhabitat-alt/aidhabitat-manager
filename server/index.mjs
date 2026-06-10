@@ -5481,13 +5481,7 @@ const fetchVisitPhotosForPatient = async (patientId) => {
         fileName: field(r, 'nom_fichier') || '',
         mimeType: field(r, 'mime_type') || 'image/jpeg',
         tags: [tag],
-        categoryOrder: (() => {
-          const raw = field(r, 'category_order');
-          const value = Number(raw);
-          return raw !== null && raw !== undefined && raw !== '' && Number.isFinite(value)
-            ? value
-            : null;
-        })(),
+        categoryOrder: parseOptionalFiniteNumber(field(r, 'category_order')),
         updatedAt:
             field(r, 'updated_at1') || field(r, 'UpdatedAt') || null,
         // Marqueur consommé par fetchImageBytesForReport pour router
@@ -6122,17 +6116,42 @@ const fetchObservationsForDossier = async (dossierId) => {
  * Convention de fieldname multipart :
  *   - `inline_doc_<localId>` : binary blob d'une photo
  *   - `inline_doc_<localId>_meta` : champ texte JSON `{fileName, mimeType, tags, dossierId, title}`
+ *   - `inline_doc_order` : JSON `[{id, categoryOrder}]` pour l'ordre local
  *   - `inline_plan_<localId>` : binary blob PNG d'un plan rasterisé
  *   - `inline_plan_<localId>_meta` : JSON `{planPhase, pageNumber, scopeId}`
  *
  * Retourne :
- *   { documents: Map<localId, doc>, plans: Map<localId, plan> }
+ *   { documents: Map<localId, doc>, documentOrder: Map<localId, number>, plans: Map<localId, plan> }
  */
+const parseOptionalFiniteNumber = (raw) => {
+  const value = Number(raw);
+  return raw !== null && raw !== undefined && raw !== '' && Number.isFinite(value)
+    ? value
+    : null;
+};
+
 const parseInlineReportAssets = (req) => {
   const documents = new Map();
+  const documentOrder = new Map();
   const plans = new Map();
   const files = Array.isArray(req?.files) ? req.files : [];
   const body = req?.body || {};
+
+  const rawDocumentOrder = body.inline_doc_order;
+  if (typeof rawDocumentOrder === 'string' && rawDocumentOrder.length > 0) {
+    try {
+      const parsed = JSON.parse(rawDocumentOrder);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const id = String(item?.id || '').trim();
+          const order = parseOptionalFiniteNumber(item?.categoryOrder);
+          if (id && order !== null) documentOrder.set(id, order);
+        }
+      }
+    } catch {
+      // Ordre invalide : non bloquant, les photos retombent sur l'ordre distant.
+    }
+  }
 
   for (const file of files) {
     const fname = String(file?.fieldname || '');
@@ -6152,13 +6171,9 @@ const parseInlineReportAssets = (req) => {
         mimeType: String(meta.mimeType || file.mimetype || 'application/octet-stream'),
         tags,
         title: typeof meta.title === 'string' ? meta.title : '',
-        categoryOrder: (() => {
-          const raw = meta.categoryOrder;
-          const value = Number(raw);
-          return raw !== null && raw !== undefined && raw !== '' && Number.isFinite(value)
-            ? value
-            : null;
-        })(),
+        categoryOrder: parseOptionalFiniteNumber(meta.categoryOrder)
+          ?? documentOrder.get(localId)
+          ?? null,
         dossierId: typeof meta.dossierId === 'string' ? meta.dossierId : null,
         buffer: file.buffer,
       });
@@ -6183,7 +6198,7 @@ const parseInlineReportAssets = (req) => {
     }
   }
 
-  return { documents, plans };
+  return { documents, documentOrder, plans };
 };
 
 const inlineReportAssetBytes = (inlineAssets) => {
@@ -6242,7 +6257,7 @@ const buildInlineFirstFetcher = (inlineAssets) => async (descriptor) => {
  * de fetchVisitPhotosForPatient (page 8 = uniquement les photos taggées
  * Visite-*).
  */
-const mergeInlineDocuments = (remoteDocs, inlineMap) => {
+const mergeInlineDocuments = (remoteDocs, inlineMap, orderMap = new Map()) => {
   const visitTagsNormalized = new Set([
     'visite - logement',
     'visite - accessibilite',
@@ -6275,13 +6290,9 @@ const mergeInlineDocuments = (remoteDocs, inlineMap) => {
       fileName: inline.fileName,
       mimeType: inline.mimeType,
       tags: inline.tags,
-      categoryOrder: (() => {
-        const raw = inline.categoryOrder;
-        const value = Number(raw);
-        return raw !== null && raw !== undefined && raw !== '' && Number.isFinite(value)
-          ? value
-          : null;
-      })(),
+      categoryOrder: parseOptionalFiniteNumber(inline.categoryOrder)
+        ?? orderMap.get(String(inline.id))
+        ?? null,
       dossierId: inline.dossierId,
     });
     seenIds.add(String(inline.id));
@@ -6293,7 +6304,11 @@ const mergeInlineDocuments = (remoteDocs, inlineMap) => {
     if (seenIds.has(String(doc.id))) continue;
     const cid = String(doc.clientDocumentId || '');
     if (cid && seenClientIds.has(cid)) continue;
-    merged.push(doc);
+    const localOrder = orderMap.get(String(doc.id)) ?? (cid ? orderMap.get(cid) : null);
+    merged.push({
+      ...doc,
+      categoryOrder: localOrder ?? parseOptionalFiniteNumber(doc.categoryOrder),
+    });
   }
   return merged;
 };
@@ -6494,7 +6509,11 @@ app.post(
 
     // 3) Merge inline + remote. Inline gagne en cas de doublon (state
     // local plus récent que NocoDB pendant la fenêtre intermittente).
-    const documents = mergeInlineDocuments(remoteDocuments, inlineAssets.documents);
+    const documents = mergeInlineDocuments(
+      remoteDocuments,
+      inlineAssets.documents,
+      inlineAssets.documentOrder,
+    );
     const notePages = mergeInlineNotePages(remoteNotePages, inlineAssets.plans);
 
     // 3a) Auto-cleanup des photos NocoDB orphelines.
