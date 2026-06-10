@@ -1514,10 +1514,10 @@ class _DraggableDocumentSlotState extends State<_DraggableDocumentSlot> {
     final local = renderObject.globalToLocal(centerOffset);
     final normalizedX = local.dx / renderObject.size.width;
     final normalizedY = local.dy / renderObject.size.height;
-    return normalizedX >= 0.08 &&
-        normalizedX <= 0.92 &&
-        normalizedY >= 0.08 &&
-        normalizedY <= 0.92;
+    return normalizedX >= 0.24 &&
+        normalizedX <= 0.76 &&
+        normalizedY >= 0.24 &&
+        normalizedY <= 0.76;
   }
 
   void _updateInsertionSide(Offset globalOffset) {
