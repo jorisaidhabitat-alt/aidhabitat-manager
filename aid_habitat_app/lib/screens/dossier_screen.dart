@@ -58,7 +58,7 @@ class DossierScreen extends StatefulWidget {
   /// « Mes dossiers » se met à jour instantanément (demande
   /// utilisateur 2026-05-05).
   final void Function(String dossierId, bool prepared)?
-      onBeneficiaryPreparedChanged;
+  onBeneficiaryPreparedChanged;
 
   const DossierScreen({
     super.key,
@@ -112,14 +112,7 @@ class _DossierScreenState extends State<DossierScreen> {
   StreamSubscription<ReferencesPayload>? _refSub;
   List<CommuneOption> _communeOptions = const [];
 
-  static const List<String> _occupantOptions = [
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '5+',
-  ];
+  static const List<String> _occupantOptions = ['1', '2', '3', '4', '5', '5+'];
 
   @override
   void initState() {
@@ -204,13 +197,15 @@ class _DossierScreenState extends State<DossierScreen> {
 
   List<CommuneOption> _mapCommunes() {
     return _references.communes
-        .map((c) => CommuneOption(
-              id: c.id,
-              label: c.label,
-              zipCode: c.zipCode,
-              epciId: c.epciId,
-              epciLabel: c.epciLabel,
-            ))
+        .map(
+          (c) => CommuneOption(
+            id: c.id,
+            label: c.label,
+            zipCode: c.zipCode,
+            epciId: c.epciId,
+            epciLabel: c.epciLabel,
+          ),
+        )
         .toList();
   }
 
@@ -353,15 +348,6 @@ class _DossierScreenState extends State<DossierScreen> {
     });
   }
 
-  String _formatDate(String raw) {
-    if (raw.isEmpty) return '';
-    try {
-      return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw));
-    } catch (_) {
-      return raw;
-    }
-  }
-
   /// Mirrors React's `formatAccompanimentType()`:
   ///  - `diagnostic` → "Diag ergo"
   ///  - `ergo`       → "MPA ergo"
@@ -459,36 +445,10 @@ class _DossierScreenState extends State<DossierScreen> {
   // ---------------------------------------------------------------------------
   // Header — utilise le widget partagé `BeneficiaryHeader` (refonte
   // 2026-05-15) pour garantir une cohérence visuelle stricte avec
-  // `VisitReportScreen` et `DocumentsScreen`. La date « Créé le » est
-  // injectée via le slot `trailing` du widget.
+  // `VisitReportScreen` et `DocumentsScreen`.
   // ---------------------------------------------------------------------------
   Widget _buildHeader(BuildContext context) {
-    return BeneficiaryHeader(
-      dossier: widget.dossier,
-      onBack: widget.onBack,
-      trailing: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Créé le',
-            style: GoogleFonts.nunito(
-              fontSize: 13,
-              fontWeight: FontWeight.w300,
-              color: Colors.grey,
-            ),
-          ),
-          Text(
-            _formatDate(widget.dossier.createdAt),
-            style: GoogleFonts.nunito(
-              fontSize: 13,
-              fontWeight: FontWeight.w300,
-              color: Colors.grey,
-            ),
-          ),
-        ],
-      ),
-    );
+    return BeneficiaryHeader(dossier: widget.dossier, onBack: widget.onBack);
   }
 
   // ---------------------------------------------------------------------------
@@ -503,84 +463,84 @@ class _DossierScreenState extends State<DossierScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-        Expanded(
-          child: _QuickActionButton(
-            // Icône "document avec lignes de texte" — plus iconique
-            // qu'un trombone pour signaler l'espace Documents.
-            icon: LucideIcons.fileText,
-            label: 'Documents',
-            subLabel: 'Photos, scans, plans...',
-            onTap: () async {
-              final navigator = Navigator.of(context);
-              // Flush avant navigation : même rationale que pour le
-              // bouton VAD — éviter qu'un dossier modifié localement
-              // (mais pas encore sauvé à 400 ms près) ne soit lu en
-              // version stale dans Documents.
-              await _flushPendingSave();
-              if (!mounted) return;
-              // Préférer le callback in-shell (`onOpenDocuments`) pour
-              // rester dans `MainScreen` avec la sidebar gauche
-              // visible (demande utilisateur 2026-04-29). Fallback sur
-              // `Navigator.push` uniquement si le parent ne câble pas
-              // le handler — utile en tests isolés.
-              if (widget.onOpenDocuments != null) {
-                widget.onOpenDocuments!();
-                return;
-              }
-              if (!mounted) return;
-              await navigator.push(
-                MaterialPageRoute(
-                  builder: (_) => DocumentsScreen(
-                    dossier: widget.dossier,
-                    onBack: navigator.pop,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _QuickActionButton(
-            icon: LucideIcons.home,
-            label: 'VAD',
-            subLabel: 'Relevé de visite',
-            onTap: () async {
-              final navigator = Navigator.of(context);
-              // Flush des éventuelles modifs en attente (debounce 400 ms
-              // du Nom/Prénom/Adresse) AVANT de naviguer vers VAD —
-              // sinon "Générer le rapport" depuis VAD pousserait un PDF
-              // basé sur l'ancienne version NocoDB. Symptôme reporté :
-              // "j'ai changé le nom en EVANS, le PDF affiche juste Joris"
-              // → le _saveTimer n'avait pas encore tiré quand l'user a
-              // cliqué Generate.
-              await _flushPendingSave();
-              if (!mounted) return;
-
-              // Prefer the in-shell navigation (callback) so the left
-              // sidebar stays visible. Fallback to Navigator.push only if
-              // the parent didn't wire a handler (isolated testing).
-              if (widget.onOpenVisitReport != null) {
-                widget.onOpenVisitReport!();
-                return;
-              }
-              await navigator.push(
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    body: VisitReportScreen(
+          Expanded(
+            child: _QuickActionButton(
+              // Icône "document avec lignes de texte" — plus iconique
+              // qu'un trombone pour signaler l'espace Documents.
+              icon: LucideIcons.fileText,
+              label: 'Documents',
+              subLabel: 'Photos, scans, plans...',
+              onTap: () async {
+                final navigator = Navigator.of(context);
+                // Flush avant navigation : même rationale que pour le
+                // bouton VAD — éviter qu'un dossier modifié localement
+                // (mais pas encore sauvé à 400 ms près) ne soit lu en
+                // version stale dans Documents.
+                await _flushPendingSave();
+                if (!mounted) return;
+                // Préférer le callback in-shell (`onOpenDocuments`) pour
+                // rester dans `MainScreen` avec la sidebar gauche
+                // visible (demande utilisateur 2026-04-29). Fallback sur
+                // `Navigator.push` uniquement si le parent ne câble pas
+                // le handler — utile en tests isolés.
+                if (widget.onOpenDocuments != null) {
+                  widget.onOpenDocuments!();
+                  return;
+                }
+                if (!mounted) return;
+                await navigator.push(
+                  MaterialPageRoute(
+                    builder: (_) => DocumentsScreen(
                       dossier: widget.dossier,
                       onBack: navigator.pop,
                     ),
                   ),
-                ),
-              );
-              // On return from the visit report, re-read the patient row
-              // so any change made there (firstName, lastName, city…) is
-              // reflected in the "informations bénéficiaire" card here.
-              await _refreshFromRepository();
-            },
+                );
+              },
+            ),
           ),
-        ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _QuickActionButton(
+              icon: LucideIcons.home,
+              label: 'VAD',
+              subLabel: 'Relevé de visite',
+              onTap: () async {
+                final navigator = Navigator.of(context);
+                // Flush des éventuelles modifs en attente (debounce 400 ms
+                // du Nom/Prénom/Adresse) AVANT de naviguer vers VAD —
+                // sinon "Générer le rapport" depuis VAD pousserait un PDF
+                // basé sur l'ancienne version NocoDB. Symptôme reporté :
+                // "j'ai changé le nom en EVANS, le PDF affiche juste Joris"
+                // → le _saveTimer n'avait pas encore tiré quand l'user a
+                // cliqué Generate.
+                await _flushPendingSave();
+                if (!mounted) return;
+
+                // Prefer the in-shell navigation (callback) so the left
+                // sidebar stays visible. Fallback to Navigator.push only if
+                // the parent didn't wire a handler (isolated testing).
+                if (widget.onOpenVisitReport != null) {
+                  widget.onOpenVisitReport!();
+                  return;
+                }
+                await navigator.push(
+                  MaterialPageRoute(
+                    builder: (_) => Scaffold(
+                      body: VisitReportScreen(
+                        dossier: widget.dossier,
+                        onBack: navigator.pop,
+                      ),
+                    ),
+                  ),
+                );
+                // On return from the visit report, re-read the patient row
+                // so any change made there (firstName, lastName, city…) is
+                // reflected in the "informations bénéficiaire" card here.
+                await _refreshFromRepository();
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -611,7 +571,8 @@ class _DossierScreenState extends State<DossierScreen> {
     // payload qu'on vient de fetcher au state local pour les champs
     // de saisie : si différent, c'est qu'une saisie est en cours
     // (ou en attente de sync), on garde le local.
-    final hasUnsyncedTextEdits = fresh.patient.firstName != _firstName ||
+    final hasUnsyncedTextEdits =
+        fresh.patient.firstName != _firstName ||
         fresh.patient.lastName != _lastName ||
         fresh.patient.address != _address ||
         fresh.patient.city != _city ||
@@ -713,10 +674,10 @@ class _DossierScreenState extends State<DossierScreen> {
                     // sur Roboto. Demande utilisateur 2026-05-13 : « il
                     // ne faut absolument pas de Roboto ».
                     style: DefaultTextStyle.of(context).style.copyWith(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: bannerFg,
-                        ),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: bannerFg,
+                    ),
                     child: const Text(
                       'Bénéficiaire',
                       overflow: TextOverflow.ellipsis,
@@ -739,8 +700,10 @@ class _DossierScreenState extends State<DossierScreen> {
                     // SQLite) pour que la bordure verte/jaune dans
                     // « Mes dossiers » réponde instantanément, sans
                     // attendre la persistance ni un refresh sync.
-                    widget.onBeneficiaryPreparedChanged
-                        ?.call(widget.dossier.id, next);
+                    widget.onBeneficiaryPreparedChanged?.call(
+                      widget.dossier.id,
+                      next,
+                    );
                     try {
                       await DataService().setBeneficiaryPrepared(
                         dossierLocalId: widget.dossier.id,
@@ -751,8 +714,10 @@ class _DossierScreenState extends State<DossierScreen> {
                       if (mounted) {
                         setState(() => _beneficiaryPrepared = !next);
                       }
-                      widget.onBeneficiaryPreparedChanged
-                          ?.call(widget.dossier.id, !next);
+                      widget.onBeneficiaryPreparedChanged?.call(
+                        widget.dossier.id,
+                        !next,
+                      );
                     }
                   },
                   child: Tooltip(
@@ -819,18 +784,14 @@ class _DossierScreenState extends State<DossierScreen> {
                         Expanded(
                           child: _PlainField(
                             label: 'Nom',
-                            value: _lastName.trim().isEmpty
-                                ? '—'
-                                : _lastName,
+                            value: _lastName.trim().isEmpty ? '—' : _lastName,
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: _PlainField(
                             label: 'Prénom',
-                            value: _firstName.trim().isEmpty
-                                ? '—'
-                                : _firstName,
+                            value: _firstName.trim().isEmpty ? '—' : _firstName,
                           ),
                         ),
                       ],
@@ -842,9 +803,7 @@ class _DossierScreenState extends State<DossierScreen> {
                         Expanded(
                           child: _PlainField(
                             label: 'Occupants',
-                            value: _numberPeople == '1'
-                                ? '1'
-                                : _numberPeople,
+                            value: _numberPeople == '1' ? '1' : _numberPeople,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -859,8 +818,9 @@ class _DossierScreenState extends State<DossierScreen> {
                     const SizedBox(height: 16),
                     _PlainField(
                       label: 'Adresse',
-                      value:
-                          fullAddress.isEmpty ? 'Non renseignée' : fullAddress,
+                      value: fullAddress.isEmpty
+                          ? 'Non renseignée'
+                          : fullAddress,
                       multiline: true,
                     ),
                     // Section "Communauté de communes" — réservée dès qu'on
@@ -1041,9 +1001,10 @@ class _DossierScreenState extends State<DossierScreen> {
   String _formatFullAddress(String street, String zip, String city) {
     final parts = <String>[];
     if (street.trim().isNotEmpty) parts.add(street.trim());
-    final cityLine = [zip.trim(), city.trim()]
-        .where((s) => s.isNotEmpty)
-        .join(' ');
+    final cityLine = [
+      zip.trim(),
+      city.trim(),
+    ].where((s) => s.isNotEmpty).join(' ');
     if (cityLine.isNotEmpty) parts.add(cityLine);
     return parts.join('\n');
   }
@@ -1132,19 +1093,21 @@ class _DossierScreenState extends State<DossierScreen> {
                   ? _numberPeople
                   : '1',
               items: _occupantOptions
-                  .map((opt) => DropdownMenuItem<String>(
-                        value: opt,
-                        child: Text(
-                          opt == '1' ? '1 occupant' : '$opt occupants',
-                          // Bumpé w400 (défaut) → w600 pour rester
-                          // aligné sur l'épaisseur des autres valeurs
-                          // du bloc Bénéficiaire (demande user 2026-05-13).
-                          style: GoogleFonts.nunito(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
+                  .map(
+                    (opt) => DropdownMenuItem<String>(
+                      value: opt,
+                      child: Text(
+                        opt == '1' ? '1 occupant' : '$opt occupants',
+                        // Bumpé w400 (défaut) → w600 pour rester
+                        // aligné sur l'épaisseur des autres valeurs
+                        // du bloc Bénéficiaire (demande user 2026-05-13).
+                        style: GoogleFonts.nunito(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
-                      ))
+                      ),
+                    ),
+                  )
                   .toList(),
               onChanged: (v) {
                 if (v == null) return;

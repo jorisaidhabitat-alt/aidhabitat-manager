@@ -60,6 +60,9 @@ const MAPPING_PATH = path.resolve(
 );
 
 const FLAT_2026_CUSTOM_FIELDS = new Set([
+  'AMO',
+  'Caisse de retraite complémentaire',
+  'EPCI',
   'obs',
   'Oui_2',
   'Non_2',
@@ -104,6 +107,9 @@ const FLAT_2026_CUSTOM_FIELDS = new Set([
   'Text9',
   'Text10',
 ]);
+
+const FLAT_2026_EXTRA_STATIC_RECO_PAGE_INDEX = 15;
+const FLAT_2026_AID_SUMMARY_PAGE_INDEX = 16;
 
 // ---------------------------------------------------------------------------
 // Adresse Aid'Habitat — utilisée à 2 endroits dans le rapport :
@@ -201,6 +207,14 @@ function findPageIndexForWidgetRef(pdfDoc, widget) {
   if (!pageRef) return -1;
   const pages = pdfDoc.getPages();
   return pages.findIndex((p) => p.ref === pageRef);
+}
+
+function findCurrentPageIndexByRef(pdfDoc, pageRef) {
+  if (!pageRef) return -1;
+  for (let i = 0; i < pdfDoc.getPageCount(); i += 1) {
+    if (pdfDoc.getPage(i).ref === pageRef) return i;
+  }
+  return -1;
 }
 
 function mapLegacyPageIndexToFlat2026(legacyPageIndex) {
@@ -2740,6 +2754,64 @@ async function drawFlat2026Logement({ pdfDoc, view }) {
   });
 }
 
+async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
+  if (!page) return;
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const cells = [
+    {
+      value: view?.dossier?.amoLabel,
+      x: 382.7,
+      y: 611.8,
+      width: 156.6,
+      height: 26.5,
+      fontSize: 10,
+      lineHeight: 12,
+      maxLines: 2,
+    },
+    {
+      value: view?.patient?.caisseComplementaireLabel,
+      x: 383.2,
+      y: 569.8,
+      width: 156.6,
+      height: 29.9,
+      fontSize: 8.5,
+      lineHeight: 10,
+      maxLines: 3,
+    },
+    {
+      value: view?.patient?.epciLabel,
+      x: 383.2,
+      y: 526.8,
+      width: 156.6,
+      height: 29.9,
+      fontSize: 8.5,
+      lineHeight: 10,
+      maxLines: 3,
+    },
+  ];
+
+  for (const cell of cells) {
+    page.drawRectangle({
+      x: cell.x - 2,
+      y: cell.y - 2,
+      width: cell.width + 4,
+      height: cell.height + 4,
+      color: rgb(1, 1, 1),
+    });
+    const value = String(cell.value ?? '').trim();
+    if (!value) continue;
+    drawWrappedText(page, value, {
+      x: cell.x,
+      yTop: cell.y + cell.height - 5,
+      width: cell.width,
+      font: regular,
+      fontSize: cell.fontSize,
+      lineHeight: cell.lineHeight,
+      maxLines: cell.maxLines,
+    });
+  }
+}
+
 async function drawGeneratedPageNumbers(pdfDoc) {
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const pageCount = pdfDoc.getPageCount();
@@ -3054,6 +3126,12 @@ export async function generateVisitReport({
   const pdfDoc = await PDFDocument.load(templateBytes);
   const form = pdfDoc.getForm();
   const isFlat2026Template = await ensureFlat2026CompatibilityFields(pdfDoc);
+  const flat2026AidSummaryPage = isFlat2026Template
+    ? pdfDoc.getPage(FLAT_2026_AID_SUMMARY_PAGE_INDEX)
+    : null;
+  const flat2026ExtraStaticRecoPageRef = isFlat2026Template
+    ? pdfDoc.getPage(FLAT_2026_EXTRA_STATIC_RECO_PAGE_INDEX).ref
+    : null;
 
   // Index par nom pour éviter le for-each * field-by-name.
   const fieldsByName = new Map();
@@ -3591,6 +3669,11 @@ export async function generateVisitReport({
   if (isFlat2026Template) {
     await drawFlat2026Logement({ pdfDoc, view });
     await drawFlat2026Sanitaires({ pdfDoc, view });
+    await drawFlat2026AidSummary({
+      pdfDoc,
+      page: flat2026AidSummaryPage,
+      view,
+    });
   }
 
   // Aplatissement final : convertit chaque champ en contenu fixe (le
@@ -3757,13 +3840,20 @@ export async function generateVisitReport({
   // page logique qu'au moment de la capture.
   // ---------------------------------------------------------------
   const allRemovals = [...emptyPageIndices];
-  if (isFlat2026Template && descriptifPageIdx > 0) {
+  if (isFlat2026Template && flat2026ExtraStaticRecoPageRef) {
     // Le template 2026 contient une page préconisation statique
     // supplémentaire juste avant "Descriptif des aides prévisionnelles".
-    // Elle ne reçoit aucun slot dynamique (v1.1 limite les recos à 8)
-    // et faisait apparaître les valeurs d'aides sur la mauvaise page
-    // tant que le remapping des champs pointait trop tôt.
-    allRemovals.push(descriptifPageIdx - 1);
+    // Elle ne reçoit aucun slot dynamique (v1.1 limite les recos à 8).
+    // On garde sa référence de page dès le chargement du template, puis
+    // on retrouve son index courant ici : les pages bonus photos/plans
+    // peuvent sinon décaler les numéros avant suppression.
+    const extraStaticRecoPageIdx = findCurrentPageIndexByRef(
+      pdfDoc,
+      flat2026ExtraStaticRecoPageRef,
+    );
+    if (extraStaticRecoPageIdx !== -1) {
+      allRemovals.push(extraStaticRecoPageIdx);
+    }
   }
   if (stats.descriptifMerged && descriptifPageIdx !== -1) {
     allRemovals.push(descriptifPageIdx);

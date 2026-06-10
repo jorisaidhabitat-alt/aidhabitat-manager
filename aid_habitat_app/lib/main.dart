@@ -97,6 +97,14 @@ Future<void> main(List<String> args) async {
   if (!kIsWeb && args.isNotEmpty && args.first == 'multi_window') {
     final windowId = int.parse(args[1]);
     final payload = jsonDecode(args[2]) as Map<String, dynamic>;
+    final rawDrawingPages = payload['drawingPages'];
+    final initialDrawingPages = rawDrawingPages is Map
+        ? {
+            for (final entry in rawDrawingPages.entries)
+              if (int.tryParse(entry.key.toString()) != null)
+                int.parse(entry.key.toString()): entry.value?.toString() ?? '',
+          }
+        : const <int, String>{};
     await initializeDateFormatting('fr_FR', null);
     runApp(
       NoteWindowApp(
@@ -105,6 +113,7 @@ Future<void> main(List<String> args) async {
         tabKey: payload['tabKey'] as String,
         title: payload['title'] as String? ?? 'Note',
         initialText: payload['initialText'] as String? ?? '',
+        initialDrawingPages: initialDrawingPages,
         // 'text' (défaut) ou 'drawing' (cf. NoteWindowApp).
         mode: payload['mode'] as String? ?? 'text',
       ),
@@ -166,6 +175,7 @@ Future<void> main(List<String> args) async {
           tabKey: params['tabKey'] ?? '',
           title: params['title'] ?? 'Note',
           initialText: params['initialText'] ?? '',
+          initialDrawingPages: const <int, String>{},
           mode: mode,
         ),
       );

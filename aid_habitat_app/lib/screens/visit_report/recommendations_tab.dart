@@ -62,6 +62,7 @@ class RecommendationsTabController {
 class _RecommendationsTabState extends State<RecommendationsTab>
     with AutomaticKeepAliveClientMixin {
   static const int _maxRecommendations = 8;
+  static const Color _recommendationCardBackground = Color(0xFFF2ECF5);
 
   @override
   bool get wantKeepAlive => true;
@@ -305,22 +306,29 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     _scheduleSave();
   }
 
-  /// Déplace un item depuis [oldIndex] vers le slot d'insertion [newIndex].
-  /// [newIndex] est exprimé dans la liste avant suppression : 0 = tout au
-  /// début, `_items.length` = tout à la fin.
-  void _reorderItem(int oldIndex, int newIndex) {
-    if (oldIndex < 0 || oldIndex >= _items.length) return;
-    final insertionIndex = newIndex.clamp(0, _items.length);
-    if (insertionIndex == oldIndex || insertionIndex == oldIndex + 1) return;
+  void _previewReorderItem(
+    String draggedId,
+    String targetId,
+    bool insertAfter,
+  ) {
+    if (draggedId == targetId) return;
+    final fromIndex = _items.indexWhere((item) => item.id == draggedId);
+    final targetIndex = _items.indexWhere((item) => item.id == targetId);
+    if (fromIndex < 0 || targetIndex < 0) return;
+    final insertionIndex = targetIndex + (insertAfter ? 1 : 0);
+    final nextIndex = insertionIndex > fromIndex
+        ? insertionIndex - 1
+        : insertionIndex;
+    if (nextIndex == fromIndex) return;
     setState(() {
       final next = List<VisitRecommendationItem>.from(_items);
-      final targetIndex = insertionIndex > oldIndex
-          ? insertionIndex - 1
-          : insertionIndex;
-      final moved = next.removeAt(oldIndex);
-      next.insert(targetIndex.clamp(0, next.length), moved);
+      final moved = next.removeAt(fromIndex);
+      next.insert(nextIndex.clamp(0, next.length), moved);
       _items = next;
     });
+  }
+
+  void _commitReorderPreview() {
     _scheduleSave();
   }
 
@@ -458,21 +466,31 @@ class _RecommendationsTabState extends State<RecommendationsTab>
         final available = constraints.maxWidth;
         final cardWidth = (available - gap * (columns - 1)) / columns;
         final cardHeight = _recommendationCardHeight(cardWidth);
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (int i = 0; i < _items.length; i++)
-              SizedBox(
-                width: cardWidth,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: cardHeight),
+        final totalItems =
+            _items.length + (_items.length < _maxRecommendations ? 1 : 0);
+        final rows = totalItems == 0 ? 0 : ((totalItems - 1) ~/ columns) + 1;
+        final gridHeight = rows * cardHeight + (rows - 1) * gap;
+
+        return SizedBox(
+          height: gridHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              for (int i = 0; i < _items.length; i++)
+                AnimatedPositioned(
+                  key: ValueKey('reco_position_${_items[i].id}'),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  left: (i % columns) * (cardWidth + gap),
+                  top: (i ~/ columns) * (cardHeight + gap),
+                  width: cardWidth,
+                  height: cardHeight,
                   child: _DraggableRecoSlot(
                     key: ValueKey('slot-${_items[i].id}'),
-                    index: i,
+                    itemId: _items[i].id,
                     cardWidth: cardWidth,
-                    itemsCount: _items.length,
-                    onReorder: _reorderItem,
+                    onPreviewReorder: _previewReorderItem,
+                    onCommitReorder: _commitReorderPreview,
                     child: _RecommendationCard(
                       key: ValueKey(_items[i].id),
                       item: _items[i],
@@ -486,14 +504,19 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                     ),
                   ),
                 ),
-              ),
-            if (_items.length < _maxRecommendations)
-              SizedBox(
-                width: cardWidth,
-                height: cardHeight,
-                child: _buildAddRecommendationCard(),
-              ),
-          ],
+              if (_items.length < _maxRecommendations)
+                AnimatedPositioned(
+                  key: const ValueKey('reco_add_position'),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  left: (_items.length % columns) * (cardWidth + gap),
+                  top: (_items.length ~/ columns) * (cardHeight + gap),
+                  width: cardWidth,
+                  height: cardHeight,
+                  child: _buildAddRecommendationCard(),
+                ),
+            ],
+          ),
         );
       },
     );
@@ -501,7 +524,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
 
   double _recommendationCardHeight(double cardWidth) {
     final imageHeight = (cardWidth - 24) / 1.5;
-    return imageHeight + 142;
+    return imageHeight + 174;
   }
 
   Widget _buildAddRecommendationCard() {
@@ -512,7 +535,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
         borderRadius: BorderRadius.circular(16),
         child: Ink(
           decoration: BoxDecoration(
-            color: kBrandPurple.withValues(alpha: 0.08),
+            color: _RecommendationsTabState._recommendationCardBackground,
             borderRadius: BorderRadius.circular(16),
           ),
           child: CustomPaint(
@@ -595,7 +618,7 @@ class _RecommendationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: kBrandPurple.withValues(alpha: 0.08),
+        color: _RecommendationsTabState._recommendationCardBackground,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -1063,17 +1086,18 @@ class _InlineTitleFieldState extends State<_InlineTitleField> {
 class _DraggableRecoSlot extends StatefulWidget {
   const _DraggableRecoSlot({
     super.key,
-    required this.index,
+    required this.itemId,
     required this.cardWidth,
-    required this.itemsCount,
-    required this.onReorder,
+    required this.onPreviewReorder,
+    required this.onCommitReorder,
     required this.child,
   });
 
-  final int index;
+  final String itemId;
   final double cardWidth;
-  final int itemsCount;
-  final void Function(int oldIndex, int newIndex) onReorder;
+  final void Function(String draggedId, String targetId, bool insertAfter)
+  onPreviewReorder;
+  final VoidCallback onCommitReorder;
   final Widget child;
 
   @override
@@ -1098,13 +1122,18 @@ class _DraggableRecoSlotState extends State<_DraggableRecoSlot> {
 
   @override
   Widget build(BuildContext context) {
-    return DragTarget<int>(
+    return DragTarget<String>(
       onWillAcceptWithDetails: (details) {
         // On accepte tout sauf un drop sur soi-même.
-        return details.data != widget.index;
+        return details.data != widget.itemId;
       },
       onMove: (details) {
         _updateInsertionSide(details.offset);
+        widget.onPreviewReorder(
+          details.data,
+          widget.itemId,
+          _isAfterTarget(details.offset),
+        );
       },
       onLeave: (_) {
         if (_insertAfter != null) {
@@ -1112,70 +1141,40 @@ class _DraggableRecoSlotState extends State<_DraggableRecoSlot> {
         }
       },
       onAcceptWithDetails: (details) {
-        final from = details.data;
-        final insertAfter = _isAfterTarget(details.offset);
-        final insertionIndex = widget.index + (insertAfter ? 1 : 0);
-        widget.onReorder(from, insertionIndex);
         if (_insertAfter != null) {
           setState(() => _insertAfter = null);
         }
       },
       builder: (context, candidates, rejected) {
-        final isHovered = candidates.isNotEmpty;
-        final insertAfter = _insertAfter ?? false;
         final highlight = Stack(
           clipBehavior: Clip.none,
-          children: [
-            widget.child,
-            if (isHovered)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: kBrandPurple, width: 2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-              ),
-            if (isHovered)
-              Positioned(
-                top: 8,
-                bottom: 8,
-                left: insertAfter ? null : -3,
-                right: insertAfter ? -3 : null,
-                child: IgnorePointer(
-                  child: Container(
-                    width: 6,
-                    decoration: BoxDecoration(
-                      color: kBrandPurple,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+          children: [widget.child],
         );
-        return LongPressDraggable<int>(
-          data: widget.index,
-          // Délai court — réactivité améliorée sur tactile sans
-          // déclencher de drags accidentels lors de simples taps.
-          delay: const Duration(milliseconds: 250),
-          maxSimultaneousDrags: 1,
-          // Le fantôme est un clone visuel de la carte avec une
-          // élévation prononcée pour suggérer "elle flotte".
-          feedback: Material(
-            color: Colors.transparent,
-            elevation: 12,
-            borderRadius: BorderRadius.circular(16),
-            clipBehavior: Clip.antiAlias,
-            child: SizedBox(width: widget.cardWidth, child: widget.child),
+        return MouseRegion(
+          cursor: SystemMouseCursors.grab,
+          child: Draggable<String>(
+            data: widget.itemId,
+            feedbackOffset: Offset.zero,
+            hitTestBehavior: HitTestBehavior.opaque,
+            maxSimultaneousDrags: 1,
+            onDragEnd: (_) => widget.onCommitReorder(),
+            // Le fantôme garde exactement le même fond violet clair que
+            // la carte réelle. Pas d'opacité ni de voile sombre pendant
+            // le déplacement.
+            feedback: Material(
+              color: Colors.transparent,
+              elevation: 0,
+              shadowColor: Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(width: widget.cardWidth, child: widget.child),
+            ),
+            // La carte d'origine reste pleine couleur : l'utilisateur
+            // voit uniquement les autres éléments coulisser, sans trou
+            // sombre ni placeholder transparent.
+            childWhenDragging: widget.child,
+            child: highlight,
           ),
-          // Pendant que la carte est draggée, la version "originale"
-          // reste à sa place (pour préserver le layout de la grille)
-          // mais en semi-transparence.
-          childWhenDragging: Opacity(opacity: 0.3, child: widget.child),
-          child: highlight,
         );
       },
     );

@@ -86,6 +86,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       RecommendationsTabController();
   final BathroomTabController _bathroomController = BathroomTabController();
   final WcTabController _wcController = WcTabController();
+  final SummaryTabController _summaryController = SummaryTabController();
   late Dossier _dossier;
   int _housingVersion = 0;
   // Maps (patientId::tabKey) -> secondary OS windowId, so when the user
@@ -798,19 +799,33 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       ..show();
   }
 
-  /// Variante drawing de [_openNoteInSeparateWindow] — utilisée
-  /// uniquement pour le canvas pleine page de l'onglet Résumé
-  /// (demande utilisateur 2026-05-04 : seule note dessin VAD à pouvoir
-  /// s'agrandir dans une fenêtre browser détachée). La 2e fenêtre
-  /// rendra un NotesWidget canvas (toolset advanced + freeform +
-  /// pagination) au lieu du TextField text-only — cf. branche
-  /// `mode == 'drawing'` côté `note_window_screen.dart`.
-  ///
-  /// Persistance : pas d'IPC pour les strokes (volume trop élevé). La
-  /// 2e fenêtre lit/écrit directement dans l'IndexedDB partagé via une
-  /// init minimale de databaseFactory + DataService (sans SyncEngine).
-  /// La fenêtre principale voit les changements au prochain reload du
-  /// dossier (ou au switch d'onglet, qui re-fetch les notes).
+  Future<Map<String, String>> _collectDrawingPagesForWindow(
+    String patientId,
+    String sourceTab,
+  ) async {
+    final pages = <String, String>{};
+    for (var page = 0; page < 20; page++) {
+      final raw = await _dataService.fetchNoteDrawingJson(
+        patientId: patientId,
+        tabKey: sourceTab,
+        pageNumber: page,
+      );
+      if (page == 0) {
+        pages['0'] = raw ?? '';
+        if (raw == null || raw.isEmpty) break;
+        continue;
+      }
+      if (raw == null || raw.isEmpty) break;
+      pages['$page'] = raw;
+    }
+    return pages;
+  }
+
+  /// Variante lecture seule de [_openNoteInSeparateWindow] — utilisée
+  /// uniquement pour le canvas pleine page de l'onglet Résumé.
+  /// La fenêtre détachée visualise le dessin mais ne peut pas le modifier :
+  /// la fenêtre principale prépare les pages et les transmet dans le payload,
+  /// ce qui évite toute lecture SQLite depuis le second moteur Flutter macOS.
   Future<void> _openDrawingNoteInSeparateWindow(String sourceTab) async {
     final patientId = _dossier.patient.id;
 
@@ -851,12 +866,18 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     }
 
     // Native macOS — passe par DesktopMultiWindow comme la version texte.
+    final drawingPages = await _collectDrawingPagesForWindow(
+      patientId,
+      sourceTab,
+    );
+    if (!mounted) return;
     final payload = jsonEncode({
       'patientId': patientId,
       'tabKey': sourceTab,
       'title': 'Résumé — dessin',
       'initialText': '',
       'mode': 'drawing',
+      'drawingPages': drawingPages,
     });
     final window = await DesktopMultiWindow.createWindow(payload);
     final origin =
@@ -2229,6 +2250,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         _MissingField(
           label: 'Résumé — Projet de l\'usager',
           tabIndex: _tabs.indexOf('Résumé'),
+          noteTabKey: 'Préconisations-Projet',
         ),
       );
     }
@@ -2238,6 +2260,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         _MissingField(
           label: 'Résumé — Résumé des préconisations',
           tabIndex: _tabs.indexOf('Résumé'),
+          noteTabKey: 'Préconisations-Résumé',
         ),
       );
     }
@@ -2375,6 +2398,24 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     if (missing.levelField != null) {
       _scheduleSelectMissingLevel(missing);
     }
+    if (missing.noteTabKey != null) {
+      _scheduleSelectMissingNote(missing);
+    }
+  }
+
+  void _scheduleSelectMissingNote(_MissingField missing) {
+    void selectNote() {
+      if (!mounted || missing.noteTabKey == null) return;
+      final tabName = _tabs[missing.tabIndex];
+      if (tabName == 'Résumé') {
+        _summaryController.showTextNote(missing.noteTabKey!);
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      selectNote();
+      Future<void>.delayed(const Duration(milliseconds: 120), selectNote);
+    });
   }
 
   void _scheduleSelectMissingLevel(_MissingField missing) {
@@ -2662,15 +2703,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         // Onglet Photos — pleine largeur (pas de notes latérales).
         // Voir `lib/screens/visit_report/photos_tab.dart`.
         _wrapTabWithNotes('Photos', PhotosTab(dossier: _dossier)),
-        // Onglet Résumé — split de l'ancien Préconisations (2026-05-04).
-        // Cadres Projet/Résumé en haut + canvas pleine page (style
-        // Mesures, sans image de fond) en dessous. Le canvas supporte
-        // pagination + agrandissement dans une 2e fenêtre browser
-        // (mode drawing — cf. _openDrawingNoteInSeparateWindow).
+        // Onglet Résumé — dessin pleine page par défaut, puis switch
+        // vers les notes écrites Projet / Préconisations. Le canvas
+        // reste agrandissable dans une 2e fenêtre browser (mode
+        // drawing — cf. _openDrawingNoteInSeparateWindow).
         _wrapTabWithNotes(
           'Résumé',
           SummaryTab(
             dossier: _dossier,
+            controller: _summaryController,
             onExpandToTab: () => _openDrawingNoteInSeparateWindow('Résumé'),
             // Notes texte du haut (Projet / Résumé des préco) → même
             // mécanisme que les notes VAD classiques : nouvelle
@@ -2867,10 +2908,15 @@ class _MissingField {
   /// bonne instance Salle de bain / WC.
   final String? levelField;
 
+  /// Note écrite à afficher dans Résumé lorsque la validation pointe
+  /// vers Projet de l'usager ou Préconisations.
+  final String? noteTabKey;
+
   const _MissingField({
     required this.label,
     required this.tabIndex,
     this.subSectionIndex,
     this.levelField,
+    this.noteTabKey,
   });
 }

@@ -93,6 +93,11 @@ const double _kDefaultHighlighterSize = 10.0;
 const double _kDefaultEraserSize = 18.0;
 const double _kMinEraserSize = 8.0;
 const double _kMaxEraserSize = 44.0;
+const List<double> _kEraserSizePresets = <double>[
+  _kMinEraserSize,
+  _kDefaultEraserSize,
+  _kMaxEraserSize,
+];
 // Refonte 2026-05-13 : couleurs alignées sur le nouveau design system.
 //  - _kActiveText : mauve-700 (#554265, légère nuance plus chaude)
 //  - kBrandPurpleSoft : mauve-100 (#F2ECF5)
@@ -105,7 +110,8 @@ const Color _kStackedBorder = Color(0xFFEDE9EF);
 // l'écran dossier (cohérence visuelle — demande utilisateur).
 const Color _kStackedSplitterBg = Color(0xFFEDE8F5);
 const Color kBrandPurpleSoft = Color(0xFFF2ECF5); // mauve-100
-const Color _kStackedPinkSoft = Color(0xFFE8A4B0);
+const Color _kDangerActionBg = Color(0xFFFFE4E6);
+const Color _kDangerActionFg = Color(0xFFB4232F);
 
 List<NoteTool> _availableToolsFor(NoteToolset toolset) {
   switch (toolset) {
@@ -173,6 +179,7 @@ class NotesWidget extends StatefulWidget {
     this.onMedicalFlagsChanged,
     this.stackedCards = false,
     this.attachedToTitleBanner = false,
+    this.borderlessTextEditor = false,
     this.canvasSlideIndex,
     this.showCanvasTopDivider = true,
   });
@@ -337,6 +344,10 @@ class NotesWidget extends StatefulWidget {
   /// immédiatement au-dessus : coins supérieurs aplatis et suppression
   /// du padding haut externe pour former un seul ensemble.
   final bool attachedToTitleBanner;
+
+  /// Retire le contour gris du bloc texte interne. Utilisé quand le
+  /// parent fournit déjà le cadre visuel complet autour de la note.
+  final bool borderlessTextEditor;
 
   @override
   State<NotesWidget> createState() => _NotesWidgetState();
@@ -1557,6 +1568,23 @@ class _NotesWidgetState extends State<NotesWidget> {
     await _persistEmptyAt(oldLastIndex);
   }
 
+  Future<void> _confirmDeletePage() async {
+    final canDelete =
+        _totalPages > 1 &&
+        (widget.onDeletePage == null || widget.canDeletePage);
+    if (!canDelete) return;
+    _hideEraserSizeGauge();
+    final confirmed = await showAppDestructiveConfirmation(
+      context: context,
+      title: 'Supprimer cette page ?',
+      message: 'La page ${_currentPage + 1} et son contenu seront supprimés.',
+      confirmLabel: 'Supprimer',
+      icon: Icons.delete_outline,
+    );
+    if (!mounted || !confirmed) return;
+    await _deletePage();
+  }
+
   Future<void> _persistPage(int pageIndex) async {
     final strokes = _pageStrokes.putIfAbsent(pageIndex, () => <Stroke>[]);
     final text = _pageTexts[pageIndex] ?? '';
@@ -2079,7 +2107,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           message: 'Supprimer la page',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: canDelete ? () => _deletePage() : null,
+            onTap: canDelete ? () => unawaited(_confirmDeletePage()) : null,
             child: Padding(
               padding: const EdgeInsets.all(4),
               child: Opacity(
@@ -2088,14 +2116,14 @@ class _NotesWidgetState extends State<NotesWidget> {
                   width: 36,
                   height: 36,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFFFE4E6),
+                    color: _kDangerActionBg,
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
                     child: Icon(
                       Icons.delete_outline,
                       size: 18,
-                      color: _kStackedPinkSoft,
+                      color: _kDangerActionFg,
                     ),
                   ),
                 ),
@@ -2145,6 +2173,82 @@ class _NotesWidgetState extends State<NotesWidget> {
         ),
       );
     }
+    if (widget.leadingNavWidget != null && widget.allowPagination) {
+      return ColoredBox(
+        color: kBrandPurpleSoft,
+        child: SizedBox(
+          height: 64,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                widget.leadingNavWidget!,
+                const SizedBox(width: 12),
+                _HeaderIconButton(
+                  icon: LucideIcons.chevronLeft,
+                  onTap: _currentPage > 0
+                      ? () => _switchPage(_currentPage - 1)
+                      : null,
+                  tooltip: 'Page précédente',
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    '${_currentPage + 1}/${math.max(_totalPages, 1)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+                _HeaderIconButton(
+                  icon: LucideIcons.chevronRight,
+                  onTap: _currentPage < _totalPages - 1
+                      ? () => _switchPage(_currentPage + 1)
+                      : null,
+                  tooltip: 'Page suivante',
+                ),
+                _VioletHeaderIconButton(
+                  icon: LucideIcons.plus,
+                  onTap: _totalPages < widget.maxPages ? _addPage : null,
+                  tooltip: 'Nouvelle page (dessin)',
+                ),
+                _RoseHeaderIconButton(
+                  icon: Icons.delete_outline,
+                  onTap:
+                      (_totalPages > 1 &&
+                          (widget.onDeletePage == null || widget.canDeletePage))
+                      ? () => unawaited(_confirmDeletePage())
+                      : null,
+                  tooltip: 'Supprimer la page',
+                ),
+                const Spacer(),
+                if (!widget.showText && widget.onExpandToTab != null)
+                  _HeaderIconButton(
+                    icon: LucideIcons.maximize2,
+                    onTap: widget.onExpandToTab,
+                    tooltip: 'Ouvrir dans un autre onglet',
+                  ),
+                if (widget.showHeaderUndoRedo) ...[
+                  _HeaderIconButton(
+                    icon: LucideIcons.undo2,
+                    onTap: _undoStack.isEmpty ? null : _undo,
+                    tooltip: 'Annuler',
+                  ),
+                  _HeaderIconButton(
+                    icon: LucideIcons.redo2,
+                    onTap: _redoStack.isEmpty ? null : _redo,
+                    tooltip: 'Rétablir',
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
       child: Row(
@@ -2191,12 +2295,18 @@ class _NotesWidgetState extends State<NotesWidget> {
               onTap:
                   (_totalPages > 1 &&
                       (widget.onDeletePage == null || widget.canDeletePage))
-                  ? () => _deletePage()
+                  ? () => unawaited(_confirmDeletePage())
                   : null,
               tooltip: 'Supprimer la page',
             ),
           ],
           const Spacer(),
+          if (!widget.showText && widget.onExpandToTab != null)
+            _HeaderIconButton(
+              icon: LucideIcons.maximize2,
+              onTap: widget.onExpandToTab,
+              tooltip: 'Ouvrir dans un autre onglet',
+            ),
           if (widget.showHeaderUndoRedo) ...[
             _HeaderIconButton(
               icon: LucideIcons.undo2,
@@ -2275,7 +2385,9 @@ class _NotesWidgetState extends State<NotesWidget> {
     final boxedContainer = Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: Color(0xFFE4E7EB)),
+        border: widget.borderlessTextEditor
+            ? null
+            : Border.all(color: Color(0xFFE4E7EB)),
         borderRadius: boxedRadius,
       ),
       // En mode texte-seul (fillHeight: true), pas de hauteur intrinsèque
@@ -2536,8 +2648,8 @@ class _NotesWidgetState extends State<NotesWidget> {
         tooltip: 'Tout effacer',
         onTap: () => unawaited(_confirmClearStrokes()),
         disabled: _strokes.isEmpty,
-        backgroundColor: const Color(0xFFFFE4E6),
-        foregroundColor: const Color(0xFFB4232F),
+        backgroundColor: _kDangerActionBg,
+        foregroundColor: _kDangerActionFg,
       ),
     );
     // Undo / Redo — inclus dans la nouvelle mise en page "deux cartes"
@@ -2841,8 +2953,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   Widget _buildEraserSizePopover() {
     return Container(
-      width: 188,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(999),
@@ -2855,49 +2966,71 @@ class _NotesWidgetState extends State<NotesWidget> {
           ),
         ],
       ),
-      child: Column(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              const Icon(LucideIcons.eraser, size: 14, color: _kActiveText),
-              const SizedBox(width: 6),
-              Expanded(
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: _kActiveText,
-                    inactiveTrackColor: kBrandPurpleSoft,
-                    thumbColor: _kActiveText,
-                    overlayColor: _kActiveText.withValues(alpha: 0.12),
-                    trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 6,
-                    ),
-                    overlayShape: const RoundSliderOverlayShape(
-                      overlayRadius: 13,
-                    ),
-                  ),
-                  child: Slider(
-                    min: _kMinEraserSize,
-                    max: _kMaxEraserSize,
-                    divisions: (_kMaxEraserSize - _kMinEraserSize).round(),
-                    value: _eraserSize.clamp(_kMinEraserSize, _kMaxEraserSize),
-                    onChanged: (value) => setState(() => _eraserSize = value),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '${_eraserSize.round()} px',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: _kActiveText,
-                ),
-              ),
-            ],
-          ),
+          for (var i = 0; i < _kEraserSizePresets.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            _eraserSizeDot(
+              size: _kEraserSizePresets[i],
+              visualDiameter: switch (i) {
+                0 => 8.0,
+                1 => 12.0,
+                _ => 16.0,
+              },
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _eraserSizeDot({
+    required double size,
+    required double visualDiameter,
+  }) {
+    final selected = (_eraserSize - size).abs() < 0.1;
+    return Tooltip(
+      message: switch (visualDiameter.round()) {
+        8 => 'Gomme fine',
+        12 => 'Gomme moyenne',
+        _ => 'Gomme large',
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => setState(() => _eraserSize = size),
+          child: SizedBox(
+            width: 30,
+            height: 30,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
+                width: selected ? visualDiameter + 8 : visualDiameter,
+                height: selected ? visualDiameter + 8 : visualDiameter,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? kBrandPurpleSoft : Colors.transparent,
+                  border: selected
+                      ? Border.all(color: _kActiveText, width: 1.5)
+                      : null,
+                ),
+                child: Center(
+                  child: Container(
+                    width: visualDiameter,
+                    height: visualDiameter,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _kActiveText,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -3450,12 +3583,12 @@ class _RoseHeaderIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    const bg = Color(0xFFFFE4E6);
-    const fg = Color(0xFFB4232F);
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: enabled ? bg : bg.withValues(alpha: 0.5),
+        color: enabled
+            ? _kDangerActionBg
+            : _kDangerActionBg.withValues(alpha: 0.5),
         shape: const CircleBorder(),
         child: InkWell(
           onTap: onTap,
@@ -3466,7 +3599,9 @@ class _RoseHeaderIconButton extends StatelessWidget {
             child: Icon(
               icon,
               size: 18,
-              color: enabled ? fg : fg.withValues(alpha: 0.4),
+              color: enabled
+                  ? _kDangerActionFg
+                  : _kDangerActionFg.withValues(alpha: 0.4),
             ),
           ),
         ),

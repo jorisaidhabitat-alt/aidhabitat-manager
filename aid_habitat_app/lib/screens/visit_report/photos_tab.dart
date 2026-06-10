@@ -618,34 +618,43 @@ class _PhotosTabState extends State<PhotosTab>
     await _refresh();
   }
 
-  /// Réordonne deux photos d'une même catégorie : la photo d'index
-  /// [fromIndex] est insérée à la position [toIndex] (les autres se
-  /// décalent). Persisté dans `documents.category_order` via
-  /// [DataService.reorderVisitCategoryDocuments] — sera renvoyé au
-  /// serveur au prochain push de sync.
-  ///
-  /// Demande utilisateur 2026-04-28 : "drag to reorder doit resté
-  /// parfaitement fonctionnel sur toute la card". On déclenche le
-  /// reorder via un `DragTarget` posé sur chaque tile (cf.
-  /// `_buildReorderableGrid`).
-  Future<void> _reorderWithinCategory({
+  void _previewPhotoReorder({
     required String tag,
-    required int fromIndex,
-    required int toIndex,
-  }) async {
-    if (fromIndex == toIndex) return;
+    required String draggedId,
+    required String targetId,
+    required bool insertAfter,
+  }) {
+    if (draggedId == targetId) return;
     final current = _photosForCategory(tag);
-    if (fromIndex < 0 ||
-        fromIndex >= current.length ||
-        toIndex < 0 ||
-        toIndex >= current.length) {
-      return;
-    }
-    final next = List<DocItem>.from(current);
-    final moved = next.removeAt(fromIndex);
-    next.insert(toIndex, moved);
+    final fromIndex = current.indexWhere((doc) => doc.id == draggedId);
+    final targetIndex = current.indexWhere((doc) => doc.id == targetId);
+    if (fromIndex < 0 || targetIndex < 0) return;
+    final insertionIndex = targetIndex + (insertAfter ? 1 : 0);
+    final nextIndex = insertionIndex > fromIndex
+        ? insertionIndex - 1
+        : insertionIndex;
+    if (nextIndex == fromIndex) return;
+    final reordered = List<DocItem>.from(current);
+    final moved = reordered.removeAt(fromIndex);
+    reordered.insert(nextIndex.clamp(0, reordered.length), moved);
+    setState(() {
+      final byId = <String, int>{
+        for (var i = 0; i < reordered.length; i++) reordered[i].id: i,
+      };
+      _photos = _photos
+          .map((doc) {
+            final nextOrder = byId[doc.id];
+            if (nextOrder == null) return doc;
+            return doc.copyWith(categoryOrder: nextOrder);
+          })
+          .toList(growable: false);
+    });
+  }
+
+  Future<void> _commitPhotoOrder(String tag) async {
+    final current = _photosForCategory(tag);
     await _dataService.reorderVisitCategoryDocuments(
-      orderedDocumentIds: next.map((d) => d.id).toList(),
+      orderedDocumentIds: current.map((doc) => doc.id).toList(),
     );
     await _refresh();
   }
@@ -987,41 +996,6 @@ class _PhotosTabState extends State<PhotosTab>
     final totalSlots = photos.length + 1 > maxSlots
         ? photos.length + 1
         : maxSlots;
-    final cells = <Widget>[];
-    for (var i = 0; i < totalSlots; i++) {
-      if (i < photos.length) {
-        cells.add(_buildOccupiedSlot(tag: tag, photos: photos, index: i));
-      } else {
-        cells.add(
-          AspectRatio(aspectRatio: 1.0, child: _buildEmptySlot(tag: tag)),
-        );
-      }
-    }
-    // Découpe en rangées de 3 cellules max — chaque rangée utilise
-    // `Row + Expanded` pour répartir 1/3, 1/3, 1/3.
-    final rows = <Widget>[];
-    for (var i = 0; i < cells.length; i += 3) {
-      final rowChildren = <Widget>[];
-      for (var j = 0; j < 3; j++) {
-        if (j > 0) {
-          rowChildren.add(const SizedBox(width: spacing));
-        }
-        if (i + j < cells.length) {
-          rowChildren.add(Expanded(child: cells[i + j]));
-        } else {
-          // Cellule vide pour conserver la largeur 1/3 quand la
-          // dernière rangée est incomplète.
-          rowChildren.add(const Expanded(child: SizedBox.shrink()));
-        }
-      }
-      if (i > 0) rows.add(const SizedBox(height: spacing));
-      rows.add(
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: rowChildren,
-        ),
-      );
-    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final tileWidth = (constraints.maxWidth - spacing * 2) / 3;
@@ -1031,11 +1005,43 @@ class _PhotosTabState extends State<PhotosTab>
         final safeMinRows = minRows < 1 ? 1 : minRows;
         final minHeight =
             safeTileWidth * safeMinRows + spacing * (safeMinRows - 1);
-        return ConstrainedBox(
-          constraints: BoxConstraints(minHeight: minHeight),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: rows,
+        final totalRows = totalSlots == 0 ? 0 : ((totalSlots - 1) ~/ 3) + 1;
+        final contentHeight =
+            safeTileWidth * totalRows + spacing * (totalRows - 1);
+        final gridHeight = contentHeight < minHeight
+            ? minHeight
+            : contentHeight;
+
+        Offset offsetFor(int index) {
+          return Offset(
+            (index % 3) * (safeTileWidth + spacing),
+            (index ~/ 3) * (safeTileWidth + spacing),
+          );
+        }
+
+        return SizedBox(
+          height: gridHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              for (var i = 0; i < totalSlots; i++)
+                AnimatedPositioned(
+                  key: ValueKey(
+                    i < photos.length
+                        ? 'photo_position_${photos[i].id}'
+                        : 'photo_empty_${tag}_$i',
+                  ),
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  left: offsetFor(i).dx,
+                  top: offsetFor(i).dy,
+                  width: safeTileWidth,
+                  height: safeTileWidth,
+                  child: i < photos.length
+                      ? _buildOccupiedSlot(tag: tag, photos: photos, index: i)
+                      : _buildEmptySlot(tag: tag),
+                ),
+            ],
           ),
         );
       },
@@ -1051,71 +1057,15 @@ class _PhotosTabState extends State<PhotosTab>
     required List<DocItem> photos,
     required int index,
   }) {
-    final i = index;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final tileWidth = constraints.maxWidth;
-        return DragTarget<_DragPhotoPayload>(
-          onWillAcceptWithDetails: (details) {
-            return details.data.doc.id != photos[i].id;
-          },
-          onAcceptWithDetails: (details) async {
-            final payload = details.data;
-            if (payload.fromTag == tag) {
-              final fromIdx = photos.indexWhere((d) => d.id == payload.doc.id);
-              if (fromIdx >= 0) {
-                await _reorderWithinCategory(
-                  tag: tag,
-                  fromIndex: fromIdx,
-                  toIndex: i,
-                );
-              }
-            } else {
-              await _moveToCategory(doc: payload.doc, newTag: tag);
-            }
-          },
-          builder: (context, candidates, rejected) {
-            final hovering = candidates.isNotEmpty;
-            return LongPressDraggable<_DragPhotoPayload>(
-              data: _DragPhotoPayload(doc: photos[i], fromTag: tag),
-              delay: const Duration(milliseconds: 250),
-              feedback: Material(
-                color: Colors.transparent,
-                elevation: 12,
-                borderRadius: BorderRadius.circular(8),
-                clipBehavior: Clip.antiAlias,
-                child: Opacity(
-                  opacity: 0.85,
-                  child: SizedBox(
-                    width: tileWidth,
-                    child: _PhotoTile(
-                      key: ValueKey('photo_drag_${photos[i].id}'),
-                      doc: photos[i],
-                      onTap: () {},
-                      highlight: false,
-                    ),
-                  ),
-                ),
-              ),
-              childWhenDragging: Opacity(
-                opacity: 0.3,
-                child: _PhotoTile(
-                  key: ValueKey('photo_ghost_${photos[i].id}'),
-                  doc: photos[i],
-                  onTap: () {},
-                  highlight: false,
-                ),
-              ),
-              child: _PhotoTile(
-                key: ValueKey('photo_${photos[i].id}'),
-                doc: photos[i],
-                onTap: () => _openFullscreenWithDelete(photos[i]),
-                highlight: hovering,
-              ),
-            );
-          },
-        );
-      },
+    return _PhotoDragSlot(
+      key: ValueKey('photo_slot_${photos[index].id}'),
+      tag: tag,
+      photos: photos,
+      index: index,
+      onPreviewReorder: _previewPhotoReorder,
+      onCommitOrder: _commitPhotoOrder,
+      onMoveToCategory: _moveToCategory,
+      onOpen: _openFullscreenWithDelete,
     );
   }
 
@@ -1330,6 +1280,146 @@ class _DragPhotoPayload {
   final DocItem doc;
   final String fromTag;
   const _DragPhotoPayload({required this.doc, required this.fromTag});
+}
+
+class _PhotoDragSlot extends StatefulWidget {
+  const _PhotoDragSlot({
+    super.key,
+    required this.tag,
+    required this.photos,
+    required this.index,
+    required this.onPreviewReorder,
+    required this.onCommitOrder,
+    required this.onMoveToCategory,
+    required this.onOpen,
+  });
+
+  final String tag;
+  final List<DocItem> photos;
+  final int index;
+  final void Function({
+    required String tag,
+    required String draggedId,
+    required String targetId,
+    required bool insertAfter,
+  })
+  onPreviewReorder;
+  final Future<void> Function(String tag) onCommitOrder;
+  final Future<void> Function({required DocItem doc, required String newTag})
+  onMoveToCategory;
+  final void Function(DocItem doc) onOpen;
+
+  @override
+  State<_PhotoDragSlot> createState() => _PhotoDragSlotState();
+}
+
+class _PhotoDragSlotState extends State<_PhotoDragSlot> {
+  bool? _insertAfter;
+
+  DocItem get _doc => widget.photos[widget.index];
+
+  bool _isAfterTarget(Offset globalOffset) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+    final local = renderObject.globalToLocal(globalOffset);
+    return local.dx > renderObject.size.width / 2;
+  }
+
+  void _updateInsertionSide(Offset globalOffset) {
+    final next = _isAfterTarget(globalOffset);
+    if (_insertAfter == next) return;
+    setState(() => _insertAfter = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tileWidth = constraints.maxWidth;
+        return DragTarget<_DragPhotoPayload>(
+          onWillAcceptWithDetails: (details) => details.data.doc.id != _doc.id,
+          onMove: (details) {
+            final insertAfter = _isAfterTarget(details.offset);
+            _updateInsertionSide(details.offset);
+            if (details.data.fromTag == widget.tag) {
+              widget.onPreviewReorder(
+                tag: widget.tag,
+                draggedId: details.data.doc.id,
+                targetId: _doc.id,
+                insertAfter: insertAfter,
+              );
+            }
+          },
+          onLeave: (_) {
+            if (_insertAfter != null) {
+              setState(() => _insertAfter = null);
+            }
+          },
+          onAcceptWithDetails: (details) async {
+            final payload = details.data;
+            if (payload.fromTag == widget.tag) {
+              // L'ordre intra-section est déjà prévisualisé au survol et
+              // confirmé une seule fois par `onDragEnd`.
+            } else {
+              await widget.onMoveToCategory(
+                doc: payload.doc,
+                newTag: widget.tag,
+              );
+            }
+            if (mounted && _insertAfter != null) {
+              setState(() => _insertAfter = null);
+            }
+          },
+          builder: (context, candidates, rejected) {
+            final child = Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _PhotoTile(
+                  key: ValueKey('photo_${_doc.id}'),
+                  doc: _doc,
+                  onTap: () => widget.onOpen(_doc),
+                  highlight: false,
+                ),
+              ],
+            );
+            return MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: Draggable<_DragPhotoPayload>(
+                data: _DragPhotoPayload(doc: _doc, fromTag: widget.tag),
+                feedbackOffset: Offset.zero,
+                hitTestBehavior: HitTestBehavior.opaque,
+                maxSimultaneousDrags: 1,
+                onDragEnd: (_) => widget.onCommitOrder(widget.tag),
+                feedback: Material(
+                  color: Colors.transparent,
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(
+                    width: tileWidth,
+                    child: _PhotoTile(
+                      key: ValueKey('photo_drag_${_doc.id}'),
+                      doc: _doc,
+                      onTap: () {},
+                      highlight: false,
+                    ),
+                  ),
+                ),
+                childWhenDragging: _PhotoTile(
+                  key: ValueKey('photo_ghost_${_doc.id}'),
+                  doc: _doc,
+                  onTap: () {},
+                  highlight: false,
+                ),
+                child: child,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 /// Identifie une section d'affichage de l'onglet Photos.

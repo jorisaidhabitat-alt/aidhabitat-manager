@@ -1285,6 +1285,36 @@ class DocItem {
     this.categoryOrder,
     this.annotationsJson,
   });
+
+  DocItem copyWith({
+    String? id,
+    String? type,
+    String? name,
+    String? title,
+    String? url,
+    String? date,
+    String? localPath,
+    String? dataUrl,
+    List<String>? tags,
+    SyncState? syncState,
+    int? categoryOrder,
+    String? annotationsJson,
+  }) {
+    return DocItem(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      name: name ?? this.name,
+      title: title ?? this.title,
+      url: url ?? this.url,
+      date: date ?? this.date,
+      localPath: localPath ?? this.localPath,
+      dataUrl: dataUrl ?? this.dataUrl,
+      tags: tags ?? this.tags,
+      syncState: syncState ?? this.syncState,
+      categoryOrder: categoryOrder ?? this.categoryOrder,
+      annotationsJson: annotationsJson ?? this.annotationsJson,
+    );
+  }
 }
 
 class Visit {

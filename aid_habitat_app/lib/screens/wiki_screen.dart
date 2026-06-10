@@ -475,9 +475,25 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
       return;
     }
 
-    final shouldDiscard = await _confirmDiscardWikiChanges(context);
-    if (!mounted || shouldDiscard != true) return;
+    final choice = await _confirmWikiUnsavedChanges(context);
+    if (!mounted || choice == null) return;
+    if (choice == _WikiUnsavedChoice.save) {
+      Navigator.of(context).pop(_buildUpdatedItem());
+      return;
+    }
     Navigator.of(context).pop();
+  }
+
+  WikiItem _buildUpdatedItem() {
+    final descriptions = _descCtrls
+        .map((c) => c.text.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    return widget.item.copyWith(
+      title: _titleController.text.trim(),
+      description: WikiItem.serializeDescriptions(descriptions),
+      tags: _selectedTags,
+    );
   }
 
   @override
@@ -719,21 +735,9 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                       width: double.infinity,
                                       child: FilledButton(
                                         onPressed: () {
-                                          final descriptions = _descCtrls
-                                              .map((c) => c.text.trim())
-                                              .where((s) => s.isNotEmpty)
-                                              .toList();
-                                          Navigator.of(context).pop(
-                                            widget.item.copyWith(
-                                              title: _titleController.text
-                                                  .trim(),
-                                              description:
-                                                  WikiItem.serializeDescriptions(
-                                                    descriptions,
-                                                  ),
-                                              tags: _selectedTags,
-                                            ),
-                                          );
+                                          Navigator.of(
+                                            context,
+                                          ).pop(_buildUpdatedItem());
                                         },
                                         style: FilledButton.styleFrom(
                                           backgroundColor: kBrandPurple,
@@ -857,8 +861,31 @@ bool _sameStrings(List<String> a, List<String> b) {
   return true;
 }
 
-Future<bool> _confirmDiscardWikiChanges(BuildContext context) async {
-  return showAppDiscardChangesConfirmation(context: context);
+enum _WikiUnsavedChoice { discard, save }
+
+Future<_WikiUnsavedChoice?> _confirmWikiUnsavedChanges(
+  BuildContext context,
+) async {
+  return showAppConfirmationDialog<_WikiUnsavedChoice>(
+    context: context,
+    title: 'Quitter sans enregistrer ?',
+    message: 'Les modifications en cours seront perdues si vous quittez maintenant.',
+    tone: AppConfirmationTone.warning,
+    showCloseButton: true,
+    actions: const [
+      AppConfirmationAction(
+        label: 'Quitter sans enregistrer',
+        value: _WikiUnsavedChoice.discard,
+        isDestructive: true,
+      ),
+      AppConfirmationAction(
+        label: 'Enregistrer',
+        value: _WikiUnsavedChoice.save,
+        icon: LucideIcons.save,
+        isPrimary: true,
+      ),
+    ],
+  );
 }
 
 class _WikiItemDraft {
@@ -988,8 +1015,12 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
       return;
     }
 
-    final shouldDiscard = await _confirmDiscardWikiChanges(context);
-    if (!mounted || shouldDiscard != true) return;
+    final choice = await _confirmWikiUnsavedChanges(context);
+    if (!mounted || choice == null) return;
+    if (choice == _WikiUnsavedChoice.save) {
+      _submit();
+      return;
+    }
     Navigator.of(context).pop();
   }
 

@@ -120,6 +120,8 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   /// peut être inséré 2 fois d'affilée sur iPad.
   bool _isPicking = false;
   List<DocItem> _documents = const [];
+  List<String>? _documentPreviewOrderIds;
+  String? _draggingDocumentId;
   int _loadGeneration = 0;
   StreamSubscription<DocumentRepositoryChange>? _documentChangeSubscription;
 
@@ -925,7 +927,92 @@ class _DocumentsScreenState extends State<DocumentsScreen>
             doc.tags.any((tag) => tag.toLowerCase().contains(query));
       });
     }
-    return docs.toList();
+    final list = docs.toList();
+    if (list.any((doc) => doc.categoryOrder != null)) {
+      list.sort((a, b) {
+        final ao = a.categoryOrder;
+        final bo = b.categoryOrder;
+        if (ao != null && bo != null && ao != bo) return ao.compareTo(bo);
+        if (ao != null && bo == null) return -1;
+        if (ao == null && bo != null) return 1;
+        return b.date.compareTo(a.date);
+      });
+    }
+    final previewOrderIds = _documentPreviewOrderIds;
+    if (previewOrderIds != null && previewOrderIds.isNotEmpty) {
+      final order = <String, int>{
+        for (var i = 0; i < previewOrderIds.length; i++) previewOrderIds[i]: i,
+      };
+      list.sort((a, b) {
+        final ao = order[a.id];
+        final bo = order[b.id];
+        if (ao != null && bo != null && ao != bo) return ao.compareTo(bo);
+        if (ao != null && bo == null) return -1;
+        if (ao == null && bo != null) return 1;
+        return 0;
+      });
+    }
+    return list;
+  }
+
+  void _startDocumentDrag(String docId) {
+    if (_isSelectionMode) return;
+    final docs = _filteredDocuments;
+    setState(() {
+      _draggingDocumentId = docId;
+      _documentPreviewOrderIds = docs.map((doc) => doc.id).toList();
+    });
+  }
+
+  void _previewDocumentReorder({
+    required String draggedId,
+    required String targetId,
+    required bool insertAfter,
+  }) {
+    if (_isSelectionMode || draggedId == targetId) return;
+    final orderIds =
+        _documentPreviewOrderIds ??
+        _filteredDocuments.map((doc) => doc.id).toList();
+    final fromIndex = orderIds.indexOf(draggedId);
+    final targetIndex = orderIds.indexOf(targetId);
+    if (fromIndex < 0 || targetIndex < 0) return;
+    final insertionIndex = targetIndex + (insertAfter ? 1 : 0);
+    final nextIndex = insertionIndex > fromIndex
+        ? insertionIndex - 1
+        : insertionIndex;
+    if (nextIndex == fromIndex) return;
+    final reorderedIds = List<String>.from(orderIds);
+    final movedId = reorderedIds.removeAt(fromIndex);
+    reorderedIds.insert(nextIndex.clamp(0, reorderedIds.length), movedId);
+    setState(() {
+      _documentPreviewOrderIds = reorderedIds;
+    });
+  }
+
+  Future<void> _commitDocumentOrder() async {
+    if (_isSelectionMode) return;
+    final orderIds =
+        _documentPreviewOrderIds ??
+        _filteredDocuments.map((doc) => doc.id).toList();
+    if (orderIds.isEmpty) return;
+    setState(() {
+      final byId = <String, int>{
+        for (var i = 0; i < orderIds.length; i++) orderIds[i]: i,
+      };
+      _documents = _documents
+          .map((doc) {
+            final nextOrder = byId[doc.id];
+            if (nextOrder == null) return doc;
+            return doc.copyWith(categoryOrder: nextOrder);
+          })
+          .toList(growable: false);
+      _documentPreviewOrderIds = null;
+      _draggingDocumentId = null;
+    });
+    await _dataService.reorderVisitCategoryDocuments(
+      orderedDocumentIds: orderIds,
+    );
+    await _loadDocuments(silent: true);
   }
 
   // ----- Build -----
@@ -1258,60 +1345,106 @@ class _DocumentsScreenState extends State<DocumentsScreen>
 
     return LayoutBuilder(
       builder: (ctx, constraints) {
-        return GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 5,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 0.82,
+        const columns = 5;
+        const spacing = 16.0;
+        const childAspectRatio = 0.82;
+        final tileWidth =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        final tileHeight = tileWidth / childAspectRatio;
+        final itemCount = docs.length + 1;
+        final rows = itemCount == 0 ? 0 : ((itemCount - 1) ~/ columns) + 1;
+        final gridHeight = rows * tileHeight + (rows - 1) * spacing;
+
+        Offset offsetFor(int index) {
+          return Offset(
+            (index % columns) * (tileWidth + spacing),
+            (index ~/ columns) * (tileHeight + spacing),
+          );
+        }
+
+        return SingleChildScrollView(
+          child: SizedBox(
+            height: gridHeight,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedPositioned(
+                  key: const ValueKey('doc_add_position'),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  left: offsetFor(0).dx,
+                  top: offsetFor(0).dy,
+                  width: tileWidth,
+                  height: tileHeight,
+                  child: _AddDocumentTile(
+                    disabled: _isImporting || _isSelectionMode,
+                    onImage: _pickFromGallery,
+                    onCamera: _pickFromCamera,
+                    onScanner: _pickFromScanner,
+                    onFile: _pickFromFile,
+                  ),
+                ),
+                for (var docIndex = 0; docIndex < docs.length; docIndex++)
+                  AnimatedPositioned(
+                    key: ValueKey('doc_position_${docs[docIndex].id}'),
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    left: offsetFor(docIndex + 1).dx,
+                    top: offsetFor(docIndex + 1).dy,
+                    width: tileWidth,
+                    height: tileHeight,
+                    child: _buildDocumentGridCard(docs[docIndex]),
+                  ),
+              ],
+            ),
           ),
-          itemCount: docs.length + 1,
-          itemBuilder: (ctx, i) {
-            if (i == 0) {
-              return _AddDocumentTile(
-                disabled: _isImporting || _isSelectionMode,
-                onImage: _pickFromGallery,
-                onCamera: _pickFromCamera,
-                onScanner: _pickFromScanner,
-                onFile: _pickFromFile,
-              );
-            }
-            final doc = docs[i - 1];
-            final selected = _selectedIds.contains(doc.id);
-            return DocCard(
-              doc: doc,
-              selected: selected,
-              selectionMode: _isSelectionMode,
-              onTap: () {
-                if (_isSelectionMode) {
-                  _toggleSelection(doc.id);
-                } else {
-                  _previewDocument(doc);
-                }
-              },
-              onLongPress: () {
-                if (!_isSelectionMode) {
-                  _enterSelectionMode(doc.id);
-                } else {
-                  _toggleSelection(doc.id);
-                }
-              },
-              // Clic sur la checkbox (hover ou déjà sélectionné) → active
-              // directement le mode sélection et toggle la card.
-              onToggleSelect: () {
-                if (!_isSelectionMode) {
-                  _enterSelectionMode(doc.id);
-                } else {
-                  _toggleSelection(doc.id);
-                }
-              },
-              onDelete: () => _deleteDocument(doc),
-              onDownload: () => _downloadDocument(doc),
-              onTitleChanged: (value) => _renameInline(doc, value),
-            );
-          },
         );
       },
+    );
+  }
+
+  Widget _buildDocumentGridCard(DocItem doc) {
+    final selected = _selectedIds.contains(doc.id);
+    final card = DocCard(
+      doc: doc,
+      selected: selected,
+      selectionMode: _isSelectionMode,
+      onTap: () {
+        if (_isSelectionMode) {
+          _toggleSelection(doc.id);
+        } else {
+          _previewDocument(doc);
+        }
+      },
+      onLongPress: () {
+        if (!_isSelectionMode) {
+          _enterSelectionMode(doc.id);
+        } else {
+          _toggleSelection(doc.id);
+        }
+      },
+      // Clic sur la checkbox (hover ou déjà sélectionné) → active
+      // directement le mode sélection et toggle la card.
+      onToggleSelect: () {
+        if (!_isSelectionMode) {
+          _enterSelectionMode(doc.id);
+        } else {
+          _toggleSelection(doc.id);
+        }
+      },
+      onDelete: () => _deleteDocument(doc),
+      onDownload: () => _downloadDocument(doc),
+      onTitleChanged: (value) => _renameInline(doc, value),
+    );
+    if (_isSelectionMode) return card;
+    return _DraggableDocumentSlot(
+      key: ValueKey('doc_drag_${doc.id}'),
+      doc: doc,
+      isDragging: _draggingDocumentId == doc.id,
+      onDragStarted: () => _startDocumentDrag(doc.id),
+      onPreviewReorder: _previewDocumentReorder,
+      onCommitReorder: _commitDocumentOrder,
+      child: card,
     );
   }
 
@@ -1321,6 +1454,117 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     _documentChangeSubscription?.cancel();
     _keyboardFocus.dispose();
     super.dispose();
+  }
+}
+
+class _DocumentDragPayload {
+  const _DocumentDragPayload({required this.doc});
+
+  final DocItem doc;
+}
+
+class _DraggableDocumentSlot extends StatefulWidget {
+  const _DraggableDocumentSlot({
+    super.key,
+    required this.doc,
+    required this.isDragging,
+    required this.onDragStarted,
+    required this.child,
+    required this.onPreviewReorder,
+    required this.onCommitReorder,
+  });
+
+  final DocItem doc;
+  final bool isDragging;
+  final VoidCallback onDragStarted;
+  final Widget child;
+  final void Function({
+    required String draggedId,
+    required String targetId,
+    required bool insertAfter,
+  })
+  onPreviewReorder;
+  final Future<void> Function() onCommitReorder;
+
+  @override
+  State<_DraggableDocumentSlot> createState() => _DraggableDocumentSlotState();
+}
+
+class _DraggableDocumentSlotState extends State<_DraggableDocumentSlot> {
+  bool? _insertAfter;
+
+  bool _isAfterTarget(Offset globalOffset) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+    final local = renderObject.globalToLocal(globalOffset);
+    return local.dx > renderObject.size.width / 2;
+  }
+
+  void _updateInsertionSide(Offset globalOffset) {
+    final next = _isAfterTarget(globalOffset);
+    if (_insertAfter == next) return;
+    setState(() => _insertAfter = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 220.0;
+        return DragTarget<_DocumentDragPayload>(
+          onWillAcceptWithDetails: (details) =>
+              details.data.doc.id != widget.doc.id,
+          onMove: (details) {
+            final insertAfter = _isAfterTarget(details.offset);
+            _updateInsertionSide(details.offset);
+            widget.onPreviewReorder(
+              draggedId: details.data.doc.id,
+              targetId: widget.doc.id,
+              insertAfter: insertAfter,
+            );
+          },
+          onLeave: (_) {
+            if (_insertAfter != null) {
+              setState(() => _insertAfter = null);
+            }
+          },
+          onAcceptWithDetails: (details) async {
+            if (mounted && _insertAfter != null) {
+              setState(() => _insertAfter = null);
+            }
+          },
+          builder: (context, candidates, rejected) {
+            final visibleChild = widget.isDragging
+                ? Opacity(opacity: 0.25, child: widget.child)
+                : widget.child;
+            final decoratedChild = Stack(
+              clipBehavior: Clip.none,
+              children: [visibleChild],
+            );
+            return MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: Draggable<_DocumentDragPayload>(
+                data: _DocumentDragPayload(doc: widget.doc),
+                maxSimultaneousDrags: 1,
+                onDragStarted: widget.onDragStarted,
+                onDragEnd: (_) => widget.onCommitReorder(),
+                feedback: Material(
+                  color: Colors.transparent,
+                  elevation: 12,
+                  borderRadius: BorderRadius.circular(16),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(width: width, child: widget.child),
+                ),
+                childWhenDragging: Opacity(opacity: 0.25, child: widget.child),
+                child: decoratedChild,
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 }
 
@@ -3213,11 +3457,11 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
     final strokes = live.currentStrokes;
     final previous = _memoryStrokesByPage[_currentPage];
     _memoryStrokesByPage[_currentPage] = strokes;
-    // Marque comme dirty si les strokes ont changé par rapport au précédent
-    // snapshot mémoire, OU si le live annotator a des modifs non sauvées.
-    if (previous == null || !_strokesEqual(previous, strokes)) {
-      _dirtyPages.add(_currentPage);
-    } else if (live.hasUnsavedChanges) {
+    // Le premier snapshot mémoire d'une page sert uniquement à préserver
+    // son état pendant la navigation. Il ne doit pas compter comme une
+    // modification tant que l'annotator live ne signale aucun vrai changement.
+    if (live.hasUnsavedChanges ||
+        (previous != null && !_strokesEqual(previous, strokes))) {
       _dirtyPages.add(_currentPage);
     }
   }

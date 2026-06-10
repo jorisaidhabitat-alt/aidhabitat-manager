@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -11,7 +12,8 @@ import '../services/note_window_web_stub.dart'
     if (dart.library.html) '../services/note_window_web.dart'
     as note_window_web;
 import '../components/brand_colors.dart';
-import '../components/notes_widget.dart';
+import '../components/notes_canvas_painters.dart';
+import '../services/data_service.dart';
 
 /// Dedicated MaterialApp shown in a SECONDARY OS window (launched via
 /// `DesktopMultiWindow.createWindow`). Hosts a single full-screen note
@@ -33,6 +35,7 @@ class NoteWindowApp extends StatelessWidget {
   final String tabKey;
   final String title;
   final String initialText;
+  final Map<int, String> initialDrawingPages;
 
   /// 'text' (défaut, comportement historique : TextField synchronisé
   /// par IPC avec la fenêtre principale) ou 'drawing' (canvas plein
@@ -48,6 +51,7 @@ class NoteWindowApp extends StatelessWidget {
     required this.tabKey,
     required this.title,
     required this.initialText,
+    this.initialDrawingPages = const <int, String>{},
     this.mode = 'text',
   });
 
@@ -70,6 +74,7 @@ class NoteWindowApp extends StatelessWidget {
               patientId: patientId,
               tabKey: tabKey,
               title: title,
+              initialDrawingPages: initialDrawingPages,
             )
           : NoteWindowScreen(
               windowId: windowId,
@@ -458,12 +463,9 @@ class _ResizeHintPainter extends CustomPainter {
   bool shouldRepaint(covariant _ResizeHintPainter oldDelegate) => false;
 }
 
-/// Variante drawing de [NoteWindowScreen] — canvas pleine page avec
-/// pagination, sans IPC stroke. Démarrée par [NoteWindowApp] quand
-/// `mode == 'drawing'` (cf. branche dans `main.dart` qui init aussi
-/// `databaseFactoryFfiWebNoWebWorker` pour que NotesWidget puisse
-/// lire/écrire le drawing JSON via DataService → SQLite WASM →
-/// IndexedDB partagé avec la fenêtre principale).
+/// Variante drawing de [NoteWindowScreen] — visualisation lecture seule
+/// du canvas Résumé, avec pagination. Démarrée par [NoteWindowApp] quand
+/// `mode == 'drawing'`.
 ///
 /// Demande utilisateur 2026-05-04 : seule note format dessin du VAD
 /// pouvant s'agrandir dans une 2e fenêtre browser. Voir summary_tab.dart
@@ -474,6 +476,7 @@ class NoteWindowDrawingScreen extends StatelessWidget {
   final String patientId;
   final String tabKey;
   final String title;
+  final Map<int, String> initialDrawingPages;
 
   const NoteWindowDrawingScreen({
     super.key,
@@ -481,6 +484,7 @@ class NoteWindowDrawingScreen extends StatelessWidget {
     required this.patientId,
     required this.tabKey,
     required this.title,
+    this.initialDrawingPages = const <int, String>{},
   });
 
   @override
@@ -499,7 +503,7 @@ class NoteWindowDrawingScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    title,
+                    '$title · lecture seule',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -520,6 +524,7 @@ class NoteWindowDrawingScreen extends StatelessWidget {
               key: ValueKey('window-drawing-$patientId-$tabKey'),
               patientId: patientId,
               tabKey: tabKey,
+              initialDrawingPages: initialDrawingPages,
             ),
           ),
         ],
@@ -528,38 +533,255 @@ class NoteWindowDrawingScreen extends StatelessWidget {
   }
 }
 
-/// NotesWidget canvas pleine page pour la fenêtre détachée Résumé.
-/// Toolset advanced + freeform + pagination (jusqu'à `maxPages = 20`
-/// par défaut). Persistance via DataService.saveNoteDrawingJson →
-/// IndexedDB partagé avec la fenêtre principale.
-class _DrawingCanvasNote extends StatelessWidget {
+/// Viewer lecture seule du dessin Résumé.
+///
+/// Important : cette fenêtre ne doit jamais modifier la note. Avant, on
+/// montait un NotesWidget complet ici, ce qui donnait deux canvas éditables
+/// en parallèle et provoquait des courses de sauvegarde. On charge seulement
+/// les strokes existants et on les peint avec StrokePainter.
+class _DrawingCanvasNote extends StatefulWidget {
   final String patientId;
   final String tabKey;
+  final Map<int, String> initialDrawingPages;
+
   const _DrawingCanvasNote({
     super.key,
     required this.patientId,
     required this.tabKey,
+    this.initialDrawingPages = const <int, String>{},
   });
 
   @override
+  State<_DrawingCanvasNote> createState() => _DrawingCanvasNoteState();
+}
+
+class _DrawingCanvasNoteState extends State<_DrawingCanvasNote> {
+  static const int _maxPages = 20;
+
+  final DataService _dataService = DataService();
+  final Map<int, List<Stroke>> _pageStrokes = <int, List<Stroke>>{};
+  bool _loading = true;
+  String? _error;
+  int _currentPage = 0;
+  int _totalPages = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialDrawingPages.isNotEmpty) {
+      _hydrateInitialPages(widget.initialDrawingPages);
+    } else if (kIsWeb) {
+      unawaited(_loadPages());
+    } else {
+      _showMissingNativePayloadError();
+    }
+  }
+
+  void _showMissingNativePayloadError() {
+    _pageStrokes[0] = const <Stroke>[];
+    _totalPages = 1;
+    _currentPage = 0;
+    _loading = false;
+    _error =
+        'Le dessin n’a pas été transmis à cette fenêtre. Fermez puis rouvrez depuis le relevé.';
+  }
+
+  void _hydrateInitialPages(Map<int, String> pages) {
+    final sortedPages = pages.keys.toList()..sort();
+    for (final page in sortedPages) {
+      _pageStrokes[page] = _parseStrokes(pages[page] ?? '');
+    }
+    _pageStrokes.putIfAbsent(0, () => const <Stroke>[]);
+    _totalPages = _pageStrokes.keys.isEmpty
+        ? 1
+        : (_pageStrokes.keys.reduce((a, b) => a > b ? a : b) + 1).clamp(
+            1,
+            _maxPages,
+          );
+    _loading = false;
+  }
+
+  Future<void> _loadPages() async {
+    setState(() => _loading = true);
+    try {
+      var total = 1;
+      for (var page = 0; page < _maxPages; page++) {
+        final raw = await _dataService
+            .fetchNoteDrawingJson(
+              patientId: widget.patientId,
+              tabKey: widget.tabKey,
+              pageNumber: page,
+            )
+            .timeout(const Duration(seconds: 4));
+        if (!mounted) return;
+        if (raw == null || raw.isEmpty) {
+          if (page == 0) {
+            _pageStrokes[0] = const <Stroke>[];
+          }
+          break;
+        }
+        _pageStrokes[page] = _parseStrokes(raw);
+        total = page + 1;
+      }
+      if (!mounted) return;
+      setState(() {
+        _totalPages = total.clamp(1, _maxPages);
+        _currentPage = _currentPage.clamp(0, _totalPages - 1);
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _pageStrokes[0] = const <Stroke>[];
+        _totalPages = 1;
+        _currentPage = 0;
+        _loading = false;
+        _error =
+            'La note ne peut pas être chargée depuis cette fenêtre. Fermez puis rouvrez depuis le relevé.';
+      });
+    }
+  }
+
+  List<Stroke> _parseStrokes(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const <Stroke>[];
+      final rawStrokes = decoded['strokes'];
+      if (rawStrokes is! List) return const <Stroke>[];
+      return rawStrokes
+          .whereType<Map>()
+          .map((item) => Stroke.fromJson(Map<String, dynamic>.from(item)))
+          .whereType<Stroke>()
+          .toList(growable: false);
+    } catch (_) {
+      return const <Stroke>[];
+    }
+  }
+
+  void _goToPage(int page) {
+    if (page < 0 || page >= _totalPages || page == _currentPage) return;
+    setState(() => _currentPage = page);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return NotesWidget(
-      key: ValueKey('window-canvas-$patientId-$tabKey'),
-      patientId: patientId,
-      tabKey: tabKey,
-      title: 'Résumé',
-      subtitle: 'Notes libres pour préparer les préconisations.',
-      toolset: NoteToolset.advanced,
-      mode: NoteCanvasMode.freeform,
-      allowPagination: true,
-      showText: false,
-      // Pas de bouton agrandir dans la fenêtre détachée elle-même
-      // (on est déjà dans la fenêtre détachée — pas besoin d'un autre
-      // niveau d'expansion).
-      allowTextModal: false,
-      showSaveButton: false,
-      fillParentHeight: true,
-      embedded: false,
+    final strokes = _pageStrokes[_currentPage] ?? const <Stroke>[];
+    return Container(
+      color: const Color(0xFFF7F7FA),
+      padding: const EdgeInsets.all(16),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE4E7EB)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Stack(
+                        children: [
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: BackgroundPainter(
+                                mode: NoteCanvasMode.freeform,
+                              ),
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: StrokePainter(
+                                strokes: strokes,
+                                activeStroke: null,
+                              ),
+                            ),
+                          ),
+                          if (_error != null)
+                            Center(
+                              child: Text(
+                                _error!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFFB4232F),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          else if (strokes.isEmpty)
+                            const Center(
+                              child: Text(
+                                'Aucun dessin sur cette page.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF8A939D),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+          Positioned(top: 12, right: 12, child: _buildPageControls()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageControls() {
+    if (_loading) return const SizedBox.shrink();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: 'Page précédente',
+              visualDensity: VisualDensity.compact,
+              iconSize: 18,
+              onPressed: _currentPage > 0
+                  ? () => _goToPage(_currentPage - 1)
+                  : null,
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Text(
+              '${_currentPage + 1}/$_totalPages',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF2B323A),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Page suivante',
+              visualDensity: VisualDensity.compact,
+              iconSize: 18,
+              onPressed: _currentPage < _totalPages - 1
+                  ? () => _goToPage(_currentPage + 1)
+                  : null,
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
