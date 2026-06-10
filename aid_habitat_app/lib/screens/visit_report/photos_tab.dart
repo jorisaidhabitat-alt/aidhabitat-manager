@@ -10,6 +10,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../components/brand_colors.dart';
 import '../../components/confirmation_dialog.dart';
+import '../../components/dashed_border_painter.dart';
 import '../../components/file_drop_zone.dart';
 import '../../models/types.dart';
 import '../../models/visit_report_categories.dart';
@@ -999,35 +1000,19 @@ class _PhotosTabState extends State<PhotosTab>
     required int minRows,
   }) {
     const spacing = 6.0;
-    // Nombre total d'emplacements visibles :
-    //   - au moins `maxSlots` (les emplacements de base attendus)
-    //   - au moins `photos.length + 1` → garantit qu'il y a TOUJOURS
-    //     un cadre drag-and-drop vide après la dernière photo pour
-    //     que l'ergo puisse en ajouter à l'infini (demande utilisateur
-    //     2026-05-12 : "des que j'ai upload la dernière photo d'une
-    //     partie, un nouveau cadre drag and drop doit toujours
-    //     apparaitre après pour que je puisse en ajouter autant que
-    //     j'en veux"). La grille reste à 3 colonnes max (cf. la
-    //     boucle ci-dessous) → la taille des images ne change pas,
-    //     ça passe simplement à la ligne suivante.
-    final totalSlots = photos.length + 1 > maxSlots
-        ? photos.length + 1
-        : maxSlots;
+    // Un seul cadre d'ajout par section : plus d'emplacements préconçus
+    // calés sur les slots PDF. La section affiche les photos existantes,
+    // puis un unique cadre drag-and-drop après la dernière photo.
+    final totalSlots = photos.length + 1;
     return LayoutBuilder(
       builder: (context, constraints) {
         final tileWidth = (constraints.maxWidth - spacing * 2) / 3;
         final safeTileWidth = tileWidth.isFinite && tileWidth > 0
             ? tileWidth
             : 0.0;
-        final safeMinRows = minRows < 1 ? 1 : minRows;
-        final minHeight =
-            safeTileWidth * safeMinRows + spacing * (safeMinRows - 1);
         final totalRows = totalSlots == 0 ? 0 : ((totalSlots - 1) ~/ 3) + 1;
-        final contentHeight =
+        final gridHeight =
             safeTileWidth * totalRows + spacing * (totalRows - 1);
-        final gridHeight = contentHeight < minHeight
-            ? minHeight
-            : contentHeight;
 
         Offset offsetFor(int index) {
           return Offset(
@@ -1087,7 +1072,8 @@ class _PhotosTabState extends State<PhotosTab>
     );
   }
 
-  /// Slot vide : gris clair avec icône `+`. Tap → galerie. Drop → re-tag.
+  /// Cadre unique d'ajout : fond violet clair, bordure pointillée et `+`
+  /// centré, visuellement aligné sur l'espace Documents.
   Widget _buildEmptySlot({required String tag}) {
     return DragTarget<_DragPhotoPayload>(
       onWillAcceptWithDetails: (details) => details.data.fromTag != tag,
@@ -1102,20 +1088,28 @@ class _PhotosTabState extends State<PhotosTab>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(
-              color: hovering
-                  ? const Color(0xFFF2ECF5)
-                  : const Color(0xFFF2F4F6),
+              color: kBrandPurple.withValues(alpha: hovering ? 0.12 : 0.08),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: hovering ? kBrandPurple : const Color(0xFFB9C0C7),
-                width: hovering ? 2 : 1,
-              ),
             ),
-            alignment: Alignment.center,
-            child: Icon(
-              LucideIcons.imagePlus,
-              size: 22,
-              color: hovering ? kBrandPurple : Color(0xFF8A939D),
+            child: CustomPaint(
+              painter: DashedBorderPainter(
+                color: kBrandPurple.withValues(alpha: hovering ? 1 : 0.8),
+                strokeWidth: 2,
+                radius: 12,
+                dashLength: 8,
+                dashGap: 5,
+              ),
+              child: Center(
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: kBrandPurple.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(LucideIcons.plus, size: 26, color: kBrandPurple),
+                ),
+              ),
             ),
           ),
         );

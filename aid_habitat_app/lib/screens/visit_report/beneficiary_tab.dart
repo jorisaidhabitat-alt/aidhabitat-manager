@@ -623,12 +623,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       child: Row(
         children: List.generate(items.length, (i) {
           final active = i == _subSectionIndex;
-          // Refonte 2026-05-13 (maquette user) : icons et texte en NOIR
-          // dans les 2 états. Le violet (#8B6FA0) ne subsiste que sur
-          // le trait sous le label de l'item actif. Inactive = même
-          // couleur que active, juste pas de trait → comportement type
-          // tab indicator moderne.
-          const labelColor = Color(0xFF0E1116); // ink-900
+          final labelColor = active
+              ? const Color(0xFF0E1116)
+              : const Color(0xFF8A939D);
           const underlineColor = kBrandPurple; // mauve-500
           return Expanded(
             child: SoftTapScale(
@@ -652,7 +649,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     const SizedBox(height: 2),
                     Text(
                       items[i].label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         // 10 → 12 (demande user 2026-05-13 : « 2px plus
                         // grand »).
                         fontSize: 12,
@@ -699,13 +696,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       default:
         section = const SizedBox.shrink();
     }
-    // Légère animation entre sous-sections — fade + apparition vers
-    // le haut, identique au switch entre vues principales (sidebar
-    // → Accueil/Dossiers/Bibliothèque…). Bascule rapide qui rappelle
-    // à l'utilisateur que le contenu vient de changer.
-    return SoftSwitcher(
-      child: KeyedSubtree(key: ValueKey<int>(_subSectionIndex), child: section),
-    );
+    return HorizontalSlideSwitcher(index: _subSectionIndex, child: section);
   }
 
   // ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/brand_colors.dart';
 import '../../components/form_widgets.dart';
+import '../../components/soft_transitions.dart';
 
 /// Ordered level catalog — must match accessibility_tab `_kLevelConfigs`.
 /// Used to read which levels have the given "target" room (Salle de bain /
@@ -46,6 +47,94 @@ class SanitaryLevel {
     required this.roomsField,
     required this.label,
   });
+}
+
+class SanitaryLevelIcon extends StatelessWidget {
+  const SanitaryLevelIcon({
+    super.key,
+    required this.activeIndexFromBottom,
+    required this.layerCount,
+    this.size = 22,
+  });
+
+  final int activeIndexFromBottom;
+  final int layerCount;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(
+        painter: _SanitaryLevelIconPainter(
+          activeIndexFromBottom: activeIndexFromBottom,
+          layerCount: layerCount,
+        ),
+      ),
+    );
+  }
+}
+
+int sanitaryLevelIconIndexFromLabel(String label) {
+  final normalized = label.toLowerCase().trim();
+  if (normalized.contains('sous-sol')) return 0;
+  if (normalized == 'rdc') return 1;
+  if (normalized.contains('1er') || normalized.contains('1e ')) return 2;
+  if (normalized.contains('2e')) return 3;
+  if (normalized.contains('3e')) return 4;
+  return 1;
+}
+
+int sanitaryLevelIconLayerCount(int activeIndexFromBottom) {
+  final index = activeIndexFromBottom.clamp(0, 4);
+  return index < 3 ? 3 : index + 1;
+}
+
+class _SanitaryLevelIconPainter extends CustomPainter {
+  const _SanitaryLevelIconPainter({
+    required this.activeIndexFromBottom,
+    required this.layerCount,
+  });
+
+  final int activeIndexFromBottom;
+  final int layerCount;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final count = layerCount.clamp(3, 5);
+    final activeIndex = activeIndexFromBottom.clamp(0, count - 1);
+    final top = size.height * (count == 1 ? 0.5 : 0.24);
+    final bottom = size.height * (count == 1 ? 0.5 : 0.76);
+    final spacing = count == 1 ? 0.0 : (bottom - top) / (count - 1);
+    final centerX = size.width / 2;
+    final baseWidth = size.width * 0.62;
+    final angleHeight = size.height * 0.18;
+
+    for (var bottomIndex = 0; bottomIndex < count; bottomIndex++) {
+      final isActive = bottomIndex == activeIndex;
+      final y = bottom - bottomIndex * spacing;
+      final paint = Paint()
+        ..isAntiAlias = true
+        ..color = isActive ? const Color(0xFF0E1116) : const Color(0xFFD8D0DC)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isActive ? 2.4 : 2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      final width = isActive ? baseWidth + size.width * 0.12 : baseWidth;
+      final path = Path()
+        ..moveTo(centerX - width / 2, y - angleHeight / 2)
+        ..lineTo(centerX, y + angleHeight / 2)
+        ..lineTo(centerX + width / 2, y - angleHeight / 2);
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SanitaryLevelIconPainter oldDelegate) {
+    return oldDelegate.activeIndexFromBottom != activeIndexFromBottom ||
+        oldDelegate.layerCount != layerCount;
+  }
 }
 
 /// Returns the subset of [_kSanitaryLevels] where [targetRoom] is present in
@@ -476,28 +565,27 @@ class _BathroomTabState extends State<BathroomTab>
     if (!_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Swipe SECTIONS désactivé (demande utilisateur 2026-04-29) :
-    // bascule entre les niveaux (SDB RDC / étage / …) uniquement via
-    // les pills `_buildLevelPills()` (tap). Pas d'occupants dans cet
-    // onglet → plus aucun swipe horizontal câblé.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildLevelPills(),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_instances.isEmpty)
-                  _buildEmptyState()
-                else ...[
-                  _buildEquipment(),
-                  const SizedBox(height: 16),
-                  _buildDoor(),
+          child: HorizontalSlideSwitcher(
+            index: _instances.isEmpty ? -1 : _activeLevelIndex,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_instances.isEmpty)
+                    _buildEmptyState()
+                  else ...[
+                    _buildEquipment(),
+                    const SizedBox(height: 14),
+                    _buildDoor(),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -556,8 +644,9 @@ class _BathroomTabState extends State<BathroomTab>
           for (var i = 0; i < labels.length; i++)
             Expanded(
               child: _buildLevelNavItem(
-                icon: LucideIcons.bath,
                 label: labels[i],
+                index: i,
+                total: labels.length,
                 active: _instances.isEmpty || _activeLevelIndex == i,
                 onTap: _instances.isEmpty
                     ? () {}
@@ -570,12 +659,14 @@ class _BathroomTabState extends State<BathroomTab>
   }
 
   Widget _buildLevelNavItem({
-    required IconData icon,
     required String label,
+    required int index,
+    required int total,
     required bool active,
     required VoidCallback onTap,
   }) {
     const labelColor = Color(0xFF0E1116);
+    final iconIndex = sanitaryLevelIconIndexFromLabel(label);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -585,7 +676,10 @@ class _BathroomTabState extends State<BathroomTab>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: labelColor),
+            SanitaryLevelIcon(
+              activeIndexFromBottom: iconIndex,
+              layerCount: sanitaryLevelIconLayerCount(iconIndex),
+            ),
             const SizedBox(height: 2),
             Text(
               label,
@@ -722,7 +816,6 @@ class _BathroomTabState extends State<BathroomTab>
           commonItems: commonItems,
           selectedCommon: selectedCommon,
         ),
-        const SizedBox(height: 24),
       ],
     );
   }

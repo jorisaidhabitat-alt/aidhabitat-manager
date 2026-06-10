@@ -793,14 +793,8 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         // avec l'onglet Bénéficiaire.
         _buildQuickNav(),
         Expanded(
-          // Swipe SECTIONS désactivé (demande utilisateur 2026-04-29) :
-          // bascule entre Général / Niveaux / Équipements / Extérieur
-          // uniquement via le QuickNav (tap). Pas d'occupants dans cet
-          // onglet → plus aucun swipe horizontal câblé ici.
-          child: SoftSwitcher(
-            // Légère animation entre les 4 sous-sections — fade +
-            // apparition vers le haut, mêmes sensations qu'un
-            // changement de vue principale (sidebar).
+          child: HorizontalSlideSwitcher(
+            index: _subSection,
             child: KeyedSubtree(
               key: ValueKey<int>(_subSection),
               child: SingleChildScrollView(
@@ -857,11 +851,9 @@ class _AccessibilityTabState extends State<AccessibilityTab>
         children: [
           ...List.generate(items.length, (i) {
             final active = i == _subSection;
-            // Refonte 2026-05-13 (maquette user) : icon + texte en NOIR
-            // dans les 2 états. Violet (#8B6FA0) uniquement sur le trait
-            // sous l'item actif — parité avec Bénéficiaire et Contexte
-            // de vie.
-            const labelColor = Color(0xFF0E1116); // ink-900
+            final labelColor = active
+                ? const Color(0xFF0E1116)
+                : const Color(0xFF8A939D);
             const underlineColor = kBrandPurple; // mauve-500
             return Expanded(
               child: SoftTapScale(
@@ -879,7 +871,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                       const SizedBox(height: 2),
                       Text(
                         items[i].label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           // 10 → 12 (demande user 2026-05-13).
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -1424,7 +1416,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
             color: Color(0xFF0E1116),
           ),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 10),
         _buildMultiSelectGrid(
           options: _heatingOptions,
           selected: _heatingTypes,
@@ -2148,6 +2140,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
           options: _voletStatuses,
           selected: status,
           columns: 3,
+          labelButtonSpacing: 10,
           onChanged: (v) {
             onStatusChange(v);
             _markChanged(dirtyKeys);
@@ -2198,7 +2191,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 color: Color(0xFF0E1116),
               ),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 10),
             FormToggleGroup(
               label: '',
               options: const ['Facile', 'À revoir'],
@@ -2233,7 +2226,7 @@ class _AccessibilityTabState extends State<AccessibilityTab>
                 color: Color(0xFF0E1116),
               ),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 10),
             _buildMultiSelectGrid(
               options: annexItems,
               selected: selectedAnnexes,

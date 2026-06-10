@@ -395,6 +395,49 @@ class _WikiScreenState extends State<WikiScreen> {
   }
 }
 
+const List<String> _kDefaultWikiTags = [
+  'Salle de bain',
+  'WC',
+  'Cuisine',
+  'Chambre',
+  'Escaliers & ascenseur',
+  'Autre',
+];
+
+List<String> _wikiTagOptions(
+  Iterable<String> availableTags, [
+  Iterable<String> selectedTags = const [],
+]) {
+  final seen = <String>{};
+  final options = <String>[];
+
+  void addTag(String raw) {
+    final tag = raw.trim();
+    if (tag.isEmpty) return;
+    final key = tag.toLowerCase();
+    if (seen.add(key)) options.add(tag);
+  }
+
+  for (final tag in _kDefaultWikiTags) {
+    addTag(tag);
+  }
+  for (final tag in selectedTags) {
+    addTag(tag);
+  }
+
+  final extras =
+      availableTags
+          .map((tag) => tag.trim())
+          .where((tag) => tag.isNotEmpty)
+          .toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  for (final tag in extras) {
+    addTag(tag);
+  }
+
+  return options;
+}
+
 class _WikiItemDialog extends StatefulWidget {
   const _WikiItemDialog({required this.item, required this.availableTags});
 
@@ -489,17 +532,23 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
         .map((c) => c.text.trim())
         .where((s) => s.isNotEmpty)
         .toList();
+    final primaryTag = _selectedTags.isNotEmpty
+        ? _selectedTags.first.trim()
+        : '';
     return widget.item.copyWith(
       title: _titleController.text.trim(),
       description: WikiItem.serializeDescriptions(descriptions),
       tags: _selectedTags,
+      category: primaryTag.isEmpty ? widget.item.category : primaryTag,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final selectedTag = _selectedTags.isNotEmpty ? _selectedTags.first : '';
+    final tagOptions = _wikiTagOptions(widget.availableTags, _selectedTags);
     final canAddDescription = _descCtrls.length < WikiItem.maxDescriptions;
+    final hasMultipleDescriptions = _descCtrls.length > 1;
 
     // Taille alignée sur la popup Caisses de retraite (demande
     // utilisateur 2026-04-29 : « fait la même taille de pop up pour la
@@ -598,54 +647,21 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                       decoration: _inputDecoration(),
                                     ),
                                     const SizedBox(height: 20),
-                                    _FormLabel(text: 'Tag'),
+                                    _FormLabel(text: 'Tags'),
                                     const SizedBox(height: 8),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(
-                                          color: const Color(0xFFE4E7EB),
-                                        ),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                      ),
-                                      child: DropdownButtonHideUnderline(
-                                        child: DropdownButton<String>(
-                                          value:
-                                              widget.availableTags.contains(
-                                                selectedTag,
-                                              )
-                                              ? selectedTag
-                                              : (selectedTag.isEmpty
-                                                    ? ''
-                                                    : null),
-                                          isExpanded: true,
-                                          hint: const Text('Aucun tag'),
-                                          items: [
-                                            const DropdownMenuItem(
-                                              value: '',
-                                              child: Text('Aucun tag'),
-                                            ),
-                                            ...widget.availableTags.map(
-                                              (tag) => DropdownMenuItem(
-                                                value: tag,
-                                                child: Text(tag),
-                                              ),
-                                            ),
-                                          ],
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _selectedTags =
-                                                  (value == null ||
-                                                      value.isEmpty)
-                                                  ? []
-                                                  : [value];
-                                            });
-                                          },
-                                        ),
-                                      ),
+                                    _WikiTagDropdown(
+                                      value: selectedTag,
+                                      options: tagOptions,
+                                      allowEmpty: true,
+                                      borderRadius: 18,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _selectedTags =
+                                              (value == null || value.isEmpty)
+                                              ? []
+                                              : [value];
+                                        });
+                                      },
                                     ),
                                     const SizedBox(height: 20),
                                     Row(
@@ -684,8 +700,12 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                       ],
                                     ),
                                     const SizedBox(height: 8),
-                                    SizedBox(
-                                      height: 180,
+                                    AnimatedContainer(
+                                      duration: kSoftMedium,
+                                      curve: kSoftCurve,
+                                      height: hasMultipleDescriptions
+                                          ? 180
+                                          : 104,
                                       child: ReorderableListView.builder(
                                         buildDefaultDragHandles: false,
                                         proxyDecorator:
@@ -709,12 +729,24 @@ class _WikiItemDialogState extends State<_WikiItemDialog> {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.center,
                                               children: [
-                                                ReorderableDragStartListener(
-                                                  index: i,
-                                                  child:
-                                                      const _DescriptionDragHandle(),
+                                                AnimatedSize(
+                                                  duration: kSoftMedium,
+                                                  curve: kSoftCurve,
+                                                  child: hasMultipleDescriptions
+                                                      ? ReorderableDragStartListener(
+                                                          index: i,
+                                                          child:
+                                                              const _DescriptionDragHandle(),
+                                                        )
+                                                      : const SizedBox.shrink(),
                                                 ),
-                                                const SizedBox(width: 8),
+                                                AnimatedContainer(
+                                                  duration: kSoftMedium,
+                                                  curve: kSoftCurve,
+                                                  width: hasMultipleDescriptions
+                                                      ? 8
+                                                      : 0,
+                                                ),
                                                 Expanded(
                                                   child: MouseRegion(
                                                     cursor:
@@ -974,15 +1006,15 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
   final List<TextEditingController> _descriptionControllers = [
     TextEditingController(),
   ];
-  final TextEditingController _categoryController = TextEditingController(
-    text: 'Autre',
-  );
   final ImagePicker _imagePicker = ImagePicker();
-  final List<String> _selectedTags = [];
+  final List<String> _selectedTags = ['Autre'];
   bool _submitting = false;
   bool _pickingImage = false;
   Uint8List? _pickedImageBytes;
   String _pickedImageExt = 'jpg';
+
+  String get _selectedTag =>
+      _selectedTags.isNotEmpty ? _selectedTags.first.trim() : 'Autre';
 
   @override
   void dispose() {
@@ -990,7 +1022,6 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
     for (final controller in _descriptionControllers) {
       controller.dispose();
     }
-    _categoryController.dispose();
     super.dispose();
   }
 
@@ -1060,8 +1091,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
         _descriptionControllers.any(
           (controller) => controller.text.trim().isNotEmpty,
         ) ||
-        _categoryController.text.trim() != 'Autre' ||
-        _selectedTags.isNotEmpty ||
+        _selectedTag != 'Autre' ||
         _pickedImageBytes != null;
   }
 
@@ -1089,6 +1119,7 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
       return;
     }
     setState(() => _submitting = true);
+    final selectedTag = _selectedTag.isEmpty ? 'Autre' : _selectedTag;
     Navigator.of(context).pop(
       _WikiItemDraft(
         title: title,
@@ -1098,10 +1129,8 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
               .where((description) => description.isNotEmpty)
               .toList(growable: false),
         ),
-        category: _categoryController.text.trim().isEmpty
-            ? 'Autre'
-            : _categoryController.text.trim(),
-        tags: List.unmodifiable(_selectedTags),
+        category: selectedTag,
+        tags: List.unmodifiable([selectedTag]),
         imageDataUrl: _buildImageDataUrl(),
       ),
     );
@@ -1111,6 +1140,8 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
   Widget build(BuildContext context) {
     final canAddDescription =
         _descriptionControllers.length < WikiItem.maxDescriptions;
+    final hasMultipleDescriptions = _descriptionControllers.length > 1;
+    final tagOptions = _wikiTagOptions(widget.availableTags, _selectedTags);
     // Design refondu 2026-05-12 : parité avec les dialogs « Nouvelle
     // caisse de retraite » (header icône + titre + X, champs labelisés
     // violet 12px avec OutlineInputBorder radius 10, bouton X de close).
@@ -1193,11 +1224,19 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                             enabled: !_submitting,
                           ),
                           const SizedBox(height: 12),
-                          _WikiLabeledField(
-                            label: 'Catégorie',
-                            controller: _categoryController,
-                            hint: 'ex. Salle de bain, WC, Cuisine, Chambre…',
+                          _WikiTagDropdown(
+                            label: 'Tags',
+                            value: _selectedTag,
+                            options: tagOptions,
                             enabled: !_submitting,
+                            onChanged: (value) {
+                              if (value == null || value.isEmpty) return;
+                              setState(() {
+                                _selectedTags
+                                  ..clear()
+                                  ..add(value);
+                              });
+                            },
                           ),
                           const SizedBox(height: 12),
                           Row(
@@ -1223,8 +1262,10 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          SizedBox(
-                            height: 150,
+                          AnimatedContainer(
+                            duration: kSoftMedium,
+                            curve: kSoftCurve,
+                            height: hasMultipleDescriptions ? 150 : 104,
                             child: ReorderableListView.builder(
                               buildDefaultDragHandles: false,
                               proxyDecorator: _descriptionReorderProxy,
@@ -1247,12 +1288,23 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.center,
                                     children: [
-                                      ReorderableDragStartListener(
-                                        index: i,
-                                        enabled: !_submitting,
-                                        child: const _DescriptionDragHandle(),
+                                      AnimatedSize(
+                                        duration: kSoftMedium,
+                                        curve: kSoftCurve,
+                                        child: hasMultipleDescriptions
+                                            ? ReorderableDragStartListener(
+                                                index: i,
+                                                enabled: !_submitting,
+                                                child:
+                                                    const _DescriptionDragHandle(),
+                                              )
+                                            : const SizedBox.shrink(),
                                       ),
-                                      const SizedBox(width: 8),
+                                      AnimatedContainer(
+                                        duration: kSoftMedium,
+                                        curve: kSoftCurve,
+                                        width: hasMultipleDescriptions ? 8 : 0,
+                                      ),
                                       Expanded(
                                         child: MouseRegion(
                                           cursor: SystemMouseCursors.text,
@@ -1309,39 +1361,6 @@ class _WikiCreateDialogState extends State<_WikiCreateDialog> {
                                 );
                               },
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Tags',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: kBrandPurple,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: widget.availableTags
-                                .map(
-                                  (tag) => FilterChip(
-                                    label: Text(tag),
-                                    selected: _selectedTags.contains(tag),
-                                    onSelected: _submitting
-                                        ? null
-                                        : (_) {
-                                            setState(() {
-                                              if (_selectedTags.contains(tag)) {
-                                                _selectedTags.remove(tag);
-                                              } else {
-                                                _selectedTags.add(tag);
-                                              }
-                                            });
-                                          },
-                                  ),
-                                )
-                                .toList(),
                           ),
                           const SizedBox(height: 20),
                           Row(
@@ -1820,6 +1839,84 @@ class _WikiLabeledField extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _WikiTagDropdown extends StatelessWidget {
+  const _WikiTagDropdown({
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.label,
+    this.enabled = true,
+    this.allowEmpty = false,
+    this.borderRadius = 10,
+  });
+
+  final String? label;
+  final String value;
+  final List<String> options;
+  final ValueChanged<String?> onChanged;
+  final bool enabled;
+  final bool allowEmpty;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final safeOptions = options.isEmpty ? _kDefaultWikiTags : options;
+    final values = <String>[if (allowEmpty) '', ...safeOptions];
+    final selectedValue = values.contains(value)
+        ? value
+        : (allowEmpty ? '' : safeOptions.first);
+
+    final dropdown = SizedBox(
+      height: 44,
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: enabled ? Colors.white : const Color(0xFFF7F7FA),
+          borderRadius: BorderRadius.circular(borderRadius),
+          border: Border.all(color: const Color(0xFFE4E7EB)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: selectedValue,
+            isDense: true,
+            isExpanded: true,
+            iconSize: 20,
+            borderRadius: BorderRadius.circular(14),
+            hint: const Text('Choisir un tag'),
+            items: [
+              if (allowEmpty)
+                const DropdownMenuItem(value: '', child: Text('Aucun tag')),
+              ...safeOptions.map(
+                (tag) => DropdownMenuItem(value: tag, child: Text(tag)),
+              ),
+            ],
+            onChanged: enabled ? onChanged : null,
+          ),
+        ),
+      ),
+    );
+
+    if (label == null) return dropdown;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label!,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: kBrandPurple,
+          ),
+        ),
+        const SizedBox(height: 4),
+        dropdown,
       ],
     );
   }

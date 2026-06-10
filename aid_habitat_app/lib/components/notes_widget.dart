@@ -2041,7 +2041,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             onTap: () => _switchPage(_currentPage - 1),
           )
         else
-          const SizedBox(width: 44, height: 44),
+          const SizedBox(width: 32, height: 32),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Text(
@@ -2184,8 +2184,8 @@ class _NotesWidgetState extends State<NotesWidget> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 widget.leadingNavWidget!,
-                const SizedBox(width: 12),
-                _HeaderIconButton(
+                const SizedBox(width: 16),
+                _PageHeaderChevronButton(
                   icon: LucideIcons.chevronLeft,
                   onTap: _currentPage > 0
                       ? () => _switchPage(_currentPage - 1)
@@ -2203,19 +2203,20 @@ class _NotesWidgetState extends State<NotesWidget> {
                     ),
                   ),
                 ),
-                _HeaderIconButton(
+                _PageHeaderChevronButton(
                   icon: LucideIcons.chevronRight,
                   onTap: _currentPage < _totalPages - 1
                       ? () => _switchPage(_currentPage + 1)
                       : null,
                   tooltip: 'Page suivante',
                 ),
+                const SizedBox(width: 16),
                 _VioletHeaderIconButton(
                   icon: LucideIcons.plus,
                   onTap: _totalPages < widget.maxPages ? _addPage : null,
                   tooltip: 'Nouvelle page (dessin)',
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 16),
                 _RoseHeaderIconButton(
                   icon: Icons.delete_outline,
                   onTap:
@@ -2259,7 +2260,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             const SizedBox(width: 8),
           ],
           if (widget.allowPagination) ...[
-            _HeaderIconButton(
+            _PageHeaderChevronButton(
               icon: LucideIcons.chevronLeft,
               onTap: _currentPage > 0
                   ? () => _switchPage(_currentPage - 1)
@@ -2277,7 +2278,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                 ),
               ),
             ),
-            _HeaderIconButton(
+            _PageHeaderChevronButton(
               icon: LucideIcons.chevronRight,
               onTap: _currentPage < _totalPages - 1
                   ? () => _switchPage(_currentPage + 1)
@@ -2643,17 +2644,6 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (widget.toolset == NoteToolset.advanced) {
       buttons.add(_paletteButton());
     }
-    // Clear
-    buttons.add(
-      _circularToolButton(
-        icon: LucideIcons.x,
-        tooltip: 'Tout effacer',
-        onTap: () => unawaited(_confirmClearStrokes()),
-        disabled: _strokes.isEmpty,
-        backgroundColor: _kDangerActionBg,
-        foregroundColor: _kDangerActionFg,
-      ),
-    );
     // Undo / Redo — inclus dans la nouvelle mise en page "deux cartes"
     // ou explicitement demandé par un écran qui veut les intégrer à la
     // toolbar plutôt qu'à la barre d'en-tête.
@@ -2677,6 +2667,17 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
     // Save
     if (widget.showSaveButton) buttons.add(_saveButton());
+    // Clear — toujours tout à droite, après les actions secondaires.
+    buttons.add(
+      _circularToolButton(
+        icon: LucideIcons.x,
+        tooltip: 'Tout effacer',
+        onTap: () => unawaited(_confirmClearStrokes()),
+        disabled: _strokes.isEmpty,
+        backgroundColor: _kDangerActionBg,
+        foregroundColor: _kDangerActionFg,
+      ),
+    );
 
     // Refonte 2026-05-12 : container pill flottant — pas de border
     // (demande utilisateur), juste un shadow doux pour le décoller
@@ -2705,9 +2706,9 @@ class _NotesWidgetState extends State<NotesWidget> {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 0; i < buttons.length; i++) ...[
-              // Espace inter-boutons 12 px — respiration plus nette entre
+              // Espace inter-boutons 18 px — respiration plus nette entre
               // les outils stylo / surligneur / gomme / palette.
-              if (i > 0) const SizedBox(width: 12),
+              if (i > 0) const SizedBox(width: 18),
               buttons[i],
             ],
           ],
@@ -3413,10 +3414,53 @@ class _HeaderIconButton extends StatelessWidget {
   }
 }
 
+class _PageHeaderChevronButton extends StatelessWidget {
+  const _PageHeaderChevronButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: enabled
+                ? _kStackedSplitterBg
+                : _kStackedSplitterBg.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: 16,
+            color: enabled
+                ? kBrandPurple
+                : kBrandPurple.withValues(alpha: 0.35),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Bouton chevron en violet pour la pagination centrée de la mise en
-/// page "deux cartes empilées". Grisé quand `enabled == false`, sans
-/// fond ni contour. Zone de tap 44×44 pour respecter les guidelines
-/// tablette (Apple HIG minimum 44pt).
+/// page "deux cartes empilées". Zone de tap 44×44 avec carré violet
+/// clair arrondi à l'intérieur, comme la flèche retour.
 class _StackedChevronButton extends StatelessWidget {
   const _StackedChevronButton({
     required this.icon,
@@ -3432,20 +3476,34 @@ class _StackedChevronButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: enabled ? onTap : null,
-          child: Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            child: Opacity(
-              opacity: enabled ? 1 : 0.3,
-              child: Icon(icon, size: 22, color: kBrandPurple),
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Center(
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: enabled
+                    ? _kStackedSplitterBg
+                    : _kStackedSplitterBg.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                icon,
+                size: 17,
+                color: enabled
+                    ? kBrandPurple
+                    : kBrandPurple.withValues(alpha: 0.35),
+              ),
             ),
           ),
         ),

@@ -23,6 +23,8 @@ const Color _kToolbarActiveBg = Color(0xFFF2ECF5);
 const Color _kToolbarActiveText = Color(0xFF554265);
 const Color _kToolbarIcon = Color(0xFF2B323A);
 const Color _kToolbarHoverBg = Color(0xFFF2F4F6);
+const double _kDefaultEraserSize = 18.0;
+const List<double> _kEraserSizePresets = <double>[8.0, 18.0, 44.0];
 
 // ---------------------------------------------------------------------------
 // Stroke model
@@ -37,6 +39,7 @@ enum PlanTool {
   // la position, la taille et l'orientation).
   wall,
   window,
+  windowDouble,
   door,
   toilet,
   shower,
@@ -50,6 +53,7 @@ enum PlanTool {
 /// des poignées (4 coins pour la taille + 1 flèche pour la rotation).
 const Set<PlanTool> _symbolTools = {
   PlanTool.window,
+  PlanTool.windowDouble,
   PlanTool.door,
   PlanTool.toilet,
   PlanTool.shower,
@@ -152,12 +156,25 @@ class _PlanStroke {
 // PlanCanvas widget
 // ---------------------------------------------------------------------------
 
+class PlanCanvasController {
+  _PlanCanvasState? _state;
+
+  Future<void> flush() async {
+    await _state?._flushPendingSave();
+  }
+}
+
 class PlanCanvas extends StatefulWidget {
   final String patientId;
   final String tabKey;
+  final PlanCanvasController? controller;
 
   /// Page number (0-based). Each page stores its own set of strokes.
   final int pageNumber;
+
+  /// Regenerates the PNG preview once after loading existing strokes.
+  /// Useful when a page has just been seeded from another drawing.
+  final bool refreshPreviewOnLoad;
 
   /// Optional pagination info rendered inline dans la toolbar.
   final int? currentPage;
@@ -178,8 +195,10 @@ class PlanCanvas extends StatefulWidget {
   const PlanCanvas({
     super.key,
     required this.patientId,
+    this.controller,
     this.tabKey = 'Plans',
     this.pageNumber = 0,
+    this.refreshPreviewOnLoad = false,
     this.currentPage,
     this.totalPages,
     this.onPrevPage,
@@ -200,7 +219,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   PlanTool _tool = PlanTool.pen;
   int _penColor = 0xFF1A1A1A;
-  double get _penSize => _defaultStrokeSizeFor(_tool);
+  double _eraserSize = _kDefaultEraserSize;
+  bool _showEraserSizeGauge = false;
+  final Object _eraserSizeTapRegion = Object();
+  bool _showWindowTypeBundle = false;
+  final Object _windowTypeTapRegion = Object();
+  double get _penSize =>
+      _tool == PlanTool.eraser ? _eraserSize : _defaultStrokeSizeFor(_tool);
 
   // Sélection d'un symbole architectural placé — -1 = rien de sélectionné.
   int _selectedIndex = -1;
@@ -246,12 +271,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
       case PlanTool.highlighter:
         return 6.0;
       case PlanTool.eraser:
-        return 14.0;
+        return _kDefaultEraserSize;
       case PlanTool.pen:
       case PlanTool.line:
       case PlanTool.rect:
       case PlanTool.wall:
       case PlanTool.window:
+      case PlanTool.windowDouble:
       case PlanTool.door:
       case PlanTool.toilet:
       case PlanTool.shower:
@@ -264,6 +290,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   @override
   void initState() {
     super.initState();
+    widget.controller?._state = this;
     _loadStrokes();
     _pencilDoubleTapSubscription = PencilInteractionService.instance.onDoubleTap
         .listen((_) {
@@ -276,6 +303,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
   @override
   void didUpdateWidget(covariant PlanCanvas oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      if (oldWidget.controller?._state == this) {
+        oldWidget.controller?._state = null;
+      }
+      widget.controller?._state = this;
+    }
     if (oldWidget.pageNumber != widget.pageNumber ||
         oldWidget.patientId != widget.patientId ||
         oldWidget.tabKey != widget.tabKey) {
@@ -306,6 +339,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   @override
   void dispose() {
+    if (widget.controller?._state == this) {
+      widget.controller?._state = null;
+    }
     final hadPendingSave = _saveTimer?.isActive ?? false;
     _saveTimer?.cancel();
     if (hadPendingSave) {
@@ -369,6 +405,22 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   // ----- Persistence -----
 
+  List<_PlanStroke> _decodeStrokesJson(String? raw) {
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      if (decoded['format'] != 'plan_canvas_v1') return const [];
+      final strokes = (decoded['strokes'] as List?) ?? const [];
+      return strokes
+          .whereType<Map>()
+          .map((m) => _PlanStroke.fromJson(m.cast<String, dynamic>()))
+          .whereType<_PlanStroke>()
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> _loadStrokes() async {
     final json = await _dataService.fetchNoteDrawingJson(
       patientId: widget.patientId,
@@ -376,28 +428,16 @@ class _PlanCanvasState extends State<PlanCanvas> {
       pageNumber: widget.pageNumber,
     );
     if (!mounted) return;
-    if (json == null || json.isEmpty) {
-      setState(() => _loaded = true);
-      return;
-    }
-    try {
-      final decoded = jsonDecode(json) as Map<String, dynamic>;
-      if (decoded['format'] == 'plan_canvas_v1') {
-        final strokes = (decoded['strokes'] as List?) ?? const [];
-        _strokes
-          ..clear()
-          ..addAll(
-            strokes
-                .whereType<Map>()
-                .map((m) => _PlanStroke.fromJson(m.cast<String, dynamic>()))
-                .whereType<_PlanStroke>(),
-          );
-      }
-    } catch (_) {
-      // Either legacy scribble data or corrupt — start fresh
-    }
+    _strokes
+      ..clear()
+      ..addAll(_decodeStrokesJson(json));
     if (!mounted) return;
     setState(() => _loaded = true);
+    if (widget.refreshPreviewOnLoad && _strokes.isNotEmpty) {
+      // Refresh the preview after loading a seeded page so report generation
+      // sees the copied editable drawing even if the user does not redraw.
+      _scheduleSave();
+    }
   }
 
   Future<void> _persistForKey(
@@ -469,6 +509,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
   void _scheduleSave() {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 800), _persist);
+  }
+
+  Future<void> _flushPendingSave() async {
+    final hadPendingSave = _saveTimer?.isActive ?? false;
+    _saveTimer?.cancel();
+    if (!hadPendingSave) return;
+    await _persist();
   }
 
   Future<void> _persist() async {
@@ -645,10 +692,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
   // ---------------------------------------------------------------------
 
   static const Map<PlanTool, Size> _defaultSymbolSize = {
-    // Fenêtre : deux vantaux côte à côte, chaque vantail plus petit
-    // qu'une porte (largeur totale > porte, mais vantail = ~50 px
-    // contre 80 px pour une porte).
-    PlanTool.window: Size(100, 45),
+    // Fenêtre simple : cadre carré autour de l'arc d'ouverture.
+    PlanTool.window: Size(72, 72),
+    // Fenêtre double : deux ouvertures côte à côte.
+    PlanTool.windowDouble: Size(112, 72),
     PlanTool.door: Size(80, 80),
     // WC : plus petit + plus large (proportions cuvette réelle ~2:1,
     // l'axe long étant horizontal). Orientable ensuite via la rotation.
@@ -681,6 +728,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     setState(() {
       _strokes.add(stroke);
       _selectedIndex = _strokes.length - 1;
+      _showWindowTypeBundle = false;
       // On repasse sur le crayon pour que le prochain drag sur le canvas
       // ne réouvre pas le menu / ne dessine pas un outil figé inattendu.
       _tool = PlanTool.pen;
@@ -701,6 +749,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final cos = math.cos(-s.rotation);
     final sin = math.sin(-s.rotation);
     return Offset(v.dx * cos - v.dy * sin, v.dx * sin + v.dy * cos) + c;
+  }
+
+  Offset _rotateVector(Offset v, double angle) {
+    final cos = math.cos(angle);
+    final sin = math.sin(angle);
+    return Offset(v.dx * cos - v.dy * sin, v.dx * sin + v.dy * cos);
   }
 
   _SymbolHandle? _handleAt(_PlanStroke s, Offset globalCanvasPoint) {
@@ -780,7 +834,28 @@ class _PlanCanvasState extends State<PlanCanvas> {
       children: [
         Positioned.fill(child: _buildCanvas()),
         Positioned(top: 16, left: 16, child: _buildSymbolOverlayTools()),
+        if (_showWindowTypeBundle)
+          Positioned(
+            top: 86,
+            left: 16,
+            child: TapRegion(
+              groupId: _windowTypeTapRegion,
+              child: _buildWindowTypeBundle(),
+            ),
+          ),
         Positioned(top: 16, right: 16, child: _buildPaginationOverlayTools()),
+        if (_showEraserSizeGauge)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 80,
+            child: Center(
+              child: TapRegion(
+                groupId: _eraserSizeTapRegion,
+                child: _buildEraserSizePopover(),
+              ),
+            ),
+          ),
         Positioned(left: 0, right: 0, bottom: 16, child: _buildToolbarDock()),
       ],
     );
@@ -818,7 +893,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final buttons = <Widget>[
       _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
       _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
-      _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
+      _eraserToolBtn(),
       _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
       _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
       _buildActiveColorDot(),
@@ -835,9 +910,11 @@ class _PlanCanvasState extends State<PlanCanvas> {
       _iconBtn(
         icon: LucideIcons.x,
         tooltip: 'Effacer tout le plan',
-        onTap: _clearAll,
+        onTap: _strokes.isEmpty ? null : _clearAll,
         activeColor: const Color(0xFFB4232F),
-        backgroundColor: const Color(0xFFFFE4E6),
+        backgroundColor: _strokes.isEmpty
+            ? const Color(0xFFFFF1F2)
+            : const Color(0xFFFFE4E6),
       ),
     ];
     return Row(
@@ -908,11 +985,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   List<Widget> _symbolButtons() {
     return [
-      _symbolInsertBtn(
-        PlanTool.window,
-        Icon(LucideIcons.columns, size: 18, color: _kToolbarIcon),
-        'Fenêtre',
-      ),
+      _windowBundleButton(),
       _symbolInsertBtn(
         PlanTool.door,
         Icon(LucideIcons.doorClosed, size: 18, color: _kToolbarIcon),
@@ -952,6 +1025,101 @@ class _PlanCanvasState extends State<PlanCanvas> {
             fontWeight: FontWeight.w700,
             letterSpacing: 0.4,
             color: _kToolbarIcon,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _windowBundleButton() {
+    return TapRegion(
+      groupId: _windowTypeTapRegion,
+      onTapOutside: (_) => _hideWindowTypeBundle(),
+      child: _symbolButtonShell(
+        iconChild: Icon(LucideIcons.columns, size: 18, color: _kToolbarIcon),
+        tooltip: 'Choisir une fenêtre',
+        onTap: () {
+          setState(() {
+            _showWindowTypeBundle = !_showWindowTypeBundle;
+            _showEraserSizeGauge = false;
+          });
+        },
+      ),
+    );
+  }
+
+  void _hideWindowTypeBundle() {
+    if (!_showWindowTypeBundle || !mounted) return;
+    setState(() => _showWindowTypeBundle = false);
+  }
+
+  Widget _buildWindowTypeBundle() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _windowTypeChoice(
+            tool: PlanTool.window,
+            label: 'Simple',
+            icon: Icons.looks_one,
+          ),
+          const SizedBox(width: 8),
+          _windowTypeChoice(
+            tool: PlanTool.windowDouble,
+            label: 'Double',
+            icon: Icons.looks_two,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _windowTypeChoice({
+    required PlanTool tool,
+    required String label,
+    required IconData icon,
+  }) {
+    return Tooltip(
+      message: 'Insérer : fenêtre $label',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () {
+          _insertSymbolAtCenter(tool);
+          _hideWindowTypeBundle();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _kToolbarActiveBg,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: _kToolbarActiveText),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: _kToolbarActiveText,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1101,6 +1269,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
   }
 
   Future<void> _openColorPresetMenu() async {
+    if (_tool == PlanTool.eraser) return;
+    _hideEraserSizeGauge();
     final ctx = _colorDotKey.currentContext;
     if (ctx == null) return;
     final box = ctx.findRenderObject() as RenderBox;
@@ -1212,7 +1382,11 @@ class _PlanCanvasState extends State<PlanCanvas> {
         color: Colors.transparent,
         shape: const CircleBorder(),
         child: InkWell(
-          onTap: () => setState(() => _tool = tool),
+          onTap: () => setState(() {
+            _tool = tool;
+            _showEraserSizeGauge = tool == PlanTool.eraser;
+            _showWindowTypeBundle = false;
+          }),
           customBorder: const CircleBorder(),
           hoverColor: active ? Colors.transparent : _kToolbarHoverBg,
           splashColor: Colors.transparent,
@@ -1237,26 +1411,133 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
+  Widget _eraserToolBtn() {
+    return TapRegion(
+      groupId: _eraserSizeTapRegion,
+      onTapOutside: (_) => _hideEraserSizeGauge(),
+      child: _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
+    );
+  }
+
+  void _hideEraserSizeGauge() {
+    if (!_showEraserSizeGauge || !mounted) return;
+    setState(() => _showEraserSizeGauge = false);
+  }
+
+  Widget _buildEraserSizePopover() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < _kEraserSizePresets.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            _eraserSizeDot(
+              size: _kEraserSizePresets[i],
+              visualDiameter: switch (i) {
+                0 => 8.0,
+                1 => 12.0,
+                _ => 16.0,
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _eraserSizeDot({
+    required double size,
+    required double visualDiameter,
+  }) {
+    final selected = (_eraserSize - size).abs() < 0.1;
+    return Tooltip(
+      message: switch (visualDiameter.round()) {
+        8 => 'Gomme fine',
+        12 => 'Gomme moyenne',
+        _ => 'Gomme large',
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => setState(() => _eraserSize = size),
+          child: SizedBox(
+            width: 30,
+            height: 30,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
+                width: selected ? visualDiameter + 8 : visualDiameter,
+                height: selected ? visualDiameter + 8 : visualDiameter,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? _kToolbarActiveBg : Colors.transparent,
+                  border: selected
+                      ? Border.all(color: _kToolbarActiveText, width: 1.5)
+                      : null,
+                ),
+                child: Center(
+                  child: Container(
+                    width: visualDiameter,
+                    height: visualDiameter,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _kToolbarActiveText,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Bouton d'insertion instantanée d'un symbole architectural au
   /// centre du canvas. Rond, bordé. Tap = insertion. [iconChild] peut
   /// être un Icon Lucide ou un Text (emoji) quand aucune icône Lucide
   /// ne correspond exactement (ex : 🚽 pour les WC).
   Widget _symbolInsertBtn(PlanTool tool, Widget iconChild, String label) {
+    return _symbolButtonShell(
+      iconChild: iconChild,
+      tooltip: 'Insérer : $label',
+      onTap: () => _insertSymbolAtCenter(tool),
+    );
+  }
+
+  Widget _symbolButtonShell({
+    required Widget iconChild,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
     return Tooltip(
-      message: 'Insérer : $label',
+      message: tooltip,
       child: Material(
         color: Colors.transparent,
-        shape: const CircleBorder(),
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          onTap: () => _insertSymbolAtCenter(tool),
-          customBorder: const CircleBorder(),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
           hoverColor: _kToolbarHoverBg,
-          child: Container(
+          child: SizedBox(
             width: 36,
             height: 36,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(shape: BoxShape.circle),
-            child: iconChild,
+            child: Center(child: iconChild),
           ),
         ),
       ),
@@ -1581,75 +1862,100 @@ class _PlanCanvasState extends State<PlanCanvas> {
       case _SymbolHandle.bottomMid:
       case _SymbolHandle.leftMid:
       case _SymbolHandle.rightMid:
-        // Redimensionnement 1D : on ne touche qu'une seule dimension
-        // (largeur OU hauteur), la rotation est préservée. Utilisé
-        // pour étirer le symbole sans altérer ses proportions sur
-        // l'autre axe (ex : allonger une baignoire sans grossir sa
-        // profondeur).
-        final local = _toSymbolLocal(sel, pt);
-        final initHalfW = (initCorner.dx - initCenter.dx).abs().clamp(
-          8.0,
-          2000.0,
+      case _SymbolHandle.topLeft:
+      case _SymbolHandle.topRight:
+      case _SymbolHandle.bottomLeft:
+      case _SymbolHandle.bottomRight:
+        _resizeSelectedSymbolFromHandle(
+          sel: sel,
+          handle: handle,
+          pointer: pt,
+          initCenter: initCenter,
+          initCorner: initCorner,
+          initRotation: initRotation,
         );
-        final initHalfH = (initCorner.dy - initCenter.dy).abs().clamp(
-          8.0,
-          2000.0,
-        );
-        final sx = (initCorner.dx - initCenter.dx) >= 0 ? 1 : -1;
-        final sy = (initCorner.dy - initCenter.dy) >= 0 ? 1 : -1;
-        double newHalfW = initHalfW;
-        double newHalfH = initHalfH;
-        if (handle == _SymbolHandle.leftMid ||
-            handle == _SymbolHandle.rightMid) {
-          newHalfW = (local.dx - initCenter.dx).abs().clamp(8.0, 2000.0);
-        } else {
-          newHalfH = (local.dy - initCenter.dy).abs().clamp(8.0, 2000.0);
-        }
-        setState(() {
-          sel.points[1] = Offset(
-            initCenter.dx + newHalfW * sx,
-            initCenter.dy + newHalfH * sy,
-          );
-          sel.rotation = initRotation;
-        });
         break;
-      default:
-        // Redimensionnement PROPORTIONNEL depuis un coin — on calcule
-        // un facteur d'échelle basé sur la distance du curseur au
-        // centre (en coordonnées locales non-tournées), et on applique
-        // ce même facteur à largeur ET hauteur pour préserver le ratio.
-        final local = _toSymbolLocal(sel, pt);
-        final initHalfW = (initCorner.dx - initCenter.dx).abs().clamp(
-          8.0,
-          2000.0,
-        );
-        final initHalfH = (initCorner.dy - initCenter.dy).abs().clamp(
-          8.0,
-          2000.0,
-        );
-        final initDiag = math.sqrt(
-          initHalfW * initHalfW + initHalfH * initHalfH,
-        );
-        final curDiag = (local - initCenter).distance;
-        final scale = (curDiag / initDiag).clamp(0.15, 10.0);
-        final newHalfW = (initHalfW * scale).clamp(8.0, 2000.0);
-        final newHalfH = (initHalfH * scale).clamp(8.0, 2000.0);
-        setState(() {
-          final sx = (initCorner.dx - initCenter.dx) >= 0 ? 1 : -1;
-          final sy = (initCorner.dy - initCenter.dy) >= 0 ? 1 : -1;
-          sel.points[1] = Offset(
-            initCenter.dx + newHalfW * sx,
-            initCenter.dy + newHalfH * sy,
-          );
-          // Rotation préservée pendant le resize proportionnel.
-          sel.rotation = initRotation;
-        });
     }
+  }
+
+  void _resizeSelectedSymbolFromHandle({
+    required _PlanStroke sel,
+    required _SymbolHandle handle,
+    required Offset pointer,
+    required Offset initCenter,
+    required Offset initCorner,
+    required double initRotation,
+  }) {
+    const minSize = 16.0;
+    final initHalfW = (initCorner.dx - initCenter.dx).abs().clamp(
+      minSize / 2,
+      2000.0,
+    );
+    final initHalfH = (initCorner.dy - initCenter.dy).abs().clamp(
+      minSize / 2,
+      2000.0,
+    );
+
+    // Repère local initial du symbole : les côtés/coins opposés restent
+    // fixes dans ce repère, puis le nouveau centre est reconverti dans
+    // le canvas. Ça garde l'ancrage visuel correct même si l'objet est
+    // tourné.
+    final pointerLocal = _rotateVector(pointer - initCenter, -initRotation);
+
+    var left = -initHalfW;
+    var right = initHalfW;
+    var top = -initHalfH;
+    var bottom = initHalfH;
+
+    switch (handle) {
+      case _SymbolHandle.leftMid:
+        left = math.min(pointerLocal.dx, right - minSize);
+        break;
+      case _SymbolHandle.rightMid:
+        right = math.max(pointerLocal.dx, left + minSize);
+        break;
+      case _SymbolHandle.topMid:
+        top = math.min(pointerLocal.dy, bottom - minSize);
+        break;
+      case _SymbolHandle.bottomMid:
+        bottom = math.max(pointerLocal.dy, top + minSize);
+        break;
+      case _SymbolHandle.topLeft:
+        left = math.min(pointerLocal.dx, right - minSize);
+        top = math.min(pointerLocal.dy, bottom - minSize);
+        break;
+      case _SymbolHandle.topRight:
+        right = math.max(pointerLocal.dx, left + minSize);
+        top = math.min(pointerLocal.dy, bottom - minSize);
+        break;
+      case _SymbolHandle.bottomLeft:
+        left = math.min(pointerLocal.dx, right - minSize);
+        bottom = math.max(pointerLocal.dy, top + minSize);
+        break;
+      case _SymbolHandle.bottomRight:
+        right = math.max(pointerLocal.dx, left + minSize);
+        bottom = math.max(pointerLocal.dy, top + minSize);
+        break;
+      case _SymbolHandle.body:
+      case _SymbolHandle.rotate:
+        return;
+    }
+
+    final localCenter = Offset((left + right) / 2, (top + bottom) / 2);
+    final nextCenter = initCenter + _rotateVector(localCenter, initRotation);
+    final nextHalfW = ((right - left) / 2).clamp(minSize / 2, 2000.0);
+    final nextHalfH = ((bottom - top) / 2).clamp(minSize / 2, 2000.0);
+
+    setState(() {
+      sel.points[0] = nextCenter;
+      sel.points[1] = nextCenter + Offset(nextHalfW, nextHalfH);
+      sel.rotation = initRotation;
+    });
   }
 }
 
 /// Identifie quelle poignée est active durant un drag (ou le corps).
-/// - corners : redimensionnement PROPORTIONNEL
+/// - corners : redimensionnement ancré sur le coin opposé
 /// - midpoints (topMid / …) : redimensionnement 1D sur un seul axe
 /// - rotate : rotation libre (snap 90°)
 /// - body : drag déplacement
@@ -1889,6 +2195,7 @@ class _DrawPainter extends CustomPainter {
         canvas.drawLine(s.points[0], s.points[1], paint);
         break;
       case PlanTool.window:
+      case PlanTool.windowDouble:
       case PlanTool.door:
       case PlanTool.toilet:
       case PlanTool.shower:
@@ -1931,6 +2238,9 @@ class _DrawPainter extends CustomPainter {
       case PlanTool.window:
         _paintWindowLocal(canvas, rect, stroke);
         break;
+      case PlanTool.windowDouble:
+        _paintDoubleWindowLocal(canvas, rect, stroke);
+        break;
       case PlanTool.door:
         _paintDoorLocal(canvas, rect, stroke);
         break;
@@ -1963,31 +2273,89 @@ class _DrawPainter extends CustomPainter {
   ///   - Vantail simple (charnière bas-gauche, battant vertical)
   ///   - Arc d'ouverture 90° vers l'intérieur (dashed)
   static void _paintWindowLocal(Canvas canvas, Rect r, Paint stroke) {
-    // Mur en bas (épaisseur visuelle, identique à la porte).
-    canvas.drawLine(r.bottomLeft, r.bottomRight, stroke);
+    final side = math.min(r.width, r.height);
+    final frame = Rect.fromCenter(center: r.center, width: side, height: side);
 
-    // Encadré (dormant) : rectangle fin sur tout `r`, trait gris léger
-    // pour différencier la menuiserie du battant et de l'arc.
     final framePaint = Paint()
       ..color = stroke.color.withValues(alpha: 0.55)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-    canvas.drawRect(r, framePaint);
+    canvas.drawRect(frame, framePaint);
 
     // Vantail unique — charnière bas-gauche, battant fermé vertical
     // vers le haut, ouverture CW vers la droite (mêmes conventions
     // que `_paintDoorLocal` pour cohérence visuelle).
-    final hinge = r.bottomLeft;
-    final closedEnd = Offset(r.left, r.top);
+    final hinge = frame.bottomLeft;
+    final closedEnd = Offset(frame.left, frame.top);
     canvas.drawLine(hinge, closedEnd, stroke);
 
     final dashed = Paint()
       ..color = stroke.color.withValues(alpha: 0.6)
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
-    final arcRect = Rect.fromCircle(center: hinge, radius: r.height);
+    final arcRect = Rect.fromCircle(center: hinge, radius: frame.height);
     // Arc de -90° (vers le haut) à 0° (vers la droite).
     canvas.drawArc(arcRect, -math.pi / 2, math.pi / 2, false, dashed);
+  }
+
+  /// Fenêtre double : deux battants symétriques, avec un arc de chaque
+  /// côté pour représenter la double ouverture.
+  static void _paintDoubleWindowLocal(Canvas canvas, Rect r, Paint stroke) {
+    final height = r.height;
+    final width = math.max(r.width, height * 1.45);
+    final frame = Rect.fromCenter(
+      center: r.center,
+      width: width,
+      height: height,
+    );
+    final left = Rect.fromLTWH(
+      frame.left,
+      frame.top,
+      frame.width / 2,
+      frame.height,
+    );
+    final right = Rect.fromLTWH(
+      frame.center.dx,
+      frame.top,
+      frame.width / 2,
+      frame.height,
+    );
+
+    final framePaint = Paint()
+      ..color = stroke.color.withValues(alpha: 0.55)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(frame, framePaint);
+    canvas.drawLine(
+      Offset(frame.center.dx, frame.top),
+      Offset(frame.center.dx, frame.bottom),
+      framePaint,
+    );
+
+    final dashed = Paint()
+      ..color = stroke.color.withValues(alpha: 0.6)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+
+    final leftHinge = left.bottomLeft;
+    canvas.drawLine(leftHinge, left.topLeft, stroke);
+    canvas.drawArc(
+      Rect.fromCircle(center: leftHinge, radius: left.height),
+      -math.pi / 2,
+      math.pi / 2,
+      false,
+      dashed,
+    );
+
+    final rightHinge = right.bottomRight;
+    canvas.drawLine(rightHinge, right.topRight, stroke);
+    canvas.drawArc(
+      Rect.fromCircle(center: rightHinge, radius: right.height),
+      math.pi,
+      math.pi / 2,
+      false,
+      dashed,
+    );
   }
 
   /// Porte : segment fixe du côté gauche + arc 90° indiquant l'ouverture.
@@ -2075,9 +2443,7 @@ class _DrawPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_DrawPainter oldDelegate) =>
-      oldDelegate.strokes.length != strokes.length ||
-      oldDelegate.currentStroke != currentStroke;
+  bool shouldRepaint(_DrawPainter oldDelegate) => true;
 }
 
 // Suppress unused import warning (Uint8List reserved for future export needs)

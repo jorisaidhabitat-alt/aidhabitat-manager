@@ -1,12 +1,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/types.dart';
-import '../../components/plan_canvas.dart' show ToiletPictogram;
 import '../../services/dossier_repository.dart';
 import '../../services/save_debounce.dart';
 import '../../components/brand_colors.dart';
 import '../../components/form_widgets.dart';
-import 'bathroom_tab.dart' show buildSanitaryLevelSelections;
+import '../../components/soft_transitions.dart';
+import 'bathroom_tab.dart'
+    show
+        SanitaryLevelIcon,
+        buildSanitaryLevelSelections,
+        sanitaryLevelIconIndexFromLabel,
+        sanitaryLevelIconLayerCount;
 
 /// WC tab — parité 1:1 avec `WCForm` React.
 ///
@@ -308,28 +313,27 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
     if (!_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Swipe SECTIONS désactivé (demande utilisateur 2026-04-29) :
-    // bascule entre les niveaux (WC RDC / étage / …) uniquement via
-    // les pills `_buildLevelPills()` (tap). Pas d'occupants dans cet
-    // onglet → plus aucun swipe horizontal câblé.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildLevelPills(),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_instances.isEmpty)
-                  _buildEmptyState()
-                else ...[
-                  _buildMain(),
-                  const SizedBox(height: 16),
-                  _buildDoor(),
+          child: HorizontalSlideSwitcher(
+            index: _instances.isEmpty ? -1 : _activeLevelIndex,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_instances.isEmpty)
+                    _buildEmptyState()
+                  else ...[
+                    _buildMain(),
+                    const SizedBox(height: 14),
+                    _buildDoor(),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -388,8 +392,9 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
           for (var i = 0; i < labels.length; i++)
             Expanded(
               child: _buildLevelNavItem(
-                icon: const ToiletPictogram(size: 18, color: Color(0xFF0E1116)),
                 label: labels[i],
+                index: i,
+                total: labels.length,
                 active: _instances.isEmpty || _activeLevelIndex == i,
                 onTap: _instances.isEmpty
                     ? () {}
@@ -402,12 +407,14 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
   }
 
   Widget _buildLevelNavItem({
-    required Widget icon,
     required String label,
+    required int index,
+    required int total,
     required bool active,
     required VoidCallback onTap,
   }) {
     const labelColor = Color(0xFF0E1116);
+    final iconIndex = sanitaryLevelIconIndexFromLabel(label);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -417,7 +424,10 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(height: 16, child: Center(child: icon)),
+            SanitaryLevelIcon(
+              activeIndexFromBottom: iconIndex,
+              layerCount: sanitaryLevelIconLayerCount(iconIndex),
+            ),
             const SizedBox(height: 2),
             Text(
               label,
@@ -481,7 +491,6 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
           onChanged: (v) =>
               _updateActive(_copy(a, wcBarreRelevement: v == 'Présente')),
         ),
-        const SizedBox(height: 8),
       ],
     );
   }

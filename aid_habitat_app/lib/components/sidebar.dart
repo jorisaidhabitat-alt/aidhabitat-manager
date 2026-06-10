@@ -60,12 +60,12 @@ class _SidebarState extends State<Sidebar> {
     // Refonte 2026-05-13 : icônes fermées (folder/book) au lieu de
     // folderOpen/bookOpen pour matcher la maquette Refonte.html l.870-871.
     {'id': 'dossiers', 'label': 'Dossiers', 'icon': LucideIcons.folder},
-    {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.book},
+    {'id': 'wiki', 'label': 'Bibliothèque', 'icon': LucideIcons.bookOpen},
     // Item « Caisses » unifié — la page interne propose un switch
     // Complémentaires ↔ Principales (cf.
     // RetirementFundsCombinedScreen). Demande utilisateur 2026-05-12 :
-    // 1 seul item avec icône cœur, mode par défaut Complémentaires.
-    {'id': 'precos', 'label': 'Caisses', 'icon': LucideIcons.heart},
+    // 1 seul item avec icône personne, mode par défaut Complémentaires.
+    {'id': 'precos', 'label': 'Caisses', 'icon': LucideIcons.personStanding},
     // Item ANAH : icône Lucide `coins` (refonte 2026-05-13). Avant on
     // utilisait l'asset `assets/logos/anah.png` pour préserver la charte,
     // mais la maquette du design system aligne ANAH avec les autres
@@ -106,18 +106,8 @@ class _SidebarState extends State<Sidebar> {
                     // App'Ergo mark — square noir avec mauve dot, retour dashboard
                     Padding(
                       padding: const EdgeInsets.only(top: 16.0),
-                      child: Tooltip(
+                      child: _SidebarSideTooltip(
                         message: 'Accueil',
-                        preferBelow: false,
-                        margin: const EdgeInsets.only(left: 60),
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        textStyle: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                        ),
                         child: InkWell(
                           onTap: () => widget.onNavigate('dashboard'),
                           borderRadius: BorderRadius.circular(10),
@@ -177,18 +167,8 @@ class _SidebarState extends State<Sidebar> {
 
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4.0),
-                          child: Tooltip(
+                          child: _SidebarSideTooltip(
                             message: item['label'],
-                            preferBelow: false,
-                            margin: const EdgeInsets.only(left: 60),
-                            decoration: BoxDecoration(
-                              color: Colors.black,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            textStyle: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                            ),
                             child: SoftTapScale(
                               onTap: () => widget.onNavigate(item['id']),
                               // Stack pour superposer l'indicator stripe gauche
@@ -268,19 +248,9 @@ class _SidebarState extends State<Sidebar> {
                     // (Refonte.html `.rail .avatar`). Ouvre l'AccountDialog au tap.
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16.0),
-                      child: Tooltip(
+                      child: _SidebarSideTooltip(
                         message:
                             "${widget.currentUser.displayName} • ${widget.currentUser.role.label}",
-                        preferBelow: false,
-                        margin: const EdgeInsets.only(left: 60),
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        textStyle: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                        ),
                         child: InkWell(
                           onTap: _openAccountDialog,
                           // Refonte 2026-05-15 : avatar rond complet (demande
@@ -399,6 +369,35 @@ class _SidebarState extends State<Sidebar> {
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
     return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
         .toUpperCase();
+  }
+}
+
+class _SidebarSideTooltip extends StatefulWidget {
+  final String message;
+  final Widget child;
+
+  const _SidebarSideTooltip({required this.message, required this.child});
+
+  @override
+  State<_SidebarSideTooltip> createState() => _SidebarSideTooltipState();
+}
+
+class _SidebarSideTooltipState extends State<_SidebarSideTooltip> {
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: widget.message,
+      waitDuration: const Duration(milliseconds: 120),
+      showDuration: const Duration(seconds: 4),
+      preferBelow: false,
+      verticalOffset: 18,
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+      child: widget.child,
+    );
   }
 }
 

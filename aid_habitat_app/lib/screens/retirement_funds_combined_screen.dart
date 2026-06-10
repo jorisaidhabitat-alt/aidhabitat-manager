@@ -33,58 +33,74 @@ class _RetirementFundsCombinedScreenState
       ? 'Caisses de retraite principales'
       : 'Caisses de retraite complémentaires';
 
+  void _setMode(_CaisseMode mode) {
+    if (_mode == mode) return;
+    setState(() => _mode = mode);
+  }
+
+  void _handleHorizontalSwipe(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity.abs() < 250) return;
+    if (velocity < 0) {
+      _setMode(_CaisseMode.principales);
+    } else {
+      _setMode(_CaisseMode.complementaires);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 32, 32, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ---- Header : titre à gauche, switch à droite ----
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Text(
-                  _titleFor(_mode),
-                  // Refonte 2026-05-13 : Nunito w600.
-                  style: GoogleFonts.nunito(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.5,
-                    color: const Color(0xFF0E1116),
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragEnd: _handleHorizontalSwipe,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(32, 32, 32, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ---- Header : titre à gauche, switch à droite ----
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    _titleFor(_mode),
+                    // Refonte 2026-05-13 : Nunito w600.
+                    style: GoogleFonts.nunito(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.5,
+                      color: const Color(0xFF0E1116),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 24),
-              // Switch « bundle » maison : radius forts (pill), fond
-              // violet clair pastel, pas d'ombre sur le thumb — demande
-              // utilisateur 2026-05-13. Animé avec AnimatedAlign.
-              SizedBox(
-                width: 360,
-                child: _CaissesSwitch(
-                  value: _mode,
-                  onChanged: (next) => setState(() => _mode = next),
+                const SizedBox(width: 24),
+                // Switch « bundle » maison : radius forts (pill), fond
+                // violet clair pastel, pas d'ombre sur le thumb — demande
+                // utilisateur 2026-05-13. Animé avec AnimatedAlign.
+                SizedBox(
+                  width: 360,
+                  child: _CaissesSwitch(value: _mode, onChanged: _setMode),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // ---- Contenu : écran embarqué (sans son propre header) ----
-          // Le KeyedSubtree garantit qu'on rebuild un widget différent
-          // (donc nouveau state, nouveau fetch) à chaque bascule.
-          Expanded(
-            child: _mode == _CaisseMode.complementaires
-                ? const KeyedSubtree(
-                    key: ValueKey('complementaires'),
-                    child: RetirementFundsScreen(showHeader: false),
-                  )
-                : const KeyedSubtree(
-                    key: ValueKey('principales'),
-                    child: RetirementFundsPrincipalScreen(showHeader: false),
-                  ),
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            // ---- Contenu : écran embarqué (sans son propre header) ----
+            // Le KeyedSubtree garantit qu'on rebuild un widget différent
+            // (donc nouveau state, nouveau fetch) à chaque bascule.
+            Expanded(
+              child: _mode == _CaisseMode.complementaires
+                  ? const KeyedSubtree(
+                      key: ValueKey('complementaires'),
+                      child: RetirementFundsScreen(showHeader: false),
+                    )
+                  : const KeyedSubtree(
+                      key: ValueKey('principales'),
+                      child: RetirementFundsPrincipalScreen(showHeader: false),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -197,6 +197,12 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   static const String _kSharedSanitairesNotesTabKey = 'Sanitaires-Notes';
 
   /// TabKey unique pour la note partagée entre les 4 sous-sections de
+  /// l'onglet « Bénéficiaire » (Profil, Foyer, Santé, Admin). Même pattern
+  /// que `Accessibilité-Notes` : une seule note écrite + dessin, conservée
+  /// quand l'ergo change de sous-section.
+  static const String _kSharedBeneficiaireNotesTabKey = 'Bénéficiaire-Notes';
+
+  /// TabKey unique pour la note partagée entre les 4 sous-sections de
   /// l'onglet « Accessibilité » (Général, Niveaux, Équipements,
   /// Extérieur). Demande utilisateur 2026-05-15 : « la note écrite
   /// doit être la même pour les 4 sous-sections, et c'est ce seul et
@@ -218,6 +224,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// Calcule le tabKey à utiliser pour le panneau notes. Pour la
   /// majorité des onglets c'est `'$tab-$section'`. Cas spéciaux :
   ///   - Sanitaires (Salle de bain / WC) → [_kSharedSanitairesNotesTabKey]
+  ///   - Bénéficiaire (les 4 sous-sections) →
+  ///     [_kSharedBeneficiaireNotesTabKey]
   ///   - Accessibilité (les 4 sous-sections) →
   ///     [_kSharedAccessibiliteNotesTabKey] (réintroduit 2026-05-15
   ///     sur demande user : note unique partagée entre Général /
@@ -225,6 +233,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   static String _resolveNotesTabKey(String activeTab, String section) {
     if (activeTab == 'Salle de bain' || activeTab == 'WC') {
       return _kSharedSanitairesNotesTabKey;
+    }
+    if (activeTab == 'Bénéficiaire') {
+      return _kSharedBeneficiaireNotesTabKey;
     }
     if (activeTab == 'Accessibilité') {
       return _kSharedAccessibiliteNotesTabKey;
@@ -929,11 +940,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           child: Builder(
             builder: (_) {
               // Dédoublonne les sous-sections par tabKey résolu.
-              // Pour Accessibilité (Refonte 2026-05-15) : les 4
-              // sous-sections partagent le même tabKey
-              // `Accessibilité-Notes` → on collapse à 1 layer (sinon
-              // 4 NotesWidget avec la même ValueKey provoquaient un
-              // throw Flutter sur les keys dupliquées dans le Stack).
+              // Pour Accessibilité et Bénéficiaire : les sous-sections
+              // partagent une même note → on collapse à 1 layer (sinon
+              // plusieurs NotesWidget avec la même ValueKey provoqueraient
+              // un throw Flutter sur les keys dupliquées dans le Stack).
               // Pour Sanitaires : déjà 1 entrée dans `_tabSubsections`,
               // pas d'impact. Pour les autres tabs : 1 tabKey unique
               // par sous-section, pas de dédoublonnage.
@@ -972,7 +982,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   // cadre avec fond violet clair, pour qu'ils restent
                   // visibles même quand l'ergo a commencé à saisir. Le
                   // NotesWidget reçoit donc `placeholder: ''` (pas de hint).
-                  final bannerTitle = pdfPlaceholder ?? section;
+                  final bannerTitle =
+                      activeTab == 'Bénéficiaire' &&
+                          tabKey == _kSharedBeneficiaireNotesTabKey
+                      ? 'Bénéficiaire'
+                      : (pdfPlaceholder ?? section);
                   return _NotesPanelLayer(
                     isActive: isActive,
                     child: Column(

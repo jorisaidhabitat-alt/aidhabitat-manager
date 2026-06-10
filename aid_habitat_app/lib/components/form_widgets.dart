@@ -742,6 +742,7 @@ class FormToggleGroup extends StatelessWidget {
   /// utilisateur 2026-04-30. Mettre à false uniquement si le champ doit
   /// imposer une valeur non-vide après le premier clic.
   final bool allowDeselect;
+  final double labelButtonSpacing;
 
   const FormToggleGroup({
     super.key,
@@ -752,6 +753,7 @@ class FormToggleGroup extends StatelessWidget {
     this.expand = false,
     this.columns,
     this.allowDeselect = true,
+    this.labelButtonSpacing = 6,
   });
 
   @override
@@ -828,7 +830,7 @@ class FormToggleGroup extends StatelessWidget {
               color: Color(0xFF0E1116), // ink-900 (noir)
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: labelButtonSpacing),
         ],
         if (columns != null && columns! > 0)
           _buildGridRows(options, columns!, buildPill)

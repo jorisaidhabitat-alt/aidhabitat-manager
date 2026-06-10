@@ -608,28 +608,23 @@ class _ContextTabState extends State<ContextTab>
                             child: _buildOccupantHeader(idx),
                           ),
                         Expanded(
-                          // Légère animation entre Médicale ↔ Autonomie —
-                          // fade + apparition vers le haut, identique
-                          // aux autres switches de sous-section.
-                          child: SoftSwitcher(
-                            child: KeyedSubtree(
-                              key: ValueKey<int>(_subSection),
-                              child: SingleChildScrollView(
-                                padding: EdgeInsets.fromLTRB(
-                                  20,
-                                  hasMultiple ? 0 : 16,
-                                  20,
-                                  12,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (_subSection == 0)
-                                      _buildMedical()
-                                    else
-                                      _buildAutonomy(),
-                                  ],
-                                ),
+                          child: HorizontalSlideSwitcher(
+                            index: _subSection,
+                            child: SingleChildScrollView(
+                              padding: EdgeInsets.fromLTRB(
+                                20,
+                                hasMultiple ? 0 : 16,
+                                20,
+                                12,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (_subSection == 0)
+                                    _buildMedical()
+                                  else
+                                    _buildAutonomy(),
+                                ],
                               ),
                             ),
                           ),
@@ -809,11 +804,9 @@ class _ContextTabState extends State<ContextTab>
 
   Widget _buildNavBtn(IconData icon, String label, int index) {
     final active = _subSection == index;
-    // Refonte 2026-05-13 (maquette user) : icon + texte en NOIR dans
-    // les 2 états. Violet (#8B6FA0) uniquement sur le trait fin sous
-    // l'item actif — seul différenciateur visuel. Parité avec
-    // Bénéficiaire et Accessibilité.
-    const labelColor = Color(0xFF0E1116); // ink-900
+    final labelColor = active
+        ? const Color(0xFF0E1116)
+        : const Color(0xFF8A939D);
     const underlineColor = kBrandPurple; // mauve-500
     return SoftTapScale(
       onTap: () => _setSubSection(index),
@@ -834,7 +827,7 @@ class _ContextTabState extends State<ContextTab>
             Text(
               label,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 // 10 → 12 (demande user 2026-05-13).
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -964,6 +957,7 @@ class _ContextTabState extends State<ContextTab>
     for (var i = 0; i < total && allAutonomous; i++) {
       if (!_itemState(i).autonomous) allAutonomous = false;
     }
+    final contentColor = allAutonomous ? Colors.white : const Color(0xFF554265);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _setAllAutonomyItems(!allAutonomous),
@@ -984,19 +978,27 @@ class _ContextTabState extends State<ContextTab>
           mainAxisSize: MainAxisSize.max,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.check,
-              size: 16,
-              color: allAutonomous ? Colors.white : const Color(0xFF554265),
-            ),
-            const SizedBox(width: 8),
             Text(
               'Personne autonome',
               style: TextStyle(
-                color: allAutonomous ? Colors.white : const Color(0xFF554265),
+                color: contentColor,
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
+            ),
+            const SizedBox(width: 8),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(color: contentColor, width: 1),
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.check, size: 13, color: contentColor),
             ),
           ],
         ),

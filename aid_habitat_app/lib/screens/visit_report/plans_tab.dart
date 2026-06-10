@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../components/confirmation_dialog.dart';
 import '../../components/plan_canvas.dart';
+import '../../components/soft_transitions.dart';
 import '../../models/types.dart';
 import '../../models/visit_report_categories.dart';
 import '../../services/data_service.dart';
@@ -12,7 +15,7 @@ import '../../services/data_service.dart';
 ///  - Each page persists its own strokes under the same `tabKey='Plans'`
 ///    discriminated by `pageNumber`
 ///  - Each page can be tagged "Avant travaux" / "Après travaux" /
-///    non classé via le pill flottant en bas à droite. La valeur est
+///    via le pill flottant en haut-centre. La valeur est
 ///    persistée dans `note_pages.plan_phase` (cf. v11→v12 migration)
 ///    et alimente les pages 9 (avant) / 10 (après) du rapport PDF.
 class PlansTab extends StatefulWidget {
@@ -27,15 +30,17 @@ class PlansTab extends StatefulWidget {
 class _PlansTabState extends State<PlansTab> {
   static const String _kTabKey = 'Plans';
   static const int _kProbeLimit = 10;
+  static const String _kEmptyPlanDrawingJson =
+      '{"format":"plan_canvas_v1","strokes":[]}';
 
   final DataService _dataService = DataService();
+  final PlanCanvasController _planCanvasController = PlanCanvasController();
   int _currentPage = 0;
   int _totalPages = 1;
   bool _probed = false;
 
   /// Phase de la page courante (avant / après / null). Mise à jour à
-  /// chaque navigation via [_loadPhaseForCurrentPage], ré-écrite côté
-  /// SQLite + sync engine via [_setPhaseForCurrentPage].
+  /// chaque navigation via [_loadPhaseForCurrentPage].
   PlanPhase? _currentPhase = PlanPhase.avant;
 
   /// Cache local des phases déjà fetched pour éviter un round-trip
@@ -155,23 +160,6 @@ class _PlansTabState extends State<PlansTab> {
     setState(() => _currentPhase = phase);
   }
 
-  /// Met à jour la phase de la page courante. Persiste localement +
-  /// enqueue une sync_op pour propager côté NocoDB. UI optimiste : on
-  /// met à jour l'état tout de suite, le sync se fait derrière.
-  Future<void> _setPhaseForCurrentPage(PlanPhase? phase) async {
-    final page = _currentPage;
-    setState(() {
-      _currentPhase = phase;
-      _phaseCache[page] = phase;
-    });
-    await _dataService.setNotePlanPhase(
-      patientId: widget.dossier.patient.id,
-      tabKey: _kTabKey,
-      pageNumber: page,
-      phase: phase,
-    );
-  }
-
   Future<void> _deleteCurrentPage() async {
     if (_totalPages <= 1) return;
     final confirm = await showAppDestructiveConfirmation(
@@ -217,7 +205,7 @@ class _PlansTabState extends State<PlansTab> {
   @override
   Widget build(BuildContext context) {
     // Pagination et outils sont fusionnés dans la toolbar flottante du canvas.
-    // On wrap le canvas dans un Stack pour y faire flotter le pill « Phase »
+    // On wrap le canvas dans un Stack pour y faire flotter le toggle « Phase »
     // hors de la zone d'outils.
     if (!_probed) {
       return const Center(child: CircularProgressIndicator());
@@ -225,175 +213,252 @@ class _PlansTabState extends State<PlansTab> {
     return Stack(
       children: [
         Positioned.fill(
-          child: PlanCanvas(
-            key: ValueKey('plans-${widget.dossier.patient.id}-$_currentPage'),
-            patientId: widget.dossier.patient.id,
-            tabKey: _kTabKey,
-            pageNumber: _currentPage,
-            currentPage: _currentPage,
-            totalPages: _totalPages,
-            onPrevPage: () => _goToPage(_currentPage - 1),
-            onNextPage: () => _goToPage(_currentPage + 1),
-            onAddPage: _addPage,
-            onDuplicatePage: _duplicatePage,
-            onDeletePage: _deleteCurrentPage,
+          child: _PlanCanvasPhaseSwitcher(
+            pageIndex: _currentPage,
+            phase: _currentPhase,
+            child: PlanCanvas(
+              key: ValueKey('plans-${widget.dossier.patient.id}-$_currentPage'),
+              patientId: widget.dossier.patient.id,
+              controller: _planCanvasController,
+              tabKey: _kTabKey,
+              pageNumber: _currentPage,
+              refreshPreviewOnLoad: _currentPhase == PlanPhase.apres,
+              currentPage: _currentPage,
+              totalPages: _totalPages,
+              onPrevPage: () => _goToPage(_currentPage - 1),
+              onNextPage: () => _goToPage(_currentPage + 1),
+              onAddPage: _addPage,
+              onDuplicatePage: _duplicatePage,
+              onDeletePage: _deleteCurrentPage,
+            ),
           ),
         ),
-        // Pill « Phase » : positionné en bas-droite, séparé de la
-        // pagination qui vit en haut-droite dans le canvas.
+        // Toggle « Phase » : positionné en haut-centre. Tap = changement
+        // direct entre les pages Avant travaux / Après travaux.
         Positioned(
-          right: 16,
-          bottom: 16,
-          child: _PhasePill(phase: _currentPhase, onTap: _showPhaseMenu),
+          left: 0,
+          right: 0,
+          top: 16,
+          child: Center(
+            child: _PhasePill(
+              phase: _currentPhase,
+              onTap: _switchToOppositePhase,
+            ),
+          ),
         ),
       ],
     );
   }
 
-  /// Ouvre un menu modal proposant les 3 états possibles (avant /
-  /// après / retirer la phase). Le tap appelle [_setPhaseForCurrentPage]
-  /// qui persiste + synchronise.
-  Future<void> _showPhaseMenu() async {
-    final selected = await showModalBottomSheet<_PhaseChoice>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Phase de cette page',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF2B323A),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Détermine si le dessin alimente la page « Plans avant '
-                'travaux » (page 9) ou « Plans des travaux préconisés » '
-                '(page 10) du rapport PDF.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF2B323A)),
-              ),
-              const SizedBox(height: 14),
-              _phaseMenuItem(
-                ctx: ctx,
-                phase: PlanPhase.avant,
-                icon: LucideIcons.history,
-                bg: const Color(0xFFFFEDD5),
-                fg: const Color(0xFF9A3412),
-                title: 'Avant travaux',
-                subtitle: 'État actuel du logement (page 9 du PDF)',
-              ),
-              const SizedBox(height: 8),
-              _phaseMenuItem(
-                ctx: ctx,
-                phase: PlanPhase.apres,
-                icon: LucideIcons.checkCircle,
-                bg: const Color(0xFFD1FAE5),
-                fg: const Color(0xFF065F46),
-                title: 'Après travaux',
-                subtitle: 'Plan des travaux préconisés (page 10 du PDF)',
-              ),
-              const SizedBox(height: 8),
-              _phaseMenuItem(
-                ctx: ctx,
-                phase: null,
-                icon: LucideIcons.minusCircle,
-                bg: const Color(0xFFF2F4F6),
-                fg: const Color(0xFF2B323A),
-                title: 'Retirer la classification',
-                subtitle: 'La page ne sera pas insérée dans le rapport',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (selected == null) return;
-    await _setPhaseForCurrentPage(selected.phase);
+  Future<void> _switchToOppositePhase() async {
+    await _planCanvasController.flush();
+    final target = _currentPhase == PlanPhase.apres
+        ? PlanPhase.avant
+        : PlanPhase.apres;
+    await _switchToPhasePage(target);
   }
 
-  Widget _phaseMenuItem({
-    required BuildContext ctx,
-    required PlanPhase? phase,
-    required IconData icon,
-    required Color bg,
-    required Color fg,
-    required String title,
-    required String subtitle,
-  }) {
-    final isCurrent = phase == _currentPhase;
-    return InkWell(
-      onTap: () => Navigator.pop(ctx, _PhaseChoice(phase)),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: isCurrent ? bg.withValues(alpha: 0.6) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isCurrent
-                ? fg.withValues(alpha: 0.4)
-                : const Color(0xFFE4E7EB),
-            width: isCurrent ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 18, color: fg),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: isCurrent ? fg : const Color(0xFF2B323A),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 11, color: Color(0xFF2B323A)),
-                  ),
-                ],
-              ),
-            ),
-            if (isCurrent) Icon(LucideIcons.check, size: 18, color: fg),
-          ],
-        ),
-      ),
+  Future<void> _switchToPhasePage(PlanPhase targetPhase) async {
+    for (int i = 0; i < _totalPages; i++) {
+      final cached = _phaseCache.containsKey(i)
+          ? _phaseCache[i]
+          : await _dataService.fetchNotePlanPhase(
+              patientId: widget.dossier.patient.id,
+              tabKey: _kTabKey,
+              pageNumber: i,
+            );
+      final phase = cached ?? PlanPhase.avant;
+      _phaseCache[i] = phase;
+      if (phase == targetPhase) {
+        if (targetPhase == PlanPhase.apres) {
+          await _seedAfterPageFromAvantIfEmpty(i);
+        }
+        if (!mounted) return;
+        setState(() {
+          _currentPage = i;
+          _currentPhase = phase;
+        });
+        return;
+      }
+    }
+
+    final newIndex = _totalPages;
+    final initialDrawingJson = targetPhase == PlanPhase.apres
+        ? await _copySourceDrawingJsonForAfter()
+        : _kEmptyPlanDrawingJson;
+    await _dataService.saveNoteDrawingJson(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: newIndex,
+      drawingJson: initialDrawingJson,
     );
+    await _dataService.setNotePlanPhase(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: newIndex,
+      phase: targetPhase,
+    );
+    if (!mounted) return;
+    setState(() {
+      _totalPages += 1;
+      _currentPage = newIndex;
+      _currentPhase = targetPhase;
+      _phaseCache[newIndex] = targetPhase;
+    });
+  }
+
+  Future<void> _seedAfterPageFromAvantIfEmpty(int afterPage) async {
+    final existing = await _dataService.fetchNoteDrawingJson(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: afterPage,
+    );
+    if (!_isEmptyPlanDrawingJson(existing)) return;
+    final source = await _copySourceDrawingJsonForAfter();
+    if (_isEmptyPlanDrawingJson(source)) return;
+    await _dataService.saveNoteDrawingJson(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: afterPage,
+      drawingJson: source,
+    );
+  }
+
+  Future<String> _copySourceDrawingJsonForAfter() async {
+    final sourcePage = _currentPhase == PlanPhase.avant
+        ? _currentPage
+        : await _findFirstPageForPhase(PlanPhase.avant);
+    if (sourcePage == null) return _kEmptyPlanDrawingJson;
+    final source = await _dataService.fetchNoteDrawingJson(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: sourcePage,
+    );
+    return _isEmptyPlanDrawingJson(source) ? _kEmptyPlanDrawingJson : source!;
+  }
+
+  Future<int?> _findFirstPageForPhase(PlanPhase targetPhase) async {
+    for (int i = 0; i < _totalPages; i++) {
+      final cached = _phaseCache.containsKey(i)
+          ? _phaseCache[i]
+          : await _dataService.fetchNotePlanPhase(
+              patientId: widget.dossier.patient.id,
+              tabKey: _kTabKey,
+              pageNumber: i,
+            );
+      final phase = cached ?? PlanPhase.avant;
+      _phaseCache[i] = phase;
+      if (phase == targetPhase) return i;
+    }
+    return null;
+  }
+
+  bool _isEmptyPlanDrawingJson(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return true;
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      if (decoded['format'] != 'plan_canvas_v1') return false;
+      final strokes = decoded['strokes'];
+      return strokes is! List || strokes.isEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 }
 
-/// Wrapper pour un retour Navigator nullable distinct de "annulé".
-/// Sans ça, `null` retourné par `Navigator.pop` se confondait avec le
-/// choix « Retirer la classification » (PlanPhase null) — l'ergo
-/// aurait perdu sa phase à chaque ouverture-fermeture du menu sans
-/// sélection.
-class _PhaseChoice {
+class _PlanCanvasPhaseSwitcher extends StatefulWidget {
+  const _PlanCanvasPhaseSwitcher({
+    required this.pageIndex,
+    required this.phase,
+    required this.child,
+  });
+
+  final int pageIndex;
   final PlanPhase? phase;
-  const _PhaseChoice(this.phase);
+  final Widget child;
+
+  @override
+  State<_PlanCanvasPhaseSwitcher> createState() =>
+      _PlanCanvasPhaseSwitcherState();
+}
+
+class _PlanCanvasPhaseSwitcherState extends State<_PlanCanvasPhaseSwitcher> {
+  int _direction = 1;
+
+  int _phaseRank(PlanPhase? phase, int pageIndex) {
+    switch (phase) {
+      case PlanPhase.avant:
+        return 0;
+      case PlanPhase.apres:
+        return 1;
+      case null:
+        return pageIndex;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlanCanvasPhaseSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pageIndex == oldWidget.pageIndex &&
+        widget.phase == oldWidget.phase) {
+      return;
+    }
+    final oldRank = _phaseRank(oldWidget.phase, oldWidget.pageIndex);
+    final newRank = _phaseRank(widget.phase, widget.pageIndex);
+    if (oldRank != newRank) {
+      _direction = newRank > oldRank ? 1 : -1;
+    } else {
+      _direction = widget.pageIndex >= oldWidget.pageIndex ? 1 : -1;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentKey = ValueKey<int>(widget.pageIndex);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      reverseDuration: kSoftMedium,
+      switchInCurve: kSoftCurve,
+      switchOutCurve: kSoftCurveIn,
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        fit: StackFit.expand,
+        children: [...previousChildren, if (currentChild != null) currentChild],
+      ),
+      transitionBuilder: (child, animation) {
+        final isIncoming = child.key == currentKey;
+        final direction = _direction.toDouble();
+        final slideBegin = isIncoming
+            ? Offset(0.08 * direction, 0)
+            : Offset(-0.05 * direction, 0);
+        const scaleBegin = 0.985;
+        const scaleEnd = 1.0;
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: isIncoming ? kSoftCurve : kSoftCurveIn,
+        );
+
+        return ClipRect(
+          child: FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: slideBegin,
+                end: Offset.zero,
+              ).animate(curved),
+              child: ScaleTransition(
+                scale: Tween<double>(
+                  begin: scaleBegin,
+                  end: scaleEnd,
+                ).animate(curved),
+                child: child,
+              ),
+            ),
+          ),
+        );
+      },
+      child: KeyedSubtree(key: currentKey, child: widget.child),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -431,18 +496,14 @@ class _PhasePill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(palette.icon, size: 16, color: palette.fg),
-              const SizedBox(width: 8),
               Text(
                 palette.label,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: palette.fg,
                 ),
               ),
-              const SizedBox(width: 6),
-              Icon(LucideIcons.chevronDown, size: 14, color: palette.fg),
             ],
           ),
         ),
@@ -454,21 +515,18 @@ class _PhasePill extends StatelessWidget {
     switch (phase) {
       case PlanPhase.avant:
         return const _PhasePalette(
-          icon: LucideIcons.history,
           label: 'Avant travaux',
           bg: Color(0xFFFFEDD5),
           fg: Color(0xFF9A3412),
         );
       case PlanPhase.apres:
         return const _PhasePalette(
-          icon: LucideIcons.checkCircle,
           label: 'Après travaux',
           bg: Color(0xFFD1FAE5),
           fg: Color(0xFF065F46),
         );
       case null:
         return const _PhasePalette(
-          icon: LucideIcons.tag,
           label: 'Choisir la phase',
           bg: Color(0xFFF2F4F6),
           fg: Color(0xFF2B323A),
@@ -478,12 +536,10 @@ class _PhasePill extends StatelessWidget {
 }
 
 class _PhasePalette {
-  final IconData icon;
   final String label;
   final Color bg;
   final Color fg;
   const _PhasePalette({
-    required this.icon,
     required this.label,
     required this.bg,
     required this.fg,

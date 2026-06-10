@@ -89,6 +89,7 @@ class _SummaryTabState extends State<SummaryTab>
     with AutomaticKeepAliveClientMixin {
   _SummaryMode _mode = _SummaryMode.drawing;
   _SummaryTextNote _activeTextNote = _SummaryTextNote.project;
+  double _textSwipeDx = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -222,28 +223,36 @@ class _SummaryTabState extends State<SummaryTab>
         children: [
           _buildTextTabs(),
           Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _buildTextNoteLayer(
-                  note: _SummaryTextNote.recommendations,
-                  child: _buildTextNote(
-                    patientId: patientId,
-                    tabKey: 'Préconisations-Résumé',
-                    title: 'Préconisations',
-                    liveText: widget.liveTextResume,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragStart: (_) => _textSwipeDx = 0,
+              onHorizontalDragUpdate: (details) {
+                _textSwipeDx += details.delta.dx;
+              },
+              onHorizontalDragEnd: _handleTextSwipeEnd,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _buildTextNoteLayer(
+                    note: _SummaryTextNote.recommendations,
+                    child: _buildTextNote(
+                      patientId: patientId,
+                      tabKey: 'Préconisations-Résumé',
+                      title: 'Préconisations',
+                      liveText: widget.liveTextResume,
+                    ),
                   ),
-                ),
-                _buildTextNoteLayer(
-                  note: _SummaryTextNote.project,
-                  child: _buildTextNote(
-                    patientId: patientId,
-                    tabKey: 'Préconisations-Projet',
-                    title: "Projet de l'usager",
-                    liveText: widget.liveTextProjet,
+                  _buildTextNoteLayer(
+                    note: _SummaryTextNote.project,
+                    child: _buildTextNote(
+                      patientId: patientId,
+                      tabKey: 'Préconisations-Projet',
+                      title: "Projet de l'usager",
+                      liveText: widget.liveTextProjet,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -361,6 +370,19 @@ class _SummaryTabState extends State<SummaryTab>
   void _setTextNote(_SummaryTextNote note) {
     if (_activeTextNote == note) return;
     setState(() => _activeTextNote = note);
+  }
+
+  void _handleTextSwipeEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final shouldSwipeLeft = _textSwipeDx < -72 || velocity < -420;
+    final shouldSwipeRight = _textSwipeDx > 72 || velocity > 420;
+    _textSwipeDx = 0;
+
+    if (shouldSwipeLeft) {
+      _setTextNote(_SummaryTextNote.project);
+    } else if (shouldSwipeRight) {
+      _setTextNote(_SummaryTextNote.recommendations);
+    }
   }
 }
 
