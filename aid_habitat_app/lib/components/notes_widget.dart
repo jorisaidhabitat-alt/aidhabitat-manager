@@ -2102,7 +2102,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             ),
           ),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 10),
         Tooltip(
           message: 'Supprimer la page',
           child: GestureDetector(
@@ -2215,6 +2215,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   onTap: _totalPages < widget.maxPages ? _addPage : null,
                   tooltip: 'Nouvelle page (dessin)',
                 ),
+                const SizedBox(width: 8),
                 _RoseHeaderIconButton(
                   icon: Icons.delete_outline,
                   onTap:
@@ -2290,6 +2291,7 @@ class _NotesWidgetState extends State<NotesWidget> {
               onTap: _totalPages < widget.maxPages ? _addPage : null,
               tooltip: 'Nouvelle page (dessin)',
             ),
+            const SizedBox(width: 8),
             _RoseHeaderIconButton(
               icon: Icons.delete_outline,
               onTap:

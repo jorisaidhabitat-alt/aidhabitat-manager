@@ -12,6 +12,7 @@ import '../../services/save_debounce.dart';
 import '../../services/retirement_funds_repository.dart';
 import '../../components/brand_colors.dart';
 import '../../components/cached_remote_image.dart';
+import '../../components/confirmation_dialog.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
 import '../../components/two_threshold_swipe.dart';
@@ -54,6 +55,8 @@ class BeneficiaryTab extends StatefulWidget {
   @override
   State<BeneficiaryTab> createState() => _BeneficiaryTabState();
 }
+
+enum _RetirementFundKind { principal, complementary }
 
 class _BeneficiaryTabState extends State<BeneficiaryTab>
     with AutomaticKeepAliveClientMixin {
@@ -148,6 +151,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
 
   // Per-occupant fields
   late List<Occupant> _occupants;
+  final Map<int, List<_RetirementFundKind>> _pendingRetirementFundFields = {};
 
   // References
   final ReferencesService _references = ReferencesService();
@@ -458,6 +462,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     // 0 ms). `SaveStatusIndicator` est de toute façon vide.
     final primary = _occupants.isNotEmpty ? _occupants.first : const Occupant();
     final secondary = _occupants.length > 1 ? _occupants[1] : const Occupant();
+    final primaryPrincipalFunds = _parseRetirementFunds(
+      primary.caisseRetraitePrincipale,
+    );
+    final primaryComplementaryFunds = _parseRetirementFunds(
+      primary.caissesRetraiteComplementaires,
+    );
     await widget.repository.updatePatient(widget.dossier.patient.id, {
       'first_name': primary.firstName,
       'last_name': primary.lastName,
@@ -494,9 +504,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         'phone': _trustedPhone,
         'email': _trustedEmail,
       }),
-      'caisse_retraite_principale': primary.caisseRetraitePrincipale,
-      'caisses_retraite_complementaires':
-          primary.caissesRetraiteComplementaires,
+      'caisse_retraite_principale': primaryPrincipalFunds.isEmpty
+          ? ''
+          : primaryPrincipalFunds.first,
+      'caisses_retraite_complementaires': primaryComplementaryFunds.isEmpty
+          ? ''
+          : primaryComplementaryFunds.first,
       'occupants_json': jsonEncode(_occupants.map((o) => o.toJson()).toList()),
     });
     await widget.repository.updateDossierFields(widget.dossier.id, {
@@ -1361,12 +1374,359 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // Admin (ex-Dossier)
   // ---------------------------------------------------------------------------
 
+  List<String> _parseRetirementFunds(String raw) {
+    final seen = <String>{};
+    final funds = <String>[];
+    for (final part in raw.split(RegExp(r'\s*(?:;|\n|\|)\s*'))) {
+      final value = part.trim();
+      if (value.isEmpty) continue;
+      if (seen.add(value.toLowerCase())) funds.add(value);
+    }
+    return funds;
+  }
+
+  String _serializeRetirementFunds(Iterable<String> values) {
+    final seen = <String>{};
+    final funds = <String>[];
+    for (final raw in values) {
+      final value = raw.trim();
+      if (value.isEmpty) continue;
+      if (seen.add(value.toLowerCase())) funds.add(value);
+    }
+    return funds.join('; ');
+  }
+
+  void _setRetirementFundAtIndex({
+    required int occupantIndex,
+    required Occupant occupant,
+    required _RetirementFundKind kind,
+    required int fundIndex,
+    required String value,
+  }) {
+    final current = kind == _RetirementFundKind.principal
+        ? _parseRetirementFunds(occupant.caisseRetraitePrincipale)
+        : _parseRetirementFunds(occupant.caissesRetraiteComplementaires);
+    final next = [...current];
+    while (next.length <= fundIndex) {
+      next.add('');
+    }
+    next[fundIndex] = value;
+    final serialized = _serializeRetirementFunds(next);
+    _updateOccupant(
+      occupantIndex,
+      kind == _RetirementFundKind.principal
+          ? occupant.copyWith(caisseRetraitePrincipale: serialized)
+          : occupant.copyWith(caissesRetraiteComplementaires: serialized),
+    );
+  }
+
+  void _removePendingRetirementFundField({
+    required int occupantIndex,
+    required int pendingIndex,
+  }) {
+    final pending = _pendingRetirementFundFields[occupantIndex];
+    if (pending == null || pendingIndex < 0 || pendingIndex >= pending.length) {
+      return;
+    }
+    setState(() {
+      pending.removeAt(pendingIndex);
+      if (pending.isEmpty) {
+        _pendingRetirementFundFields.remove(occupantIndex);
+      }
+    });
+  }
+
+  void _removeRetirementFundAtIndex({
+    required int occupantIndex,
+    required Occupant occupant,
+    required _RetirementFundKind kind,
+    required int fundIndex,
+  }) {
+    // Les deux champs de base (index 0) restent toujours présents.
+    if (fundIndex <= 0) return;
+    final current = kind == _RetirementFundKind.principal
+        ? _parseRetirementFunds(occupant.caisseRetraitePrincipale)
+        : _parseRetirementFunds(occupant.caissesRetraiteComplementaires);
+    if (fundIndex >= current.length) return;
+    final next = [...current]..removeAt(fundIndex);
+    final serialized = _serializeRetirementFunds(next);
+    _updateOccupant(
+      occupantIndex,
+      kind == _RetirementFundKind.principal
+          ? occupant.copyWith(caisseRetraitePrincipale: serialized)
+          : occupant.copyWith(caissesRetraiteComplementaires: serialized),
+    );
+  }
+
+  Future<void> _handleRemoveRetirementFundField({
+    required int occupantIndex,
+    required _RetirementFundExtraField field,
+  }) async {
+    if (field.pendingIndex != null && field.value.trim().isEmpty) {
+      _removePendingRetirementFundField(
+        occupantIndex: occupantIndex,
+        pendingIndex: field.pendingIndex!,
+      );
+      return;
+    }
+
+    final confirmed =
+        await showAppConfirmationDialog<bool>(
+          context: context,
+          title: 'Retirer cette caisse ?',
+          message: field.value.trim().isEmpty
+              ? 'Ce champ sera supprimé.'
+              : '"${field.value}" ne sera plus associée à ce bénéficiaire.',
+          tone: AppConfirmationTone.warning,
+          icon: LucideIcons.trash2,
+          actions: const [
+            AppConfirmationAction(label: 'Annuler', value: false),
+            AppConfirmationAction(
+              label: 'Retirer',
+              value: true,
+              isDestructive: true,
+            ),
+          ],
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+    if (occupantIndex < 0 || occupantIndex >= _occupants.length) return;
+
+    if (field.pendingIndex != null) {
+      _removePendingRetirementFundField(
+        occupantIndex: occupantIndex,
+        pendingIndex: field.pendingIndex!,
+      );
+      return;
+    }
+
+    _removeRetirementFundAtIndex(
+      occupantIndex: occupantIndex,
+      occupant: _occupants[occupantIndex],
+      kind: field.kind,
+      fundIndex: field.fundIndex,
+    );
+  }
+
+  Future<void> _handleAddRetirementFund({required int occupantIndex}) async {
+    final kind = await _showRetirementFundKindPicker();
+    if (kind == null || !mounted) return;
+    if (occupantIndex < 0 || occupantIndex >= _occupants.length) return;
+    setState(() {
+      (_pendingRetirementFundFields[occupantIndex] ??= []).add(kind);
+    });
+  }
+
+  Future<_RetirementFundKind?> _showRetirementFundKindPicker() {
+    return showSoftDialog<_RetirementFundKind>(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Ajouter une caisse',
+                        style: GoogleFonts.nunito(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF2B323A),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _RetirementFundKindTile(
+                  icon: Icons.account_balance_outlined,
+                  title: 'Caisse principale',
+                  subtitle: 'Créer un champ caisse principale.',
+                  onTap: () =>
+                      Navigator.pop(ctx, _RetirementFundKind.principal),
+                ),
+                const SizedBox(height: 10),
+                _RetirementFundKindTile(
+                  icon: Icons.favorite_border_rounded,
+                  title: 'Caisse complémentaire',
+                  subtitle: 'Créer un champ caisse complémentaire.',
+                  onTap: () =>
+                      Navigator.pop(ctx, _RetirementFundKind.complementary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddRetirementFundButton({required int occupantIndex}) {
+    return GestureDetector(
+      onTap: () => _handleAddRetirementFund(occupantIndex: occupantIndex),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2ECF5),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add, size: 16, color: Color(0xFF554265)),
+            SizedBox(width: 8),
+            Text(
+              'Ajouter une caisse',
+              style: TextStyle(
+                color: Color(0xFF554265),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<_RetirementFundExtraField> _buildRetirementFundExtraFields({
+    required int occupantIndex,
+    required List<String> principalFunds,
+    required List<String> complementaryFunds,
+  }) {
+    final fields = <_RetirementFundExtraField>[
+      for (var i = 1; i < principalFunds.length; i++)
+        _RetirementFundExtraField(
+          kind: _RetirementFundKind.principal,
+          fundIndex: i,
+          value: principalFunds[i],
+        ),
+      for (var i = 1; i < complementaryFunds.length; i++)
+        _RetirementFundExtraField(
+          kind: _RetirementFundKind.complementary,
+          fundIndex: i,
+          value: complementaryFunds[i],
+        ),
+    ];
+    final pending = _pendingRetirementFundFields[occupantIndex] ?? const [];
+    var nextPrincipalIndex = principalFunds.isEmpty ? 1 : principalFunds.length;
+    var nextComplementaryIndex = complementaryFunds.isEmpty
+        ? 1
+        : complementaryFunds.length;
+    for (var i = 0; i < pending.length; i++) {
+      final kind = pending[i];
+      final fundIndex = kind == _RetirementFundKind.principal
+          ? nextPrincipalIndex++
+          : nextComplementaryIndex++;
+      fields.add(
+        _RetirementFundExtraField(
+          kind: kind,
+          fundIndex: fundIndex,
+          pendingIndex: i,
+          value: '',
+        ),
+      );
+    }
+    return fields;
+  }
+
+  Widget _buildRetirementFundExtraFieldsGrid({
+    required int occupantIndex,
+    required List<_RetirementFundExtraField> fields,
+  }) {
+    if (fields.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final itemWidth = (availableWidth - 12) / 2;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: fields
+              .map(
+                (field) => SizedBox(
+                  width: itemWidth,
+                  child: _RetirementFundFieldButton(
+                    label: field.label,
+                    value: field.value,
+                    placeholder: 'Sélectionner...',
+                    onRemove: () => _handleRemoveRetirementFundField(
+                      occupantIndex: occupantIndex,
+                      field: field,
+                    ),
+                    onTap: () async {
+                      final picked = field.kind == _RetirementFundKind.principal
+                          ? await _openPrincipalFundPicker(field.value)
+                          : await _openComplementaryFundPicker(field.value);
+                      if (picked == null) return;
+                      if (occupantIndex < 0 ||
+                          occupantIndex >= _occupants.length) {
+                        return;
+                      }
+                      if (field.pendingIndex != null) {
+                        _removePendingRetirementFundField(
+                          occupantIndex: occupantIndex,
+                          pendingIndex: field.pendingIndex!,
+                        );
+                        _setRetirementFundAtIndex(
+                          occupantIndex: occupantIndex,
+                          occupant: _occupants[occupantIndex],
+                          kind: field.kind,
+                          fundIndex: field.fundIndex,
+                          value: picked,
+                        );
+                        return;
+                      }
+                      _setRetirementFundAtIndex(
+                        occupantIndex: occupantIndex,
+                        occupant: _occupants[occupantIndex],
+                        kind: field.kind,
+                        fundIndex: field.fundIndex,
+                        value: picked,
+                      );
+                    },
+                  ),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+
   Widget _buildAdminPersonalBlock(int index) {
     final occ = _occupants[index];
     // Plus de suffixe "de <Prénom>" — l'occupant courant est identifié
     // par le header du cadre (swipe par occupant).
-    final caissePrinc = occ.caisseRetraitePrincipale.trim();
-    final caisseCompl = occ.caissesRetraiteComplementaires.trim();
+    final caissesPrinc = _parseRetirementFunds(occ.caisseRetraitePrincipale);
+    final caissesCompl = _parseRetirementFunds(
+      occ.caissesRetraiteComplementaires,
+    );
+    final caissePrinc = caissesPrinc.isEmpty ? '' : caissesPrinc.first;
+    final caisseCompl = caissesCompl.isEmpty ? '' : caissesCompl.first;
+    final extraFields = _buildRetirementFundExtraFields(
+      occupantIndex: index,
+      principalFunds: caissesPrinc,
+      complementaryFunds: caissesCompl,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1394,9 +1754,12 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                 onTap: () async {
                   final picked = await _openPrincipalFundPicker(caissePrinc);
                   if (picked == null) return;
-                  _updateOccupant(
-                    index,
-                    occ.copyWith(caisseRetraitePrincipale: picked),
+                  _setRetirementFundAtIndex(
+                    occupantIndex: index,
+                    occupant: _occupants[index],
+                    kind: _RetirementFundKind.principal,
+                    fundIndex: 0,
+                    value: picked,
                   );
                 },
               ),
@@ -1412,15 +1775,27 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     caisseCompl,
                   );
                   if (picked == null) return;
-                  _updateOccupant(
-                    index,
-                    occ.copyWith(caissesRetraiteComplementaires: picked),
+                  _setRetirementFundAtIndex(
+                    occupantIndex: index,
+                    occupant: _occupants[index],
+                    kind: _RetirementFundKind.complementary,
+                    fundIndex: 0,
+                    value: picked,
                   );
                 },
               ),
             ),
           ],
         ),
+        if (extraFields.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _buildRetirementFundExtraFieldsGrid(
+            occupantIndex: index,
+            fields: extraFields,
+          ),
+        ],
+        const SizedBox(height: 10),
+        _buildAddRetirementFundButton(occupantIndex: index),
       ],
     );
   }
@@ -1696,6 +2071,103 @@ class _QuickNavItem {
   final IconData icon;
   final String label;
   const _QuickNavItem({required this.icon, required this.label});
+}
+
+class _RetirementFundExtraField {
+  final _RetirementFundKind kind;
+  final int fundIndex;
+  final int? pendingIndex;
+  final String value;
+
+  const _RetirementFundExtraField({
+    required this.kind,
+    this.fundIndex = 0,
+    this.pendingIndex,
+    required this.value,
+  });
+
+  String get label {
+    final number = fundIndex + 1;
+    return kind == _RetirementFundKind.principal
+        ? 'Caisse princ. $number'
+        : 'Caisse complém. $number';
+  }
+}
+
+class _RetirementFundKindTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _RetirementFundKindTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFAF7FC),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE4DDEA)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF2ECF5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 20, color: const Color(0xFF6B527D)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF2B323A),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF7A6A86),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Color(0xFF8A7A95),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2209,11 +2681,13 @@ class _RetirementFundFieldButton extends StatelessWidget {
   final String value;
   final String placeholder;
   final VoidCallback onTap;
+  final VoidCallback? onRemove;
   const _RetirementFundFieldButton({
     required this.label,
     required this.value,
     required this.placeholder,
     required this.onTap,
+    this.onRemove,
   });
 
   @override
@@ -2224,15 +2698,39 @@ class _RetirementFundFieldButton extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 5, left: 0),
-          child: Text(
-            label,
-            // Uniformisé 2026-05-13 : w700 14px ink-900 noir, aligné
-            // sur les autres labels de champ (Téléphone, etc.).
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0E1116),
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  // Uniformisé 2026-05-13 : w700 14px ink-900 noir,
+                  // aligné sur les autres labels de champ (Téléphone,
+                  // etc.).
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0E1116),
+                  ),
+                ),
+              ),
+              if (onRemove != null)
+                Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: onRemove,
+                    child: const Padding(
+                      padding: EdgeInsets.all(3),
+                      child: Icon(
+                        LucideIcons.trash2,
+                        size: 14,
+                        color: Color(0xFF8A7A95),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
         Material(
