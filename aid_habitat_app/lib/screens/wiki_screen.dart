@@ -872,21 +872,21 @@ class _DescriptionDragHandle extends StatelessWidget {
           width: 22,
           height: 64,
           child: Center(
-            child: Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 2,
-                  height: 24,
+                  width: 16,
+                  height: 2,
                   decoration: BoxDecoration(
                     color: const Color(0xFF8A939D),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(height: 5),
                 Container(
-                  width: 2,
-                  height: 24,
+                  width: 16,
+                  height: 2,
                   decoration: BoxDecoration(
                     color: const Color(0xFF8A939D),
                     borderRadius: BorderRadius.circular(999),

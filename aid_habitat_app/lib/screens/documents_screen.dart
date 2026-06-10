@@ -976,7 +976,8 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     final fromIndex = orderIds.indexOf(draggedId);
     final targetIndex = orderIds.indexOf(targetId);
     if (fromIndex < 0 || targetIndex < 0) return;
-    final insertionIndex = targetIndex + (insertAfter ? 1 : 0);
+    final naturalInsertAfter = fromIndex < targetIndex;
+    final insertionIndex = targetIndex + (naturalInsertAfter ? 1 : 0);
     final nextIndex = insertionIndex > fromIndex
         ? insertionIndex - 1
         : insertionIndex;
@@ -1509,13 +1510,14 @@ class _DraggableDocumentSlotState extends State<_DraggableDocumentSlot> {
   bool _isCloseEnoughToTarget(Offset globalOffset) {
     final renderObject = context.findRenderObject();
     if (renderObject is! RenderBox || !renderObject.hasSize) return false;
-    final local = renderObject.globalToLocal(globalOffset);
+    final centerOffset = globalOffset + renderObject.size.center(Offset.zero);
+    final local = renderObject.globalToLocal(centerOffset);
     final normalizedX = local.dx / renderObject.size.width;
     final normalizedY = local.dy / renderObject.size.height;
-    return normalizedX >= 0.18 &&
-        normalizedX <= 0.82 &&
-        normalizedY >= 0.18 &&
-        normalizedY <= 0.82;
+    return normalizedX >= 0.08 &&
+        normalizedX <= 0.92 &&
+        normalizedY >= 0.08 &&
+        normalizedY <= 0.92;
   }
 
   void _updateInsertionSide(Offset globalOffset) {

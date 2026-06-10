@@ -1329,13 +1329,14 @@ class _PhotoDragSlotState extends State<_PhotoDragSlot> {
   bool _isCloseEnoughToTarget(Offset globalOffset) {
     final renderObject = context.findRenderObject();
     if (renderObject is! RenderBox || !renderObject.hasSize) return false;
-    final local = renderObject.globalToLocal(globalOffset);
+    final centerOffset = globalOffset + renderObject.size.center(Offset.zero);
+    final local = renderObject.globalToLocal(centerOffset);
     final normalizedX = local.dx / renderObject.size.width;
     final normalizedY = local.dy / renderObject.size.height;
-    return normalizedX >= 0.18 &&
-        normalizedX <= 0.82 &&
-        normalizedY >= 0.18 &&
-        normalizedY <= 0.82;
+    return normalizedX >= 0.24 &&
+        normalizedX <= 0.76 &&
+        normalizedY >= 0.24 &&
+        normalizedY <= 0.76;
   }
 
   void _updateInsertionSide(Offset globalOffset) {
