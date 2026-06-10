@@ -315,7 +315,8 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     final fromIndex = _items.indexWhere((item) => item.id == draggedId);
     final targetIndex = _items.indexWhere((item) => item.id == targetId);
     if (fromIndex < 0 || targetIndex < 0) return;
-    final insertionIndex = targetIndex + (insertAfter ? 1 : 0);
+    final naturalInsertAfter = fromIndex < targetIndex;
+    final insertionIndex = targetIndex + (naturalInsertAfter ? 1 : 0);
     final nextIndex = insertionIndex > fromIndex
         ? insertionIndex - 1
         : insertionIndex;
@@ -1167,7 +1168,20 @@ class _DraggableRecoSlotState extends State<_DraggableRecoSlot> {
               shadowColor: Colors.transparent,
               borderRadius: BorderRadius.circular(16),
               clipBehavior: Clip.antiAlias,
-              child: SizedBox(width: widget.cardWidth, child: widget.child),
+              child: Container(
+                width: widget.cardWidth,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.16),
+                      blurRadius: 22,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: widget.child,
+              ),
             ),
             // La carte d'origine reste pleine couleur : l'utilisateur
             // voit uniquement les autres éléments coulisser, sans trou
