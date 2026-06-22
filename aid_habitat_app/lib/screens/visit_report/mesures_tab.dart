@@ -32,10 +32,9 @@ class _MesuresTabState extends State<MesuresTab>
 
   int get _occupantCount {
     final n = widget.dossier.patient.numberPeople;
-    if (n != null && n > 1) return n;
-    return widget.dossier.patient.occupants.length > 1
-        ? widget.dossier.patient.occupants.length
-        : 1;
+    if (n != null && n > 0) return n;
+    final occupantCount = widget.dossier.patient.occupants.length;
+    return occupantCount > 0 ? occupantCount : 1;
   }
 
   // _occupantLabels() retiré : l'en-tête affiche maintenant le nom
@@ -45,6 +44,23 @@ class _MesuresTabState extends State<MesuresTab>
   String _tabKeyFor(int index) => index == 0 ? 'Mesures' : 'Mesures-$index';
 
   int get _safeIndex => _activeOccupantIndex.clamp(0, _occupantCount - 1);
+
+  @override
+  void didUpdateWidget(covariant MesuresTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldPatient = oldWidget.dossier.patient;
+    final newPatient = widget.dossier.patient;
+    final countChanged =
+        oldPatient.numberPeople != newPatient.numberPeople ||
+        oldPatient.occupants.length != newPatient.occupants.length ||
+        oldWidget.dossier.id != widget.dossier.id;
+    if (!countChanged) return;
+
+    final maxIndex = _occupantCount - 1;
+    if (_activeOccupantIndex > maxIndex) {
+      _activeOccupantIndex = maxIndex;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
