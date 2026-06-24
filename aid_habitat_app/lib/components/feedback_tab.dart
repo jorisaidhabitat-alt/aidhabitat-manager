@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 
 import '../models/types.dart';
 import '../services/feedback_activity_service.dart';
@@ -89,56 +88,80 @@ class _FeedbackTabState extends State<FeedbackTab> {
   @override
   Widget build(BuildContext context) {
     final isCompact = MediaQuery.sizeOf(context).width < 760;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      width: _open ? (isCompact ? 320 : 380) : 132,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(_open ? 24 : 999),
-        border: Border.all(color: const Color(0xFFE7DDEE)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x220E1116),
-            blurRadius: 24,
-            offset: Offset(0, 10),
+    final panelWidth = isCompact ? 330.0 : 390.0;
+
+    return SizedBox(
+      width: panelWidth,
+      height: 390,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.bottomRight,
+        children: [
+          IgnorePointer(
+            ignoring: !_open,
+            child: AnimatedSlide(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              offset: _open ? Offset.zero : const Offset(1.08, 0),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 140),
+                opacity: _open ? 1 : 0,
+                child: _buildPanel(context, panelWidth),
+              ),
+            ),
+          ),
+          IgnorePointer(
+            ignoring: _open,
+            child: AnimatedSlide(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              offset: _open ? const Offset(1, 0) : Offset.zero,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 120),
+                opacity: _open ? 0 : 1,
+                child: _buildCollapsed(),
+              ),
+            ),
           ),
         ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(_open ? 24 : 999),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 160),
-          child: _open ? _buildPanel(context) : _buildCollapsed(),
-        ),
       ),
     );
   }
 
   Widget _buildCollapsed() {
-    return Material(
-      key: const ValueKey('collapsed'),
-      color: const Color(0xFFF4EDF8),
-      child: InkWell(
-        onTap: () {
-          FeedbackActivityService.instance.track('Ouverture du signalement');
-          setState(() => _open = true);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _messageFocus.requestFocus();
-          });
-        },
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    return SizedBox(
+      width: 132,
+      height: 40,
+      child: Material(
+        key: const ValueKey('collapsed'),
+        color: const Color(0xFFF4EDF8),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(left: Radius.circular(999)),
+          side: BorderSide(color: Color(0xFFE7DDEE)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            FeedbackActivityService.instance.track('Ouverture du signalement');
+            setState(() => _open = true);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _messageFocus.requestFocus();
+            });
+          },
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.feedback_outlined, size: 18, color: kBrandDarkPurple),
-              SizedBox(width: 8),
-              Text(
+              const Icon(
+                Icons.feedback_outlined,
+                size: 17,
+                color: kBrandDarkPurple,
+              ),
+              const SizedBox(width: 7),
+              const Text(
                 'Signaler',
                 style: TextStyle(
                   color: kBrandDarkPurple,
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -149,13 +172,30 @@ class _FeedbackTabState extends State<FeedbackTab> {
     );
   }
 
-  Widget _buildPanel(BuildContext context) {
+  Widget _buildPanel(BuildContext context, double width) {
     final snapshot = widget.contextSnapshot();
     return Material(
       key: const ValueKey('panel'),
       color: Colors.white,
-      child: Padding(
+      borderRadius: const BorderRadius.horizontal(left: Radius.circular(24)),
+      elevation: 0,
+      child: Container(
+        width: width,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.horizontal(
+            left: Radius.circular(24),
+          ),
+          border: Border.all(color: const Color(0xFFE7DDEE)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x220E1116),
+              blurRadius: 24,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -203,7 +243,7 @@ class _FeedbackTabState extends State<FeedbackTab> {
                           },
                     selectedColor: const Color(0xFFF0E4F4),
                     labelStyle: TextStyle(
-                      fontSize: 12,
+                      fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: _type == type
                           ? kBrandDarkPurple
@@ -230,6 +270,7 @@ class _FeedbackTabState extends State<FeedbackTab> {
                 hintText: 'Décris le bug, la difficulté ou l’idée…',
                 filled: true,
                 fillColor: const Color(0xFFFDFCFB),
+                hintStyle: const TextStyle(fontSize: 14),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: const BorderSide(color: Color(0xFFE7DDEE)),
@@ -243,6 +284,7 @@ class _FeedbackTabState extends State<FeedbackTab> {
                   borderSide: const BorderSide(color: kBrandPurple, width: 1.3),
                 ),
               ),
+              style: const TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 10),
             _ContextPreview(snapshot: snapshot),
@@ -260,17 +302,17 @@ class _FeedbackTabState extends State<FeedbackTab> {
               ),
             ],
             const SizedBox(height: 12),
-            FilledButton.icon(
+            FilledButton(
               onPressed: _sending ? null : _send,
               style: FilledButton.styleFrom(
                 backgroundColor: kBrandPurple,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 13),
+                padding: const EdgeInsets.symmetric(vertical: 11),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              icon: _sending
+              child: _sending
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -279,8 +321,7 @@ class _FeedbackTabState extends State<FeedbackTab> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(LucideIcons.send, size: 16),
-              label: Text(_sending ? 'Envoi…' : 'Envoyer à Aid’Habitat'),
+                  : const Text('Envoyer'),
             ),
           ],
         ),
@@ -314,7 +355,7 @@ class _ContextPreview extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
           color: Color(0xFF64748B),
-          fontSize: 12,
+          fontSize: 14,
           fontWeight: FontWeight.w700,
         ),
       ),

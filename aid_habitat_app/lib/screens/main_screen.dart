@@ -435,7 +435,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             ),
           ),
           Positioned(
-            left: MediaQuery.sizeOf(context).width < 760 ? 12 : 88,
+            right: 0,
             bottom: 18,
             child: FeedbackTab(
               currentUser: widget.currentUser,

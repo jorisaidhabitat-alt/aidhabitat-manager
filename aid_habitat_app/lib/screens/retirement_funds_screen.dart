@@ -175,31 +175,38 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
         // utilisateur 2026-05-12 : parité avec la bibliothèque
         // (extended FAB, StadiumBorder, icône + texte).
         Positioned(
-          // Refonte 2026-05-15 : right 24 → 32 pour aligner le FAB sur
-          // le bord droit du contenu de la grille (qui a un padding
-          // horizontal de 32 px depuis le parent).
           right: 32,
           bottom: 24,
-          child: FloatingActionButton.extended(
-            onPressed: _createFund,
-            backgroundColor: kBrandPurple,
-            foregroundColor: Colors.white,
-            // Ombre désactivée (demande user 2026-05-12) — toutes les
-            // variantes à 0 pour rester plat même au hover/tap.
-            elevation: 0,
-            hoverElevation: 0,
-            focusElevation: 0,
-            highlightElevation: 0,
-            shape: const StadiumBorder(),
-            icon: const Icon(LucideIcons.plus, size: 22),
-            // Demande utilisateur 2026-05-13 : « pareil pour les caisses
-            // de retraite » → texte du bouton « Ajouter une caisse de
-            // retraite » en Nunito, comme la bibliothèque.
-            label: Text(
-              'Ajouter une caisse de retraite',
-              style: GoogleFonts.nunito(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+          child: SizedBox(
+            height: 40,
+            child: Material(
+              color: kBrandPurple,
+              borderRadius: BorderRadius.circular(999),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: _createFund,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        LucideIcons.plus,
+                        size: 17,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Ajouter une caisse de retraite',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

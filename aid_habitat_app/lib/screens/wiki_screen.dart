@@ -341,34 +341,38 @@ class _WikiScreenState extends State<WikiScreen> {
           ),
         ),
         Positioned(
-          right: 24,
+          right: 32,
           bottom: 24,
-          // Bouton « + Ajouter un élément » — demande utilisateur
-          // 2026-05-12 : « ajoute du radius pour que ça devienne un
-          // véritable arrondi et ajoute le texte ajouter un élément ».
-          // Extended FAB avec StadiumBorder (radius max = pill complet),
-          // icône `+` à gauche + label.
-          child: FloatingActionButton.extended(
-            onPressed: _createItem,
-            backgroundColor: kBrandPurple,
-            foregroundColor: Colors.white,
-            // Demande user 2026-05-12 : retire l'ombre du FAB. On force
-            // toutes les variantes d'élévation à 0 (idle/hover/focus/
-            // highlight) pour qu'aucun shadow ne réapparaisse au tap.
-            elevation: 0,
-            hoverElevation: 0,
-            focusElevation: 0,
-            highlightElevation: 0,
-            shape: const StadiumBorder(),
-            icon: const Icon(LucideIcons.plus, size: 22),
-            // Demande utilisateur 2026-05-13 : « le texte de ajouter
-            // un élément également » (passage en Nunito comme les tags
-            // de bibliothèque).
-            label: Text(
-              'Ajouter un élément',
-              style: GoogleFonts.nunito(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+          child: SizedBox(
+            height: 40,
+            child: Material(
+              color: kBrandPurple,
+              borderRadius: BorderRadius.circular(999),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: _createItem,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        LucideIcons.plus,
+                        size: 17,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Ajouter un élément',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
