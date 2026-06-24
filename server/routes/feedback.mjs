@@ -1,13 +1,14 @@
 import express from 'express';
+import fs from 'node:fs/promises';
 import nodemailer from 'nodemailer';
-import { resolveSessionUser } from '../helpers.mjs';
+import { dataFileUrl, resolveSessionUser } from '../helpers.mjs';
 
 const router = express.Router();
 const rateLimitBuckets = new Map();
 
 const FEEDBACK_WINDOW_MS = 60 * 60 * 1000;
 const FEEDBACK_MAX_PER_WINDOW = 12;
-const FEEDBACK_SMTP_TIMEOUT_MS = 9000;
+const FEEDBACK_SMTP_TIMEOUT_MS = 4500;
 
 const clean = (value, max = 2000) => String(value || '').trim().slice(0, max);
 
@@ -123,6 +124,29 @@ const sendMailWithTimeout = async (transporter, payload) => {
   }
 };
 
+const appendFeedbackReport = async (report) => {
+  await fs.mkdir(dataFileUrl('feedback/'), { recursive: true });
+  await fs.appendFile(
+    dataFileUrl('feedback/reports.jsonl'),
+    `${JSON.stringify(report)}\n`,
+    'utf8',
+  );
+};
+
+const sendFeedbackEmail = async (config, payload) => {
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.auth,
+    connectionTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
+    greetingTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
+    socketTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
+  });
+
+  await sendMailWithTimeout(transporter, payload);
+};
+
 const optionalUser = async (req) => {
   try {
     const user = await resolveSessionUser(req);
@@ -160,12 +184,6 @@ router.post('/api/feedback', async (req, res, next) => {
       return;
     }
 
-    const config = smtpConfig();
-    if (!config.ready) {
-      res.status(503).json({ success: false, error: config.error });
-      return;
-    }
-
     const dossierLabel = clean(context.dossierName, 120);
     const subjectParts = ["Signalement App'Ergo", type];
     if (dossierLabel) subjectParts.push(dossierLabel);
@@ -198,38 +216,68 @@ router.post('/api/feedback', async (req, res, next) => {
       </div>
     `;
 
-    const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      auth: config.auth,
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 8000,
-    });
+    const report = {
+      id: `feedback_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      receivedAt: new Date().toISOString(),
+      type,
+      message,
+      user: {
+        displayName: clean(user.displayName, 160),
+        email: clean(user.email, 300),
+        role: clean(user.role, 120),
+      },
+      context: {
+        page: clean(context.page, 300),
+        dossierName: clean(context.dossierName, 300),
+        dossierId: clean(context.dossierId, 300),
+        section: clean(context.section, 300),
+        lastAction: clean(context.lastAction, 1000),
+        url: clean(context.url, 1000),
+        userAgent: clean(context.userAgent, 1000),
+        clientTimestamp: clean(context.clientTimestamp, 120),
+      },
+      clientIp: getClientIp(req),
+    };
 
     try {
-      await sendMailWithTimeout(transporter, {
+      await appendFeedbackReport(report);
+    } catch (storeError) {
+      console.error('[feedback] local store failed', storeError);
+      res.status(503).json({
+        success: false,
+        error: 'Le signalement n’a pas pu être enregistré côté serveur.',
+      });
+      return;
+    }
+
+    const config = smtpConfig();
+    const mailPayload = {
         from: config.from,
         to: config.to,
         replyTo: senderEmail || undefined,
         subject,
         text,
         html,
+    };
+
+    if (config.ready) {
+      setImmediate(() => {
+        sendFeedbackEmail(config, mailPayload).catch((mailError) => {
+          console.error('[feedback] SMTP background send failed', mailError);
+        });
       });
-    } catch (mailError) {
-      console.error('[feedback] SMTP send failed', mailError);
-      res.status(502).json({
-        success: false,
-        error: 'Serveur mail indisponible. Le signalement n’a pas pu être envoyé.',
-      });
-      return;
+    } else {
+      console.error('[feedback] SMTP disabled', config.error);
     }
 
     res.json({
       success: true,
       error: null,
-      data: { sentAt: new Date().toISOString() },
+      data: {
+        id: report.id,
+        savedAt: report.receivedAt,
+        emailQueued: Boolean(config.ready),
+      },
     });
   } catch (error) {
     next(error);
