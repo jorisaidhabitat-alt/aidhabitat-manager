@@ -239,17 +239,6 @@ router.post('/api/feedback', async (req, res, next) => {
       clientIp: getClientIp(req),
     };
 
-    try {
-      await appendFeedbackReport(report);
-    } catch (storeError) {
-      console.error('[feedback] local store failed', storeError);
-      res.status(503).json({
-        success: false,
-        error: 'Le signalement n’a pas pu être enregistré côté serveur.',
-      });
-      return;
-    }
-
     const config = smtpConfig();
     const mailPayload = {
         from: config.from,
@@ -260,24 +249,34 @@ router.post('/api/feedback', async (req, res, next) => {
         html,
     };
 
-    if (config.ready) {
-      setImmediate(() => {
-        sendFeedbackEmail(config, mailPayload).catch((mailError) => {
-          console.error('[feedback] SMTP background send failed', mailError);
-        });
-      });
-    } else {
-      console.error('[feedback] SMTP disabled', config.error);
-    }
-
     res.json({
       success: true,
       error: null,
       data: {
         id: report.id,
-        savedAt: report.receivedAt,
+        queuedAt: report.receivedAt,
         emailQueued: Boolean(config.ready),
       },
+    });
+
+    setImmediate(async () => {
+      try {
+        await appendFeedbackReport(report);
+      } catch (storeError) {
+        console.error('[feedback] local store failed', storeError);
+        return;
+      }
+
+      if (!config.ready) {
+        console.error('[feedback] SMTP disabled', config.error);
+        return;
+      }
+
+      try {
+        await sendFeedbackEmail(config, mailPayload);
+      } catch (mailError) {
+        console.error('[feedback] SMTP background send failed', mailError);
+      }
     });
   } catch (error) {
     next(error);
