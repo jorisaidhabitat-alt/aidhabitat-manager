@@ -51,6 +51,35 @@ const smtpConfig = () => {
   };
 };
 
+const smtpCandidates = (config) => {
+  if (!config.ready) return [];
+  const primary = {
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.auth,
+  };
+  const candidates = [primary];
+
+  if (config.port === 465) {
+    candidates.push({
+      host: config.host,
+      port: 587,
+      secure: false,
+      auth: config.auth,
+    });
+  } else if (config.port === 587) {
+    candidates.push({
+      host: config.host,
+      port: 465,
+      secure: true,
+      auth: config.auth,
+    });
+  }
+
+  return candidates;
+};
+
 const formatContextText = (context = {}) => {
   const rows = [
     ['Page', context.page],
@@ -134,17 +163,39 @@ const appendFeedbackReport = async (report) => {
 };
 
 const sendFeedbackEmail = async (config, payload) => {
-  const transporter = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: config.auth,
-    connectionTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
-    greetingTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
-    socketTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
-  });
+  const errors = [];
 
-  await sendMailWithTimeout(transporter, payload);
+  for (const candidate of smtpCandidates(config)) {
+    const transporter = nodemailer.createTransport({
+      ...candidate,
+      connectionTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
+      greetingTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
+      socketTimeout: FEEDBACK_SMTP_TIMEOUT_MS,
+    });
+
+    try {
+      const info = await sendMailWithTimeout(transporter, payload);
+      console.info('[feedback] SMTP send success', {
+        host: candidate.host,
+        port: candidate.port,
+        secure: candidate.secure,
+        messageId: info?.messageId,
+      });
+      return info;
+    } catch (error) {
+      errors.push({
+        port: candidate.port,
+        secure: candidate.secure,
+        code: error?.code,
+        command: error?.command,
+        message: error?.message,
+      });
+    }
+  }
+
+  const error = new Error('All feedback SMTP attempts failed');
+  error.attempts = errors;
+  throw error;
 };
 
 const optionalUser = async (req) => {

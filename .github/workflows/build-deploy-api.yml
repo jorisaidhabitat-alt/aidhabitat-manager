@@ -59,7 +59,7 @@ jobs:
 
       - name: Syntax check server
         run: |
-          for f in server/index.mjs server/helpers.mjs server/nocodbMcpClient.mjs server/mobileSyncStore.mjs; do
+          for f in server/index.mjs server/helpers.mjs server/nocodbMcpClient.mjs server/mobileSyncStore.mjs server/routes/feedback.mjs; do
             echo "Checking $f…"
             node --check "$f"
           done
