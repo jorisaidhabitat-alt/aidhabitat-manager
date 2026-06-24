@@ -183,16 +183,28 @@ router.post('/api/feedback', async (req, res, next) => {
       port: config.port,
       secure: config.secure,
       auth: config.auth,
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 8000,
     });
 
-    await transporter.sendMail({
-      from: config.from,
-      to: config.to,
-      replyTo: senderEmail || undefined,
-      subject,
-      text,
-      html,
-    });
+    try {
+      await transporter.sendMail({
+        from: config.from,
+        to: config.to,
+        replyTo: senderEmail || undefined,
+        subject,
+        text,
+        html,
+      });
+    } catch (mailError) {
+      console.error('[feedback] SMTP send failed', mailError);
+      res.status(502).json({
+        success: false,
+        error: 'Serveur mail indisponible. Le signalement n’a pas pu être envoyé.',
+      });
+      return;
+    }
 
     res.json({
       success: true,
