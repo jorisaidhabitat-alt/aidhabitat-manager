@@ -106,6 +106,7 @@ const FLAT_2026_CUSTOM_FIELDS = new Set([
   'Check Box17',
   'Text9',
   'Text10',
+  'Observations1',
 ]);
 
 const FLAT_2026_EXTRA_STATIC_RECO_PAGE_INDEX = 15;
@@ -149,9 +150,29 @@ const DEFAULT_ERGO_PROFILE = {
   establishmentLabel: "Aid'Habitat",
 };
 
+const ERGO_FULL_NAME_FALLBACKS = new Map([
+  ['christelle', 'Christelle Jeuland'],
+  ['joris.balluais@gmail.com', 'Christelle Jeuland'],
+  ['coralie', 'Coralie Demenais'],
+  ['joris.aidhabitat@gmail.com', 'Coralie Demenais'],
+]);
+
+function completeErgoDisplayName(displayName, email) {
+  const raw = String(displayName || '').trim();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedName = raw.toLowerCase();
+  if (normalizedEmail && ERGO_FULL_NAME_FALLBACKS.has(normalizedEmail)) {
+    return ERGO_FULL_NAME_FALLBACKS.get(normalizedEmail);
+  }
+  if (normalizedName && ERGO_FULL_NAME_FALLBACKS.has(normalizedName)) {
+    return ERGO_FULL_NAME_FALLBACKS.get(normalizedName);
+  }
+  return raw || DEFAULT_ERGO_PROFILE.displayName;
+}
+
 function buildErgoView(ergoProfile = null, dossier = null) {
   const dossierErgoLabel = String(dossier?.ergoId || dossier?.assignedErgoLabel || '').trim();
-  const displayName = String(
+  const rawDisplayName = String(
     ergoProfile?.displayName ||
     ergoProfile?.name ||
     ergoProfile?.label ||
@@ -160,6 +181,7 @@ function buildErgoView(ergoProfile = null, dossier = null) {
   ).trim();
   const email = String(ergoProfile?.email || '').trim();
   const phone = String(ergoProfile?.phone || '').trim();
+  const displayName = completeErgoDisplayName(rawDisplayName, email);
   const establishmentLabel = String(
     ergoProfile?.establishmentLabel ||
     ergoProfile?.establishment ||
@@ -237,7 +259,7 @@ function mapLegacyPageIndexToFlat2026(legacyPageIndex) {
 }
 
 function flat2026FieldFontSize(fieldName, rect) {
-  if (RECO_TEXT_FIELDS.includes(fieldName)) return 8.5;
+  if (RECO_TEXT_FIELDS.includes(fieldName)) return 10.8;
   if (['Environnement', 'Habitudes', 'Observations1'].includes(fieldName)) return 9.5;
   if (fieldName === 'Text1') return 13;
   if (fieldName === 'Caisse de retraite complémentaire') return 8.5;
@@ -2529,7 +2551,29 @@ function drawFlat2026Table(page, {
   const colCount = Math.max(1, headers.length);
   const valueWidth = (width - labelWidth) / colCount;
   const headerHeight = 26;
-  const rowHeights = rows.map((row) => row.height);
+  const labelFontSize = 9.2;
+  const valueFontSize = 9.2;
+  const rowLineHeight = 11.1;
+  const rowPaddingY = 12;
+  const rowHeights = rows.map((row) => {
+    const labelLines = splitTextToLines(
+      row.label || '',
+      bold,
+      labelFontSize,
+      labelWidth - 14,
+    ).length || 1;
+    const valueLines = Math.max(
+      1,
+      ...headers.map((_, index) => splitTextToLines(
+        row.values[index] || '',
+        regular,
+        valueFontSize,
+        valueWidth - 14,
+      ).length),
+    );
+    const naturalHeight = rowPaddingY + Math.max(labelLines, valueLines) * rowLineHeight;
+    return Math.max(row.minHeight || 29, Math.min(row.height || 54, naturalHeight));
+  });
   const totalHeight = headerHeight + rowHeights.reduce((sum, h) => sum + h, 0);
   const yBottom = yTop - totalHeight;
 
@@ -2595,8 +2639,8 @@ function drawFlat2026Table(page, {
     yTop: yTop - 7,
     width: labelWidth - 14,
     font: bold,
-    fontSize: 8.6,
-    lineHeight: 10,
+    fontSize: 9.4,
+    lineHeight: 10.8,
     maxLines: 2,
   });
   headers.forEach((header, index) => {
@@ -2605,23 +2649,24 @@ function drawFlat2026Table(page, {
       yTop: yTop - 7,
       width: valueWidth - 14,
       font: bold,
-      fontSize: 8.6,
-      lineHeight: 10,
+      fontSize: 9.4,
+      lineHeight: 10.8,
       maxLines: 2,
     });
   });
 
   cursor = yTop - headerHeight;
-  rows.forEach((row) => {
+  rows.forEach((row, rowIndex) => {
     const rowTop = cursor;
+    const rowHeight = rowHeights[rowIndex] || row.height;
     drawWrappedText(page, row.label, {
       x: x + 8,
       yTop: rowTop - 7,
       width: labelWidth - 14,
       font: bold,
-      fontSize: 8.2,
-      lineHeight: 9.6,
-      maxLines: Math.max(1, Math.floor((row.height - 8) / 9.6)),
+      fontSize: labelFontSize,
+      lineHeight: rowLineHeight,
+      maxLines: Math.max(1, Math.floor((rowHeight - 8) / rowLineHeight)),
     });
     headers.forEach((_, index) => {
       drawWrappedText(page, row.values[index] || '', {
@@ -2629,12 +2674,12 @@ function drawFlat2026Table(page, {
         yTop: rowTop - 7,
         width: valueWidth - 14,
         font: regular,
-        fontSize: 8,
-        lineHeight: 9.3,
-        maxLines: Math.max(1, Math.floor((row.height - 8) / 9.3)),
+        fontSize: valueFontSize,
+        lineHeight: rowLineHeight,
+        maxLines: Math.max(1, Math.floor((rowHeight - 8) / rowLineHeight)),
       });
     });
-    cursor -= row.height;
+    cursor -= rowHeight;
   });
 }
 
@@ -2759,17 +2804,37 @@ async function drawFlat2026Logement({ pdfDoc, view }) {
   const page = pdfDoc.getPages()[4];
   if (!page) return;
   const heatingSummary = String(view?.housing?.heatingSummary || '').trim();
-  if (!heatingSummary) return;
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  drawWrappedText(page, heatingSummary, {
-    x: 230,
-    yTop: 485,
-    width: 320,
+  if (heatingSummary) {
+    drawWrappedText(page, heatingSummary, {
+      x: 230,
+      yTop: 485,
+      width: 320,
+      font: regular,
+      fontSize: 10.5,
+      lineHeight: 13,
+      maxLines: 3,
+    });
+  }
+  page.drawText(':', {
+    x: 151,
+    y: 478,
+    size: 12,
     font: regular,
-    fontSize: 10.5,
-    lineHeight: 13,
-    maxLines: 3,
+    color: rgb(0xED / 255, 0x98 / 255, 0x44 / 255),
   });
+  const accessObservation = String(view?.housing?.accessObservation || '').trim();
+  if (accessObservation) {
+    drawWrappedText(page, accessObservation, {
+      x: 51,
+      yTop: 420,
+      width: 493,
+      font: regular,
+      fontSize: 11,
+      lineHeight: 13.5,
+      maxLines: 18,
+    });
+  }
 }
 
 async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
@@ -2846,15 +2911,15 @@ async function drawGeneratedPageNumbers(pdfDoc) {
     // On les masque puis on redessine le numéro réel après les
     // insertions/suppressions de pages.
     page.drawRectangle({
-      x: width - 130,
-      y: 0,
-      width: 125,
-      height: 70,
+      x: width - 45,
+      y: 9,
+      width: 30,
+      height: 21,
       color: rgb(1, 1, 1),
     });
     page.drawText(label, {
-      x: width - 31 - textWidth,
-      y: 13,
+      x: width - 24 - textWidth,
+      y: 14,
       size: fontSize,
       font,
       color: rgb(0, 0, 0),
@@ -3232,11 +3297,12 @@ export async function generateVisitReport({
   //   « remonte légèrement le texte reponse de reconnaissance
   //    d'invalidité ».
   for (const fieldName of [
-    // Bénéficiaire (page 1) — Nom/Prénom restent à -4
+    // Bénéficiaire : Nom/Prénom alignés sur le même baseline que les
+    // libellés du template, sans descendre autant que l'ancien -4 pt.
     'Nom',
     'Prénom',
   ]) {
-    nudgeFieldRect({ fieldsByName, fieldName, dy: -4 });
+    nudgeFieldRect({ fieldsByName, fieldName, dy: -2 });
   }
   for (const fieldName of [
     // Bénéficiaire — date de naissance (un peu moins descendu)
