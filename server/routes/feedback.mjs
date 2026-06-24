@@ -1,8 +1,12 @@
 import express from 'express';
 import nodemailer from 'nodemailer';
-import { requireAuth } from '../middleware/auth.mjs';
+import { resolveSessionUser } from '../helpers.mjs';
 
 const router = express.Router();
+const rateLimitBuckets = new Map();
+
+const FEEDBACK_WINDOW_MS = 60 * 60 * 1000;
+const FEEDBACK_MAX_PER_WINDOW = 12;
 
 const clean = (value, max = 2000) => String(value || '').trim().slice(0, max);
 
@@ -82,14 +86,54 @@ const formatContextHtml = (context = {}) => {
     .join('');
 };
 
-router.post('/api/feedback', requireAuth, async (req, res, next) => {
+const getClientIp = (req) => {
+  const forwarded = String(req.get('x-forwarded-for') || '').split(',')[0].trim();
+  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
+};
+
+const checkRateLimit = (req) => {
+  const key = getClientIp(req);
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(key);
+  if (!bucket || now - bucket.startedAt > FEEDBACK_WINDOW_MS) {
+    rateLimitBuckets.set(key, { startedAt: now, count: 1 });
+    return true;
+  }
+  bucket.count += 1;
+  return bucket.count <= FEEDBACK_MAX_PER_WINDOW;
+};
+
+const optionalUser = async (req) => {
   try {
+    const user = await resolveSessionUser(req);
+    if (!user) return null;
+    const { nocoPassword: _omit, ...safeUser } = user;
+    return safeUser;
+  } catch {
+    return null;
+  }
+};
+
+router.post('/api/feedback', async (req, res, next) => {
+  try {
+    if (!checkRateLimit(req)) {
+      res.status(429).json({
+        success: false,
+        error: 'Trop de signalements envoyés depuis cet appareil. Réessayez plus tard.',
+      });
+      return;
+    }
+
     const type = clean(req.body?.type, 80) || 'Signalement';
     const message = clean(req.body?.message, 10000);
     const context = req.body?.context && typeof req.body.context === 'object'
       ? req.body.context
       : {};
-    const user = req.appUser || {};
+    const authenticatedUser = await optionalUser(req);
+    const clientUser = req.body?.user && typeof req.body.user === 'object'
+      ? req.body.user
+      : {};
+    const user = authenticatedUser || clientUser || {};
 
     if (message.length < 3) {
       res.status(400).json({ success: false, error: 'Message trop court.' });

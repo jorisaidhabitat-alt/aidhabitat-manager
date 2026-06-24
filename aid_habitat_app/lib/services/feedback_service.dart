@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/types.dart';
 import 'app_config.dart';
 import 'feedback_activity_service.dart';
 import 'feedback_platform_context.dart'
@@ -14,11 +15,12 @@ class FeedbackService {
   Future<void> sendFeedback({
     required String type,
     required String message,
+    required LocalAppUser currentUser,
     required FeedbackContextSnapshot context,
   }) async {
     final apiBase = AppConfig.apiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     final token = AppConfig.appSessionToken.trim();
-    if (apiBase.isEmpty || token.isEmpty) {
+    if (apiBase.isEmpty) {
       throw Exception('Connexion API indisponible.');
     }
 
@@ -26,6 +28,13 @@ class FeedbackService {
     final payload = {
       'type': type,
       'message': message,
+      'user': {
+        'id': currentUser.id,
+        'email': currentUser.email,
+        'displayName': currentUser.displayName,
+        'ergoLabel': currentUser.ergoLabel ?? '',
+        'role': currentUser.role.name,
+      },
       'context': {
         ...context.toJson(),
         ...platform,
@@ -36,7 +45,10 @@ class FeedbackService {
     final response = await http
         .post(
           Uri.parse('$apiBase/api/feedback'),
-          headers: {'Content-Type': 'application/json', 'X-App-Session': token},
+          headers: {
+            'Content-Type': 'application/json',
+            if (token.isNotEmpty) 'X-App-Session': token,
+          },
           body: jsonEncode(payload),
         )
         .timeout(const Duration(seconds: 15));

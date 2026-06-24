@@ -63,6 +63,7 @@ class _FeedbackTabState extends State<FeedbackTab> {
       await FeedbackService.instance.sendFeedback(
         type: _type,
         message: message,
+        currentUser: widget.currentUser,
         context: widget.contextSnapshot(),
       );
       if (!mounted) return;
