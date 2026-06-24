@@ -53,32 +53,60 @@ const smtpConfig = () => {
 
 const smtpCandidates = (config) => {
   if (!config.ready) return [];
-  const primary = {
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
+  const makeCandidate = (host, port, secure) => ({
+    host,
+    port,
+    secure,
     auth: config.auth,
+  });
+  const addCandidate = (candidates, host, port, secure) => {
+    if (!host) return;
+    if (candidates.some((candidate) => (
+      candidate.host === host &&
+      candidate.port === port &&
+      candidate.secure === secure
+    ))) {
+      return;
+    }
+    candidates.push(makeCandidate(host, port, secure));
   };
-  const candidates = [primary];
+
+  const candidates = [];
+  addCandidate(candidates, config.host, config.port, config.secure);
+
+  const o2switchHost = 'mail.tuyau.o2switch.net';
+  if (config.host === 'mail.aidhabitat.fr') {
+    addCandidate(candidates, o2switchHost, config.port, config.secure);
+  }
 
   if (config.port === 465) {
-    candidates.push({
-      host: config.host,
-      port: 587,
-      secure: false,
-      auth: config.auth,
-    });
+    addCandidate(candidates, config.host, 587, false);
+    if (config.host === 'mail.aidhabitat.fr') {
+      addCandidate(candidates, o2switchHost, 587, false);
+    }
   } else if (config.port === 587) {
-    candidates.push({
-      host: config.host,
-      port: 465,
-      secure: true,
-      auth: config.auth,
-    });
+    addCandidate(candidates, config.host, 465, true);
+    if (config.host === 'mail.aidhabitat.fr') {
+      addCandidate(candidates, o2switchHost, 465, true);
+    }
   }
 
   return candidates;
 };
+
+const publicSmtpCandidate = (candidate) => ({
+  host: candidate.host,
+  port: candidate.port,
+  secure: candidate.secure,
+});
+
+const formatMailError = (error) => ({
+  code: clean(error?.code, 80),
+  command: clean(error?.command, 80),
+  responseCode: error?.responseCode || null,
+  message: clean(error?.message, 1000),
+  attempts: Array.isArray(error?.attempts) ? error.attempts : undefined,
+});
 
 const formatContextText = (context = {}) => {
   const rows = [
@@ -162,6 +190,38 @@ const appendFeedbackReport = async (report) => {
   );
 };
 
+const appendFeedbackMailEvent = async (event) => {
+  await fs.mkdir(dataFileUrl('feedback/'), { recursive: true });
+  await fs.appendFile(
+    dataFileUrl('feedback/mail-events.jsonl'),
+    `${JSON.stringify({ ...event, at: new Date().toISOString() })}\n`,
+    'utf8',
+  );
+};
+
+const safeAppendFeedbackMailEvent = async (event) => {
+  try {
+    await appendFeedbackMailEvent(event);
+  } catch (error) {
+    console.error('[feedback] mail event store failed', error);
+  }
+};
+
+const readRecentFeedbackMailEvents = async (limit = 20) => {
+  try {
+    const raw = await fs.readFile(dataFileUrl('feedback/mail-events.jsonl'), 'utf8');
+    return raw
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .slice(-limit)
+      .map((line) => JSON.parse(line));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+};
+
 const sendFeedbackEmail = async (config, payload) => {
   const errors = [];
 
@@ -184,8 +244,7 @@ const sendFeedbackEmail = async (config, payload) => {
       return info;
     } catch (error) {
       errors.push({
-        port: candidate.port,
-        secure: candidate.secure,
+        ...publicSmtpCandidate(candidate),
         code: error?.code,
         command: error?.command,
         message: error?.message,
@@ -208,6 +267,26 @@ const optionalUser = async (req) => {
     return null;
   }
 };
+
+router.get('/api/feedback/mail-events', async (req, res, next) => {
+  try {
+    const user = await optionalUser(req);
+    if (!user) {
+      res.status(401).json({ success: false, error: 'Session invalide ou expirée' });
+      return;
+    }
+
+    const limit = Math.min(Math.max(Number(req.query?.limit || 20), 1), 50);
+    const events = await readRecentFeedbackMailEvents(limit);
+    res.json({
+      success: true,
+      error: null,
+      data: events,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.post('/api/feedback', async (req, res, next) => {
   try {
@@ -320,13 +399,31 @@ router.post('/api/feedback', async (req, res, next) => {
 
       if (!config.ready) {
         console.error('[feedback] SMTP disabled', config.error);
+        await safeAppendFeedbackMailEvent({
+          feedbackId: report.id,
+          status: 'disabled',
+          error: { message: config.error },
+        });
         return;
       }
 
       try {
-        await sendFeedbackEmail(config, mailPayload);
+        const info = await sendFeedbackEmail(config, mailPayload);
+        await safeAppendFeedbackMailEvent({
+          feedbackId: report.id,
+          status: 'sent',
+          messageId: clean(info?.messageId, 300),
+          accepted: Array.isArray(info?.accepted) ? info.accepted.map((value) => clean(value, 300)) : [],
+          rejected: Array.isArray(info?.rejected) ? info.rejected.map((value) => clean(value, 300)) : [],
+          response: clean(info?.response, 1000),
+        });
       } catch (mailError) {
         console.error('[feedback] SMTP background send failed', mailError);
+        await safeAppendFeedbackMailEvent({
+          feedbackId: report.id,
+          status: 'failed',
+          error: formatMailError(mailError),
+        });
       }
     });
   } catch (error) {
