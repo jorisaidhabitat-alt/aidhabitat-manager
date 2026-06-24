@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import nodemailer from 'nodemailer';
 import { dataFileUrl, resolveSessionUser } from '../helpers.mjs';
@@ -222,6 +223,22 @@ const readRecentFeedbackMailEvents = async (limit = 20) => {
   }
 };
 
+const publicMailEvent = (event) => {
+  const { diagnosticToken: _omit, ...safeEvent } = event;
+  return safeEvent;
+};
+
+const findFeedbackMailEvent = async (feedbackId, diagnosticToken) => {
+  if (!feedbackId || !diagnosticToken) return null;
+  const raw = await readRecentFeedbackMailEvents(200);
+  return raw
+    .reverse()
+    .find((event) => (
+      event.feedbackId === feedbackId &&
+      event.diagnosticToken === diagnosticToken
+    )) || null;
+};
+
 const sendFeedbackEmail = async (config, payload) => {
   const errors = [];
 
@@ -288,6 +305,30 @@ router.get('/api/feedback/mail-events', async (req, res, next) => {
   }
 });
 
+router.get('/api/feedback/mail-events/:feedbackId', async (req, res, next) => {
+  try {
+    const feedbackId = clean(req.params?.feedbackId, 200);
+    const diagnosticToken = clean(req.query?.token, 200);
+    const event = await findFeedbackMailEvent(feedbackId, diagnosticToken);
+
+    if (!event) {
+      res.status(404).json({
+        success: false,
+        error: 'Diagnostic mail non disponible pour ce signalement.',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      error: null,
+      data: publicMailEvent(event),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/api/feedback', async (req, res, next) => {
   try {
     if (!checkRateLimit(req)) {
@@ -348,6 +389,7 @@ router.post('/api/feedback', async (req, res, next) => {
 
     const report = {
       id: `feedback_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      diagnosticToken: crypto.randomBytes(18).toString('base64url'),
       receivedAt: new Date().toISOString(),
       type,
       message,
@@ -386,6 +428,7 @@ router.post('/api/feedback', async (req, res, next) => {
         id: report.id,
         queuedAt: report.receivedAt,
         emailQueued: Boolean(config.ready),
+        diagnosticToken: report.diagnosticToken,
       },
     });
 
@@ -401,6 +444,7 @@ router.post('/api/feedback', async (req, res, next) => {
         console.error('[feedback] SMTP disabled', config.error);
         await safeAppendFeedbackMailEvent({
           feedbackId: report.id,
+          diagnosticToken: report.diagnosticToken,
           status: 'disabled',
           error: { message: config.error },
         });
@@ -411,6 +455,7 @@ router.post('/api/feedback', async (req, res, next) => {
         const info = await sendFeedbackEmail(config, mailPayload);
         await safeAppendFeedbackMailEvent({
           feedbackId: report.id,
+          diagnosticToken: report.diagnosticToken,
           status: 'sent',
           messageId: clean(info?.messageId, 300),
           accepted: Array.isArray(info?.accepted) ? info.accepted.map((value) => clean(value, 300)) : [],
@@ -421,6 +466,7 @@ router.post('/api/feedback', async (req, res, next) => {
         console.error('[feedback] SMTP background send failed', mailError);
         await safeAppendFeedbackMailEvent({
           feedbackId: report.id,
+          diagnosticToken: report.diagnosticToken,
           status: 'failed',
           error: formatMailError(mailError),
         });
