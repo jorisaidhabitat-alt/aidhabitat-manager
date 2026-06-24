@@ -8,6 +8,7 @@ import '../../services/url_resolver.dart';
 import '../../services/wiki_repository.dart';
 import '../../components/brand_colors.dart';
 import '../../components/cached_remote_image.dart';
+import '../../components/confirmation_dialog.dart';
 import '../../components/dashed_border_painter.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
@@ -308,6 +309,27 @@ class _RecommendationsTabState extends State<RecommendationsTab>
     _scheduleSave();
   }
 
+  Future<void> _confirmRemoveItem(int index) async {
+    if (index < 0 || index >= _items.length) return;
+    final item = _items[index];
+    final title = item.customTitle.trim().isNotEmpty
+        ? item.customTitle.trim()
+        : item.wikiTitle.trim();
+    final confirm = await showAppDestructiveConfirmation(
+      context: context,
+      title: 'Supprimer cette préconisation ?',
+      message: title.isEmpty
+          ? 'Cette préconisation sera supprimée définitivement.'
+          : 'La préconisation "$title" sera supprimée définitivement.',
+      confirmLabel: 'Supprimer',
+      icon: Icons.delete_outline,
+    );
+    if (!mounted || !confirm) return;
+    final nextIndex = _items.indexWhere((candidate) => candidate.id == item.id);
+    if (nextIndex < 0) return;
+    _removeItem(nextIndex);
+  }
+
   void _previewReorderItem(
     String draggedId,
     String targetId,
@@ -516,7 +538,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
                       // déjà draggable via LongPressDraggable du parent.
                       reorderable: false,
                       onChange: (updated) => _updateItem(i, updated),
-                      onRemove: () => _removeItem(i),
+                      onRemove: () => unawaited(_confirmRemoveItem(i)),
                       onPickWiki: () => _openPicker(i),
                     ),
                   ),
@@ -741,7 +763,7 @@ class _RecommendationCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Material(
-                      color: const Color(0xFFF2ECF5),
+                      color: const Color(0xFFFFE4E6),
                       shape: const CircleBorder(),
                       child: InkWell(
                         onTap: onRemove,
@@ -751,7 +773,7 @@ class _RecommendationCard extends StatelessWidget {
                           child: Icon(
                             Icons.close,
                             size: 20,
-                            color: kBrandPurple,
+                            color: Color(0xFFB4232F),
                             semanticLabel: 'Supprimer',
                           ),
                         ),

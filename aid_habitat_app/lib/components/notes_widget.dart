@@ -176,6 +176,7 @@ class NotesWidget extends StatefulWidget {
     this.liveText,
     this.leadingNavWidget,
     this.medicalFlags,
+    this.medicalFlagsScopeKey,
     this.onMedicalFlagsChanged,
     this.stackedCards = false,
     this.attachedToTitleBanner = false,
@@ -320,6 +321,12 @@ class NotesWidget extends StatefulWidget {
   ///   badges sur les flags de la nouvelle page.
   final Set<int>? medicalFlags;
 
+  /// Portée optionnelle pour les flags médicaux. Quand renseignée
+  /// (`occupant_0`, `occupant_1`, ...), les flags sont sauvegardés dans
+  /// `drawing_json.medicalFlagsByScope[scope]` afin que plusieurs occupants
+  /// ne partagent pas les mêmes coches médicales.
+  final String? medicalFlagsScopeKey;
+
   /// Callback émis lorsque la page active change ou après chargement
   /// initial — transmet les flags médicaux stockés pour cette page.
   /// Le parent l'utilise pour rafraîchir l'état des cases à cocher
@@ -370,6 +377,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   // quand [widget.medicalFlags] / [widget.onMedicalFlagsChanged] sont
   // fournis par le parent (onglet "Contexte de vie > Médical").
   final Map<int, Set<int>> _pageMedicalFlags = <int, Set<int>>{};
+  final Map<int, Map<String, Set<int>>> _pageMedicalFlagsByScope =
+      <int, Map<String, Set<int>>>{};
 
   /// Chaîne de promesses pour sérialiser les écritures de flags
   /// médicaux (cf. didUpdateWidget). Chaque toggle utilisateur
@@ -541,12 +550,27 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageStrokes.clear();
       _pageTexts.clear();
       _pageMedicalFlags.clear();
+      _pageMedicalFlagsByScope.clear();
       _undoStack.clear();
       _redoStack.clear();
       _currentPage = widget.currentPage;
       _totalPages = math.max(1, widget.totalPages);
       _loadPages();
       return;
+    }
+
+    final medicalScopeChanged =
+        oldWidget.medicalFlagsScopeKey != widget.medicalFlagsScopeKey;
+    if (medicalScopeChanged) {
+      setState(() {
+        for (var p = 0; p < _totalPages; p++) {
+          _pageMedicalFlags[p] = {..._medicalFlagsForPage(p)};
+        }
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _emitMedicalFlagsForCurrentPage();
+      });
     }
 
     if (oldWidget.currentPage != widget.currentPage && !_isDirty) {
@@ -562,15 +586,16 @@ class _NotesWidgetState extends State<NotesWidget> {
     // la coche au moment du switch via onMedicalFlagsChanged.
     // Désormais : flags GLOBAUX (mêmes valeurs sur toutes les pages),
     // donc le switch ne change rien à l'état des cases parent.
-    if (widget.medicalFlags != null &&
+    if (!medicalScopeChanged &&
+        widget.medicalFlags != null &&
         !_setIntEquals(
           widget.medicalFlags!,
-          _pageMedicalFlags[_currentPage] ?? const <int>{},
+          _medicalFlagsForPage(_currentPage),
         )) {
       final newFlags = {...widget.medicalFlags!};
       setState(() {
         for (var p = 0; p < _totalPages; p++) {
-          _pageMedicalFlags[p] = {...newFlags};
+          _setMedicalFlagsForPage(p, newFlags);
         }
       });
       // Persiste les pages en SÉRIE via une chaîne `_flagsPersistChain`
@@ -675,6 +700,13 @@ class _NotesWidgetState extends State<NotesWidget> {
       for (final entry in _pageMedicalFlags.entries)
         entry.key: Set<int>.from(entry.value),
     };
+    final disposePageMedicalFlagsByScope = {
+      for (final entry in _pageMedicalFlagsByScope.entries)
+        entry.key: {
+          for (final scope in entry.value.entries)
+            scope.key: Set<int>.from(scope.value),
+        },
+    };
 
     _autoSaveDebounce?.cancel();
     if (shouldFlushDirtyDraft) {
@@ -690,6 +722,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           pageTexts: disposePageTexts,
           pageStrokes: disposePageStrokes,
           pageMedicalFlags: disposePageMedicalFlags,
+          pageMedicalFlagsByScope: disposePageMedicalFlagsByScope,
         ),
       );
     }
@@ -721,7 +754,18 @@ class _NotesWidgetState extends State<NotesWidget> {
     required Map<int, String> pageTexts,
     required Map<int, List<Stroke>> pageStrokes,
     required Map<int, Set<int>> pageMedicalFlags,
+    required Map<int, Map<String, Set<int>>> pageMedicalFlagsByScope,
   }) async {
+    Map<String, List<int>> serializeScopedFlags(Map<String, Set<int>>? scopes) {
+      if (scopes == null || scopes.isEmpty) return const <String, List<int>>{};
+      final out = <String, List<int>>{};
+      for (final entry in scopes.entries) {
+        if (entry.value.isEmpty) continue;
+        out[entry.key] = entry.value.toList()..sort();
+      }
+      return out;
+    }
+
     try {
       if (!sharedText) {
         await _dataService.saveNoteDrawingJson(
@@ -746,7 +790,9 @@ class _NotesWidgetState extends State<NotesWidget> {
 
         final strokes = pageStrokes[page];
         final flags = pageMedicalFlags[page];
-        final hasLoadedPage = strokes != null || flags != null;
+        final scopedFlags = serializeScopedFlags(pageMedicalFlagsByScope[page]);
+        final hasLoadedPage =
+            strokes != null || flags != null || scopedFlags.isNotEmpty;
         if (hasLoadedPage) {
           await _dataService.saveNoteDrawingJson(
             patientId: patientId,
@@ -760,6 +806,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                   .toList(),
               if (flags != null && flags.isNotEmpty)
                 'medicalFlags': (flags.toList()..sort()),
+              if (scopedFlags.isNotEmpty) 'medicalFlagsByScope': scopedFlags,
             }),
           );
           continue;
@@ -814,6 +861,54 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   List<NoteTool> get _availableTools => _availableToolsFor(widget.toolset);
 
+  String? get _medicalFlagsScopeKey {
+    final value = widget.medicalFlagsScopeKey?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  Set<int> _medicalFlagsForPage(int page) {
+    final scopeKey = _medicalFlagsScopeKey;
+    if (scopeKey != null) {
+      return _pageMedicalFlagsByScope[page]?[scopeKey] ?? const <int>{};
+    }
+    return _pageMedicalFlags[page] ?? const <int>{};
+  }
+
+  void _setMedicalFlagsForPage(int page, Set<int> flags) {
+    final scopeKey = _medicalFlagsScopeKey;
+    final cleanFlags = {...flags};
+    if (scopeKey == null) {
+      _pageMedicalFlags[page] = cleanFlags;
+      return;
+    }
+
+    final scopes = Map<String, Set<int>>.from(
+      _pageMedicalFlagsByScope[page] ?? const <String, Set<int>>{},
+    );
+    if (cleanFlags.isEmpty) {
+      scopes.remove(scopeKey);
+    } else {
+      scopes[scopeKey] = cleanFlags;
+    }
+    if (scopes.isEmpty) {
+      _pageMedicalFlagsByScope.remove(page);
+    } else {
+      _pageMedicalFlagsByScope[page] = scopes;
+    }
+    _pageMedicalFlags[page] = cleanFlags;
+  }
+
+  Map<String, List<int>> _serializedMedicalFlagScopes(int page) {
+    final scopes = _pageMedicalFlagsByScope[page];
+    if (scopes == null || scopes.isEmpty) return const <String, List<int>>{};
+    final out = <String, List<int>>{};
+    for (final entry in scopes.entries) {
+      if (entry.value.isEmpty) continue;
+      out[entry.key] = entry.value.toList()..sort();
+    }
+    return out;
+  }
+
   int get _activeColor {
     switch (_activeTool) {
       case NoteTool.pen:
@@ -841,15 +936,16 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   String _currentDrawingJson() {
-    final flags = _pageMedicalFlags[_currentPage];
+    final flags = _medicalFlagsForPage(_currentPage);
+    final scopedFlags = _serializedMedicalFlagScopes(_currentPage);
     return jsonEncode({
       'version': 1,
       'text': _textController.text,
       'strokes': _strokes.map((s) => s.toJson()).toList(),
       // Champ facultatif — omis quand il n'y a pas de flags pour éviter de
       // polluer les notes non-médicales. Trié pour un JSON stable.
-      if (flags != null && flags.isNotEmpty)
-        'medicalFlags': (flags.toList()..sort()),
+      if (flags.isNotEmpty) 'medicalFlags': (flags.toList()..sort()),
+      if (scopedFlags.isNotEmpty) 'medicalFlagsByScope': scopedFlags,
     });
   }
 
@@ -931,6 +1027,18 @@ class _NotesWidgetState extends State<NotesWidget> {
           _pageStrokes.putIfAbsent(probe, () => <Stroke>[]);
           _pageTexts.putIfAbsent(probe, () => '');
           _pageMedicalFlags.putIfAbsent(probe, () => <int>{});
+          _pageMedicalFlagsByScope.remove(probe);
+          probe += 1;
+          continue;
+        }
+        break;
+      }
+      if (_isDeletedPageJson(json)) {
+        if (probe < minimumPages) {
+          _pageStrokes.putIfAbsent(probe, () => <Stroke>[]);
+          _pageTexts.putIfAbsent(probe, () => '');
+          _pageMedicalFlags.putIfAbsent(probe, () => <int>{});
+          _pageMedicalFlagsByScope.remove(probe);
           probe += 1;
           continue;
         }
@@ -980,6 +1088,16 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (changed) setState(() {});
   }
 
+  bool _isDeletedPageJson(String? json) {
+    if (json == null || json.isEmpty) return false;
+    try {
+      final decoded = jsonDecode(json);
+      return decoded is Map && decoded['deleted'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Helper : pose une nouvelle valeur sur `_textController` SANS
   /// déclencher `_onTextChanged` (qui appellerait `_markDirty()` et
   /// poserait faussement `_isDirty = true`). Bug 2026-05-07 : sans
@@ -1001,6 +1119,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageStrokes[page] = <Stroke>[];
       _pageTexts[page] = '';
       _pageMedicalFlags[page] = <int>{};
+      _pageMedicalFlagsByScope.remove(page);
       if (hydrateController) _setControllerSilently('');
       return;
     }
@@ -1010,6 +1129,15 @@ class _NotesWidgetState extends State<NotesWidget> {
         _pageStrokes[page] = <Stroke>[];
         _pageTexts[page] = '';
         _pageMedicalFlags[page] = <int>{};
+        _pageMedicalFlagsByScope.remove(page);
+        if (hydrateController) _setControllerSilently('');
+        return;
+      }
+      if (decoded['deleted'] == true) {
+        _pageStrokes[page] = <Stroke>[];
+        _pageTexts[page] = '';
+        _pageMedicalFlags[page] = <int>{};
+        _pageMedicalFlagsByScope.remove(page);
         if (hydrateController) _setControllerSilently('');
         return;
       }
@@ -1035,14 +1163,49 @@ class _NotesWidgetState extends State<NotesWidget> {
           }
         }
       }
+      final rawScopedFlags = decoded['medicalFlagsByScope'];
+      final scopedFlags = <String, Set<int>>{};
+      if (rawScopedFlags is Map) {
+        for (final entry in rawScopedFlags.entries) {
+          final scopeKey = entry.key.toString().trim();
+          final rawValues = entry.value;
+          if (scopeKey.isEmpty || rawValues is! List) continue;
+          final parsedFlags = <int>{};
+          for (final v in rawValues) {
+            if (v is int) {
+              parsedFlags.add(v);
+            } else if (v is num) {
+              parsedFlags.add(v.toInt());
+            }
+          }
+          if (parsedFlags.isNotEmpty) scopedFlags[scopeKey] = parsedFlags;
+        }
+      }
       _pageStrokes[page] = strokes;
       _pageTexts[page] = text;
-      _pageMedicalFlags[page] = flags;
+      if (scopedFlags.isEmpty) {
+        _pageMedicalFlagsByScope.remove(page);
+      } else {
+        _pageMedicalFlagsByScope[page] = scopedFlags;
+      }
+      final scopeKey = _medicalFlagsScopeKey;
+      if (scopeKey == null) {
+        _pageMedicalFlags[page] = flags;
+      } else if (scopedFlags.containsKey(scopeKey)) {
+        _pageMedicalFlags[page] = scopedFlags[scopeKey] ?? <int>{};
+      } else {
+        // Compatibilité anciennes notes : avant la séparation par occupant,
+        // `medicalFlags` était global. On l'attribue seulement au bénéficiaire
+        // principal si aucun scope n'existe encore.
+        _pageMedicalFlags[page] =
+            scopedFlags.isEmpty && scopeKey == 'occupant_0' ? flags : <int>{};
+      }
       if (hydrateController) _setControllerSilently(text);
     } catch (_) {
       _pageStrokes[page] = <Stroke>[];
       _pageTexts[page] = '';
       _pageMedicalFlags[page] = <int>{};
+      _pageMedicalFlagsByScope.remove(page);
       if (hydrateController) _setControllerSilently('');
     }
   }
@@ -1470,12 +1633,12 @@ class _NotesWidgetState extends State<NotesWidget> {
     // re-pousser l'état au parent à chaque switch.
   }
 
-  /// Pousse `_pageMedicalFlags[_currentPage]` (ou {}) vers le parent via
+  /// Pousse les flags médicaux de la page active vers le parent via
   /// [NotesWidget.onMedicalFlagsChanged]. No-op si le callback est null.
   void _emitMedicalFlagsForCurrentPage() {
     final cb = widget.onMedicalFlagsChanged;
     if (cb == null) return;
-    final flags = _pageMedicalFlags[_currentPage] ?? <int>{};
+    final flags = _medicalFlagsForPage(_currentPage);
     cb({...flags});
   }
 
@@ -1504,7 +1667,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       // les numéros souhaités via les cases Pathologie / Suivi / Sensoriel
       // (demande utilisateur : les numéros ne doivent pas rester les mêmes
       // d'une page à l'autre).
-      _pageMedicalFlags[newPageIndex] = <int>{};
+      _setMedicalFlagsForPage(newPageIndex, <int>{});
     });
     // Persiste la nouvelle page côté serveur (JSON vide) — SyncEngine déclenche
     // la sync remote si le réseau est disponible.
@@ -1526,9 +1689,11 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageStrokes.remove(deletedIndex);
       _pageTexts.remove(deletedIndex);
       _pageMedicalFlags.remove(deletedIndex);
+      _pageMedicalFlagsByScope.remove(deletedIndex);
       final nextStrokes = <int, List<Stroke>>{};
       final nextTexts = <int, String>{};
       final nextFlags = <int, Set<int>>{};
+      final nextScopedFlags = <int, Map<String, Set<int>>>{};
       _pageStrokes.forEach((index, strokes) {
         nextStrokes[index > deletedIndex ? index - 1 : index] = strokes;
       });
@@ -1537,6 +1702,11 @@ class _NotesWidgetState extends State<NotesWidget> {
       });
       _pageMedicalFlags.forEach((index, flags) {
         nextFlags[index > deletedIndex ? index - 1 : index] = flags;
+      });
+      _pageMedicalFlagsByScope.forEach((index, scopes) {
+        nextScopedFlags[index > deletedIndex ? index - 1 : index] = {
+          for (final entry in scopes.entries) entry.key: {...entry.value},
+        };
       });
       _pageStrokes
         ..clear()
@@ -1547,6 +1717,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageMedicalFlags
         ..clear()
         ..addAll(nextFlags);
+      _pageMedicalFlagsByScope
+        ..clear()
+        ..addAll(nextScopedFlags);
       _totalPages -= 1;
       if (_currentPage >= _totalPages) _currentPage = _totalPages - 1;
       _textController.text = _pageTexts[_currentPage] ?? '';
@@ -1563,8 +1736,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     for (var i = deletedIndex; i < _totalPages; i++) {
       await _persistPage(i);
     }
-    // Remet la dernière page (ancienne) à vide sur le serveur pour qu'elle ne
-    // réapparaisse pas au prochain chargement (détection de pages par scan).
+    // Marque la dernière page (ancienne) comme supprimée côté serveur pour
+    // qu'elle ne réapparaisse pas au prochain chargement.
     await _persistEmptyAt(oldLastIndex);
   }
 
@@ -1588,13 +1761,14 @@ class _NotesWidgetState extends State<NotesWidget> {
   Future<void> _persistPage(int pageIndex) async {
     final strokes = _pageStrokes.putIfAbsent(pageIndex, () => <Stroke>[]);
     final text = _pageTexts[pageIndex] ?? '';
-    final flags = _pageMedicalFlags[pageIndex];
+    final flags = _medicalFlagsForPage(pageIndex);
+    final scopedFlags = _serializedMedicalFlagScopes(pageIndex);
     final json = jsonEncode({
       'version': 1,
       'text': text,
       'strokes': strokes.map((s) => s.toJson()).toList(),
-      if (flags != null && flags.isNotEmpty)
-        'medicalFlags': (flags.toList()..sort()),
+      if (flags.isNotEmpty) 'medicalFlags': (flags.toList()..sort()),
+      if (scopedFlags.isNotEmpty) 'medicalFlagsByScope': scopedFlags,
     });
     try {
       await _dataService.saveNoteDrawingJson(
@@ -1629,7 +1803,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   Future<void> _persistSharedTextPage(int pageIndex, String text) async {
     final hasLoadedPage =
         _pageStrokes.containsKey(pageIndex) ||
-        _pageMedicalFlags.containsKey(pageIndex);
+        _pageMedicalFlags.containsKey(pageIndex) ||
+        _pageMedicalFlagsByScope.containsKey(pageIndex);
     if (hasLoadedPage) {
       await _persistPage(pageIndex);
       return;
@@ -1679,6 +1854,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         pageNumber: pageIndex,
         drawingJson: jsonEncode({
           'version': 1,
+          'deleted': true,
           'text': '',
           'strokes': const [],
         }),

@@ -103,12 +103,15 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   final Map<String, Timer> _saveDebounce = {};
   // Sous-section active par onglet — mémorisée lors de la navigation.
   final Map<String, int> _activeSubsectionByTab = {};
-  // Numéros médicaux actifs (Pathologie=1, Suivi=2, Sensoriel=3) —
-  // affichés en badges au-dessus du canvas de la note "Contexte de vie >
-  // Médical". Désormais PAR PAGE : ce `Set` représente seulement les
-  // flags de la page de note actuellement visible (NotesWidget pousse
-  // les flags à chaque changement de page via `onMedicalFlagsChanged`).
-  Set<int> _medicalFlagNumbers = <int>{};
+  // Numéros médicaux actifs (Pathologie=1, Suivi=2, Sensoriel=3), séparés
+  // par occupant. Avec plusieurs occupants, chaque personne garde ses
+  // propres coches dans Médicale/Autonomie.
+  int _medicalOccupantIndex = 0;
+  final Map<int, Set<int>> _medicalFlagNumbersByOccupant = <int, Set<int>>{};
+
+  Set<int> get _currentMedicalFlagNumbers => Set<int>.unmodifiable(
+    _medicalFlagNumbersByOccupant[_medicalOccupantIndex] ?? const <int>{},
+  );
 
   // Page courante de la note "Contexte de vie > Médical" (1-indexed).
   // Demande utilisateur 2026-05-04 : « il doit y avoir simplement les 3
@@ -505,27 +508,36 @@ class _VisitReportScreenState extends State<VisitReportScreen>
 
   /// Called by ContextTab when the user toggles a numbered medical flag
   /// (Pathologie=1, Suivi médical=2, Sensoriel=3). Met à jour
-  /// [_medicalFlagNumbers] — la nouvelle valeur est propagée à NotesWidget
+  /// les flags de l'occupant courant — la nouvelle valeur est propagée à NotesWidget
   /// via la prop `medicalFlags` et sauvegardée dans la page courante.
   Future<void> _handleMedicalFlagToggle(int flagNumber, bool checked) async {
     if (!mounted) return;
-    final next = Set<int>.from(_medicalFlagNumbers);
+    final next = Set<int>.from(_currentMedicalFlagNumbers);
     if (checked) {
       next.add(flagNumber);
     } else {
       next.remove(flagNumber);
     }
-    setState(() => _medicalFlagNumbers = next);
+    setState(() => _medicalFlagNumbersByOccupant[_medicalOccupantIndex] = next);
   }
 
   /// Appelé par NotesWidget (via `onMedicalFlagsChanged`) lorsqu'il
-  /// change de page ou finit de charger. Remplace [_medicalFlagNumbers]
+  /// change de page ou finit de charger. Remplace les flags de l'occupant actif
   /// par les flags stockés pour la page désormais visible → les cases à
   /// cocher (ContextTab) et les badges canvas s'ajustent automatiquement.
   void _handleMedicalFlagsFromNotes(Set<int> flagsForPage) {
     if (!mounted) return;
-    if (setEquals(flagsForPage, _medicalFlagNumbers)) return;
-    setState(() => _medicalFlagNumbers = {...flagsForPage});
+    if (setEquals(flagsForPage, _currentMedicalFlagNumbers)) return;
+    setState(
+      () => _medicalFlagNumbersByOccupant[_medicalOccupantIndex] = {
+        ...flagsForPage,
+      },
+    );
+  }
+
+  void _handleMedicalOccupantChanged(int occupantIndex) {
+    if (!mounted || occupantIndex == _medicalOccupantIndex) return;
+    setState(() => _medicalOccupantIndex = occupantIndex);
   }
 
   /// Extracts the `text` field from a drawing_json payload. Returns empty
@@ -1039,14 +1051,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                             allowPagination: true,
                             stackedCards: true,
                             attachedToTitleBanner: true,
-                            // Médical : 3 pages fixes, chaque page affiche son
-                            // numéro (1/2/3) en background. Plus aucun couplage
-                            // avec les checkboxes à gauche (Pathologie / Suivi /
-                            // Sensoriel) — celles-ci gardent leur état interne via
-                            // `medicalFlags` mais ne pilotent plus l'overlay.
-                            // Cf. `_MedicalPageNumberBadge` + `_medicalCurrentPage`
-                            // (demande utilisateur 2026-05-04).
-                            totalPages: isMedical ? 3 : 1,
+                            // Médical : une page minimum. Les pages
+                            // supplémentaires sont détectées depuis le stockage
+                            // local/remote, ce qui permet une suppression avec
+                            // renumérotation logique (1, 2, 3 -> 1, 2).
+                            totalPages: 1,
                             // Médical : le texte "Environnement" est unique
                             // pour les 3 pages. Seuls les dessins/repères de
                             // page restent distincts.
@@ -1067,7 +1076,10 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                                   }
                                 : null,
                             medicalFlags: isMedical
-                                ? _medicalFlagNumbers
+                                ? _currentMedicalFlagNumbers
+                                : null,
+                            medicalFlagsScopeKey: isMedical
+                                ? 'occupant_$_medicalOccupantIndex'
                                 : null,
                             onMedicalFlagsChanged: isMedical
                                 ? _handleMedicalFlagsFromNotes
@@ -2677,7 +2689,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             // COURANTE de la note Médical — pas le dossier. NotesWidget
             // pousse ces flags via `onMedicalFlagsChanged` à chaque
             // changement/chargement de page.
-            currentMedicalFlags: _medicalFlagNumbers,
+            currentMedicalFlags: _currentMedicalFlagNumbers,
+            onOccupantChanged: _handleMedicalOccupantChanged,
             // Sync de la sous-section interne (Médical / Autonomie)
             // avec le panneau notes de droite. Sans ça, le panneau
             // restait coincé sur la note Médical même si l'ergo

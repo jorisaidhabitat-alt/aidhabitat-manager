@@ -89,54 +89,33 @@ class _PlansTabState extends State<PlansTab> {
     _loadPhaseForCurrentPage();
   }
 
-  void _addPage() {
-    setState(() {
-      _totalPages += 1;
-      _currentPage = _totalPages - 1;
-    });
-    // Page neuve → par défaut elle alimente le plan "Avant travaux".
-    _phaseCache[_currentPage] = PlanPhase.avant;
-    setState(() => _currentPhase = PlanPhase.avant);
+  void _addScenario() {
+    _addScenarioAsync();
   }
 
-  /// Duplique la page courante : crée une nouvelle page après la
-  /// dernière, avec exactement le même `drawingJson` (strokes +
-  /// symboles + texte) et la phase "Après travaux". Demande utilisateur
-  /// 2026-05-04 : « possibilité d'ajouter une page (vierge) ou de
-  /// dupliquer la page actuelle ». Le clone est immédiat (lecture +
-  /// écriture SQLite) puis on bascule l'utilisateur dessus.
-  Future<void> _duplicatePage() async {
-    final sourcePage = _currentPage;
-    // Lit le contenu de la page courante AVANT d'augmenter le compteur.
-    final sourceJson = await _dataService.fetchNoteDrawingJson(
-      patientId: widget.dossier.patient.id,
-      tabKey: _kTabKey,
-      pageNumber: sourcePage,
-    );
-    if (!mounted) return;
-    final newIndex = _totalPages; // page index 0-based de la nouvelle page
-    setState(() {
-      _totalPages += 1;
-      _currentPage = newIndex;
-    });
-    // Persiste le clone du drawingJson sur la nouvelle page. Même si la
-    // source est vide, on crée la ligne pour pouvoir enregistrer la phase.
+  Future<void> _addScenarioAsync() async {
+    await _planCanvasController.flush();
+    final newIndex = _totalPages;
+    final sourceJson = await _drawingJsonForNewScenario();
     await _dataService.saveNoteDrawingJson(
       patientId: widget.dossier.patient.id,
       tabKey: _kTabKey,
       pageNumber: newIndex,
-      drawingJson: sourceJson ?? '',
+      drawingJson: sourceJson,
     );
-    const duplicatedPhase = PlanPhase.apres;
-    _phaseCache[newIndex] = duplicatedPhase;
     await _dataService.setNotePlanPhase(
       patientId: widget.dossier.patient.id,
       tabKey: _kTabKey,
       pageNumber: newIndex,
-      phase: duplicatedPhase,
+      phase: PlanPhase.apres,
     );
     if (!mounted) return;
-    setState(() => _currentPhase = duplicatedPhase);
+    setState(() {
+      _totalPages += 1;
+      _currentPage = newIndex;
+      _currentPhase = PlanPhase.apres;
+      _phaseCache[newIndex] = PlanPhase.apres;
+    });
   }
 
   /// Charge la phase de la page courante depuis le cache (instantané)
@@ -144,6 +123,12 @@ class _PlansTabState extends State<PlansTab> {
   /// disponible — le pill se rafraîchit automatiquement.
   Future<void> _loadPhaseForCurrentPage() async {
     final page = _currentPage;
+    if (page == 0) {
+      _phaseCache[page] = PlanPhase.avant;
+      if (!mounted) return;
+      setState(() => _currentPhase = PlanPhase.avant);
+      return;
+    }
     if (_phaseCache.containsKey(page)) {
       if (!mounted) return;
       setState(() => _currentPhase = _phaseCache[page]);
@@ -154,19 +139,18 @@ class _PlansTabState extends State<PlansTab> {
       tabKey: _kTabKey,
       pageNumber: page,
     );
-    final phase = persistedPhase ?? PlanPhase.avant;
+    final phase = persistedPhase ?? PlanPhase.apres;
     _phaseCache[page] = phase;
     if (!mounted || page != _currentPage) return;
     setState(() => _currentPhase = phase);
   }
 
   Future<void> _deleteCurrentPage() async {
-    if (_totalPages <= 1) return;
+    if (_totalPages <= 1 || _currentPage == 0) return;
     final confirm = await showAppDestructiveConfirmation(
       context: context,
-      title: 'Supprimer la page ?',
-      message:
-          'Page ${_currentPage + 1} sur $_totalPages. Le dessin de cette page sera supprimé.',
+      title: 'Supprimer le scénario ?',
+      message: '${_scenarioLabel(_currentPage)} sera supprimé définitivement.',
       confirmLabel: 'Supprimer',
       icon: LucideIcons.fileX2,
     );
@@ -180,11 +164,24 @@ class _PlansTabState extends State<PlansTab> {
         tabKey: _kTabKey,
         pageNumber: i + 1,
       );
+      final nextPhase =
+          await _dataService.fetchNotePlanPhase(
+            patientId: widget.dossier.patient.id,
+            tabKey: _kTabKey,
+            pageNumber: i + 1,
+          ) ??
+          PlanPhase.apres;
       await _dataService.saveNoteDrawingJson(
         patientId: widget.dossier.patient.id,
         tabKey: _kTabKey,
         pageNumber: i,
         drawingJson: next ?? '',
+      );
+      await _dataService.setNotePlanPhase(
+        patientId: widget.dossier.patient.id,
+        tabKey: _kTabKey,
+        pageNumber: i,
+        phase: i == 0 ? PlanPhase.avant : nextPhase,
       );
     }
     // Clear the last page (now a duplicate).
@@ -194,11 +191,20 @@ class _PlansTabState extends State<PlansTab> {
       pageNumber: _totalPages - 1,
       drawingJson: '',
     );
+    await _dataService.setNotePlanPhase(
+      patientId: widget.dossier.patient.id,
+      tabKey: _kTabKey,
+      pageNumber: _totalPages - 1,
+      phase: PlanPhase.apres,
+    );
 
     if (!mounted) return;
     setState(() {
       _totalPages -= 1;
-      if (_currentPage >= _totalPages) _currentPage = _totalPages - 1;
+      _currentPage = 0;
+      _currentPhase = PlanPhase.avant;
+      _phaseCache.clear();
+      _phaseCache[0] = PlanPhase.avant;
     });
   }
 
@@ -227,22 +233,28 @@ class _PlansTabState extends State<PlansTab> {
               totalPages: _totalPages,
               onPrevPage: () => _goToPage(_currentPage - 1),
               onNextPage: () => _goToPage(_currentPage + 1),
-              onAddPage: _addPage,
-              onDuplicatePage: _duplicatePage,
-              onDeletePage: _deleteCurrentPage,
+              onAddPage: null,
+              onDuplicatePage: null,
+              onDeletePage: _currentPage == 0 ? null : _deleteCurrentPage,
             ),
           ),
         ),
-        // Toggle « Phase » : positionné en haut-centre. Tap = changement
-        // direct entre les pages Avant travaux / Après travaux.
+        // Sélecteur de scénarios : page 1 = plan avant travaux, pages
+        // suivantes = scénarios des travaux préconisés.
         Positioned(
-          left: 0,
-          right: 0,
+          // La palette d'équipements occupe le coin haut-gauche dans le
+          // canvas. On décale donc les scénarios à sa droite pour éviter
+          // toute superposition.
+          left: 360,
+          right: 180,
           top: 16,
-          child: Center(
-            child: _PhasePill(
-              phase: _currentPhase,
-              onTap: _switchToOppositePhase,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: _ScenarioTabs(
+              currentPage: _currentPage,
+              totalPages: _totalPages,
+              onSelect: _selectScenarioPage,
+              onAdd: _addScenario,
             ),
           ),
         ),
@@ -250,85 +262,14 @@ class _PlansTabState extends State<PlansTab> {
     );
   }
 
-  Future<void> _switchToOppositePhase() async {
+  Future<void> _selectScenarioPage(int page) async {
+    if (page == _currentPage) return;
     await _planCanvasController.flush();
-    final target = _currentPhase == PlanPhase.apres
-        ? PlanPhase.avant
-        : PlanPhase.apres;
-    await _switchToPhasePage(target);
+    _goToPage(page);
   }
 
-  Future<void> _switchToPhasePage(PlanPhase targetPhase) async {
-    for (int i = 0; i < _totalPages; i++) {
-      final cached = _phaseCache.containsKey(i)
-          ? _phaseCache[i]
-          : await _dataService.fetchNotePlanPhase(
-              patientId: widget.dossier.patient.id,
-              tabKey: _kTabKey,
-              pageNumber: i,
-            );
-      final phase = cached ?? PlanPhase.avant;
-      _phaseCache[i] = phase;
-      if (phase == targetPhase) {
-        if (targetPhase == PlanPhase.apres) {
-          await _seedAfterPageFromAvantIfEmpty(i);
-        }
-        if (!mounted) return;
-        setState(() {
-          _currentPage = i;
-          _currentPhase = phase;
-        });
-        return;
-      }
-    }
-
-    final newIndex = _totalPages;
-    final initialDrawingJson = targetPhase == PlanPhase.apres
-        ? await _copySourceDrawingJsonForAfter()
-        : _kEmptyPlanDrawingJson;
-    await _dataService.saveNoteDrawingJson(
-      patientId: widget.dossier.patient.id,
-      tabKey: _kTabKey,
-      pageNumber: newIndex,
-      drawingJson: initialDrawingJson,
-    );
-    await _dataService.setNotePlanPhase(
-      patientId: widget.dossier.patient.id,
-      tabKey: _kTabKey,
-      pageNumber: newIndex,
-      phase: targetPhase,
-    );
-    if (!mounted) return;
-    setState(() {
-      _totalPages += 1;
-      _currentPage = newIndex;
-      _currentPhase = targetPhase;
-      _phaseCache[newIndex] = targetPhase;
-    });
-  }
-
-  Future<void> _seedAfterPageFromAvantIfEmpty(int afterPage) async {
-    final existing = await _dataService.fetchNoteDrawingJson(
-      patientId: widget.dossier.patient.id,
-      tabKey: _kTabKey,
-      pageNumber: afterPage,
-    );
-    if (!_isEmptyPlanDrawingJson(existing)) return;
-    final source = await _copySourceDrawingJsonForAfter();
-    if (_isEmptyPlanDrawingJson(source)) return;
-    await _dataService.saveNoteDrawingJson(
-      patientId: widget.dossier.patient.id,
-      tabKey: _kTabKey,
-      pageNumber: afterPage,
-      drawingJson: source,
-    );
-  }
-
-  Future<String> _copySourceDrawingJsonForAfter() async {
-    final sourcePage = _currentPhase == PlanPhase.avant
-        ? _currentPage
-        : await _findFirstPageForPhase(PlanPhase.avant);
-    if (sourcePage == null) return _kEmptyPlanDrawingJson;
+  Future<String> _drawingJsonForNewScenario() async {
+    final sourcePage = _totalPages > 1 ? _totalPages - 1 : 0;
     final source = await _dataService.fetchNoteDrawingJson(
       patientId: widget.dossier.patient.id,
       tabKey: _kTabKey,
@@ -337,20 +278,8 @@ class _PlansTabState extends State<PlansTab> {
     return _isEmptyPlanDrawingJson(source) ? _kEmptyPlanDrawingJson : source!;
   }
 
-  Future<int?> _findFirstPageForPhase(PlanPhase targetPhase) async {
-    for (int i = 0; i < _totalPages; i++) {
-      final cached = _phaseCache.containsKey(i)
-          ? _phaseCache[i]
-          : await _dataService.fetchNotePlanPhase(
-              patientId: widget.dossier.patient.id,
-              tabKey: _kTabKey,
-              pageNumber: i,
-            );
-      final phase = cached ?? PlanPhase.avant;
-      _phaseCache[i] = phase;
-      if (phase == targetPhase) return i;
-    }
-    return null;
+  static String _scenarioLabel(int pageIndex) {
+    return _PlansScenarioLabels.labelFor(pageIndex);
   }
 
   bool _isEmptyPlanDrawingJson(String? raw) {
@@ -462,86 +391,128 @@ class _PlanCanvasPhaseSwitcherState extends State<_PlanCanvasPhaseSwitcher> {
 }
 
 // ---------------------------------------------------------------------------
-// Pill « Phase » flottant — affiche l'état courant + tap pour changer
+// Sélecteur de scénarios — page 1 = avant travaux, pages suivantes = scénarios
 // ---------------------------------------------------------------------------
 
-class _PhasePill extends StatelessWidget {
-  final PlanPhase? phase;
-  final VoidCallback onTap;
+class _ScenarioTabs extends StatelessWidget {
+  final int currentPage;
+  final int totalPages;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onAdd;
 
-  const _PhasePill({required this.phase, required this.onTap});
+  const _ScenarioTabs({
+    required this.currentPage,
+    required this.totalPages,
+    required this.onSelect,
+    required this.onAdd,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final palette = _palette();
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 760),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < totalPages; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              _ScenarioChip(
+                label: _PlansScenarioLabels.labelFor(i),
+                selected: currentPage == i,
+                onTap: () => onSelect(i),
+              ),
+            ],
+            const SizedBox(width: 6),
+            Tooltip(
+              message: 'Ajouter un scénario',
+              child: Material(
+                color: const Color(0xFFF2ECF5),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: onAdd,
+                  child: const SizedBox(
+                    width: 34,
+                    height: 34,
+                    child: Icon(
+                      LucideIcons.plus,
+                      size: 18,
+                      color: Color(0xFF554265),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScenarioChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ScenarioChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = selected ? const Color(0xFF554265) : const Color(0xFF2B323A);
+    final bg = selected ? const Color(0xFFF2ECF5) : Colors.transparent;
     return Material(
-      color: Colors.transparent,
+      color: bg,
+      borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
           decoration: BoxDecoration(
-            color: palette.bg,
             borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 3),
-              ),
-            ],
-            border: Border.all(color: palette.fg.withValues(alpha: 0.2)),
+            border: Border.all(
+              color: selected
+                  ? const Color(0xFF8E6AA3).withValues(alpha: 0.28)
+                  : Colors.transparent,
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                palette.label,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: palette.fg,
-                ),
-              ),
-            ],
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: fg,
+            ),
           ),
         ),
       ),
     );
   }
-
-  _PhasePalette _palette() {
-    switch (phase) {
-      case PlanPhase.avant:
-        return const _PhasePalette(
-          label: 'Avant travaux',
-          bg: Color(0xFFFFEDD5),
-          fg: Color(0xFF9A3412),
-        );
-      case PlanPhase.apres:
-        return const _PhasePalette(
-          label: 'Après travaux',
-          bg: Color(0xFFD1FAE5),
-          fg: Color(0xFF065F46),
-        );
-      case null:
-        return const _PhasePalette(
-          label: 'Choisir la phase',
-          bg: Color(0xFFF2F4F6),
-          fg: Color(0xFF2B323A),
-        );
-    }
-  }
 }
 
-class _PhasePalette {
-  final String label;
-  final Color bg;
-  final Color fg;
-  const _PhasePalette({
-    required this.label,
-    required this.bg,
-    required this.fg,
-  });
+class _PlansScenarioLabels {
+  static String labelFor(int pageIndex) {
+    return pageIndex == 0 ? 'Plan avant travaux' : 'Scénario $pageIndex';
+  }
 }

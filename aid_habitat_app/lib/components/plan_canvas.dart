@@ -25,6 +25,8 @@ const Color _kToolbarIcon = Color(0xFF2B323A);
 const Color _kToolbarHoverBg = Color(0xFFF2F4F6);
 const double _kDefaultEraserSize = 18.0;
 const List<double> _kEraserSizePresets = <double>[8.0, 18.0, 44.0];
+const double _kDefaultHighlighterSize = 6.0;
+const List<double> _kHighlighterSizePresets = <double>[4.0, 8.0, 14.0];
 
 // ---------------------------------------------------------------------------
 // Stroke model
@@ -40,6 +42,7 @@ enum PlanTool {
   wall,
   window,
   windowDouble,
+  freeElement,
   door,
   toilet,
   shower,
@@ -54,6 +57,7 @@ enum PlanTool {
 const Set<PlanTool> _symbolTools = {
   PlanTool.window,
   PlanTool.windowDouble,
+  PlanTool.freeElement,
   PlanTool.door,
   PlanTool.toilet,
   PlanTool.shower,
@@ -220,12 +224,18 @@ class _PlanCanvasState extends State<PlanCanvas> {
   PlanTool _tool = PlanTool.pen;
   int _penColor = 0xFF1A1A1A;
   double _eraserSize = _kDefaultEraserSize;
+  double _highlighterSize = _kDefaultHighlighterSize;
   bool _showEraserSizeGauge = false;
+  bool _showHighlighterSizeGauge = false;
   final Object _eraserSizeTapRegion = Object();
+  final Object _highlighterSizeTapRegion = Object();
   bool _showWindowTypeBundle = false;
   final Object _windowTypeTapRegion = Object();
-  double get _penSize =>
-      _tool == PlanTool.eraser ? _eraserSize : _defaultStrokeSizeFor(_tool);
+  double get _penSize {
+    if (_tool == PlanTool.eraser) return _eraserSize;
+    if (_tool == PlanTool.highlighter) return _highlighterSize;
+    return _defaultStrokeSizeFor(_tool);
+  }
 
   // Sélection d'un symbole architectural placé — -1 = rien de sélectionné.
   int _selectedIndex = -1;
@@ -269,7 +279,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   static double _defaultStrokeSizeFor(PlanTool tool) {
     switch (tool) {
       case PlanTool.highlighter:
-        return 6.0;
+        return _kDefaultHighlighterSize;
       case PlanTool.eraser:
         return _kDefaultEraserSize;
       case PlanTool.pen:
@@ -278,6 +288,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       case PlanTool.wall:
       case PlanTool.window:
       case PlanTool.windowDouble:
+      case PlanTool.freeElement:
       case PlanTool.door:
       case PlanTool.toilet:
       case PlanTool.shower:
@@ -696,6 +707,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     PlanTool.window: Size(72, 72),
     // Fenêtre double : deux ouvertures côte à côte.
     PlanTool.windowDouble: Size(112, 72),
+    PlanTool.freeElement: Size(110, 70),
     PlanTool.door: Size(80, 80),
     // WC : plus petit + plus large (proportions cuvette réelle ~2:1,
     // l'axe long étant horizontal). Orientable ensuite via la rotation.
@@ -729,6 +741,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
       _strokes.add(stroke);
       _selectedIndex = _strokes.length - 1;
       _showWindowTypeBundle = false;
+      _showHighlighterSizeGauge = false;
+      _showEraserSizeGauge = false;
       // On repasse sur le crayon pour que le prochain drag sur le canvas
       // ne réouvre pas le menu / ne dessine pas un outil figé inattendu.
       _tool = PlanTool.pen;
@@ -856,6 +870,18 @@ class _PlanCanvasState extends State<PlanCanvas> {
               ),
             ),
           ),
+        if (_showHighlighterSizeGauge)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 80,
+            child: Center(
+              child: TapRegion(
+                groupId: _highlighterSizeTapRegion,
+                child: _buildHighlighterSizePopover(),
+              ),
+            ),
+          ),
         Positioned(left: 0, right: 0, bottom: 16, child: _buildToolbarDock()),
       ],
     );
@@ -892,7 +918,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   Widget _buildPlanToolbar() {
     final buttons = <Widget>[
       _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
-      _toolBtn(PlanTool.highlighter, LucideIcons.highlighter, 'Surligneur'),
+      _highlighterToolBtn(),
       _eraserToolBtn(),
       _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
       _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
@@ -987,6 +1013,11 @@ class _PlanCanvasState extends State<PlanCanvas> {
     return [
       _windowBundleButton(),
       _symbolInsertBtn(
+        PlanTool.freeElement,
+        const Icon(Icons.crop_square, size: 20, color: _kToolbarIcon),
+        'Élément libre',
+      ),
+      _symbolInsertBtn(
         PlanTool.door,
         Icon(LucideIcons.doorClosed, size: 18, color: _kToolbarIcon),
         'Porte',
@@ -1042,6 +1073,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           setState(() {
             _showWindowTypeBundle = !_showWindowTypeBundle;
             _showEraserSizeGauge = false;
+            _showHighlighterSizeGauge = false;
           });
         },
       ),
@@ -1176,7 +1208,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                     color: Color(0xFF2B323A),
                   ),
                   SizedBox(width: 10),
-                  Text('Ajouter une page vierge'),
+                  Text('Ajouter un scénario'),
                 ],
               ),
             ),
@@ -1187,7 +1219,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                 children: [
                   Icon(LucideIcons.copy, size: 16, color: Color(0xFF2B323A)),
                   SizedBox(width: 10),
-                  Text('Dupliquer la page actuelle'),
+                  Text('Dupliquer en scénario'),
                 ],
               ),
             ),
@@ -1199,7 +1231,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                   Icon(LucideIcons.fileX, size: 16, color: Color(0xFFB91C1C)),
                   SizedBox(width: 10),
                   Text(
-                    'Supprimer la page',
+                    'Supprimer le scénario',
                     style: TextStyle(color: Color(0xFFB91C1C)),
                   ),
                 ],
@@ -1271,6 +1303,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   Future<void> _openColorPresetMenu() async {
     if (_tool == PlanTool.eraser) return;
     _hideEraserSizeGauge();
+    _hideHighlighterSizeGauge();
     final ctx = _colorDotKey.currentContext;
     if (ctx == null) return;
     final box = ctx.findRenderObject() as RenderBox;
@@ -1385,6 +1418,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           onTap: () => setState(() {
             _tool = tool;
             _showEraserSizeGauge = tool == PlanTool.eraser;
+            _showHighlighterSizeGauge = tool == PlanTool.highlighter;
             _showWindowTypeBundle = false;
           }),
           customBorder: const CircleBorder(),
@@ -1419,12 +1453,52 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
+  Widget _highlighterToolBtn() {
+    return TapRegion(
+      groupId: _highlighterSizeTapRegion,
+      onTapOutside: (_) => _hideHighlighterSizeGauge(),
+      child: _toolBtn(
+        PlanTool.highlighter,
+        LucideIcons.highlighter,
+        'Surligneur',
+      ),
+    );
+  }
+
   void _hideEraserSizeGauge() {
     if (!_showEraserSizeGauge || !mounted) return;
     setState(() => _showEraserSizeGauge = false);
   }
 
+  void _hideHighlighterSizeGauge() {
+    if (!_showHighlighterSizeGauge || !mounted) return;
+    setState(() => _showHighlighterSizeGauge = false);
+  }
+
   Widget _buildEraserSizePopover() {
+    return _buildSizePopover(
+      presets: _kEraserSizePresets,
+      selectedSize: _eraserSize,
+      onSelected: (size) => setState(() => _eraserSize = size),
+      toolLabel: 'Gomme',
+    );
+  }
+
+  Widget _buildHighlighterSizePopover() {
+    return _buildSizePopover(
+      presets: _kHighlighterSizePresets,
+      selectedSize: _highlighterSize,
+      onSelected: (size) => setState(() => _highlighterSize = size),
+      toolLabel: 'Surligneur',
+    );
+  }
+
+  Widget _buildSizePopover({
+    required List<double> presets,
+    required double selectedSize,
+    required ValueChanged<double> onSelected,
+    required String toolLabel,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
@@ -1442,10 +1516,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (var i = 0; i < _kEraserSizePresets.length; i++) ...[
+          for (var i = 0; i < presets.length; i++) ...[
             if (i > 0) const SizedBox(width: 10),
-            _eraserSizeDot(
-              size: _kEraserSizePresets[i],
+            _sizeDot(
+              size: presets[i],
+              selectedSize: selectedSize,
+              onSelected: onSelected,
+              toolLabel: toolLabel,
               visualDiameter: switch (i) {
                 0 => 8.0,
                 1 => 12.0,
@@ -1458,22 +1535,25 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
-  Widget _eraserSizeDot({
+  Widget _sizeDot({
     required double size,
+    required double selectedSize,
+    required ValueChanged<double> onSelected,
+    required String toolLabel,
     required double visualDiameter,
   }) {
-    final selected = (_eraserSize - size).abs() < 0.1;
+    final selected = (selectedSize - size).abs() < 0.1;
     return Tooltip(
       message: switch (visualDiameter.round()) {
-        8 => 'Gomme fine',
-        12 => 'Gomme moyenne',
-        _ => 'Gomme large',
+        8 => '$toolLabel fin',
+        12 => '$toolLabel moyen',
+        _ => '$toolLabel large',
       },
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
-          onTap: () => setState(() => _eraserSize = size),
+          onTap: () => onSelected(size),
           child: SizedBox(
             width: 30,
             height: 30,
@@ -2196,6 +2276,7 @@ class _DrawPainter extends CustomPainter {
         break;
       case PlanTool.window:
       case PlanTool.windowDouble:
+      case PlanTool.freeElement:
       case PlanTool.door:
       case PlanTool.toilet:
       case PlanTool.shower:
@@ -2240,6 +2321,9 @@ class _DrawPainter extends CustomPainter {
         break;
       case PlanTool.windowDouble:
         _paintDoubleWindowLocal(canvas, rect, stroke);
+        break;
+      case PlanTool.freeElement:
+        _paintFreeElementLocal(canvas, rect, stroke);
         break;
       case PlanTool.door:
         _paintDoorLocal(canvas, rect, stroke);
@@ -2301,12 +2385,11 @@ class _DrawPainter extends CustomPainter {
   /// Fenêtre double : deux battants symétriques, avec un arc de chaque
   /// côté pour représenter la double ouverture.
   static void _paintDoubleWindowLocal(Canvas canvas, Rect r, Paint stroke) {
-    final height = r.height;
-    final width = math.max(r.width, height * 1.45);
+    final side = math.min(r.height, r.width / 2);
     final frame = Rect.fromCenter(
       center: r.center,
-      width: width,
-      height: height,
+      width: side * 2,
+      height: side,
     );
     final left = Rect.fromLTWH(
       frame.left,
@@ -2338,9 +2421,9 @@ class _DrawPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final leftHinge = left.bottomLeft;
-    canvas.drawLine(leftHinge, left.topLeft, stroke);
+    canvas.drawLine(leftHinge, Offset(left.left, left.bottom - side), stroke);
     canvas.drawArc(
-      Rect.fromCircle(center: leftHinge, radius: left.height),
+      Rect.fromCircle(center: leftHinge, radius: side),
       -math.pi / 2,
       math.pi / 2,
       false,
@@ -2348,9 +2431,13 @@ class _DrawPainter extends CustomPainter {
     );
 
     final rightHinge = right.bottomRight;
-    canvas.drawLine(rightHinge, right.topRight, stroke);
+    canvas.drawLine(
+      rightHinge,
+      Offset(right.right, right.bottom - side),
+      stroke,
+    );
     canvas.drawArc(
-      Rect.fromCircle(center: rightHinge, radius: right.height),
+      Rect.fromCircle(center: rightHinge, radius: side),
       math.pi,
       math.pi / 2,
       false,
@@ -2358,14 +2445,30 @@ class _DrawPainter extends CustomPainter {
     );
   }
 
+  /// Élément libre : rectangle manipulable comme les autres équipements.
+  static void _paintFreeElementLocal(Canvas canvas, Rect r, Paint stroke) {
+    final fill = Paint()
+      ..color = stroke.color.withValues(alpha: 0.04)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(r, const Radius.circular(3)),
+      fill,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(r, const Radius.circular(3)),
+      stroke,
+    );
+  }
+
   /// Porte : segment fixe du côté gauche + arc 90° indiquant l'ouverture.
   static void _paintDoorLocal(Canvas canvas, Rect r, Paint stroke) {
+    final side = math.min(r.width, r.height);
+    final frame = Rect.fromLTWH(r.left, r.bottom - side, side, side);
     // Charnière en bas-gauche, battant fermé va vers le haut-gauche.
-    final hinge = r.bottomLeft;
-    final closedEnd = Offset(r.left, r.top);
+    final hinge = frame.bottomLeft;
+    final closedEnd = frame.topLeft;
     canvas.drawLine(hinge, closedEnd, stroke);
-    final radius = r.height;
-    final arcRect = Rect.fromCircle(center: hinge, radius: radius);
+    final arcRect = Rect.fromCircle(center: hinge, radius: side);
     final dashed = Paint()
       ..color = stroke.color.withValues(alpha: 0.6)
       ..strokeWidth = 1.4

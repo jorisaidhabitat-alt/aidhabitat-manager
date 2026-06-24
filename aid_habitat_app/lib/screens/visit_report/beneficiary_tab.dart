@@ -2001,7 +2001,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         .map(
           (f) => _RetirementFundPickerItem(
             name: f['name'] ?? '',
-            logoUrl: f['logoUrl'] ?? '',
+            logoUrl: _retirementFundLogoUrl(
+              f['name'] ?? '',
+              f['logoUrl'] ?? '',
+            ),
             subtitle: '',
           ),
         )
@@ -2024,7 +2027,7 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         .map(
           (f) => _RetirementFundPickerItem(
             name: f.name,
-            logoUrl: f.logoUrl,
+            logoUrl: _retirementFundLogoUrl(f.name, f.logoUrl),
             subtitle: '',
           ),
         )
@@ -2055,6 +2058,20 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         emptyMessage: emptyMessage,
       ),
     );
+  }
+
+  String _retirementFundLogoUrl(String name, String logoUrl) {
+    final normalized = name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+    if (normalized.contains('agirc') || normalized.contains('arrco')) {
+      return '/retirement-logos/agirc-arrco.svg';
+    }
+    if (normalized.contains('ag2r') || normalized.contains('a2r')) {
+      return '/retirement-logos/ag2r.svg';
+    }
+    return logoUrl;
   }
 }
 

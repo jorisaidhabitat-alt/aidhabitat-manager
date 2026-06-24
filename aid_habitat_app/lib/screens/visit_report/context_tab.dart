@@ -52,6 +52,11 @@ class ContextTab extends StatefulWidget {
   /// revient sur cet onglet.
   final int initialSubSection;
 
+  /// Notifie le parent quand l'ergo change d'occupant. Utilisé pour
+  /// séparer les coches médicales par occupant quand il y a plusieurs
+  /// personnes dans le logement.
+  final ValueChanged<int>? onOccupantChanged;
+
   const ContextTab({
     super.key,
     required this.dossier,
@@ -60,6 +65,7 @@ class ContextTab extends StatefulWidget {
     this.currentMedicalFlags,
     this.onSubSectionChanged,
     this.initialSubSection = 0,
+    this.onOccupantChanged,
   });
 
   @override
@@ -168,7 +174,10 @@ class _ContextTabState extends State<ContextTab>
     }
 
     _contextOccupants = _buildContextOccupants(autonomy, medical);
-    if (mounted) setState(() => _loaded = true);
+    if (mounted) {
+      setState(() => _loaded = true);
+      widget.onOccupantChanged?.call(_safeIndex);
+    }
   }
 
   /// Construit un tableau OccupantAutonomy pour tous les occupants du foyer,
@@ -520,6 +529,17 @@ class _ContextTabState extends State<ContextTab>
     return _activeOccupantIndex.clamp(0, _contextOccupants.length - 1).toInt();
   }
 
+  void _setActiveOccupantIndex(int next) {
+    if (_contextOccupants.isEmpty) return;
+    final safeNext = next.clamp(0, _contextOccupants.length - 1).toInt();
+    if (safeNext == _activeOccupantIndex) {
+      widget.onOccupantChanged?.call(safeNext);
+      return;
+    }
+    setState(() => _activeOccupantIndex = safeNext);
+    widget.onOccupantChanged?.call(safeNext);
+  }
+
   OccupantAutonomy get _active {
     if (_contextOccupants.isEmpty) return const OccupantAutonomy();
     return _contextOccupants[_safeIndex];
@@ -556,38 +576,26 @@ class _ContextTabState extends State<ContextTab>
           child: TwoThresholdSwipe(
             onLightSwipeLeft: !hasMultiple
                 ? null
-                : () {
-                    setState(() {
-                      _activeOccupantIndex =
-                          (idx + 1) % _contextOccupants.length;
-                    });
-                  },
+                : () => _setActiveOccupantIndex(
+                    (idx + 1) % _contextOccupants.length,
+                  ),
             onLightSwipeRight: !hasMultiple
                 ? null
-                : () {
-                    setState(() {
-                      _activeOccupantIndex =
-                          (idx - 1 + _contextOccupants.length) %
-                          _contextOccupants.length;
-                    });
-                  },
+                : () => _setActiveOccupantIndex(
+                    (idx - 1 + _contextOccupants.length) %
+                        _contextOccupants.length,
+                  ),
             onWideSwipeLeft: !hasMultiple
                 ? null
-                : () {
-                    setState(() {
-                      _activeOccupantIndex =
-                          (idx + 1) % _contextOccupants.length;
-                    });
-                  },
+                : () => _setActiveOccupantIndex(
+                    (idx + 1) % _contextOccupants.length,
+                  ),
             onWideSwipeRight: !hasMultiple
                 ? null
-                : () {
-                    setState(() {
-                      _activeOccupantIndex =
-                          (idx - 1 + _contextOccupants.length) %
-                          _contextOccupants.length;
-                    });
-                  },
+                : () => _setActiveOccupantIndex(
+                    (idx - 1 + _contextOccupants.length) %
+                        _contextOccupants.length,
+                  ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -679,13 +687,13 @@ class _ContextTabState extends State<ContextTab>
     void prev() {
       if (!hasNav) return;
       final next = (_activeOccupantIndex - 1 + total) % total;
-      setState(() => _activeOccupantIndex = next);
+      _setActiveOccupantIndex(next);
     }
 
     void next() {
       if (!hasNav) return;
       final n = (_activeOccupantIndex + 1) % total;
-      setState(() => _activeOccupantIndex = n);
+      _setActiveOccupantIndex(n);
     }
 
     Widget arrow(IconData icon, VoidCallback? onTap) {
@@ -761,7 +769,7 @@ class _ContextTabState extends State<ContextTab>
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _activeOccupantIndex = i),
+            onTap: () => _setActiveOccupantIndex(i),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,

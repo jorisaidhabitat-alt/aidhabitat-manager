@@ -487,9 +487,16 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
           fieldName: 'wcBarre',
           label: 'Barre de relèvement',
           options: const ['Présente', 'Absente'],
-          selected: a.wcBarreRelevement ? 'Présente' : 'Absente',
-          onChanged: (v) =>
-              _updateActive(_copy(a, wcBarreRelevement: v == 'Présente')),
+          selected: a.wcBarreRelevement == null
+              ? ''
+              : (a.wcBarreRelevement! ? 'Présente' : 'Absente'),
+          onChanged: (v) => _updateActive(
+            _copy(
+              a,
+              wcBarreRelevement: v == 'Présente',
+              wcBarreRelevementNull: v.isEmpty,
+            ),
+          ),
         ),
       ],
     );
@@ -674,6 +681,7 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
     double? wcCuvetteHauteur,
     bool wcCuvetteHauteurNull = false,
     bool? wcBarreRelevement,
+    bool wcBarreRelevementNull = false,
     bool? porteWcLargeurSuffisante,
     // Flag `Null` similar à `*HauteurNull` — quand `true`, on set
     // explicitement `null` (refonte 2026-05-16, bool? au modèle).
@@ -694,7 +702,9 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
       wcCuvetteHauteur: wcCuvetteHauteurNull
           ? null
           : (wcCuvetteHauteur ?? i.wcCuvetteHauteur),
-      wcBarreRelevement: wcBarreRelevement ?? i.wcBarreRelevement,
+      wcBarreRelevement: wcBarreRelevementNull
+          ? null
+          : (wcBarreRelevement ?? i.wcBarreRelevement),
       porteWcLargeurSuffisante: porteWcLargeurSuffisanteNull
           ? null
           : (porteWcLargeurSuffisante ?? i.porteWcLargeurSuffisante),

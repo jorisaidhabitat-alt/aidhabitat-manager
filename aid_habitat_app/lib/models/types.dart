@@ -916,7 +916,10 @@ class WcInstance {
   final bool wcCuvetteTropBasse;
   final bool wcCuvetteTropHaute;
   final double? wcCuvetteHauteur;
-  final bool wcBarreRelevement;
+
+  /// Barre de relèvement : `true`=présente, `false`=absente,
+  /// `null`=non renseigné.
+  final bool? wcBarreRelevement;
 
   /// Largeur de la porte WC : `true`=suffisante, `false`=à revoir,
   /// `null`=non renseigné. Même pattern que `porteSdbLargeurSuffisante`,
@@ -937,7 +940,7 @@ class WcInstance {
     this.wcCuvetteTropBasse = false,
     this.wcCuvetteTropHaute = false,
     this.wcCuvetteHauteur,
-    this.wcBarreRelevement = false,
+    this.wcBarreRelevement,
     this.porteWcLargeurSuffisante,
     this.porteWcDimension,
     this.porteWcSensAdapte,
@@ -952,7 +955,7 @@ class WcInstance {
     wcCuvetteTropBasse: json['wcCuvetteTropBasse'] as bool? ?? false,
     wcCuvetteTropHaute: json['wcCuvetteTropHaute'] as bool? ?? false,
     wcCuvetteHauteur: (json['wcCuvetteHauteur'] as num?)?.toDouble(),
-    wcBarreRelevement: json['wcBarreRelevement'] as bool? ?? false,
+    wcBarreRelevement: json['wcBarreRelevement'] as bool?,
     porteWcLargeurSuffisante: json['porteWcLargeurSuffisante'] as bool?,
     porteWcDimension: (json['porteWcDimension'] as num?)?.toDouble(),
     porteWcSensAdapte: json['porteWcSensAdapte'] as bool?,
