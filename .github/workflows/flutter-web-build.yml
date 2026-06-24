@@ -84,11 +84,15 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker build -f Dockerfile.web \
-            -t "$IMAGE_NAME:$IMAGE_TAG" \
-            -t "$IMAGE_NAME:${{ github.sha }}" \
-            .
-          docker push "$IMAGE_NAME:$IMAGE_TAG"
+          tags=(-t "$IMAGE_NAME:latest" -t "$IMAGE_NAME:${{ github.sha }}")
+          if [ "$IMAGE_TAG" != "latest" ]; then
+            tags+=(-t "$IMAGE_NAME:$IMAGE_TAG")
+          fi
+          docker build -f Dockerfile.web "${tags[@]}" .
+          docker push "$IMAGE_NAME:latest"
+          if [ "$IMAGE_TAG" != "latest" ]; then
+            docker push "$IMAGE_NAME:$IMAGE_TAG"
+          fi
           docker push "$IMAGE_NAME:${{ github.sha }}"
 
       - name: Trigger Easypanel web staging
