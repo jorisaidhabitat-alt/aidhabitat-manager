@@ -7,6 +7,7 @@ const rateLimitBuckets = new Map();
 
 const FEEDBACK_WINDOW_MS = 60 * 60 * 1000;
 const FEEDBACK_MAX_PER_WINDOW = 12;
+const FEEDBACK_SMTP_TIMEOUT_MS = 9000;
 
 const clean = (value, max = 2000) => String(value || '').trim().slice(0, max);
 
@@ -103,6 +104,25 @@ const checkRateLimit = (req) => {
   return bucket.count <= FEEDBACK_MAX_PER_WINDOW;
 };
 
+const sendMailWithTimeout = async (transporter, payload) => {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      transporter.sendMail(payload),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const error = new Error('Feedback SMTP timeout');
+          error.code = 'FEEDBACK_SMTP_TIMEOUT';
+          reject(error);
+        }, FEEDBACK_SMTP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    transporter.close();
+  }
+};
+
 const optionalUser = async (req) => {
   try {
     const user = await resolveSessionUser(req);
@@ -189,7 +209,7 @@ router.post('/api/feedback', async (req, res, next) => {
     });
 
     try {
-      await transporter.sendMail({
+      await sendMailWithTimeout(transporter, {
         from: config.from,
         to: config.to,
         replyTo: senderEmail || undefined,
