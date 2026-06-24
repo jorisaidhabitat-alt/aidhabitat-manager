@@ -5,6 +5,7 @@ import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
 import express from 'express';
+import feedbackRouter from './routes/feedback.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
 import multer from 'multer';
@@ -8351,6 +8352,8 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
     next(error);
   }
 });
+
+app.use(feedbackRouter);
 
 app.use((error, _req, res, _next) => {
   console.error('[nocodb-api]', error);
