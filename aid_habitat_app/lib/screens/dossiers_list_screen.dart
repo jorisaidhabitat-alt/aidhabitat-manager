@@ -82,13 +82,11 @@ bool _isVisitInPast(Dossier d) {
 class DossiersListScreen extends StatefulWidget {
   final List<Dossier> dossiers;
   final Function(Dossier) onSelectDossier;
-  final VoidCallback? onCreateNew;
 
   const DossiersListScreen({
     super.key,
     required this.dossiers,
     required this.onSelectDossier,
-    this.onCreateNew,
   });
 
   @override
@@ -393,7 +391,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
                   ],
                 ),
               ),
-              if (widget.onCreateNew != null) _buildNewDossierButton(),
             ],
           ),
           const SizedBox(height: 24),
@@ -583,36 +580,6 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   // ---------------------------------------------------------------------------
   // Header bits
   // ---------------------------------------------------------------------------
-
-  Widget _buildNewDossierButton() {
-    // Refonte 2026-05-13 : radius pill complet (999) au lieu de 16.
-    return Material(
-      color: kBrandPurple,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: widget.onCreateNew,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(LucideIcons.plus, size: 18, color: Colors.white),
-              const SizedBox(width: 8),
-              Text(
-                'Nouveau dossier',
-                style: GoogleFonts.nunito(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildSearchField() {
     return Container(

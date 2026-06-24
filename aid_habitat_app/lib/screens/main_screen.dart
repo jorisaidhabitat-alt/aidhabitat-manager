@@ -6,7 +6,6 @@ import '../components/report_generation_overlay.dart';
 import '../components/sidebar.dart';
 import '../components/soft_transitions.dart';
 import 'anah_screen.dart';
-import 'create_beneficiary_screen.dart';
 import 'dashboard_screen.dart';
 import 'documents_screen.dart';
 import 'dossiers_list_screen.dart';
@@ -355,39 +354,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _handleCreateNew() {
-    FeedbackActivityService.instance.track('Ouverture création dossier');
-    _pushHistory();
-    setState(() => _activeView = 'create_beneficiary');
-  }
-
-  Future<void> _handleBeneficiaryCreated(BeneficiaryDraft draft) async {
-    final ergoId = widget.currentUser.ergoLabel ?? '';
-    final dossier = await _dataService.createDossierOffline(
-      firstName: draft.firstName,
-      lastName: draft.lastName,
-      ergoId: ergoId,
-      natureAccompagnement: draft.natureAccompagnement,
-      numberPeople: draft.numberPeople,
-      fiscalRevenue: draft.fiscalRevenue,
-      address: draft.address,
-      city: draft.city,
-      zipCode: draft.zipCode,
-    );
-
-    // Refresh the dossier list and navigate to the new dossier.
-    await _refreshDossiers();
-    if (!mounted) return;
-
-    // Trigger a sync attempt for the newly created dossier.
-    _syncEngine.requestSync();
-
-    setState(() {
-      _selectedDossier = dossier;
-      _activeView = 'dossier_detail';
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return ReportGenerationOverlay(
@@ -510,8 +476,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         return 'Relevé de visite';
       case 'documents':
         return 'Espace documents';
-      case 'create_beneficiary':
-        return 'Création dossier';
       case 'wiki':
         return 'Bibliothèque';
       case 'precos':
@@ -805,16 +769,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             });
           },
         );
-      case 'create_beneficiary':
-        return CreateBeneficiaryScreen(
-          onCreated: _handleBeneficiaryCreated,
-          onCancel: () => _handleViewChange('dossiers'),
-        );
       case 'dossiers':
         return DossiersListScreen(
           dossiers: _dossiers,
           onSelectDossier: _handleSelectDossier,
-          onCreateNew: _handleCreateNew,
         );
       case 'wiki':
         return const WikiScreen();
