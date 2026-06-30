@@ -259,7 +259,7 @@ function mapLegacyPageIndexToFlat2026(legacyPageIndex) {
 }
 
 function flat2026FieldFontSize(fieldName, rect) {
-  if (RECO_TEXT_FIELDS.includes(fieldName)) return 10.8;
+  if (RECO_TEXT_FIELDS.includes(fieldName)) return 11;
   if (['Environnement', 'Habitudes', 'Observations1'].includes(fieldName)) return 9.5;
   if (fieldName === 'Text1') return 13;
   if (fieldName === 'Caisse de retraite complémentaire') return 8.5;
@@ -607,6 +607,28 @@ function formatHeightCm(value) {
   return `${n} cm`;
 }
 
+function pluralizeFrenchRoomLabel(label) {
+  const raw = String(label || '').trim();
+  if (!raw) return '';
+  if (/^(wc|sdb)$/i.test(raw)) return raw.toUpperCase();
+  if (/[sx]$/i.test(raw)) return raw;
+  return `${raw}s`;
+}
+
+function formatRepeatedPieceCounts(text) {
+  return String(text || '')
+    .replace(/\b([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’_-]*?)\s*(\d+)\b/g, (match, label, count) => {
+      const n = Number(count);
+      if (!Number.isInteger(n) || n <= 1) return match;
+      return `${n} ${pluralizeFrenchRoomLabel(label)}`;
+    })
+    .replace(/\b(\d+)\s*([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’_-]*?)\b/g, (match, count, label) => {
+      const n = Number(count);
+      if (!Number.isInteger(n) || n <= 1) return match;
+      return `${n} ${pluralizeFrenchRoomLabel(label)}`;
+    });
+}
+
 /** Pareil pour des mm/cm de largeur de porte. */
 function formatWidthCm(value) {
   if (value == null || value === '') return '';
@@ -825,9 +847,9 @@ function buildViewModel({
     floor: Boolean(housing.floor),
     secondFloor: Boolean(housing.secondFloor),
     thirdFloor: Boolean(housing.thirdFloor),
-    basementDesc: String(housing.basementDesc || '').trim(),
-    rdcDesc: String(housing.rdcDesc || '').trim(),
-    floorDesc: String(housing.floorDesc || '').trim(),
+    basementDesc: formatRepeatedPieceCounts(housing.basementDesc).trim(),
+    rdcDesc: formatRepeatedPieceCounts(housing.rdcDesc).trim(),
+    floorDesc: formatRepeatedPieceCounts(housing.floorDesc).trim(),
     garage: Boolean(housing.garage),
     veranda: Boolean(housing.veranda),
     balcon: Boolean(housing.balcon),
@@ -944,8 +966,8 @@ function buildViewModel({
     const bathHeight = formatHeightCm(item?.sdbBaignoireHauteur);
     const showerHeight = formatHeightCm(item?.sdbBacDoucheHauteur);
     const heights = [];
-    if (item?.sdbBaignoire && bathHeight) heights.push(`Baignoire : ${bathHeight}`);
-    if (item?.sdbBacDouche && showerHeight) heights.push(`Douche : ${showerHeight}`);
+    if (item?.sdbBaignoire && bathHeight) heights.push(bathHeight);
+    if (item?.sdbBacDouche && showerHeight) heights.push(showerHeight);
     if (heights.length === 0) {
       if (bathHeight) heights.push(bathHeight);
       else if (showerHeight) heights.push(showerHeight);
@@ -2771,8 +2793,8 @@ async function drawFlat2026Sanitaires({ pdfDoc, view }) {
       yTop: 716,
       width: 500,
       font: regular,
-      fontSize: 10,
-      lineHeight: 13,
+      fontSize: 11,
+      lineHeight: 13.5,
       maxLines: 29,
     });
     drawWrappedText(page7, view?.observations?.projetSouhaitUsage || '', {
@@ -2780,8 +2802,8 @@ async function drawFlat2026Sanitaires({ pdfDoc, view }) {
       yTop: 258,
       width: 500,
       font: regular,
-      fontSize: 10,
-      lineHeight: 13,
+      fontSize: 11,
+      lineHeight: 13.5,
       maxLines: 15,
     });
   }
@@ -2793,8 +2815,8 @@ async function drawFlat2026Sanitaires({ pdfDoc, view }) {
       yTop: 760,
       width: 500,
       font: regular,
-      fontSize: 10,
-      lineHeight: 13,
+      fontSize: 11,
+      lineHeight: 13.5,
       maxLines: 52,
     });
   }
@@ -2807,12 +2829,12 @@ async function drawFlat2026Logement({ pdfDoc, view }) {
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   if (heatingSummary) {
     drawWrappedText(page, heatingSummary, {
-      x: 230,
-      yTop: 485,
-      width: 320,
+      x: 166,
+      yTop: 489,
+      width: 385,
       font: regular,
-      fontSize: 10.5,
-      lineHeight: 13,
+      fontSize: 11,
+      lineHeight: 13.5,
       maxLines: 3,
     });
   }
@@ -3214,6 +3236,7 @@ export async function generateVisitReport({
   const flat2026AidSummaryPage = isFlat2026Template
     ? pdfDoc.getPage(FLAT_2026_AID_SUMMARY_PAGE_INDEX)
     : null;
+  const flat2026AidSummaryPageRef = flat2026AidSummaryPage?.ref || null;
   const flat2026ExtraStaticRecoPageRef = isFlat2026Template
     ? pdfDoc.getPage(FLAT_2026_EXTRA_STATIC_RECO_PAGE_INDEX).ref
     : null;
@@ -3305,9 +3328,13 @@ export async function generateVisitReport({
     nudgeFieldRect({ fieldsByName, fieldName, dy: -2 });
   }
   for (const fieldName of [
-    // Bénéficiaire — date de naissance (un peu moins descendu)
+    // Bénéficiaire — dates de naissance légèrement remontées.
     'date de naissance',
     'date de naissance mme',
+  ]) {
+    nudgeFieldRect({ fieldsByName, fieldName, dy: 1 });
+  }
+  for (const fieldName of [
     // Reconnaissance d'invalidité (MDPH)
     'MDPH',
     // Coordonnées de l'usager (page 1) — un peu moins descendus
@@ -3730,9 +3757,13 @@ export async function generateVisitReport({
   // prévisionnelles" — pareil, AVANT toute removePage et AVANT flatten
   // (les widgets sont consommés par flatten).
   let descriptifPageIdx = -1;
-  const descriptifAnchor =
-    fieldsByName.get('Caisse de retraite complémentaire');
-  descriptifPageIdx = findPageIndexForField(pdfDoc, descriptifAnchor);
+  if (isFlat2026Template) {
+    descriptifPageIdx = findCurrentPageIndexByRef(pdfDoc, flat2026AidSummaryPageRef);
+  } else {
+    const descriptifAnchor =
+      fieldsByName.get('Caisse de retraite complémentaire');
+    descriptifPageIdx = findPageIndexForField(pdfDoc, descriptifAnchor);
+  }
 
   // (Plus d'overlay page 1 — l'adresse est désormais correcte dans
   // le PDF source Affinity directement, plus besoin de patcher.)
@@ -3821,11 +3852,11 @@ export async function generateVisitReport({
   }
 
   // ---------------------------------------------------------------
-  // Remontée du "Descriptif des aides prévisionnelles" désactivée.
-  // Elle faisait fuir la valeur de caisse complémentaire (ex. "/ Klesia
-  // Retraite sous conditions*") dans la page "Détails des préconisations".
-  // Le descriptif reste donc sur sa page dédiée, où ces informations ont
-  // leur place métier.
+  // Remontée du "Descriptif des aides prévisionnelles" uniquement quand
+  // le nombre de préconisations est impair. Dans ce cas, la dernière
+  // page préco contient une seule case TOP remplie et une moitié BOT
+  // libre : on y place le descriptif pour éviter une page quasi vide.
+  // Les cas pairs restent sur une page dédiée au descriptif.
   //
   // Méthode :
   //   1. On localise dynamiquement la page descriptif via un de ses
@@ -3838,7 +3869,8 @@ export async function generateVisitReport({
   //   4. removePage de la page descriptif d'origine pour ne pas la
   //      voir apparaître deux fois.
   // ---------------------------------------------------------------
-  const shouldMergeDescriptifWithRecoPage = false;
+  const shouldMergeDescriptifWithRecoPage =
+      isFlat2026Template && recoCount > 0 && recoCount % 2 === 1;
   if (shouldMergeDescriptifWithRecoPage && pendingBotCovers.length === 1 && descriptifPageIdx !== -1) {
     try {
       const descriptifPage = pdfDoc.getPage(descriptifPageIdx);
