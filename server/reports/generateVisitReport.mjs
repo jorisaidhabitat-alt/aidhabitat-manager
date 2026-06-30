@@ -611,12 +611,29 @@ function pluralizeFrenchRoomLabel(label) {
   const raw = String(label || '').trim();
   if (!raw) return '';
   if (/^(wc|sdb)$/i.test(raw)) return raw.toUpperCase();
-  if (/[sx]$/i.test(raw)) return raw;
-  return `${raw}s`;
+  const lowerInitial = raw.charAt(0).toLocaleLowerCase('fr-FR') + raw.slice(1);
+  if (/[sx]$/i.test(lowerInitial)) return lowerInitial;
+  return `${lowerInitial}s`;
 }
+
+const SUPERSCRIPT_COUNTS = new Map([
+  ['²', 2],
+  ['³', 3],
+  ['⁴', 4],
+]);
 
 function formatRepeatedPieceCounts(text) {
   return String(text || '')
+    .replace(/\b([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’_-]*?)\s*([²³⁴])/g, (match, label, exponent) => {
+      const n = SUPERSCRIPT_COUNTS.get(exponent);
+      if (!n || n <= 1) return match;
+      return `${n} ${pluralizeFrenchRoomLabel(label)}`;
+    })
+    .replace(/\b([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’_-]*?)\s*(?:x|×|:)\s*(\d+)\b/gi, (match, label, count) => {
+      const n = Number(count);
+      if (!Number.isInteger(n) || n <= 1) return match;
+      return `${n} ${pluralizeFrenchRoomLabel(label)}`;
+    })
     .replace(/\b([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’_-]*?)\s*(\d+)\b/g, (match, label, count) => {
       const n = Number(count);
       if (!Number.isInteger(n) || n <= 1) return match;
@@ -627,6 +644,29 @@ function formatRepeatedPieceCounts(text) {
       if (!Number.isInteger(n) || n <= 1) return match;
       return `${n} ${pluralizeFrenchRoomLabel(label)}`;
     });
+}
+
+function formatRoomListWithCounts(rooms) {
+  if (!Array.isArray(rooms) || rooms.length === 0) return '';
+  const entries = new Map();
+  for (const room of rooms) {
+    const label = String(room || '').trim();
+    if (!label) continue;
+    const key = label.toLocaleLowerCase('fr-FR');
+    const current = entries.get(key) || { label, count: 0 };
+    current.count += 1;
+    entries.set(key, current);
+  }
+  return [...entries.values()]
+    .map(({ label, count }) => (
+      count <= 1 ? label : `${count} ${pluralizeFrenchRoomLabel(label)}`
+    ))
+    .join(', ');
+}
+
+function formatLevelRoomsDescription(housing, levelKey, fallback) {
+  const fromRooms = formatRoomListWithCounts(housing?.roomsBreakdown?.[levelKey]);
+  return (fromRooms || formatRepeatedPieceCounts(fallback)).trim();
 }
 
 /** Pareil pour des mm/cm de largeur de porte. */
@@ -847,9 +887,9 @@ function buildViewModel({
     floor: Boolean(housing.floor),
     secondFloor: Boolean(housing.secondFloor),
     thirdFloor: Boolean(housing.thirdFloor),
-    basementDesc: formatRepeatedPieceCounts(housing.basementDesc).trim(),
-    rdcDesc: formatRepeatedPieceCounts(housing.rdcDesc).trim(),
-    floorDesc: formatRepeatedPieceCounts(housing.floorDesc).trim(),
+    basementDesc: formatLevelRoomsDescription(housing, 'basement', housing.basementDesc),
+    rdcDesc: formatLevelRoomsDescription(housing, 'rdc', housing.rdcDesc),
+    floorDesc: formatLevelRoomsDescription(housing, 'floor', housing.floorDesc),
     garage: Boolean(housing.garage),
     veranda: Boolean(housing.veranda),
     balcon: Boolean(housing.balcon),
