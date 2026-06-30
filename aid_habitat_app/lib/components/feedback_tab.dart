@@ -30,8 +30,8 @@ class _FeedbackTabState extends State<FeedbackTab> {
 
   static const List<String> _types = [
     'Bug',
-    'Difficulté terrain',
-    'Idée / amélioration',
+    'Difficulté',
+    'Idée',
   ];
 
   @override
@@ -89,10 +89,12 @@ class _FeedbackTabState extends State<FeedbackTab> {
   Widget build(BuildContext context) {
     final isCompact = MediaQuery.sizeOf(context).width < 760;
     final panelWidth = isCompact ? 330.0 : 390.0;
+    final availableHeight = MediaQuery.sizeOf(context).height - 36;
+    final panelHeight = availableHeight.clamp(300.0, isCompact ? 340.0 : 350.0);
 
     return SizedBox(
       width: panelWidth,
-      height: 390,
+      height: panelHeight,
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.bottomRight,
@@ -144,9 +146,6 @@ class _FeedbackTabState extends State<FeedbackTab> {
           onTap: () {
             FeedbackActivityService.instance.track('Ouverture du signalement');
             setState(() => _open = true);
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _messageFocus.requestFocus();
-            });
           },
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -173,7 +172,6 @@ class _FeedbackTabState extends State<FeedbackTab> {
   }
 
   Widget _buildPanel(BuildContext context, double width) {
-    final snapshot = widget.contextSnapshot();
     return Material(
       key: const ValueKey('panel'),
       color: Colors.white,
@@ -258,36 +256,42 @@ class _FeedbackTabState extends State<FeedbackTab> {
                   ),
               ],
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _messageController,
-              focusNode: _messageFocus,
-              enabled: !_sending,
-              minLines: 4,
-              maxLines: 6,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: 'Décris le bug, la difficulté ou l’idée…',
-                filled: true,
-                fillColor: const Color(0xFFFDFCFB),
-                hintStyle: const TextStyle(fontSize: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Color(0xFFE7DDEE)),
+            const SizedBox(height: 8),
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                focusNode: _messageFocus,
+                enabled: !_sending,
+                expands: true,
+                minLines: null,
+                maxLines: null,
+                textInputAction: TextInputAction.newline,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: InputDecoration(
+                  hintText: 'Décris le bug, la difficulté ou l’idée…',
+                  filled: true,
+                  fillColor: const Color(0xFFFDFCFB),
+                  hintStyle: const TextStyle(fontSize: 14),
+                  contentPadding: const EdgeInsets.all(14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Color(0xFFE7DDEE)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Color(0xFFE7DDEE)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: kBrandPurple,
+                      width: 1.3,
+                    ),
+                  ),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Color(0xFFE7DDEE)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: kBrandPurple, width: 1.3),
-                ),
+                style: const TextStyle(fontSize: 14),
               ),
-              style: const TextStyle(fontSize: 14),
             ),
-            const SizedBox(height: 10),
-            _ContextPreview(snapshot: snapshot),
             if (_status != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -324,39 +328,6 @@ class _FeedbackTabState extends State<FeedbackTab> {
                   : const Text('Envoyer'),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ContextPreview extends StatelessWidget {
-  const _ContextPreview({required this.snapshot});
-
-  final FeedbackContextSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = [
-      snapshot.page,
-      if (snapshot.dossierName.trim().isNotEmpty) snapshot.dossierName,
-      if (snapshot.section.trim().isNotEmpty) snapshot.section,
-    ].where((part) => part.trim().isNotEmpty).join(' • ');
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F6F3),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Text(
-        parts.isEmpty ? 'Contexte détecté automatiquement' : parts,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Color(0xFF64748B),
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
         ),
       ),
     );
