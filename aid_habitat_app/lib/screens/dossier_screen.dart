@@ -965,6 +965,7 @@ class _DossierScreenState extends State<DossierScreen> {
                       // corriger une commune mal résolue sans repasser
                       // par le relevé de visite.
                       showZipField: true,
+                      zipLabel: 'Code postal',
                       labelColor: kBrandPurple,
                       labelSize: 14,
                       valueSize: 14,
@@ -981,6 +982,32 @@ class _DossierScreenState extends State<DossierScreen> {
                         _scheduleSave();
                       },
                     ),
+                    if (_hasCityInfo()) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Communauté de communes',
+                        style: GoogleFonts.nunito(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: kBrandPurple,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (epciLabel.isNotEmpty)
+                        EpciBadge(label: epciLabel, large: true)
+                      else if (!_references.isLoaded)
+                        const _EpciBadgeSkeleton()
+                      else
+                        const Text(
+                          '—',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF8A939D),
+                          ),
+                        ),
+                    ],
                     // "Commentaire du projet" retiré — déplacé vers la
                     // note rapide en haut à droite (demande utilisateur).
                   ],
@@ -1038,16 +1065,25 @@ class _DossierScreenState extends State<DossierScreen> {
     final lowerCity = city.trim().toLowerCase();
     final trimmedZip = zipCode.trim();
 
-    // 1. cityId exact
+    // Si un code postal est saisi, il doit pouvoir corriger une ancienne
+    // commune/id commune obsolète : on n'accepte cityId/ville que s'ils
+    // restent cohérents avec ce CP.
+    bool zipMatches(CommuneOption c) {
+      return trimmedZip.isEmpty || c.zipCode == trimmedZip;
+    }
+
+    // 1. cityId exact et cohérent avec le CP courant
     if (trimmedId.isNotEmpty) {
       for (final c in _communeOptions) {
-        if (c.id == trimmedId) return (c.epciLabel ?? '').trim();
+        if (c.id == trimmedId && zipMatches(c)) {
+          return (c.epciLabel ?? '').trim();
+        }
       }
     }
-    // 2. nom de ville (insensible à la casse)
+    // 2. nom de ville (insensible à la casse) cohérent avec le CP courant
     if (lowerCity.isNotEmpty) {
       for (final c in _communeOptions) {
-        if (c.label.toLowerCase() == lowerCity) {
+        if (c.label.toLowerCase() == lowerCity && zipMatches(c)) {
           return (c.epciLabel ?? '').trim();
         }
       }

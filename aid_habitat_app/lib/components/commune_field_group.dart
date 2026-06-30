@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'brand_colors.dart';
 
@@ -82,7 +83,9 @@ class CommuneFieldGroup extends StatefulWidget {
 
 class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
   late final TextEditingController _cityCtrl;
+  late final TextEditingController _zipCtrl;
   late final FocusNode _focusNode;
+  late final FocusNode _zipFocusNode;
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlay;
 
@@ -90,7 +93,9 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
   void initState() {
     super.initState();
     _cityCtrl = TextEditingController(text: widget.city);
+    _zipCtrl = TextEditingController(text: widget.zipCode);
     _focusNode = FocusNode();
+    _zipFocusNode = FocusNode();
     _focusNode.addListener(_onFocusChange);
   }
 
@@ -100,6 +105,9 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
     if (widget.city != _cityCtrl.text && !_focusNode.hasFocus) {
       _cityCtrl.text = widget.city;
     }
+    if (widget.zipCode != _zipCtrl.text && !_zipFocusNode.hasFocus) {
+      _zipCtrl.text = widget.zipCode;
+    }
   }
 
   @override
@@ -107,7 +115,9 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
     _removeOverlay();
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
+    _zipFocusNode.dispose();
     _cityCtrl.dispose();
+    _zipCtrl.dispose();
     super.dispose();
   }
 
@@ -181,7 +191,9 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
                       onTap: () => _pick(option),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         color: selected
                             ? const Color(0xFFEDE8F5)
                             : Colors.transparent,
@@ -240,12 +252,43 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
 
   void _pick(CommuneOption option) {
     _cityCtrl.text = option.label;
-    widget.onChanged(CommuneUpdate(
-      cityId: option.id,
-      city: option.label,
-      zipCode: option.zipCode,
-    ));
+    _zipCtrl.text = option.zipCode;
+    widget.onChanged(
+      CommuneUpdate(
+        cityId: option.id,
+        city: option.label,
+        zipCode: option.zipCode,
+      ),
+    );
     _focusNode.unfocus();
+  }
+
+  void _handleZipChanged(String typed) {
+    final zip = typed.trim();
+    if (zip.isEmpty) {
+      _cityCtrl.clear();
+      widget.onChanged(const CommuneUpdate(city: '', zipCode: '', cityId: ''));
+      return;
+    }
+
+    final exactMatches = widget.options.where((o) => o.zipCode == zip).toList();
+    if (exactMatches.length == 1) {
+      final option = exactMatches.first;
+      _cityCtrl.text = option.label;
+      widget.onChanged(
+        CommuneUpdate(
+          cityId: option.id,
+          city: option.label,
+          zipCode: option.zipCode,
+        ),
+      );
+      return;
+    }
+
+    // Plusieurs communes peuvent partager un CP. On conserve la ville
+    // saisie, mais on vide l'ancien cityId pour éviter qu'un id obsolète
+    // masque la résolution EPCI par code postal côté parent.
+    widget.onChanged(CommuneUpdate(zipCode: zip, cityId: ''));
   }
 
   // ----- Build -----
@@ -289,16 +332,26 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
         ),
         SizedBox(height: widget.labelSpacing ?? 6),
         TextFormField(
-          initialValue: widget.zipCode,
-          readOnly: true,
+          controller: _zipCtrl,
+          focusNode: _zipFocusNode,
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(5),
+          ],
+          onChanged: _handleZipChanged,
           style: TextStyle(
-              fontSize: widget.valueSize ?? 13, color: Color(0xFF2B323A)),
+            fontSize: widget.valueSize ?? 13,
+            color: Color(0xFF2B323A),
+          ),
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF7F7FA),
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 10,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(color: Color(0xFFB9C0C7)),
@@ -334,10 +387,12 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
             onChanged: (typed) {
               if (typed.isEmpty) {
                 widget.onChanged(
-                    const CommuneUpdate(city: '', zipCode: '', cityId: ''));
+                  const CommuneUpdate(city: '', zipCode: '', cityId: ''),
+                );
               } else {
                 widget.onChanged(
-                    CommuneUpdate(city: typed, zipCode: '', cityId: ''));
+                  CommuneUpdate(city: typed, zipCode: '', cityId: ''),
+                );
                 // Exact match auto-select
                 final target = _normalize(typed);
                 final exact = widget.options
@@ -346,11 +401,13 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
                 if (exact.length == 1 && typed == typed.trim()) {
                   final sel = exact.first;
                   _cityCtrl.text = sel.label;
-                  widget.onChanged(CommuneUpdate(
-                    cityId: sel.id,
-                    city: sel.label,
-                    zipCode: sel.zipCode,
-                  ));
+                  widget.onChanged(
+                    CommuneUpdate(
+                      cityId: sel.id,
+                      city: sel.label,
+                      zipCode: sel.zipCode,
+                    ),
+                  );
                 }
               }
               _refreshOverlay();
@@ -358,8 +415,10 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
             style: TextStyle(fontSize: widget.valueSize ?? 13),
             decoration: InputDecoration(
               isDense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 10,
+              ),
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(
@@ -372,8 +431,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide:
-                    const BorderSide(color: kBrandPurple, width: 1.5),
+                borderSide: const BorderSide(color: kBrandPurple, width: 1.5),
               ),
             ),
           ),

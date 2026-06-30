@@ -26,8 +26,8 @@ const Color _kToolbarHoverBg = Color(0xFFF2F4F6);
 const double _kDefaultEraserSize = 18.0;
 const List<double> _kEraserSizePresets = <double>[8.0, 18.0, 44.0];
 const int _kDefaultHighlighterColor = 0xFFFDE047;
-const double _kDefaultHighlighterSize = 6.0;
-const List<double> _kHighlighterSizePresets = <double>[4.0, 8.0, 14.0];
+const double _kDefaultHighlighterSize = 10.0;
+const List<double> _kHighlighterSizePresets = <double>[10.0, 16.0, 24.0];
 
 // ---------------------------------------------------------------------------
 // Stroke model
@@ -270,15 +270,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   Timer? _saveTimer;
   bool _loaded = false;
 
-  static const List<int> _penPresetColors = [
-    0xFF1A1A1A,
-    0xFFE53E3E,
-    0xFF2B6CB0,
-    0xFF2F855A,
-    0xFFD69E2E,
-  ];
-
-  static const List<int> _highlighterPresetColors = [
+  static const List<int> _colorPresets = [
     0xFF111827,
     0xFFDC2626,
     0xFFEA580C,
@@ -924,17 +916,16 @@ class _PlanCanvasState extends State<PlanCanvas> {
   }
 
   /// Toolbar principale. Ordre :
-  ///   [Crayon][Surligneur][Gomme][Ligne][Rect] [Couleur]
+  ///   [Crayon][Gomme][Surligneur][Ligne] [Couleur]
   ///   [Undo][Redo][Effacer tout]
   /// Style volontairement aligné sur la barre Mesures (NotesWidget) :
   /// pill blanc, boutons 36×36, actif violet clair, icônes ink-700.
   Widget _buildPlanToolbar() {
     final buttons = <Widget>[
       _toolBtn(PlanTool.pen, LucideIcons.pencil, 'Crayon'),
-      _highlighterToolBtn(),
       _eraserToolBtn(),
+      _highlighterToolBtn(),
       _toolBtn(PlanTool.line, LucideIcons.minus, 'Ligne'),
-      _toolBtn(PlanTool.rect, LucideIcons.square, 'Rectangle'),
       _buildActiveColorDot(),
       _iconBtn(
         icon: LucideIcons.undo2,
@@ -951,9 +942,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
         tooltip: 'Effacer tout le plan',
         onTap: _strokes.isEmpty ? null : _clearAll,
         activeColor: const Color(0xFFB4232F),
-        backgroundColor: _strokes.isEmpty
-            ? const Color(0xFFFFF1F2)
-            : const Color(0xFFFFE4E6),
+        backgroundColor: const Color(0xFFFFE4E6),
       ),
     ];
     return Row(
@@ -1013,7 +1002,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 0; i < buttons.length; i++) ...[
-              if (i > 0) const SizedBox(width: 8),
+              if (i > 0) const SizedBox(width: 18),
               buttons[i],
             ],
           ],
@@ -1323,9 +1312,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     final activeColor = _tool == PlanTool.highlighter
         ? _highlighterColor
         : _penColor;
-    final presets = _tool == PlanTool.highlighter
-        ? _highlighterPresetColors
-        : _penPresetColors;
+    final presets = _colorPresets;
     final ctx = _colorDotKey.currentContext;
     if (ctx == null) return;
     final box = ctx.findRenderObject() as RenderBox;
@@ -2443,17 +2430,7 @@ class _DrawPainter extends CustomPainter {
 
   /// Élément libre : rectangle manipulable comme les autres équipements.
   static void _paintFreeElementLocal(Canvas canvas, Rect r, Paint stroke) {
-    final fill = Paint()
-      ..color = stroke.color.withValues(alpha: 0.04)
-      ..style = PaintingStyle.fill;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(r, const Radius.circular(3)),
-      fill,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(r, const Radius.circular(3)),
-      stroke,
-    );
+    canvas.drawRect(r, stroke);
   }
 
   /// Porte : segment fixe du côté gauche + arc 90° indiquant l'ouverture.
