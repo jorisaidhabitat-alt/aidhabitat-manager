@@ -38,6 +38,20 @@ enum NoteToolbarPlacement { bottomCenter, topRight }
 /// États du bouton Save (label + animation).
 enum _SaveLabel { idle, saved, error }
 
+InputDecoration _noteTextDecoration(String placeholder) {
+  return InputDecoration(
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    errorBorder: InputBorder.none,
+    focusedErrorBorder: InputBorder.none,
+    hintText: placeholder,
+    hintStyle: const TextStyle(color: Color(0xFF5C6670)),
+    isCollapsed: true,
+  );
+}
+
 /// Payload émis par `onSave` (équivalent de `{ text, drawingJson, previewDataUrl }`).
 class NoteSavePayload {
   final String text;
@@ -90,6 +104,7 @@ const int _kDefaultPenColor = 0xff111827;
 const int _kDefaultHighlighterColor = 0xffFDE047; // yellow-300
 const double _kDefaultPenSize = 2.0;
 const double _kDefaultHighlighterSize = 10.0;
+const List<double> _kHighlighterSizePresets = <double>[10.0, 16.0, 24.0];
 const double _kDefaultEraserSize = 18.0;
 const double _kMinEraserSize = 8.0;
 const double _kMaxEraserSize = 44.0;
@@ -392,11 +407,13 @@ class _NotesWidgetState extends State<NotesWidget> {
   int _penColor = _kDefaultPenColor;
   int _highlighterColor = _kDefaultHighlighterColor;
   final double _penSize = _kDefaultPenSize;
-  final double _highlighterSize = _kDefaultHighlighterSize;
+  double _highlighterSize = _kDefaultHighlighterSize;
   double _eraserSize = _kDefaultEraserSize;
 
   // Stroke en cours
   Stroke? _activeStroke;
+  int? _activePointerId;
+  Timer? _drawInactivityTimer;
 
   // Undo / redo (bonus par rapport à React)
   final List<List<Stroke>> _undoStack = <List<Stroke>>[];
@@ -412,13 +429,18 @@ class _NotesWidgetState extends State<NotesWidget> {
   // Canvas
   Size _canvasSize = Size.zero;
 
+  bool get _isDrawingInProgress =>
+      _activePointerId != null || _activeStroke != null;
+
   // Outer container size (used to clamp the splitter).
   final GlobalKey _outerKey = GlobalKey();
 
   // UI pop-ups
   bool _showColorPalette = false;
   bool _showEraserSizeGauge = false;
+  bool _showHighlighterSizeGauge = false;
   final Object _eraserSizeTapRegion = Object();
+  final Object _highlighterSizeTapRegion = Object();
 
   // Text area height (splitter) — équivalent de `textAreaHeight` (default 92px).
   double _textAreaHeight = 92.0;
@@ -474,7 +496,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       if (at == null) return;
       if (_lastObservedSyncAt != null && at == _lastObservedSyncAt) return;
       _lastObservedSyncAt = at;
-      if (_isDirty) return; // ne casse pas une saisie en cours
+      if (_isDirty || _isDrawingInProgress || _textFocusNode.hasFocus) {
+        return; // ne casse pas une saisie en cours
+      }
       // Re-fetch remote la page courante. `refreshNotePageFromRemote`
       // met à jour SQLite ; on relit ensuite via fetchDrawingJson et on
       // applique. Best-effort, errors swallowed.
@@ -504,13 +528,23 @@ class _NotesWidgetState extends State<NotesWidget> {
         tabKey: widget.tabKey,
         pageNumber: _currentPage,
       );
-      if (!mounted || _isDirty) return;
+      if (!mounted ||
+          _isDirty ||
+          _isDrawingInProgress ||
+          _textFocusNode.hasFocus) {
+        return;
+      }
       final refreshed = await _dataService.fetchNoteDrawingJson(
         patientId: widget.patientId,
         tabKey: widget.tabKey,
         pageNumber: _currentPage,
       );
-      if (!mounted || _isDirty) return;
+      if (!mounted ||
+          _isDirty ||
+          _isDrawingInProgress ||
+          _textFocusNode.hasFocus) {
+        return;
+      }
       setState(
         () => _applyJson(_currentPage, refreshed, hydrateController: true),
       );
@@ -629,10 +663,14 @@ class _NotesWidgetState extends State<NotesWidget> {
       }
     }
     if (oldWidget.externalRefreshToken != widget.externalRefreshToken &&
-        !_isDirty) {
+        !_isDirty &&
+        !_isDrawingInProgress &&
+        !_textFocusNode.hasFocus) {
       _reloadCurrentPageFromStore();
     }
-    if (oldWidget.liveText != widget.liveText && widget.liveText != null) {
+    if (oldWidget.liveText != widget.liveText &&
+        widget.liveText != null &&
+        !_textFocusNode.hasFocus) {
       final incoming = widget.liveText!;
       if (_textController.text != incoming) {
         // Sync vrai instantané (demande utilisateur 2026-05-05 : « tout
@@ -676,7 +714,12 @@ class _NotesWidgetState extends State<NotesWidget> {
       tabKey: widget.tabKey,
       pageNumber: _currentPage,
     );
-    if (!mounted || _isDirty) return;
+    if (!mounted ||
+        _isDirty ||
+        _isDrawingInProgress ||
+        _textFocusNode.hasFocus) {
+      return;
+    }
     setState(() => _applyJson(_currentPage, json, hydrateController: true));
   }
 
@@ -709,6 +752,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     };
 
     _autoSaveDebounce?.cancel();
+    _drawInactivityTimer?.cancel();
     if (shouldFlushDirtyDraft) {
       unawaited(
         _persistDirtyDraftOnDispose(
@@ -1259,6 +1303,10 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   Future<void> _autoSavePersist() async {
     if (!mounted) return;
+    if (_isDrawingInProgress) {
+      _scheduleAutoSave();
+      return;
+    }
     try {
       if (widget.sharedText) {
         await _persistSharedTextAcrossPages();
@@ -1414,50 +1462,82 @@ class _NotesWidgetState extends State<NotesWidget> {
         local.dy <= _canvasSize.height;
   }
 
-  void _onDrawStart(DragStartDetails details) {
+  void _scheduleDrawInactivityCommit() {
+    _drawInactivityTimer?.cancel();
+    _drawInactivityTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted || !_isDrawingInProgress) return;
+      _commitActiveStroke();
+    });
+  }
+
+  void _cancelDrawInactivityCommit() {
+    _drawInactivityTimer?.cancel();
+    _drawInactivityTimer = null;
+  }
+
+  void _onDrawStart(PointerDownEvent event) {
     if (_canvasSize.isEmpty) return;
-    if (!_isInsideCanvas(details.localPosition)) return;
+    if (!_isInsideCanvas(event.localPosition)) return;
+    _commitActiveStroke();
     _pushUndo();
     setState(() {
+      _activePointerId = event.pointer;
       if (_activeTool == NoteTool.eraser) _showEraserSizeGauge = false;
+      if (_activeTool == NoteTool.highlighter) {
+        _showHighlighterSizeGauge = false;
+      }
       _activeStroke = Stroke(
         tool: _activeTool,
         color: _activeColor,
         size: _activeSize,
-        points: <Offset>[_normalize(details.localPosition)],
+        points: <Offset>[_normalize(event.localPosition)],
       );
     });
+    _scheduleDrawInactivityCommit();
   }
 
-  void _onDrawUpdate(DragUpdateDetails details) {
+  void _onDrawUpdate(PointerMoveEvent event) {
     if (_canvasSize.isEmpty) return;
+    if (_activePointerId != event.pointer) return;
     final stroke = _activeStroke;
     if (stroke == null) return;
-    // Ignorer les positions hors cadre : sinon le clamp de `_normalize`
-    // ajoute un point fixé sur la bordure (ligne parasite) et peut
-    // déclencher un payload rejeté par le serveur (erreur 500).
-    if (!_isInsideCanvas(details.localPosition)) return;
+    final nextPoint = _normalize(event.localPosition);
     setState(() {
       if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
         if (stroke.points.length == 1) {
-          stroke.points.add(_normalize(details.localPosition));
+          stroke.points.add(nextPoint);
         } else {
-          stroke.points[1] = _normalize(details.localPosition);
+          stroke.points[1] = nextPoint;
         }
       } else if (stroke.points.length < 2000) {
-        stroke.points.add(_normalize(details.localPosition));
+        stroke.points.add(nextPoint);
       }
     });
+    _scheduleDrawInactivityCommit();
   }
 
-  void _onDrawEnd(DragEndDetails details) {
+  void _onDrawEnd(PointerEvent event) {
+    if (_activePointerId != event.pointer) return;
+    _commitActiveStroke();
+  }
+
+  void _commitActiveStroke({bool markDirty = true}) {
     final stroke = _activeStroke;
-    if (stroke == null) return;
+    _cancelDrawInactivityCommit();
+    if (stroke == null) {
+      if (_activePointerId != null && mounted) {
+        setState(() => _activePointerId = null);
+      } else {
+        _activePointerId = null;
+      }
+      return;
+    }
     setState(() {
       _strokes.add(stroke);
       _activeStroke = null;
+      _activePointerId = null;
     });
-    _markDirty();
+    if (markDirty) _markDirty();
   }
 
   // Distance entre un point [p] et le segment [a, b] — projection
@@ -2066,18 +2146,21 @@ class _NotesWidgetState extends State<NotesWidget> {
                     child: TextField(
                       controller: _textController,
                       focusNode: _textFocusNode,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
                       maxLines: null,
                       expands: true,
                       textAlignVertical: TextAlignVertical.top,
                       style: const TextStyle(fontSize: 14),
                       // Scribble (Apple Pencil) — écriture directe sur iPad.
                       stylusHandwritingEnabled: true,
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: widget.placeholder,
-                        hintStyle: TextStyle(color: Color(0xFF5C6670)),
-                        isCollapsed: true,
-                      ),
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      spellCheckConfiguration:
+                          SpellCheckConfiguration.disabled(),
+                      smartDashesType: SmartDashesType.disabled,
+                      smartQuotesType: SmartQuotesType.disabled,
+                      decoration: _noteTextDecoration(widget.placeholder),
                     ),
                   ),
                 ),
@@ -2521,16 +2604,19 @@ class _NotesWidgetState extends State<NotesWidget> {
           child: TextField(
             controller: _textController,
             focusNode: _textFocusNode,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
             maxLines: null,
             expands: true,
             textAlignVertical: TextAlignVertical.top,
             style: const TextStyle(fontSize: 14),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              hintText: widget.placeholder,
-              hintStyle: TextStyle(color: Color(0xFF5C6670)),
-              isCollapsed: true,
-            ),
+            stylusHandwritingEnabled: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            spellCheckConfiguration: SpellCheckConfiguration.disabled(),
+            smartDashesType: SmartDashesType.disabled,
+            smartQuotesType: SmartQuotesType.disabled,
+            decoration: _noteTextDecoration(widget.placeholder),
           ),
         ),
         // Poignée d'agrandissement — petite zone de tap confinée en haut-gauche
@@ -2667,12 +2753,16 @@ class _NotesWidgetState extends State<NotesWidget> {
                       )
                     else
                       Positioned.fill(
-                        child: GestureDetector(
+                        child: Listener(
                           behavior: HitTestBehavior.opaque,
-                          onTapDown: (_) => _hideEraserSizeGauge(),
-                          onPanStart: _onDrawStart,
-                          onPanUpdate: _onDrawUpdate,
-                          onPanEnd: _onDrawEnd,
+                          onPointerDown: (event) {
+                            _hideEraserSizeGauge();
+                            _hideHighlighterSizeGauge();
+                            _onDrawStart(event);
+                          },
+                          onPointerMove: _onDrawUpdate,
+                          onPointerUp: _onDrawEnd,
+                          onPointerCancel: _onDrawEnd,
                           child: MouseRegion(
                             cursor: SystemMouseCursors.precise,
                             child: CustomPaint(
@@ -2697,6 +2787,8 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (!widget.toolbarInFooter && _showColorPalette) _positionedPalette(),
         if (!widget.toolbarInFooter && _showEraserSizeGauge)
           _positionedEraserSizeGauge(),
+        if (!widget.toolbarInFooter && _showHighlighterSizeGauge)
+          _positionedHighlighterSizeGauge(),
         // Le "+" pour ajouter une page est désormais dans le header à
         // côté de la pagination (cf. _buildPageNavRow) — plus de FAB.
       ],
@@ -2760,6 +2852,28 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
   }
 
+  Widget _positionedHighlighterSizeGauge() {
+    final gauge = TapRegion(
+      groupId: _highlighterSizeTapRegion,
+      child: _buildHighlighterSizePopover(),
+    );
+    const margin = 12.0;
+    switch (widget.toolbarPlacement) {
+      case NoteToolbarPlacement.topRight:
+        return Positioned(top: 74, right: 12, child: gauge);
+      case NoteToolbarPlacement.bottomCenter:
+        final bottomOffset = widget.toolbarDockedToBorder
+            ? 40.0
+            : 80.0 + margin;
+        return Positioned(
+          left: 0,
+          right: 0,
+          bottom: bottomOffset,
+          child: Center(child: gauge),
+        );
+    }
+  }
+
   Widget _buildFooterToolbar() {
     return Stack(
       clipBehavior: Clip.none,
@@ -2781,6 +2895,14 @@ class _NotesWidgetState extends State<NotesWidget> {
               child: _buildEraserSizePopover(),
             ),
           ),
+        if (_showHighlighterSizeGauge)
+          Positioned(
+            bottom: 64,
+            child: TapRegion(
+              groupId: _highlighterSizeTapRegion,
+              child: _buildHighlighterSizePopover(),
+            ),
+          ),
       ],
     );
   }
@@ -2789,6 +2911,14 @@ class _NotesWidgetState extends State<NotesWidget> {
     return TapRegion(
       groupId: _eraserSizeTapRegion,
       onTapOutside: (_) => _hideEraserSizeGauge(),
+      child: child,
+    );
+  }
+
+  Widget _wrapHighlighterTapRegion(Widget child) {
+    return TapRegion(
+      groupId: _highlighterSizeTapRegion,
+      onTapOutside: (_) => _hideHighlighterSizeGauge(),
       child: child,
     );
   }
@@ -2810,9 +2940,23 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
+  Widget _highlighterToolButton() {
+    return _wrapHighlighterTapRegion(
+      _sizedToolbarButton(
+        _circularToolButton(
+          icon: LucideIcons.highlighter,
+          tooltip: _labelForTool(NoteTool.highlighter),
+          isActive: _activeTool == NoteTool.highlighter,
+          onTap: () => _activateHighlighterTool(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildToolbar() {
     final buttons = <Widget>[];
-    for (final tool in _availableTools) {
+    final tools = _activeToolOrderFor(_availableTools);
+    for (final tool in tools) {
       buttons.add(_toolButtonFor(tool));
     }
     // Palette — toujours visible en mode advanced. Désactivée (grisée)
@@ -2893,8 +3037,23 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
+  List<NoteTool> _activeToolOrderFor(List<NoteTool> tools) {
+    if (!tools.contains(NoteTool.pen) || !tools.contains(NoteTool.eraser)) {
+      return tools;
+    }
+    final ordered = <NoteTool>[];
+    for (final tool in tools) {
+      ordered.add(tool);
+      if (tool == NoteTool.pen && !ordered.contains(NoteTool.eraser)) {
+        ordered.add(NoteTool.eraser);
+      }
+    }
+    return ordered.toSet().toList();
+  }
+
   Widget _toolButtonFor(NoteTool tool) {
     if (tool == NoteTool.eraser) return _eraserToolButton();
+    if (tool == NoteTool.highlighter) return _highlighterToolButton();
     final icon = _iconForTool(tool);
     final isActive = _activeTool == tool;
     return _circularToolButton(
@@ -2910,8 +3069,19 @@ class _NotesWidgetState extends State<NotesWidget> {
       _activeTool = NoteTool.eraser;
       _showColorPalette = false;
       _showEraserSizeGauge = true;
+      _showHighlighterSizeGauge = false;
     });
     widget.onToolChange?.call(NoteTool.eraser);
+  }
+
+  void _activateHighlighterTool() {
+    setState(() {
+      _activeTool = NoteTool.highlighter;
+      _showColorPalette = false;
+      _showEraserSizeGauge = false;
+      _showHighlighterSizeGauge = true;
+    });
+    widget.onToolChange?.call(NoteTool.highlighter);
   }
 
   void _setActiveTool(NoteTool tool) {
@@ -2920,8 +3090,14 @@ class _NotesWidgetState extends State<NotesWidget> {
       if (tool == NoteTool.eraser) {
         _showColorPalette = false;
         _showEraserSizeGauge = true;
+        _showHighlighterSizeGauge = false;
+      } else if (tool == NoteTool.highlighter) {
+        _showColorPalette = false;
+        _showEraserSizeGauge = false;
+        _showHighlighterSizeGauge = true;
       } else {
         _showEraserSizeGauge = false;
+        _showHighlighterSizeGauge = false;
       }
     });
     widget.onToolChange?.call(tool);
@@ -2930,6 +3106,11 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _hideEraserSizeGauge() {
     if (!_showEraserSizeGauge || !mounted) return;
     setState(() => _showEraserSizeGauge = false);
+  }
+
+  void _hideHighlighterSizeGauge() {
+    if (!_showHighlighterSizeGauge || !mounted) return;
+    setState(() => _showHighlighterSizeGauge = false);
   }
 
   Widget _paletteButton() {
@@ -2944,7 +3125,11 @@ class _NotesWidgetState extends State<NotesWidget> {
           tooltip: 'Couleur',
           isActive: !disabled && _showColorPalette,
           disabled: disabled,
-          onTap: () => setState(() => _showColorPalette = !_showColorPalette),
+          onTap: () => setState(() {
+            _showColorPalette = !_showColorPalette;
+            _showEraserSizeGauge = false;
+            _showHighlighterSizeGauge = false;
+          }),
         ),
         Positioned(
           top: -2,
@@ -3164,6 +3349,40 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
+  Widget _buildHighlighterSizePopover() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < _kHighlighterSizePresets.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            _highlighterSizeDot(
+              size: _kHighlighterSizePresets[i],
+              visualDiameter: switch (i) {
+                0 => 8.0,
+                1 => 12.0,
+                _ => 16.0,
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _eraserSizeDot({
     required double size,
     required double visualDiameter,
@@ -3180,6 +3399,56 @@ class _NotesWidgetState extends State<NotesWidget> {
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
           onTap: () => setState(() => _eraserSize = size),
+          child: SizedBox(
+            width: 30,
+            height: 30,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
+                width: selected ? visualDiameter + 8 : visualDiameter,
+                height: selected ? visualDiameter + 8 : visualDiameter,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? kBrandPurpleSoft : Colors.transparent,
+                  border: selected
+                      ? Border.all(color: _kActiveText, width: 1.5)
+                      : null,
+                ),
+                child: Center(
+                  child: Container(
+                    width: visualDiameter,
+                    height: visualDiameter,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _kActiveText,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _highlighterSizeDot({
+    required double size,
+    required double visualDiameter,
+  }) {
+    final selected = (_highlighterSize - size).abs() < 0.1;
+    return Tooltip(
+      message: switch (visualDiameter.round()) {
+        8 => 'Surligneur moyen',
+        12 => 'Surligneur large',
+        _ => 'Surligneur très large',
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => setState(() => _highlighterSize = size),
           child: SizedBox(
             width: 30,
             height: 30,
@@ -3476,15 +3745,19 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
                         child: TextField(
                           controller: _controller,
                           autofocus: true,
+                          keyboardType: TextInputType.multiline,
+                          textInputAction: TextInputAction.newline,
                           maxLines: null,
                           expands: true,
                           textAlignVertical: TextAlignVertical.top,
-                          decoration: InputDecoration(
-                            border: InputBorder.none,
-                            hintText: widget.placeholder,
-                            hintStyle: TextStyle(color: Color(0xFF5C6670)),
-                            isCollapsed: true,
-                          ),
+                          stylusHandwritingEnabled: true,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          spellCheckConfiguration:
+                              SpellCheckConfiguration.disabled(),
+                          smartDashesType: SmartDashesType.disabled,
+                          smartQuotesType: SmartQuotesType.disabled,
+                          decoration: _noteTextDecoration(widget.placeholder),
                         ),
                       ),
                     ),

@@ -665,7 +665,9 @@ class _BathroomTabState extends State<BathroomTab>
     required bool active,
     required VoidCallback onTap,
   }) {
-    const labelColor = Color(0xFF0E1116);
+    final labelColor = active
+        ? const Color(0xFF0E1116)
+        : const Color(0xFF8A939D);
     final iconIndex = sanitaryLevelIconIndexFromLabel(label);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -686,7 +688,7 @@ class _BathroomTabState extends State<BathroomTab>
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: labelColor,

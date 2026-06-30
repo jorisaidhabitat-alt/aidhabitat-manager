@@ -25,6 +25,7 @@ const Color _kToolbarIcon = Color(0xFF2B323A);
 const Color _kToolbarHoverBg = Color(0xFFF2F4F6);
 const double _kDefaultEraserSize = 18.0;
 const List<double> _kEraserSizePresets = <double>[8.0, 18.0, 44.0];
+const int _kDefaultHighlighterColor = 0xFFFDE047;
 const double _kDefaultHighlighterSize = 6.0;
 const List<double> _kHighlighterSizePresets = <double>[4.0, 8.0, 14.0];
 
@@ -223,6 +224,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   PlanTool _tool = PlanTool.pen;
   int _penColor = 0xFF1A1A1A;
+  int _highlighterColor = _kDefaultHighlighterColor;
   double _eraserSize = _kDefaultEraserSize;
   double _highlighterSize = _kDefaultHighlighterSize;
   bool _showEraserSizeGauge = false;
@@ -241,9 +243,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
   int _selectedIndex = -1;
   // Mode édition : quand true, poignées + boutons flottants (flip,
   // supprimer) sont visibles et actifs. Déclenché par un TAP sur le
-  // symbole (finger down + up sans drag). Un drag direct sur un
-  // symbole déplace sans activer le mode édition — l'action primaire
-  // reste le déplacement.
+  // symbole (finger down + up sans drag). Sans ce premier clic, les
+  // gestes restent dédiés au dessin afin de pouvoir écrire/surligner
+  // directement par-dessus un équipement.
   bool _editingMode = false;
   // Action en cours sur le symbole sélectionné (drag d'une poignée, du
   // corps, rotation). `null` entre les gestures.
@@ -268,12 +270,23 @@ class _PlanCanvasState extends State<PlanCanvas> {
   Timer? _saveTimer;
   bool _loaded = false;
 
-  static const List<int> _presetColors = [
+  static const List<int> _penPresetColors = [
     0xFF1A1A1A,
     0xFFE53E3E,
     0xFF2B6CB0,
     0xFF2F855A,
     0xFFD69E2E,
+  ];
+
+  static const List<int> _highlighterPresetColors = [
+    0xFF111827,
+    0xFFDC2626,
+    0xFFEA580C,
+    0xFFCA8A04,
+    0xFF16A34A,
+    0xFF2563EB,
+    0xFF7C3AED,
+    0xFFEC4899,
   ];
 
   static double _defaultStrokeSizeFor(PlanTool tool) {
@@ -556,7 +569,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
         // 35% d'opacité → effet fluo par-dessus le contenu existant.
         // Épaisseur propre au surligneur, pas de multiplicateur : la
         // valeur par défaut est plus élevée que le crayon.
-        colorForStroke = (_penColor & 0x00FFFFFF) | 0x59000000;
+        colorForStroke = (_highlighterColor & 0x00FFFFFF) | 0x59000000;
         sizeForStroke = _penSize;
         break;
       case PlanTool.wall:
@@ -1248,6 +1261,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
   final GlobalKey _colorDotKey = GlobalKey();
   Widget _buildActiveColorDot() {
     final disabled = _tool == PlanTool.eraser;
+    final activeColor = _tool == PlanTool.highlighter
+        ? _highlighterColor
+        : _penColor;
     return Tooltip(
       message: 'Changer la couleur',
       child: Material(
@@ -1279,7 +1295,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
                       width: 12,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: Color(_penColor),
+                        color: Color(activeColor),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
@@ -1304,6 +1320,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
     if (_tool == PlanTool.eraser) return;
     _hideEraserSizeGauge();
     _hideHighlighterSizeGauge();
+    final activeColor = _tool == PlanTool.highlighter
+        ? _highlighterColor
+        : _penColor;
+    final presets = _tool == PlanTool.highlighter
+        ? _highlighterPresetColors
+        : _penPresetColors;
     final ctx = _colorDotKey.currentContext;
     if (ctx == null) return;
     final box = ctx.findRenderObject() as RenderBox;
@@ -1331,7 +1353,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
             padding: const EdgeInsets.all(8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: _presetColors
+              children: presets
                   .map(
                     (c) => Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1344,10 +1366,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
                             color: Color(c),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: _penColor == c
+                              color: activeColor == c
                                   ? const Color(0xFF0E1116)
                                   : Color(0xFFB9C0C7),
-                              width: _penColor == c ? 2.5 : 1.5,
+                              width: activeColor == c ? 2.5 : 1.5,
                             ),
                           ),
                         ),
@@ -1361,7 +1383,13 @@ class _PlanCanvasState extends State<PlanCanvas> {
       ],
     );
     if (picked != null && mounted) {
-      setState(() => _penColor = picked);
+      setState(() {
+        if (_tool == PlanTool.highlighter) {
+          _highlighterColor = picked;
+        } else {
+          _penColor = picked;
+        }
+      });
     }
   }
 
@@ -1668,9 +1696,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
               ),
               // Overlay des poignées + boutons flottants : UNIQUEMENT
               // en mode édition (après un tap explicite sur l'élément).
-              // Un simple drag sur un symbole le déplace sans afficher
-              // de poignées, pour que le mouvement reste l'action
-              // primaire sans gêne visuelle.
+              // Un drag direct sur un symbole reste un tracé normal :
+              // on peut écrire/surligner sur les équipements sans les
+              // déplacer par accident.
               if (_editingMode &&
                   _selectedIndex >= 0 &&
                   _selectedIndex < _strokes.length)
@@ -1805,8 +1833,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   /// Tap sur un symbole = entrée en MODE ÉDITION (poignées + boutons
   /// flottants visibles). Tap sur du vide = désélection. Un drag sur
-  /// un symbole est géré par _onPanStartRouted et fait un simple
-  /// déplacement sans entrer en mode édition.
+  /// un symbole non sélectionné reste un tracé normal : la manipulation
+  /// demande toujours ce premier clic explicite.
   void _onCanvasTapUp(TapUpDetails d) {
     final pt = _localPoint(d.globalPosition);
     // Si déjà en mode édition : tester si le tap est sur une poignée
@@ -1852,30 +1880,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
         return;
       }
     }
-    // Pas en mode édition : un drag qui commence sur un symbole le
-    // déplace directement. Prioriser le symbole du dessus (le dernier
-    // placé) si plusieurs se superposent.
-    for (var i = _strokes.length - 1; i >= 0; i--) {
-      final s = _strokes[i];
-      if (!_symbolTools.contains(s.tool)) continue;
-      final bounds = s.symbolLocalBounds;
-      if (bounds == null) continue;
-      final local = _toSymbolLocal(s, pt);
-      if (bounds.contains(local)) {
-        _pushUndo();
-        setState(() {
-          _selectedIndex = i;
-          _editingMode = false; // drag = simple déplacement, pas d'édition
-          _activeHandle = _SymbolHandle.body;
-          _dragAnchor = pt;
-          _dragInitialCenter = s.points[0];
-          _dragInitialCorner = s.points[1];
-          _dragInitialRotation = s.rotation;
-        });
-        return;
-      }
-    }
-    // Aucun symbole sous le doigt → tracé libre (pen / line / rect…).
+    // Aucun symbole sélectionné/manipulé → tracé libre, même si le
+    // pointeur démarre au-dessus d'un équipement.
     _onPanStart(d);
   }
 
@@ -2190,19 +2196,28 @@ class _DrawPainter extends CustomPainter {
   }
 
   /// Peint les traits en 2 couches :
-  ///  1. Traits libres + formes de base (pen / highlighter / line / rect
-  ///     / wall) dans une couche isolée où la gomme opère (dstOut).
-  ///  2. Symboles architecturaux (fenêtre / porte / WC / …) PAR-DESSUS,
-  ///     hors de la couche gomme → la gomme ne peut pas les effacer.
-  ///     Pour supprimer un symbole, l'utilisateur doit le sélectionner
-  ///     et utiliser la corbeille.
+  ///  1. Symboles architecturaux (fenêtre / porte / WC / …), protégés
+  ///     de la gomme.
+  ///  2. Traits libres + annotations PAR-DESSUS les équipements dans une
+  ///     couche isolée où la gomme opère (dstOut). Cela permet d'écrire
+  ///     ou surligner sur un équipement, puis d'effacer uniquement cette
+  ///     annotation sans supprimer l'équipement.
   static void paintStrokes(
     Canvas canvas,
     List<_PlanStroke> strokes,
     _PlanStroke? current,
   ) {
     final drawBounds = Rect.fromLTWH(-100000, -100000, 200000, 200000);
-    // Couche 1 : traits effaçables.
+    // Couche 1 : équipements protégés.
+    for (final s in strokes) {
+      if (!_symbolTools.contains(s.tool)) continue;
+      _paintOne(canvas, s);
+    }
+    if (current != null && _symbolTools.contains(current.tool)) {
+      _paintOne(canvas, current);
+    }
+
+    // Couche 2 : traits/annotations effaçables au-dessus.
     canvas.saveLayer(drawBounds, Paint());
     for (final s in strokes) {
       if (_symbolTools.contains(s.tool)) continue;
@@ -2212,14 +2227,6 @@ class _DrawPainter extends CustomPainter {
       _paintOne(canvas, current);
     }
     canvas.restore();
-    // Couche 2 : symboles inviolables, dessinés après la gomme.
-    for (final s in strokes) {
-      if (!_symbolTools.contains(s.tool)) continue;
-      _paintOne(canvas, s);
-    }
-    if (current != null && _symbolTools.contains(current.tool)) {
-      _paintOne(canvas, current);
-    }
   }
 
   static void _paintOne(Canvas canvas, _PlanStroke s) {
@@ -2357,27 +2364,28 @@ class _DrawPainter extends CustomPainter {
   ///   - Vantail simple (charnière bas-gauche, battant vertical)
   ///   - Arc d'ouverture 90° vers l'intérieur (dashed)
   static void _paintWindowLocal(Canvas canvas, Rect r, Paint stroke) {
-    final side = math.min(r.width, r.height);
-    final frame = Rect.fromCenter(center: r.center, width: side, height: side);
-
     final framePaint = Paint()
       ..color = stroke.color.withValues(alpha: 0.55)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-    canvas.drawRect(frame, framePaint);
+    canvas.drawRect(r, framePaint);
 
-    // Vantail unique — charnière bas-gauche, battant fermé vertical
-    // vers le haut, ouverture CW vers la droite (mêmes conventions
-    // que `_paintDoorLocal` pour cohérence visuelle).
-    final hinge = frame.bottomLeft;
-    final closedEnd = Offset(frame.left, frame.top);
+    // Le vantail et l'arc utilisent toute la boîte de sélection. Avant,
+    // la fenêtre se recalait dans un carré centré, ce qui créait du vide
+    // quand l'utilisateur élargissait ou réduisait l'élément.
+    final hinge = r.bottomLeft;
+    final closedEnd = r.topLeft;
     canvas.drawLine(hinge, closedEnd, stroke);
 
     final dashed = Paint()
       ..color = stroke.color.withValues(alpha: 0.6)
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
-    final arcRect = Rect.fromCircle(center: hinge, radius: frame.height);
+    final arcRect = Rect.fromCenter(
+      center: hinge,
+      width: r.width * 2,
+      height: r.height * 2,
+    );
     // Arc de -90° (vers le haut) à 0° (vers la droite).
     canvas.drawArc(arcRect, -math.pi / 2, math.pi / 2, false, dashed);
   }
@@ -2385,33 +2393,17 @@ class _DrawPainter extends CustomPainter {
   /// Fenêtre double : deux battants symétriques, avec un arc de chaque
   /// côté pour représenter la double ouverture.
   static void _paintDoubleWindowLocal(Canvas canvas, Rect r, Paint stroke) {
-    final side = math.min(r.height, r.width / 2);
-    final frame = Rect.fromCenter(
-      center: r.center,
-      width: side * 2,
-      height: side,
-    );
-    final left = Rect.fromLTWH(
-      frame.left,
-      frame.top,
-      frame.width / 2,
-      frame.height,
-    );
-    final right = Rect.fromLTWH(
-      frame.center.dx,
-      frame.top,
-      frame.width / 2,
-      frame.height,
-    );
+    final left = Rect.fromLTWH(r.left, r.top, r.width / 2, r.height);
+    final right = Rect.fromLTWH(r.center.dx, r.top, r.width / 2, r.height);
 
     final framePaint = Paint()
       ..color = stroke.color.withValues(alpha: 0.55)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-    canvas.drawRect(frame, framePaint);
+    canvas.drawRect(r, framePaint);
     canvas.drawLine(
-      Offset(frame.center.dx, frame.top),
-      Offset(frame.center.dx, frame.bottom),
+      Offset(r.center.dx, r.top),
+      Offset(r.center.dx, r.bottom),
       framePaint,
     );
 
@@ -2421,9 +2413,13 @@ class _DrawPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final leftHinge = left.bottomLeft;
-    canvas.drawLine(leftHinge, Offset(left.left, left.bottom - side), stroke);
+    canvas.drawLine(leftHinge, left.topLeft, stroke);
     canvas.drawArc(
-      Rect.fromCircle(center: leftHinge, radius: side),
+      Rect.fromCenter(
+        center: leftHinge,
+        width: left.width * 2,
+        height: left.height * 2,
+      ),
       -math.pi / 2,
       math.pi / 2,
       false,
@@ -2431,13 +2427,13 @@ class _DrawPainter extends CustomPainter {
     );
 
     final rightHinge = right.bottomRight;
-    canvas.drawLine(
-      rightHinge,
-      Offset(right.right, right.bottom - side),
-      stroke,
-    );
+    canvas.drawLine(rightHinge, right.topRight, stroke);
     canvas.drawArc(
-      Rect.fromCircle(center: rightHinge, radius: side),
+      Rect.fromCenter(
+        center: rightHinge,
+        width: right.width * 2,
+        height: right.height * 2,
+      ),
       math.pi,
       math.pi / 2,
       false,
@@ -2462,13 +2458,17 @@ class _DrawPainter extends CustomPainter {
 
   /// Porte : segment fixe du côté gauche + arc 90° indiquant l'ouverture.
   static void _paintDoorLocal(Canvas canvas, Rect r, Paint stroke) {
-    final side = math.min(r.width, r.height);
-    final frame = Rect.fromLTWH(r.left, r.bottom - side, side, side);
     // Charnière en bas-gauche, battant fermé va vers le haut-gauche.
-    final hinge = frame.bottomLeft;
-    final closedEnd = frame.topLeft;
+    // L'arc prend toute la boîte : pas d'espace vide quand la porte est
+    // étirée en largeur ou hauteur.
+    final hinge = r.bottomLeft;
+    final closedEnd = r.topLeft;
     canvas.drawLine(hinge, closedEnd, stroke);
-    final arcRect = Rect.fromCircle(center: hinge, radius: side);
+    final arcRect = Rect.fromCenter(
+      center: hinge,
+      width: r.width * 2,
+      height: r.height * 2,
+    );
     final dashed = Paint()
       ..color = stroke.color.withValues(alpha: 0.6)
       ..strokeWidth = 1.4

@@ -16,6 +16,7 @@ import '../../components/confirmation_dialog.dart';
 import '../../components/form_widgets.dart';
 import '../../components/soft_transitions.dart';
 import '../../components/two_threshold_swipe.dart';
+import 'retirement_fund_selection.dart' as retirement_fund_selection;
 
 /// Bénéficiaire tab — parité 1:1 avec la version React (`BeneficiaryForm`).
 ///
@@ -1366,25 +1367,11 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   // ---------------------------------------------------------------------------
 
   List<String> _parseRetirementFunds(String raw) {
-    final seen = <String>{};
-    final funds = <String>[];
-    for (final part in raw.split(RegExp(r'\s*(?:;|\n|\|)\s*'))) {
-      final value = part.trim();
-      if (value.isEmpty) continue;
-      if (seen.add(value.toLowerCase())) funds.add(value);
-    }
-    return funds;
+    return retirement_fund_selection.parseRetirementFunds(raw);
   }
 
   String _serializeRetirementFunds(Iterable<String> values) {
-    final seen = <String>{};
-    final funds = <String>[];
-    for (final raw in values) {
-      final value = raw.trim();
-      if (value.isEmpty) continue;
-      if (seen.add(value.toLowerCase())) funds.add(value);
-    }
-    return funds.join('; ');
+    return retirement_fund_selection.serializeRetirementFunds(values);
   }
 
   void _setRetirementFundAtIndex({
@@ -1397,11 +1384,11 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final current = kind == _RetirementFundKind.principal
         ? _parseRetirementFunds(occupant.caisseRetraitePrincipale)
         : _parseRetirementFunds(occupant.caissesRetraiteComplementaires);
-    final next = [...current];
-    while (next.length <= fundIndex) {
-      next.add('');
-    }
-    next[fundIndex] = value;
+    final next = retirement_fund_selection.updateRetirementFundsAtIndex(
+      current: current,
+      fundIndex: fundIndex,
+      value: value,
+    );
     final serialized = _serializeRetirementFunds(next);
     _updateOccupant(
       occupantIndex,

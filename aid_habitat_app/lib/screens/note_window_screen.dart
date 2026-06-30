@@ -3,7 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show MethodChannel;
+import 'package:flutter/services.dart'
+    show MethodChannel, SmartDashesType, SmartQuotesType;
 // Desktop-only. Sur web/mobile, un stub no-op fait passer la compilation.
 import '../services/multi_window_stub.dart'
     if (dart.library.io) 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -14,6 +15,19 @@ import '../services/note_window_web_stub.dart'
 import '../components/brand_colors.dart';
 import '../components/notes_canvas_painters.dart';
 import '../services/data_service.dart';
+
+InputDecoration _noteWindowTextDecoration() {
+  return const InputDecoration(
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    errorBorder: InputBorder.none,
+    focusedErrorBorder: InputBorder.none,
+    hintText: 'Écrivez votre note…',
+    isCollapsed: true,
+  );
+}
 
 /// Dedicated MaterialApp shown in a SECONDARY OS window (launched via
 /// `DesktopMultiWindow.createWindow`). Hosts a single full-screen note
@@ -148,6 +162,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen>
       }
       final text = args['text']?.toString() ?? '';
       if (_controller.text == text) return;
+      if (_focusNode.hasFocus) return;
       final oldOffset = _controller.selection.baseOffset.clamp(0, text.length);
       _controller.value = TextEditingValue(
         text: text,
@@ -396,15 +411,19 @@ class _NoteWindowScreenState extends State<NoteWindowScreen>
                   child: TextField(
                     controller: _controller,
                     focusNode: _focusNode,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
                     maxLines: null,
                     expands: true,
                     autofocus: true,
                     textAlignVertical: TextAlignVertical.top,
                     style: const TextStyle(fontSize: 14, height: 1.5),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      hintText: 'Écrivez votre note…',
-                    ),
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    spellCheckConfiguration: SpellCheckConfiguration.disabled(),
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
+                    decoration: _noteWindowTextDecoration(),
                     onChanged: _sendLive,
                   ),
                 ),
