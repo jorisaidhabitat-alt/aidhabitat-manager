@@ -3133,6 +3133,7 @@ class _RetirementFundPickerDialogState
 
   Widget _buildTile(_RetirementFundPickerItem it) {
     final isSelected = it.name == widget.initialSelected.trim();
+    final isNoFund = it.name.trim().toLowerCase() == 'aucune';
     return InkWell(
       onTap: () =>
           Navigator.pop(context, _RetirementFundPickerResult.select(it.name)),
@@ -3169,7 +3170,9 @@ class _RetirementFundPickerDialogState
                 child: SizedBox(
                   width: 112,
                   height: 54,
-                  child: it.logoUrl.trim().isNotEmpty
+                  child: isNoFund
+                      ? const _NoRetirementFundIcon()
+                      : it.logoUrl.trim().isNotEmpty
                       ? CachedRemoteImage(
                           key: ValueKey(it.logoUrl),
                           url: it.logoUrl,
@@ -3225,57 +3228,119 @@ class _RetirementFundPickerDialogState
       onTap: () =>
           Navigator.pop(context, _RetirementFundPickerResult.create(name)),
       borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F5FB),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFD8D0DC)),
+      child: CustomPaint(
+        painter: _DashedRRectPainter(
+          color: const Color(0xFFA88BC1),
+          radius: 12,
         ),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 68,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF2ECF5),
-                borderRadius: BorderRadius.circular(10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F5FB),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 68,
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+                color: const Color(0xFFF8F5FB),
+                alignment: Alignment.center,
+                child: const _CreateRetirementFundIcon(),
               ),
-              alignment: Alignment.center,
-              child: const Icon(
-                LucideIcons.plus,
-                size: 22,
-                color: kBrandPurple,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(9, 5, 9, 7),
+                child: Text(
+                  'Créer $name',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B),
+                    height: 1.15,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Créer "$name"',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1E293B),
-                height: 1.2,
-              ),
-            ),
-            const Spacer(),
-            const Text(
-              'Ajouter à la base',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                color: Color(0xFF6B527D),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+class _CreateRetirementFundIcon extends StatelessWidget {
+  const _CreateRetirementFundIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFFEFE6F5),
+      ),
+      child: const Icon(LucideIcons.plus, color: kBrandPurple, size: 22),
+    );
+  }
+}
+
+class _NoRetirementFundIcon extends StatelessWidget {
+  const _NoRetirementFundIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEFE6F5),
+        ),
+        child: const Icon(LucideIcons.x, color: kBrandPurple, size: 22),
+      ),
+    );
+  }
+}
+
+class _DashedRRectPainter extends CustomPainter {
+  const _DashedRRectPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(0.7),
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rrect);
+    const dash = 7.0;
+    const gap = 5.0;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dash;
+        canvas.drawPath(metric.extractPath(distance, next), paint);
+        distance = next + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRRectPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.radius != radius;
   }
 }
 
