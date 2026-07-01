@@ -175,7 +175,7 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
         // utilisateur 2026-05-12 : parité avec la bibliothèque
         // (extended FAB, StadiumBorder, icône + texte).
         Positioned(
-          right: 32,
+          right: widget.showHeader ? 32 : 0,
           bottom: 24,
           child: SizedBox(
             height: 40,
@@ -230,62 +230,64 @@ class _RetirementFundsScreenState extends State<RetirementFundsScreen> {
           // champ de recherche en pill blanc à droite — parité 1:1 avec
           // l'en-tête Bibliothèque.
           if (widget.showHeader)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Text(
-                  'Caisses de retraite complémentaires',
-                  // Refonte 2026-05-13 : Nunito w600.
-                  style: GoogleFonts.nunito(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.5,
-                    color: const Color(0xFF0E1116),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Caisses de retraite complémentaires',
+                    // Refonte 2026-05-13 : Nunito w600.
+                    style: GoogleFonts.nunito(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.5,
+                      color: const Color(0xFF0E1116),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 24),
-              // Style aligné avec la barre de recherche de
-              // "Mes dossiers" : pastille pill (radius 999), fond blanc,
-              // contour gris #E2E8F0, icône search + champ sans
-              // bordures internes.
-              SizedBox(
-                width: 320,
-                child: Container(
-                  height: 52,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFE4E7EB)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(LucideIcons.search,
-                          size: 18, color: Color(0xFF8A939D)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (_) => setState(() {}),
-                          decoration: const InputDecoration(
-                            hintText: 'Klésia, AG2R, Pro BTP...',
-                            hintStyle:
-                                TextStyle(color: Color(0xFF8A939D)),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            isCollapsed: true,
+                const SizedBox(width: 24),
+                // Style aligné avec la barre de recherche de
+                // "Mes dossiers" : pastille pill (radius 999), fond blanc,
+                // contour gris #E2E8F0, icône search + champ sans
+                // bordures internes.
+                SizedBox(
+                  width: 320,
+                  child: Container(
+                    height: 52,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0xFFE4E7EB)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          LucideIcons.search,
+                          size: 18,
+                          color: Color(0xFF8A939D),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              hintText: 'Klésia, AG2R, Pro BTP...',
+                              hintStyle: TextStyle(color: Color(0xFF8A939D)),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              isCollapsed: true,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           if (widget.showHeader) const SizedBox(height: 24),
           if (_isLoading)
             const Expanded(child: Center(child: CircularProgressIndicator()))
@@ -569,13 +571,16 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
     _currentFund = widget.fund;
     _nameController = TextEditingController(text: widget.fund.name);
     _audienceController = TextEditingController(text: widget.fund.audience);
-    _requestDelayController =
-        TextEditingController(text: widget.fund.requestDelay);
+    _requestDelayController = TextEditingController(
+      text: widget.fund.requestDelay,
+    );
     _aidAmountController = TextEditingController(text: widget.fund.aidAmount);
-    _requestMethodController =
-        TextEditingController(text: widget.fund.requestMethod);
-    _therapistNoteController =
-        TextEditingController(text: widget.fund.therapistNote);
+    _requestMethodController = TextEditingController(
+      text: widget.fund.requestMethod,
+    );
+    _therapistNoteController = TextEditingController(
+      text: widget.fund.therapistNote,
+    );
     _websiteController = TextEditingController(text: widget.fund.website);
     _phoneController = TextEditingController(text: widget.fund.phone);
 
@@ -657,8 +662,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w500,
-          color:
-              text.isEmpty ? Color(0xFF8A939D) : const Color(0xFF0E1116),
+          color: text.isEmpty ? Color(0xFF8A939D) : const Color(0xFF0E1116),
           height: 1.45,
         ),
       ),
@@ -694,8 +698,9 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
   Future<void> _launchWebsite() async {
     final raw = _websiteController.text.trim();
     if (raw.isEmpty) return;
-    final href =
-        raw.startsWith('http://') || raw.startsWith('https://') ? raw : 'https://$raw';
+    final href = raw.startsWith('http://') || raw.startsWith('https://')
+        ? raw
+        : 'https://$raw';
     final uri = Uri.parse(href);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -719,8 +724,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       backgroundColor: Colors.white,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       // Sans clipBehavior, le dégradé du header (Container plein) déborde
       // en rectangle par-dessus les coins arrondis en haut. `antiAlias`
       // applique la `shape` à TOUS les enfants → le header reprend la
@@ -770,8 +774,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
           Container(
             height: 56,
             width: 84,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
@@ -808,11 +811,12 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
                           border: InputBorder.none,
                           focusedBorder: UnderlineInputBorder(
                             borderSide: BorderSide(
-                                color: kBrandPurple, width: 2),
+                              color: kBrandPurple,
+                              width: 2,
+                            ),
                           ),
                           enabledBorder: UnderlineInputBorder(
-                            borderSide:
-                                BorderSide(color: Colors.transparent),
+                            borderSide: BorderSide(color: Colors.transparent),
                           ),
                         ),
                       )
@@ -831,7 +835,9 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
                 // Last edited chip — aligné à gauche.
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 3),
+                    horizontal: 10,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(50),
@@ -839,13 +845,15 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(LucideIcons.clock3,
-                          size: 11, color: Color(0xFF5C6670)),
+                      Icon(
+                        LucideIcons.clock3,
+                        size: 11,
+                        color: Color(0xFF5C6670),
+                      ),
                       const SizedBox(width: 5),
                       Flexible(
                         child: Text(
-                          _formatLastEditedAtHeader(
-                              _currentFund.lastEditedAt),
+                          _formatLastEditedAtHeader(_currentFund.lastEditedAt),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -869,8 +877,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
           if (_isEditing) ...[
             _IconCircleButton(
               icon: LucideIcons.undo2,
-              onPressed:
-                  _saveState == _SaveState.saving ? null : _cancelEdit,
+              onPressed: _saveState == _SaveState.saving ? null : _cancelEdit,
               tooltip: 'Annuler',
             ),
             const SizedBox(width: 6),
@@ -912,10 +919,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // ---- Section: À propos ----
-              _SectionTitle(
-                icon: LucideIcons.info,
-                label: 'À propos',
-              ),
+              _SectionTitle(icon: LucideIcons.info, label: 'À propos'),
               const SizedBox(height: 14),
               Wrap(
                 spacing: 24,
@@ -965,10 +969,7 @@ class _RetirementFundDialogState extends State<_RetirementFundDialog> {
               const SizedBox(height: 28),
 
               // ---- Section: Contact ----
-              _SectionTitle(
-                icon: LucideIcons.phoneCall,
-                label: 'Contact',
-              ),
+              _SectionTitle(icon: LucideIcons.phoneCall, label: 'Contact'),
               const SizedBox(height: 14),
               if (_isEditing)
                 // Edit mode: inline inputs so the user can change phone/website
@@ -1092,12 +1093,7 @@ class _SectionTitle extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: const Color(0xFFE4E7EB),
-          ),
-        ),
+        Expanded(child: Container(height: 1, color: const Color(0xFFE4E7EB))),
       ],
     );
   }
@@ -1150,10 +1146,7 @@ class _FieldRow extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _TherapistNoteCard extends StatelessWidget {
-  const _TherapistNoteCard({
-    required this.controller,
-    this.readOnly = false,
-  });
+  const _TherapistNoteCard({required this.controller, this.readOnly = false});
   final TextEditingController controller;
   final bool readOnly;
 
@@ -1172,11 +1165,7 @@ class _TherapistNoteCard extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(
-                LucideIcons.stickyNote,
-                size: 12,
-                color: Color(0xFF8A6A00),
-              ),
+              Icon(LucideIcons.stickyNote, size: 12, color: Color(0xFF8A6A00)),
               SizedBox(width: 6),
               Text(
                 'NOTE ERGOTHÉRAPEUTE',
@@ -1192,9 +1181,7 @@ class _TherapistNoteCard extends StatelessWidget {
           const SizedBox(height: 4),
           if (readOnly)
             Text(
-              text.isEmpty
-                  ? 'Aucune note pour cette caisse.'
-                  : text,
+              text.isEmpty ? 'Aucune note pour cette caisse.' : text,
               style: TextStyle(
                 fontSize: 13,
                 color: text.isEmpty
@@ -1253,8 +1240,7 @@ class _Textarea extends StatelessWidget {
         filled: true,
         fillColor: const Color(0xFFF7F7FA),
         isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -1289,8 +1275,7 @@ class _Input extends StatelessWidget {
         filled: true,
         fillColor: const Color(0xFFF7F7FA),
         isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -1341,29 +1326,29 @@ class _SaveStateIndicator extends StatelessWidget {
 
     final config = switch (state) {
       _SaveState.saving => const _IndicatorConfig(
-          bg: Color(0xFFFFFBEB),
-          border: Color(0xFFFDE68A),
-          fg: Color(0xFFB45309),
-          label: 'Enregistrement en cours',
-        ),
+        bg: Color(0xFFFFFBEB),
+        border: Color(0xFFFDE68A),
+        fg: Color(0xFFB45309),
+        label: 'Enregistrement en cours',
+      ),
       _SaveState.saved => const _IndicatorConfig(
-          bg: Color(0xFFECFDF5),
-          border: Color(0xFFA7F3D0),
-          fg: Color(0xFF047857),
-          label: 'Enregistrement terminé',
-        ),
+        bg: Color(0xFFECFDF5),
+        border: Color(0xFFA7F3D0),
+        fg: Color(0xFF047857),
+        label: 'Enregistrement terminé',
+      ),
       _SaveState.error => const _IndicatorConfig(
-          bg: Color(0xFFFEF2F2),
-          border: Color(0xFFFCA5A5),
-          fg: Color(0xFFB91C1C),
-          label: 'Erreur de sauvegarde',
-        ),
+        bg: Color(0xFFFEF2F2),
+        border: Color(0xFFFCA5A5),
+        fg: Color(0xFFB91C1C),
+        label: 'Erreur de sauvegarde',
+      ),
       _ => const _IndicatorConfig(
-          bg: Colors.white,
-          border: Color(0xFFE4E7EB),
-          fg: Color(0xFF8A939D),
-          label: '',
-        ),
+        bg: Colors.white,
+        border: Color(0xFFE4E7EB),
+        fg: Color(0xFF8A939D),
+        label: '',
+      ),
     };
 
     Widget icon;
@@ -1483,8 +1468,11 @@ class _ContactActionButton extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(LucideIcons.arrowUpRight,
-                    size: 16, color: Colors.white.withValues(alpha: 0.9)),
+                Icon(
+                  LucideIcons.arrowUpRight,
+                  size: 16,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
               ],
             ),
           ),
@@ -1575,8 +1563,8 @@ class _FundInitials extends StatelessWidget {
     final initials = parts.isEmpty
         ? '?'
         : parts.length == 1
-            ? parts.first.substring(0, 1).toUpperCase()
-            : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+        ? parts.first.substring(0, 1).toUpperCase()
+        : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     return Container(
       width: 54,
       height: 54,
@@ -1616,7 +1604,8 @@ class _NewRetirementFundDialogState extends State<_NewRetirementFundDialog> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _audienceController = TextEditingController();
-  final TextEditingController _therapistNoteController = TextEditingController();
+  final TextEditingController _therapistNoteController =
+      TextEditingController();
 
   bool _isSubmitting = false;
   String? _errorMessage;
@@ -1822,8 +1811,10 @@ class _LabeledField extends StatelessWidget {
             hintText: hint,
             hintStyle: const TextStyle(color: Color(0xFF8A939D)),
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: Color(0xFFE4E7EB)),

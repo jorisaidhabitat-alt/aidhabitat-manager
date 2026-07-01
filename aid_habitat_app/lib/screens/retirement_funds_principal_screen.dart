@@ -36,10 +36,7 @@ class RetirementFundsPrincipalScreen extends StatefulWidget {
   /// embarqué dans `RetirementFundsCombinedScreen`.
   final bool showHeader;
 
-  const RetirementFundsPrincipalScreen({
-    super.key,
-    this.showHeader = true,
-  });
+  const RetirementFundsPrincipalScreen({super.key, this.showHeader = true});
 
   @override
   State<RetirementFundsPrincipalScreen> createState() =>
@@ -104,12 +101,14 @@ class _RetirementFundsPrincipalScreenState
     try {
       final raw = await _api.fetchPrincipalRetirementFunds();
       final funds = raw
-          .map((m) => _PrincipalFund(
-                id: m['id'] ?? '',
-                name: m['name'] ?? '',
-                phone: m['phone'] ?? '',
-                logoUrl: m['logoUrl'] ?? '',
-              ))
+          .map(
+            (m) => _PrincipalFund(
+              id: m['id'] ?? '',
+              name: m['name'] ?? '',
+              phone: m['phone'] ?? '',
+              logoUrl: m['logoUrl'] ?? '',
+            ),
+          )
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
@@ -129,9 +128,7 @@ class _RetirementFundsPrincipalScreenState
         _isLoading = false;
         // N'affiche d'erreur que si on n'a RIEN à montrer (ni cache, ni
         // remote). Sinon on garde l'affichage cache silencieusement.
-        _error = _funds.isEmpty
-            ? 'Chargement impossible — $error'
-            : null;
+        _error = _funds.isEmpty ? 'Chargement impossible — $error' : null;
       });
     }
   }
@@ -173,23 +170,21 @@ class _RetirementFundsPrincipalScreenState
       final db = await _localDb.database;
       final encoded = jsonEncode(
         funds
-            .map((f) => {
-                  'id': f.id,
-                  'name': f.name,
-                  'phone': f.phone,
-                  'logoUrl': f.logoUrl,
-                })
+            .map(
+              (f) => {
+                'id': f.id,
+                'name': f.name,
+                'phone': f.phone,
+                'logoUrl': f.logoUrl,
+              },
+            )
             .toList(),
       );
-      await db.insert(
-        'kv_store',
-        {
-          'key': _cacheKey,
-          'value': encoded,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('kv_store', {
+        'key': _cacheKey,
+        'value': encoded,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (_) {
       // Silent — un cache absent n'est pas fatal.
     }
@@ -199,8 +194,9 @@ class _RetirementFundsPrincipalScreenState
     final query = _searchController.text.trim().toLowerCase();
     if (query.isEmpty) return _funds;
     return _funds
-        .where((fund) =>
-            '${fund.name} ${fund.phone}'.toLowerCase().contains(query))
+        .where(
+          (fund) => '${fund.name} ${fund.phone}'.toLowerCase().contains(query),
+        )
         .toList(growable: false);
   }
 
@@ -234,9 +230,7 @@ class _RetirementFundsPrincipalScreenState
     final created = await showDialog<_PrincipalFund>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
-      builder: (context) => _NewPrincipalFundDialog(
-        client: _client,
-      ),
+      builder: (context) => _NewPrincipalFundDialog(client: _client),
     );
     if (created == null || !mounted) return;
     // Re-pull la liste pour avoir la version triée serveur (et garder
@@ -252,7 +246,7 @@ class _RetirementFundsPrincipalScreenState
         // Bouton « + Ajouter une caisse de retraite » — parité 1:1 avec
         // la page Caisses complémentaires.
         Positioned(
-          right: 32,
+          right: widget.showHeader ? 32 : 0,
           bottom: 24,
           child: SizedBox(
             height: 40,
@@ -334,8 +328,11 @@ class _RetirementFundsPrincipalScreenState
                     ),
                     child: Row(
                       children: [
-                        const Icon(LucideIcons.search,
-                            size: 18, color: Color(0xFF8A939D)),
+                        const Icon(
+                          LucideIcons.search,
+                          size: 18,
+                          color: Color(0xFF8A939D),
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: TextField(
@@ -343,8 +340,7 @@ class _RetirementFundsPrincipalScreenState
                             onChanged: (_) => setState(() {}),
                             decoration: const InputDecoration(
                               hintText: 'CARSAT, MSA, CNRACL...',
-                              hintStyle:
-                                  TextStyle(color: Color(0xFF8A939D)),
+                              hintStyle: TextStyle(color: Color(0xFF8A939D)),
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
@@ -368,8 +364,7 @@ class _RetirementFundsPrincipalScreenState
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_error!,
-                        style: const TextStyle(color: Colors.red)),
+                    Text(_error!, style: const TextStyle(color: Colors.red)),
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
                       onPressed: _loadFunds,
@@ -381,14 +376,11 @@ class _RetirementFundsPrincipalScreenState
               ),
             )
           else if (_filteredFunds.isEmpty)
-            const Expanded(
-              child: Center(child: Text('Aucune caisse trouvée')),
-            )
+            const Expanded(child: Center(child: Text('Aucune caisse trouvée')))
           else
             Expanded(
               child: GridView.builder(
-                gridDelegate:
-                    const SliverGridDelegateWithMaxCrossAxisExtent(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 280,
                   mainAxisSpacing: 16,
                   crossAxisSpacing: 16,
@@ -425,10 +417,7 @@ class _PrincipalFundCard extends StatefulWidget {
   final _PrincipalFund fund;
   final VoidCallback onOpen;
 
-  const _PrincipalFundCard({
-    required this.fund,
-    required this.onOpen,
-  });
+  const _PrincipalFundCard({required this.fund, required this.onOpen});
 
   @override
   State<_PrincipalFundCard> createState() => _PrincipalFundCardState();
@@ -492,7 +481,9 @@ class _PrincipalFundCardState extends State<_PrincipalFundCard> {
                 width: double.infinity,
                 color: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 10),
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 // _PrincipalFundLogo sans `size` → SizedBox.expand →
                 // remplit toute la zone padded (~110 h × ~220 w). Avec
                 // BoxFit.contain, les wordmarks larges (CPRP SNCF,
@@ -675,14 +666,13 @@ class _PrincipalFundLogoState extends State<_PrincipalFundLogo> {
   }
 
   Widget _placeholder() => Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2F4F6),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        alignment: Alignment.center,
-        child: const Icon(LucideIcons.building,
-            size: 32, color: Color(0xFF8A939D)),
-      );
+    decoration: BoxDecoration(
+      color: const Color(0xFFF2F4F6),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    alignment: Alignment.center,
+    child: const Icon(LucideIcons.building, size: 32, color: Color(0xFF8A939D)),
+  );
 
   String? _decodeSvgDataUri(String dataUri) {
     final commaIdx = dataUri.indexOf(',');
@@ -728,13 +718,12 @@ class _PrincipalFund {
     this.logoUrl = '',
   });
 
-  factory _PrincipalFund.fromJson(Map<String, dynamic> json) =>
-      _PrincipalFund(
-        id: json['id']?.toString() ?? '',
-        name: json['name']?.toString() ?? '',
-        phone: json['phone']?.toString() ?? '',
-        logoUrl: json['logoUrl']?.toString() ?? '',
-      );
+  factory _PrincipalFund.fromJson(Map<String, dynamic> json) => _PrincipalFund(
+    id: json['id']?.toString() ?? '',
+    name: json['name']?.toString() ?? '',
+    phone: json['phone']?.toString() ?? '',
+    logoUrl: json['logoUrl']?.toString() ?? '',
+  );
 }
 
 /// Popup détail d'une caisse principale.
@@ -747,10 +736,7 @@ class _PrincipalFund {
 ///  • Header : logo carré + nom + bouton fermer
 ///  • Section Contact : gros bouton « Appeler » tappable (si téléphone)
 class _PrincipalFundDialog extends StatelessWidget {
-  const _PrincipalFundDialog({
-    required this.fund,
-    required this.onCallPhone,
-  });
+  const _PrincipalFundDialog({required this.fund, required this.onCallPhone});
 
   final _PrincipalFund fund;
   final Future<void> Function() onCallPhone;
@@ -759,11 +745,9 @@ class _PrincipalFundDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasPhone = fund.phone.trim().isNotEmpty;
     return Dialog(
-      insetPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       backgroundColor: Colors.white,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
@@ -791,7 +775,9 @@ class _PrincipalFundDialog extends StatelessWidget {
                     height: 64,
                     width: 84,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 6),
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
@@ -803,10 +789,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: _PrincipalFundLogo(
-                      logoUrl: fund.logoUrl,
-                      size: 64,
-                    ),
+                    child: _PrincipalFundLogo(logoUrl: fund.logoUrl, size: 64),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -895,16 +878,16 @@ class _PrincipalFundDialog extends StatelessWidget {
                   Opacity(
                     opacity: hasPhone ? 1.0 : 0.5,
                     child: Material(
-                      color: hasPhone
-                          ? kBrandPurple
-                          : const Color(0xFFE4E7EB),
+                      color: hasPhone ? kBrandPurple : const Color(0xFFE4E7EB),
                       borderRadius: BorderRadius.circular(16),
                       child: InkWell(
                         onTap: hasPhone ? () => onCallPhone() : null,
                         borderRadius: BorderRadius.circular(16),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 16),
+                            horizontal: 18,
+                            vertical: 16,
+                          ),
                           child: Row(
                             children: [
                               Container(
@@ -923,8 +906,7 @@ class _PrincipalFundDialog extends StatelessWidget {
                               const SizedBox(width: 14),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     const Text(
@@ -946,8 +928,9 @@ class _PrincipalFundDialog extends StatelessWidget {
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.85),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.85,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1015,24 +998,27 @@ class _NewPrincipalFundDialogState extends State<_NewPrincipalFundDialog> {
     });
     try {
       final base = AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
-      final response = await widget.client.post(
-        Uri.parse('$base/api/retirement-funds-principal'),
-        headers: {
-          'X-App-Session': AppConfig.appSessionToken,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'name': name,
-          'phone': _phoneController.text.trim(),
-        }),
-      ).timeout(const Duration(seconds: 20));
+      final response = await widget.client
+          .post(
+            Uri.parse('$base/api/retirement-funds-principal'),
+            headers: {
+              'X-App-Session': AppConfig.appSessionToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'name': name,
+              'phone': _phoneController.text.trim(),
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('HTTP ${response.statusCode}: ${response.body}');
       }
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
-      final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final data =
+          (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
       final fundJson = (data['fund'] as Map?)?.cast<String, dynamic>();
       if (fundJson == null) {
         throw Exception('Réponse serveur invalide');
@@ -1194,8 +1180,10 @@ class _PrincipalLabeledField extends StatelessWidget {
             hintText: hint,
             hintStyle: const TextStyle(color: Color(0xFF8A939D)),
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: Color(0xFFE4E7EB)),

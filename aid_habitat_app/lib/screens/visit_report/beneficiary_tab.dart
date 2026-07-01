@@ -1553,35 +1553,30 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   Widget _buildAddRetirementFundButton({required int occupantIndex}) {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: SizedBox(
-        height: 40,
-        child: Material(
-          color: kBrandPurple,
+    return GestureDetector(
+      onTap: () => _handleAddRetirementFund(occupantIndex: occupantIndex),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2ECF5),
           borderRadius: BorderRadius.circular(999),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () => _handleAddRetirementFund(occupantIndex: occupantIndex),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(LucideIcons.plus, size: 17, color: Colors.white),
-                  const SizedBox(width: 7),
-                  Text(
-                    'Ajouter une caisse',
-                    style: GoogleFonts.nunito(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+          border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add, size: 16, color: Color(0xFF554265)),
+            SizedBox(width: 8),
+            Text(
+              'Ajouter une caisse',
+              style: TextStyle(
+                color: Color(0xFF554265),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

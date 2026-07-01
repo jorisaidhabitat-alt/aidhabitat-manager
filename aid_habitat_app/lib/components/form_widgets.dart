@@ -225,6 +225,7 @@ class FormTextField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final VoidCallback? onTapOutside;
+  final VoidCallback? onFocused;
   final bool autofocus;
   final bool readOnly;
   final TextInputType? keyboardType;
@@ -267,6 +268,7 @@ class FormTextField extends StatefulWidget {
     this.onChanged,
     this.onSubmitted,
     this.onTapOutside,
+    this.onFocused,
     this.autofocus = false,
     this.readOnly = false,
     this.keyboardType,
@@ -292,6 +294,11 @@ class _FormTextFieldState extends State<FormTextField> {
     super.initState();
     _controller = TextEditingController(text: widget.value);
     _focusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChange);
+  }
+
+  void _handleFocusChange() {
+    if (_focusNode.hasFocus) widget.onFocused?.call();
   }
 
   @override
@@ -309,6 +316,7 @@ class _FormTextFieldState extends State<FormTextField> {
 
   @override
   void dispose() {
+    _focusNode.removeListener(_handleFocusChange);
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();
@@ -404,6 +412,7 @@ class FormNumberField extends StatefulWidget {
   final ValueChanged<double?>? onChanged;
   final ValueChanged<double?>? onSubmitted;
   final VoidCallback? onTapOutside;
+  final VoidCallback? onFocused;
   final bool autofocus;
   final String? unit;
 
@@ -429,6 +438,7 @@ class FormNumberField extends StatefulWidget {
     this.onChanged,
     this.onSubmitted,
     this.onTapOutside,
+    this.onFocused,
     this.autofocus = false,
     this.unit,
     this.labelColor,
@@ -456,6 +466,11 @@ class _FormNumberFieldState extends State<FormNumberField> {
           : '',
     );
     _focusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChange);
+  }
+
+  void _handleFocusChange() {
+    if (_focusNode.hasFocus) widget.onFocused?.call();
   }
 
   @override
@@ -473,6 +488,7 @@ class _FormNumberFieldState extends State<FormNumberField> {
 
   @override
   void dispose() {
+    _focusNode.removeListener(_handleFocusChange);
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();

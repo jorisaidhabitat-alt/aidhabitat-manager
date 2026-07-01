@@ -78,6 +78,7 @@ class _DossierScreenState extends State<DossierScreen> {
   late final DossierRepository _repository;
 
   Timer? _saveTimer;
+  final ScrollController _infoCardScrollController = ScrollController();
   final bool _saving = false;
   bool _isBeneficiaryLocked = true;
 
@@ -243,6 +244,7 @@ class _DossierScreenState extends State<DossierScreen> {
       // ignore: discarded_futures
       _save();
     }
+    _infoCardScrollController.dispose();
     super.dispose();
   }
 
@@ -385,6 +387,7 @@ class _DossierScreenState extends State<DossierScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Padding(
         padding: const EdgeInsets.all(32.0),
         child: Column(
@@ -604,6 +607,34 @@ class _DossierScreenState extends State<DossierScreen> {
   // ---------------------------------------------------------------------------
   // Info Card — strict React parity
   // ---------------------------------------------------------------------------
+  void _ensureInfoFieldVisible(BuildContext fieldContext) {
+    void ensureVisible() {
+      if (!mounted || !fieldContext.mounted) return;
+      Scrollable.ensureVisible(
+        fieldContext,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: 0.12,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ensureVisible();
+      Future.delayed(const Duration(milliseconds: 320), ensureVisible);
+    });
+  }
+
+  Widget _buildKeyboardAwareInfoField(
+    Widget Function(VoidCallback onFocused) builder,
+  ) {
+    return Builder(
+      builder: (fieldContext) {
+        return builder(() => _ensureInfoFieldVisible(fieldContext));
+      },
+    );
+  }
+
   Widget _buildInfoCard() {
     // Nouveau layout (parité maquette utilisateur) :
     //   - Bandeau violet clair en haut : icône + "Bénéficiaire" + crayon.
@@ -639,6 +670,12 @@ class _DossierScreenState extends State<DossierScreen> {
     final bannerAccent = _beneficiaryPrepared
         ? const Color(0xFFEDE8F5)
         : kBrandPurple;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final infoBottomPadding =
+        18.0 +
+        (!_isBeneficiaryLocked && keyboardInset > 0
+            ? keyboardInset + 32.0
+            : 0.0);
 
     return Container(
       decoration: BoxDecoration(
@@ -773,245 +810,268 @@ class _DossierScreenState extends State<DossierScreen> {
           //     (mode édition quand l'utilisateur a cliqué sur le crayon).
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_isBeneficiaryLocked) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _PlainField(
-                            label: 'Nom',
-                            value: _lastName.trim().isEmpty ? '—' : _lastName,
+              controller: _infoCardScrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.fromLTRB(20, 18, 20, infoBottomPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_isBeneficiaryLocked) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _PlainField(
+                              label: 'Nom',
+                              value: _lastName.trim().isEmpty ? '—' : _lastName,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _PlainField(
-                            label: 'Prénom',
-                            value: _firstName.trim().isEmpty ? '—' : _firstName,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _PlainField(
+                              label: 'Prénom',
+                              value: _firstName.trim().isEmpty
+                                  ? '—'
+                                  : _firstName,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _PlainField(
-                            label: 'Occupants',
-                            value: _numberPeople == '1' ? '1' : _numberPeople,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _PlainField(
-                            label: 'RFR du foyer',
-                            value: _formatFiscalRevenue(_fiscalRevenue),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    _PlainField(
-                      label: 'Adresse',
-                      value: fullAddress.isEmpty
-                          ? 'Non renseignée'
-                          : fullAddress,
-                      multiline: true,
-                    ),
-                    // Section "Communauté de communes" — réservée dès qu'on
-                    // a une commune (cityId ou ville ou code postal). Sans
-                    // ça le badge "apparaissait après" le reste du dossier
-                    // sur iPad PWA cold start, parce que `_communeOptions`
-                    // est peuplé seulement quand `/api/references` répond.
-                    // Maintenant on rend la section dans le flux normal et
-                    // on remplace le badge par un skeleton pendant le
-                    // chargement — pas de décalage visuel ni d'apparition
-                    // tardive.
-                    if (_hasCityInfo()) ...[
+                        ],
+                      ),
                       const SizedBox(height: 16),
-                      // Libellé + badge communauté de communes. Même style
-                      // de label violet que les autres champs du bloc
-                      // Bénéficiaire en preview (`_PlainField` → 14 px,
-                      // w700) — le badge pastel est juste en dessous.
-                      Text(
-                        'Communauté de communes',
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: kBrandPurple,
-                          letterSpacing: 0.2,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _PlainField(
+                              label: 'Occupants',
+                              value: _numberPeople == '1' ? '1' : _numberPeople,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _PlainField(
+                              label: 'RFR du foyer',
+                              value: _formatFiscalRevenue(_fiscalRevenue),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _PlainField(
+                        label: 'Adresse',
+                        value: fullAddress.isEmpty
+                            ? 'Non renseignée'
+                            : fullAddress,
+                        multiline: true,
+                      ),
+                      // Section "Communauté de communes" — réservée dès qu'on
+                      // a une commune (cityId ou ville ou code postal). Sans
+                      // ça le badge "apparaissait après" le reste du dossier
+                      // sur iPad PWA cold start, parce que `_communeOptions`
+                      // est peuplé seulement quand `/api/references` répond.
+                      // Maintenant on rend la section dans le flux normal et
+                      // on remplace le badge par un skeleton pendant le
+                      // chargement — pas de décalage visuel ni d'apparition
+                      // tardive.
+                      if (_hasCityInfo()) ...[
+                        const SizedBox(height: 16),
+                        // Libellé + badge communauté de communes. Même style
+                        // de label violet que les autres champs du bloc
+                        // Bénéficiaire en preview (`_PlainField` → 14 px,
+                        // w700) — le badge pastel est juste en dessous.
+                        Text(
+                          'Communauté de communes',
+                          style: GoogleFonts.nunito(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: kBrandPurple,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (epciLabel.isNotEmpty)
+                          // Variante "large" du widget partagé : padding
+                          // 16×9 + fontSize 14 → mieux proportionné à
+                          // côté de l'adresse de la preview Bénéficiaire.
+                          // La liste "Mes dossiers" garde la taille par
+                          // défaut (12×6, fontSize 12).
+                          EpciBadge(label: epciLabel, large: true)
+                        else if (!_references.isLoaded)
+                          // Skeleton aux mêmes dimensions que le badge
+                          // pour que la mise en page reste stable pendant
+                          // que `/api/references` répond.
+                          const _EpciBadgeSkeleton()
+                        else
+                          // Références chargées mais aucun match (commune
+                          // inconnue ou EPCI manquant côté NocoDB) —
+                          // affichage discret au lieu d'un blanc.
+                          const Text(
+                            '—',
+                            style: TextStyle(
+                              fontSize: 14,
+                              // Bumpé w400 → w500 (uniformisation 2026-05-13).
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF8A939D),
+                            ),
+                          ),
+                      ],
+                      // "Commentaire du projet" retiré du bloc Bénéficiaire
+                      // (demande utilisateur) : s'il existe, il est affiché
+                      // par défaut dans la note rapide en haut à droite.
+                    ] else ...[
+                      // --- Mode édition : libellés violets conservés même
+                      // quand les champs deviennent modifiables (demande
+                      // utilisateur : pas de changement de couleur entre
+                      // lecture et édition).
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _buildKeyboardAwareInfoField(
+                              (onFocused) => FormTextField(
+                                label: 'Nom',
+                                value: _lastName,
+                                labelColor: kBrandPurple,
+                                labelSize: 14,
+                                valueSize: 14,
+                                onFocused: onFocused,
+                                onChanged: (v) {
+                                  _lastName = v;
+                                  _onTextChanged();
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildKeyboardAwareInfoField(
+                              (onFocused) => FormTextField(
+                                label: 'Prénom',
+                                value: _firstName,
+                                labelColor: kBrandPurple,
+                                labelSize: 14,
+                                valueSize: 14,
+                                onFocused: onFocused,
+                                onChanged: (v) {
+                                  _firstName = v;
+                                  _onTextChanged();
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: _buildOccupantsDropdown()),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            // RFR du foyer : modifiable en édition (demande
+                            // utilisateur). Écrit vers patient.fiscal_revenue
+                            // via `_save` — écrase l'éventuelle somme
+                            // calculée depuis les occupants.
+                            child: _buildKeyboardAwareInfoField(
+                              (onFocused) => FormNumberField(
+                                label: 'RFR du foyer',
+                                value: _fiscalRevenue,
+                                unit: '€',
+                                labelColor: kBrandPurple,
+                                labelSize: 14,
+                                valueSize: 14,
+                                onFocused: onFocused,
+                                onChanged: (v) {
+                                  _fiscalRevenue = v;
+                                  _onIncomeAffectingChanged();
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Adresse (rue / n°) — modifiable directement depuis
+                      // ce bloc. La ville et le code postal sont sur la
+                      // ligne suivante (CommuneFieldGroup avec showZipField).
+                      _buildKeyboardAwareInfoField(
+                        (onFocused) => FormTextField(
+                          label: 'Adresse',
+                          value: _address,
+                          labelColor: kBrandPurple,
+                          labelSize: 14,
+                          valueSize: 14,
+                          onFocused: onFocused,
+                          onChanged: (v) {
+                            _address = v;
+                            _onTextChanged();
+                          },
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      if (epciLabel.isNotEmpty)
-                        // Variante "large" du widget partagé : padding
-                        // 16×9 + fontSize 14 → mieux proportionné à
-                        // côté de l'adresse de la preview Bénéficiaire.
-                        // La liste "Mes dossiers" garde la taille par
-                        // défaut (12×6, fontSize 12).
-                        EpciBadge(label: epciLabel, large: true)
-                      else if (!_references.isLoaded)
-                        // Skeleton aux mêmes dimensions que le badge
-                        // pour que la mise en page reste stable pendant
-                        // que `/api/references` répond.
-                        const _EpciBadgeSkeleton()
-                      else
-                        // Références chargées mais aucun match (commune
-                        // inconnue ou EPCI manquant côté NocoDB) —
-                        // affichage discret au lieu d'un blanc.
-                        const Text(
-                          '—',
-                          style: TextStyle(
-                            fontSize: 14,
-                            // Bumpé w400 → w500 (uniformisation 2026-05-13).
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF8A939D),
-                          ),
-                        ),
-                    ],
-                    // "Commentaire du projet" retiré du bloc Bénéficiaire
-                    // (demande utilisateur) : s'il existe, il est affiché
-                    // par défaut dans la note rapide en haut à droite.
-                  ] else ...[
-                    // --- Mode édition : libellés violets conservés même
-                    // quand les champs deviennent modifiables (demande
-                    // utilisateur : pas de changement de couleur entre
-                    // lecture et édition).
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: FormTextField(
-                            label: 'Nom',
-                            value: _lastName,
-                            labelColor: kBrandPurple,
-                            labelSize: 14,
-                            valueSize: 14,
-                            onChanged: (v) {
-                              _lastName = v;
-                              _onTextChanged();
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FormTextField(
-                            label: 'Prénom',
-                            value: _firstName,
-                            labelColor: kBrandPurple,
-                            labelSize: 14,
-                            valueSize: 14,
-                            onChanged: (v) {
-                              _firstName = v;
-                              _onTextChanged();
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: _buildOccupantsDropdown()),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          // RFR du foyer : modifiable en édition (demande
-                          // utilisateur). Écrit vers patient.fiscal_revenue
-                          // via `_save` — écrase l'éventuelle somme
-                          // calculée depuis les occupants.
-                          child: FormNumberField(
-                            label: 'RFR du foyer',
-                            value: _fiscalRevenue,
-                            unit: '€',
-                            labelColor: kBrandPurple,
-                            labelSize: 14,
-                            valueSize: 14,
-                            onChanged: (v) {
-                              _fiscalRevenue = v;
-                              _onIncomeAffectingChanged();
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Adresse (rue / n°) — modifiable directement depuis
-                    // ce bloc. La ville et le code postal sont sur la
-                    // ligne suivante (CommuneFieldGroup avec showZipField).
-                    FormTextField(
-                      label: 'Adresse',
-                      value: _address,
-                      labelColor: kBrandPurple,
-                      labelSize: 14,
-                      valueSize: 14,
-                      onChanged: (v) {
-                        _address = v;
-                        _onTextChanged();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    CommuneFieldGroup(
-                      city: _city,
-                      zipCode: _zipCode,
-                      cityId: _cityId,
-                      options: _communeOptions,
-                      // Code postal éditable lui aussi → l'ergo peut
-                      // corriger une commune mal résolue sans repasser
-                      // par le relevé de visite.
-                      showZipField: true,
-                      zipLabel: 'Code postal',
-                      labelColor: kBrandPurple,
-                      labelSize: 14,
-                      valueSize: 14,
-                      onChanged: (update) {
-                        setState(() {
-                          if (update.city != null) _city = update.city!;
-                          if (update.zipCode != null) {
-                            _zipCode = update.zipCode!;
-                          }
-                          if (update.cityId != null) {
-                            _cityId = update.cityId!;
-                          }
-                        });
-                        _scheduleSave();
-                      },
-                    ),
-                    if (_hasCityInfo()) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Communauté de communes',
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: kBrandPurple,
-                          letterSpacing: 0.2,
+                      const SizedBox(height: 12),
+                      _buildKeyboardAwareInfoField(
+                        (onFocused) => CommuneFieldGroup(
+                          city: _city,
+                          zipCode: _zipCode,
+                          cityId: _cityId,
+                          options: _communeOptions,
+                          // Code postal éditable lui aussi → l'ergo peut
+                          // corriger une commune mal résolue sans repasser
+                          // par le relevé de visite.
+                          showZipField: true,
+                          zipLabel: 'Code postal',
+                          labelColor: kBrandPurple,
+                          labelSize: 14,
+                          valueSize: 14,
+                          onFocused: onFocused,
+                          onChanged: (update) {
+                            setState(() {
+                              if (update.city != null) _city = update.city!;
+                              if (update.zipCode != null) {
+                                _zipCode = update.zipCode!;
+                              }
+                              if (update.cityId != null) {
+                                _cityId = update.cityId!;
+                              }
+                            });
+                            _scheduleSave();
+                          },
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      if (epciLabel.isNotEmpty)
-                        EpciBadge(label: epciLabel, large: true)
-                      else if (!_references.isLoaded)
-                        const _EpciBadgeSkeleton()
-                      else
-                        const Text(
-                          '—',
-                          style: TextStyle(
+                      if (_hasCityInfo()) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Communauté de communes',
+                          style: GoogleFonts.nunito(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF8A939D),
+                            fontWeight: FontWeight.w600,
+                            color: kBrandPurple,
+                            letterSpacing: 0.2,
                           ),
                         ),
+                        const SizedBox(height: 10),
+                        if (epciLabel.isNotEmpty)
+                          EpciBadge(label: epciLabel, large: true)
+                        else if (!_references.isLoaded)
+                          const _EpciBadgeSkeleton()
+                        else
+                          const Text(
+                            '—',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF8A939D),
+                            ),
+                          ),
+                      ],
+                      // "Commentaire du projet" retiré — déplacé vers la
+                      // note rapide en haut à droite (demande utilisateur).
                     ],
-                    // "Commentaire du projet" retiré — déplacé vers la
-                    // note rapide en haut à droite (demande utilisateur).
                   ],
-                ],
+                ),
               ),
             ),
           ),

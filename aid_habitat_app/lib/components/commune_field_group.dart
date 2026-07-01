@@ -39,6 +39,7 @@ class CommuneFieldGroup extends StatefulWidget {
   final List<CommuneOption> options;
   final ValueChanged<CommuneUpdate> onChanged;
   final VoidCallback? onBlur;
+  final VoidCallback? onFocused;
   final String zipLabel;
   final String cityLabel;
   final bool showZipField;
@@ -68,6 +69,7 @@ class CommuneFieldGroup extends StatefulWidget {
     this.options = const [],
     this.cityId,
     this.onBlur,
+    this.onFocused,
     this.zipLabel = 'CP',
     this.cityLabel = 'Ville',
     this.showZipField = true,
@@ -97,6 +99,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
     _focusNode = FocusNode();
     _zipFocusNode = FocusNode();
     _focusNode.addListener(_onFocusChange);
+    _zipFocusNode.addListener(_onZipFocusChange);
   }
 
   @override
@@ -114,6 +117,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
   void dispose() {
     _removeOverlay();
     _focusNode.removeListener(_onFocusChange);
+    _zipFocusNode.removeListener(_onZipFocusChange);
     _focusNode.dispose();
     _zipFocusNode.dispose();
     _cityCtrl.dispose();
@@ -149,6 +153,7 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
 
   void _onFocusChange() {
     if (_focusNode.hasFocus) {
+      widget.onFocused?.call();
       _showOverlay();
     } else {
       // Short delay so tap on an item registers before dismiss
@@ -158,6 +163,10 @@ class _CommuneFieldGroupState extends State<CommuneFieldGroup> {
         widget.onBlur?.call();
       });
     }
+  }
+
+  void _onZipFocusChange() {
+    if (_zipFocusNode.hasFocus) widget.onFocused?.call();
   }
 
   void _showOverlay() {
