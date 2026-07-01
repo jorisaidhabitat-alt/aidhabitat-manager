@@ -417,6 +417,12 @@ class _NotesWidgetState extends State<NotesWidget> {
   Timer? _drawInactivityTimer;
   Timer? _drawingDirtyFlushTimer;
 
+  // Debug iPad/Pencil activable via ?pencilDebug=1.
+  late final bool _pencilDebugEnabled = _isPencilDebugEnabled();
+  final Map<String, int> _pencilDebugCounts = <String, int>{};
+  final List<String> _pencilDebugLines = <String>[];
+  DateTime? _pencilDebugLastUiUpdateAt;
+
   // Undo / redo (bonus par rapport à React)
   final List<List<Stroke>> _undoStack = <List<Stroke>>[];
   final List<List<Stroke>> _redoStack = <List<Stroke>>[];
@@ -1500,6 +1506,87 @@ class _NotesWidgetState extends State<NotesWidget> {
         local.dy <= _canvasSize.height;
   }
 
+  bool _isPencilDebugEnabled() {
+    final params = Uri.base.queryParameters;
+    final value = params['pencilDebug'] ?? params['debugPencil'];
+    return value == '1' || value == 'true' || value == 'yes';
+  }
+
+  String _pointerKindLabel(PointerDeviceKind kind) {
+    switch (kind) {
+      case PointerDeviceKind.mouse:
+        return 'mouse';
+      case PointerDeviceKind.touch:
+        return 'touch';
+      case PointerDeviceKind.stylus:
+        return 'stylus';
+      case PointerDeviceKind.invertedStylus:
+        return 'invertedStylus';
+      case PointerDeviceKind.trackpad:
+        return 'trackpad';
+      case PointerDeviceKind.unknown:
+        return 'unknown';
+    }
+  }
+
+  String _debugClock() {
+    final now = DateTime.now();
+    String two(int value) => value.toString().padLeft(2, '0');
+    final ms = now.millisecond.toString().padLeft(3, '0');
+    return '${two(now.hour)}:${two(now.minute)}:${two(now.second)}.$ms';
+  }
+
+  void _refreshPencilDebug({bool force = false}) {
+    if (!_pencilDebugEnabled || !mounted) return;
+    final now = DateTime.now();
+    final last = _pencilDebugLastUiUpdateAt;
+    if (!force &&
+        last != null &&
+        now.difference(last) < const Duration(milliseconds: 120)) {
+      return;
+    }
+    _pencilDebugLastUiUpdateAt = now;
+    setState(() {});
+  }
+
+  void _recordPencilDebugLine(String key, String message, {bool force = true}) {
+    if (!_pencilDebugEnabled) return;
+    _pencilDebugCounts[key] = (_pencilDebugCounts[key] ?? 0) + 1;
+    _pencilDebugLines.insert(0, '${_debugClock()} $message');
+    if (_pencilDebugLines.length > 10) {
+      _pencilDebugLines.removeRange(10, _pencilDebugLines.length);
+    }
+    _refreshPencilDebug(force: force);
+  }
+
+  void _recordPointerDebug(
+    PointerEvent event,
+    String phase, {
+    String? note,
+    bool force = false,
+  }) {
+    if (!_pencilDebugEnabled) return;
+    final kind = _pointerKindLabel(event.kind);
+    final key = '$phase:$kind';
+    final count = (_pencilDebugCounts[key] ?? 0) + 1;
+    _pencilDebugCounts[key] = count;
+    final shouldStoreLine = phase != 'move' || count % 8 == 0 || note != null;
+    if (shouldStoreLine) {
+      final pressure = event.pressure.toStringAsFixed(2);
+      final x = event.localPosition.dx.round();
+      final y = event.localPosition.dy.round();
+      final suffix = note == null ? '' : ' $note';
+      _pencilDebugLines.insert(
+        0,
+        '${_debugClock()} $phase $kind #${event.pointer} p=$pressure $x,$y$suffix',
+      );
+      if (_pencilDebugLines.length > 10) {
+        _pencilDebugLines.removeRange(10, _pencilDebugLines.length);
+      }
+    }
+    _refreshPencilDebug(force: force || phase != 'move');
+  }
+
   bool _isStylusKind(PointerDeviceKind kind) {
     return kind == PointerDeviceKind.stylus ||
         kind == PointerDeviceKind.invertedStylus;
@@ -1561,7 +1648,8 @@ class _NotesWidgetState extends State<NotesWidget> {
     _drawInactivityTimer = null;
   }
 
-  void _startStrokeFromPointer(PointerEvent event) {
+  void _startStrokeFromPointer(PointerEvent event, {String source = 'direct'}) {
+    _recordPointerDebug(event, 'start', note: source, force: true);
     _pushUndo();
     setState(() {
       _activePointerId = event.pointer;
@@ -1580,32 +1668,54 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   void _onDrawStart(PointerDownEvent event) {
-    if (_canvasSize.isEmpty) return;
-    if (!_isInsideCanvas(event.localPosition)) return;
-    if (!_isDrawablePointerKind(event.kind)) return;
+    _recordPointerDebug(event, 'down');
+    if (_canvasSize.isEmpty) {
+      _recordPointerDebug(event, 'ignored', note: 'empty-canvas', force: true);
+      return;
+    }
+    if (!_isInsideCanvas(event.localPosition)) {
+      _recordPointerDebug(event, 'ignored', note: 'outside', force: true);
+      return;
+    }
+    if (!_isDrawablePointerKind(event.kind)) {
+      _recordPointerDebug(event, 'ignored', note: 'kind', force: true);
+      return;
+    }
     _releaseTextFocusForDrawing();
     if (_activePointerId != null || _activeStroke != null) {
       // Sur iPad, il arrive qu'un nouveau contact Apple Pencil soit reçu
       // alors que l'ancien pointer n'a pas été correctement finalisé. Dans
       // ce cas on ferme le trait précédent au lieu d'ignorer le nouveau :
       // sinon le stylet semble "mort" jusqu'au contact suivant.
+      _recordPointerDebug(event, 'recover', note: 'down-active', force: true);
       _commitActiveStroke();
     }
-    _startStrokeFromPointer(event);
+    _startStrokeFromPointer(event, source: 'down');
   }
 
   void _onDrawUpdate(PointerMoveEvent event) {
-    if (_canvasSize.isEmpty) return;
+    _recordPointerDebug(event, 'move');
+    if (_canvasSize.isEmpty) {
+      _recordPointerDebug(event, 'ignored', note: 'move-empty', force: true);
+      return;
+    }
     if (_activePointerId != event.pointer) {
       if (!_isInsideCanvas(event.localPosition) ||
           !_isDrawablePointerKind(event.kind)) {
+        _recordPointerDebug(
+          event,
+          'ignored',
+          note: 'move-mismatch',
+          force: true,
+        );
         return;
       }
       if (_activePointerId != null || _activeStroke != null) {
+        _recordPointerDebug(event, 'recover', note: 'move-active', force: true);
         _commitActiveStroke();
       }
       _releaseTextFocusForDrawing();
-      _startStrokeFromPointer(event);
+      _startStrokeFromPointer(event, source: 'move-recovery');
     }
     final stroke = _activeStroke;
     if (stroke == null) return;
@@ -1617,19 +1727,22 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   void _onDrawEnd(PointerEvent event) {
+    _recordPointerDebug(event, 'up');
     if (_activePointerId != event.pointer) {
       if (_canvasSize.isEmpty ||
           !_isInsideCanvas(event.localPosition) ||
           !_isDrawablePointerKind(event.kind)) {
+        _recordPointerDebug(event, 'ignored', note: 'up-mismatch', force: true);
         return;
       }
       if (_activePointerId != null || _activeStroke != null) {
+        _recordPointerDebug(event, 'recover', note: 'up-active', force: true);
         _commitActiveStroke();
       }
       // Recovery iPadOS/Safari : certains micro-traits Apple Pencil
       // remontent seulement un pointerUp exploitable. On pose alors un point
       // visible au lieu de perdre totalement le contact.
-      _startStrokeFromPointer(event);
+      _startStrokeFromPointer(event, source: 'up-recovery');
     }
     final stroke = _activeStroke;
     if (stroke != null && _isInsideCanvas(event.localPosition)) {
@@ -1641,7 +1754,16 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   void _onDrawCancel(PointerEvent event) {
-    if (_activePointerId != event.pointer) return;
+    _recordPointerDebug(event, 'cancel', force: true);
+    if (_activePointerId != event.pointer) {
+      _recordPointerDebug(
+        event,
+        'ignored',
+        note: 'cancel-mismatch',
+        force: true,
+      );
+      return;
+    }
     _commitActiveStroke();
   }
 
@@ -1649,6 +1771,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     final stroke = _activeStroke;
     _cancelDrawInactivityCommit();
     if (stroke == null) {
+      _recordPencilDebugLine('commit:empty', 'commit empty');
       if (_activePointerId != null && mounted) {
         setState(() {
           _activePointerId = null;
@@ -1658,6 +1781,10 @@ class _NotesWidgetState extends State<NotesWidget> {
       }
       return;
     }
+    _recordPencilDebugLine(
+      'commit:stroke',
+      'commit ${stroke.tool.name} pts=${stroke.points.length}',
+    );
     setState(() {
       _strokes.add(stroke);
       _activeStroke = null;
@@ -2841,6 +2968,62 @@ class _NotesWidgetState extends State<NotesWidget> {
     );
   }
 
+  Widget _buildPencilDebugOverlay() {
+    final entries = _pencilDebugCounts.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final counts = entries.map((entry) => '${entry.key}: ${entry.value}');
+    return Positioned(
+      top: 12,
+      right: 12,
+      child: IgnorePointer(
+        child: Container(
+          width: 310,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xE6111827),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0x66FFFFFF)),
+          ),
+          child: DefaultTextStyle(
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              height: 1.32,
+              fontFamily: 'monospace',
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Flutter pointer debug',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'active=${_activePointerId ?? '-'} '
+                  'strokePts=${_activeStroke?.points.length ?? 0} '
+                  'saved=${_strokes.length}',
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  counts.isEmpty ? 'no Flutter events yet' : counts.join('\n'),
+                ),
+                const SizedBox(height: 8),
+                const Text('last:'),
+                Text(
+                  _pencilDebugLines.isEmpty
+                      ? '-'
+                      : _pencilDebugLines.join('\n'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCanvasArea() {
     return Stack(
       children: [
@@ -2901,6 +3084,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                           ),
                         ),
                       ),
+                    if (_pencilDebugEnabled) _buildPencilDebugOverlay(),
                   ],
                 ),
               );

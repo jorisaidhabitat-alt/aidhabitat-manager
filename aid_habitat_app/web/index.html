@@ -87,7 +87,86 @@
     // On laisse Flutter recevoir les événements, mais on empêche le navigateur
     // de les interpréter comme scroll, sélection, handwriting ou gesture.
     (function installApplePencilGuards() {
+      const params = new URLSearchParams(window.location.search);
+      const debugEnabled = params.get('pencilDebug') === '1' ||
+        params.get('debugPencil') === '1';
+      const debugState = {
+        counts: {},
+        lastEvents: []
+      };
+      let debugPanel = null;
+
+      const ensureDebugPanel = function() {
+        if (!debugEnabled || debugPanel) return debugPanel;
+        debugPanel = document.createElement('pre');
+        debugPanel.style.position = 'fixed';
+        debugPanel.style.right = '12px';
+        debugPanel.style.bottom = '12px';
+        debugPanel.style.zIndex = '2147483647';
+        debugPanel.style.maxWidth = '360px';
+        debugPanel.style.maxHeight = '42vh';
+        debugPanel.style.overflow = 'hidden';
+        debugPanel.style.margin = '0';
+        debugPanel.style.padding = '10px 12px';
+        debugPanel.style.borderRadius = '14px';
+        debugPanel.style.background = 'rgba(17, 24, 39, 0.88)';
+        debugPanel.style.color = '#F9FAFB';
+        debugPanel.style.font = '11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace';
+        debugPanel.style.pointerEvents = 'none';
+        debugPanel.style.whiteSpace = 'pre-wrap';
+        debugPanel.textContent = 'Native pointer debug...';
+        document.body.appendChild(debugPanel);
+        return debugPanel;
+      };
+
+      const renderDebugPanel = function() {
+        const panel = ensureDebugPanel();
+        if (!panel) return;
+        const counts = Object.keys(debugState.counts)
+          .sort()
+          .map(function(key) {
+            return key + ': ' + debugState.counts[key];
+          })
+          .join('\n');
+        panel.textContent = [
+          'Native pointer debug',
+          'URL: ?pencilDebug=1',
+          counts || 'no events yet',
+          '',
+          'last:',
+          debugState.lastEvents.join('\n')
+        ].join('\n');
+      };
+
+      const recordNativePointer = function(event) {
+        if (!debugEnabled) return;
+        const type = event.pointerType || 'unknown';
+        const key = event.type + ':' + type;
+        debugState.counts[key] = (debugState.counts[key] || 0) + 1;
+        if (event.type !== 'pointermove' || debugState.counts[key] % 8 === 0) {
+          const pressure = typeof event.pressure === 'number'
+            ? event.pressure.toFixed(2)
+            : '-';
+          debugState.lastEvents.unshift(
+            new Date().toLocaleTimeString() + ' ' +
+            event.type.replace('pointer', '') + ' ' +
+            type + ' #' + event.pointerId +
+            ' p=' + pressure +
+            ' x=' + Math.round(event.clientX) +
+            ' y=' + Math.round(event.clientY)
+          );
+          debugState.lastEvents = debugState.lastEvents.slice(0, 10);
+        }
+        renderDebugPanel();
+      };
+
+      window.__aidPencilDebug = debugState;
+      if (debugEnabled) {
+        window.addEventListener('load', renderDebugPanel, { once: true });
+      }
+
       const preventPencilDefault = function(event) {
+        recordNativePointer(event);
         if (event.pointerType !== 'pen') return;
         if (event.target && event.target.setPointerCapture && event.type === 'pointerdown') {
           try {
