@@ -55,11 +55,15 @@ class SanitaryLevelIcon extends StatelessWidget {
     required this.activeIndexFromBottom,
     required this.layerCount,
     this.size = 22,
+    this.activeColor = const Color(0xFF0E1116),
+    this.inactiveColor = const Color(0xFFD8D0DC),
   });
 
   final int activeIndexFromBottom;
   final int layerCount;
   final double size;
+  final Color activeColor;
+  final Color inactiveColor;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +73,8 @@ class SanitaryLevelIcon extends StatelessWidget {
         painter: _SanitaryLevelIconPainter(
           activeIndexFromBottom: activeIndexFromBottom,
           layerCount: layerCount,
+          activeColor: activeColor,
+          inactiveColor: inactiveColor,
         ),
       ),
     );
@@ -94,10 +100,14 @@ class _SanitaryLevelIconPainter extends CustomPainter {
   const _SanitaryLevelIconPainter({
     required this.activeIndexFromBottom,
     required this.layerCount,
+    required this.activeColor,
+    required this.inactiveColor,
   });
 
   final int activeIndexFromBottom;
   final int layerCount;
+  final Color activeColor;
+  final Color inactiveColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -115,7 +125,7 @@ class _SanitaryLevelIconPainter extends CustomPainter {
       final y = bottom - bottomIndex * spacing;
       final paint = Paint()
         ..isAntiAlias = true
-        ..color = isActive ? const Color(0xFF0E1116) : const Color(0xFFD8D0DC)
+        ..color = isActive ? activeColor : inactiveColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = isActive ? 2.4 : 2
         ..strokeCap = StrokeCap.round
@@ -133,7 +143,9 @@ class _SanitaryLevelIconPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _SanitaryLevelIconPainter oldDelegate) {
     return oldDelegate.activeIndexFromBottom != activeIndexFromBottom ||
-        oldDelegate.layerCount != layerCount;
+        oldDelegate.layerCount != layerCount ||
+        oldDelegate.activeColor != activeColor ||
+        oldDelegate.inactiveColor != inactiveColor;
   }
 }
 
@@ -669,8 +681,7 @@ class _BathroomTabState extends State<BathroomTab>
         ? const Color(0xFF0E1116)
         : const Color(0xFF8A939D);
     final iconIndex = sanitaryLevelIconIndexFromLabel(label);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SoftTapScale(
       onTap: onTap,
       child: Container(
         color: Colors.transparent,
@@ -681,6 +692,10 @@ class _BathroomTabState extends State<BathroomTab>
             SanitaryLevelIcon(
               activeIndexFromBottom: iconIndex,
               layerCount: sanitaryLevelIconLayerCount(iconIndex),
+              activeColor: labelColor,
+              inactiveColor: active
+                  ? const Color(0xFFD8D0DC)
+                  : const Color(0xFFE4E7EB),
             ),
             const SizedBox(height: 2),
             Text(

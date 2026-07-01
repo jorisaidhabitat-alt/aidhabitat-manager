@@ -66,6 +66,13 @@ const Set<PlanTool> _symbolTools = {
   PlanTool.sink,
 };
 
+/// Les équipements restent sélectionnables via [_symbolTools], mais le
+/// carré libre est une exception métier : ses traits doivent pouvoir être
+/// effacés par la gomme comme un dessin.
+bool _isEraserProtectedSymbol(PlanTool tool) {
+  return _symbolTools.contains(tool) && tool != PlanTool.freeElement;
+}
+
 class _PlanStroke {
   final PlanTool tool;
   final int color; // ARGB
@@ -229,8 +236,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
   double _highlighterSize = _kDefaultHighlighterSize;
   bool _showEraserSizeGauge = false;
   bool _showHighlighterSizeGauge = false;
+  bool _showColorPalette = false;
   final Object _eraserSizeTapRegion = Object();
   final Object _highlighterSizeTapRegion = Object();
+  final Object _colorPaletteTapRegion = Object();
   bool _showWindowTypeBundle = false;
   final Object _windowTypeTapRegion = Object();
   double get _penSize {
@@ -748,6 +757,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       _showWindowTypeBundle = false;
       _showHighlighterSizeGauge = false;
       _showEraserSizeGauge = false;
+      _showColorPalette = false;
       // On repasse sur le crayon pour que le prochain drag sur le canvas
       // ne réouvre pas le menu / ne dessine pas un outil figé inattendu.
       _tool = PlanTool.pen;
@@ -884,6 +894,19 @@ class _PlanCanvasState extends State<PlanCanvas> {
               child: TapRegion(
                 groupId: _highlighterSizeTapRegion,
                 child: _buildHighlighterSizePopover(),
+              ),
+            ),
+          ),
+        if (_showColorPalette)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 92,
+            child: Center(
+              child: TapRegion(
+                groupId: _colorPaletteTapRegion,
+                onTapOutside: (_) => _hideColorPalette(),
+                child: _buildColorPalettePopover(),
               ),
             ),
           ),
@@ -1076,6 +1099,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
             _showWindowTypeBundle = !_showWindowTypeBundle;
             _showEraserSizeGauge = false;
             _showHighlighterSizeGauge = false;
+            _showColorPalette = false;
           });
         },
       ),
@@ -1244,60 +1268,65 @@ class _PlanCanvasState extends State<PlanCanvas> {
     );
   }
 
-  /// Cercle coloré unique affichant la couleur courante. Tap ouvre un
-  /// petit popup qui propose les 5 couleurs presets (noir, rouge,
-  /// bleu, vert, jaune) — pas de HSL/hex pour éviter la confusion.
+  /// Cercle coloré unique affichant la couleur courante. Tap ouvre le
+  /// popover au-dessus de la toolbar, comme dans la note Mesures.
   final GlobalKey _colorDotKey = GlobalKey();
   Widget _buildActiveColorDot() {
     final disabled = _tool == PlanTool.eraser;
     final activeColor = _tool == PlanTool.highlighter
         ? _highlighterColor
         : _penColor;
-    return Tooltip(
-      message: 'Changer la couleur',
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          key: _colorDotKey,
-          onTap: _openColorPresetMenu,
-          borderRadius: BorderRadius.circular(999),
-          hoverColor: disabled ? Colors.transparent : _kToolbarHoverBg,
-          child: SizedBox(
-            width: 36,
-            height: 36,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                Icon(
-                  LucideIcons.palette,
-                  size: 18,
-                  color: disabled ? const Color(0xFFB9C0C7) : _kToolbarIcon,
-                ),
-                Positioned(
-                  top: 3,
-                  right: 3,
-                  child: Opacity(
-                    opacity: disabled ? 0.35 : 1,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: Color(activeColor),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.10),
-                            blurRadius: 3,
-                          ),
-                        ],
+    return TapRegion(
+      groupId: _colorPaletteTapRegion,
+      child: Tooltip(
+        message: 'Changer la couleur',
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: _colorDotKey,
+            onTap: _openColorPresetMenu,
+            borderRadius: BorderRadius.circular(999),
+            hoverColor: disabled ? Colors.transparent : _kToolbarHoverBg,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _showColorPalette && !disabled
+                    ? _kToolbarActiveBg
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    LucideIcons.palette,
+                    size: 18,
+                    color: disabled
+                        ? const Color(0xFFB9C0C7)
+                        : (_showColorPalette
+                              ? _kToolbarActiveText
+                              : _kToolbarIcon),
+                  ),
+                  Positioned(
+                    top: 3,
+                    right: 3,
+                    child: Opacity(
+                      opacity: disabled ? 0.35 : 1,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Color(activeColor),
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1307,77 +1336,59 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   Future<void> _openColorPresetMenu() async {
     if (_tool == PlanTool.eraser) return;
-    _hideEraserSizeGauge();
-    _hideHighlighterSizeGauge();
+    setState(() {
+      _showColorPalette = !_showColorPalette;
+      _showEraserSizeGauge = false;
+      _showHighlighterSizeGauge = false;
+      _showWindowTypeBundle = false;
+    });
+  }
+
+  void _hideColorPalette() {
+    if (!_showColorPalette || !mounted) return;
+    setState(() => _showColorPalette = false);
+  }
+
+  Widget _buildColorPalettePopover() {
     final activeColor = _tool == PlanTool.highlighter
         ? _highlighterColor
         : _penColor;
-    final presets = _colorPresets;
-    final ctx = _colorDotKey.currentContext;
-    if (ctx == null) return;
-    final box = ctx.findRenderObject() as RenderBox;
-    final overlayBox =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
-    final topLeft = box.localToGlobal(
-      Offset(0, box.size.height + 6),
-      ancestor: overlayBox,
-    );
-    final position = RelativeRect.fromRect(
-      Rect.fromLTWH(topLeft.dx, topLeft.dy, 0, 0),
-      Offset.zero & overlayBox.size,
-    );
-    final picked = await showMenu<int>(
-      context: context,
-      position: position,
-      color: Colors.white,
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      items: [
-        PopupMenuItem<int>(
-          enabled: false,
-          padding: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: presets
-                  .map(
-                    (c) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(context).pop(c),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: Color(c),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: activeColor == c
-                                  ? const Color(0xFF0E1116)
-                                  : Color(0xFFB9C0C7),
-                              width: activeColor == c ? 2.5 : 1.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+            spreadRadius: -4,
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final preset in _colorPresets)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: _PlanPaletteSwatch(
+                color: Color(preset),
+                isActive: preset == activeColor,
+                onTap: () => setState(() {
+                  if (_tool == PlanTool.highlighter) {
+                    _highlighterColor = preset;
+                  } else {
+                    _penColor = preset;
+                  }
+                  _showColorPalette = false;
+                }),
+              ),
+            ),
+        ],
+      ),
     );
-    if (picked != null && mounted) {
-      setState(() {
-        if (_tool == PlanTool.highlighter) {
-          _highlighterColor = picked;
-        } else {
-          _penColor = picked;
-        }
-      });
-    }
   }
 
   /// Bouton icône compact (tooltip inline). [activeColor] permet
@@ -1434,6 +1445,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
             _tool = tool;
             _showEraserSizeGauge = tool == PlanTool.eraser;
             _showHighlighterSizeGauge = tool == PlanTool.highlighter;
+            _showColorPalette = false;
             _showWindowTypeBundle = false;
           }),
           customBorder: const CircleBorder(),
@@ -2184,7 +2196,8 @@ class _DrawPainter extends CustomPainter {
 
   /// Peint les traits en 2 couches :
   ///  1. Symboles architecturaux (fenêtre / porte / WC / …), protégés
-  ///     de la gomme.
+  ///     de la gomme. Exception : le carré libre reste sélectionnable,
+  ///     mais ses traits sont gommables comme un dessin.
   ///  2. Traits libres + annotations PAR-DESSUS les équipements dans une
   ///     couche isolée où la gomme opère (dstOut). Cela permet d'écrire
   ///     ou surligner sur un équipement, puis d'effacer uniquement cette
@@ -2197,20 +2210,21 @@ class _DrawPainter extends CustomPainter {
     final drawBounds = Rect.fromLTWH(-100000, -100000, 200000, 200000);
     // Couche 1 : équipements protégés.
     for (final s in strokes) {
-      if (!_symbolTools.contains(s.tool)) continue;
+      if (!_isEraserProtectedSymbol(s.tool)) continue;
       _paintOne(canvas, s);
     }
-    if (current != null && _symbolTools.contains(current.tool)) {
+    if (current != null && _isEraserProtectedSymbol(current.tool)) {
       _paintOne(canvas, current);
     }
 
-    // Couche 2 : traits/annotations effaçables au-dessus.
+    // Couche 2 : traits/annotations effaçables au-dessus, y compris le
+    // carré libre.
     canvas.saveLayer(drawBounds, Paint());
     for (final s in strokes) {
-      if (_symbolTools.contains(s.tool)) continue;
+      if (_isEraserProtectedSymbol(s.tool)) continue;
       _paintOne(canvas, s);
     }
-    if (current != null && !_symbolTools.contains(current.tool)) {
+    if (current != null && !_isEraserProtectedSymbol(current.tool)) {
       _paintOne(canvas, current);
     }
     canvas.restore();
@@ -2529,6 +2543,68 @@ class _DrawPainter extends CustomPainter {
 // Suppress unused import warning (Uint8List reserved for future export needs)
 // ignore: unused_element
 Uint8List _unusedTypedData() => Uint8List(0);
+
+// ---------------------------------------------------------------------------
+// Pastille couleur — même rendu que la palette de la prise de note Mesures.
+// ---------------------------------------------------------------------------
+class _PlanPaletteSwatch extends StatefulWidget {
+  const _PlanPaletteSwatch({
+    required this.color,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  State<_PlanPaletteSwatch> createState() => _PlanPaletteSwatchState();
+}
+
+class _PlanPaletteSwatchState extends State<_PlanPaletteSwatch> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = _hovering ? 1.12 : 1.0;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: widget.color,
+              shape: BoxShape.circle,
+              boxShadow: widget.isActive
+                  ? [
+                      BoxShadow(
+                        color: widget.color,
+                        blurRadius: 0,
+                        spreadRadius: 4,
+                      ),
+                      const BoxShadow(
+                        color: Colors.white,
+                        blurRadius: 0,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Pictogramme WC — petit dessin vectoriel "vue de dessus" identique au

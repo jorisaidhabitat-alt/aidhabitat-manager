@@ -1553,30 +1553,35 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   Widget _buildAddRetirementFundButton({required int occupantIndex}) {
-    return GestureDetector(
-      onTap: () => _handleAddRetirementFund(occupantIndex: occupantIndex),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2ECF5),
+    return Align(
+      alignment: Alignment.centerRight,
+      child: SizedBox(
+        height: 40,
+        child: Material(
+          color: kBrandPurple,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFD8D0DC), width: 1.5),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.max,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add, size: 16, color: Color(0xFF554265)),
-            SizedBox(width: 8),
-            Text(
-              'Ajouter une caisse',
-              style: TextStyle(
-                color: Color(0xFF554265),
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _handleAddRetirementFund(occupantIndex: occupantIndex),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(LucideIcons.plus, size: 17, color: Colors.white),
+                  const SizedBox(width: 7),
+                  Text(
+                    'Ajouter une caisse',
+                    style: GoogleFonts.nunito(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1984,19 +1989,26 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// disponible). Le téléphone n'est pas affiché dans le picker pour
   /// garder des cards compactes dans le relevé.
   Future<String?> _openPrincipalFundPicker(String currentValue) async {
-    final items = _principalFunds
-        .map(
-          (f) => _RetirementFundPickerItem(
-            name: f['name'] ?? '',
-            logoUrl: _retirementFundLogoUrl(
-              f['name'] ?? '',
-              f['logoUrl'] ?? '',
+    if (_principalFunds.isEmpty) {
+      await _loadPrincipalFundNames();
+      if (!mounted) return null;
+    }
+    final items = _buildRetirementFundPickerItems(
+      rawItems: _principalFunds
+          .map(
+            (f) => _RetirementFundPickerItem(
+              name: f['name'] ?? '',
+              logoUrl: _retirementFundLogoUrl(
+                f['name'] ?? '',
+                f['logoUrl'] ?? '',
+              ),
+              subtitle: '',
             ),
-            subtitle: '',
-          ),
-        )
-        .where((it) => it.name.isNotEmpty)
-        .toList();
+          )
+          .where((it) => it.name.isNotEmpty)
+          .toList(),
+      currentValue: currentValue,
+    );
     return _showRetirementFundPicker(
       title: 'Caisse de retraite principale',
       items: items,
@@ -2010,16 +2022,23 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// le modèle `RetirementFund` a `audience` + `aidAmount` qu'on
   /// concatène en ligne courte (Option 1B utilisateur 2026-05-12).
   Future<String?> _openComplementaryFundPicker(String currentValue) async {
-    final items = _retirementFunds
-        .map(
-          (f) => _RetirementFundPickerItem(
-            name: f.name,
-            logoUrl: _retirementFundLogoUrl(f.name, f.logoUrl),
-            subtitle: '',
-          ),
-        )
-        .where((it) => it.name.isNotEmpty)
-        .toList();
+    if (_retirementFunds.isEmpty) {
+      await _loadRetirementFundNames();
+      if (!mounted) return null;
+    }
+    final items = _buildRetirementFundPickerItems(
+      rawItems: _retirementFunds
+          .map(
+            (f) => _RetirementFundPickerItem(
+              name: f.name,
+              logoUrl: _retirementFundLogoUrl(f.name, f.logoUrl),
+              subtitle: '',
+            ),
+          )
+          .where((it) => it.name.isNotEmpty)
+          .toList(),
+      currentValue: currentValue,
+    );
     return _showRetirementFundPicker(
       title: 'Caisse de retraite complémentaire',
       items: items,
@@ -2059,6 +2078,26 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
       return '/retirement-logos/ag2r.svg';
     }
     return logoUrl;
+  }
+
+  List<_RetirementFundPickerItem> _buildRetirementFundPickerItems({
+    required List<_RetirementFundPickerItem> rawItems,
+    required String currentValue,
+  }) {
+    final current = currentValue.trim();
+    if (current.isEmpty) return rawItems;
+    final exists = rawItems.any(
+      (item) => item.name.trim().toLowerCase() == current.toLowerCase(),
+    );
+    if (exists) return rawItems;
+    return [
+      _RetirementFundPickerItem(
+        name: current,
+        logoUrl: _retirementFundLogoUrl(current, ''),
+        subtitle: '',
+      ),
+      ...rawItems,
+    ];
   }
 }
 
@@ -2782,8 +2821,7 @@ class _RetirementFundFieldButton extends StatelessWidget {
 
 /// Dialog modal qui présente les caisses de retraite en grille 4-cols.
 /// Recherche par nom (uniquement, demande utilisateur). Tap sur une
-/// card → renvoie le nom de la caisse sélectionnée. En bas, un champ
-/// de saisie libre permet d'ajouter un nom non listé.
+/// card → renvoie immédiatement le nom de la caisse sélectionnée.
 class _RetirementFundPickerDialog extends StatefulWidget {
   final String title;
   final List<_RetirementFundPickerItem> items;
@@ -2804,26 +2842,6 @@ class _RetirementFundPickerDialog extends StatefulWidget {
 class _RetirementFundPickerDialogState
     extends State<_RetirementFundPickerDialog> {
   String _search = '';
-  late TextEditingController _freeInputController;
-
-  @override
-  void initState() {
-    super.initState();
-    // Hydrate le champ de saisie libre avec la valeur courante UNIQUEMENT
-    // si elle n'existe pas dans la liste — sinon le user voit son choix
-    // existant en saisie libre, ce qui est confusant. La règle : si on
-    // peut retrouver le nom dans la liste, c'est un choix "card", pas
-    // un free-text.
-    final initial = widget.initialSelected.trim();
-    final inList = widget.items.any((it) => it.name == initial);
-    _freeInputController = TextEditingController(text: inList ? '' : initial);
-  }
-
-  @override
-  void dispose() {
-    _freeInputController.dispose();
-    super.dispose();
-  }
 
   List<_RetirementFundPickerItem> get _filtered {
     final q = _search.trim().toLowerCase();
@@ -2935,83 +2953,6 @@ class _RetirementFundPickerDialogState
                       itemCount: filtered.length,
                       itemBuilder: (context, i) => _buildTile(filtered[i]),
                     ),
-            ),
-            // Champ "caisse non listée" — demande utilisateur 2026-05-12
-            // (option 4C). Valider via le bouton "Utiliser" → renvoie
-            // ce texte comme name choisi. Permet à l'ergo de saisir
-            // librement un nom de caisse qui n'est pas encore dans
-            // NocoDB (sera ajouté plus tard via l'écran admin).
-            Container(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFAFBFC),
-                border: Border(top: BorderSide(color: Color(0xFFE4E7EB))),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _freeInputController,
-                      stylusHandwritingEnabled: true,
-                      decoration: InputDecoration(
-                        hintText: 'Ou saisir une caisse non listée…',
-                        prefixIcon: const Icon(LucideIcons.edit3, size: 18),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE4E7EB),
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE4E7EB),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(
-                            color: kBrandPurple,
-                            width: 1.5,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                      ),
-                      onSubmitted: (v) {
-                        final t = v.trim();
-                        if (t.isNotEmpty) Navigator.pop(context, t);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kBrandPurple,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: () {
-                      final t = _freeInputController.text.trim();
-                      if (t.isNotEmpty) Navigator.pop(context, t);
-                    },
-                    child: const Text(
-                      'Utiliser',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),

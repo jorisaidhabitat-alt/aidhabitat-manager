@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -413,6 +414,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   // Stroke en cours
   Stroke? _activeStroke;
   int? _activePointerId;
+  PointerDeviceKind? _activePointerKind;
+  DateTime? _lastStylusInputAt;
   Timer? _drawInactivityTimer;
 
   // Undo / redo (bonus par rapport à React)
@@ -1462,6 +1465,36 @@ class _NotesWidgetState extends State<NotesWidget> {
         local.dy <= _canvasSize.height;
   }
 
+  bool _isStylusKind(PointerDeviceKind kind) {
+    return kind == PointerDeviceKind.stylus ||
+        kind == PointerDeviceKind.invertedStylus;
+  }
+
+  void _rememberStylusInput(PointerDeviceKind kind) {
+    if (_isStylusKind(kind)) _lastStylusInputAt = DateTime.now();
+  }
+
+  bool _shouldIgnoreTouchAsPalm(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.touch) return false;
+    if (_activePointerKind != null && _isStylusKind(_activePointerKind!)) {
+      return true;
+    }
+    final lastStylus = _lastStylusInputAt;
+    if (lastStylus == null) return false;
+    return DateTime.now().difference(lastStylus) <
+        const Duration(milliseconds: 1200);
+  }
+
+  bool _shouldAppendDrawPoint(Stroke stroke, Offset nextPoint) {
+    if (stroke.points.isEmpty) return true;
+    final previous = stroke.points.last;
+    final dx = (nextPoint.dx - previous.dx) * _canvasSize.width;
+    final dy = (nextPoint.dy - previous.dy) * _canvasSize.height;
+    // Filtre les doublons sub-pixel très fréquents avec l'Apple Pencil,
+    // sans dégrader la précision visuelle du tracé.
+    return dx * dx + dy * dy >= 0.16;
+  }
+
   void _scheduleDrawInactivityCommit() {
     _drawInactivityTimer?.cancel();
     _drawInactivityTimer = Timer(const Duration(seconds: 2), () {
@@ -1478,10 +1511,21 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _onDrawStart(PointerDownEvent event) {
     if (_canvasSize.isEmpty) return;
     if (!_isInsideCanvas(event.localPosition)) return;
-    _commitActiveStroke();
+    if (_shouldIgnoreTouchAsPalm(event)) return;
+    if (_activePointerId != null) {
+      final currentKind = _activePointerKind;
+      final incomingIsStylus = _isStylusKind(event.kind);
+      final currentIsStylus = currentKind != null && _isStylusKind(currentKind);
+      if (!incomingIsStylus || currentIsStylus) return;
+      _commitActiveStroke();
+    } else if (_activeStroke != null) {
+      _commitActiveStroke();
+    }
     _pushUndo();
+    _rememberStylusInput(event.kind);
     setState(() {
       _activePointerId = event.pointer;
+      _activePointerKind = event.kind;
       if (_activeTool == NoteTool.eraser) _showEraserSizeGauge = false;
       if (_activeTool == NoteTool.highlighter) {
         _showHighlighterSizeGauge = false;
@@ -1501,6 +1545,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (_activePointerId != event.pointer) return;
     final stroke = _activeStroke;
     if (stroke == null) return;
+    _rememberStylusInput(event.kind);
     final nextPoint = _normalize(event.localPosition);
     setState(() {
       if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
@@ -1509,8 +1554,12 @@ class _NotesWidgetState extends State<NotesWidget> {
         } else {
           stroke.points[1] = nextPoint;
         }
-      } else if (stroke.points.length < 2000) {
-        stroke.points.add(nextPoint);
+      } else if (_shouldAppendDrawPoint(stroke, nextPoint)) {
+        if (stroke.points.length < kMaxStrokePoints) {
+          stroke.points.add(nextPoint);
+        } else {
+          stroke.points[stroke.points.length - 1] = nextPoint;
+        }
       }
     });
     _scheduleDrawInactivityCommit();
@@ -1518,6 +1567,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   void _onDrawEnd(PointerEvent event) {
     if (_activePointerId != event.pointer) return;
+    _rememberStylusInput(event.kind);
     _commitActiveStroke();
   }
 
@@ -1526,9 +1576,13 @@ class _NotesWidgetState extends State<NotesWidget> {
     _cancelDrawInactivityCommit();
     if (stroke == null) {
       if (_activePointerId != null && mounted) {
-        setState(() => _activePointerId = null);
+        setState(() {
+          _activePointerId = null;
+          _activePointerKind = null;
+        });
       } else {
         _activePointerId = null;
+        _activePointerKind = null;
       }
       return;
     }
@@ -1536,6 +1590,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       _strokes.add(stroke);
       _activeStroke = null;
       _activePointerId = null;
+      _activePointerKind = null;
     });
     if (markDirty) _markDirty();
   }

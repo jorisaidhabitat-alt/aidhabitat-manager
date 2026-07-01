@@ -36,6 +36,11 @@ enum NoteCanvasMode { freeform, grid }
 /// pixels logiques.
 const double kGridCell = 24.0;
 
+/// Plafond haut par trait. L'Apple Pencil émet beaucoup plus de points
+/// qu'une souris ; un plafond trop bas donne l'impression que le stylet
+/// "arrête d'écrire" au milieu d'un geste long.
+const int kMaxStrokePoints = 10000;
+
 // =============================================================================
 // Sérialisation tool ↔ string (format JSON identique à celui de React)
 // =============================================================================
@@ -117,23 +122,18 @@ class Stroke {
     final size = (json['size'] as num?)?.toDouble() ?? 2.0;
     final rawPoints = json['points'] as List?;
     if (rawPoints == null) return null;
-    final points = rawPoints
-        .whereType<Map>()
-        .map((raw) {
-          final x = (raw['x'] as num?)?.toDouble() ?? 0;
-          final y = (raw['y'] as num?)?.toDouble() ?? 0;
-          return Offset(x, y);
-        })
-        .toList();
+    final points = rawPoints.whereType<Map>().map((raw) {
+      final x = (raw['x'] as num?)?.toDouble() ?? 0;
+      final y = (raw['y'] as num?)?.toDouble() ?? 0;
+      return Offset(x, y);
+    }).toList();
     if (points.isEmpty) return null;
-    // Plafonne à 2000 points par stroke (parité React — protection
-    // mémoire en cas de trait extrêmement long).
-    if (points.length > 2000) {
+    if (points.length > kMaxStrokePoints) {
       return Stroke(
         tool: tool,
         color: color,
         size: size,
-        points: points.sublist(0, 2000),
+        points: points.sublist(0, kMaxStrokePoints),
       );
     }
     return Stroke(tool: tool, color: color, size: size, points: points);
@@ -214,7 +214,8 @@ class StrokePainter extends CustomPainter {
         final isEraser = stroke.tool == NoteTool.eraser;
         final paint = Paint()
           ..color = isEraser
-              ? Colors.black // couleur ignorée avec BlendMode.clear
+              ? Colors
+                    .black // couleur ignorée avec BlendMode.clear
               : Color(stroke.color).withValues(
                   alpha: stroke.tool == NoteTool.highlighter ? 0.4 : 1.0,
                 )

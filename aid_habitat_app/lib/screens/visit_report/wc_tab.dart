@@ -417,8 +417,7 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
         ? const Color(0xFF0E1116)
         : const Color(0xFF8A939D);
     final iconIndex = sanitaryLevelIconIndexFromLabel(label);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SoftTapScale(
       onTap: onTap,
       child: Container(
         color: Colors.transparent,
@@ -429,6 +428,10 @@ class _WcTabState extends State<WcTab> with AutomaticKeepAliveClientMixin {
             SanitaryLevelIcon(
               activeIndexFromBottom: iconIndex,
               layerCount: sanitaryLevelIconLayerCount(iconIndex),
+              activeColor: labelColor,
+              inactiveColor: active
+                  ? const Color(0xFFD8D0DC)
+                  : const Color(0xFFE4E7EB),
             ),
             const SizedBox(height: 2),
             Text(
