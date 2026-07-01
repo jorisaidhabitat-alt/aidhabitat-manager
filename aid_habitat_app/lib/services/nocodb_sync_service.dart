@@ -1429,13 +1429,71 @@ class NocodbSyncService {
       );
     }
 
-    await _apiClient.updateDocumentMetadata(
-      documentId: remoteDocumentId.isNotEmpty
-          ? remoteDocumentId
-          : documentLocalId,
-      title: title,
-      tags: tags,
+    final documentRows = await db.query(
+      'documents',
+      columns: const [
+        'local_id',
+        'local_file_path',
+        'local_file_data_url',
+        'remote_file_path',
+        'remote_public_url',
+      ],
+      where: 'local_id = ? AND pending_delete = 0',
+      whereArgs: [documentLocalId],
+      limit: 1,
     );
+    final documentRow = documentRows.isNotEmpty ? documentRows.first : null;
+    final hasRemoteBinding = _documentHasRemoteBinding(
+      localId: documentLocalId,
+      remoteDocumentId: remoteDocumentId,
+      row: documentRow,
+    );
+    final hasLocalBytes = _documentHasLocalBytes(documentRow);
+
+    // Un switch "afficher le titre dans le PDF" peut viser une photo
+    // encore uniquement locale. Dans ce cas le serveur ne connaît pas
+    // `doc_...` et PATCH /api/documents/<doc_...> renvoie 404. La
+    // donnée est déjà persistée localement et injectée au PDF avec les
+    // assets inline : ne pas transformer ce cas sain en bandeau rouge.
+    if (!hasRemoteBinding && hasLocalBytes) {
+      return;
+    }
+
+    final apiDocumentId = remoteDocumentId.isNotEmpty
+        ? remoteDocumentId
+        : documentLocalId;
+    try {
+      await _apiClient.updateDocumentMetadata(
+        documentId: apiDocumentId,
+        title: title,
+        tags: tags,
+      );
+    } catch (error) {
+      final isRemoteNotFound = error.toString().contains('(404)');
+      if (isRemoteNotFound && hasLocalBytes && !hasRemoteBinding) {
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  bool _documentHasRemoteBinding({
+    required String localId,
+    required String remoteDocumentId,
+    required Map<String, Object?>? row,
+  }) {
+    final remotePath = (row?['remote_file_path'] as String?)?.trim() ?? '';
+    final remoteUrl = (row?['remote_public_url'] as String?)?.trim() ?? '';
+    if (remotePath.isNotEmpty || remoteUrl.isNotEmpty) return true;
+    if (localId.startsWith('remote_doc_')) return true;
+    return remoteDocumentId.isNotEmpty && !remoteDocumentId.startsWith('doc_');
+  }
+
+  bool _documentHasLocalBytes(Map<String, Object?>? row) {
+    if (row == null) return false;
+    final localPath = (row['local_file_path'] as String?)?.trim() ?? '';
+    final dataUrl = (row['local_file_data_url'] as String?)?.trim() ?? '';
+    return localPath.isNotEmpty || dataUrl.isNotEmpty;
   }
 
   /// Supprime définitivement la ligne `documents` locale après que
