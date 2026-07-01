@@ -35,6 +35,24 @@
 
   <title>App'Ergo</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html,
+    body,
+    flutter-view,
+    flt-glass-pane,
+    flt-scene-host,
+    canvas {
+      touch-action: none;
+      overscroll-behavior: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
 
   <!--
     pdfjs-dist : nécessaire au package `pdfx` côté web pour
@@ -62,6 +80,32 @@
     } else {
       console.warn('[pdfjs] pdf.min.js non chargé — vérifier que web/pdfjs/ est bien servi.');
     }
+  </script>
+  <script>
+    // iPadOS/Safari peut annuler ou détourner des micro-traits Apple Pencil
+    // lorsque la page ne verrouille pas explicitement le flux Pointer Events.
+    // On laisse Flutter recevoir les événements, mais on empêche le navigateur
+    // de les interpréter comme scroll, sélection, handwriting ou gesture.
+    (function installApplePencilGuards() {
+      const preventPencilDefault = function(event) {
+        if (event.pointerType !== 'pen') return;
+        if (event.target && event.target.setPointerCapture && event.type === 'pointerdown') {
+          try {
+            event.target.setPointerCapture(event.pointerId);
+          } catch (_) {
+            // setPointerCapture peut échouer si la cible DOM est remplacée.
+          }
+        }
+        event.preventDefault();
+      };
+
+      ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach(function(type) {
+        window.addEventListener(type, preventPencilDefault, {
+          capture: true,
+          passive: false
+        });
+      });
+    })();
   </script>
 </head>
 <body>
