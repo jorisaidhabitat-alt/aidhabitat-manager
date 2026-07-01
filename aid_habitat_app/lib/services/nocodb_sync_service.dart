@@ -1330,6 +1330,10 @@ class NocodbSyncService {
       await _purgeLocalDocument(operation.entityLocalId);
       return;
     }
+    if (operation.operationType == 'update_metadata') {
+      await _processDocumentMetadataOperation(operation, payload);
+      return;
+    }
     if (operation.operationType != 'upload_file') {
       throw Exception(
         'Opération document non supportée: ${operation.operationType}',
@@ -1388,6 +1392,49 @@ class NocodbSyncService {
       documentLocalId: operation.entityLocalId,
       remotePath: uploaded['remotePath']?.toString() ?? '',
       publicUrl: uploaded['publicUrl']?.toString() ?? '',
+    );
+  }
+
+  Future<void> _processDocumentMetadataOperation(
+    SyncOperation operation,
+    Map<String, dynamic> payload,
+  ) async {
+    final documentLocalId =
+        payload['documentLocalId']?.toString() ?? operation.entityLocalId;
+    final remoteDocumentId = payload['remoteDocumentId']?.toString() ?? '';
+    final title = payload['title']?.toString() ?? 'Document';
+    final tags =
+        (payload['tags'] as List?)?.map((tag) => '$tag').toList() ?? [];
+
+    final db = await LocalDatabase.instance.database;
+    final uploadRows = await db.query(
+      'sync_operations',
+      columns: const ['id'],
+      where:
+          'entity_type = ? AND entity_local_id = ? '
+          'AND operation_type = ? AND status IN (?, ?, ?)',
+      whereArgs: [
+        'document',
+        documentLocalId,
+        'upload_file',
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.running.name,
+        SyncOperationStatus.failed.name,
+      ],
+      limit: 1,
+    );
+    if (uploadRows.isNotEmpty) {
+      throw TransientRemoteException(
+        'Document metadata waiting for upload_file',
+      );
+    }
+
+    await _apiClient.updateDocumentMetadata(
+      documentId: remoteDocumentId.isNotEmpty
+          ? remoteDocumentId
+          : documentLocalId,
+      title: title,
+      tags: tags,
     );
   }
 

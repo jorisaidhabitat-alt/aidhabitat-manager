@@ -6327,7 +6327,9 @@ const mergeInlineDocuments = (remoteDocs, inlineMap, orderMap = new Map()) => {
     if (seenIds.has(String(doc.id))) continue;
     const cid = String(doc.clientDocumentId || '');
     if (cid && seenClientIds.has(cid)) continue;
-    const localOrder = orderMap.get(String(doc.id)) ?? (cid ? orderMap.get(cid) : null);
+    const localOrder = orderMap.get(String(doc.id))
+      ?? orderMap.get(`remote_doc_${String(doc.id)}`)
+      ?? (cid ? orderMap.get(cid) : null);
     merged.push({
       ...doc,
       categoryOrder: localOrder ?? parseOptionalFiniteNumber(doc.categoryOrder),

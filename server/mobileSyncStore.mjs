@@ -1137,6 +1137,22 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
     })));
   };
 
+  const findDocumentRecordByAnyId = async (documentId, fields) => {
+    const id = stringValue(documentId).trim();
+    if (!id) return null;
+    const byUuid = await queryAll(documentsTableId, {
+      fields,
+      where: `(uuid_source,eq,${JSON.stringify(id)})`,
+    });
+    if (byUuid.length > 0) return latestRecord(byUuid);
+
+    const byClientId = await queryAll(documentsTableId, {
+      fields,
+      where: `(client_document_id,eq,${JSON.stringify(id)})`,
+    });
+    return latestRecord(byClientId);
+  };
+
   return {
   mode: 'nocodb',
 
@@ -1202,10 +1218,22 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
   },
 
   async getDocumentById(documentId) {
-    const existing = latestRecord(await queryAll(documentsTableId, {
-      fields: ['uuid_source', 'beneficiaire_id', 'dossier_id', 'beneficiaire_prenom', 'beneficiaire_nom', 'beneficiaire_nom_complet', 'dossier_libelle', 'titre', 'nom_fichier', 'mime_type', 'tags_json', 'created_at', 'updated_at'],
-      where: `(uuid_source,eq,${JSON.stringify(String(documentId))})`,
-    }));
+    const existing = await findDocumentRecordByAnyId(documentId, [
+      'uuid_source',
+      'beneficiaire_id',
+      'dossier_id',
+      'beneficiaire_prenom',
+      'beneficiaire_nom',
+      'beneficiaire_nom_complet',
+      'dossier_libelle',
+      'titre',
+      'nom_fichier',
+      'mime_type',
+      'tags_json',
+      'created_at',
+      'updated_at',
+      'client_document_id',
+    ]);
 
     if (!existing) {
       return null;
@@ -1219,6 +1247,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       patientLastName: stringValue(field(existing, 'beneficiaire_nom')),
       patientDisplayName: stringValue(field(existing, 'beneficiaire_nom_complet')),
       dossierLabel: stringValue(field(existing, 'dossier_libelle')),
+      clientDocumentId: stringValue(field(existing, 'client_document_id')),
       title: stringValue(field(existing, 'titre')),
       fileName: stringValue(field(existing, 'nom_fichier')),
       mimeType: stringValue(field(existing, 'mime_type')) || 'application/octet-stream',
@@ -1391,10 +1420,22 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
   },
 
   async updateDocument(documentId, updates = {}) {
-    const existing = latestRecord(await queryAll(documentsTableId, {
-      fields: ['uuid_source', 'beneficiaire_id', 'dossier_id', 'beneficiaire_prenom', 'beneficiaire_nom', 'beneficiaire_nom_complet', 'dossier_libelle', 'titre', 'nom_fichier', 'mime_type', 'tags_json', 'created_at', 'updated_at'],
-      where: `(uuid_source,eq,${JSON.stringify(String(documentId))})`,
-    }));
+    const existing = await findDocumentRecordByAnyId(documentId, [
+      'uuid_source',
+      'beneficiaire_id',
+      'dossier_id',
+      'beneficiaire_prenom',
+      'beneficiaire_nom',
+      'beneficiaire_nom_complet',
+      'dossier_libelle',
+      'titre',
+      'nom_fichier',
+      'mime_type',
+      'tags_json',
+      'created_at',
+      'updated_at',
+      'client_document_id',
+    ]);
 
     if (!existing) {
       return null;
@@ -1426,6 +1467,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       patientLastName: stringValue(field(existing, 'beneficiaire_nom')),
       patientDisplayName: stringValue(field(existing, 'beneficiaire_nom_complet')),
       dossierLabel: stringValue(field(existing, 'dossier_libelle')),
+      clientDocumentId: stringValue(field(existing, 'client_document_id')),
       title: nextTitle,
       fileName: nextFileName,
       mimeType: stringValue(field(existing, 'mime_type')) || 'application/octet-stream',
@@ -1436,10 +1478,10 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
   },
 
   async deleteDocument(documentId) {
-    const existing = latestRecord(await queryAll(documentsTableId, {
-      fields: ['uuid_source'],
-      where: `(uuid_source,eq,${JSON.stringify(String(documentId))})`,
-    }));
+    const existing = await findDocumentRecordByAnyId(documentId, [
+      'uuid_source',
+      'client_document_id',
+    ]);
     if (!existing) {
       return false;
     }

@@ -170,7 +170,13 @@ class DocumentRepository {
     final db = await _database.database;
     final rows = await db.query(
       'documents',
-      columns: ['local_id', 'category_order', 'tags_json'],
+      columns: [
+        'local_id',
+        'category_order',
+        'tags_json',
+        'remote_file_path',
+        'remote_public_url',
+      ],
       where:
           'patient_local_id = ? AND pending_delete = 0 '
           "AND mime_type LIKE 'image/%' "
@@ -187,12 +193,14 @@ class DocumentRepository {
       if (!tags.any((t) => t.startsWith('Visite - '))) continue;
       final order = (row['category_order'] as num?)?.toInt();
       if (order == null) continue;
-      result.add(
-        InlineDocumentOrder(
-          localId: row['local_id'] as String,
-          categoryOrder: order,
-        ),
-      );
+      final localId = row['local_id'] as String;
+      final ids = <String>{
+        localId,
+        _extractRemoteIdFromRow(row, localId),
+      }..removeWhere((id) => id.trim().isEmpty);
+      for (final id in ids) {
+        result.add(InlineDocumentOrder(localId: id, categoryOrder: order));
+      }
     }
     return result;
   }
@@ -827,7 +835,65 @@ class DocumentRepository {
       where: 'local_id = ?',
       whereArgs: [documentId],
     );
+    await _enqueueDocumentMetadataSync(
+      documentId: documentId,
+      title: title,
+      tags: tags,
+    );
     SyncEngine().notify();
+  }
+
+  Future<void> _enqueueDocumentMetadataSync({
+    required String documentId,
+    required String title,
+    required List<String> tags,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      columns: const [
+        'local_id',
+        'patient_local_id',
+        'dossier_local_id',
+        'remote_file_path',
+        'remote_public_url',
+      ],
+      where: 'local_id = ? AND pending_delete = 0',
+      whereArgs: [documentId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+
+    final row = rows.first;
+    final patientId = (row['patient_local_id'] as String?) ?? '';
+    if (patientId.isEmpty) return;
+
+    final now = DateTime.now().toIso8601String();
+    final remoteDocumentId = _extractRemoteIdFromRow(row, documentId);
+    await db.insert(
+      'sync_operations',
+      {
+        'id': 'sync_doc_meta_$documentId',
+        'entity_type': 'document',
+        'entity_local_id': documentId,
+        'operation_type': 'update_metadata',
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({
+            'patientLocalId': patientId,
+            'documentLocalId': documentId,
+            'remoteDocumentId': remoteDocumentId,
+            'title': title,
+            'tags': tags,
+          }),
+        ),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   /// Persiste le chemin local d'un fichier distant téléchargé en cache.
@@ -870,6 +936,16 @@ class DocumentRepository {
   }) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
+    final rows = await db.query(
+      'documents',
+      columns: const ['title'],
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+      limit: 1,
+    );
+    final title = rows.isNotEmpty
+        ? ((rows.first['title'] as String?) ?? 'Document')
+        : 'Document';
     await db.update(
       'documents',
       {
@@ -880,6 +956,11 @@ class DocumentRepository {
       },
       where: 'local_id = ?',
       whereArgs: [documentId],
+    );
+    await _enqueueDocumentMetadataSync(
+      documentId: documentId,
+      title: title,
+      tags: tags,
     );
     SyncEngine().notify();
   }
@@ -901,7 +982,6 @@ class DocumentRepository {
         {
           'category_order': i,
           'updated_at': now,
-          'sync_state': SyncState.pendingSync.name,
         },
         where: 'local_id = ?',
         whereArgs: [orderedDocumentIds[i]],

@@ -952,6 +952,56 @@ class NocodbApiClient {
     return true;
   }
 
+  Future<Map<String, dynamic>> updateDocumentMetadata({
+    required String documentId,
+    required String title,
+    required List<String> tags,
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+    if (documentId.isEmpty) {
+      throw Exception('updateDocumentMetadata: documentId vide');
+    }
+
+    final response = await _runWithTransientGuard(
+      'Document metadata update',
+      () => _client
+          .patch(
+            Uri.parse(
+              '$_baseUrl/api/documents/${Uri.encodeComponent(documentId)}',
+            ),
+            headers: _headers,
+            body: jsonEncode({
+              'title': title,
+              'tags': tags,
+            }),
+          )
+          .timeout(_defaultTimeout),
+    );
+
+    if (response.statusCode >= 500) {
+      throw TransientRemoteException(
+        'Remote document metadata update failed (${response.statusCode})',
+        statusCode: response.statusCode,
+      );
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote document metadata update failed '
+        '(${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final document = (data['document'] as Map?)?.cast<String, dynamic>();
+    if (document == null) {
+      throw Exception('Unexpected document metadata payload');
+    }
+    return document;
+  }
+
   Future<Map<String, dynamic>> upsertNotePage({
     required String patientId,
     required String tabKey,
