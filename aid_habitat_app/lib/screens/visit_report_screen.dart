@@ -1863,11 +1863,9 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         ),
       );
     }
-    // Check « Aide à domicile cochée mais détails non renseignés » retiré
-    // 2026-05-15 sur demande utilisateur : il n'y a pas de zone de texte
-    // dédiée pour les détails d'aide à domicile dans le form actuel
-    // (`homeHelpTxt` reste vide par design), donc cette validation
-    // déclenchait une popup « Champs manquants » impossible à résoudre.
+    // Check « Aide à domicile cochée mais détails non renseignés » toujours
+    // désactivé par choix produit : le champ existe désormais dans le form,
+    // mais son détail reste facultatif et ne doit pas bloquer la validation.
     // Dépendance particulière : skip volontaire (demande utilisateur
     // 2026-04-30). Si l'ergo n'a rien coché, ça vaut implicitement
     // « Aucune » → pas la peine de signaler. Si l'option « Aucune »
@@ -1878,7 +1876,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   Future<void> _checkBeneficiaryAdmin(List<_MissingField> missing) async {
     final p = _dossier.patient;
     final tab = _tabs.indexOf('Bénéficiaire');
-    if (p.caisseRetraitePrincipale.trim().isEmpty) {
+    final principalFund = p.caisseRetraitePrincipale.trim();
+    if (principalFund.isEmpty) {
       missing.add(
         _MissingField(
           label: 'Admin — caisse de retraite principale',

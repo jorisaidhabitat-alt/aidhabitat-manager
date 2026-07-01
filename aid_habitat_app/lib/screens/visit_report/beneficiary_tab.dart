@@ -61,6 +61,8 @@ enum _RetirementFundKind { principal, complementary }
 
 class _BeneficiaryTabState extends State<BeneficiaryTab>
     with AutomaticKeepAliveClientMixin {
+  static const String _noRetirementFundLabel = 'Aucune';
+
   @override
   bool get wantKeepAlive => true;
 
@@ -1356,6 +1358,18 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             ),
           ),
         ),
+        if (occ.homeHelp) ...[
+          const SizedBox(height: 6),
+          FormTextField(
+            label: 'Détails',
+            value: occ.homeHelpTxt,
+            maxLines: null,
+            minLines: 2,
+            onChanged: (v) {
+              _updateOccupant(index, occ.copyWith(homeHelpTxt: v));
+            },
+          ),
+        ],
         const SizedBox(height: 10),
         _buildDependenceSelector(index),
       ],
@@ -1374,6 +1388,27 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     return retirement_fund_selection.serializeRetirementFunds(values);
   }
 
+  bool _isNoRetirementFundValue(String value) {
+    return value.trim().toLowerCase() == _noRetirementFundLabel.toLowerCase();
+  }
+
+  void _clearPendingRetirementFundFieldsForKind({
+    required int occupantIndex,
+    required _RetirementFundKind kind,
+  }) {
+    final pending = _pendingRetirementFundFields[occupantIndex];
+    if (pending == null || pending.isEmpty) return;
+    final filtered = pending.where((item) => item != kind).toList();
+    if (filtered.length == pending.length) return;
+    setState(() {
+      if (filtered.isEmpty) {
+        _pendingRetirementFundFields.remove(occupantIndex);
+      } else {
+        _pendingRetirementFundFields[occupantIndex] = filtered;
+      }
+    });
+  }
+
   void _setRetirementFundAtIndex({
     required int occupantIndex,
     required Occupant occupant,
@@ -1384,11 +1419,22 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     final current = kind == _RetirementFundKind.principal
         ? _parseRetirementFunds(occupant.caisseRetraitePrincipale)
         : _parseRetirementFunds(occupant.caissesRetraiteComplementaires);
-    final next = retirement_fund_selection.updateRetirementFundsAtIndex(
-      current: current,
-      fundIndex: fundIndex,
-      value: value,
-    );
+    final normalizedValue = value.trim();
+    final selectingNoRetirementFund =
+        fundIndex == 0 && _isNoRetirementFundValue(normalizedValue);
+    final next = selectingNoRetirementFund
+        ? <String>[_noRetirementFundLabel]
+        : retirement_fund_selection.updateRetirementFundsAtIndex(
+            current: current,
+            fundIndex: fundIndex,
+            value: normalizedValue,
+          );
+    if (selectingNoRetirementFund) {
+      _clearPendingRetirementFundFieldsForKind(
+        occupantIndex: occupantIndex,
+        kind: kind,
+      );
+    }
     final serialized = _serializeRetirementFunds(next);
     _updateOccupant(
       occupantIndex,
@@ -1652,8 +1698,14 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
                     ),
                     onTap: () async {
                       final picked = field.kind == _RetirementFundKind.principal
-                          ? await _openPrincipalFundPicker(field.value)
-                          : await _openComplementaryFundPicker(field.value);
+                          ? await _openPrincipalFundPicker(
+                              field.value,
+                              includeNoRetirementFundOption: false,
+                            )
+                          : await _openComplementaryFundPicker(
+                              field.value,
+                              includeNoRetirementFundOption: false,
+                            );
                       if (picked == null) return;
                       if (occupantIndex < 0 ||
                           occupantIndex >= _occupants.length) {
@@ -1700,6 +1752,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
     );
     final caissePrinc = caissesPrinc.isEmpty ? '' : caissesPrinc.first;
     final caisseCompl = caissesCompl.isEmpty ? '' : caissesCompl.first;
+    final hideAddRetirementFundButton =
+        _isNoRetirementFundValue(caissePrinc) &&
+        _isNoRetirementFundValue(caisseCompl);
     final extraFields = _buildRetirementFundExtraFields(
       occupantIndex: index,
       principalFunds: caissesPrinc,
@@ -1772,8 +1827,22 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             fields: extraFields,
           ),
         ],
-        const SizedBox(height: 10),
-        _buildAddRetirementFundButton(occupantIndex: index),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            opacity: hideAddRetirementFundButton ? 0 : 1,
+            child: hideAddRetirementFundButton
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: _buildAddRetirementFundButton(occupantIndex: index),
+                  ),
+          ),
+        ),
       ],
     );
   }
@@ -1983,7 +2052,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// Source : table NocoDB `caisses_de_retraite` (champ `logoUrl`
   /// disponible). Le téléphone n'est pas affiché dans le picker pour
   /// garder des cards compactes dans le relevé.
-  Future<String?> _openPrincipalFundPicker(String currentValue) async {
+  Future<String?> _openPrincipalFundPicker(
+    String currentValue, {
+    bool includeNoRetirementFundOption = true,
+  }) async {
     if (_principalFunds.isEmpty) {
       await _loadPrincipalFundNames();
       if (!mounted) return null;
@@ -2003,8 +2075,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           .where((it) => it.name.isNotEmpty)
           .toList(),
       currentValue: currentValue,
+      includeNoRetirementFundOption: includeNoRetirementFundOption,
     );
     return _showRetirementFundPicker(
+      kind: _RetirementFundKind.principal,
       title: 'Caisse de retraite principale',
       items: items,
       initialSelected: currentValue,
@@ -2016,7 +2090,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// Source : table NocoDB `caisses_de_retraite_complementaires` —
   /// le modèle `RetirementFund` a `audience` + `aidAmount` qu'on
   /// concatène en ligne courte (Option 1B utilisateur 2026-05-12).
-  Future<String?> _openComplementaryFundPicker(String currentValue) async {
+  Future<String?> _openComplementaryFundPicker(
+    String currentValue, {
+    bool includeNoRetirementFundOption = true,
+  }) async {
     if (_retirementFunds.isEmpty) {
       await _loadRetirementFundNames();
       if (!mounted) return null;
@@ -2033,8 +2110,10 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
           .where((it) => it.name.isNotEmpty)
           .toList(),
       currentValue: currentValue,
+      includeNoRetirementFundOption: includeNoRetirementFundOption,
     );
     return _showRetirementFundPicker(
+      kind: _RetirementFundKind.complementary,
       title: 'Caisse de retraite complémentaire',
       items: items,
       initialSelected: currentValue,
@@ -2045,12 +2124,13 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   /// Ouvre le dialog picker. Renvoie `null` si l'utilisateur ferme
   /// sans choisir. Renvoie le nom (existant OU saisi librement) sinon.
   Future<String?> _showRetirementFundPicker({
+    required _RetirementFundKind kind,
     required String title,
     required List<_RetirementFundPickerItem> items,
     required String initialSelected,
     required String emptyMessage,
   }) {
-    return showDialog<String>(
+    return showDialog<_RetirementFundPickerResult>(
       context: context,
       builder: (ctx) => _RetirementFundPickerDialog(
         title: title,
@@ -2058,7 +2138,11 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
         initialSelected: initialSelected,
         emptyMessage: emptyMessage,
       ),
-    );
+    ).then((result) async {
+      if (result == null) return null;
+      if (!result.createNew) return result.name;
+      return _createRetirementFundFromPicker(name: result.name, kind: kind);
+    });
   }
 
   String _retirementFundLogoUrl(String name, String logoUrl) {
@@ -2078,21 +2162,86 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   List<_RetirementFundPickerItem> _buildRetirementFundPickerItems({
     required List<_RetirementFundPickerItem> rawItems,
     required String currentValue,
+    required bool includeNoRetirementFundOption,
   }) {
+    final items = includeNoRetirementFundOption
+        ? <_RetirementFundPickerItem>[
+            const _RetirementFundPickerItem(
+              name: _noRetirementFundLabel,
+              logoUrl: '',
+              subtitle: '',
+            ),
+            ...rawItems,
+          ]
+        : rawItems;
     final current = currentValue.trim();
-    if (current.isEmpty) return rawItems;
-    final exists = rawItems.any(
+    if (current.isEmpty) return items;
+    final exists = items.any(
       (item) => item.name.trim().toLowerCase() == current.toLowerCase(),
     );
-    if (exists) return rawItems;
+    if (exists) return items;
     return [
       _RetirementFundPickerItem(
         name: current,
         logoUrl: _retirementFundLogoUrl(current, ''),
         subtitle: '',
       ),
-      ...rawItems,
+      ...items,
     ];
+  }
+
+  Future<String?> _createRetirementFundFromPicker({
+    required String name,
+    required _RetirementFundKind kind,
+  }) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) return null;
+    try {
+      if (kind == _RetirementFundKind.principal) {
+        final created = await NocodbApiClient().createPrincipalRetirementFund(
+          name: trimmedName,
+        );
+        if (!mounted) return null;
+        final createdName = created['name'] ?? trimmedName;
+        setState(() {
+          _principalFunds = [
+            created,
+            ..._principalFunds.where(
+              (fund) =>
+                  (fund['name'] ?? '').trim().toLowerCase() !=
+                  createdName.toLowerCase(),
+            ),
+          ]..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
+          _principalFundNames = _principalFunds
+              .map((fund) => fund['name'] ?? '')
+              .where((name) => name.isNotEmpty)
+              .toList();
+          _principalFundsLoadError = null;
+        });
+        return createdName;
+      }
+
+      final created = await DataService().createRetirementFund(
+        name: trimmedName,
+      );
+      if (!mounted) return null;
+      setState(() {
+        _retirementFunds = [
+          created,
+          ..._retirementFunds.where(
+            (fund) =>
+                fund.name.trim().toLowerCase() != created.name.toLowerCase(),
+          ),
+        ]..sort((a, b) => a.name.compareTo(b.name));
+      });
+      return created.name;
+    } catch (error) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Création impossible : $error')));
+      return null;
+    }
   }
 }
 
@@ -2701,6 +2850,14 @@ class _RetirementFundPickerItem {
   });
 }
 
+class _RetirementFundPickerResult {
+  final String name;
+  final bool createNew;
+
+  const _RetirementFundPickerResult.select(this.name) : createNew = false;
+  const _RetirementFundPickerResult.create(this.name) : createNew = true;
+}
+
 /// Bouton d'ouverture du picker. Style cohérent avec `FormSelectDropdown`
 /// (label flottant en haut, valeur en gros dessous, hint si vide) pour
 /// que l'ergo ne ressente pas un changement d'UI brutal — c'est juste
@@ -2847,9 +3004,22 @@ class _RetirementFundPickerDialogState
         .toList();
   }
 
+  String? get _createSuggestion {
+    final query = _search.trim();
+    if (query.isEmpty) return null;
+    if (query.toLowerCase() == 'aucune') return null;
+    final exists = widget.items.any(
+      (item) => item.name.trim().toLowerCase() == query.toLowerCase(),
+    );
+    return exists ? null : query;
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
+    final createSuggestion = _createSuggestion;
+    final showCreateTile = createSuggestion != null;
+    final showEmptyState = filtered.isEmpty && !showCreateTile;
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
       backgroundColor: Colors.white,
@@ -2928,7 +3098,7 @@ class _RetirementFundPickerDialogState
             ),
             // Grid de cards 4-cols compactes.
             Expanded(
-              child: filtered.isEmpty
+              child: showEmptyState
                   ? Center(
                       child: Text(
                         widget.emptyMessage,
@@ -2945,8 +3115,14 @@ class _RetirementFundPickerDialogState
                             mainAxisSpacing: 8,
                             childAspectRatio: 1.85,
                           ),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) => _buildTile(filtered[i]),
+                      itemCount: filtered.length + (showCreateTile ? 1 : 0),
+                      itemBuilder: (context, i) {
+                        if (showCreateTile && i == 0) {
+                          return _buildCreateTile(createSuggestion);
+                        }
+                        final item = filtered[i - (showCreateTile ? 1 : 0)];
+                        return _buildTile(item);
+                      },
                     ),
             ),
           ],
@@ -2958,7 +3134,8 @@ class _RetirementFundPickerDialogState
   Widget _buildTile(_RetirementFundPickerItem it) {
     final isSelected = it.name == widget.initialSelected.trim();
     return InkWell(
-      onTap: () => Navigator.pop(context, it.name),
+      onTap: () =>
+          Navigator.pop(context, _RetirementFundPickerResult.select(it.name)),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         decoration: BoxDecoration(
@@ -3035,6 +3212,64 @@ class _RetirementFundPickerDialogState
                     ),
                   ],
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreateTile(String name) {
+    return InkWell(
+      onTap: () =>
+          Navigator.pop(context, _RetirementFundPickerResult.create(name)),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F5FB),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFD8D0DC)),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 68,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2ECF5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                LucideIcons.plus,
+                size: 22,
+                color: kBrandPurple,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Créer "$name"',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1E293B),
+                height: 1.2,
+              ),
+            ),
+            const Spacer(),
+            const Text(
+              'Ajouter à la base',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                color: Color(0xFF6B527D),
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],

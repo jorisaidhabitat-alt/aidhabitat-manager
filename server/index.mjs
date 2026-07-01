@@ -5533,11 +5533,32 @@ const fetchVisitPhotosForPatient = async (patientId) => {
       if (!mime.startsWith('image/')) continue;
       const hasVisitTag = asArray(doc?.tags).some(matchesVisitBase);
       if (!hasVisitTag) continue;
-      // Évite le doublon si un row legacy a la même `client_document_id`
-      // qu'un row déjà migré dans mobile_visit_photos (les ids cross-table
-      // doivent rester uniques après migration, mais on est défensif).
+      // Si la photo existe déjà dans `mobile_visit_photos`, on garde cette
+      // source pour les bytes mais on fusionne les métadonnées legacy
+      // `mobile_documents` : titre renommé et tags PDF (`__pdf_show_label`)
+      // peuvent y être plus à jour. Sans cette fusion, le switch "Afficher
+      // le nom dans le PDF" était perdu dès que la source primaire était
+      // `mobile_visit_photos`.
       const cid = String(doc?.clientDocumentId || '');
-      if (cid && photos.some((p) => p.clientDocumentId === cid)) continue;
+      if (cid) {
+        const existing = photos.find((p) => String(p.clientDocumentId || '') === cid);
+        if (existing) {
+          const docTags = asArray(doc?.tags).map((tag) => String(tag));
+          if (docTags.length > 0) {
+            existing.tags = Array.from(new Set([
+              ...asArray(existing.tags).map((tag) => String(tag)),
+              ...docTags,
+            ]));
+          }
+          const docTitle = stringValue(doc?.title).trim();
+          if (docTitle) existing.title = docTitle;
+          const docFileName = stringValue(doc?.fileName).trim();
+          if (docFileName) existing.fileName = docFileName;
+          const docOrder = parseOptionalFiniteNumber(doc?.categoryOrder);
+          if (docOrder !== null) existing.categoryOrder = docOrder;
+          continue;
+        }
+      }
       photos.push({
         ...doc,
         _source: 'document',

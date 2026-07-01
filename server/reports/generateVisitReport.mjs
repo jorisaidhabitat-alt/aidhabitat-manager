@@ -260,14 +260,15 @@ function mapLegacyPageIndexToFlat2026(legacyPageIndex) {
 
 function flat2026FieldFontSize(fieldName, rect) {
   if (RECO_TEXT_FIELDS.includes(fieldName)) return 11;
-  if (['Environnement', 'Habitudes', 'Observations1'].includes(fieldName)) return 9.5;
+  if (['Environnement', 'Habitudes', 'Observations1'].includes(fieldName)) return 11;
+  if (fieldName === "nombre d'étage") return 14;
   if (fieldName === 'Text1') return 13;
   if (fieldName === 'Caisse de retraite complémentaire') return 8.5;
   if (fieldName === 'EPCI') return 8.5;
   if (fieldName === 'AMO') return 10;
   if (/^page\d+$/.test(fieldName)) return 9;
   if (rect.height <= 18) return 9.5;
-  return 10.5;
+  return 11;
 }
 
 async function ensureFlat2026CompatibilityFields(pdfDoc) {
@@ -708,6 +709,31 @@ function normalizeOccupationStatus(raw) {
   return '';
 }
 
+function normalizeReportToken(raw) {
+  return String(raw || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function maPrimeAdaptRateForIncome(rawIncomeCategory) {
+  const income = normalizeReportToken(rawIncomeCategory);
+  if (!income) return '';
+  if (income.includes('tres modeste')) return '70%';
+  if (income === 'modeste' || income.includes(' modeste')) return '50%';
+  return '';
+}
+
+function amoLabelForNature(rawNatureAccompagnement) {
+  const nature = normalizeReportToken(rawNatureAccompagnement);
+  if (!nature || nature.includes('diagnostic')) return '/';
+  if (nature.includes('complet')) return '600 €';
+  if (nature === 'ergo' || nature.includes('mpr ergo')) return '800 €';
+  return '/';
+}
+
 /**
  * Construit un payload "view-friendly" à partir des objets passés au
  * générateur. Ajoute tous les champs dérivés (`fullNameUpper`,
@@ -816,15 +842,28 @@ function buildViewModel({
   const housing = dossier?.housing || {};
   const firstName = String(patient.firstName || '').trim();
   const lastName = String(patient.lastName || '').trim();
+  const occupants = Array.isArray(patient.occupants)
+    ? patient.occupants
+    : [];
+  const primaryOccupant = occupants[0] || {};
 
-  // Affichage de l'aide à domicile : si l'ergo a saisi du texte, on
-  // « Aide à domicile » : binaire pur — Oui/Non (demande utilisateur,
-  // « met simplement oui ou non »). On IGNORE désormais le texte
-  // détaillé (ex. « aide-ménagère 2h/sem ») : il pollue la ligne du
-  // PDF et l'ergo veut une réponse courte. Le détail reste consultable
-  // dans NocoDB pour les besoins administratifs.
-  const homeHelp = Boolean(patient.homeHelp);
-  const homeHelpDisplay = homeHelp ? 'Oui' : 'Non';
+  // « Aide à domicile » :
+  //   - cochée + détail renseigné → détail libre
+  //   - cochée sans détail        → Oui
+  //   - décochée                  → Non
+  // Fallback occupant 0 pour les dossiers où le top-level patient
+  // n'aurait pas encore été resynchronisé avec l'occupant principal.
+  const homeHelpTxt = String(
+    patient.homeHelpTxt || primaryOccupant.homeHelpTxt || '',
+  ).trim();
+  const homeHelpRaw = patient.homeHelp ?? primaryOccupant.homeHelp;
+  const homeHelp = homeHelpRaw === true
+      || homeHelpRaw === 1
+      || homeHelpRaw === '1'
+      || homeHelpRaw === 'true';
+  const homeHelpDisplay = homeHelp
+      ? (homeHelpTxt || 'Oui')
+      : 'Non';
 
   // Reconnaissance MDPH (demande utilisateur 2026-04-29 v2) :
   //   - case cochée + texte (ex. « 80 % »)        → texte tel quel
@@ -1156,14 +1195,10 @@ function buildViewModel({
       apaLabel: patient.apa ? 'Oui' : 'Non',
       apaGirRaw: patient.apa
         ? (() => {
-            const occupants = Array.isArray(patient.occupants)
-              ? patient.occupants
-              : [];
-            const primary = occupants[0] || {};
             return String(
               patient.apaGir
-                || primary.apaGir
-                || primary.gir
+                || primaryOccupant.apaGir
+                || primaryOccupant.gir
                 || '',
             ).trim();
           })()
@@ -1177,6 +1212,7 @@ function buildViewModel({
       // connues, fallback sur le 1er segment avant virgule/point si
       // aucune correspondance.
       dependenceTxt: normalizeDependenceForReport(patient.dependenceTxt),
+      incomeCategory: String(patient.incomeCategory || '').trim(),
       // Cellule « Caisse de retraite complémentaire » de la page
       // « Descriptif des aides prévisionnelles » — pré-résolu côté
       // `index.mjs` (cf. `resolveCaisseComplementaireLabel`). Vaut
@@ -1199,18 +1235,11 @@ function buildViewModel({
       // Cellule « AMO » de la page « Descriptif des aides
       // prévisionnelles » — montant fonction de la nature
       // d'accompagnement (demande utilisateur 2026-04-29) :
-      //   • 'ergo'       → 600 €
-      //   • 'complet'    → 800 €
+      //   • MPA complet  → 600 €
+      //   • MPR ergo     → 800 €
       //   • 'diagnostic' → '/' (pas d'AMO sur un dossier diagnostic seul)
       //   • autre/vide   → '/' (sécurité — on n'invente pas un montant)
-      amoLabel: (() => {
-        const nat = String(dossier?.natureAccompagnement || '')
-          .trim()
-          .toLowerCase();
-        if (nat === 'complet') return '800 €';
-        if (nat === 'ergo') return '600 €';
-        return '/';
-      })(),
+      amoLabel: amoLabelForNature(dossier?.natureAccompagnement),
     },
     contexte: (() => {
       // Source UNIQUE : les NOTES écrites par l'ergo dans
@@ -2181,8 +2210,9 @@ async function drawVisitPhotosWithFlow({
   const bonusMarginTop = 70;
   const bonusMarginBottom = 60;
 
-  // Titres custom au-dessus des rangées de chaque catégorie
-  // (« Logement » / « Accessibilité » / « Sanitaires »). Match exact
+  // Titres custom au-dessus des rangées Accessibilité / Sanitaires.
+  // Le titre « Logement » baked dans le template est conservé tel quel :
+  // pas de masque blanc, pas de titre custom par-dessus. Match exact
   // de la typo baked du template : HelveticaNeue Medium 13pt.
   // Substitut open-source Inter Medium (cf. INTER_MEDIUM_FONT_PATH +
   // bloc d'embed plus bas). Demande utilisateur 2026-05-05.
@@ -2205,8 +2235,9 @@ async function drawVisitPhotosWithFlow({
     neutralizeFieldAppearance(pdfDoc, form, fname);
   }
 
-  // 2) Masque TOUS les titres baked du template — les titres custom
-  //    ré-écrits au-dessus de chaque rangée flow prennent le relais.
+  // 2) Masque les titres baked remplacés par le flow custom.
+  //    Exception : « Logement » reste celui du template, à la demande
+  //    utilisateur, donc on ne masque pas sa zone.
   const maskTitleZone = (xStart, xEnd, slotTopY) => {
     const xPad = 8;
     const x = xStart - xPad;
@@ -2217,7 +2248,6 @@ async function drawVisitPhotosWithFlow({
       color: rgb(1, 1, 1),
     });
   };
-  maskTitleZone(logXStart, logXEnd, firstLogTopY);
   maskTitleZone(accXStart, accXEnd, accSlot.rect.y + accH);
   maskTitleZone(saniXStart, saniXEnd, saniSlot.rect.y + saniH);
 
@@ -2227,6 +2257,7 @@ async function drawVisitPhotosWithFlow({
   // titre custom au-dessus.
   const buildRowsForCategory = (
     baseTag, perRow, slotW, slotH, hgap, xStart, type, label,
+    { showTitle = true } = {},
   ) => {
     const grouped = groupPhotosBySectionIndex(documents, baseTag);
     const allPhotos = [];
@@ -2242,6 +2273,7 @@ async function drawVisitPhotosWithFlow({
       rows.push({
         photos: new Array(perRow).fill(null),
         slotW, slotH, hgap, xStart, type, label,
+        showTitle,
         isFirstOfCategory: true,
       });
       return rows;
@@ -2250,6 +2282,7 @@ async function drawVisitPhotosWithFlow({
       rows.push({
         photos: allPhotos.slice(i, i + perRow),
         slotW, slotH, hgap, xStart, type, label,
+        showTitle,
         isFirstOfCategory: i === 0,
       });
     }
@@ -2299,6 +2332,7 @@ async function drawVisitPhotosWithFlow({
     ...buildRowsForCategory(
       'Visite - Logement', 2, logW, logH, logHGap, logXStart,
       'logement', 'Logement',
+      { showTitle: false },
     ),
     ...buildRowsForCategory(
       'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart,
@@ -2318,7 +2352,7 @@ async function drawVisitPhotosWithFlow({
 
   for (let r = 0; r < allRows.length; r += 1) {
     const row = allRows[r];
-    const titleSpace = row.isFirstOfCategory ? TITLE_HEIGHT : 0;
+    const titleSpace = row.showTitle && row.isFirstOfCategory ? TITLE_HEIGHT : 0;
 
     // Pagination : la rangée + son titre tiennent-ils dans la zone ?
     if (cursorY - titleSpace - row.slotH < bottomLimit) {
@@ -2330,7 +2364,7 @@ async function drawVisitPhotosWithFlow({
     }
 
     // Titre custom au-dessus de la 1ère rangée de la catégorie.
-    if (TITLE_ENABLED && row.isFirstOfCategory) {
+    if (TITLE_ENABLED && row.showTitle && row.isFirstOfCategory) {
       currentPage.drawText(row.label, {
         x: row.xStart,
         y: cursorY - TITLE_FONT_SIZE - 2,
@@ -2829,18 +2863,18 @@ async function drawFlat2026Sanitaires({ pdfDoc, view }) {
   const page7 = pages[6];
   if (page7) {
     drawWrappedText(page7, view?.observations?.observationEquipements || '', {
-      x: 48,
-      yTop: 716,
-      width: 500,
+      x: 42,
+      yTop: 728,
+      width: 510,
       font: regular,
       fontSize: 11,
       lineHeight: 13.5,
       maxLines: 29,
     });
     drawWrappedText(page7, view?.observations?.projetSouhaitUsage || '', {
-      x: 48,
-      yTop: 258,
-      width: 500,
+      x: 42,
+      yTop: 276,
+      width: 510,
       font: regular,
       fontSize: 11,
       lineHeight: 13.5,
@@ -2851,9 +2885,9 @@ async function drawFlat2026Sanitaires({ pdfDoc, view }) {
   const page8 = pages[7];
   if (page8) {
     drawWrappedText(page8, view?.observations?.resumePreconisations || '', {
-      x: 48,
-      yTop: 760,
-      width: 500,
+      x: 42,
+      yTop: 780,
+      width: 510,
       font: regular,
       fontSize: 11,
       lineHeight: 13.5,
@@ -2888,9 +2922,9 @@ async function drawFlat2026Logement({ pdfDoc, view }) {
   const accessObservation = String(view?.housing?.accessObservation || '').trim();
   if (accessObservation) {
     drawWrappedText(page, accessObservation, {
-      x: 51,
-      yTop: 420,
-      width: 493,
+      x: 70,
+      yTop: 432,
+      width: 482,
       font: regular,
       fontSize: 11,
       lineHeight: 13.5,
@@ -2902,6 +2936,16 @@ async function drawFlat2026Logement({ pdfDoc, view }) {
 async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
   if (!page) return;
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const maPrimeRate = maPrimeAdaptRateForIncome(view?.patient?.incomeCategory);
+  if (maPrimeRate) {
+    page.drawText(maPrimeRate, {
+      x: 383.2,
+      y: 688,
+      size: 10,
+      font: regular,
+      color: rgb(0, 0, 0),
+    });
+  }
   const cells = [
     {
       value: view?.dossier?.amoLabel,
@@ -2921,9 +2965,9 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
       y: 569.8,
       width: 156.6,
       height: 29.9,
-      fontSize: 8.5,
-      lineHeight: 10,
-      maxLines: 3,
+      fontSize: 10,
+      lineHeight: 12,
+      maxLines: 2,
     },
     {
       value: view?.patient?.epciLabel,
@@ -2932,9 +2976,9 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
       y: 526.8,
       width: 156.6,
       height: 29.9,
-      fontSize: 8.5,
-      lineHeight: 10,
-      maxLines: 3,
+      fontSize: 10,
+      lineHeight: 12,
+      maxLines: 2,
     },
   ];
 
@@ -3066,18 +3110,17 @@ function applyAdresseFieldColorTweak(form) {
 
 /**
  * Aligne la taille de police des champs texte du bloc « Le Logement »
- * (page 5) sur celle du reste du rapport (12 pt).
+ * (page 5) sur celle des observations dessinées manuellement (11 pt).
  *
  * Pourquoi : l'utilisateur a remonté que « dans la partie Le Logement
  * les textes sont plus petits, ils doivent être de la meme taille que
  * les autres textes ». Le template Affinity a une DA plus petite
- * (~10 pt) sur ces champs, on l'override en /Helv 12 Tf 0 g comme
- * `adresse` (page 3). pdf-lib regénère l'apparence avec cette DA
- * quand on setText.
+ * (~10 pt) sur ces champs, on l'override en /Helv 11 Tf 0 g. pdf-lib
+ * regénère l'apparence avec cette DA quand on setText.
  *
  * Champs concernés : Adresse, annee1, annee2, surface, Sous sol, rdc,
- * etage, Observations1. EXCLU : `nombre d'étage` (PDFDropdown — sa
- * pill a un baseline déjà OK et toucher la DA déforme l'affichage).
+ * etage, Observations1. Le `nombre d'étage` garde un traitement dédié :
+ * seule sa taille est augmentée pour rendre le chiffre plus lisible.
  */
 function applyLogementFontSizeTweak(form) {
   const logementTextFields = [
@@ -3094,12 +3137,20 @@ function applyLogementFontSizeTweak(form) {
     try {
       const field = form.getField(fieldName);
       if (field instanceof PDFTextField) {
-        field.acroField.setDefaultAppearance('/Helv 12 Tf 0 g');
+        field.acroField.setDefaultAppearance('/Helv 11 Tf 0 g');
       }
     } catch {
       // Silencieux : un champ inexistant ne doit pas planter le rendu
       // (template peut évoluer indépendamment du code).
     }
+  }
+  try {
+    const levelCountField = form.getField("nombre d'étage");
+    if (levelCountField instanceof PDFDropdown || levelCountField instanceof PDFTextField) {
+      levelCountField.acroField.setDefaultAppearance('/Helv 14 Tf 0 g');
+    }
+  } catch {
+    // Idem : template tolerant.
   }
 }
 
@@ -3271,6 +3322,7 @@ export async function generateVisitReport({
   // PDF chargé avec ignoreEncryption — on charge proprement, le PDF
   // template n'est pas chiffré.
   const pdfDoc = await PDFDocument.load(templateBytes);
+  const reportTextFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const form = pdfDoc.getForm();
   const isFlat2026Template = await ensureFlat2026CompatibilityFields(pdfDoc);
   const flat2026AidSummaryPage = isFlat2026Template
@@ -3811,7 +3863,7 @@ export async function generateVisitReport({
   // voisins (compensation Helvetica vs SegoeUI).
   applyAdresseFieldColorTweak(form);
   // Et bump de la taille de police du bloc « Le Logement » (page 5)
-  // de ~10 pt à 12 pt pour s'aligner sur le reste du rapport.
+  // de ~10 pt à 11 pt pour s'aligner sur le reste du rapport.
   applyLogementFontSizeTweak(form);
 
   // Multi-étages page 5 : si l'ergo a sélectionné 2 ou 3 niveaux
@@ -3832,6 +3884,12 @@ export async function generateVisitReport({
       view,
     });
   }
+
+  // Uniformise la police des textes générés/remplis avant aplatissement.
+  // Les tailles restent pilotées champ par champ via les DA (`/Helv 11 Tf`,
+  // `/Helv 14 Tf`, etc.), mais le rendu final utilise la même Helvetica
+  // que les textes dessinés manuellement (`drawWrappedText`).
+  form.updateFieldAppearances(reportTextFont);
 
   // Aplatissement final : convertit chaque champ en contenu fixe (le
   // texte/cocheur devient un objet graphique inerte). Le résultat n'est

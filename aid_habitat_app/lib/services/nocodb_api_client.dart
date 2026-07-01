@@ -1674,6 +1674,44 @@ class NocodbApiClient {
         .toList();
   }
 
+  Future<Map<String, String>> createPrincipalRetirementFund({
+    required String name,
+    String phone = '',
+  }) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/retirement-funds-principal'),
+          headers: _headers,
+          body: jsonEncode({'name': name, 'phone': phone}),
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote principal retirement fund create failed (${response.statusCode}): '
+        '${response.body}',
+      );
+    }
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final savedFund = (data['fund'] as Map?)?.cast<String, dynamic>();
+    if (savedFund == null) {
+      throw Exception('Unexpected principal retirement fund payload (create)');
+    }
+
+    return {
+      'id': (savedFund['id'] ?? '').toString(),
+      'name': (savedFund['name'] ?? '').toString().trim(),
+      'phone': (savedFund['phone'] ?? '').toString().trim(),
+      'logoUrl': (savedFund['logoUrl'] ?? '').toString(),
+    };
+  }
+
   /// POST /api/retirement-funds — crée une caisse de retraite
   /// complémentaire. Demande utilisateur 2026-05-12 : « Fais le même
   /// type de bouton sur la page caisse de retraite pour pouvoir

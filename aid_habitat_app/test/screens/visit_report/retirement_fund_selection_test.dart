@@ -40,5 +40,16 @@ void main() {
     test('keeps parsing case-insensitive and deduplicated', () {
       expect(parseRetirementFunds('Carsat; carsat | MSA'), ['Carsat', 'MSA']);
     });
+
+    test('can replace a selected fund with Aucune', () {
+      final next = updateRetirementFundsAtIndex(
+        current: ['Carsat'],
+        fundIndex: 0,
+        value: 'Aucune',
+      );
+
+      expect(next, ['Aucune']);
+      expect(serializeRetirementFunds(next), 'Aucune');
+    });
   });
 }

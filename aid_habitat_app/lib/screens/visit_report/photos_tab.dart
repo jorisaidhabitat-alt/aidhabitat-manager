@@ -12,6 +12,7 @@ import '../../components/brand_colors.dart';
 import '../../components/confirmation_dialog.dart';
 import '../../components/dashed_border_painter.dart';
 import '../../components/file_drop_zone.dart';
+import '../../components/form_widgets.dart';
 import '../../models/types.dart';
 import '../../models/visit_report_categories.dart';
 import '../../services/app_config.dart';
@@ -1137,7 +1138,8 @@ class _PhotosTabState extends State<PhotosTab>
   Future<void> _openFullscreenWithDelete(DocItem doc) async {
     await showDialog<void>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.85),
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (ctx) => _PhotoFullscreenDialog(
         doc: doc,
         onDelete: () async {
@@ -1845,11 +1847,12 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
   Uint8List? _bytes;
   bool _failed = false;
 
-  /// Titre courant affiché dans la barre du bas — peut différer de
-  /// `widget.doc.title` après un rename (la nouvelle valeur est
-  /// reflétée localement avant que le parent ne rafraîchisse via
-  /// `onMetadataChanged`).
+  /// Titre persisté le plus récent.
   late String _currentTitle;
+
+  /// Brouillon en cours de frappe dans le champ visible au-dessus de
+  /// la photo.
+  late String _draftTitle;
 
   /// État du switch « Afficher le nom dans le PDF ». Default = false
   /// (= label MASQUÉ par défaut, opt-in seulement). Initialisé à
@@ -1869,6 +1872,7 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
   void initState() {
     super.initState();
     _currentTitle = widget.doc.title;
+    _draftTitle = widget.doc.title;
     _showLabelOnPdf =
         widget.doc.tags.contains(kPhotoTagPdfShowLabel) &&
         !widget.doc.tags.contains(kPhotoTagPdfNoLabel);
@@ -1885,65 +1889,87 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
     }
   }
 
-  /// Ouvre une mini-dialog avec un TextField pour renommer la photo.
-  /// Retourne le nouveau titre en cas de validation, null si annulé.
-  Future<void> _openRenameDialog(BuildContext ctx) async {
-    final controller = TextEditingController(text: _currentTitle);
-    final newName = await showDialog<String>(
-      context: ctx,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Renommer la photo'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          stylusHandwritingEnabled: true,
-          decoration: const InputDecoration(
-            labelText: 'Nom',
-            hintText: 'ex. Salle de bain',
-          ),
-          onSubmitted: (v) => Navigator.pop(dialogCtx, v.trim()),
-          textCapitalization: TextCapitalization.sentences,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogCtx, controller.text.trim()),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+  String _normalizedDraftTitle() {
+    final trimmed = _draftTitle.trim();
+    if (trimmed.isNotEmpty) return trimmed;
+    final currentTrimmed = _currentTitle.trim();
+    if (currentTrimmed.isNotEmpty) return currentTrimmed;
+    return widget.doc.title.trim();
+  }
+
+  void _showSaveError(Object error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Enregistrement impossible : $error')),
     );
-    if (newName == null || newName.isEmpty) return;
-    if (newName == _currentTitle) return;
+  }
+
+  Future<bool> _persistMetadata({
+    required String newTitle,
+    required bool showLabelOnPdf,
+    bool optimisticShowLabel = false,
+  }) async {
     final cb = widget.onMetadataChanged;
-    if (cb == null) return;
-    setState(() => _isSaving = true);
+    if (cb == null) return true;
+    final previousShowLabel = _showLabelOnPdf;
+    setState(() {
+      _isSaving = true;
+      if (optimisticShowLabel) {
+        _showLabelOnPdf = showLabelOnPdf;
+      }
+    });
     try {
-      await cb(newTitle: newName, showLabelOnPdf: _showLabelOnPdf);
-      if (mounted) setState(() => _currentTitle = newName);
+      await cb(newTitle: newTitle, showLabelOnPdf: showLabelOnPdf);
+      if (!mounted) return true;
+      setState(() {
+        _currentTitle = newTitle;
+        _draftTitle = newTitle;
+        _showLabelOnPdf = showLabelOnPdf;
+      });
+      return true;
+    } catch (error) {
+      if (mounted && optimisticShowLabel) {
+        setState(() => _showLabelOnPdf = previousShowLabel);
+      }
+      _showSaveError(error);
+      return false;
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
+  Future<bool> _saveTitleIfNeeded() async {
+    final cb = widget.onMetadataChanged;
+    if (cb == null) return true;
+    final nextTitle = _draftTitle.trim();
+    if (nextTitle.isEmpty) {
+      if (_draftTitle != _currentTitle && mounted) {
+        setState(() => _draftTitle = _currentTitle);
+      }
+      return true;
+    }
+    if (nextTitle == _currentTitle.trim()) return true;
+    return _persistMetadata(
+      newTitle: nextTitle,
+      showLabelOnPdf: _showLabelOnPdf,
+    );
+  }
+
   /// Toggle le switch « Afficher le nom dans le PDF ». Persiste
   /// immédiatement via le callback.
   Future<void> _toggleShowLabel(bool next) async {
-    final cb = widget.onMetadataChanged;
-    if (cb == null) return;
-    setState(() {
-      _showLabelOnPdf = next;
-      _isSaving = true;
-    });
-    try {
-      await cb(newTitle: _currentTitle, showLabelOnPdf: next);
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
+    await _persistMetadata(
+      newTitle: _normalizedDraftTitle(),
+      showLabelOnPdf: next,
+      optimisticShowLabel: true,
+    );
+  }
+
+  Future<void> _closeDialog() async {
+    if (_isSaving) return;
+    final saved = await _saveTitleIfNeeded();
+    if (!mounted || !saved) return;
+    Navigator.of(context).pop();
   }
 
   /// Affiche la confirmation puis délègue à `widget.onDelete` qui se
@@ -1964,163 +1990,185 @@ class _PhotoFullscreenDialogState extends State<_PhotoFullscreenDialog> {
     if (cb != null) await cb();
   }
 
+  Widget _buildActionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+    Color iconColor = const Color(0xFF2B323A),
+  }) {
+    return Material(
+      color: const Color(0xFFF6F7F9),
+      shape: const CircleBorder(),
+      child: IconButton(
+        icon: Icon(icon, color: iconColor, size: 18),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(24),
-      child: GestureDetector(
-        onTap: () => Navigator.of(context).pop(),
-        behavior: HitTestBehavior.opaque,
-        child: Stack(
-          children: [
-            Center(
-              child: _bytes != null
-                  ? InteractiveViewer(
-                      // Pinch-to-zoom et pan natifs — utile pour
-                      // examiner un détail de la photo (par ex. un
-                      // équipement, un défaut sanitaire).
-                      maxScale: 4.0,
-                      child: Image.memory(
-                        _bytes!,
-                        fit: BoxFit.contain,
-                        gaplessPlayback: true,
-                      ),
-                    )
-                  : _failed
-                  ? const Icon(
-                      LucideIcons.imageOff,
-                      size: 64,
-                      color: Colors.white54,
-                    )
-                  : const CircularProgressIndicator(color: Colors.white),
-            ),
-            // Boutons d'action en haut à droite. Toujours accessibles
-            // même après un zoom/pan via `InteractiveViewer`.
-            //   - Poubelle : ouvre la confirmation avant suppression
-            //     (uniquement si `onDelete` fourni — pas affiché dans
-            //     un contexte read-only).
-            //   - Croix : ferme la preview (équivalent au tap sur le
-            //     fond noir du `GestureDetector` parent).
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.onDelete != null) ...[
-                    Material(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        icon: const Icon(
-                          LucideIcons.trash2,
-                          color: Color(0xFFFCA5A5),
-                        ),
-                        tooltip: 'Supprimer la photo',
-                        onPressed: () => _confirmAndDelete(context),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  Material(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      icon: const Icon(LucideIcons.x, color: Colors.white),
-                      tooltip: 'Fermer',
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Bandeau bas : titre + crayon (rename) + switch (afficher
-            // le nom sur le PDF). GestureDetector arrête la propagation
-            // du tap vers le parent (qui ferme la dialog au tap fond).
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16,
-              child: GestureDetector(
-                onTap: () {}, // Absorbe les taps sur le bandeau
-                behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: double.infinity,
+        height: size.height * 0.9,
+        child: GestureDetector(
+          onTap: _isSaving ? null : _closeDialog,
+          behavior: HitTestBehavior.opaque,
+          child: Center(
+            child: GestureDetector(
+              onTap: () {},
+              behavior: HitTestBehavior.opaque,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: size.width >= 1200 ? 980 : size.width - 32,
+                  maxHeight: size.height * 0.82,
+                ),
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 32,
+                        offset: const Offset(0, 18),
+                      ),
+                    ],
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  child: Column(
                     children: [
+                      Row(
+                        children: [
+                          const Spacer(),
+                          if (_isSaving)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 10),
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: kBrandPurple,
+                                ),
+                              ),
+                            ),
+                          if (widget.onDelete != null) ...[
+                            _buildActionButton(
+                              icon: LucideIcons.trash2,
+                              tooltip: 'Supprimer la photo',
+                              iconColor: const Color(0xFFDC2626),
+                              onPressed: _isSaving
+                                  ? null
+                                  : () => _confirmAndDelete(context),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          _buildActionButton(
+                            icon: LucideIcons.x,
+                            tooltip: 'Fermer',
+                            onPressed: _isSaving ? null : _closeDialog,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: FormTextField(
+                              label: 'Titre de la photo',
+                              value: _draftTitle,
+                              onChanged: (value) {
+                                if (value == _draftTitle) return;
+                                setState(() => _draftTitle = value);
+                              },
+                              onSubmitted: (_) {
+                                _saveTitleIfNeeded();
+                              },
+                              onTapOutside: () {
+                                _saveTitleIfNeeded();
+                              },
+                            ),
+                          ),
+                          if (widget.onMetadataChanged != null) ...[
+                            const SizedBox(width: 14),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Tooltip(
+                                message: _showLabelOnPdf
+                                    ? 'Visible sur le PDF'
+                                    : 'Masquée sur le PDF',
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _showLabelOnPdf
+                                          ? LucideIcons.eye
+                                          : LucideIcons.eyeOff,
+                                      size: 18,
+                                      color: _showLabelOnPdf
+                                          ? kBrandPurple
+                                          : const Color(0xFFB9C0C7),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Switch.adaptive(
+                                      value: _showLabelOnPdf,
+                                      onChanged: _isSaving
+                                          ? null
+                                          : _toggleShowLabel,
+                                      activeThumbColor: kBrandPurple,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       Expanded(
-                        child: Text(
-                          _currentTitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE4E7EB)),
+                          ),
+                          child: Center(
+                            child: _bytes != null
+                                ? InteractiveViewer(
+                                    maxScale: 4.0,
+                                    child: Image.memory(
+                                      _bytes!,
+                                      fit: BoxFit.contain,
+                                      gaplessPlayback: true,
+                                    ),
+                                  )
+                                : _failed
+                                ? const Icon(
+                                    LucideIcons.imageOff,
+                                    size: 56,
+                                    color: Color(0xFF8A939D),
+                                  )
+                                : const CircularProgressIndicator(
+                                    color: kBrandPurple,
+                                  ),
                           ),
                         ),
                       ),
-                      if (widget.onMetadataChanged != null) ...[
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: _isSaving
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white70,
-                                  ),
-                                )
-                              : const Icon(
-                                  LucideIcons.pencil,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                          tooltip: 'Renommer',
-                          onPressed: _isSaving
-                              ? null
-                              : () => _openRenameDialog(context),
-                        ),
-                        const SizedBox(width: 4),
-                        // Switch + label compact « PDF »
-                        Tooltip(
-                          message: _showLabelOnPdf
-                              ? 'Le nom apparaît sur le PDF'
-                              : 'Le nom est masqué sur le PDF',
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'PDF',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Switch.adaptive(
-                                value: _showLabelOnPdf,
-                                onChanged: _isSaving ? null : _toggleShowLabel,
-                                activeThumbColor: kBrandPurple,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

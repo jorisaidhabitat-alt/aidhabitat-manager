@@ -1495,6 +1495,24 @@ class _NotesWidgetState extends State<NotesWidget> {
     return dx * dx + dy * dy >= 0.16;
   }
 
+  void _appendDrawPoint(Stroke stroke, Offset nextPoint, {bool force = false}) {
+    if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
+      if (stroke.points.length == 1) {
+        stroke.points.add(nextPoint);
+      } else {
+        stroke.points[1] = nextPoint;
+      }
+      return;
+    }
+    if (force || _shouldAppendDrawPoint(stroke, nextPoint)) {
+      if (stroke.points.length < kMaxStrokePoints) {
+        stroke.points.add(nextPoint);
+      } else {
+        stroke.points[stroke.points.length - 1] = nextPoint;
+      }
+    }
+  }
+
   void _scheduleDrawInactivityCommit() {
     _drawInactivityTimer?.cancel();
     _drawInactivityTimer = Timer(const Duration(seconds: 2), () {
@@ -1513,10 +1531,12 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (!_isInsideCanvas(event.localPosition)) return;
     if (_shouldIgnoreTouchAsPalm(event)) return;
     if (_activePointerId != null) {
-      final currentKind = _activePointerKind;
       final incomingIsStylus = _isStylusKind(event.kind);
-      final currentIsStylus = currentKind != null && _isStylusKind(currentKind);
-      if (!incomingIsStylus || currentIsStylus) return;
+      if (!incomingIsStylus) return;
+      // Sur iPad, il arrive qu'un nouveau contact Apple Pencil soit reçu
+      // alors que l'ancien pointer n'a pas été correctement finalisé. Dans
+      // ce cas on ferme le trait précédent au lieu d'ignorer le nouveau :
+      // sinon le stylet semble "mort" jusqu'au contact suivant.
       _commitActiveStroke();
     } else if (_activeStroke != null) {
       _commitActiveStroke();
@@ -1548,19 +1568,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     _rememberStylusInput(event.kind);
     final nextPoint = _normalize(event.localPosition);
     setState(() {
-      if (stroke.tool == NoteTool.line || stroke.tool == NoteTool.rect) {
-        if (stroke.points.length == 1) {
-          stroke.points.add(nextPoint);
-        } else {
-          stroke.points[1] = nextPoint;
-        }
-      } else if (_shouldAppendDrawPoint(stroke, nextPoint)) {
-        if (stroke.points.length < kMaxStrokePoints) {
-          stroke.points.add(nextPoint);
-        } else {
-          stroke.points[stroke.points.length - 1] = nextPoint;
-        }
-      }
+      _appendDrawPoint(stroke, nextPoint);
     });
     _scheduleDrawInactivityCommit();
   }
@@ -1568,6 +1576,12 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _onDrawEnd(PointerEvent event) {
     if (_activePointerId != event.pointer) return;
     _rememberStylusInput(event.kind);
+    final stroke = _activeStroke;
+    if (stroke != null && _isInsideCanvas(event.localPosition)) {
+      setState(() {
+        _appendDrawPoint(stroke, _normalize(event.localPosition), force: true);
+      });
+    }
     _commitActiveStroke();
   }
 
