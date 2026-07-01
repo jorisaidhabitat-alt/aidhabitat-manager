@@ -2063,6 +2063,70 @@ async function drawPhotoOnPageAtRect(
   }
 }
 
+function drawEmbeddedPhotoAtRect(pdfDoc, page, rect, photo, pdfImage, stats) {
+  if (!rect || rect.width <= 0 || rect.height <= 0 || !pdfImage) return null;
+
+  const slotRatio = rect.width / rect.height;
+  const imgRatio = pdfImage.width / pdfImage.height;
+  let drawW;
+  let drawH;
+  if (imgRatio > slotRatio) {
+    drawW = rect.width;
+    drawH = drawW / imgRatio;
+  } else {
+    drawH = rect.height;
+    drawW = drawH * imgRatio;
+  }
+  const drawX = rect.x + (rect.width - drawW) / 2;
+  const drawY = rect.y + (rect.height - drawH) / 2;
+
+  page.pushOperators(pushGraphicsState());
+  page.drawImage(pdfImage, {
+    x: drawX,
+    y: drawY,
+    width: drawW,
+    height: drawH,
+  });
+  page.pushOperators(popGraphicsState());
+
+  if (stats) stats.bonusPhotosApplied = (stats.bonusPhotosApplied || 0) + 1;
+  return {
+    x: drawX,
+    y: drawY,
+    width: drawW,
+    height: drawH,
+  };
+}
+
+async function resolveVisitPhotoForLayout(pdfDoc, photo, fetchImageBytes, stats) {
+  if (!photo) return null;
+  let fetched = null;
+  try {
+    fetched = await fetchImageBytes({ kind: 'document', id: photo.id });
+  } catch (error) {
+    console.warn(
+      '[generateVisitReport] fetch photo layout :',
+      error?.message || error,
+    );
+  }
+  if (!fetched?.buffer) {
+    if (stats) stats.bonusPhotosFailed = (stats.bonusPhotosFailed || 0) + 1;
+    return null;
+  }
+  const pdfImage = await embedImageAuto(pdfDoc, fetched.buffer, fetched.mimeType);
+  if (!pdfImage) {
+    if (stats) stats.bonusPhotosFailed = (stats.bonusPhotosFailed || 0) + 1;
+    return null;
+  }
+  const isLandscape = pdfImage.width > pdfImage.height;
+  return {
+    photo,
+    pdfImage,
+    isLandscape,
+    units: isLandscape ? 2 : 1,
+  };
+}
+
 /**
  * Vide l'apparence d'un form field pour qu'il n'apparaisse plus à
  * l'écran après flatten. Utilisé pour neutraliser les 8 slots photo
@@ -2251,41 +2315,52 @@ async function drawVisitPhotosWithFlow({
   maskTitleZone(accXStart, accXEnd, accSlot.rect.y + accH);
   maskTitleZone(saniXStart, saniXEnd, saniSlot.rect.y + saniH);
 
-  // 3) Construit les rangées (fusion base + extras pour chaque cat).
-  // `isFirstOfCategory` est mis à true pour la 1ère rangée de
-  // chaque catégorie — utilisé pour réserver de l'espace pour le
-  // titre custom au-dessus.
-  const buildRowsForCategory = (
-    baseTag, perRow, slotW, slotH, hgap, xStart, type, label,
+  const flowXStart = Math.min(logXStart, accXStart, saniXStart);
+  const flowXEnd = Math.max(logXEnd, accXEnd, saniXEnd);
+  const flowWidth = flowXEnd - flowXStart;
+  const flowGap = Math.max(8, Math.min(accHGap, saniHGap, logHGap, 18));
+  const unitW = (flowWidth - flowGap * 3) / 4;
+  const rowH = Math.max(logH, accH, saniH);
+
+  const buildRowsForCategory = async (
+    baseTag, type, label,
     { showTitle = true } = {},
   ) => {
     const grouped = groupPhotosBySectionIndex(documents, baseTag);
     const allPhotos = [];
     for (const ps of grouped.values()) allPhotos.push(...ps);
+    const resolved = (await Promise.all(
+      allPhotos.map((photo) =>
+        resolveVisitPhotoForLayout(pdfDoc, photo, fetchImageBytes, stats)),
+    )).filter(Boolean);
+    if (resolved.length === 0) return [];
+
     const rows = [];
-    if (allPhotos.length === 0) {
-      // Catégorie vide → 1 rangée placeholder (perRow nulls). La
-      // boucle de rendu dessine des cadres gris discrets à la place
-      // des photos. Demande utilisateur 2026-05-05 : « Accessibilité
-      // et Sanitaires descendent à la suite de Logement quand il
-      // déborde » → la zone vide doit avoir une rangée dans le flow
-      // pour pouvoir descendre naturellement.
+    let current = [];
+    let units = 0;
+    const pushCurrent = () => {
+      if (current.length === 0) return;
       rows.push({
-        photos: new Array(perRow).fill(null),
-        slotW, slotH, hgap, xStart, type, label,
+        items: current,
+        units,
+        type,
+        label,
         showTitle,
-        isFirstOfCategory: true,
+        isFirstOfCategory: rows.length === 0,
       });
-      return rows;
+      current = [];
+      units = 0;
+    };
+
+    for (const item of resolved) {
+      if (units > 0 && units + item.units > 4) pushCurrent();
+      current.push(item);
+      units += item.units;
+      if (units >= 4 || (!item.isLandscape && current.length >= 3)) {
+        pushCurrent();
+      }
     }
-    for (let i = 0; i < allPhotos.length; i += perRow) {
-      rows.push({
-        photos: allPhotos.slice(i, i + perRow),
-        slotW, slotH, hgap, xStart, type, label,
-        showTitle,
-        isFirstOfCategory: i === 0,
-      });
-    }
+    pushCurrent();
     return rows;
   };
 
@@ -2321,27 +2396,27 @@ async function drawVisitPhotosWithFlow({
   //
   // Toutes les rangées de toutes les catégories (Logement →
   // Accessibilité → Sanitaires) sont concaténées et dessinées en
-  // séquence. Quand une catégorie est vide, sa rangée placeholder
-  // (cf. buildRowsForCategory) prend la place visuelle avec des
-  // cadres gris discrets. Quand Logement déborde (>1 rangée),
-  // Accessibilité et Sanitaires descendent naturellement en dessous
-  // — c'est le comportement demandé par l'utilisateur 2026-05-05 :
-  // « toutes les photos logement doivent être ensemble, c'est
-  // sanitaire et accessibilité qui doivent descendre ».
+  // séquence. Une catégorie vide est simplement ignorée.
+  const logementRows = await buildRowsForCategory(
+    'Visite - Logement',
+    'logement',
+    'Logement',
+    { showTitle: false },
+  );
+  const accessibiliteRows = await buildRowsForCategory(
+    'Visite - Accessibilité',
+    'acces',
+    'Accessibilité',
+  );
+  const sanitairesRows = await buildRowsForCategory(
+    'Visite - Sanitaires',
+    'sani',
+    'Sanitaires',
+  );
   const allRows = [
-    ...buildRowsForCategory(
-      'Visite - Logement', 2, logW, logH, logHGap, logXStart,
-      'logement', 'Logement',
-      { showTitle: false },
-    ),
-    ...buildRowsForCategory(
-      'Visite - Accessibilité', 3, accW, accH, accHGap, accXStart,
-      'acces', 'Accessibilité',
-    ),
-    ...buildRowsForCategory(
-      'Visite - Sanitaires', 3, saniW, saniH, saniHGap, saniXStart,
-      'sani', 'Sanitaires',
-    ),
+    ...logementRows,
+    ...accessibiliteRows,
+    ...sanitairesRows,
   ];
   if (allRows.length === 0) return;
 
@@ -2355,7 +2430,7 @@ async function drawVisitPhotosWithFlow({
     const titleSpace = row.showTitle && row.isFirstOfCategory ? TITLE_HEIGHT : 0;
 
     // Pagination : la rangée + son titre tiennent-ils dans la zone ?
-    if (cursorY - titleSpace - row.slotH < bottomLimit) {
+    if (cursorY - titleSpace - rowH < bottomLimit) {
       const insertAt = page8Index + 1 + bonusPagesInserted;
       currentPage = pdfDoc.insertPage(insertAt, [pageWidth, pageHeight]);
       cursorY = pageHeight - bonusMarginTop;
@@ -2366,7 +2441,7 @@ async function drawVisitPhotosWithFlow({
     // Titre custom au-dessus de la 1ère rangée de la catégorie.
     if (TITLE_ENABLED && row.showTitle && row.isFirstOfCategory) {
       currentPage.drawText(row.label, {
-        x: row.xStart,
+        x: flowXStart,
         y: cursorY - TITLE_FONT_SIZE - 2,
         size: TITLE_FONT_SIZE,
         color: rgb(0.18, 0.18, 0.18),
@@ -2375,30 +2450,33 @@ async function drawVisitPhotosWithFlow({
       cursorY -= TITLE_HEIGHT;
     }
 
-    // Dessine la rangée — photos (drawPhotoOnPageAtRect) ou
-    // placeholder gris (catégorie vide → photo === null).
-    for (let i = 0; i < row.photos.length; i += 1) {
-      const x = row.xStart + i * (row.slotW + row.hgap);
-      const y = cursorY - row.slotH;
-      const rect = { x, y, width: row.slotW, height: row.slotH };
-      const photo = row.photos[i];
-      if (photo == null) {
-        currentPage.drawRectangle({
-          x: rect.x, y: rect.y,
-          width: rect.width, height: rect.height,
-          color: rgb(0.95, 0.96, 0.98),
-          borderColor: rgb(0.85, 0.87, 0.91),
-          borderWidth: 1,
-        });
-        continue;
+    let rowWidth = 0;
+    row.items.forEach((item, index) => {
+      rowWidth += item.units === 2 ? unitW * 2 + flowGap : unitW;
+      if (index > 0) rowWidth += flowGap;
+    });
+    let x = flowXStart + Math.max(0, (flowWidth - rowWidth) / 2);
+    for (const item of row.items) {
+      const width = item.units === 2 ? unitW * 2 + flowGap : unitW;
+      const rect = {
+        x,
+        y: cursorY - rowH,
+        width,
+        height: rowH,
+      };
+      const imageRect = drawEmbeddedPhotoAtRect(
+        pdfDoc, currentPage, rect, item.photo, item.pdfImage, stats,
+      ) || rect;
+      const tags = Array.isArray(item.photo?.tags) ? item.photo.tags : [];
+      if (shouldShowPhotoLabel(tags)) {
+        await drawPhotoLabelOverlayAtRect(
+          pdfDoc, currentPage, imageRect, item.photo.title,
+        );
       }
-      await drawPhotoOnPageAtRect(
-        pdfDoc, currentPage, rect, photo,
-        fetchImageBytes, stats,
-      );
+      x += width + flowGap;
     }
 
-    cursorY -= row.slotH;
+    cursorY -= rowH;
     if (r + 1 < allRows.length) {
       cursorY -= computeVGap(row.type, allRows[r + 1].type);
     }
@@ -2922,9 +3000,9 @@ async function drawFlat2026Logement({ pdfDoc, view }) {
   const accessObservation = String(view?.housing?.accessObservation || '').trim();
   if (accessObservation) {
     drawWrappedText(page, accessObservation, {
-      x: 70,
+      x: 46,
       yTop: 432,
-      width: 482,
+      width: 506,
       font: regular,
       fontSize: 11,
       lineHeight: 13.5,
@@ -2937,15 +3015,6 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
   if (!page) return;
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const maPrimeRate = maPrimeAdaptRateForIncome(view?.patient?.incomeCategory);
-  if (maPrimeRate) {
-    page.drawText(maPrimeRate, {
-      x: 383.2,
-      y: 688,
-      size: 10,
-      font: regular,
-      color: rgb(0, 0, 0),
-    });
-  }
   const cells = [
     {
       value: view?.dossier?.amoLabel,
@@ -2999,6 +3068,31 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
       fontSize: cell.fontSize,
       lineHeight: cell.lineHeight,
       maxLines: cell.maxLines,
+    });
+  }
+  if (maPrimeRate) {
+    page.drawRectangle({
+      x: 382.2,
+      y: 636.2,
+      width: 155.2,
+      height: 55.8,
+      color: rgb(1, 1, 1),
+    });
+    page.drawText(maPrimeRate, {
+      x: 383.2,
+      y: 676,
+      size: 10,
+      font: regular,
+      color: rgb(0, 0, 0),
+    });
+    drawWrappedText(page, 'Sur un plafond de travaux de 22 000€ HT maximum', {
+      x: 383.2,
+      yTop: 663,
+      width: 152,
+      font: regular,
+      fontSize: 10,
+      lineHeight: 12,
+      maxLines: 3,
     });
   }
 }
@@ -3147,7 +3241,7 @@ function applyLogementFontSizeTweak(form) {
   try {
     const levelCountField = form.getField("nombre d'étage");
     if (levelCountField instanceof PDFDropdown || levelCountField instanceof PDFTextField) {
-      levelCountField.acroField.setDefaultAppearance('/Helv 14 Tf 0 g');
+      levelCountField.acroField.setDefaultAppearance('/Helv 11 Tf 0 g');
     }
   } catch {
     // Idem : template tolerant.
@@ -3528,50 +3622,17 @@ export async function generateVisitReport({
     for (const ps of grouped.values()) n += ps.length;
     return n;
   };
-  const hasPage8Overflow = PAGE8_CATEGORIES.some(
-    (cat) => countPhotosForCategory(cat.baseTag) > cat.fields.length,
+  const hasPage8Photos = PAGE8_CATEGORIES.some(
+    (cat) => countPhotosForCategory(cat.baseTag) > 0,
   );
 
-  if (!hasPage8Overflow) {
-    // Mode template : remplit les form fields page 8 comme avant.
-    // Parallélisation 2026-05-07 : les 8 slots photo de la page 8
-    // (Logement × 2 + Accès × 3 + Sanitaires × 3) sont indépendants.
-    // Chaque slot fait fetch image + embed PDF + setImage — l'essentiel
-    // du coût est I/O réseau (NocoDB) ou CPU embed (zlib JPG/PNG).
-    // Les exécuter en `Promise.all` overlap les latences et divise
-    // le temps de remplissage page 8 par ~N (jusqu'à 8x sur réseau
-    // froid). Les slots ciblent des fields différents → pas de race
-    // pdf-lib sur les widgets.
-    const page8Tasks = [];
-    for (const cat of PAGE8_CATEGORIES) {
-      const grouped = groupPhotosBySectionIndex(documents, cat.baseTag);
-      const allPhotos = [];
-      for (const ps of grouped.values()) allPhotos.push(...ps);
-      for (let i = 0; i < cat.fields.length; i += 1) {
-        const fieldName = cat.fields[i];
-        const photo = allPhotos[i];
-        if (!photo) continue;
-        page8Tasks.push((async () => {
-          await setImageInField(
-            pdfDoc, form, fieldName,
-            { kind: 'document', id: photo.id },
-            fetchImageBytes, stats,
-          );
-          const tags = Array.isArray(photo.tags) ? photo.tags : [];
-          if (shouldShowPhotoLabel(tags)) {
-            await drawPhotoLabelOverlay(pdfDoc, form, fieldName, photo.title);
-          }
-        })());
-      }
-    }
-    await Promise.all(page8Tasks);
+  if (!hasPage8Photos) {
+    // Pas de photos visite : on laisse le template vide tel quel.
   } else {
-    // Mode flow : redessine TOUTE la page 8 en flow continu,
-    // pagination automatique vers des pages bonus si nécessaire.
-    // Demande utilisateur 2026-05-04 : les photos surplus de Logement
-    // s'insèrent DIRECTEMENT en dessous de la rangée Logement
-    // d'origine, ce qui pousse Accès puis Sanitaires plus bas (et
-    // potentiellement sur la page suivante).
+    // Mode flow : redessine TOUTE la page 8 en flow continu avec une
+    // grille adaptative portrait/paysage. On l'applique même sans
+    // surplus, sinon les cas simples resteraient bloqués sur les slots
+    // fixes du template.
     await drawVisitPhotosWithFlow({
       pdfDoc, form, fetchImageBytes, stats, documents,
     });

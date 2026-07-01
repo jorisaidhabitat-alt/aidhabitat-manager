@@ -5540,24 +5540,25 @@ const fetchVisitPhotosForPatient = async (patientId) => {
       // le nom dans le PDF" était perdu dès que la source primaire était
       // `mobile_visit_photos`.
       const cid = String(doc?.clientDocumentId || '');
-      if (cid) {
-        const existing = photos.find((p) => String(p.clientDocumentId || '') === cid);
-        if (existing) {
-          const docTags = asArray(doc?.tags).map((tag) => String(tag));
-          if (docTags.length > 0) {
-            existing.tags = Array.from(new Set([
-              ...asArray(existing.tags).map((tag) => String(tag)),
-              ...docTags,
-            ]));
-          }
-          const docTitle = stringValue(doc?.title).trim();
-          if (docTitle) existing.title = docTitle;
-          const docFileName = stringValue(doc?.fileName).trim();
-          if (docFileName) existing.fileName = docFileName;
-          const docOrder = parseOptionalFiniteNumber(doc?.categoryOrder);
-          if (docOrder !== null) existing.categoryOrder = docOrder;
-          continue;
+      const existing = photos.find((p) => (
+        (cid && String(p.clientDocumentId || '') === cid)
+        || String(p.id || '') === String(doc?.id || '')
+      ));
+      if (existing) {
+        const docTags = asArray(doc?.tags).map((tag) => String(tag));
+        if (docTags.length > 0) {
+          existing.tags = Array.from(new Set([
+            ...asArray(existing.tags).map((tag) => String(tag)),
+            ...docTags,
+          ]));
         }
+        const docTitle = stringValue(doc?.title).trim();
+        if (docTitle) existing.title = docTitle;
+        const docFileName = stringValue(doc?.fileName).trim();
+        if (docFileName) existing.fileName = docFileName;
+        const docOrder = parseOptionalFiniteNumber(doc?.categoryOrder);
+        if (docOrder !== null) existing.categoryOrder = docOrder;
+        continue;
       }
       photos.push({
         ...doc,
