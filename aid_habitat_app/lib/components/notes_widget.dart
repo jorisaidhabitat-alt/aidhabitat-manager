@@ -414,7 +414,6 @@ class _NotesWidgetState extends State<NotesWidget> {
   // Stroke en cours
   Stroke? _activeStroke;
   int? _activePointerId;
-  PointerDeviceKind? _activePointerKind;
   Timer? _drawInactivityTimer;
   Timer? _drawingDirtyFlushTimer;
 
@@ -1506,15 +1505,19 @@ class _NotesWidgetState extends State<NotesWidget> {
         kind == PointerDeviceKind.invertedStylus;
   }
 
-  bool _shouldIgnoreTouchAsPalm(PointerDownEvent event) {
-    if (event.kind != PointerDeviceKind.touch) return false;
-    if (_activePointerKind != null && _isStylusKind(_activePointerKind!)) {
-      return true;
+  bool _isDrawablePointerKind(PointerDeviceKind kind) {
+    return kind == PointerDeviceKind.mouse ||
+        kind == PointerDeviceKind.touch ||
+        _isStylusKind(kind);
+  }
+
+  void _releaseTextFocusForDrawing() {
+    if (_textFocusNode.hasFocus) {
+      _textFocusNode.unfocus();
+      return;
     }
-    // Ne pas ignorer les touches après un trait stylus terminé : sur iPadOS
-    // Web, certains micro-contacts Apple Pencil arrivent comme `touch`.
-    // L'ancien délai anti-paume de 1200 ms supprimait donc des petits traits.
-    return false;
+    final primaryFocus = FocusManager.instance.primaryFocus;
+    if (primaryFocus != null) primaryFocus.unfocus();
   }
 
   bool _shouldAppendDrawPoint(Stroke stroke, Offset nextPoint) {
@@ -1558,25 +1561,10 @@ class _NotesWidgetState extends State<NotesWidget> {
     _drawInactivityTimer = null;
   }
 
-  void _onDrawStart(PointerDownEvent event) {
-    if (_canvasSize.isEmpty) return;
-    if (!_isInsideCanvas(event.localPosition)) return;
-    if (_shouldIgnoreTouchAsPalm(event)) return;
-    if (_activePointerId != null) {
-      final incomingIsStylus = _isStylusKind(event.kind);
-      if (!incomingIsStylus) return;
-      // Sur iPad, il arrive qu'un nouveau contact Apple Pencil soit reçu
-      // alors que l'ancien pointer n'a pas été correctement finalisé. Dans
-      // ce cas on ferme le trait précédent au lieu d'ignorer le nouveau :
-      // sinon le stylet semble "mort" jusqu'au contact suivant.
-      _commitActiveStroke();
-    } else if (_activeStroke != null) {
-      _commitActiveStroke();
-    }
+  void _startStrokeFromPointer(PointerEvent event) {
     _pushUndo();
     setState(() {
       _activePointerId = event.pointer;
-      _activePointerKind = event.kind;
       if (_activeTool == NoteTool.eraser) _showEraserSizeGauge = false;
       if (_activeTool == NoteTool.highlighter) {
         _showHighlighterSizeGauge = false;
@@ -1591,9 +1579,34 @@ class _NotesWidgetState extends State<NotesWidget> {
     _scheduleDrawInactivityCommit();
   }
 
+  void _onDrawStart(PointerDownEvent event) {
+    if (_canvasSize.isEmpty) return;
+    if (!_isInsideCanvas(event.localPosition)) return;
+    if (!_isDrawablePointerKind(event.kind)) return;
+    _releaseTextFocusForDrawing();
+    if (_activePointerId != null || _activeStroke != null) {
+      // Sur iPad, il arrive qu'un nouveau contact Apple Pencil soit reçu
+      // alors que l'ancien pointer n'a pas été correctement finalisé. Dans
+      // ce cas on ferme le trait précédent au lieu d'ignorer le nouveau :
+      // sinon le stylet semble "mort" jusqu'au contact suivant.
+      _commitActiveStroke();
+    }
+    _startStrokeFromPointer(event);
+  }
+
   void _onDrawUpdate(PointerMoveEvent event) {
     if (_canvasSize.isEmpty) return;
-    if (_activePointerId != event.pointer) return;
+    if (_activePointerId != event.pointer) {
+      if (!_isInsideCanvas(event.localPosition) ||
+          !_isDrawablePointerKind(event.kind)) {
+        return;
+      }
+      if (_activePointerId != null || _activeStroke != null) {
+        _commitActiveStroke();
+      }
+      _releaseTextFocusForDrawing();
+      _startStrokeFromPointer(event);
+    }
     final stroke = _activeStroke;
     if (stroke == null) return;
     final nextPoint = _normalize(event.localPosition);
@@ -1604,13 +1617,31 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   void _onDrawEnd(PointerEvent event) {
-    if (_activePointerId != event.pointer) return;
+    if (_activePointerId != event.pointer) {
+      if (_canvasSize.isEmpty ||
+          !_isInsideCanvas(event.localPosition) ||
+          !_isDrawablePointerKind(event.kind)) {
+        return;
+      }
+      if (_activePointerId != null || _activeStroke != null) {
+        _commitActiveStroke();
+      }
+      // Recovery iPadOS/Safari : certains micro-traits Apple Pencil
+      // remontent seulement un pointerUp exploitable. On pose alors un point
+      // visible au lieu de perdre totalement le contact.
+      _startStrokeFromPointer(event);
+    }
     final stroke = _activeStroke;
     if (stroke != null && _isInsideCanvas(event.localPosition)) {
       setState(() {
         _appendDrawPoint(stroke, _normalize(event.localPosition), force: true);
       });
     }
+    _commitActiveStroke();
+  }
+
+  void _onDrawCancel(PointerEvent event) {
+    if (_activePointerId != event.pointer) return;
     _commitActiveStroke();
   }
 
@@ -1621,11 +1652,9 @@ class _NotesWidgetState extends State<NotesWidget> {
       if (_activePointerId != null && mounted) {
         setState(() {
           _activePointerId = null;
-          _activePointerKind = null;
         });
       } else {
         _activePointerId = null;
-        _activePointerKind = null;
       }
       return;
     }
@@ -1633,7 +1662,6 @@ class _NotesWidgetState extends State<NotesWidget> {
       _strokes.add(stroke);
       _activeStroke = null;
       _activePointerId = null;
-      _activePointerKind = null;
     });
     if (markDirty) _markDrawingDirty();
   }
@@ -2860,7 +2888,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                           },
                           onPointerMove: _onDrawUpdate,
                           onPointerUp: _onDrawEnd,
-                          onPointerCancel: _onDrawEnd,
+                          onPointerCancel: _onDrawCancel,
                           child: MouseRegion(
                             cursor: SystemMouseCursors.precise,
                             child: CustomPaint(
