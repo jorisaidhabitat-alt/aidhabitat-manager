@@ -95,6 +95,15 @@ const REQUIRE_NOCODB_ON_SERVERLESS = String(
 const MAX_NOCODB_LONG_TEXT_LENGTH = 100000;
 const DOCUMENT_CONTENT_CHUNK_SIZE = 95000;
 
+const previewDataUrlForStorage = (previewDataUrl) => {
+  const raw = stringValue(previewDataUrl);
+  if (raw.length <= MAX_NOCODB_LONG_TEXT_LENGTH) return raw;
+  // La miniature est un cache visuel. Si elle dépasse la limite LongText
+  // NocoDB, on la vide pour ne jamais faire échouer la sauvegarde réelle
+  // de la note (`drawing_json` + `text_content`).
+  return '';
+};
+
 export const MOBILE_SYNC_SCHEMA_SPEC = {
   documents: {
     tableName: TABLE_NAMES.documents,
@@ -847,7 +856,7 @@ const createLocalStoreAdapter = ({ absoluteUrl }) => ({
       pageNumber,
       textContent: stringValue(textContent),
       drawingJson,
-      previewDataUrl: stringValue(previewDataUrl),
+      previewDataUrl: previewDataUrlForStorage(previewDataUrl),
       previewUrl: absoluteUrl(`/public/note-pages/${encodeURIComponent(resolvedNotePageId)}/preview`),
       layoutKind: layoutKind || 'freeform',
       // 'avant' / 'apres' / null — voir mobileSyncStore.notePages.fields.
@@ -1657,7 +1666,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         sub_tab_key: stringValue(subTabKey),
         text_content: compressTextForStorage(stringValue(textContent)),
         drawing_json: compressDrawingForStorage(drawingJson),
-        ...(supportsPreviewField ? { preview_data_url: stringValue(previewDataUrl) } : {}),
+        ...(supportsPreviewField ? { preview_data_url: previewDataUrlForStorage(previewDataUrl) } : {}),
         ...(supportsPreviewUrlField ? { preview_url: resolvedPreviewUrl } : {}),
         layout_kind: layoutKind || 'freeform',
         ...(supportsPlanPhaseField ? { plan_phase: normalizedPlanPhase } : {}),
@@ -1697,7 +1706,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
         pageNumber,
         textContent: stringValue(textContent),
         drawingJson,
-        previewDataUrl: stringValue(previewDataUrl),
+        previewDataUrl: previewDataUrlForStorage(previewDataUrl),
         previewUrl: resolvedPreviewUrl,
         layoutKind: layoutKind || 'freeform',
         planPhase: normalizedPlanPhase,
@@ -1722,7 +1731,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       page_number: Number(pageNumber) || 0,
       text_content: compressTextForStorage(stringValue(textContent)),
       drawing_json: compressDrawingForStorage(drawingJson),
-      ...(supportsPreviewField ? { preview_data_url: stringValue(previewDataUrl) } : {}),
+      ...(supportsPreviewField ? { preview_data_url: previewDataUrlForStorage(previewDataUrl) } : {}),
       ...(supportsPreviewUrlField ? { preview_url: createdPreviewUrl } : {}),
       layout_kind: layoutKind || 'freeform',
       ...(supportsPlanPhaseField ? { plan_phase: normalizedPlanPhase } : {}),
@@ -1762,7 +1771,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       pageNumber,
       textContent: stringValue(textContent),
       drawingJson,
-      previewDataUrl: stringValue(previewDataUrl),
+      previewDataUrl: previewDataUrlForStorage(previewDataUrl),
       previewUrl: createdPreviewUrl,
       layoutKind: layoutKind || 'freeform',
       planPhase: normalizedPlanPhase,
