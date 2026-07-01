@@ -417,6 +417,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   PointerDeviceKind? _activePointerKind;
   DateTime? _lastStylusInputAt;
   Timer? _drawInactivityTimer;
+  Timer? _drawingDirtyFlushTimer;
 
   // Undo / redo (bonus par rapport à React)
   final List<List<Stroke>> _undoStack = <List<Stroke>>[];
@@ -756,6 +757,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
     _autoSaveDebounce?.cancel();
     _drawInactivityTimer?.cancel();
+    _drawingDirtyFlushTimer?.cancel();
     if (shouldFlushDirtyDraft) {
       unawaited(
         _persistDirtyDraftOnDispose(
@@ -1262,10 +1264,43 @@ class _NotesWidgetState extends State<NotesWidget> {
   // ---------------------------------------------------------------------------
 
   void _markDirty() {
-    if (!_isDirty) setState(() => _isDirty = true);
-    if (_saveLabel != _SaveLabel.idle) {
-      setState(() => _saveLabel = _SaveLabel.idle);
+    _drawingDirtyFlushTimer?.cancel();
+    _drawingDirtyFlushTimer = null;
+    _setDirtyUiState();
+    _emitDraft();
+    if (widget.autoSaveToService) _scheduleAutoSave();
+  }
+
+  void _setDirtyUiState() {
+    final shouldUpdateDirty = !_isDirty;
+    final shouldResetSaveLabel = _saveLabel != _SaveLabel.idle;
+    if (!shouldUpdateDirty && !shouldResetSaveLabel) return;
+    setState(() {
+      if (shouldUpdateDirty) _isDirty = true;
+      if (shouldResetSaveLabel) _saveLabel = _SaveLabel.idle;
+    });
+  }
+
+  void _markDrawingDirty() {
+    _setDirtyUiState();
+    _drawingDirtyFlushTimer?.cancel();
+    _drawingDirtyFlushTimer = Timer(
+      const Duration(milliseconds: 300),
+      _flushDrawingDirty,
+    );
+  }
+
+  void _flushDrawingDirty() {
+    if (!mounted) return;
+    if (_isDrawingInProgress) {
+      _drawingDirtyFlushTimer?.cancel();
+      _drawingDirtyFlushTimer = Timer(
+        const Duration(milliseconds: 300),
+        _flushDrawingDirty,
+      );
+      return;
     }
+    _drawingDirtyFlushTimer = null;
     _emitDraft();
     if (widget.autoSaveToService) _scheduleAutoSave();
   }
@@ -1340,6 +1375,8 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   Future<void> _handleSavePressed() async {
     if (!_isDirty || _isSaving) return;
+    _drawingDirtyFlushTimer?.cancel();
+    _drawingDirtyFlushTimer = null;
     setState(() {
       _isSaving = true;
     });
@@ -1606,7 +1643,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       _activePointerId = null;
       _activePointerKind = null;
     });
-    if (markDirty) _markDirty();
+    if (markDirty) _markDrawingDirty();
   }
 
   // Distance entre un point [p] et le segment [a, b] — projection
