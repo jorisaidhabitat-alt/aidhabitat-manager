@@ -415,7 +415,6 @@ class _NotesWidgetState extends State<NotesWidget> {
   Stroke? _activeStroke;
   int? _activePointerId;
   PointerDeviceKind? _activePointerKind;
-  DateTime? _lastStylusInputAt;
   Timer? _drawInactivityTimer;
   Timer? _drawingDirtyFlushTimer;
 
@@ -1507,19 +1506,15 @@ class _NotesWidgetState extends State<NotesWidget> {
         kind == PointerDeviceKind.invertedStylus;
   }
 
-  void _rememberStylusInput(PointerDeviceKind kind) {
-    if (_isStylusKind(kind)) _lastStylusInputAt = DateTime.now();
-  }
-
   bool _shouldIgnoreTouchAsPalm(PointerDownEvent event) {
     if (event.kind != PointerDeviceKind.touch) return false;
     if (_activePointerKind != null && _isStylusKind(_activePointerKind!)) {
       return true;
     }
-    final lastStylus = _lastStylusInputAt;
-    if (lastStylus == null) return false;
-    return DateTime.now().difference(lastStylus) <
-        const Duration(milliseconds: 1200);
+    // Ne pas ignorer les touches après un trait stylus terminé : sur iPadOS
+    // Web, certains micro-contacts Apple Pencil arrivent comme `touch`.
+    // L'ancien délai anti-paume de 1200 ms supprimait donc des petits traits.
+    return false;
   }
 
   bool _shouldAppendDrawPoint(Stroke stroke, Offset nextPoint) {
@@ -1579,7 +1574,6 @@ class _NotesWidgetState extends State<NotesWidget> {
       _commitActiveStroke();
     }
     _pushUndo();
-    _rememberStylusInput(event.kind);
     setState(() {
       _activePointerId = event.pointer;
       _activePointerKind = event.kind;
@@ -1602,7 +1596,6 @@ class _NotesWidgetState extends State<NotesWidget> {
     if (_activePointerId != event.pointer) return;
     final stroke = _activeStroke;
     if (stroke == null) return;
-    _rememberStylusInput(event.kind);
     final nextPoint = _normalize(event.localPosition);
     setState(() {
       _appendDrawPoint(stroke, nextPoint);
@@ -1612,7 +1605,6 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   void _onDrawEnd(PointerEvent event) {
     if (_activePointerId != event.pointer) return;
-    _rememberStylusInput(event.kind);
     final stroke = _activeStroke;
     if (stroke != null && _isInsideCanvas(event.localPosition)) {
       setState(() {
