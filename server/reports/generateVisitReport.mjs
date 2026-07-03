@@ -3072,27 +3072,32 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
   }
   if (maPrimeRate) {
     page.drawRectangle({
-      x: 382.2,
-      y: 636.2,
-      width: 155.2,
-      height: 55.8,
+      x: 371.8,
+      y: 647,
+      width: 177.5,
+      height: 50,
       color: rgb(1, 1, 1),
     });
-    page.drawText(maPrimeRate, {
+    page.drawText('Sur un plafond de travaux de', {
       x: 383.2,
-      y: 683,
+      y: 671,
       size: 10,
       font: regular,
       color: rgb(0, 0, 0),
     });
-    drawWrappedText(page, 'Sur un plafond de travaux de 22 000€ HT maximum', {
+    page.drawText('22 000€ HT maximum', {
       x: 383.2,
-      yTop: 678,
-      width: 152,
+      y: 660,
+      size: 10,
       font: regular,
-      fontSize: 10,
-      lineHeight: 10.5,
-      maxLines: 3,
+      color: rgb(0, 0, 0),
+    });
+    page.drawText(maPrimeRate, {
+      x: 383.2,
+      y: 684,
+      size: 11,
+      font: regular,
+      color: rgb(0, 0, 0),
     });
   }
 }
@@ -3939,11 +3944,6 @@ export async function generateVisitReport({
   if (isFlat2026Template) {
     await drawFlat2026Logement({ pdfDoc, view });
     await drawFlat2026Sanitaires({ pdfDoc, view });
-    await drawFlat2026AidSummary({
-      pdfDoc,
-      page: flat2026AidSummaryPage,
-      view,
-    });
   }
 
   // Uniformise la police des textes générés/remplis avant aplatissement.
@@ -3957,6 +3957,14 @@ export async function generateVisitReport({
   // plus un formulaire éditable. Mettre flatten=false pour debug.
   if (flatten) {
     form.flatten();
+  }
+
+  if (isFlat2026Template) {
+    await drawFlat2026AidSummary({
+      pdfDoc,
+      page: flat2026AidSummaryPage,
+      view,
+    });
   }
 
   // Blanchiment de la zone BOT vide — fait APRÈS flatten pour passer
