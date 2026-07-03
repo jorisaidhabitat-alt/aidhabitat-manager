@@ -3080,14 +3080,14 @@ async function drawFlat2026AidSummary({ pdfDoc, page, view }) {
     });
     page.drawText(maPrimeRate, {
       x: 383.2,
-      y: 676,
+      y: 680,
       size: 10,
       font: regular,
       color: rgb(0, 0, 0),
     });
     drawWrappedText(page, 'Sur un plafond de travaux de 22 000€ HT maximum', {
       x: 383.2,
-      yTop: 663,
+      yTop: 671,
       width: 152,
       font: regular,
       fontSize: 10,
