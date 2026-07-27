@@ -92,7 +92,7 @@ class AuthService {
     ),
     _SeedUser(
       id: 'user_ergo_1',
-      email: 'joris.aidhabitat@gmail.com',
+      email: 'c.demenais@aidhabitat.fr',
       displayName: 'Coralie',
       role: LocalUserRole.ergo,
       establishmentId: '2',
@@ -101,7 +101,7 @@ class AuthService {
     ),
     _SeedUser(
       id: 'user_ergo_2',
-      email: 'joris.balluais@gmail.com',
+      email: 'c.jeuland@aidhabitat.fr',
       displayName: 'Christelle',
       role: LocalUserRole.ergo,
       establishmentId: '2',
@@ -110,9 +110,23 @@ class AuthService {
     ),
   ];
 
+  static const List<_AuthEmailMigration> _emailMigrations = [
+    _AuthEmailMigration(
+      userId: 'user_ergo_1',
+      oldEmail: 'joris.aidhabitat@gmail.com',
+      newEmail: 'c.demenais@aidhabitat.fr',
+    ),
+    _AuthEmailMigration(
+      userId: 'user_ergo_2',
+      oldEmail: 'joris.balluais@gmail.com',
+      newEmail: 'c.jeuland@aidhabitat.fr',
+    ),
+  ];
+
   Future<void> initialize() async {
     final db = await _database.database;
     await _ensureSeedUsers(db);
+    await _migrateAuthEmails(db);
     await _ensureSeedScopes(db);
     AppConfig.registerUnauthorizedHandler(_handleRejectedRemoteSession);
   }
@@ -144,6 +158,55 @@ class AuthService {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> _migrateAuthEmails(Database db) async {
+    final now = DateTime.now().toIso8601String();
+    for (final migration in _emailMigrations) {
+      final targetRows = await db.query(
+        'app_users',
+        columns: ['local_id'],
+        where: 'local_id = ?',
+        whereArgs: [migration.userId],
+        limit: 1,
+      );
+
+      String? migratedUserId;
+      if (targetRows.isNotEmpty) {
+        migratedUserId = migration.userId;
+        await db.update(
+          'app_users',
+          {'email': migration.newEmail, 'updated_at': now},
+          where: 'local_id = ?',
+          whereArgs: [migration.userId],
+        );
+      } else {
+        final legacyRows = await db.query(
+          'app_users',
+          columns: ['local_id'],
+          where: 'email = ?',
+          whereArgs: [migration.oldEmail],
+          limit: 1,
+        );
+        if (legacyRows.isNotEmpty) {
+          migratedUserId = legacyRows.first['local_id'] as String;
+          await db.update(
+            'app_users',
+            {'email': migration.newEmail, 'updated_at': now},
+            where: 'local_id = ?',
+            whereArgs: [migratedUserId],
+          );
+        }
+      }
+
+      if (migratedUserId == null) continue;
+      await db.update(
+        'app_users',
+        {'is_active': 0, 'updated_at': now},
+        where: 'email = ? AND local_id <> ?',
+        whereArgs: [migration.oldEmail, migratedUserId],
+      );
+    }
   }
 
   Future<void> _ensureSeedScopes(Database db) async {
@@ -698,20 +761,26 @@ class AuthService {
           .trim()
           .toLowerCase();
       if (email.isEmpty) continue;
+      final legacyEmail = _legacyEmailFor(email);
 
       final existingRows = await db.query(
         'app_users',
-        columns: ['local_id'],
-        where: 'email = ?',
-        whereArgs: [email],
-        limit: 1,
+        columns: ['local_id', 'email'],
+        where: legacyEmail == null ? 'email = ?' : 'email IN (?, ?)',
+        whereArgs: legacyEmail == null ? [email] : [email, legacyEmail],
       );
 
-      final localUserId = existingRows.isNotEmpty
-          ? existingRows.first['local_id'] as String
+      final exactRows = existingRows
+          .where((row) => row['email'] == email)
+          .toList(growable: false);
+      final selectedRow = exactRows.isNotEmpty
+          ? exactRows.first
+          : (existingRows.isNotEmpty ? existingRows.first : null);
+      final localUserId = selectedRow != null
+          ? selectedRow['local_id'] as String
           : 'remote_${email.replaceAll(RegExp(r'[^a-z0-9]+'), '_')}';
 
-      if (existingRows.isEmpty) {
+      if (selectedRow == null) {
         final salt = _generateSalt();
         await db.insert('app_users', {
           'local_id': localUserId,
@@ -731,6 +800,7 @@ class AuthService {
       } else {
         final updates = <String, Object?>{
           'organisation_id': _remoteOrganisationId(remoteUser),
+          'email': email,
           'display_name': remoteUser['displayName']?.toString() ?? email,
           'role': _mapRemoteRole(remoteUser['role']?.toString()).name,
           'establishment_id': _nullableValue(remoteUser['establishmentId']),
@@ -750,6 +820,15 @@ class AuthService {
           updates,
           where: 'local_id = ?',
           whereArgs: [localUserId],
+        );
+      }
+
+      if (legacyEmail != null) {
+        await db.update(
+          'app_users',
+          {'is_active': 0, 'updated_at': now},
+          where: 'email = ? AND local_id <> ?',
+          whereArgs: [legacyEmail, localUserId],
         );
       }
 
@@ -897,6 +976,14 @@ class AuthService {
         _nullableValue(remoteUser['organisation_id']) ??
         defaultOrganisationId;
   }
+
+  String? _legacyEmailFor(String email) {
+    final normalized = email.trim().toLowerCase();
+    for (final migration in _emailMigrations) {
+      if (migration.newEmail == normalized) return migration.oldEmail;
+    }
+    return null;
+  }
 }
 
 class LocalSignInResult {
@@ -939,6 +1026,18 @@ class _SeedUser {
     this.establishmentId,
     this.ergoLabel,
     this.dossierErgoScope,
+  });
+}
+
+class _AuthEmailMigration {
+  final String userId;
+  final String oldEmail;
+  final String newEmail;
+
+  const _AuthEmailMigration({
+    required this.userId,
+    required this.oldEmail,
+    required this.newEmail,
   });
 }
 

@@ -17,6 +17,11 @@ import {
 import { getRetirementFundMeta, buildLogoDataUri } from './retirementFundsCatalog.mjs';
 import { getPrincipalFundBranding } from './principalRetirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
+import {
+  buildPasswordCredential,
+  parsePasswordCredential,
+  verifyPasswordHash,
+} from './passwordCredential.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
 // 2026-05-06 — Vercel Blob entièrement éliminé. Seuls les helpers
 // chunks (in-memory désormais) restent utilisés depuis storage.mjs.
@@ -100,10 +105,14 @@ let bundledWikiItemsCache = null;
 
 const MEMBER_PROFILES = {
   'contact@aidhabitat.fr': { displayName: 'Renan', role: 'ADMIN', selectable: false, establishmentId: null, establishmentLabel: '' },
-  'joris.aidhabitat@gmail.com': { displayName: 'Coralie', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
-  'joris.balluais@gmail.com': { displayName: 'Christelle', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+  'c.demenais@aidhabitat.fr': { displayName: 'Coralie', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+  'c.jeuland@aidhabitat.fr': { displayName: 'Christelle', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
 };
-const DEFAULT_LEGACY_ERGO_EMAIL = 'joris.aidhabitat@gmail.com';
+const MEMBER_EMAIL_MIGRATIONS = {
+  'joris.aidhabitat@gmail.com': 'c.demenais@aidhabitat.fr',
+  'joris.balluais@gmail.com': 'c.jeuland@aidhabitat.fr',
+};
+const DEFAULT_LEGACY_ERGO_EMAIL = 'c.demenais@aidhabitat.fr';
 let memberRegistryCache = null;
 
 const app = express();
@@ -900,27 +909,32 @@ const writeMemberPasswordToNoco = async (member, password) => {
   if (!recordId) {
     throw httpError(409, 'Impossible de modifier ce mot de passe : membre absent de NocoDB');
   }
-  await updateRecord(TABLES.ergotherapeutes, recordId, { mot_de_passe: password });
+  const credential = buildPasswordCredential(password);
+  await updateRecord(TABLES.ergotherapeutes, recordId, {
+    mot_de_passe: credential.serialized,
+  });
+  return credential;
 };
 const storeMemberCredentials = (store, {
   email,
   password,
+  credential = null,
   displayName = '',
   role = 'ERGO',
   profilePhotoUrl = '',
 }) => {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) throw httpError(400, 'Email manquant');
-  const salt = randomSecret(16);
+  const resolvedCredential = credential || buildPasswordCredential(password);
   const existing = store.users[normalizedEmail] || {};
   const nextSessionVersion = (Number(existing.sessionVersion) || 0) + 1;
   store.users[normalizedEmail] = {
     ...existing,
-    salt,
-    passwordHash: hashPassword(password, salt),
-    nocoPasswordSalt: salt,
-    nocoPasswordHash: hashPassword(password, salt),
-    nocoPasswordChecksum: passwordChecksum(password),
+    salt: resolvedCredential.salt,
+    passwordHash: resolvedCredential.hash,
+    nocoPasswordSalt: resolvedCredential.salt,
+    nocoPasswordHash: resolvedCredential.hash,
+    nocoPasswordChecksum: resolvedCredential.checksum,
     sessionVersion: nextSessionVersion,
     createdAt: existing.createdAt || new Date().toISOString(),
     profilePhotoUrl: existing.profilePhotoUrl || profilePhotoUrl || '',
@@ -2614,6 +2628,10 @@ const buildFallbackMembers = () => (
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 );
 
+const legacyEmailsForMember = (email) => Object.entries(MEMBER_EMAIL_MIGRATIONS)
+  .filter(([, currentEmail]) => currentEmail === email)
+  .map(([legacyEmail]) => legacyEmail);
+
 const normalizeReportErgoKey = (value) => stringValue(value)
   .normalize('NFD')
   .replace(/[̀-ͯ]/g, '')
@@ -2764,7 +2782,9 @@ const readVisitPlanMeta = async (dossierId, beneficiaireId = null) => {
 const syncPresetMembersInErgos = async () => {
   const records = await queryAll(TABLES.ergotherapeutes, { fields: FIELD_SETS.ergotherapeutes });
   for (const [email, profile] of Object.entries(MEMBER_PROFILES)) {
-    const existing = records.find((record) => normalizeEmail(field(record, 'email')) === email);
+    const legacyEmails = legacyEmailsForMember(email);
+    const existing = records.find((record) => normalizeEmail(field(record, 'email')) === email)
+      || records.find((record) => legacyEmails.includes(normalizeEmail(field(record, 'email'))));
     const { prenom, nom } = splitDisplayName(profile.displayName);
     const patch = sanitizeUndefined({
       prenom,
@@ -2860,14 +2880,27 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
   //    effacé côté NocoDB) → on supprime les `noco*` du store.
   // Dans tous les cas, nocoPassword est effacé de l'objet membre.
   for (const member of members) {
-    const plain = member.nocoPassword;
+    const storedPassword = member.nocoPassword;
     member.nocoPassword = null; // jamais conservé en clair
 
-    if (typeof plain === 'string' && plain.length > 0) {
-      const checksum = crypto.createHash('sha256').update(plain).digest('hex');
+    if (typeof storedPassword === 'string' && storedPassword.length > 0) {
+      let credential = parsePasswordCredential(storedPassword);
+      if (!credential) {
+        credential = buildPasswordCredential(storedPassword);
+        try {
+          await updateRecord(TABLES.ergotherapeutes, member.ergoRecordId, {
+            mot_de_passe: credential.serialized,
+          });
+        } catch (migrationError) {
+          console.error(
+            '[auth] migration du mot de passe NocoDB vers scrypt impossible',
+            { memberId: member.ergoRecordId, error: migrationError?.message || migrationError },
+          );
+        }
+      }
+      const checksum = credential.checksum;
       const stored = store.users[member.email];
       if (stored?.nocoPasswordChecksum !== checksum) {
-        const salt = randomSecret(16);
         // Bump `sessionVersion` à chaque changement effectif de mdp
         // NocoDB → invalide TOUS les tokens X-App-Session existants
         // pour cet email (cf. resolveSessionUser). C'est le mécanisme
@@ -2881,14 +2914,14 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
           : previousSv;
         store.users[member.email] = {
           ...(stored || { createdAt: new Date().toISOString(), profilePhotoUrl: '' }),
-          nocoPasswordHash: hashPassword(plain, salt),
-          nocoPasswordSalt: salt,
+          nocoPasswordHash: credential.hash,
+          nocoPasswordSalt: credential.salt,
           nocoPasswordChecksum: checksum,
           sessionVersion: nextSv,
         };
         storeMutated = true;
       }
-    } else if (plain === null) {
+    } else if (storedPassword === null) {
       // mot_de_passe NocoDB explicitement vide → reset noco* + bump sv
       // (l'effacement intentionnel doit aussi déconnecter les sessions).
       const stored = store.users[member.email];
@@ -4069,11 +4102,13 @@ app.post('/api/auth/login', async (req, res, next) => {
 
     let isValid = false;
     if (credentials.nocoPasswordHash) {
-      // Priorité 1 : hash du mot de passe NocoDB (scrypt, jamais stocké en clair).
-      isValid = credentials.nocoPasswordHash === hashPassword(password, credentials.nocoPasswordSalt);
+      isValid = verifyPasswordHash(
+        password,
+        credentials.nocoPasswordSalt,
+        credentials.nocoPasswordHash,
+      );
     } else {
-      // Priorité 2 : fallback sur le mot de passe auto-généré (comportement historique).
-      isValid = credentials.passwordHash === hashPassword(password, credentials.salt);
+      isValid = verifyPasswordHash(password, credentials.salt, credentials.passwordHash);
     }
 
     if (!isValid) {
@@ -4293,10 +4328,11 @@ app.post('/api/auth/provision', requireAdmin, async (req, res, next) => {
     for (const member of targets) {
       if (!forceReset && !requestedPassword && store.users[member.email]) continue;
       const password = requestedPassword || generatePassword();
-      await writeMemberPasswordToNoco(member, password);
+      const credential = await writeMemberPasswordToNoco(member, password);
       storeMemberCredentials(store, {
         email: member.email,
         password,
+        credential,
         displayName: member.displayName,
         role: member.role,
         profilePhotoUrl: member.profilePhotoUrl,
@@ -4342,6 +4378,7 @@ app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
     const explicitPassword = stringValue(password).trim();
     if (explicitPassword) assertPasswordPolicy(explicitPassword);
     const chosenPassword = explicitPassword || generatePassword();
+    const credential = buildPasswordCredential(chosenPassword);
     const { prenom, nom } = splitDisplayName(displayName);
     const created = await createRecord(TABLES.ergotherapeutes, sanitizeUndefined({
       uuid_source: crypto.randomUUID(),
@@ -4349,7 +4386,7 @@ app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
       nom,
       email: normalizedEmail,
       etablissements_id: establishmentId ? Number(establishmentId) : undefined,
-      mot_de_passe: chosenPassword,
+      mot_de_passe: credential.serialized,
       created_at: new Date().toISOString(),
     }));
     // Provision credentials in auth store
@@ -4359,6 +4396,7 @@ app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
     storeMemberCredentials(store, {
       email: normalizedEmail,
       password: chosenPassword,
+      credential,
       displayName,
       role: role === 'ADMIN' ? 'ADMIN' : 'ERGO',
     });

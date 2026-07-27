@@ -152,8 +152,10 @@ const DEFAULT_ERGO_PROFILE = {
 
 const ERGO_FULL_NAME_FALLBACKS = new Map([
   ['christelle', 'Christelle Jeuland'],
+  ['c.jeuland@aidhabitat.fr', 'Christelle Jeuland'],
   ['joris.balluais@gmail.com', 'Christelle Jeuland'],
   ['coralie', 'Coralie Demenais'],
+  ['c.demenais@aidhabitat.fr', 'Coralie Demenais'],
   ['joris.aidhabitat@gmail.com', 'Coralie Demenais'],
 ]);
 

@@ -8,6 +8,10 @@ import { callNocoTool, closeMcpClient } from './nocodbMcpClient.mjs';
 import { createMobileSyncStore } from './mobileSyncStore.mjs';
 import { getRetirementFundMeta } from './retirementFundsCatalog.mjs';
 import { WIKI_FILTER_TAGS, WIKI_LIBRARY_SEED } from './wikiLibraryCatalog.mjs';
+import {
+  buildPasswordCredential,
+  parsePasswordCredential,
+} from './passwordCredential.mjs';
 // 2026-05-06 : Vercel Blob entièrement éliminé du flow. Les fonctions
 // `getJson` / `putJson` ne sont plus utilisées — auth-store désormais
 // en RAM (cf. readAuthStore plus bas). On garde l'import storage.mjs
@@ -72,11 +76,15 @@ export let bundledWikiItemsCache = null;
 
 export const MEMBER_PROFILES = {
   'contact@aidhabitat.fr': { displayName: 'Renan', role: 'ADMIN', selectable: false, establishmentId: null, establishmentLabel: '' },
-  'joris.aidhabitat@gmail.com': { displayName: 'Coralie', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
-  'joris.balluais@gmail.com': { displayName: 'Christelle', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+  'c.demenais@aidhabitat.fr': { displayName: 'Coralie', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+  'c.jeuland@aidhabitat.fr': { displayName: 'Christelle', role: 'ERGO', selectable: true, establishmentId: 2, establishmentLabel: "Aid'habitat" },
+};
+export const MEMBER_EMAIL_MIGRATIONS = {
+  'joris.aidhabitat@gmail.com': 'c.demenais@aidhabitat.fr',
+  'joris.balluais@gmail.com': 'c.jeuland@aidhabitat.fr',
 };
 export const BENEFICIARY_TRUSTED_EMAIL_FIELD_ID = 'c8s1kh1eqqx6xl6';
-export const DEFAULT_LEGACY_ERGO_EMAIL = 'joris.aidhabitat@gmail.com';
+export const DEFAULT_LEGACY_ERGO_EMAIL = 'c.demenais@aidhabitat.fr';
 export let memberRegistryCache = null;
 
 export const TABLES = {
@@ -1977,10 +1985,16 @@ export const readVisitPlanMeta = async (dossierId) => {
   }
 };
 
+export const legacyEmailsForMember = (email) => Object.entries(MEMBER_EMAIL_MIGRATIONS)
+  .filter(([, currentEmail]) => currentEmail === email)
+  .map(([legacyEmail]) => legacyEmail);
+
 export const syncPresetMembersInErgos = async () => {
   const records = await queryAll(TABLES.ergotherapeutes, { fields: FIELD_SETS.ergotherapeutes });
   for (const [email, profile] of Object.entries(MEMBER_PROFILES)) {
-    const existing = records.find((record) => normalizeEmail(field(record, 'email')) === email);
+    const legacyEmails = legacyEmailsForMember(email);
+    const existing = records.find((record) => normalizeEmail(field(record, 'email')) === email)
+      || records.find((record) => legacyEmails.includes(normalizeEmail(field(record, 'email'))));
     const { prenom, nom } = splitDisplayName(profile.displayName);
     const patch = sanitizeUndefined({
       prenom,
@@ -2068,26 +2082,39 @@ export const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
   }
 
   for (const member of members) {
-    const plain = member.nocoPassword;
+    const storedPassword = member.nocoPassword;
     member.nocoPassword = null;
 
-    if (typeof plain === 'string' && plain.length > 0) {
-      const checksum = crypto.createHash('sha256').update(plain).digest('hex');
+    if (typeof storedPassword === 'string' && storedPassword.length > 0) {
+      let credential = parsePasswordCredential(storedPassword);
+      if (!credential) {
+        credential = buildPasswordCredential(storedPassword);
+        try {
+          await updateRecord(TABLES.ergotherapeutes, member.ergoRecordId, {
+            mot_de_passe: credential.serialized,
+          });
+        } catch (migrationError) {
+          console.error(
+            '[auth] migration du mot de passe NocoDB vers scrypt impossible',
+            { memberId: member.ergoRecordId, error: migrationError?.message || migrationError },
+          );
+        }
+      }
+      const checksum = credential.checksum;
       const stored = store.users[member.email];
       if (stored?.nocoPasswordChecksum !== checksum) {
-        const salt = randomSecret(16);
         const previousSv = Number(stored?.sessionVersion) || 0;
         const nextSv = stored?.nocoPasswordChecksum ? previousSv + 1 : previousSv;
         store.users[member.email] = {
           ...(stored || { createdAt: new Date().toISOString(), profilePhotoUrl: '' }),
-          nocoPasswordHash: hashPassword(plain, salt),
-          nocoPasswordSalt: salt,
+          nocoPasswordHash: credential.hash,
+          nocoPasswordSalt: credential.salt,
           nocoPasswordChecksum: checksum,
           sessionVersion: nextSv,
         };
         storeMutated = true;
       }
-    } else if (plain === null) {
+    } else if (storedPassword === null) {
       const stored = store.users[member.email];
       if (stored?.nocoPasswordHash) {
         const {
