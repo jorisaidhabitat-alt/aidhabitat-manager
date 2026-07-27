@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -19,11 +20,11 @@ class AnahScreen extends StatefulWidget {
 }
 
 class _AnahScreenState extends State<AnahScreen> {
-  // Le portail Anah est servi derrière un bouclier/certificat que WKWebView
-  // iPad rejette parfois malgré une chaîne TLS valide côté Safari/curl.
-  // On garde l'implémentation WebView pour tests futurs, mais le mode natif
-  // par défaut passe par SFSafariViewController (`inAppBrowserView`).
-  static const bool _useEmbeddedWebView = false;
+  // La PWA web doit rester en ouverture externe : anah.gouv.fr bloque
+  // l'iframe côté navigateur. En revanche, l'app iPad native peut charger
+  // le portail dans WKWebView avec la gestion certificat dédiée plus bas.
+  bool get _useEmbeddedWebView =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   final DataService _dataService = DataService();
 
@@ -174,6 +175,26 @@ class _AnahScreenState extends State<AnahScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Impossible d\'ouvrir $url')));
     }
+  }
+
+  Future<void> _retryPortal() async {
+    if (_useEmbeddedWebView && _webController != null) {
+      setState(() {
+        _loadingStatus = false;
+        _statusError = null;
+        _webLoading = true;
+        _webProgress = 0;
+        _portalRuntimeKnown = false;
+        _portalRuntimeAvailable = false;
+        _portalRuntimeMessage = null;
+        _currentUrl = _registrationUrl;
+      });
+      await _webController!.loadUrl(
+        urlRequest: URLRequest(url: WebUri(_registrationUrl)),
+      );
+      return;
+    }
+    await _fetchStatus();
   }
 
   @override
@@ -751,7 +772,7 @@ class _AnahScreenState extends State<AnahScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   OutlinedButton(
-                    onPressed: _fetchStatus,
+                    onPressed: _retryPortal,
                     child: const Text('Réessayer'),
                   ),
                   const SizedBox(width: 10),
