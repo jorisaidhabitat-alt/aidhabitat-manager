@@ -1193,23 +1193,15 @@ class DocumentRepository {
     return false;
   }
 
-  /// Pour les documents synced, retrouve l'ID utilisé côté NocoDB pour
-  /// les supprimer via `DELETE /api/documents/<id>`. Trois sources, dans
-  /// l'ordre :
-  ///   1. `local_id` direct (cas standard : Flutter a uploadé le doc, le
-  ///      serveur a réutilisé `clientDocumentId` comme `uuid_source`).
-  ///   2. Préfixe `remote_doc_<id>` retiré (cas où le doc venait du
-  ///      remote sans avoir été uploadé localement).
-  ///   3. Extraction depuis `remote_file_path` ou `remote_public_url`
-  ///      (URL `/api/mobile-documents/<id>/content`) — fallback dur.
+  /// Pour les documents synced, retrouve l'ID serveur utilisé par
+  /// `DELETE /api/documents/<id>` et `PATCH /api/documents/<id>`.
+  ///
+  /// Les documents créés offline ont un `local_id` du type `doc_...`.
+  /// Le serveur, lui, stocke un UUID et renvoie son URL
+  /// `/api/mobile-documents/<uuid>/content`. Il faut donc extraire cet UUID
+  /// en priorité ; sinon une mise à jour metadata part sur `/api/documents/doc_...`
+  /// et revient en 404 "Document introuvable".
   String _extractRemoteIdFromRow(Map<String, Object?> row, String localId) {
-    if (!localId.startsWith('remote_doc_')) {
-      return localId;
-    }
-    final stripped = localId.substring('remote_doc_'.length);
-    if (stripped.isNotEmpty) return stripped;
-
-    // Fallback : parse l'URL.
     final candidates = [
       (row['remote_file_path'] as String?) ?? '',
       (row['remote_public_url'] as String?) ?? '',
@@ -1222,6 +1214,13 @@ class DocumentRepository {
         return Uri.decodeComponent(match.group(1) ?? '');
       }
     }
+
+    if (localId.startsWith('remote_doc_')) {
+      final stripped = localId.substring('remote_doc_'.length);
+      if (stripped.isNotEmpty) return stripped;
+    }
+
+    if (localId.startsWith('doc_')) return '';
     return '';
   }
 

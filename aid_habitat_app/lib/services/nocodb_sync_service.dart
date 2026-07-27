@@ -1401,7 +1401,8 @@ class NocodbSyncService {
   ) async {
     final documentLocalId =
         payload['documentLocalId']?.toString() ?? operation.entityLocalId;
-    final remoteDocumentId = payload['remoteDocumentId']?.toString() ?? '';
+    final payloadRemoteDocumentId =
+        payload['remoteDocumentId']?.toString() ?? '';
     final title = payload['title']?.toString() ?? 'Document';
     final tags =
         (payload['tags'] as List?)?.map((tag) => '$tag').toList() ?? [];
@@ -1443,6 +1444,12 @@ class NocodbSyncService {
       limit: 1,
     );
     final documentRow = documentRows.isNotEmpty ? documentRows.first : null;
+    final rowRemoteDocumentId = _extractRemoteDocumentIdFromRow(documentRow);
+    final remoteDocumentId = _isLocalDocumentId(payloadRemoteDocumentId)
+        ? rowRemoteDocumentId
+        : (payloadRemoteDocumentId.isNotEmpty
+              ? payloadRemoteDocumentId
+              : rowRemoteDocumentId);
     final hasRemoteBinding = _documentHasRemoteBinding(
       localId: documentLocalId,
       remoteDocumentId: remoteDocumentId,
@@ -1456,6 +1463,9 @@ class NocodbSyncService {
     // donnée est déjà persistée localement et injectée au PDF avec les
     // assets inline : ne pas transformer ce cas sain en bandeau rouge.
     if (!hasRemoteBinding && hasLocalBytes) {
+      return;
+    }
+    if (remoteDocumentId.isEmpty && _isLocalDocumentId(documentLocalId)) {
       return;
     }
 
@@ -1487,6 +1497,25 @@ class NocodbSyncService {
     if (remotePath.isNotEmpty || remoteUrl.isNotEmpty) return true;
     if (localId.startsWith('remote_doc_')) return true;
     return remoteDocumentId.isNotEmpty && !remoteDocumentId.startsWith('doc_');
+  }
+
+  bool _isLocalDocumentId(String value) => value.startsWith('doc_');
+
+  String _extractRemoteDocumentIdFromRow(Map<String, Object?>? row) {
+    if (row == null) return '';
+    final candidates = [
+      (row['remote_file_path'] as String?) ?? '',
+      (row['remote_public_url'] as String?) ?? '',
+    ];
+    for (final raw in candidates) {
+      final match = RegExp(
+        r'/mobile-documents/([^/]+)/content',
+      ).firstMatch(raw);
+      if (match != null) {
+        return Uri.decodeComponent(match.group(1) ?? '');
+      }
+    }
+    return '';
   }
 
   bool _documentHasLocalBytes(Map<String, Object?>? row) {
