@@ -34,6 +34,7 @@ const SECRET_VALUE_RE = [
   /(?:api[_-]?key|secret|token)\s*[:=]\s*["'][^"']{16,}["']/i,
   /-----BEGIN (?:RSA |EC |OPENSSH |)PRIVATE KEY-----/,
 ];
+const SECRET_ENV_PASSTHROUGH_RE = /\$\{?[A-Z][A-Z0-9_]*(?:PASSWORD|TOKEN|SECRET|API_KEY|AUTH)[A-Z0-9_]*\}?/;
 
 const SKIP_DIRS = new Set([
   '.git',
@@ -157,6 +158,7 @@ for (const file of trackedFiles) {
       continue;
     }
     if (line.includes('<') && line.includes('>')) continue;
+    if (SECRET_ENV_PASSTHROUGH_RE.test(line)) continue;
     if (!SENSITIVE_NAME_RE.test(line) && !SECRET_VALUE_RE.some((regex) => regex.test(line))) continue;
     for (const regex of SECRET_VALUE_RE) {
       if (regex.test(line)) {

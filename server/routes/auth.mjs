@@ -48,7 +48,9 @@ router.post('/api/auth/login', async (req, res, next) => {
       return;
     }
 
-    const isValid = credentials.passwordHash === hashPassword(password, credentials.salt);
+    const isValid = credentials.nocoPasswordHash
+      ? credentials.nocoPasswordHash === hashPassword(password, credentials.nocoPasswordSalt)
+      : credentials.passwordHash === hashPassword(password, credentials.salt);
     if (!isValid) {
       res.status(401).json({ success: false, error: 'Mot de passe incorrect' });
       return;

@@ -11,6 +11,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import 'local_database.dart';
 import 'media_cache_service.dart';
+import 'native_file_protection.dart';
 import 'offline_vault.dart';
 import 'sync_engine.dart';
 
@@ -135,6 +136,7 @@ class DocumentRepository {
           try {
             final file = File(filePath);
             if (await file.exists()) {
+              await NativeFileProtection.instance.protectPath(file.path);
               bytes = await file.readAsBytes();
             }
           } catch (_) {
@@ -194,10 +196,8 @@ class DocumentRepository {
       final order = (row['category_order'] as num?)?.toInt();
       if (order == null) continue;
       final localId = row['local_id'] as String;
-      final ids = <String>{
-        localId,
-        _extractRemoteIdFromRow(row, localId),
-      }..removeWhere((id) => id.trim().isEmpty);
+      final ids = <String>{localId, _extractRemoteIdFromRow(row, localId)}
+        ..removeWhere((id) => id.trim().isEmpty);
       for (final id in ids) {
         result.add(InlineDocumentOrder(localId: id, categoryOrder: order));
       }
@@ -270,16 +270,23 @@ class DocumentRepository {
     if (!kIsWeb) {
       try {
         final appDir = await getApplicationDocumentsDirectory();
+        final docsDirPath = p.join(appDir.path, 'offline_documents', patientId);
+        await NativeFileProtection.instance.ensureProtectedDirectory(
+          docsDirPath,
+          recursive: true,
+        );
         final docsDir = Directory(
           p.join(appDir.path, 'offline_documents', patientId),
         );
-        await docsDir.create(recursive: true);
         // Nom déterministe basé sur le remoteUuid → idempotent : un
         // 2ème appel pour le même rapport overwrite le fichier sans
         // créer de doublon. Préserve l'extension d'origine pour
         // qu'`OpenFilex.open` ouvre dans la bonne app native.
         final storedPath = p.join(docsDir.path, '$remoteUuid.$extension');
-        await File(storedPath).writeAsBytes(bytes, flush: true);
+        await NativeFileProtection.instance.writeProtectedBytes(
+          storedPath,
+          bytes,
+        );
         localFilePath = storedPath;
       } catch (_) {
         // Si la persistance disque échoue (permissions, disque plein),
@@ -365,12 +372,19 @@ class DocumentRepository {
     if (!kIsWeb) {
       try {
         final appDir = await getApplicationDocumentsDirectory();
+        final docsDirPath = p.join(appDir.path, 'offline_documents', patientId);
+        await NativeFileProtection.instance.ensureProtectedDirectory(
+          docsDirPath,
+          recursive: true,
+        );
         final docsDir = Directory(
           p.join(appDir.path, 'offline_documents', patientId),
         );
-        await docsDir.create(recursive: true);
         final storedPath = p.join(docsDir.path, '$resolvedLocalId.$extension');
-        await File(storedPath).writeAsBytes(bytes, flush: true);
+        await NativeFileProtection.instance.writeProtectedBytes(
+          storedPath,
+          bytes,
+        );
         localFilePath = storedPath;
       } catch (_) {
         localFilePath = null;
@@ -500,15 +514,20 @@ class DocumentRepository {
         : p.basenameWithoutExtension(sourceFile.path);
     final localId = 'doc_${now.microsecondsSinceEpoch}';
     final appDir = await getApplicationDocumentsDirectory();
-    final docsDir = Directory(
-      p.join(appDir.path, 'offline_documents', patientId),
+    final docsDirPath = p.join(appDir.path, 'offline_documents', patientId);
+    await NativeFileProtection.instance.ensureProtectedDirectory(
+      docsDirPath,
+      recursive: true,
     );
-    await docsDir.create(recursive: true);
+    final docsDir = Directory(docsDirPath);
     final storedPath = p.join(
       docsDir.path,
       '${now.millisecondsSinceEpoch}_$baseName',
     );
-    await sourceFile.copy(storedPath);
+    await NativeFileProtection.instance.copyProtectedFile(
+      sourceFile,
+      storedPath,
+    );
 
     final row = {
       'local_id': localId,
@@ -870,30 +889,26 @@ class DocumentRepository {
 
     final now = DateTime.now().toIso8601String();
     final remoteDocumentId = _extractRemoteIdFromRow(row, documentId);
-    await db.insert(
-      'sync_operations',
-      {
-        'id': 'sync_doc_meta_$documentId',
-        'entity_type': 'document',
-        'entity_local_id': documentId,
-        'operation_type': 'update_metadata',
-        'payload_json': await OfflineVault.instance.sealString(
-          jsonEncode({
-            'patientLocalId': patientId,
-            'documentLocalId': documentId,
-            'remoteDocumentId': remoteDocumentId,
-            'title': title,
-            'tags': tags,
-          }),
-        ),
-        'status': SyncOperationStatus.pending.name,
-        'attempt_count': 0,
-        'last_error': null,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('sync_operations', {
+      'id': 'sync_doc_meta_$documentId',
+      'entity_type': 'document',
+      'entity_local_id': documentId,
+      'operation_type': 'update_metadata',
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({
+          'patientLocalId': patientId,
+          'documentLocalId': documentId,
+          'remoteDocumentId': remoteDocumentId,
+          'title': title,
+          'tags': tags,
+        }),
+      ),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Persiste le chemin local d'un fichier distant téléchargé en cache.
@@ -979,10 +994,7 @@ class DocumentRepository {
     for (var i = 0; i < orderedDocumentIds.length; i++) {
       batch.update(
         'documents',
-        {
-          'category_order': i,
-          'updated_at': now,
-        },
+        {'category_order': i, 'updated_at': now},
         where: 'local_id = ?',
         whereArgs: [orderedDocumentIds[i]],
       );
@@ -1520,6 +1532,7 @@ class DocumentRepository {
       // ou ré-upload après annotation).
       final existingPath = (row['local_file_path'] as String?)?.trim() ?? '';
       if (existingPath.isNotEmpty && await File(existingPath).exists()) {
+        await NativeFileProtection.instance.protectPath(existingPath);
         continue;
       }
 
@@ -1536,15 +1549,24 @@ class DocumentRepository {
       final extSuffix = ext.isEmpty ? '' : '.$ext';
 
       try {
+        final targetDirPath = p.join(
+          docsDir.path,
+          'cached_remote_documents',
+          patientId,
+        );
+        await NativeFileProtection.instance.ensureProtectedDirectory(
+          targetDirPath,
+          recursive: true,
+        );
         final targetDir = Directory(
           p.join(docsDir.path, 'cached_remote_documents', patientId),
         );
-        if (!await targetDir.exists()) {
-          await targetDir.create(recursive: true);
-        }
         final target = File(p.join(targetDir.path, '$localId$extSuffix'));
         if (!await target.exists()) {
-          await cached.copy(target.path);
+          await NativeFileProtection.instance.copyProtectedFile(
+            cached,
+            target.path,
+          );
         }
         await db.update(
           'documents',
@@ -1581,6 +1603,10 @@ class DocumentRepository {
     final annotationsJson = await OfflineVault.instance.openNullableString(
       row['annotations_json'] as String?,
     );
+    final localPath = row['local_file_path'] as String?;
+    if (!kIsWeb && localPath != null && localPath.trim().isNotEmpty) {
+      await NativeFileProtection.instance.protectPath(localPath);
+    }
 
     return DocItem(
       id: row['local_id'] as String,
@@ -1589,7 +1615,7 @@ class DocumentRepository {
       title: row['title'] as String,
       url: row['remote_public_url'] as String?,
       date: isReport ? updatedAt : createdAt,
-      localPath: row['local_file_path'] as String?,
+      localPath: localPath,
       // Web-only: the freshly captured bytes as a data URL. Populated by
       // `importDocumentBytes` on web and cleared once the sync processor
       // uploads them.

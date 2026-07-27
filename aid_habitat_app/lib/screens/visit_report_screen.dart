@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, setEquals;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 // Desktop only (macOS/Windows/Linux). Sur web + mobile, un stub vide est
@@ -59,6 +60,18 @@ class _VisitReportStateCache {
   /// défaut 200,200). Conservée en même temps que la taille pour que la
   /// fenêtre rouvre exactement là où l'utilisateur l'avait laissée.
   static Offset? lastNoteWindowOrigin;
+}
+
+bool get _supportsNativeDetachedNoteWindows {
+  if (kIsWeb) return false;
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.macOS ||
+    TargetPlatform.windows ||
+    TargetPlatform.linux => true,
+    TargetPlatform.android ||
+    TargetPlatform.fuchsia ||
+    TargetPlatform.iOS => false,
+  };
 }
 
 class VisitReportScreen extends StatefulWidget {
@@ -453,6 +466,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       _ipcSubscription = note_window_web.listenNoteIpc(handleIpc);
       return;
     }
+    if (!_supportsNativeDetachedNoteWindows) return;
     DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
       final args = Map<String, dynamic>.from(call.arguments as Map);
       handleIpc(call.method, args);
@@ -691,7 +705,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // ignore: discarded_futures
       _persistNoteText(patientId, tabKey, entry.value);
     }
-    if (!kIsWeb) {
+    if (_supportsNativeDetachedNoteWindows) {
       final openWindowIds = _openNoteWindows.values.toSet().toList(
         growable: false,
       );
@@ -822,9 +836,14 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       return;
     }
 
-    // Native (Flutter desktop) : passe par le plugin
+    if (!_supportsNativeDetachedNoteWindows) {
+      await _openNoteModalFallback(sourceTab);
+      return;
+    }
+
+    // Native desktop : passe par le plugin
     // `desktop_multi_window` qui spawn un 2ème engine Flutter dans une
-    // NSWindow secondaire.
+    // fenêtre OS secondaire.
     final payload = jsonEncode({
       'patientId': patientId,
       'tabKey': sourceTab,
@@ -908,7 +927,20 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       return;
     }
 
-    // Native macOS — passe par DesktopMultiWindow comme la version texte.
+    if (!_supportsNativeDetachedNoteWindows) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Agrandissement du dessin disponible uniquement sur Mac/PC. '
+            'Sur iPad, utilisez le canvas inline.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Native desktop — passe par DesktopMultiWindow comme la version texte.
     final drawingPages = await _collectDrawingPagesForWindow(
       patientId,
       sourceTab,

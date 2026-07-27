@@ -39,11 +39,10 @@ const router = express.Router();
 
 router.get('/api/health', async (_req, res, next) => {
   try {
-    const beneficiaires = await queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires });
+    await queryAll(TABLES.beneficiaires, { fields: ['Id'], limit: 1 });
     res.json({
       success: true,
       message: 'Connexion active à la base métier',
-      count: beneficiaires.length,
     });
   } catch (error) {
     next(error);

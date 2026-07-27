@@ -405,6 +405,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   // Outil actif
   late NoteTool _activeTool;
+  late NoteTool _previousTool;
   int _penColor = _kDefaultPenColor;
   int _highlighterColor = _kDefaultHighlighterColor;
   final double _penSize = _kDefaultPenSize;
@@ -495,6 +496,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     _textController = TextEditingController(text: widget.initialText);
     _pageTexts[_currentPage] = widget.initialText;
     _activeTool = widget.activeTool ?? _availableToolsFor(widget.toolset).first;
+    _previousTool = _defaultPreviousToolFor(_activeTool);
     _textController.addListener(_onTextChanged);
     _loadPages();
 
@@ -517,8 +519,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     _pencilDoubleTapSubscription = PencilInteractionService.instance.onDoubleTap
         .listen((_) {
           if (!mounted || !widget.showCanvas) return;
-          if (_activeTool == NoteTool.eraser) return;
-          _setActiveTool(NoteTool.eraser);
+          _swapToPreviousTool();
         });
 
     // Refactor 2026-05-12 : suppression du polling 1 s. La note est
@@ -662,12 +663,15 @@ class _NotesWidgetState extends State<NotesWidget> {
     }
     if (oldWidget.activeTool != widget.activeTool &&
         widget.activeTool != null) {
-      setState(() => _activeTool = widget.activeTool!);
+      _setActiveTool(widget.activeTool!, trackPrevious: true, notify: false);
     }
     if (oldWidget.toolset != widget.toolset) {
       final available = _availableToolsFor(widget.toolset);
       if (!available.contains(_activeTool)) {
-        setState(() => _activeTool = available.first);
+        _setActiveTool(available.first, trackPrevious: true, notify: false);
+      }
+      if (!available.contains(_previousTool) || _previousTool == _activeTool) {
+        _previousTool = _defaultPreviousToolFor(_activeTool);
       }
     }
     if (oldWidget.externalRefreshToken != widget.externalRefreshToken &&
@@ -913,6 +917,20 @@ class _NotesWidgetState extends State<NotesWidget> {
       _pageStrokes.putIfAbsent(_currentPage, () => <Stroke>[]);
 
   List<NoteTool> get _availableTools => _availableToolsFor(widget.toolset);
+
+  NoteTool _defaultPreviousToolFor(NoteTool current) {
+    final tools = _availableTools;
+    if (current == NoteTool.eraser && tools.contains(NoteTool.pen)) {
+      return NoteTool.pen;
+    }
+    if (current == NoteTool.pen && tools.contains(NoteTool.eraser)) {
+      return NoteTool.eraser;
+    }
+    if (tools.contains(NoteTool.pen) && current != NoteTool.pen) {
+      return NoteTool.pen;
+    }
+    return tools.firstWhere((tool) => tool != current, orElse: () => current);
+  }
 
   String? get _medicalFlagsScopeKey {
     final value = widget.medicalFlagsScopeKey?.trim();
@@ -3375,27 +3393,42 @@ class _NotesWidgetState extends State<NotesWidget> {
   }
 
   void _activateEraserTool() {
-    setState(() {
-      _activeTool = NoteTool.eraser;
-      _showColorPalette = false;
-      _showEraserSizeGauge = true;
-      _showHighlighterSizeGauge = false;
-    });
-    widget.onToolChange?.call(NoteTool.eraser);
+    _setActiveTool(NoteTool.eraser);
   }
 
   void _activateHighlighterTool() {
-    setState(() {
-      _activeTool = NoteTool.highlighter;
-      _showColorPalette = false;
-      _showEraserSizeGauge = false;
-      _showHighlighterSizeGauge = true;
-    });
-    widget.onToolChange?.call(NoteTool.highlighter);
+    _setActiveTool(NoteTool.highlighter);
   }
 
-  void _setActiveTool(NoteTool tool) {
+  void _swapToPreviousTool() {
+    final target = _availableTools.contains(_previousTool)
+        ? _previousTool
+        : _defaultPreviousToolFor(_activeTool);
+    _setActiveTool(target, trackPrevious: true);
+  }
+
+  void _setActiveTool(
+    NoteTool tool, {
+    bool trackPrevious = true,
+    bool notify = true,
+  }) {
+    if (!_availableTools.contains(tool)) return;
+    if (tool == _activeTool) {
+      setState(() {
+        if (tool == NoteTool.eraser) {
+          _showColorPalette = false;
+          _showEraserSizeGauge = true;
+          _showHighlighterSizeGauge = false;
+        } else if (tool == NoteTool.highlighter) {
+          _showColorPalette = false;
+          _showEraserSizeGauge = false;
+          _showHighlighterSizeGauge = true;
+        }
+      });
+      return;
+    }
     setState(() {
+      if (trackPrevious) _previousTool = _activeTool;
       _activeTool = tool;
       if (tool == NoteTool.eraser) {
         _showColorPalette = false;
@@ -3410,7 +3443,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         _showHighlighterSizeGauge = false;
       }
     });
-    widget.onToolChange?.call(tool);
+    if (notify) widget.onToolChange?.call(tool);
   }
 
   void _hideEraserSizeGauge() {

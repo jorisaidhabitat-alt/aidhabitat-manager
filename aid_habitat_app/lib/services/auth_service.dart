@@ -11,6 +11,7 @@ import 'local_database.dart';
 import 'nocodb_api_client.dart';
 import 'offline_vault.dart';
 import 'secure_session_storage.dart';
+import 'sync_engine.dart';
 
 class AuthService {
   AuthService._internal();
@@ -25,8 +26,14 @@ class AuthService {
   static final StreamController<void> _sessionInvalidatedController =
       StreamController<void>.broadcast();
 
-  static const String bootstrapPassword = 'AidHabitat!Local';
+  static const String _bootstrapPasswordBuild = String.fromEnvironment(
+    'AIDHABITAT_BOOTSTRAP_PASSWORD',
+    defaultValue: '',
+  );
+  static const String _disabledBootstrapHash = 'bootstrap-disabled';
   static const String defaultOrganisationId = 'org_aidhabitat';
+  static const int _passwordMinLength = 14;
+  static const int _passwordMaxLength = 128;
 
   static String? consumePendingSessionNotice() {
     final notice = _pendingSessionNotice;
@@ -37,11 +44,41 @@ class AuthService {
   static Stream<void> get sessionInvalidatedStream =>
       _sessionInvalidatedController.stream;
 
-  /// Build a fallback session token for a locally-authenticated user. The
-  /// server accepts tokens prefixed with `local-auth:` followed by a
-  /// base64 email (see `shared/localAuthProfiles.js`). This lets us keep
-  /// NocoDB sync working when the remote password hash has drifted from
-  /// the local one — the user only ever needs their local password.
+  static bool get _hasBootstrapPassword => _bootstrapPasswordBuild.isNotEmpty;
+
+  static String? validatePasswordPolicy(String password) {
+    final value = password.trim();
+    final missing = <String>[];
+    if (value.length < _passwordMinLength) {
+      missing.add('au moins $_passwordMinLength caractères');
+    }
+    if (value.length > _passwordMaxLength) {
+      missing.add('au maximum $_passwordMaxLength caractères');
+    }
+    if (!RegExp(r'[a-z]').hasMatch(value)) {
+      missing.add('une minuscule');
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+      missing.add('une majuscule');
+    }
+    if (!RegExp(r'\d').hasMatch(value)) {
+      missing.add('un chiffre');
+    }
+    if (!RegExp(r'[^A-Za-z0-9]').hasMatch(value)) {
+      missing.add('un caractère spécial');
+    }
+    if (missing.isEmpty) return null;
+    return 'Le mot de passe doit contenir ${missing.join(', ')}.';
+  }
+
+  String _initialPasswordHash(String salt) {
+    if (!_hasBootstrapPassword) return _disabledBootstrapHash;
+    return _hashPassword(_bootstrapPasswordBuild, salt);
+  }
+
+  /// Build a local-only fallback session token for offline UI continuity.
+  /// The API server intentionally rejects this token prefix; it must never
+  /// authorize remote reads/writes.
   static String _buildLocalAuthToken(String email) {
     return 'local-auth:${base64.encode(utf8.encode(email.trim().toLowerCase()))}';
   }
@@ -98,7 +135,7 @@ class AuthService {
         'display_name': seed.displayName,
         'role': seed.role.name,
         'password_salt': salt,
-        'password_hash': _hashPassword(bootstrapPassword, salt),
+        'password_hash': _initialPasswordHash(salt),
         'establishment_id': seed.establishmentId,
         'ergo_label': seed.ergoLabel,
         'is_active': 1,
@@ -552,6 +589,7 @@ class AuthService {
     final db = await _database.database;
     await _clearSessionRowOnly(db);
     AppConfig.clearAppSessionToken();
+    SyncEngine().stop();
     _pendingSessionNotice =
         'Votre session a expiré. Reconnectez-vous pour reprendre la synchronisation.';
     _sessionInvalidatedController.add(null);
@@ -559,42 +597,13 @@ class AuthService {
 
   Future<void> signOut() async {
     final db = await _database.database;
-    await db.delete('app_session');
-    // P0 #4 (2026-05-15) : purge le secure storage en plus du SQLite.
-    await SecureSessionStorage.instance.clear();
-    // Purge complète des données locales — convention « logout = état
-    // propre » (demande utilisateur 2026-05-06). Évite les divergences
-    // après re-login : le prochain login ré-tire toutes les données
-    // depuis NocoDB sans les bloquer derrière des `pending_sync` flags
-    // hérités de la session précédente. Les tables d'auth (app_users,
-    // user_access_scopes, access_members) sont préservées pour que le
-    // re-login offline marche.
-    //
-    // Tables wipées (alignées avec `DataService.wipeLocalDataForResync`) :
-    const dataTables = <String>[
-      'dossiers',
-      'patients',
-      'housings',
-      'documents',
-      'note_pages',
-      'sync_operations',
-      'contexte_de_vie',
-      'diagnostic_sanitaires',
-      'mesures_anthropometriques',
-      'observations_synthese',
-      'visit_recommendations',
-      'wiki_items',
-      'retirement_funds',
-      'reference_sync_meta',
-      'web_media_cache',
-    ];
-    for (final table in dataTables) {
-      try {
-        await db.delete(table);
-      } catch (_) {
-        // Table inexistante (migration partielle) — ignore.
-      }
-    }
+    await _clearSessionRowOnly(db);
+    AppConfig.clearAppSessionToken();
+    // L'iPad interne est offline-first : un logout ne doit pas pouvoir
+    // effacer des saisies terrain ou une queue `sync_operations` encore
+    // en attente. Le reset volontaire des données reste disponible via
+    // `DataService.wipeLocalDataForResync()`.
+    SyncEngine().stop();
   }
 
   Future<bool> isUsingBootstrapPassword(String userId) async {
@@ -610,7 +619,8 @@ class AuthService {
     final row = rows.first;
     final salt = row['password_salt'] as String? ?? '';
     final currentHash = row['password_hash'] as String? ?? '';
-    return currentHash == _hashPassword(bootstrapPassword, salt);
+    if (!_hasBootstrapPassword) return false;
+    return currentHash == _hashPassword(_bootstrapPasswordBuild, salt);
   }
 
   Future<bool> isBootstrapPasswordActiveForEmail(String email) async {
@@ -631,11 +641,9 @@ class AuthService {
     required String currentPassword,
     required String nextPassword,
   }) async {
-    if (nextPassword.trim().length < 8) {
-      return const PasswordChangeResult(
-        success: false,
-        error: 'Le nouveau mot de passe doit contenir au moins 8 caractères',
-      );
+    final policyError = validatePasswordPolicy(nextPassword);
+    if (policyError != null) {
+      return PasswordChangeResult(success: false, error: policyError);
     }
 
     final db = await _database.database;
@@ -712,7 +720,7 @@ class AuthService {
           'display_name': remoteUser['displayName']?.toString() ?? email,
           'role': _mapRemoteRole(remoteUser['role']?.toString()).name,
           'password_salt': salt,
-          'password_hash': _hashPassword(bootstrapPassword, salt),
+          'password_hash': _initialPasswordHash(salt),
           'establishment_id': _nullableValue(remoteUser['establishmentId']),
           'ergo_label': _nullableValue(remoteUser['ergoLabel']),
           'is_active': _remoteIsActive(remoteUser) ? 1 : 0,

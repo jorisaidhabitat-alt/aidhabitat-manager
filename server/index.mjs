@@ -837,6 +837,14 @@ const splitDisplayName = (displayName) => {
 };
 const randomSecret = (size = 48) => crypto.randomBytes(size).toString('base64url');
 const hashPassword = (password, salt) => crypto.scryptSync(String(password), salt, 64).toString('hex');
+const PASSWORD_POLICY = Object.freeze({
+  minLength: 14,
+  maxLength: 128,
+});
+const PASSWORD_LOWER_RE = /[a-z]/;
+const PASSWORD_UPPER_RE = /[A-Z]/;
+const PASSWORD_DIGIT_RE = /\d/;
+const PASSWORD_SYMBOL_RE = /[^A-Za-z0-9]/;
 const resolveCredentialSessionVersion = (credentials, secret) => {
   const numericVersion = Number(credentials?.sessionVersion) || 0;
   const passwordMarker = stringValue(credentials?.nocoPasswordChecksum || credentials?.passwordHash || '');
@@ -845,9 +853,83 @@ const resolveCredentialSessionVersion = (credentials, secret) => {
     .digest('base64url');
   return `${numericVersion}:${passwordFingerprint}`;
 };
-const generatePassword = (displayName) => {
-  const base = String(displayName || 'AidHabitat').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'AidHab';
-  return `${base}-${crypto.randomBytes(4).toString('hex')}`;
+const validatePasswordPolicy = (password) => {
+  const value = String(password || '');
+  const missing = [];
+  if (value.length < PASSWORD_POLICY.minLength) missing.push(`au moins ${PASSWORD_POLICY.minLength} caractères`);
+  if (value.length > PASSWORD_POLICY.maxLength) missing.push(`au maximum ${PASSWORD_POLICY.maxLength} caractères`);
+  if (!PASSWORD_LOWER_RE.test(value)) missing.push('une minuscule');
+  if (!PASSWORD_UPPER_RE.test(value)) missing.push('une majuscule');
+  if (!PASSWORD_DIGIT_RE.test(value)) missing.push('un chiffre');
+  if (!PASSWORD_SYMBOL_RE.test(value)) missing.push('un caractère spécial');
+  return {
+    valid: missing.length === 0,
+    error: missing.length === 0 ? null : `Le mot de passe doit contenir ${missing.join(', ')}.`,
+  };
+};
+const assertPasswordPolicy = (password) => {
+  const result = validatePasswordPolicy(password);
+  if (!result.valid) throw httpError(400, result.error);
+};
+const pickPasswordChar = (alphabet) => alphabet[crypto.randomInt(alphabet.length)];
+const shufflePasswordChars = (chars) => {
+  for (let index = chars.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [chars[index], chars[swapIndex]] = [chars[swapIndex], chars[index]];
+  }
+  return chars;
+};
+const generatePassword = () => {
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const digits = '23456789';
+  const symbols = '!@#$%?*-_+=';
+  const all = `${lower}${upper}${digits}${symbols}`;
+  const chars = [
+    pickPasswordChar(lower),
+    pickPasswordChar(upper),
+    pickPasswordChar(digits),
+    pickPasswordChar(symbols),
+    ...Array.from({ length: 16 }, () => pickPasswordChar(all)),
+  ];
+  return shufflePasswordChars(chars).join('');
+};
+const passwordChecksum = (password) => crypto.createHash('sha256').update(String(password)).digest('hex');
+const writeMemberPasswordToNoco = async (member, password) => {
+  const recordId = stringValue(member?.ergoRecordId).trim();
+  if (!recordId) {
+    throw httpError(409, 'Impossible de modifier ce mot de passe : membre absent de NocoDB');
+  }
+  await updateRecord(TABLES.ergotherapeutes, recordId, { mot_de_passe: password });
+};
+const storeMemberCredentials = (store, {
+  email,
+  password,
+  displayName = '',
+  role = 'ERGO',
+  profilePhotoUrl = '',
+}) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) throw httpError(400, 'Email manquant');
+  const salt = randomSecret(16);
+  const existing = store.users[normalizedEmail] || {};
+  const nextSessionVersion = (Number(existing.sessionVersion) || 0) + 1;
+  store.users[normalizedEmail] = {
+    ...existing,
+    salt,
+    passwordHash: hashPassword(password, salt),
+    nocoPasswordSalt: salt,
+    nocoPasswordHash: hashPassword(password, salt),
+    nocoPasswordChecksum: passwordChecksum(password),
+    sessionVersion: nextSessionVersion,
+    createdAt: existing.createdAt || new Date().toISOString(),
+    profilePhotoUrl: existing.profilePhotoUrl || profilePhotoUrl || '',
+  };
+  store.pendingCredentials[normalizedEmail] = {
+    displayName,
+    role,
+    createdAt: new Date().toISOString(),
+  };
 };
 const encodeBase64Url = (payload) => Buffer.from(JSON.stringify(payload)).toString('base64url');
 const decodeBase64Url = (payload) => JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
@@ -3005,7 +3087,9 @@ const resolveRequestedErgoLabel = async (appUser, requestedErgoLabel) => {
 
 const canAccessDossierRecord = (appUser, dossierRecord) => {
   if (appUser?.role === 'ADMIN') return true;
-  return stringValue(field(dossierRecord, 'ergo_id')).trim() === stringValue(appUser?.ergoLabel).trim();
+  const expectedErgo = stringValue(appUser?.ergoLabel).trim();
+  if (!expectedErgo) return false;
+  return stringValue(field(dossierRecord, 'ergo_id')).trim() === expectedErgo;
 };
 
 /**
@@ -4189,6 +4273,11 @@ app.post('/api/auth/provision', requireAdmin, async (req, res, next) => {
   try {
     const requestedEmail = normalizeEmail(req.body?.email);
     const forceReset = Boolean(req.body?.forceReset);
+    const requestedPassword = stringValue(req.body?.password).trim();
+    if (requestedPassword) assertPasswordPolicy(requestedPassword);
+    if (requestedPassword && !requestedEmail) {
+      throw httpError(400, 'Email requis pour définir un mot de passe explicite');
+    }
     const { members } = await loadMemberRegistry({ forceRefresh: true });
     const store = await readAuthStore();
     const targets = requestedEmail
@@ -4202,20 +4291,16 @@ app.post('/api/auth/provision', requireAdmin, async (req, res, next) => {
     const generated = [];
 
     for (const member of targets) {
-      if (!forceReset && store.users[member.email]) continue;
-      const password = generatePassword(member.displayName);
-      const salt = randomSecret(16);
-      store.users[member.email] = {
-        salt,
-        passwordHash: hashPassword(password, salt),
-        createdAt: new Date().toISOString(),
-      };
-      // SECURITY 2026-05-15 (audit P0 #3) : password retiré du store.
-      store.pendingCredentials[member.email] = {
+      if (!forceReset && !requestedPassword && store.users[member.email]) continue;
+      const password = requestedPassword || generatePassword();
+      await writeMemberPasswordToNoco(member, password);
+      storeMemberCredentials(store, {
+        email: member.email,
+        password,
         displayName: member.displayName,
         role: member.role,
-        createdAt: new Date().toISOString(),
-      };
+        profilePhotoUrl: member.profilePhotoUrl,
+      });
       // Le password est renvoyé UNE FOIS au caller via la response,
       // pas conservé en RAM.
       generated.push({
@@ -4254,6 +4339,9 @@ app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'email et displayName requis' });
     }
     const normalizedEmail = normalizeEmail(email);
+    const explicitPassword = stringValue(password).trim();
+    if (explicitPassword) assertPasswordPolicy(explicitPassword);
+    const chosenPassword = explicitPassword || generatePassword();
     const { prenom, nom } = splitDisplayName(displayName);
     const created = await createRecord(TABLES.ergotherapeutes, sanitizeUndefined({
       uuid_source: crypto.randomUUID(),
@@ -4261,32 +4349,20 @@ app.post('/api/admin/access-members', requireAdmin, async (req, res, next) => {
       nom,
       email: normalizedEmail,
       etablissements_id: establishmentId ? Number(establishmentId) : undefined,
+      mot_de_passe: chosenPassword,
       created_at: new Date().toISOString(),
     }));
     // Provision credentials in auth store
     const store = await readAuthStore();
-    // `chosenPassword` est promu au scope externe : vide si le user
-    // existait déjà (pas de nouvelle génération), sinon le password tout
-    // juste créé. Renvoyé une seule fois dans `data.password` côté
-    // response — cf. audit P0 #3.
-    let chosenPassword = '';
-    if (!store.users[normalizedEmail]) {
-      chosenPassword = (password && password.trim()) ? password.trim() : generatePassword(displayName);
-      const salt = randomSecret(16);
-      store.users[normalizedEmail] = {
-        salt,
-        passwordHash: hashPassword(chosenPassword, salt),
-        createdAt: new Date().toISOString(),
-        profilePhotoUrl: '',
-      };
-      // SECURITY 2026-05-15 (audit P0 #3) : password retiré du store.
-      store.pendingCredentials[normalizedEmail] = {
-        displayName,
-        role: role === 'ADMIN' ? 'ADMIN' : 'ERGO',
-        createdAt: new Date().toISOString(),
-      };
-      await writeAuthStore(store);
-    }
+    // Le mot de passe est écrit dans NocoDB puis renvoyé une seule fois
+    // dans `data.password` pour l'affichage admin immédiat.
+    storeMemberCredentials(store, {
+      email: normalizedEmail,
+      password: chosenPassword,
+      displayName,
+      role: role === 'ADMIN' ? 'ADMIN' : 'ERGO',
+    });
+    await writeAuthStore(store);
     memberRegistryCache = null;
     const members = await getAdminAccessMembers();
     const member = members.find((m) => m.email === normalizedEmail) || {
@@ -4419,12 +4495,11 @@ app.get('/api/health/live', (_req, res) => {
 
 const sendReadyHealth = async (_req, res, next) => {
   try {
-    const beneficiaires = await queryAll(TABLES.beneficiaires, { fields: FIELD_SETS.beneficiaires });
+    await queryAll(TABLES.beneficiaires, { fields: ['Id'], limit: 1 });
     res.json({
       success: true,
       status: 'ready',
       message: 'Connexion active à la base métier',
-      count: beneficiaires.length,
     });
   } catch (error) {
     next(error);

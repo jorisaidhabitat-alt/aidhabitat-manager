@@ -14,6 +14,7 @@ import 'package:sqflite/sqflite.dart';
 // au niveau applicatif via `OfflineVault`.
 import 'package:sqflite_sqlcipher/sqflite.dart' as sqlcipher;
 
+import 'native_file_protection.dart';
 import 'offline_vault.dart';
 import 'secure_session_storage.dart';
 
@@ -283,6 +284,7 @@ class LocalDatabase {
           // filesystem — pas de risque de corruption pendant la copie.
           final backupPath = '$fullPath.bak.$timestamp';
           await legacyFile.rename(backupPath);
+          await NativeFileProtection.instance.protectPath(backupPath);
           debugPrint('[security] DB legacy sauvée → $backupPath');
         }
         // Les fichiers WAL/SHM contiennent des transactions non commit —
@@ -293,6 +295,7 @@ class LocalDatabase {
           if (await sideCar.exists()) {
             final sideCarBackup = '$fullPath$suffix.bak.$timestamp';
             await sideCar.rename(sideCarBackup);
+            await NativeFileProtection.instance.protectPath(sideCarBackup);
           }
         }
       } catch (backupError) {

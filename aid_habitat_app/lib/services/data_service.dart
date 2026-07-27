@@ -1022,8 +1022,8 @@ class DataService {
   ///   - Bouton « Forcer la sync » dans AccountDialog (demande utilisateur
   ///     2026-05-06 : « le bouton doit être accessible quand on clique
   ///     sur le profil »)
-  ///   - `AuthService.signOut()` — un logout = état propre, le prochain
-  ///     login ré-tire toutes les données depuis NocoDB.
+  ///   - Opérations support / recovery quand on veut repartir d'un cache
+  ///     vide sans toucher aux tables d'auth.
   ///
   /// Renvoie le nombre de lignes supprimées (pour log/debug).
   Future<int> wipeLocalDataForResync() async {

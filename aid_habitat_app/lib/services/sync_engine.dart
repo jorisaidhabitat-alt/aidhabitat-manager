@@ -21,8 +21,8 @@ class SyncEngine {
   SyncEngine._internal({
     NocodbSyncService? syncService,
     SyncRepository? syncRepository,
-  })  : _syncService = syncService ?? NocodbSyncService(),
-        _syncRepository = syncRepository ?? SyncRepository();
+  }) : _syncService = syncService ?? NocodbSyncService(),
+       _syncRepository = syncRepository ?? SyncRepository();
 
   static final SyncEngine _instance = SyncEngine._internal();
 
@@ -116,7 +116,12 @@ class SyncEngine {
   /// Start the engine: run an initial sync + pull, and arm the safety net
   /// retry timer (5 min) pour rejouer les ops `failed` de la queue.
   void start() {
+    if (_disposed) return;
     _periodicTimer?.cancel();
+    _retryTimer?.cancel();
+    _debounceTimer?.cancel();
+    _running = false;
+    _rerunRequested = false;
     _periodicTimer = Timer.periodic(_periodicInterval, (_) {
       // Safety net : on rejoue les `sync_operations` en attente (push
       // uniquement, pas de pull) au cas où une mutation aurait échoué
@@ -128,6 +133,24 @@ class SyncEngine {
     requestSync();
     // ignore: discarded_futures
     _runPullSafe();
+  }
+
+  /// Met l'engine en pause sans détruire le singleton. Utilisé lors d'un
+  /// logout / token rejeté pour éviter de consommer la queue offline avec
+  /// une session invalide. Les opérations `pending` restent en base et
+  /// repartiront au prochain `start()`.
+  void stop() {
+    if (_disposed) return;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _periodicTimer?.cancel();
+    _periodicTimer = null;
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+    _running = false;
+    _rerunRequested = false;
+    _pullRunning = false;
+    _emitState(isSyncing: false, clearError: true);
   }
 
   void dispose() {
@@ -244,8 +267,9 @@ class SyncEngine {
   /// que 2 ops restaient bloquées. Le drawer restait ouvert avec les
   /// 2 ops visibles, mais sur le reste de l'app plus aucun signal.
   Future<int> retrySingleOperation(String operationId) async {
-    final reset =
-        await _syncRepository.resetSingleOperationToPending(operationId);
+    final reset = await _syncRepository.resetSingleOperationToPending(
+      operationId,
+    );
     if (reset > 0) {
       _consecutiveFailures = 0;
       _retryTimer?.cancel();
@@ -265,8 +289,7 @@ class SyncEngine {
   /// jour le pending count + clear l'erreur globale si plus aucune op
   /// failed.
   Future<int> discardSingleOperation(String operationId) async {
-    final removed =
-        await _syncRepository.discardSingleOperation(operationId);
+    final removed = await _syncRepository.discardSingleOperation(operationId);
     if (removed > 0) {
       final pending = await _refreshPendingCount();
       // On clear l'erreur globale seulement s'il n'y a plus rien en
@@ -292,11 +315,7 @@ class SyncEngine {
     _retryTimer?.cancel();
     _retryTimer = null;
     final pending = await _refreshPendingCount();
-    _emitState(
-      pendingCount: pending,
-      clearError: true,
-      nextRetryAt: null,
-    );
+    _emitState(pendingCount: pending, clearError: true, nextRetryAt: null);
     return reset;
   }
 
@@ -309,11 +328,7 @@ class SyncEngine {
     _retryTimer?.cancel();
     _retryTimer = null;
     final pending = await _refreshPendingCount();
-    _emitState(
-      pendingCount: pending,
-      clearError: true,
-      nextRetryAt: null,
-    );
+    _emitState(pendingCount: pending, clearError: true, nextRetryAt: null);
     return removed;
   }
 
@@ -356,7 +371,8 @@ class SyncEngine {
     if (_disposed || _running) return;
     if (_consecutiveFailures >= _maxConsecutiveFailures) {
       _emitState(
-        lastError: 'Trop de tentatives échouées. '
+        lastError:
+            'Trop de tentatives échouées. '
             'Appuyez sur Synchroniser pour réessayer.',
       );
       return;
@@ -372,7 +388,8 @@ class SyncEngine {
 
   Duration _computeBackoff(int failures) {
     if (failures <= 0) return _initialDelay;
-    final seconds = _initialDelay.inSeconds *
+    final seconds =
+        _initialDelay.inSeconds *
         pow(_backoffMultiplier, min(failures - 1, 10));
     final capped = min(seconds.toInt(), _maxDelay.inSeconds);
     // Add jitter: ±25 % to avoid thundering herd.
@@ -443,7 +460,8 @@ class SyncEngine {
         // sont en backoff transitoire), on laisse le timer périodique
         // les reprendre plus tard — évite un tight-loop qui spammerait
         // CPU + serveur pour rien.
-        final shouldRerun = _rerunRequested ||
+        final shouldRerun =
+            _rerunRequested ||
             (result.pushedOperations > 0 && pendingAfter > 0);
         if (shouldRerun) {
           _rerunRequested = false;

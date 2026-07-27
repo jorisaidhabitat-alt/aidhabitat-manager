@@ -230,6 +230,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   StreamSubscription<PencilDoubleTapEvent>? _pencilDoubleTapSubscription;
 
   PlanTool _tool = PlanTool.pen;
+  PlanTool _previousTool = PlanTool.eraser;
   int _penColor = 0xFF1A1A1A;
   int _highlighterColor = _kDefaultHighlighterColor;
   double _eraserSize = _kDefaultEraserSize;
@@ -320,8 +321,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     _pencilDoubleTapSubscription = PencilInteractionService.instance.onDoubleTap
         .listen((_) {
           if (!mounted) return;
-          if (_tool == PlanTool.eraser) return;
-          setState(() => _tool = PlanTool.eraser);
+          _swapToPreviousTool();
         });
   }
 
@@ -1441,13 +1441,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
         color: Colors.transparent,
         shape: const CircleBorder(),
         child: InkWell(
-          onTap: () => setState(() {
-            _tool = tool;
-            _showEraserSizeGauge = tool == PlanTool.eraser;
-            _showHighlighterSizeGauge = tool == PlanTool.highlighter;
-            _showColorPalette = false;
-            _showWindowTypeBundle = false;
-          }),
+          onTap: () => _setTool(tool),
           customBorder: const CircleBorder(),
           hoverColor: active ? Colors.transparent : _kToolbarHoverBg,
           splashColor: Colors.transparent,
@@ -1478,6 +1472,39 @@ class _PlanCanvasState extends State<PlanCanvas> {
       onTapOutside: (_) => _hideEraserSizeGauge(),
       child: _toolBtn(PlanTool.eraser, LucideIcons.eraser, 'Gomme'),
     );
+  }
+
+  PlanTool _defaultPreviousToolFor(PlanTool current) {
+    if (current == PlanTool.eraser) return PlanTool.pen;
+    if (current == PlanTool.pen) return PlanTool.eraser;
+    return PlanTool.pen;
+  }
+
+  void _swapToPreviousTool() {
+    final target = _previousTool == _tool
+        ? _defaultPreviousToolFor(_tool)
+        : _previousTool;
+    _setTool(target);
+  }
+
+  void _setTool(PlanTool tool, {bool trackPrevious = true}) {
+    if (tool == _tool) {
+      setState(() {
+        _showEraserSizeGauge = tool == PlanTool.eraser;
+        _showHighlighterSizeGauge = tool == PlanTool.highlighter;
+        _showColorPalette = false;
+        _showWindowTypeBundle = false;
+      });
+      return;
+    }
+    setState(() {
+      if (trackPrevious) _previousTool = _tool;
+      _tool = tool;
+      _showEraserSizeGauge = tool == PlanTool.eraser;
+      _showHighlighterSizeGauge = tool == PlanTool.highlighter;
+      _showColorPalette = false;
+      _showWindowTypeBundle = false;
+    });
   }
 
   Widget _highlighterToolBtn() {

@@ -1953,7 +1953,11 @@ class NocodbApiClient {
     if (member == null) {
       throw Exception('Unexpected create member payload');
     }
-    return _mapAdminAccessMember(member);
+    final oneTimePassword = data['password']?.toString() ?? '';
+    return _mapAdminAccessMember({
+      ...member,
+      if (oneTimePassword.isNotEmpty) 'generatedPassword': oneTimePassword,
+    });
   }
 
   Future<AdminAccessMember> updateAccessMember({

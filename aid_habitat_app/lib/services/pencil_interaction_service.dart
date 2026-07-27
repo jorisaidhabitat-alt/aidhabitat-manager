@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 
 /// Service Dart qui écoute le double-tap Apple Pencil 2 / Pencil Pro
 /// et expose un Stream que les widgets de prise de notes peuvent
-/// consommer pour switcher l'outil courant vers la gomme.
+/// consommer pour basculer vers l'outil précédemment utilisé.
 ///
 /// ╭───────────────────────────────────────────────────────────────╮
 /// │ DISPONIBILITÉ                                                  │
@@ -37,9 +37,7 @@ import 'package:flutter/services.dart';
 ///    void initState() {
 ///      super.initState();
 ///      _doubleTapSub = PencilInteractionService.instance.onDoubleTap.listen((_) {
-///        if (mounted) {
-///          setState(() => _currentTool = Tool.eraser);
-///        }
+///        if (mounted) switchToPreviousTool();
 ///      });
 ///    }
 ///
@@ -56,8 +54,7 @@ import 'package:flutter/services.dart';
 class PencilInteractionService {
   PencilInteractionService._();
 
-  static final PencilInteractionService instance =
-      PencilInteractionService._();
+  static final PencilInteractionService instance = PencilInteractionService._();
 
   /// Channel name MUST match `PencilDoubleTapPlugin.channelName` côté Swift.
   static const _channel = MethodChannel('aidhabitat/pencil_interaction');
@@ -65,11 +62,11 @@ class PencilInteractionService {
   /// Broadcast stream — supporte plusieurs listeners simultanés (utile
   /// quand plusieurs zones de notes coexistent à l'écran : panneau
   /// lateral + tab bottom + dialog modal d'annotation PDF).
-  final _doubleTapController = StreamController<PencilDoubleTapEvent>.broadcast();
+  final _doubleTapController =
+      StreamController<PencilDoubleTapEvent>.broadcast();
 
   /// Stream que les widgets écoutent pour réagir au double-tap.
-  Stream<PencilDoubleTapEvent> get onDoubleTap =>
-      _doubleTapController.stream;
+  Stream<PencilDoubleTapEvent> get onDoubleTap => _doubleTapController.stream;
 
   bool _started = false;
 
@@ -101,14 +98,17 @@ class PencilInteractionService {
   /// dans [PencilPreferredAction], ou null si non disponible (Web,
   /// Android, plugin pas encore activé côté natif).
   ///
-  /// Pour la v1, on n'utilise pas cette préférence — on force toujours
-  /// le switch vers la gomme. Mais l'API est exposée pour préparer
-  /// d'éventuels modes "respect des prefs système" plus tard.
+  /// Pour la v1 terrain, les surfaces de dessin appliquent le comportement
+  /// naturel Apple : basculer entre l'outil courant et l'outil précédent.
+  /// L'API reste exposée pour préparer d'éventuels modes "respect des prefs
+  /// système" plus tard.
   Future<String?> getPreferredTapAction() async {
     if (kIsWeb) return null;
     if (defaultTargetPlatform != TargetPlatform.iOS) return null;
     try {
-      final result = await _channel.invokeMethod<String>('getPreferredTapAction');
+      final result = await _channel.invokeMethod<String>(
+        'getPreferredTapAction',
+      );
       return result;
     } on PlatformException {
       return null;
@@ -125,8 +125,7 @@ class PencilDoubleTapEvent {
 
   /// Préférence système iOS à l'instant du tap, parmi les valeurs de
   /// [PencilPreferredAction]. Permet aux consumers de respecter ou
-  /// outrepasser la prefs utilisateur si besoin. Pour v1, on ignore
-  /// et on force la gomme dans tous les cas (demande utilisateur).
+  /// outrepasser la prefs utilisateur si besoin.
   final String preferredAction;
 }
 

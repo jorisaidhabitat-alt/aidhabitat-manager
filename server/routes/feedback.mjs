@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import nodemailer from 'nodemailer';
 import { dataFileUrl, resolveSessionUser } from '../helpers.mjs';
+import { requireAdmin } from '../middleware/auth.mjs';
 
 const router = express.Router();
 const rateLimitBuckets = new Map();
@@ -12,6 +13,16 @@ const FEEDBACK_MAX_PER_WINDOW = 12;
 const FEEDBACK_SMTP_TIMEOUT_MS = 4500;
 
 const clean = (value, max = 2000) => String(value || '').trim().slice(0, max);
+const cleanText = (value, max = 2000) => (
+  typeof value === 'string' ? value.trim().slice(0, max) : ''
+);
+
+const redactSensitiveText = (value, max = 2000) => cleanText(value, max)
+  .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1[masqué]')
+  .replace(
+    /\b((?:token|secret|password|mot de passe|api[_-]?key|clé api)\s*[:=]\s*)[^\s,;]+/gi,
+    '$1[masqué]',
+  );
 
 const escapeHtml = (value) => clean(value, 10000)
   .replaceAll('&', '&amp;')
@@ -146,13 +157,86 @@ const formatContextHtml = (context = {}) => {
     .join('');
 };
 
+const normalizeFeedbackType = (value) => {
+  const raw = cleanText(value, 80).toLowerCase();
+  if (raw === 'bug') return 'Bug';
+  if (raw.startsWith('difficult')) return 'Difficulté';
+  if (raw.startsWith('id')) return 'Idée';
+  return 'Signalement';
+};
+
+const hashFeedbackValue = (value) => {
+  const salt = clean(
+    process.env.FEEDBACK_HASH_SALT ||
+      process.env.AUTH_SESSION_SECRET ||
+      process.env.NC_AUTH_JWT_SECRET ||
+      'app-ergo-feedback',
+    500,
+  );
+  return crypto
+    .createHash('sha256')
+    .update(`${salt}:${String(value || '')}`)
+    .digest('hex')
+    .slice(0, 20);
+};
+
+const sanitizeFeedbackUrl = (value) => {
+  const raw = clean(value, 1000);
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return raw.split('?')[0].split('#')[0].slice(0, 500);
+  }
+};
+
+const summarizeUserAgent = (value) => {
+  const raw = clean(value, 1000);
+  if (!raw) return '';
+  const platform = raw.match(/iPad|iPhone|Macintosh|Android|Windows|Linux/i)?.[0] || '';
+  const browser = raw.match(/CriOS|Chrome|Safari|Firefox|Edg|Version\/[\d.]+/i)?.[0] || '';
+  const summary = [platform, browser].filter(Boolean).join(' / ');
+  return summary || raw.slice(0, 180);
+};
+
+const normalizeFeedbackContext = (context = {}) => ({
+  page: clean(context.page, 300),
+  dossierName: clean(context.dossierName, 300),
+  dossierId: clean(context.dossierId, 300),
+  section: clean(context.section, 300),
+  lastAction: clean(context.lastAction, 1000),
+  url: sanitizeFeedbackUrl(context.url),
+  userAgent: summarizeUserAgent(context.userAgent),
+  clientTimestamp: clean(context.clientTimestamp, 120),
+  clientSchemaVersion: clean(context.clientSchemaVersion, 20),
+});
+
+const normalizeFeedbackUser = (user = {}, source = 'client') => {
+  const email = clean(user.email, 300).toLowerCase();
+  const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return {
+    id: clean(user.id, 160),
+    displayName: clean(user.displayName || user.ergoLabel, 160),
+    email: emailIsValid ? email : '',
+    role: clean(user.role, 120),
+    source,
+  };
+};
+
 const getClientIp = (req) => {
   const forwarded = String(req.get('x-forwarded-for') || '').split(',')[0].trim();
   return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
 };
 
-const checkRateLimit = (req) => {
-  const key = getClientIp(req);
+const rateLimitKey = (req, user = null) => {
+  if (user?.id) return `user:${hashFeedbackValue(user.id)}`;
+  if (user?.email) return `email:${hashFeedbackValue(user.email)}`;
+  return `ip:${hashFeedbackValue(getClientIp(req))}`;
+};
+
+const checkRateLimit = (req, user = null) => {
+  const key = rateLimitKey(req, user);
   const now = Date.now();
   const bucket = rateLimitBuckets.get(key);
   if (!bucket || now - bucket.startedAt > FEEDBACK_WINDOW_MS) {
@@ -285,20 +369,14 @@ const optionalUser = async (req) => {
   }
 };
 
-router.get('/api/feedback/mail-events', async (req, res, next) => {
+router.get('/api/feedback/mail-events', requireAdmin, async (req, res, next) => {
   try {
-    const user = await optionalUser(req);
-    if (!user) {
-      res.status(401).json({ success: false, error: 'Session invalide ou expirée' });
-      return;
-    }
-
     const limit = Math.min(Math.max(Number(req.query?.limit || 20), 1), 50);
     const events = await readRecentFeedbackMailEvents(limit);
     res.json({
       success: true,
       error: null,
-      data: events,
+      data: events.map(publicMailEvent),
     });
   } catch (error) {
     next(error);
@@ -331,7 +409,12 @@ router.get('/api/feedback/mail-events/:feedbackId', async (req, res, next) => {
 
 router.post('/api/feedback', async (req, res, next) => {
   try {
-    if (!checkRateLimit(req)) {
+    const authenticatedUser = await optionalUser(req);
+    const safeAuthenticatedUser = authenticatedUser
+      ? normalizeFeedbackUser(authenticatedUser, 'session')
+      : null;
+
+    if (!checkRateLimit(req, safeAuthenticatedUser)) {
       res.status(429).json({
         success: false,
         error: 'Trop de signalements envoyés depuis cet appareil. Réessayez plus tard.',
@@ -339,25 +422,27 @@ router.post('/api/feedback', async (req, res, next) => {
       return;
     }
 
-    const type = clean(req.body?.type, 80) || 'Signalement';
-    const message = clean(req.body?.message, 10000);
-    const context = req.body?.context && typeof req.body.context === 'object'
+    const type = normalizeFeedbackType(req.body?.type);
+    const message = redactSensitiveText(req.body?.message, 5000);
+    const rawContext = req.body?.context && typeof req.body.context === 'object'
       ? req.body.context
       : {};
-    const authenticatedUser = await optionalUser(req);
+    const context = normalizeFeedbackContext(rawContext);
     const clientUser = req.body?.user && typeof req.body.user === 'object'
       ? req.body.user
       : {};
-    const user = authenticatedUser || clientUser || {};
+    const user = safeAuthenticatedUser || normalizeFeedbackUser(clientUser, 'client');
 
     if (message.length < 3) {
       res.status(400).json({ success: false, error: 'Message trop court.' });
       return;
     }
 
-    const dossierLabel = clean(context.dossierName, 120);
+    const reportId = `feedback_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const subjectParts = ["Signalement App'Ergo", type];
-    if (dossierLabel) subjectParts.push(dossierLabel);
+    if (context.page) subjectParts.push(context.page);
+    if (context.section) subjectParts.push(context.section);
+    subjectParts.push(reportId.slice(-8));
     const subject = subjectParts.join(' - ');
 
     const senderLabel = clean(user.displayName || user.email || 'Utilisateur', 160);
@@ -373,6 +458,8 @@ router.post('/api/feedback', async (req, res, next) => {
       '',
       'Contexte :',
       formatContextText(context),
+      '',
+      `Session : ${user.source === 'session' ? 'authentifiée' : 'fallback local'}`,
     ].join('\n');
 
     const html = `
@@ -380,6 +467,7 @@ router.post('/api/feedback', async (req, res, next) => {
         <h2 style="margin:0 0 12px">Signalement App'Ergo</h2>
         <p><strong>Utilisateur :</strong> ${escapeHtml(senderLabel)}${senderEmail ? ` &lt;${escapeHtml(senderEmail)}&gt;` : ''}</p>
         <p><strong>Type :</strong> ${escapeHtml(type)}</p>
+        <p><strong>Session :</strong> ${escapeHtml(user.source === 'session' ? 'authentifiée' : 'fallback local')}</p>
         <h3 style="margin:20px 0 8px">Message</h3>
         <div style="white-space:pre-wrap;background:#FDFCFB;border:1px solid #eadff0;border-radius:12px;padding:14px">${escapeHtml(message)}</div>
         <h3 style="margin:20px 0 8px">Contexte détecté</h3>
@@ -388,27 +476,15 @@ router.post('/api/feedback', async (req, res, next) => {
     `;
 
     const report = {
-      id: `feedback_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      id: reportId,
       diagnosticToken: crypto.randomBytes(18).toString('base64url'),
       receivedAt: new Date().toISOString(),
+      schemaVersion: 2,
       type,
       message,
-      user: {
-        displayName: clean(user.displayName, 160),
-        email: clean(user.email, 300),
-        role: clean(user.role, 120),
-      },
-      context: {
-        page: clean(context.page, 300),
-        dossierName: clean(context.dossierName, 300),
-        dossierId: clean(context.dossierId, 300),
-        section: clean(context.section, 300),
-        lastAction: clean(context.lastAction, 1000),
-        url: clean(context.url, 1000),
-        userAgent: clean(context.userAgent, 1000),
-        clientTimestamp: clean(context.clientTimestamp, 120),
-      },
-      clientIp: getClientIp(req),
+      user,
+      context,
+      clientIpHash: hashFeedbackValue(getClientIp(req)),
     };
 
     const config = smtpConfig();

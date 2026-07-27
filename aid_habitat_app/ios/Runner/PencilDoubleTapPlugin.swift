@@ -7,9 +7,9 @@
 //
 // Chaque double-tap est relayé au code Dart via une MethodChannel,
 // donnant à `PencilInteractionService` (lib/services/) le signal de
-// switcher l'outil courant vers la gomme dans toutes les surfaces de
-// prise de notes (notes_widget.dart, plan_canvas.dart, annotations PDF
-// dans documents_screen.dart).
+// basculer vers l'outil précédemment utilisé dans toutes les surfaces
+// de prise de notes (notes_widget.dart, plan_canvas.dart, annotations
+// PDF dans documents_screen.dart).
 //
 // ────────────────────────────────────────────────────────────────────
 // COMMENT ACTIVER (à faire une seule fois, quand on bascule en natif)
@@ -99,9 +99,9 @@ class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegat
   // stylet (geste matériel détecté par le firmware Pencil 2/Pro).
   func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
     // On envoie l'event à Dart, en incluant la préférence utilisateur
-    // pour que Dart puisse choisir d'honorer (ex: ne switcher la gomme
-    // QUE si la préférence iOS est sur "switch eraser") ou outrepasser
-    // (forcer la gomme indépendamment de la préférence).
+    // pour que Dart puisse choisir d'honorer ou outrepasser la
+    // préférence iOS. Le comportement app actuel imite Apple Notes :
+    // outil courant <-> outil précédemment utilisé.
     let action = Self.encodePreferredTapAction(UIPencilInteraction.preferredTapAction)
     channel.invokeMethod("doubleTap", arguments: ["preferredAction": action])
   }

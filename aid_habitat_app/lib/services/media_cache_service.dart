@@ -12,6 +12,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'app_config.dart';
 import 'local_database.dart';
+import 'native_file_protection.dart';
 import 'offline_vault.dart';
 import 'url_resolver.dart';
 
@@ -40,6 +41,11 @@ class MediaCacheService {
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
+    await NativeFileProtection.instance.protectPath(
+      dir.path,
+      recursive: true,
+      excludeFromBackup: true,
+    );
     _cacheDir = dir;
     return dir;
   }
@@ -82,7 +88,11 @@ class MediaCacheService {
       final bytes = _decodeDataUrl(resolved);
       if (bytes == null || bytes.isEmpty) return null;
       try {
-        await file.writeAsBytes(bytes, flush: true);
+        await NativeFileProtection.instance.writeProtectedBytes(
+          file.path,
+          bytes,
+          excludeFromBackup: true,
+        );
         return file;
       } catch (_) {
         return null;
@@ -160,7 +170,11 @@ class MediaCacheService {
       final bytes = response.bodyBytes;
       if (bytes.isNotEmpty && _looksLikeHtml(bytes)) return null;
 
-      await target.writeAsBytes(bytes, flush: true);
+      await NativeFileProtection.instance.writeProtectedBytes(
+        target.path,
+        bytes,
+        excludeFromBackup: true,
+      );
       return target;
     } catch (_) {
       return null;

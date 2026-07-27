@@ -34,6 +34,7 @@ import '../services/data_service.dart';
 import '../services/document_scanner_service.dart';
 import '../services/document_repository.dart';
 import '../services/media_cache_service.dart';
+import '../services/native_file_protection.dart';
 import '../services/pencil_interaction_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -2228,7 +2229,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       final localPath = widget.doc.localPath;
       if (localPath == null || localPath.isEmpty) return;
       final flatPath = '$localPath.flat.png';
-      await File(flatPath).writeAsBytes(bytes, flush: true);
+      await NativeFileProtection.instance.writeProtectedBytes(flatPath, bytes);
       await DocumentRepository().enqueueAnnotatedReupload(
         documentId: widget.doc.id,
         flattenedPath: flatPath,
@@ -2256,7 +2257,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
           : wrapperPdfPath;
       if (localPath == null || localPath.isEmpty) return;
       final flatPath = '$localPath.flat.png';
-      await File(flatPath).writeAsBytes(bytes, flush: true);
+      await NativeFileProtection.instance.writeProtectedBytes(flatPath, bytes);
       await DocumentRepository().enqueueAnnotatedReupload(
         documentId: widget.doc.id,
         flattenedPath: flatPath,
@@ -3484,7 +3485,10 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
           if (await f.exists()) await f.delete();
         } else {
           final json = jsonEncode(strokes.map((s) => s.toJson()).toList());
-          await f.writeAsString(json);
+          await NativeFileProtection.instance.writeProtectedString(
+            jsonPath,
+            json,
+          );
         }
       } catch (_) {
         // silent — l'utilisateur pourra retenter.
@@ -3590,7 +3594,10 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
           return;
         }
         pngPath = '${widget.pdfPath}.page$pageNumber.png';
-        await File(pngPath).writeAsBytes(rendered!.bytes, flush: true);
+        await NativeFileProtection.instance.writeProtectedBytes(
+          pngPath,
+          rendered!.bytes,
+        );
         _pagePngPaths[pageNumber] = pngPath;
       }
       if (!mounted) return;
@@ -3940,6 +3947,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
 
   // Outils courants. Crayon noir simple, comme les notes rapides (quick toolset).
   _AnnotTool _tool = _AnnotTool.pen;
+  _AnnotTool _previousTool = _AnnotTool.eraser;
   static const Color _color = Color(0xFF111827); // noir (dark gray)
   final double _strokeWidth = 2.0;
 
@@ -3978,8 +3986,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     _pencilDoubleTapSubscription = PencilInteractionService.instance.onDoubleTap
         .listen((_) {
           if (!mounted) return;
-          if (_tool == _AnnotTool.eraser) return;
-          setState(() => _tool = _AnnotTool.eraser);
+          _swapToPreviousTool();
         });
   }
 
@@ -3995,6 +4002,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     final f = File(_annotationPath);
     if (!await f.exists()) return;
     try {
+      await NativeFileProtection.instance.protectPath(f.path);
       final raw = await f.readAsString();
       final list = jsonDecode(raw) as List<dynamic>;
       final loaded = list
@@ -4040,7 +4048,10 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
         if (await f.exists()) await f.delete();
       } else {
         final json = jsonEncode(_strokes.map((s) => s.toJson()).toList());
-        await f.writeAsString(json);
+        await NativeFileProtection.instance.writeProtectedString(
+          _annotationPath,
+          json,
+        );
       }
       if (!mounted) return;
       setState(() => _savedHash = _hashStrokes(_strokes));
@@ -4284,14 +4295,14 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
             icon: LucideIcons.pencil,
             selected: _tool == _AnnotTool.pen,
             tooltip: 'Crayon',
-            onTap: () => setState(() => _tool = _AnnotTool.pen),
+            onTap: () => _setTool(_AnnotTool.pen),
           ),
           const SizedBox(width: 6),
           _ToolButton(
             icon: LucideIcons.eraser,
             selected: _tool == _AnnotTool.eraser,
             tooltip: 'Gomme',
-            onTap: () => setState(() => _tool = _AnnotTool.eraser),
+            onTap: () => _setTool(_AnnotTool.eraser),
           ),
           const SizedBox(width: 6),
           _ToolButton(
@@ -4314,6 +4325,21 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
         ],
       ),
     );
+  }
+
+  void _swapToPreviousTool() {
+    final target = _previousTool == _tool
+        ? (_tool == _AnnotTool.eraser ? _AnnotTool.pen : _AnnotTool.eraser)
+        : _previousTool;
+    _setTool(target);
+  }
+
+  void _setTool(_AnnotTool tool) {
+    if (tool == _tool) return;
+    setState(() {
+      _previousTool = _tool;
+      _tool = tool;
+    });
   }
 
   static int _hashStrokes(List<_AnnotStroke> strokes) {

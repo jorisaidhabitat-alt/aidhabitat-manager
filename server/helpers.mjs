@@ -161,7 +161,7 @@ export const FIELD_SETS = {
   observations: ['uuid_source', 'dossier_id', 'observation_equipements', 'projet_souhait_usage', 'resume_preconisations'],
   referencesLibelle: ['libelle'],
   referencesNom: ['nom'],
-  ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'profile_photo_base64'],
+  ergotherapeutes: ['uuid_source', 'nom', 'prenom', 'email', 'user_id', 'nom_etablissement_id', 'User', 'etablissements_id', 'etablissement', 'mot_de_passe', 'profile_photo_base64'],
   communes: ['nom', 'code_postal', 'epci_id1', 'epci'],
   baremesAnah: ['libelle', 'nombre_personnes', 'annee_plafond'],
   caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire', 'metadata_json'],
@@ -1882,6 +1882,7 @@ export const buildMemberFromErgoRecord = (record) => {
   if (!email) return null;
   const special = specialMemberProfile(email);
   const derivedName = special?.displayName || refLabel(record) || email;
+  const nocoPassword = stringValue(field(record, 'mot_de_passe')).trim() || null;
   // Migration 2026-05-06 : photo profil en base64 dans la nouvelle
   // colonne `profile_photo_base64` (NocoDB). Fallback `nom_etablissement_id`
   // pour les anciennes lignes qui contiennent l'URL Blob (legacy).
@@ -1898,6 +1899,7 @@ export const buildMemberFromErgoRecord = (record) => {
     establishmentLabel: refLabel(field(record, 'etablissement')) || special?.establishmentLabel || '',
     ergoRecordId: String(record.id),
     ergoLabel: special?.role === 'ADMIN' ? '' : derivedName,
+    nocoPassword,
   };
 };
 
@@ -2065,6 +2067,44 @@ export const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
     }
   }
 
+  for (const member of members) {
+    const plain = member.nocoPassword;
+    member.nocoPassword = null;
+
+    if (typeof plain === 'string' && plain.length > 0) {
+      const checksum = crypto.createHash('sha256').update(plain).digest('hex');
+      const stored = store.users[member.email];
+      if (stored?.nocoPasswordChecksum !== checksum) {
+        const salt = randomSecret(16);
+        const previousSv = Number(stored?.sessionVersion) || 0;
+        const nextSv = stored?.nocoPasswordChecksum ? previousSv + 1 : previousSv;
+        store.users[member.email] = {
+          ...(stored || { createdAt: new Date().toISOString(), profilePhotoUrl: '' }),
+          nocoPasswordHash: hashPassword(plain, salt),
+          nocoPasswordSalt: salt,
+          nocoPasswordChecksum: checksum,
+          sessionVersion: nextSv,
+        };
+        storeMutated = true;
+      }
+    } else if (plain === null) {
+      const stored = store.users[member.email];
+      if (stored?.nocoPasswordHash) {
+        const {
+          nocoPasswordHash: _hash,
+          nocoPasswordSalt: _salt,
+          nocoPasswordChecksum: _checksum,
+          ...rest
+        } = stored;
+        store.users[member.email] = {
+          ...rest,
+          sessionVersion: (Number(stored?.sessionVersion) || 0) + 1,
+        };
+        storeMutated = true;
+      }
+    }
+  }
+
   if (storeMutated) {
     await writeAuthStore(store);
   }
@@ -2080,38 +2120,7 @@ export const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
 };
 
 export const loadMemberRegistryForAuth = async () => {
-  if (memberRegistryCache?.value) {
-    return memberRegistryCache.value;
-  }
-
-  try {
-    const store = await readAuthStore();
-    const members = buildFallbackMembers().map((member) => ({
-      ...member,
-      profilePhotoUrl: resolveStoredProfilePhotoUrl(store, member.email) || member.profilePhotoUrl || '',
-    }));
-    return { members, store };
-  } catch (error) {
-    // SECURITY 2026-05-15 — Audit P0 #5 : si readAuthStore throw parce
-    // que AUTH_SESSION_SECRET manque en prod, on NE DOIT PAS retomber
-    // sur un store de secret aléatoire (signature qui change à chaque
-    // process = tokens jamais valides + auth contournable côté offline).
-    // On relaie l'erreur pour que le handler Express renvoie 500 et que
-    // l'opérateur voie immédiatement qu'il faut poser AUTH_SESSION_SECRET.
-    if (/AUTH_SESSION_SECRET/.test(String(error?.message || ''))) {
-      throw error;
-    }
-    console.error('[auth] Impossible de charger le registre local, utilisation du fallback mémoire.', error);
-    return {
-      members: buildFallbackMembers(),
-      store: {
-        version: 1,
-        secret: randomSecret(),
-        users: {},
-        pendingCredentials: {},
-      },
-    };
-  }
+  return loadMemberRegistry({ forceRefresh: true });
 };
 
 export const signSessionToken = async (email) => {
@@ -2226,7 +2235,9 @@ export const resolveRequestedErgoLabel = async (appUser, requestedErgoLabel) => 
 
 export const canAccessDossierRecord = (appUser, dossierRecord) => {
   if (appUser?.role === 'ADMIN') return true;
-  return stringValue(field(dossierRecord, 'ergo_id')).trim() === stringValue(appUser?.ergoLabel).trim();
+  const expectedErgo = stringValue(appUser?.ergoLabel).trim();
+  if (!expectedErgo) return false;
+  return stringValue(field(dossierRecord, 'ergo_id')).trim() === expectedErgo;
 };
 
 export const resolveBeneficiaryAccess = async (appUser, patientId) => {

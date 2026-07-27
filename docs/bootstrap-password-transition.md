@@ -1,7 +1,7 @@
 # Rotation du mot de passe bootstrap local
 
-Objectif : retirer le mot de passe bootstrap du code sans casser le login local
-offline existant.
+Objectif : garder le login offline après une première connexion valide, sans
+conserver de mot de passe bootstrap visible dans le code.
 
 ## Pourquoi ne pas le changer brutalement
 
@@ -15,19 +15,22 @@ mot de passe initial.
 
 ## Stratégie recommandée
 
-1. Garder le comportement actuel tant que l'app est utilisée en production.
-2. Ajouter un secret de build `AIDHABITAT_BOOTSTRAP_PASSWORD` dans GitHub Actions,
-   Easypanel et les builds natifs.
-3. Générer une version staging qui lit ce secret avec `--dart-define`.
-4. Tester le login offline sur un poste neuf et sur un poste déjà synchronisé.
-5. Une fois validé, supprimer la valeur codée en dur.
-6. Forcer ou accompagner le changement du mot de passe initial côté équipe.
+1. Ne pas embarquer de mot de passe bootstrap par défaut.
+2. Pour chaque iPad neuf : faire une première connexion en ligne avec le vrai
+   mot de passe serveur du membre.
+3. L'app stocke ensuite le hash local dans la base SQLite chiffrée, ce qui
+   permet le login offline sur cet appareil.
+4. Si un bootstrap temporaire est absolument nécessaire pour une campagne
+   d'installation, l'injecter uniquement au build via
+   `AIDHABITAT_BOOTSTRAP_PASSWORD`, puis le retirer dès la campagne terminée.
+5. Changer les mots de passe serveur via l'admin d'accès et vérifier que la
+   reconnexion online met à jour le hash local de l'iPad.
 
 ## Tests obligatoires
 
 - ouverture de l'app sans réseau ;
 - login d'un utilisateur déjà existant ;
-- première initialisation locale ;
+- première initialisation locale avec réseau ;
 - changement de mot de passe local ;
 - synchronisation NocoDB après reconnexion ;
 - build web GitHub Actions ;
@@ -50,7 +53,6 @@ npm run commercial:preflight -- backups/aidhabitat-YYYY-MM-DD_HH-MM-SS.json.gz t
 
 ## Statut actuel
 
-Le preflight accepte ce point comme avertissement, pas comme échec bloquant.
-
-C'est volontaire : la sécurité doit progresser, mais pas au prix d'un blocage du
-login local/offline.
+Le mot de passe bootstrap n'est plus codé en dur dans l'application. Sans
+`AIDHABITAT_BOOTSTRAP_PASSWORD`, un profil local fraîchement installé ne peut
+pas s'authentifier offline avant une première connexion serveur réussie.

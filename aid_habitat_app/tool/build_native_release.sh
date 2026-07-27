@@ -19,6 +19,9 @@
 #
 # Variables d'env :
 #   AIDHABITAT_API_BASE_URL : URL du backend Aid'Habitat (obligatoire)
+#   AIDHABITAT_BOOTSTRAP_PASSWORD : mot de passe bootstrap local temporaire
+#                             (optionnel ; laisser vide pour forcer une
+#                             première connexion en ligne)
 #   AIDHABITAT_DEBUG_INFO   : dossier où stocker les symbols
 #                             (défaut : build/debug-symbols/<platform>/<git-sha>/)
 #
@@ -58,6 +61,15 @@ if [[ ! "$API_BASE_URL" =~ ^https://[^[:space:]]+$ ]]; then
   exit 1
 fi
 API_BASE_URL="${API_BASE_URL%/}"
+
+DART_DEFINES=(
+  --dart-define=AIDHABITAT_API_BASE_URL="$API_BASE_URL"
+)
+if [ -n "${AIDHABITAT_BOOTSTRAP_PASSWORD:-}" ]; then
+  DART_DEFINES+=(
+    --dart-define=AIDHABITAT_BOOTSTRAP_PASSWORD="$AIDHABITAT_BOOTSTRAP_PASSWORD"
+  )
+fi
 
 if [ "$PLATFORM" = "android" ]; then
   if [ ! -f "android/key.properties" ]; then
@@ -100,7 +112,7 @@ case "$PLATFORM" in
     "$FLUTTER" build ipa --release \
       --obfuscate \
       --split-debug-info="$DEBUG_INFO_DIR" \
-      --dart-define=AIDHABITAT_API_BASE_URL="$API_BASE_URL"
+      "${DART_DEFINES[@]}"
     echo "[build_native] IPA produit dans build/ios/ipa/"
     echo "[build_native] Symbols dans $DEBUG_INFO_DIR — À CONSERVER"
     echo "[build_native] Étape suivante : ouvrir Xcode > Window > Organizer > Distribute App"
@@ -110,7 +122,7 @@ case "$PLATFORM" in
     "$FLUTTER" build macos --release \
       --obfuscate \
       --split-debug-info="$DEBUG_INFO_DIR" \
-      --dart-define=AIDHABITAT_API_BASE_URL="$API_BASE_URL"
+      "${DART_DEFINES[@]}"
     echo "[build_native] .app produit dans build/macos/Build/Products/Release/"
     echo "[build_native] Symbols dans $DEBUG_INFO_DIR — À CONSERVER"
     ;;
@@ -119,7 +131,7 @@ case "$PLATFORM" in
     "$FLUTTER" build appbundle --release \
       --obfuscate \
       --split-debug-info="$DEBUG_INFO_DIR" \
-      --dart-define=AIDHABITAT_API_BASE_URL="$API_BASE_URL"
+      "${DART_DEFINES[@]}"
     echo "[build_native] AAB produit dans build/app/outputs/bundle/release/"
     echo "[build_native] Symbols dans $DEBUG_INFO_DIR — À CONSERVER"
     ;;

@@ -25,20 +25,22 @@ class FeedbackService {
     }
 
     final platform = feedbackPlatformContext();
+    final hasSession = token.isNotEmpty;
     final payload = {
       'type': type,
       'message': message,
       'user': {
         'id': currentUser.id,
-        'email': currentUser.email,
         'displayName': currentUser.displayName,
         'ergoLabel': currentUser.ergoLabel ?? '',
         'role': currentUser.role.name,
+        if (!hasSession) 'email': currentUser.email,
       },
       'context': {
         ...context.toJson(),
         ...platform,
         'clientTimestamp': DateTime.now().toIso8601String(),
+        'clientSchemaVersion': 2,
       },
     };
 
