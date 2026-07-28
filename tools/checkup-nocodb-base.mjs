@@ -50,7 +50,13 @@ const stringValue = (v) => (v == null || v === 'null' ? '' : String(v).trim());
 console.log('📋 Inventaire…');
 const tablesResp = await nocoFetch(`${API_URL}/api/v2/meta/bases/${BASE_ID}/tables`);
 const tables = (tablesResp.list || tablesResp).filter((t) => t && t.id);
-const findTable = (n) => tables.find((t) => String(t.title).toLowerCase() === n.toLowerCase());
+const normalizeTableTitle = (title) => String(title || '')
+  .trim()
+  .replace(/^[^A-Za-z0-9_]+/, '')
+  .toLowerCase();
+const findTable = (name) => tables.find(
+  (table) => normalizeTableTitle(table.title) === normalizeTableTitle(name),
+);
 
 // Comptage (en parallèle pour aller vite).
 const counts = await Promise.all(

@@ -13,6 +13,7 @@ import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
 import '../services/route_service.dart';
+import '../services/visit_date_time.dart';
 
 /// Dashboard screen aligned with the React web `Dashboard.tsx` layout:
 ///   - Welcome header with user name + today's date
@@ -187,12 +188,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     for (final d in dossiers) {
       final raw = d.visitDate;
       if (raw == null || raw.isEmpty) continue;
-      DateTime? when;
-      try {
-        when = DateTime.parse(raw);
-      } catch (_) {
-        continue;
-      }
+      final when = parseVisitDateTime(raw);
+      if (when == null) continue;
       // Deadline = heure réelle si renseignée, sinon fin de la
       // journée comme proxy pour « visite encore valable aujourd'hui ».
       final hasTime =
@@ -250,12 +247,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       final raw = d.visitDate;
       if (raw == null || raw.isEmpty) continue;
-      DateTime? when;
-      try {
-        when = DateTime.parse(raw);
-      } catch (_) {
-        continue;
-      }
+      final when = parseVisitDateTime(raw);
+      if (when == null) continue;
       if (!when.isBefore(weekStart) && when.isBefore(weekEnd)) {
         visitsThisWeek += 1;
       }
@@ -658,7 +651,8 @@ class _RecentDossierRowState extends State<_RecentDossierRow> {
   String _formatVisitDate(String? raw) {
     if (raw == null || raw.isEmpty) return '';
     try {
-      final d = DateTime.parse(raw);
+      final d = parseVisitDateTime(raw);
+      if (d == null) return '';
       return DateFormat('d MMM', 'fr_FR').format(d);
     } catch (_) {
       return '';
@@ -741,7 +735,8 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
     final raw = nv.dossier.visitDate;
     if (raw == null || raw.isEmpty) return null;
     try {
-      final dt = DateTime.parse(raw);
+      final dt = parseVisitDateTime(raw);
+      if (dt == null) return null;
       if (dt.hour == 0 && dt.minute == 0 && !raw.contains('T')) return null;
       final hh = dt.hour.toString().padLeft(2, '0');
       final mm = dt.minute.toString().padLeft(2, '0');
@@ -1245,18 +1240,14 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
     for (final d in widget.dossiers) {
       final raw = d.visitDate;
       if (raw == null || raw.isEmpty) continue;
-      DateTime? when;
-      try {
-        when = DateTime.parse(raw);
-      } catch (_) {
-        continue;
-      }
+      final when = parseVisitDateTime(raw);
+      if (when == null) continue;
       final day = DateTime(when.year, when.month, when.day);
       if (day == today) out.add(d);
     }
     out.sort((a, b) {
-      final da = DateTime.tryParse(a.visitDate ?? '');
-      final db = DateTime.tryParse(b.visitDate ?? '');
+      final da = parseVisitDateTime(a.visitDate);
+      final db = parseVisitDateTime(b.visitDate);
       if (da != null && db != null) {
         final cmp = da.compareTo(db);
         if (cmp != 0) return cmp;
@@ -1353,7 +1344,8 @@ class _TodayVisitsPanelState extends State<_TodayVisitsPanel> {
     final raw = d.visitDate;
     if (raw == null || raw.isEmpty) return null;
     try {
-      final dt = DateTime.parse(raw);
+      final dt = parseVisitDateTime(raw);
+      if (dt == null) return null;
       // Si l'heure est 00:00:00 ET la chaîne d'origine ne contient pas
       // de séparateur 'T', c'est une date pure → on ne montre rien.
       if (dt.hour == 0 && dt.minute == 0 && !raw.contains('T')) {
@@ -1531,7 +1523,8 @@ bool _isVisitInPast(Dossier d) {
   final raw = d.visitDate;
   if (raw == null || raw.trim().isEmpty) return false;
   try {
-    final dt = DateTime.parse(raw);
+    final dt = parseVisitDateTime(raw);
+    if (dt == null) return false;
     final today = DateTime.now();
     final dtDay = DateTime(dt.year, dt.month, dt.day);
     final todayDay = DateTime(today.year, today.month, today.day);
@@ -1899,7 +1892,7 @@ class _WeekAgendaPanel extends StatelessWidget {
       if (_isVisitInPast(d)) continue;
       final raw = d.visitDate;
       if (raw == null || raw.isEmpty) continue;
-      final when = DateTime.tryParse(raw);
+      final when = parseVisitDateTime(raw);
       if (when == null) continue;
       if (when.isBefore(DateTime(now.year, now.month, now.day))) continue;
       if (!when.isBefore(weekEnd)) continue;

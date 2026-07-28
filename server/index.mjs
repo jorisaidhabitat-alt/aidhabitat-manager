@@ -120,6 +120,7 @@ const DEFAULT_LEGACY_ERGO_EMAIL = 'c.demenais@aidhabitat.fr';
 let memberRegistryCache = null;
 
 const app = express();
+app.disable('x-powered-by');
 
 const parseCorsOrigins = (value) => String(value || '')
   .split(',')
@@ -184,15 +185,14 @@ function isOriginAllowed(origin) {
   try {
     const { hostname } = new URL(origin);
     if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
-    if (PROJECT_VERCEL_HOST_PATTERN.test(hostname)) return true;
   } catch { /* malformed origin */ }
   return false;
 }
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (isOriginAllowed(origin)) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
+  if (origin && isOriginAllowed(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
     res.header('Vary', 'Origin');
     // Only allow credentials when the origin is explicitly allowed — the
     // spec forbids `Allow-Origin: *` together with `Allow-Credentials: true`.
@@ -201,6 +201,14 @@ app.use((req, res, next) => {
     // cross-origin requests made with `credentials: 'include'`.
     res.header('Access-Control-Allow-Credentials', 'true');
   }
+  res.header('Strict-Transport-Security', 'max-age=31536000');
+  res.header('X-Content-Type-Options', 'nosniff');
+  res.header('Referrer-Policy', 'no-referrer');
+  res.header('X-Frame-Options', 'DENY');
+  res.header(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  );
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Session, If-Unmodified-Since');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   // Expose les headers custom au JavaScript du PWA. Sans cette ligne, le
@@ -272,16 +280,16 @@ const conditionalReportMultipart = (req, res, next) => {
 // fichier à qui en devinait l'URL (photos profil, documents PII, plans
 // de logement). Maintenant : le token doit être fourni soit dans le
 // header `X-App-Session` (méthode standard, utilisée par
-// `MediaCacheService` côté Flutter), soit en query param `?token=...`
-// (fallback pour les `<img src>` directs où l'on ne peut pas définir
-// de header). La validation réutilise la même logique HMAC que
+// `MediaCacheService` côté Flutter). Les tokens dans les paramètres
+// d'URL sont volontairement refusés : ils fuitent dans les historiques,
+// journaux reverse-proxy et en-têtes Referer. La validation réutilise
+// la même logique HMAC que
 // `resolveSessionUser` (mais inlinée pour éviter de muter `req` avant
 // que les autres middlewares puissent y toucher).
 const requireAuthForUploads = async (req, res, next) => {
   try {
     const headerToken = String(req.get('x-app-session') || '').trim();
-    const queryToken = String(req.query?.token || '').trim();
-    const token = headerToken || queryToken;
+    const token = headerToken;
     if (!token) {
       return res.status(401).json({ error: 'unauthorized' });
     }
@@ -296,7 +304,7 @@ const requireAuthForUploads = async (req, res, next) => {
     const { store, members } = await loadMemberRegistryForAuth();
     const expected = crypto.createHmac('sha256', store.secret)
       .update(encodedPayload).digest('base64url');
-    if (signature !== expected) {
+    if (!timingSafeStringEqual(signature, expected)) {
       return res.status(401).json({ error: 'unauthorized' });
     }
     const payload = decodeBase64Url(encodedPayload);
@@ -907,7 +915,6 @@ const generatePassword = () => {
   ];
   return shufflePasswordChars(chars).join('');
 };
-const passwordChecksum = (password) => crypto.createHash('sha256').update(String(password)).digest('hex');
 const writeMemberPasswordToNoco = async (member, password) => {
   const recordId = stringValue(member?.ergoRecordId).trim();
   if (!recordId) {
@@ -968,17 +975,39 @@ const getTokenFromRequest = (req) => {
   }
   return String(req.get('x-app-session') || '').trim();
 };
+const timingSafeStringEqual = (left, right) => {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length
+    && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
 const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_LIMIT_MAX_FAILURES = 8;
+const LOGIN_RATE_LIMIT_MAX_IP_FAILURES = 40;
 const loginFailureBuckets = new Map();
-const loginRateLimitKey = (req, email) => {
+let loginRateLimitLastCleanup = 0;
+const loginClientIp = (req) => {
   const forwardedFor = String(req.headers['x-forwarded-for'] || '').split(',', 1)[0].trim();
-  const ip = forwardedFor || req.ip || req.socket?.remoteAddress || 'unknown-ip';
-  return `${ip}:${normalizeEmail(email) || 'unknown-email'}`;
+  return forwardedFor || req.ip || req.socket?.remoteAddress || 'unknown-ip';
 };
-const getLoginFailureBucket = (req, email) => {
-  const key = loginRateLimitKey(req, email);
+const loginRateLimitKey = (req, email) =>
+  `account:${loginClientIp(req)}:${normalizeEmail(email) || 'unknown-email'}`;
+const loginIpRateLimitKey = (req) => `ip:${loginClientIp(req)}`;
+const pruneLoginFailureBuckets = (now) => {
+  if (
+    now - loginRateLimitLastCleanup < 60_000
+    && loginFailureBuckets.size < 5000
+  ) {
+    return;
+  }
+  for (const [key, bucket] of loginFailureBuckets.entries()) {
+    if (bucket.resetAt <= now) loginFailureBuckets.delete(key);
+  }
+  loginRateLimitLastCleanup = now;
+};
+const getLoginFailureBucketByKey = (key) => {
   const now = Date.now();
+  pruneLoginFailureBuckets(now);
   const current = loginFailureBuckets.get(key);
   if (!current || current.resetAt <= now) {
     const fresh = { key, count: 0, resetAt: now + LOGIN_RATE_LIMIT_WINDOW_MS };
@@ -987,14 +1016,30 @@ const getLoginFailureBucket = (req, email) => {
   }
   return current;
 };
-const isLoginRateLimited = (bucket) => bucket.count >= LOGIN_RATE_LIMIT_MAX_FAILURES && bucket.resetAt > Date.now();
+const getLoginFailureBuckets = (req, email) => ({
+  account: getLoginFailureBucketByKey(loginRateLimitKey(req, email)),
+  ip: getLoginFailureBucketByKey(loginIpRateLimitKey(req)),
+});
+const isLoginRateLimited = (buckets) =>
+  (
+    buckets.account.count >= LOGIN_RATE_LIMIT_MAX_FAILURES
+    || buckets.ip.count >= LOGIN_RATE_LIMIT_MAX_IP_FAILURES
+  )
+  && Math.max(buckets.account.resetAt, buckets.ip.resetAt) > Date.now();
 const recordLoginFailure = (bucket) => {
   bucket.count += 1;
   loginFailureBuckets.set(bucket.key, bucket);
 };
+const recordLoginFailures = (buckets) => {
+  recordLoginFailure(buckets.account);
+  recordLoginFailure(buckets.ip);
+};
 const clearLoginFailures = (req, email) => {
   loginFailureBuckets.delete(loginRateLimitKey(req, email));
 };
+const DUMMY_PASSWORD_CREDENTIAL = buildPasswordCredential(
+  crypto.randomBytes(32).toString('base64url'),
+);
 const uploadOwnerKeyForUser = (user) => `user:${normalizeEmail(user?.email)}`;
 const syntheticBeneficiaryId = (recordId) => `nocodb-beneficiaire-${recordId}`;
 const parseSyntheticBeneficiaryId = (value) => {
@@ -2636,6 +2681,28 @@ const legacyEmailsForMember = (email) => Object.entries(MEMBER_EMAIL_MIGRATIONS)
   .filter(([, currentEmail]) => currentEmail === email)
   .map(([legacyEmail]) => legacyEmail);
 
+const normalizeMemberRegistryMembers = (members) => {
+  const byEmail = new Map();
+  for (const member of asArray(members)) {
+    const email = normalizeEmail(member?.email);
+    if (!email) continue;
+    // Les emails historiques restent dans la table NocoDB sur certains
+    // déploiements après migration. Ils ne doivent plus apparaître comme
+    // profils séparés dans l'app ni servir à l'authentification.
+    if (MEMBER_EMAIL_MIGRATIONS[email]) continue;
+    const existing = byEmail.get(email);
+    if (
+      !existing
+      || (member.nocoPassword && !existing.nocoPassword)
+      || (member.ergoRecordId && !existing.ergoRecordId)
+    ) {
+      byEmail.set(email, member);
+    }
+  }
+  return [...byEmail.values()]
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+};
+
 const normalizeReportErgoKey = (value) => stringValue(value)
   .normalize('NFD')
   .replace(/[̀-ͯ]/g, '')
@@ -2822,10 +2889,9 @@ const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
   let members;
   try {
     const ergos = await syncPresetMembersInErgos();
-    members = ergos
-      .map(buildMemberFromErgoRecord)
-      .filter(Boolean)
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    members = normalizeMemberRegistryMembers(
+      ergos.map(buildMemberFromErgoRecord).filter(Boolean),
+    );
   } catch (error) {
     console.warn('[auth] NocoDB indisponible, utilisation du registre local.', error);
     members = Object.entries(MEMBER_PROFILES)
@@ -2998,7 +3064,7 @@ const resolveSessionUser = async (req) => {
 
   const { store, members } = await loadMemberRegistryForAuth();
   const expectedSignature = crypto.createHmac('sha256', store.secret).update(encodedPayload).digest('base64url');
-  if (signature !== expectedSignature) return null;
+  if (!timingSafeStringEqual(signature, expectedSignature)) return null;
 
   const payload = decodeBase64Url(encodedPayload);
   if (!payload?.email || Number(payload.exp) < Date.now()) return null;
@@ -4072,13 +4138,13 @@ app.post('/api/auth/login', async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
-    const loginBucket = getLoginFailureBucket(req, email);
-    if (isLoginRateLimited(loginBucket)) {
+    const loginBuckets = getLoginFailureBuckets(req, email);
+    if (isLoginRateLimited(loginBuckets)) {
       res.status(429).json({ success: false, error: 'Trop de tentatives, réessayez plus tard' });
       return;
     }
     const rejectLogin = (status, error) => {
-      recordLoginFailure(loginBucket);
+      recordLoginFailures(loginBuckets);
       res.status(status).json({ success: false, error });
     };
     // 2026-05-07 — fix login intermittent. Avant : `loadMemberRegistryForAuth`
@@ -4090,33 +4156,30 @@ app.post('/api/auth/login', async (req, res, next) => {
     // Maintenant : login force `loadMemberRegistry()` qui pull NocoDB
     // + calcule les `nocoPasswordHash` si pas en cache → toujours
     // valide même au cold start.
-    const { members, store } = await loadMemberRegistry();
+    const { members, store } = await loadMemberRegistry({ forceRefresh: true });
     const member = members.find((entry) => entry.email === email);
-
-    if (!member) {
-      rejectLogin(401, 'Adresse mail non autorisée');
-      return;
-    }
-
     const credentials = store.users[email];
-    if (!credentials) {
-      rejectLogin(401, 'Aucun mot de passe généré pour ce membre');
-      return;
-    }
-
-    let isValid = false;
-    if (credentials.nocoPasswordHash) {
+    let isValid;
+    if (credentials?.nocoPasswordHash) {
       isValid = verifyPasswordHash(
         password,
         credentials.nocoPasswordSalt,
         credentials.nocoPasswordHash,
       );
-    } else {
+    } else if (credentials?.passwordHash) {
       isValid = verifyPasswordHash(password, credentials.salt, credentials.passwordHash);
+    } else {
+      // Effectue malgré tout un scrypt pour que le temps de réponse ne
+      // permette pas de distinguer un compte inconnu d'un mauvais mot de passe.
+      isValid = verifyPasswordHash(
+        password,
+        DUMMY_PASSWORD_CREDENTIAL.salt,
+        DUMMY_PASSWORD_CREDENTIAL.hash,
+      );
     }
 
-    if (!isValid) {
-      rejectLogin(401, 'Mot de passe incorrect');
+    if (!member || !credentials || !isValid) {
+      rejectLogin(401, 'Identifiants incorrects');
       return;
     }
 

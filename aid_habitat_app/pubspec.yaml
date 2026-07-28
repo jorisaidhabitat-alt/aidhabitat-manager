@@ -89,6 +89,7 @@ dependencies:
   # remote_token`) qui exposait l'auth si l'appareil était perdu/volé
   # déverrouillé.
   flutter_secure_storage: ^9.2.4
+  pointycastle: ^4.0.0
 
 dev_dependencies:
   flutter_test:

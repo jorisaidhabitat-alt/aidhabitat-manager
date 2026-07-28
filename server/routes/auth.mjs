@@ -3,10 +3,12 @@ import fs from 'node:fs/promises';
 import { requireAuth, requireAdmin } from '../middleware/auth.mjs';
 import crypto from 'node:crypto';
 import {
+  buildPasswordCredential,
+  verifyPasswordHash,
+} from '../passwordCredential.mjs';
+import {
   normalizeEmail,
-  hashPassword,
   generatePassword,
-  randomSecret,
   signSessionToken,
   loadMemberRegistryForAuth,
   loadMemberRegistry,
@@ -29,6 +31,9 @@ import {
 } from '../helpers.mjs';
 
 const router = express.Router();
+const DUMMY_PASSWORD_CREDENTIAL = buildPasswordCredential(
+  crypto.randomBytes(32).toString('base64url'),
+);
 
 router.post('/api/auth/login', async (req, res, next) => {
   try {
@@ -36,23 +41,22 @@ router.post('/api/auth/login', async (req, res, next) => {
     const password = String(req.body?.password || '');
     const { members, store } = await loadMemberRegistryForAuth();
     const member = members.find((entry) => entry.email === email);
-
-    if (!member) {
-      res.status(401).json({ success: false, error: 'Adresse mail non autorisée' });
-      return;
-    }
-
     const credentials = store.users[email];
-    if (!credentials) {
-      res.status(401).json({ success: false, error: 'Aucun mot de passe généré pour ce membre' });
-      return;
-    }
-
-    const isValid = credentials.nocoPasswordHash
-      ? credentials.nocoPasswordHash === hashPassword(password, credentials.nocoPasswordSalt)
-      : credentials.passwordHash === hashPassword(password, credentials.salt);
-    if (!isValid) {
-      res.status(401).json({ success: false, error: 'Mot de passe incorrect' });
+    const isValid = credentials?.nocoPasswordHash
+      ? verifyPasswordHash(
+        password,
+        credentials.nocoPasswordSalt,
+        credentials.nocoPasswordHash,
+      )
+      : credentials?.passwordHash
+        ? verifyPasswordHash(password, credentials.salt, credentials.passwordHash)
+        : verifyPasswordHash(
+          password,
+          DUMMY_PASSWORD_CREDENTIAL.salt,
+          DUMMY_PASSWORD_CREDENTIAL.hash,
+        );
+    if (!member || !credentials || !isValid) {
+      res.status(401).json({ success: false, error: 'Identifiants incorrects' });
       return;
     }
 
@@ -198,10 +202,21 @@ router.post('/api/auth/provision', requireAdmin, async (req, res, next) => {
     for (const member of targets) {
       if (!forceReset && !explicitPassword && store.users[member.email]) continue;
       const password = explicitPassword || generatePassword(member.displayName);
-      const salt = randomSecret(16);
+      const credential = buildPasswordCredential(password);
+      if (!member.ergoRecordId) {
+        throw new Error(`Membre NocoDB introuvable pour ${member.email}`);
+      }
+      await updateRecord(TABLES.ergotherapeutes, member.ergoRecordId, {
+        mot_de_passe: credential.serialized,
+      });
       store.users[member.email] = {
-        salt,
-        passwordHash: hashPassword(password, salt),
+        salt: credential.salt,
+        passwordHash: credential.hash,
+        nocoPasswordSalt: credential.salt,
+        nocoPasswordHash: credential.hash,
+        nocoPasswordChecksum: credential.checksum,
+        sessionVersion:
+          (Number(store.users[member.email]?.sessionVersion) || 0) + 1,
         createdAt: new Date().toISOString(),
       };
       // SECURITY 2026-05-15 (audit P0 #3) : on NE STOCKE PLUS le
@@ -264,11 +279,14 @@ router.post('/api/admin/access-members', requireAdmin, async (req, res, next) =>
     }
 
     const { prenom, nom } = splitDisplayName(displayName);
+    const password = explicitPassword || generatePassword(displayName);
+    const credential = buildPasswordCredential(password);
     const created = await createRecord(TABLES.ergotherapeutes, {
       uuid_source: crypto.randomUUID(),
       prenom,
       nom,
       email,
+      mot_de_passe: credential.serialized,
       ...(establishmentId !== undefined ? { etablissements_id: establishmentId } : {}),
       created_at: new Date().toISOString(),
     });
@@ -276,11 +294,13 @@ router.post('/api/admin/access-members', requireAdmin, async (req, res, next) =>
     // Provisionne les credentials immédiatement pour que le membre puisse
     // se connecter sans passer par un "reset".
     const store = await readAuthStore();
-    const password = explicitPassword || generatePassword(displayName);
-    const salt = randomSecret(16);
     store.users[email] = {
-      salt,
-      passwordHash: hashPassword(password, salt),
+      salt: credential.salt,
+      passwordHash: credential.hash,
+      nocoPasswordSalt: credential.salt,
+      nocoPasswordHash: credential.hash,
+      nocoPasswordChecksum: credential.checksum,
+      sessionVersion: 1,
       createdAt: new Date().toISOString(),
     };
     // SECURITY 2026-05-15 (audit P0 #3) : password retiré du store, ne

@@ -2,12 +2,12 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
 
-import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
 import 'app_config.dart';
 import 'local_database.dart';
+import 'local_password_hasher.dart';
 import 'nocodb_api_client.dart';
 import 'offline_vault.dart';
 import 'secure_session_storage.dart';
@@ -34,7 +34,6 @@ class AuthService {
   static const String defaultOrganisationId = 'org_aidhabitat';
   static const int _passwordMinLength = 14;
   static const int _passwordMaxLength = 128;
-
   static String? consumePendingSessionNotice() {
     final notice = _pendingSessionNotice;
     _pendingSessionNotice = null;
@@ -436,8 +435,7 @@ class AuthService {
     final row = rows.first;
     final salt = row['password_salt'] as String? ?? '';
     final expectedHash = row['password_hash'] as String? ?? '';
-    final providedHash = _hashPassword(password, salt);
-    final localPasswordMatches = providedHash == expectedHash;
+    final localPasswordMatches = _verifyPassword(password, salt, expectedHash);
 
     // Try the Express API in parallel with the same password. If the server
     // accepts it, the user gets both a local and a remote session.
@@ -477,7 +475,8 @@ class AuthService {
     // the user has rotated their password on the admin panel without updating
     // their device. Sync the local password to match the server one so the
     // user only ever types a single password.
-    if (!localPasswordMatches && remoteToken != null) {
+    if (remoteToken != null &&
+        (!localPasswordMatches || !_isCurrentPasswordHash(expectedHash))) {
       final nextSalt = _generateSalt();
       await _database.database.then(
         (db) => db.update(
@@ -728,7 +727,7 @@ class AuthService {
     final salt = row['password_salt'] as String? ?? '';
     final currentHash = row['password_hash'] as String? ?? '';
     if (!_hasBootstrapPassword) return false;
-    return currentHash == _hashPassword(_bootstrapPasswordBuild, salt);
+    return _verifyPassword(_bootstrapPasswordBuild, salt, currentHash);
   }
 
   Future<bool> isBootstrapPasswordActiveForEmail(String email) async {
@@ -772,8 +771,7 @@ class AuthService {
     final row = rows.first;
     final salt = row['password_salt'] as String? ?? '';
     final expectedHash = row['password_hash'] as String? ?? '';
-    final currentHash = _hashPassword(currentPassword, salt);
-    if (currentHash != expectedHash) {
+    if (!_verifyPassword(currentPassword, salt, expectedHash)) {
       return const PasswordChangeResult(
         success: false,
         error: 'Mot de passe actuel invalide',
@@ -997,7 +995,15 @@ class AuthService {
   }
 
   String _hashPassword(String password, String salt) {
-    return sha256.convert(utf8.encode('$salt::$password')).toString();
+    return LocalPasswordHasher.hash(password, salt);
+  }
+
+  bool _verifyPassword(String password, String salt, String expectedHash) {
+    return LocalPasswordHasher.verify(password, salt, expectedHash);
+  }
+
+  bool _isCurrentPasswordHash(String hash) {
+    return LocalPasswordHasher.isCurrent(hash);
   }
 
   LocalUserRole _mapRemoteRole(String? role) {

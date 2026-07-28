@@ -501,6 +501,12 @@ export const getTokenFromRequest = (req) => {
   }
   return String(req.get('x-app-session') || '').trim();
 };
+export const timingSafeStringEqual = (left, right) => {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length
+    && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
 export const syntheticBeneficiaryId = (recordId) => `nocodb-beneficiaire-${recordId}`;
 export const parseSyntheticBeneficiaryId = (value) => {
   const match = String(value || '').match(/^nocodb-beneficiaire-(\d+)$/);
@@ -1989,6 +1995,28 @@ export const legacyEmailsForMember = (email) => Object.entries(MEMBER_EMAIL_MIGR
   .filter(([, currentEmail]) => currentEmail === email)
   .map(([legacyEmail]) => legacyEmail);
 
+export const normalizeMemberRegistryMembers = (members) => {
+  const byEmail = new Map();
+  for (const member of asArray(members)) {
+    const email = normalizeEmail(member?.email);
+    if (!email) continue;
+    // Les anciens emails migrés peuvent rester comme lignes résiduelles
+    // dans NocoDB. On les ignore pour éviter les doublons Coralie /
+    // Christelle dans la liste des accès et dans le cache local iPad.
+    if (MEMBER_EMAIL_MIGRATIONS[email]) continue;
+    const existing = byEmail.get(email);
+    if (
+      !existing
+      || (member.nocoPassword && !existing.nocoPassword)
+      || (member.ergoRecordId && !existing.ergoRecordId)
+    ) {
+      byEmail.set(email, member);
+    }
+  }
+  return [...byEmail.values()]
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+};
+
 export const syncPresetMembersInErgos = async () => {
   const records = await queryAll(TABLES.ergotherapeutes, { fields: FIELD_SETS.ergotherapeutes });
   for (const [email, profile] of Object.entries(MEMBER_PROFILES)) {
@@ -2028,10 +2056,9 @@ export const loadMemberRegistry = async ({ forceRefresh = false } = {}) => {
   let members;
   try {
     const ergos = await syncPresetMembersInErgos();
-    members = ergos
-      .map(buildMemberFromErgoRecord)
-      .filter(Boolean)
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    members = normalizeMemberRegistryMembers(
+      ergos.map(buildMemberFromErgoRecord).filter(Boolean),
+    );
   } catch (error) {
     console.warn('[auth] NocoDB indisponible, utilisation du registre local.', error);
     members = Object.entries(MEMBER_PROFILES)
@@ -2182,7 +2209,7 @@ export const resolveSessionUser = async (req) => {
 
   const { store, members } = await loadMemberRegistryForAuth();
   const expectedSignature = crypto.createHmac('sha256', store.secret).update(encodedPayload).digest('base64url');
-  if (signature !== expectedSignature) return null;
+  if (!timingSafeStringEqual(signature, expectedSignature)) return null;
 
   const payload = decodeBase64Url(encodedPayload);
   if (!payload?.email || Number(payload.exp) < Date.now()) return null;

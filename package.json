@@ -45,8 +45,8 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "lucide-react": "^0.556.0",
-    "multer": "^2.1.1",
-    "nodemailer": "^6.10.1",
+    "multer": "^2.2.0",
+    "nodemailer": "^9.0.3",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"
@@ -59,10 +59,11 @@
     "vite": "^6.2.0"
   },
   "overrides": {
-    "@hono/node-server": "^1.19.14",
+    "@hono/node-server": "^2.0.12",
+    "body-parser": "^2.3.0",
     "express-rate-limit": "^8.5.2",
-    "fast-uri": "^3.1.2",
-    "hono": "^4.12.23",
+    "fast-uri": "^4.1.1",
+    "hono": "^4.12.32",
     "ip-address": "^10.2.0",
     "path-to-regexp": "^8.4.2",
     "qs": "^6.15.2"

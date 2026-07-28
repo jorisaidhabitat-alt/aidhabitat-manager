@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 /// avec la State du widget) dans un fichier dédié permet :
 ///   • d'éviter la "god file" qui décourage le refactor
 ///   • de tester unitairement la sérialisation Stroke
-///     (toJson/fromJson, plafond 2000 points, etc.) sans monter un
+///     (toJson/fromJson, plafond de points, etc.) sans monter un
 ///     widget tree complet
 ///   • de garder les peintres réutilisables si une autre surface canvas
 ///     (annotateur d'images, planches…) en a besoin

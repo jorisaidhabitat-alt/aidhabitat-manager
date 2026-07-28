@@ -10,6 +10,7 @@ import '../components/brand_colors.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
+import '../services/visit_date_time.dart';
 
 /// Catégories pour les 3 menus déroulants de la page « Mes dossiers »
 /// (demande utilisateur 2026-05-04). Chaque dossier tombe dans
@@ -69,7 +70,8 @@ bool _isVisitInPast(Dossier d) {
   final raw = d.visitDate;
   if (raw == null || raw.trim().isEmpty) return false;
   try {
-    final dt = DateTime.parse(raw);
+    final dt = parseVisitDateTime(raw);
+    if (dt == null) return false;
     final today = DateTime.now();
     final dtDay = DateTime(dt.year, dt.month, dt.day);
     final todayDay = DateTime(today.year, today.month, today.day);
@@ -213,7 +215,12 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
           if (ad == null && bd == null) return 0;
           if (ad == null) return 1;
           if (bd == null) return -1;
-          return DateTime.parse(ad).compareTo(DateTime.parse(bd));
+          final parsedA = parseVisitDateTime(ad);
+          final parsedB = parseVisitDateTime(bd);
+          if (parsedA == null && parsedB == null) return 0;
+          if (parsedA == null) return 1;
+          if (parsedB == null) return -1;
+          return parsedA.compareTo(parsedB);
         };
         break;
       case 'name':
@@ -308,7 +315,8 @@ class _DossiersListScreenState extends State<DossiersListScreen> {
   String _formatVisitDate(String? raw) {
     if (raw == null || raw.trim().isEmpty) return '';
     try {
-      return DateFormat('dd/MM/yy').format(DateTime.parse(raw));
+      final parsed = parseVisitDateTime(raw);
+      return parsed == null ? raw : DateFormat('dd/MM/yy').format(parsed);
     } catch (_) {
       return raw;
     }

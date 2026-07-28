@@ -6,7 +6,8 @@ import 'package:aid_habitat_app/components/notes_canvas_painters.dart';
 /// 2026-05-15 (audit P0 #9). Focus :
 ///   • aller-retour `Stroke.toJson()` ↔ `Stroke.fromJson()` (parité
 ///     avec le format React, c'est ce qui voyage en SQLite + serveur).
-///   • plafond de 2000 points par stroke (protection mémoire).
+///   • plafond de 10 000 points par stroke (protection mémoire sans
+///     interrompre les longs tracés Apple Pencil).
 ///   • helpers tool/color en aller-retour.
 void main() {
   group('toolToString / toolFromString', () {
@@ -97,20 +98,15 @@ void main() {
 
     test('fromJson retourne null sur points manquants', () {
       expect(
-        Stroke.fromJson({
-          'tool': 'pen',
-          'color': '#ff0000',
-          'size': 2.0,
-        }),
+        Stroke.fromJson({'tool': 'pen', 'color': '#ff0000', 'size': 2.0}),
         isNull,
       );
     });
 
-    test('Plafond de 2000 points : un stroke avec 5000 points est tronqué',
-        () {
+    test('Plafond de 10 000 points : un stroke plus long est tronqué', () {
       final points = List.generate(
-        5000,
-        (i) => {'x': i / 5000.0, 'y': i / 5000.0},
+        12000,
+        (i) => {'x': i / 12000.0, 'y': i / 12000.0},
       );
       final decoded = Stroke.fromJson({
         'tool': 'pen',
@@ -118,10 +114,13 @@ void main() {
         'size': 2.0,
         'points': points,
       })!;
-      expect(decoded.points.length, 2000);
-      // Les 2000 premiers points sont conservés dans l'ordre.
+      expect(decoded.points.length, kMaxStrokePoints);
+      // Les premiers points sont conservés dans l'ordre.
       expect(decoded.points[0].dx, closeTo(0.0, 1e-9));
-      expect(decoded.points[1999].dx, closeTo(1999 / 5000.0, 1e-9));
+      expect(
+        decoded.points[kMaxStrokePoints - 1].dx,
+        closeTo((kMaxStrokePoints - 1) / 12000.0, 1e-9),
+      );
     });
 
     test('Valeurs manquantes → defaults raisonnables', () {

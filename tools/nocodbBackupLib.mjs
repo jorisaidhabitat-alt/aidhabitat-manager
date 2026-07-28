@@ -10,6 +10,11 @@ export const REQUIRED_BACKUP_TABLES = [
   'mobile_note_pages',
 ];
 
+const REQUIRED_NON_EMPTY_BACKUP_TABLES = new Set([
+  'Beneficiaires',
+  '📁 dossiers',
+]);
+
 const TABLE_ALIASES = new Map([
   ['beneficiaires', 'Beneficiaires'],
   ['dossiers', '📁 dossiers'],
@@ -65,7 +70,9 @@ export function verifyBackupData(backup) {
       failures.push(`table critique absente: ${required}`);
       continue;
     }
-    if (table.records.length === 0) failures.push(`table critique vide: ${required}`);
+    if (REQUIRED_NON_EMPTY_BACKUP_TABLES.has(required) && table.records.length === 0) {
+      failures.push(`table critique vide: ${required}`);
+    }
   }
 
   const documents = tables.get('mobile_documents')?.records || [];

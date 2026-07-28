@@ -16,6 +16,13 @@ class AccessMembersRepository {
     : _database = database ?? LocalDatabase.instance;
 
   final LocalDatabase _database;
+  static const Set<String> _legacyAccessEmails = {
+    'joris.aidhabitat@gmail.com',
+    'joris.balluais@gmail.com',
+  };
+
+  static String _normalizeEmail(String? email) =>
+      (email ?? '').trim().toLowerCase();
 
   Future<List<AdminAccessMember>> fetchAll() async {
     final db = await _database.database;
@@ -25,7 +32,11 @@ class AccessMembersRepository {
       orderBy: 'display_name ASC',
     );
     final out = <AdminAccessMember>[];
+    final seenEmails = <String>{};
     for (final row in rows) {
+      final email = _normalizeEmail(row['email'] as String?);
+      if (_legacyAccessEmails.contains(email)) continue;
+      if (email.isEmpty || !seenEmails.add(email)) continue;
       out.add(await _mapRow(row));
     }
     return out;
@@ -37,16 +48,29 @@ class AccessMembersRepository {
   /// sync_state is `synced` are deleted (the server considers them gone).
   Future<void> mergeRemoteMembers(List<AdminAccessMember> remoteMembers) async {
     final db = await _database.database;
-    final remoteByEmail = {for (final m in remoteMembers) m.email: m};
+    final normalizedRemoteMembers = remoteMembers
+        .where(
+          (member) =>
+              !_legacyAccessEmails.contains(_normalizeEmail(member.email)),
+        )
+        .toList(growable: false);
+    final remoteByEmail = {
+      for (final m in normalizedRemoteMembers) _normalizeEmail(m.email): m,
+    };
     final now = DateTime.now().toIso8601String();
 
     await db.transaction((txn) async {
+      await txn.delete(
+        'access_members',
+        where: 'LOWER(TRIM(email)) IN (?, ?)',
+        whereArgs: _legacyAccessEmails.toList(),
+      );
       final existingRows = await txn.query(
         'access_members',
         columns: ['email', 'sync_state', 'pending_delete'],
       );
       final existingByEmail = {
-        for (final r in existingRows) r['email'] as String: r,
+        for (final r in existingRows) _normalizeEmail(r['email'] as String?): r,
       };
 
       // Insert/update remote members.
@@ -61,8 +85,8 @@ class AccessMembersRepository {
       // possibles). Si on a un bug « membre ajouté côté NocoDB n'arrive
       // pas sur l'app », ajouter `updatedAt` au model + LWW comme
       // ailleurs.
-      for (final m in remoteMembers) {
-        final existing = existingByEmail[m.email];
+      for (final m in normalizedRemoteMembers) {
+        final existing = existingByEmail[_normalizeEmail(m.email)];
         if (existing != null) {
           final syncState = existing['sync_state'] as String?;
           final pendingDelete = (existing['pending_delete'] as int?) ?? 0;
