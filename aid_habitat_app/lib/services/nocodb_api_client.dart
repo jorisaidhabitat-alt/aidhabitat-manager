@@ -972,10 +972,7 @@ class NocodbApiClient {
               '$_baseUrl/api/documents/${Uri.encodeComponent(documentId)}',
             ),
             headers: _headers,
-            body: jsonEncode({
-              'title': title,
-              'tags': tags,
-            }),
+            body: jsonEncode({'title': title, 'tags': tags}),
           )
           .timeout(_defaultTimeout),
     );
@@ -2041,12 +2038,19 @@ class NocodbApiClient {
     required String patientId,
     required String tabKey,
     required int pageNumber,
+    String? scopeType,
+    String? scopeId,
   }) async {
     if (!AppConfig.hasRemoteConfig) return null;
 
-    final uri = Uri.parse(
-      '$_baseUrl/api/note-pages/$patientId',
-    ).replace(queryParameters: {'tabKey': tabKey, 'pageNumber': '$pageNumber'});
+    final uri = Uri.parse('$_baseUrl/api/note-pages/$patientId').replace(
+      queryParameters: {
+        'tabKey': tabKey,
+        'pageNumber': '$pageNumber',
+        if (scopeType != null && scopeType.isNotEmpty) 'scopeType': scopeType,
+        if (scopeId != null && scopeId.isNotEmpty) 'scopeId': scopeId,
+      },
+    );
     final response = await _client
         .get(uri, headers: _headers)
         .timeout(_defaultTimeout);

@@ -729,11 +729,13 @@ class DataService {
     required String patientId,
     required String tabKey,
     int pageNumber = 0,
+    String? dossierId,
   }) async {
     return _noteRepository.fetchDrawingJson(
       patientId: patientId,
       tabKey: tabKey,
       pageNumber: pageNumber,
+      dossierId: dossierId,
     );
   }
 
@@ -748,18 +750,24 @@ class DataService {
     required String patientId,
     required String tabKey,
     int pageNumber = 0,
+    String? dossierId,
+    String? scopeType,
+    String? scopeId,
   }) async {
     try {
       final remoteNote = await _nocodbApiClient.fetchNotePage(
         patientId: patientId,
         tabKey: tabKey,
         pageNumber: pageNumber,
+        scopeType: scopeType,
+        scopeId: scopeId,
       );
       if (remoteNote == null) return false;
       return _noteRepository.mergeRemoteNotePage(
         patientId: patientId,
         tabKey: tabKey,
         pageNumber: pageNumber,
+        dossierId: dossierId ?? remoteNote['dossierId']?.toString(),
         drawingJson: remoteNote['drawingJson']?.toString() ?? '',
         remotePath: remoteNote['remotePath']?.toString(),
         remoteUrl: remoteNote['remoteUrl']?.toString(),
@@ -805,6 +813,7 @@ class DataService {
           patientId: patientId,
           tabKey: tabKey,
           pageNumber: pageNumber,
+          dossierId: remote['dossierId']?.toString(),
           drawingJson: remote['drawingJson']?.toString() ?? '',
           remotePath: remote['remotePath']?.toString(),
           remoteUrl: remote['remoteUrl']?.toString(),
@@ -825,6 +834,9 @@ class DataService {
     required String drawingJson,
     int pageNumber = 0,
     String? previewDataUrl,
+    String? dossierId,
+    String? scopeType,
+    String? scopeId,
   }) async {
     await _noteRepository.saveDrawingJson(
       patientId: patientId,
@@ -832,6 +844,9 @@ class DataService {
       drawingJson: drawingJson,
       pageNumber: pageNumber,
       previewDataUrl: previewDataUrl,
+      dossierId: dossierId,
+      scopeType: scopeType,
+      scopeId: scopeId,
     );
   }
 

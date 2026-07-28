@@ -354,4 +354,36 @@ void main() {
       );
     });
   });
+
+  group('fetchNotePage — portée dossier', () {
+    test('transmet scopeType et scopeId pour éviter les doublons', () async {
+      final client = NocodbApiClient(
+        client: MockClient((request) async {
+          expect(request.url.path, '/api/note-pages/patient-69');
+          expect(request.url.queryParameters['tabKey'], 'notes_rapides');
+          expect(request.url.queryParameters['pageNumber'], '0');
+          expect(
+            request.url.queryParameters['scopeType'],
+            'dossier_detail',
+          );
+          expect(
+            request.url.queryParameters['scopeId'],
+            'airtable:dossier-62',
+          );
+          return http.Response(
+            '{"success":true,"data":{"notePages":[]}}',
+            200,
+          );
+        }),
+      );
+
+      await client.fetchNotePage(
+        patientId: 'patient-69',
+        tabKey: 'notes_rapides',
+        pageNumber: 0,
+        scopeType: 'dossier_detail',
+        scopeId: 'airtable:dossier-62',
+      );
+    });
+  });
 }

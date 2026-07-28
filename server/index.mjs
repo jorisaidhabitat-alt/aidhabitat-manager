@@ -22,6 +22,10 @@ import {
   parsePasswordCredential,
   verifyPasswordHash,
 } from './passwordCredential.mjs';
+import {
+  normalizeNotePageScope,
+  selectCanonicalNotePages,
+} from './notePageScope.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
 // 2026-05-06 — Vercel Blob entièrement éliminé. Seuls les helpers
 // chunks (in-memory désormais) restent utilisés depuis storage.mjs.
@@ -7841,7 +7845,10 @@ app.get('/public/note-pages/:notePageId/preview', requireAuth, async (req, res, 
 
 app.get('/api/note-pages/:patientId', requireAuth, async (req, res, next) => {
   try {
-    await resolveBeneficiaryAccess(req.appUser, req.params.patientId);
+    const access = await resolveBeneficiaryAccess(
+      req.appUser,
+      req.params.patientId,
+    );
     const scopeType = stringValue(req.query?.scopeType).trim();
     const scopeId = stringValue(req.query?.scopeId).trim();
     const tabKey = stringValue(req.query?.tabKey).trim();
@@ -7849,10 +7856,14 @@ app.get('/api/note-pages/:patientId', requireAuth, async (req, res, next) => {
     const pageNumber = req.query?.pageNumber == null || req.query.pageNumber === ''
       ? null
       : Number(req.query.pageNumber);
-    const notePages = await mobileSyncStore.listNotePagesByPatient(
+    const storedNotePages = await mobileSyncStore.listNotePagesByPatient(
       req.params.patientId,
       { scopeType, scopeId, tabKey, subTabKey, pageNumber },
     );
+    const notePages = selectCanonicalNotePages(storedNotePages, {
+      patientId: req.params.patientId,
+      dossierId: field(access.dossierRecord, 'uuid_source'),
+    });
 
     res.json({
       success: true,
@@ -7868,8 +7879,8 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
   try {
     const notePageId = stringValue(req.body?.notePageId).trim();
     const patientId = stringValue(req.body?.patientId).trim();
-    const scopeType = stringValue(req.body?.scopeType).trim();
-    const scopeId = stringValue(req.body?.scopeId).trim();
+    const requestedScopeType = stringValue(req.body?.scopeType).trim();
+    const requestedScopeId = stringValue(req.body?.scopeId).trim();
     const tabKey = stringValue(req.body?.tabKey).trim();
     const subTabKey = stringValue(req.body?.subTabKey).trim();
     const pageNumber = Number(req.body?.pageNumber ?? 0);
@@ -7888,10 +7899,10 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
     if (!patientId) {
       throw httpError(400, 'patientId manquant');
     }
-    if (!scopeType) {
+    if (!requestedScopeType) {
       throw httpError(400, 'scopeType manquant');
     }
-    if (!scopeId) {
+    if (!requestedScopeId) {
       throw httpError(400, 'scopeId manquant');
     }
     if (!tabKey) {
@@ -7914,6 +7925,13 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
     }
 
     const access = await resolveBeneficiaryAccess(req.appUser, targetPatientId);
+    const { scopeType, scopeId } = normalizeNotePageScope({
+      patientId: targetPatientId,
+      dossierId: field(access.dossierRecord, 'uuid_source'),
+      scopeType: requestedScopeType,
+      scopeId: requestedScopeId,
+      tabKey,
+    });
     const notePageContext = buildBeneficiaryDocumentContext({
       beneficiaryRecord: access.beneficiaryRecord,
       dossierRecord: access.dossierRecord,
@@ -7949,8 +7967,8 @@ app.put('/api/note-pages', requireAuth, async (req, res, next) => {
 app.post('/api/note-pages', requireAuth, async (req, res, next) => {
   try {
     const patientId = stringValue(req.body?.patientId).trim();
-    const scopeType = stringValue(req.body?.scopeType).trim();
-    const scopeId = stringValue(req.body?.scopeId).trim();
+    const requestedScopeType = stringValue(req.body?.scopeType).trim();
+    const requestedScopeId = stringValue(req.body?.scopeId).trim();
     const tabKey = stringValue(req.body?.tabKey).trim();
     const subTabKey = stringValue(req.body?.subTabKey).trim();
     const layoutKind = stringValue(req.body?.layoutKind).trim() || 'freeform';
@@ -7958,10 +7976,10 @@ app.post('/api/note-pages', requireAuth, async (req, res, next) => {
     if (!patientId) {
       throw httpError(400, 'patientId manquant');
     }
-    if (!scopeType) {
+    if (!requestedScopeType) {
       throw httpError(400, 'scopeType manquant');
     }
-    if (!scopeId) {
+    if (!requestedScopeId) {
       throw httpError(400, 'scopeId manquant');
     }
     if (!tabKey) {
@@ -7969,6 +7987,13 @@ app.post('/api/note-pages', requireAuth, async (req, res, next) => {
     }
 
     const access = await resolveBeneficiaryAccess(req.appUser, patientId);
+    const { scopeType, scopeId } = normalizeNotePageScope({
+      patientId,
+      dossierId: field(access.dossierRecord, 'uuid_source'),
+      scopeType: requestedScopeType,
+      scopeId: requestedScopeId,
+      tabKey,
+    });
     const notePageContext = buildBeneficiaryDocumentContext({
       beneficiaryRecord: access.beneficiaryRecord,
       dossierRecord: access.dossierRecord,

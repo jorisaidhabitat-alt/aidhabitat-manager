@@ -166,6 +166,7 @@ class _DossierScreenState extends State<DossierScreen> {
         patientId: widget.dossier.patient.id,
         tabKey: 'notes_rapides',
         pageNumber: 0,
+        dossierId: widget.dossier.id,
       );
       if (existingJson != null) return;
       // Récupère le commentaire projet depuis les observations du dossier.
@@ -185,6 +186,9 @@ class _DossierScreenState extends State<DossierScreen> {
         tabKey: 'notes_rapides',
         pageNumber: 0,
         drawingJson: json,
+        dossierId: widget.dossier.id,
+        scopeType: 'dossier_detail',
+        scopeId: widget.dossier.id,
       );
       if (mounted) {
         // Le jeton externe force NotesWidget à re-fetch sa page 0 — le
@@ -1228,6 +1232,9 @@ class _DossierScreenState extends State<DossierScreen> {
     return NotesWidget(
       patientId: widget.dossier.patient.id,
       tabKey: 'notes_rapides',
+      dossierId: widget.dossier.id,
+      scopeType: 'dossier_detail',
+      scopeId: widget.dossier.id,
       sharedText: true,
       allowTextModal: false,
       // Nouvelle mise en page "deux cartes empilées" — texte en haut,

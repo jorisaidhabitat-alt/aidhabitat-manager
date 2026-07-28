@@ -65,13 +65,21 @@ class NoteRepository {
     required String patientId,
     required String tabKey,
     int pageNumber = 0,
+    String? dossierId,
   }) async {
     final db = await _database.database;
     final rows = await db.query(
       'note_pages',
       columns: ['drawing_json'],
-      where: 'patient_local_id = ? AND tab_key = ? AND page_number = ?',
-      whereArgs: [patientId, tabKey, pageNumber],
+      where:
+          'patient_local_id = ? AND tab_key = ? AND page_number = ?'
+          '${dossierId == null ? '' : ' AND (dossier_local_id = ? OR dossier_local_id IS NULL)'}',
+      whereArgs: [
+        patientId,
+        tabKey,
+        pageNumber,
+        if (dossierId != null) dossierId,
+      ],
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -179,6 +187,9 @@ class NoteRepository {
     required String drawingJson,
     int pageNumber = 0,
     String? previewDataUrl,
+    String? dossierId,
+    String? scopeType,
+    String? scopeId,
   }) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
@@ -206,6 +217,7 @@ class NoteRepository {
     await db.insert('note_pages', {
       'local_id': noteId,
       'patient_local_id': patientId,
+      'dossier_local_id': dossierId,
       'tab_key': tabKey,
       'page_number': pageNumber,
       'text_content': '',
@@ -226,6 +238,9 @@ class NoteRepository {
       'payload_json': await OfflineVault.instance.sealString(
         jsonEncode({
           'patientLocalId': patientId,
+          if (dossierId != null && dossierId.isNotEmpty) 'dossierId': dossierId,
+          if (scopeType != null && scopeType.isNotEmpty) 'scopeType': scopeType,
+          if (scopeId != null && scopeId.isNotEmpty) 'scopeId': scopeId,
           'tabKey': tabKey,
           'pageNumber': pageNumber,
           'drawingJson': drawingJson,
@@ -416,6 +431,7 @@ class NoteRepository {
     String? remoteUrl,
     String? updatedAt,
     String? planPhase,
+    String? dossierId,
   }) async {
     final db = await _database.database;
     final existingRows = await db.query(
@@ -425,7 +441,6 @@ class NoteRepository {
       limit: 1,
     );
     final existing = existingRows.isNotEmpty ? existingRows.first : null;
-    final existingSyncState = existing?['sync_state'] as String?;
 
     // Stratégie LWW (last-writer-wins) basée sur les timestamps.
     //
@@ -451,7 +466,7 @@ class NoteRepository {
     // pas de risque d'écraser ce que l'utilisateur tape MAINTENANT,
     // c'est seulement les modifs anciennes orphelines qui peuvent
     // être ratrapées.
-    if (existing != null && existingSyncState != SyncState.synced.name) {
+    if (existing != null) {
       final localUpdatedAt = existing['updated_at'] as String?;
       final remoteIsNewer = _isRemoteUpdatedAtNewer(
         remoteUpdatedAt: updatedAt,
@@ -460,7 +475,6 @@ class NoteRepository {
       if (!remoteIsNewer) {
         return false;
       }
-      // Sinon on tombe en bas pour faire le merge.
     }
 
     // Si le serveur ne nous renvoie pas explicitement de planPhase
@@ -481,6 +495,7 @@ class NoteRepository {
           existing?['local_id'] as String? ??
           'remote_note_${patientId}_${tabKey}_$pageNumber',
       'patient_local_id': patientId,
+      'dossier_local_id': dossierId ?? existing?['dossier_local_id'],
       'tab_key': tabKey,
       'page_number': pageNumber,
       'text_content': textContentAtRest,

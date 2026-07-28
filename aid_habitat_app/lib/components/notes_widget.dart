@@ -154,6 +154,9 @@ class NotesWidget extends StatefulWidget {
     super.key,
     required this.patientId,
     required this.tabKey,
+    this.dossierId,
+    this.scopeType,
+    this.scopeId,
     this.initialText = '',
     this.placeholder = 'Saisir une note...',
     this.currentPage = 0,
@@ -204,6 +207,9 @@ class NotesWidget extends StatefulWidget {
   // Identifiants / titre
   final String patientId;
   final String tabKey;
+  final String? dossierId;
+  final String? scopeType;
+  final String? scopeId;
   final String title;
   final String? subtitle;
   final int maxPages;
@@ -379,6 +385,53 @@ class NotesWidget extends StatefulWidget {
 class _NotesWidgetState extends State<NotesWidget> {
   final DataService _dataService = DataService();
 
+  Future<String?> _fetchNoteDrawingJson({
+    required String patientId,
+    required String tabKey,
+    int pageNumber = 0,
+  }) {
+    return _dataService.fetchNoteDrawingJson(
+      patientId: patientId,
+      tabKey: tabKey,
+      pageNumber: pageNumber,
+      dossierId: widget.dossierId,
+    );
+  }
+
+  Future<void> _saveNoteDrawingJson({
+    required String patientId,
+    required String tabKey,
+    required String drawingJson,
+    int pageNumber = 0,
+    String? previewDataUrl,
+  }) {
+    return _dataService.saveNoteDrawingJson(
+      patientId: patientId,
+      tabKey: tabKey,
+      drawingJson: drawingJson,
+      pageNumber: pageNumber,
+      previewDataUrl: previewDataUrl,
+      dossierId: widget.dossierId,
+      scopeType: widget.scopeType,
+      scopeId: widget.scopeId,
+    );
+  }
+
+  Future<bool> _refreshNotePageFromRemote({
+    required String patientId,
+    required String tabKey,
+    int pageNumber = 0,
+  }) {
+    return _dataService.refreshNotePageFromRemote(
+      patientId: patientId,
+      tabKey: tabKey,
+      pageNumber: pageNumber,
+      dossierId: widget.dossierId,
+      scopeType: widget.scopeType,
+      scopeId: widget.scopeId,
+    );
+  }
+
   // Texte + contrôleur
   late final TextEditingController _textController;
   final FocusNode _textFocusNode = FocusNode();
@@ -532,7 +585,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   Future<void> _refreshCurrentPageFromRemoteAfterPull() async {
     try {
-      await _dataService.refreshNotePageFromRemote(
+      await _refreshNotePageFromRemote(
         patientId: widget.patientId,
         tabKey: widget.tabKey,
         pageNumber: _currentPage,
@@ -543,7 +596,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           _textFocusNode.hasFocus) {
         return;
       }
-      final refreshed = await _dataService.fetchNoteDrawingJson(
+      final refreshed = await _fetchNoteDrawingJson(
         patientId: widget.patientId,
         tabKey: widget.tabKey,
         pageNumber: _currentPage,
@@ -721,7 +774,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// OS note window) edited the same row and we need to mirror the change
   /// into this in-app widget.
   Future<void> _reloadCurrentPageFromStore() async {
-    final json = await _dataService.fetchNoteDrawingJson(
+    final json = await _fetchNoteDrawingJson(
       patientId: widget.patientId,
       tabKey: widget.tabKey,
       pageNumber: _currentPage,
@@ -825,7 +878,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
     try {
       if (!sharedText) {
-        await _dataService.saveNoteDrawingJson(
+        await _saveNoteDrawingJson(
           patientId: patientId,
           tabKey: tabKey,
           pageNumber: currentPage,
@@ -836,7 +889,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
       for (var page = 0; page < totalPages; page++) {
         if (page == currentPage) {
-          await _dataService.saveNoteDrawingJson(
+          await _saveNoteDrawingJson(
             patientId: patientId,
             tabKey: tabKey,
             pageNumber: page,
@@ -851,7 +904,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         final hasLoadedPage =
             strokes != null || flags != null || scopedFlags.isNotEmpty;
         if (hasLoadedPage) {
-          await _dataService.saveNoteDrawingJson(
+          await _saveNoteDrawingJson(
             patientId: patientId,
             tabKey: tabKey,
             pageNumber: page,
@@ -874,7 +927,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           'text': pageTexts[page] ?? text,
           'strokes': const <dynamic>[],
         });
-        final existing = await _dataService.fetchNoteDrawingJson(
+        final existing = await _fetchNoteDrawingJson(
           patientId: patientId,
           tabKey: tabKey,
           pageNumber: page,
@@ -897,7 +950,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           }
         }
 
-        await _dataService.saveNoteDrawingJson(
+        await _saveNoteDrawingJson(
           patientId: patientId,
           tabKey: tabKey,
           pageNumber: page,
@@ -1034,7 +1087,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     //    sondait jusqu'à 20 pages séquentiellement dans SQLite WASM avant
     //    d'afficher quoi que ce soit, ce qui prenait plusieurs secondes
     //    pour la note rapide du dossier.
-    final firstJson = await _dataService.fetchNoteDrawingJson(
+    final firstJson = await _fetchNoteDrawingJson(
       patientId: widget.patientId,
       tabKey: widget.tabKey,
       pageNumber: _currentPage,
@@ -1048,30 +1101,27 @@ class _NotesWidgetState extends State<NotesWidget> {
 
     // 2. Refresh réseau de la page courante (non-bloquant).
     unawaited(
-      _dataService
-          .refreshNotePageFromRemote(
-            patientId: widget.patientId,
-            tabKey: widget.tabKey,
-            pageNumber: _currentPage,
-          )
-          .then((_) async {
-            if (_isDirty || !mounted) return;
-            final refreshed = await _dataService.fetchNoteDrawingJson(
-              patientId: widget.patientId,
-              tabKey: widget.tabKey,
-              pageNumber: _currentPage,
-            );
-            if (!mounted || _isDirty) return;
-            setState(
-              () =>
-                  _applyJson(_currentPage, refreshed, hydrateController: true),
-            );
-            // Émet aussi après le refresh initial (cf. fix
-            // _refreshCurrentPageFromRemoteAfterPull) — la version remote
-            // peut contenir de nouveaux medicalFlags posés depuis l'autre
-            // device entre l'init local et l'arrivée du refresh.
-            _emitMedicalFlagsForCurrentPage();
-          }),
+      _refreshNotePageFromRemote(
+        patientId: widget.patientId,
+        tabKey: widget.tabKey,
+        pageNumber: _currentPage,
+      ).then((_) async {
+        if (_isDirty || !mounted) return;
+        final refreshed = await _fetchNoteDrawingJson(
+          patientId: widget.patientId,
+          tabKey: widget.tabKey,
+          pageNumber: _currentPage,
+        );
+        if (!mounted || _isDirty) return;
+        setState(
+          () => _applyJson(_currentPage, refreshed, hydrateController: true),
+        );
+        // Émet aussi après le refresh initial (cf. fix
+        // _refreshCurrentPageFromRemoteAfterPull) — la version remote
+        // peut contenir de nouveaux medicalFlags posés depuis l'autre
+        // device entre l'init local et l'arrivée du refresh.
+        _emitMedicalFlagsForCurrentPage();
+      }),
     );
 
     // 3. Sondage des pages suivantes en arrière-plan (non-bloquant).
@@ -1087,7 +1137,7 @@ class _NotesWidgetState extends State<NotesWidget> {
     var probe = startFrom;
     final minimumPages = math.max(1, widget.totalPages);
     while (probe < widget.maxPages) {
-      final json = await _dataService.fetchNoteDrawingJson(
+      final json = await _fetchNoteDrawingJson(
         patientId: widget.patientId,
         tabKey: widget.tabKey,
         pageNumber: probe,
@@ -1371,7 +1421,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       if (widget.sharedText) {
         await _persistSharedTextAcrossPages();
       } else {
-        await _dataService.saveNoteDrawingJson(
+        await _saveNoteDrawingJson(
           patientId: widget.patientId,
           tabKey: widget.tabKey,
           pageNumber: _currentPage,
@@ -1413,7 +1463,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         if (widget.sharedText) {
           await _persistSharedTextAcrossPages();
         } else {
-          await _dataService.saveNoteDrawingJson(
+          await _saveNoteDrawingJson(
             patientId: widget.patientId,
             tabKey: widget.tabKey,
             pageNumber: _currentPage,
@@ -2122,7 +2172,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       if (scopedFlags.isNotEmpty) 'medicalFlagsByScope': scopedFlags,
     });
     try {
-      await _dataService.saveNoteDrawingJson(
+      await _saveNoteDrawingJson(
         patientId: widget.patientId,
         tabKey: widget.tabKey,
         pageNumber: pageIndex,
@@ -2139,7 +2189,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       if (!mounted) return;
       _pageTexts[page] = text;
       if (page == _currentPage) {
-        await _dataService.saveNoteDrawingJson(
+        await _saveNoteDrawingJson(
           patientId: widget.patientId,
           tabKey: widget.tabKey,
           pageNumber: page,
@@ -2166,7 +2216,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       'text': text,
       'strokes': const <dynamic>[],
     });
-    final existing = await _dataService.fetchNoteDrawingJson(
+    final existing = await _fetchNoteDrawingJson(
       patientId: widget.patientId,
       tabKey: widget.tabKey,
       pageNumber: pageIndex,
@@ -2189,7 +2239,7 @@ class _NotesWidgetState extends State<NotesWidget> {
       }
     }
 
-    await _dataService.saveNoteDrawingJson(
+    await _saveNoteDrawingJson(
       patientId: widget.patientId,
       tabKey: widget.tabKey,
       pageNumber: pageIndex,
@@ -2199,7 +2249,7 @@ class _NotesWidgetState extends State<NotesWidget> {
 
   Future<void> _persistEmptyAt(int pageIndex) async {
     try {
-      await _dataService.saveNoteDrawingJson(
+      await _saveNoteDrawingJson(
         patientId: widget.patientId,
         tabKey: widget.tabKey,
         pageNumber: pageIndex,
