@@ -18,11 +18,19 @@ const REQUIRED_NON_EMPTY_BACKUP_TABLES = new Set([
 const TABLE_ALIASES = new Map([
   ['beneficiaires', 'Beneficiaires'],
   ['dossiers', '📁 dossiers'],
+  ['mobile_documents', 'mobile_documents'],
+  ['mobile_document_chunks', 'mobile_document_chunks'],
+  ['mobile_note_pages', 'mobile_note_pages'],
 ]);
 
-export const normalizeTableName = (name) => (
-  TABLE_ALIASES.get(String(name || '').trim()) || String(name || '').trim()
-);
+export const normalizeTableName = (name) => {
+  const original = String(name || '').trim();
+  const lookupKey = original
+    .replace(/^[^A-Za-z0-9_]+/, '')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase();
+  return TABLE_ALIASES.get(lookupKey) || original;
+};
 
 const value = (record, key) => (record?.[key] == null ? '' : String(record[key]).trim());
 

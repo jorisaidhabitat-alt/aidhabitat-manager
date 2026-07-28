@@ -32,3 +32,20 @@ test('refuse une sauvegarde dont une table métier centrale est vide', () => {
   assert.equal(verification.ok, false);
   assert.ok(verification.failures.includes('table critique vide: 📁 dossiers'));
 });
+
+test('reconnaît les noms actuels NocoDB avec majuscules et icônes', () => {
+  const verification = verifyBackupData({
+    baseId: 'base-test',
+    createdAt: '2026-07-28T00:00:00.000Z',
+    tables: [
+      { name: 'Beneficiaires', fields: [], records: [{ Id: 1 }] },
+      { name: '📁 Dossiers', fields: [], records: [{ Id: 1 }] },
+      { name: 'Mobile_documents', fields: [], records: [] },
+      { name: 'Mobile_document_chunks', fields: [], records: [] },
+      { name: 'Mobile_note_pages', fields: [], records: [] },
+    ],
+  });
+
+  assert.equal(verification.ok, true);
+  assert.deepEqual(verification.failures, []);
+});
