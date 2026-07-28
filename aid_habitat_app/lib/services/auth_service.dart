@@ -123,10 +123,16 @@ class AuthService {
     ),
   ];
 
+  static final Set<String> _legacyAuthEmails = _emailMigrations
+      .map((migration) => migration.oldEmail)
+      .toSet();
+
   Future<void> initialize() async {
     final db = await _database.database;
     await _ensureSeedUsers(db);
     await _migrateAuthEmails(db);
+    await _deactivateLegacyAuthEmails(db);
+    await _deactivateDuplicateAuthUsers(db);
     await _ensureSeedScopes(db);
     AppConfig.registerUnauthorizedHandler(_handleRejectedRemoteSession);
   }
@@ -184,7 +190,7 @@ class AuthService {
         final legacyRows = await db.query(
           'app_users',
           columns: ['local_id'],
-          where: 'email = ?',
+          where: 'LOWER(TRIM(email)) = ?',
           whereArgs: [migration.oldEmail],
           limit: 1,
         );
@@ -203,8 +209,43 @@ class AuthService {
       await db.update(
         'app_users',
         {'is_active': 0, 'updated_at': now},
-        where: 'email = ? AND local_id <> ?',
+        where: 'LOWER(TRIM(email)) = ? AND local_id <> ?',
         whereArgs: [migration.oldEmail, migratedUserId],
+      );
+    }
+  }
+
+  Future<void> _deactivateLegacyAuthEmails(Database db) async {
+    if (_legacyAuthEmails.isEmpty) return;
+    final now = DateTime.now().toIso8601String();
+    final placeholders = List.filled(_legacyAuthEmails.length, '?').join(', ');
+    await db.update(
+      'app_users',
+      {'is_active': 0, 'updated_at': now},
+      where: 'LOWER(TRIM(email)) IN ($placeholders)',
+      whereArgs: _legacyAuthEmails.toList(),
+    );
+  }
+
+  Future<void> _deactivateDuplicateAuthUsers(Database db) async {
+    final now = DateTime.now().toIso8601String();
+    for (final seed in _seedUsers) {
+      final rows = await db.query(
+        'app_users',
+        columns: ['local_id'],
+        where: 'LOWER(TRIM(email)) = ?',
+        whereArgs: [seed.email],
+      );
+      if (rows.length < 2) continue;
+
+      final canonicalId = rows.any((row) => row['local_id'] == seed.id)
+          ? seed.id
+          : rows.first['local_id'] as String;
+      await db.update(
+        'app_users',
+        {'is_active': 0, 'updated_at': now},
+        where: 'LOWER(TRIM(email)) = ? AND local_id <> ?',
+        whereArgs: [seed.email, canonicalId],
       );
     }
   }
@@ -281,7 +322,11 @@ class AuthService {
     );
     final scopes = await _fetchScopesByUserId(db);
     final out = <LocalAppUser>[];
+    final seenEmails = <String>{};
     for (final row in rows) {
+      final email = (row['email'] as String?)?.trim().toLowerCase() ?? '';
+      if (_legacyAuthEmails.contains(email)) continue;
+      if (email.isEmpty || !seenEmails.add(email)) continue;
       out.add(await _mapUser(row, scopes[row['local_id']] ?? []));
     }
     return out;
@@ -376,7 +421,7 @@ class AuthService {
     final normalizedEmail = email.trim().toLowerCase();
     final rows = await db.query(
       'app_users',
-      where: 'email = ? AND is_active = 1',
+      where: 'LOWER(TRIM(email)) = ? AND is_active = 1',
       whereArgs: [normalizedEmail],
       limit: 1,
     );
@@ -755,6 +800,8 @@ class AuthService {
 
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
+    await _deactivateLegacyAuthEmails(db);
+    await _deactivateDuplicateAuthUsers(db);
 
     for (final remoteUser in remoteUsers) {
       final email = (remoteUser['email']?.toString() ?? '')
@@ -766,12 +813,16 @@ class AuthService {
       final existingRows = await db.query(
         'app_users',
         columns: ['local_id', 'email'],
-        where: legacyEmail == null ? 'email = ?' : 'email IN (?, ?)',
+        where: legacyEmail == null
+            ? 'LOWER(TRIM(email)) = ?'
+            : 'LOWER(TRIM(email)) IN (?, ?)',
         whereArgs: legacyEmail == null ? [email] : [email, legacyEmail],
       );
 
       final exactRows = existingRows
-          .where((row) => row['email'] == email)
+          .where(
+            (row) => (row['email'] as String?)?.trim().toLowerCase() == email,
+          )
           .toList(growable: false);
       final selectedRow = exactRows.isNotEmpty
           ? exactRows.first
@@ -823,14 +874,14 @@ class AuthService {
         );
       }
 
-      if (legacyEmail != null) {
-        await db.update(
-          'app_users',
-          {'is_active': 0, 'updated_at': now},
-          where: 'email = ? AND local_id <> ?',
-          whereArgs: [legacyEmail, localUserId],
-        );
-      }
+      final duplicateEmails = [email, if (legacyEmail != null) legacyEmail];
+      final placeholders = List.filled(duplicateEmails.length, '?').join(', ');
+      await db.update(
+        'app_users',
+        {'is_active': 0, 'updated_at': now},
+        where: 'LOWER(TRIM(email)) IN ($placeholders) AND local_id <> ?',
+        whereArgs: [...duplicateEmails, localUserId],
+      );
 
       await db.delete(
         'user_access_scopes',
