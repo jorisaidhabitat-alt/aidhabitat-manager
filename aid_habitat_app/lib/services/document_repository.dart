@@ -656,6 +656,72 @@ class DocumentRepository {
     );
   }
 
+  /// Copie les annotations locales lors d'une duplication de document.
+  /// Le fichier source reste inchangé et les overlays PDF demeurent associés
+  /// au nouveau document, aussi bien sur web (`annotations_json`) que sur
+  /// natif (sidecars JSON par page).
+  Future<void> copyDocumentAnnotations({
+    required String sourceDocumentId,
+    required String targetDocumentId,
+  }) async {
+    if (sourceDocumentId == targetDocumentId) return;
+    final db = await _database.database;
+    final sourceRows = await db.query(
+      'documents',
+      columns: ['annotations_json', 'local_file_path'],
+      where: 'local_id = ?',
+      whereArgs: [sourceDocumentId],
+      limit: 1,
+    );
+    final targetRows = await db.query(
+      'documents',
+      columns: ['local_file_path'],
+      where: 'local_id = ?',
+      whereArgs: [targetDocumentId],
+      limit: 1,
+    );
+    if (sourceRows.isEmpty || targetRows.isEmpty) return;
+
+    final sourceAnnotations = await OfflineVault.instance.openString(
+      sourceRows.first['annotations_json'] as String? ?? '',
+    );
+    if (sourceAnnotations.isNotEmpty) {
+      await db.update(
+        'documents',
+        {
+          'annotations_json': await OfflineVault.instance.sealString(
+            sourceAnnotations,
+          ),
+        },
+        where: 'local_id = ?',
+        whereArgs: [targetDocumentId],
+      );
+    }
+
+    if (kIsWeb) return;
+    final sourcePath =
+        (sourceRows.first['local_file_path'] as String?)?.trim() ?? '';
+    final targetPath =
+        (targetRows.first['local_file_path'] as String?)?.trim() ?? '';
+    if (sourcePath.isEmpty || targetPath.isEmpty) return;
+
+    final directory = File(sourcePath).parent;
+    if (!await directory.exists()) return;
+    await for (final entity in directory.list(followLinks: false)) {
+      if (entity is! File) continue;
+      if (!entity.path.startsWith('$sourcePath.page') ||
+          !entity.path.endsWith('.png.annotation.json')) {
+        continue;
+      }
+      final targetSidecar =
+          '$targetPath${entity.path.substring(sourcePath.length)}';
+      await NativeFileProtection.instance.copyProtectedFile(
+        entity,
+        targetSidecar,
+      );
+    }
+  }
+
   Future<void> enqueueAnnotatedReuploadBytes({
     required String documentId,
     required Uint8List bytes,

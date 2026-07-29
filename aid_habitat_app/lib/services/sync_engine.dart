@@ -200,8 +200,13 @@ class SyncEngine {
     _appLifecycle = state;
     final isResumed = state == AppLifecycleState.resumed;
     if (wasBackground && isResumed) {
-      // Reprend l'app après une mise en arrière-plan → pull immédiat
-      // pour rattraper d'éventuelles modifs distantes.
+      // Reprend l'app après une mise en arrière-plan : relance d'abord
+      // la file locale (dont les générations PDF demandées hors ligne),
+      // puis pull les éventuelles modifications distantes. Avant, seul
+      // le pull repartait ici : si iPadOS avait suspendu l'écoute réseau,
+      // une opération offline pouvait attendre le timer de sécurité de
+      // cinq minutes malgré une connexion déjà revenue.
+      requestSync();
       // ignore: discarded_futures
       _runPullSafe();
     }

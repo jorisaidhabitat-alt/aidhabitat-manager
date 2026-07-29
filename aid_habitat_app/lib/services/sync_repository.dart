@@ -17,16 +17,32 @@ const Set<String> _kReportPrerequisiteEntityTypes = {
   'visit_recommendations',
 };
 
-class SyncRepository {
-  SyncRepository({LocalDatabase? database})
-    : _database = database ?? LocalDatabase.instance;
+class _SyncDatabaseHandle {
+  const _SyncDatabaseHandle(this._provider);
 
-  final LocalDatabase _database;
+  final Future<Database> Function() _provider;
+
+  Future<Database> get database => _provider();
+}
+
+class SyncRepository {
+  SyncRepository({
+    LocalDatabase? database,
+    Future<Database> Function()? databaseProvider,
+  }) : _database = _SyncDatabaseHandle(
+         databaseProvider ??
+             () => (database ?? LocalDatabase.instance).database,
+       );
+
+  final _SyncDatabaseHandle _database;
 
   Future<List<SyncOperation>> fetchRunnableOperations() async {
     final db = await _database.database;
-    // Exclude 'conflict' and 'completed' operations — conflicts require manual
-    // resolution and completed operations are done.
+    // Seules les opérations `pending` sont directement exécutables.
+    // Les échecs transitoires sont explicitement réhabilités en `pending`
+    // par `rehabilitateTransientFailures()` avant chaque cycle. Les échecs
+    // permanents restent donc conservés et visibles sans être rejoués en
+    // boucle ni supprimés.
     //
     // ⚠️ On EXCLUT `payload_json` du SELECT initial pour éviter les
     // OOM (out-of-memory) sur iPad. Quand l'utilisateur a accumulé
@@ -50,16 +66,9 @@ class SyncRepository {
         'created_at',
         'updated_at',
       ],
-      where: 'status IN (?, ?)',
-      whereArgs: [
-        SyncOperationStatus.pending.name,
-        SyncOperationStatus.failed.name,
-      ],
+      where: 'status = ?',
+      whereArgs: [SyncOperationStatus.pending.name],
       orderBy: 'created_at ASC',
-    );
-
-    final hasBlockingNonReportOperation = rows.any(
-      (row) => _kReportPrerequisiteEntityTypes.contains(row['entity_type']),
     );
 
     final now = DateTime.now();
@@ -71,9 +80,16 @@ class SyncRepository {
       // ou en backoff, lancer le rapport maintenant produit un PDF incomplet
       // ou un retry trompeur ("connexion lente"). On ne rend les rapports
       // exécutables que lorsque la file d'écritures est vide.
-      if (row['entity_type'] == 'report_generation' &&
-          hasBlockingNonReportOperation) {
-        continue;
+      if (row['entity_type'] == 'report_generation') {
+        final dossierId = row['entity_local_id'] as String? ?? '';
+        final patientId = await _patientIdForDossier(db, dossierId);
+        final blockers = await _countReportPrerequisites(
+          db,
+          dossierId: dossierId,
+          patientId: patientId,
+          statuses: const ['pending', 'failed'],
+        );
+        if (blockers > 0) continue;
       }
       final attempts = row['attempt_count'] as int? ?? 0;
       final updatedAt = DateTime.tryParse(row['updated_at'] as String? ?? '');
@@ -248,6 +264,135 @@ class SyncRepository {
     if (v is int) return v;
     if (v is num) return v.toInt();
     return int.tryParse('$v') ?? 0;
+  }
+
+  /// Compte uniquement les écritures encore en attente qui alimentent le
+  /// rapport de [dossierId]. Une erreur ancienne appartenant à un autre
+  /// bénéficiaire ne doit pas empêcher la génération de ce rapport.
+  Future<int> countPendingReportPrerequisites({
+    required String dossierId,
+    required String patientId,
+  }) async {
+    final db = await _database.database;
+    return _countReportPrerequisites(
+      db,
+      dossierId: dossierId,
+      patientId: patientId,
+      statuses: const ['pending', 'failed'],
+    );
+  }
+
+  /// Même filtre que [countPendingReportPrerequisites], limité aux conflits
+  /// qui concernent réellement le rapport demandé.
+  Future<int> countConflictingReportPrerequisites({
+    required String dossierId,
+    required String patientId,
+  }) async {
+    final db = await _database.database;
+    return _countReportPrerequisites(
+      db,
+      dossierId: dossierId,
+      patientId: patientId,
+      statuses: const ['conflict'],
+    );
+  }
+
+  Future<String> _patientIdForDossier(Database db, String dossierId) async {
+    if (dossierId.isEmpty) return '';
+    final rows = await db.query(
+      'dossiers',
+      columns: const ['patient_local_id'],
+      where: 'local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
+    return rows.isEmpty
+        ? ''
+        : (rows.first['patient_local_id']?.toString() ?? '');
+  }
+
+  Future<int> _countReportPrerequisites(
+    Database db, {
+    required String dossierId,
+    required String patientId,
+    required List<String> statuses,
+  }) async {
+    if (dossierId.isEmpty || statuses.isEmpty) return 0;
+
+    final resolvedPatientId = patientId.isNotEmpty
+        ? patientId
+        : await _patientIdForDossier(db, dossierId);
+    final statusPlaceholders = List.filled(statuses.length, '?').join(', ');
+    final directDossierTypes = _kReportPrerequisiteEntityTypes
+        .difference(const {'patient', 'document', 'note_page'})
+        .toList(growable: false);
+    final typePlaceholders = List.filled(
+      directDossierTypes.length,
+      '?',
+    ).join(', ');
+
+    final rows = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS cnt
+      FROM sync_operations AS op
+      WHERE op.status IN ($statusPlaceholders)
+        AND (
+          (
+            op.entity_type IN ($typePlaceholders)
+            AND op.entity_local_id = ?
+          )
+          OR (
+            op.entity_type = 'patient'
+            AND op.entity_local_id = ?
+          )
+          OR (
+            op.entity_type = 'note_page'
+            AND EXISTS (
+              SELECT 1
+              FROM note_pages AS note
+              WHERE note.local_id = op.entity_local_id
+                AND (
+                  note.dossier_local_id = ?
+                  OR (
+                    note.dossier_local_id IS NULL
+                    AND note.patient_local_id = ?
+                  )
+                )
+            )
+          )
+          OR (
+            op.entity_type = 'document'
+            AND EXISTS (
+              SELECT 1
+              FROM documents AS document
+              WHERE document.local_id = op.entity_local_id
+                AND (
+                  document.dossier_local_id = ?
+                  OR (
+                    document.dossier_local_id IS NULL
+                    AND document.patient_local_id = ?
+                  )
+                )
+            )
+          )
+        )
+      ''',
+      [
+        ...statuses,
+        ...directDossierTypes,
+        dossierId,
+        resolvedPatientId,
+        dossierId,
+        resolvedPatientId,
+        dossierId,
+        resolvedPatientId,
+      ],
+    );
+    if (rows.isEmpty) return 0;
+    final value = rows.first['cnt'];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value') ?? 0;
   }
 
   /// Réhabilite les opérations `failed` dont le message d'erreur ressemble
@@ -579,38 +724,14 @@ class SyncRepository {
     );
   }
 
-  /// Purge stale sync operations that are almost certainly obsolete and
-  /// would otherwise be replayed every time the app starts, overwriting
-  /// fresh remote data with values captured by a previous app version.
+  /// Répare la file au démarrage sans jamais supprimer une donnée utilisateur.
   ///
-  ///  - any operation in `failed` state (retries exhausted → payload
-  ///    rejected by the current backend schema, not worth pushing again),
-  ///  - `pending` operations whose `created_at` is older than
-  ///    [maxPendingAge] (default 72 h — a comfortable offline window),
-  ///  - `running` operations whose `updated_at` is older than
-  ///    [maxPendingAge] (they should have completed long ago).
+  /// Les échecs réseau sont réhabilités en `pending`. Une opération restée
+  /// `running` après un crash est également remise en attente. Les erreurs
+  /// permanentes et les gros payloads restent conservés en `failed` jusqu'à
+  /// une action explicite de l'utilisateur.
   ///
-  /// Returns the number of rows removed. Safe to call on app boot.
-  /// Purge les `sync_operations` obsolètes ET réhabilite les `failed`
-  /// pour qu'elles repartent en `pending` au boot — sinon les données
-  /// modifiées offline puis qui ont échoué (« Load failed », 5xx
-  /// transient…) restaient bloquées dans la queue, étaient purgées
-  /// au boot suivant, et la modif locale n'était JAMAIS poussée vers
-  /// NocoDB (rapporté 2026-05-05 sur le dossier BARBIER Léon : toutes
-  /// les infos étaient en SQLite local mais NocoDB vide → PDF vide).
-  ///
-  /// Comportement post-fix :
-  ///   • `pending`             : intacts (toujours poussés au prochain push)
-  ///   • `failed`              : RÉHABILITÉS → `pending` avec
-  ///                             `attempt_count = 0` et `last_error = NULL`,
-  ///                             pour repartir fresh sans backoff bloquant.
-  ///                             Les vrais 4xx (rejet serveur définitif)
-  ///                             retomberont en `failed` au prochain push,
-  ///                             mais ne sont plus perdus silencieusement.
-  ///   • `running` > 72h       : purgés (orphelins crashés)
-  ///
-  /// Reste en place : la purge d'URGENCE OOM (payload > 500KB ET
-  /// attempt_count ≥ 3) qui drop les ops doomed pour libérer la RAM.
+  /// Retourne le nombre d'opérations réparées.
   Future<int> purgeStalePendingOperations({
     Duration maxRunningAge = const Duration(hours: 72),
   }) async {
@@ -647,42 +768,28 @@ class SyncRepository {
       // ignore: avoid_print
       print('[sync] boot rehab : $rehab op(s) failed → pending');
     }
-    // 2) Purge les `running` orphelins (> 72h — l'app a crashé pendant
-    //    le push, l'op est stuck running pour toujours).
-    final n1 = await db.delete(
-      'sync_operations',
-      where: 'status = ? AND updated_at < ?',
-      whereArgs: [SyncOperationStatus.running.name, cutoff],
+    // 2) Un crash peut laisser une op en `running`. Le payload est toujours
+    //    la seule copie synchronisable de certaines données (aperçu de note,
+    //    document encodé). On la remet en attente au lieu de la supprimer.
+    final recovered = await db.rawUpdate(
+      '''
+      UPDATE sync_operations
+      SET status = ?, attempt_count = 0, last_error = ?, updated_at = ?
+      WHERE status = ? AND updated_at < ?
+      ''',
+      [
+        SyncOperationStatus.pending.name,
+        'Opération récupérée après interruption de la synchronisation',
+        now,
+        SyncOperationStatus.running.name,
+        cutoff,
+      ],
     );
-
-    // Purge d'URGENCE des ops dont le `payload_json` est énorme (>500KB,
-    // typiquement un dataUrl base64 d'un fichier de plusieurs MB) ET
-    // qui ont déjà raté ≥ 3 fois. Ces ops sont la cause des OOM
-    // (out-of-memory) sur SQLite reportés 2026-04-29 :
-    //   « SqfliteFfiException(sqlite_error: 7, out of memory)
-    //    while selecting from sync_operations ».
-    //
-    // Une op bloated qui a échoué 3+ fois est presque certainement
-    // doomed (limite serveur, erreur permanente). On la drop pour
-    // libérer la RAM. L'utilisateur peut re-uploader si besoin via l'UI.
-    //
-    // Note : les ops avec petit payload_json restent en place quelle
-    // que soit leur attempt_count (le rehab les retentera).
-    final n2 = await db.rawDelete(
-      'DELETE FROM sync_operations WHERE '
-      'status IN (?, ?) AND '
-      'attempt_count >= 3 AND '
-      'length(payload_json) > 500000',
-      [SyncOperationStatus.pending.name, SyncOperationStatus.failed.name],
-    );
-    if (n2 > 0) {
+    if (recovered > 0) {
       // ignore: avoid_print
-      print(
-        '[sync] purge URGENCE OOM : $n2 op(s) avec payload >500KB et '
-        'attempt_count ≥ 3 supprimée(s) → libère la RAM',
-      );
+      print('[sync] boot recovery : $recovered op(s) running → pending');
     }
-    return n1 + n2;
+    return rehab + recovered;
   }
 
   Future<void> setEntitySyncState({

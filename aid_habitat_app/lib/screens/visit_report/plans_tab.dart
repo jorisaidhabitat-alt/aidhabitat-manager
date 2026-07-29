@@ -245,7 +245,7 @@ class _PlansTabState extends State<PlansTab> {
           // La palette d'équipements occupe le coin haut-gauche dans le
           // canvas. On décale donc les scénarios à sa droite pour éviter
           // toute superposition.
-          left: 360,
+          left: 380,
           right: 180,
           top: 16,
           child: Align(
@@ -269,7 +269,10 @@ class _PlansTabState extends State<PlansTab> {
   }
 
   Future<String> _drawingJsonForNewScenario() async {
-    final sourcePage = _totalPages > 1 ? _totalPages - 1 : 0;
+    // Chaque scénario repart du plan avant travaux. Copier le scénario
+    // précédent rendait le scénario 2 vide lorsque sa sauvegarde n'avait
+    // pas encore été matérialisée, et propageait aussi ses préconisations.
+    const sourcePage = 0;
     final source = await _dataService.fetchNoteDrawingJson(
       patientId: widget.dossier.patient.id,
       tabKey: _kTabKey,

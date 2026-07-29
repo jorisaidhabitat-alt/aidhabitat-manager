@@ -198,8 +198,10 @@ class NotesWidget extends StatefulWidget {
     this.medicalFlagsScopeKey,
     this.onMedicalFlagsChanged,
     this.stackedCards = false,
+    this.stackedTextFraction,
     this.attachedToTitleBanner = false,
     this.borderlessTextEditor = false,
+    this.focusOnTapAnywhere = false,
     this.canvasSlideIndex,
     this.showCanvasTopDivider = true,
   });
@@ -369,6 +371,13 @@ class NotesWidget extends StatefulWidget {
   /// dossier pour converger vers le nouveau design.
   final bool stackedCards;
 
+  /// Répartition verticale fixe de la carte texte quand [stackedCards] est
+  /// actif. Par exemple `0.7` réserve 70 % au texte et 30 % au dessin.
+  ///
+  /// Quand la valeur est nulle, le comportement historique est conservé :
+  /// hauteur texte initiale fixe et poignée redimensionnable.
+  final double? stackedTextFraction;
+
   /// Raccorde visuellement la carte de note à une bannière de titre
   /// immédiatement au-dessus : coins supérieurs aplatis et suppression
   /// du padding haut externe pour former un seul ensemble.
@@ -377,6 +386,11 @@ class NotesWidget extends StatefulWidget {
   /// Retire le contour gris du bloc texte interne. Utilisé quand le
   /// parent fournit déjà le cadre visuel complet autour de la note.
   final bool borderlessTextEditor;
+
+  /// Rend toute la surface de l'éditeur texte focalisable, y compris ses
+  /// marges vides. Utile pour les grandes pages de notes écrites où
+  /// l'utilisateur doit pouvoir commencer à saisir depuis n'importe où.
+  final bool focusOnTapAnywhere;
 
   @override
   State<NotesWidget> createState() => _NotesWidgetState();
@@ -2399,6 +2413,33 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// - contours fins arrondis sur les deux cartes (parité maquette).
   Widget _buildStackedCardsBody() {
     final showText = widget.showText;
+    final requestedFraction = widget.stackedTextFraction;
+    final fixedFraction = requestedFraction?.clamp(0.1, 0.9).toDouble();
+
+    if (showText && fixedFraction != null) {
+      final textFlex = (fixedFraction * 1000).round();
+      final canvasFlex = 1000 - textFlex;
+      final content = Column(
+        children: [
+          Expanded(
+            flex: textFlex,
+            child: _buildStackedTextCard(expandHeight: true, resizable: false),
+          ),
+          Expanded(flex: canvasFlex, child: _buildStackedCanvasCard()),
+        ],
+      );
+
+      final wrapped = widget.fillParentHeight
+          ? SizedBox.expand(child: content)
+          : SizedBox(height: 460, child: content);
+
+      return Container(
+        key: _outerKey,
+        color: Colors.transparent,
+        child: wrapped,
+      );
+    }
+
     final content = Column(
       children: [
         // La carte texte inclut désormais le splitter en bas (même carte)
@@ -2427,7 +2468,10 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// Carte arrondie contenant le champ texte ET la poignée rose intégrée
   /// en bas (full-width, double-chevron violet). Contour fin + coins
   /// arrondis pour matcher la maquette utilisateur.
-  Widget _buildStackedTextCard() {
+  Widget _buildStackedTextCard({
+    bool expandHeight = false,
+    bool resizable = true,
+  }) {
     const double kSplitterHeight = 22.0;
     final borderRadius = widget.attachedToTitleBanner
         ? const BorderRadius.only(
@@ -2436,7 +2480,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           )
         : BorderRadius.circular(16);
     return Container(
-      height: _textAreaHeight + kSplitterHeight,
+      height: expandHeight ? null : _textAreaHeight + kSplitterHeight,
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -2488,7 +2532,10 @@ class _NotesWidgetState extends State<NotesWidget> {
                 // Poignée rose intégrée en bas de la carte — full-width, icône
                 // double-chevron violet centrée. Draggable verticalement pour
                 // redimensionner la zone texte.
-                _buildStackedIntegratedSplitter(kSplitterHeight),
+                _buildStackedIntegratedSplitter(
+                  kSplitterHeight,
+                  resizable: resizable,
+                ),
               ],
             ),
             // Poignée d'agrandissement — ouvre la note dans un nouvel onglet
@@ -2524,27 +2571,34 @@ class _NotesWidgetState extends State<NotesWidget> {
   /// Poignée de redimensionnement intégrée au bas de la carte texte —
   /// bande rose full-width avec double-chevron violet centré. Drag
   /// vertical pour ajuster la hauteur de la zone texte.
-  Widget _buildStackedIntegratedSplitter(double height) {
+  Widget _buildStackedIntegratedSplitter(
+    double height, {
+    bool resizable = true,
+  }) {
     const double kToolbarReserved = 88.0;
     const double kSplitterMargin = 40.0;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onVerticalDragUpdate: (details) {
-        setState(() {
-          final outerSize =
-              (_outerKey.currentContext?.findRenderObject() as RenderBox?)
-                  ?.size;
-          final totalHeight = outerSize?.height ?? 600;
-          final maxH = math.max(
-            40.0,
-            totalHeight - kToolbarReserved - kSplitterMargin,
-          );
-          final next = _textAreaHeight + details.delta.dy;
-          _textAreaHeight = next.clamp(40.0, maxH);
-        });
-      },
+      onVerticalDragUpdate: resizable
+          ? (details) {
+              setState(() {
+                final outerSize =
+                    (_outerKey.currentContext?.findRenderObject() as RenderBox?)
+                        ?.size;
+                final totalHeight = outerSize?.height ?? 600;
+                final maxH = math.max(
+                  40.0,
+                  totalHeight - kToolbarReserved - kSplitterMargin,
+                );
+                final next = _textAreaHeight + details.delta.dy;
+                _textAreaHeight = next.clamp(40.0, maxH);
+              });
+            }
+          : null,
       child: MouseRegion(
-        cursor: SystemMouseCursors.resizeRow,
+        cursor: resizable
+            ? SystemMouseCursors.resizeRow
+            : SystemMouseCursors.basic,
         child: Container(
           height: height,
           width: double.infinity,
@@ -2929,6 +2983,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             textInputAction: TextInputAction.newline,
             maxLines: null,
             expands: true,
+            textAlign: TextAlign.left,
             textAlignVertical: TextAlignVertical.top,
             style: const TextStyle(fontSize: 14),
             stylusHandwritingEnabled: true,
@@ -2961,6 +3016,19 @@ class _NotesWidgetState extends State<NotesWidget> {
           ),
       ],
     );
+    final editorSurface = widget.focusOnTapAnywhere
+        ? GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (_textFocusNode.hasFocus) return;
+              _textFocusNode.requestFocus();
+              _textController.selection = TextSelection.collapsed(
+                offset: _textController.text.length,
+              );
+            },
+            child: stack,
+          )
+        : stack;
 
     final boxedRadius = widget.attachedToTitleBanner
         ? const BorderRadius.only(
@@ -2981,8 +3049,8 @@ class _NotesWidgetState extends State<NotesWidget> {
       // contraint la zone. En mode classique, hauteur pilotée par le
       // splitter via _textAreaHeight.
       child: fillHeight
-          ? stack
-          : SizedBox(height: _textAreaHeight, child: stack),
+          ? editorSurface
+          : SizedBox(height: _textAreaHeight, child: editorSurface),
     );
 
     // En mode texte-seul (fillHeight) on resserre le padding externe

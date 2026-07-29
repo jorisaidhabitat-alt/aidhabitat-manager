@@ -719,7 +719,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     // local indisponible" sur tous les docs synchronisés.
     if (kIsWeb) {
       try {
-        final bytes = await _resolveWebDocumentBytes(doc);
+        final bytes = await _resolveDocumentBytes(doc);
         if (bytes == null) {
           _showError('Fichier indisponible (vérifiez la connexion).');
           return;
@@ -740,20 +740,12 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       return;
     }
 
-    // Native : lit le fichier local (ou la copie persistée par le
-    // pipeline `_persistRemoteDocumentsLocally` pour les docs synchronisés).
-    final sourcePath = doc.localPath;
-    if (sourcePath == null || sourcePath.isEmpty) {
-      _showError('Fichier local indisponible.');
-      return;
-    }
-    final source = File(sourcePath);
-    if (!await source.exists()) {
-      _showError('Fichier introuvable.');
-      return;
-    }
     try {
-      final bytes = await source.readAsBytes();
+      final bytes = await _resolveDocumentBytes(doc);
+      if (bytes == null) {
+        _showError('Fichier indisponible (vérifiez la connexion).');
+        return;
+      }
       final savedPath = await FilePicker.platform.saveFile(
         dialogTitle: 'Enregistrer le document',
         fileName: fileName,
@@ -766,12 +758,13 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
-  /// Résout les bytes d'un document côté web. Trois sources, dans l'ordre :
+  /// Résout les bytes d'un document. Trois sources, dans l'ordre :
   ///   1. `local_file_data_url` (upload offline avant push) — décodé depuis
   ///      le data URL stocké en SQLite.
-  ///   2. `doc.url` distante → cache SQLite via `webCachedFetch` (auth-aware).
-  ///   3. null si rien ne marche (déclenche le snack d'erreur côté caller).
-  Future<Uint8List?> _resolveWebDocumentBytes(DocItem doc) async {
+  ///   2. fichier local natif.
+  ///   3. `doc.url` distante → cache auth-aware web ou natif.
+  ///   4. null si rien ne marche (déclenche le snack d'erreur côté caller).
+  Future<Uint8List?> _resolveDocumentBytes(DocItem doc) async {
     final dataUrl = doc.dataUrl;
     if (dataUrl != null && dataUrl.isNotEmpty) {
       final comma = dataUrl.indexOf(',');
@@ -783,14 +776,102 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         }
       }
     }
+    if (!kIsWeb) {
+      final localPath = doc.localPath?.trim() ?? '';
+      if (localPath.isNotEmpty) {
+        final localFile = File(localPath);
+        if (await localFile.exists()) {
+          return localFile.readAsBytes();
+        }
+      }
+    }
     final url = doc.url;
     if (url != null && url.isNotEmpty) {
-      return MediaCacheService.instance.webCachedFetch(
+      if (kIsWeb) {
+        return MediaCacheService.instance.webCachedFetch(
+          url,
+          headers: MediaCacheService.authHeaders(),
+        );
+      }
+      final cachedFile = await MediaCacheService.instance.fetch(
         url,
         headers: MediaCacheService.authHeaders(),
       );
+      if (cachedFile != null && await cachedFile.exists()) {
+        return cachedFile.readAsBytes();
+      }
     }
     return null;
+  }
+
+  Future<void> _shareDocument(DocItem doc) async {
+    try {
+      final fileName = doc.name.isNotEmpty ? doc.name : '${doc.title}.bin';
+      final mime = _mimeTypeFor(doc);
+      XFile sharedFile;
+      final localPath = doc.localPath?.trim() ?? '';
+      if (!kIsWeb && localPath.isNotEmpty && await File(localPath).exists()) {
+        sharedFile = XFile(localPath, name: fileName, mimeType: mime);
+      } else {
+        final bytes = await _resolveDocumentBytes(doc);
+        if (bytes == null) {
+          _showError('Fichier indisponible (vérifiez la connexion).');
+          return;
+        }
+        sharedFile = XFile.fromData(bytes, name: fileName, mimeType: mime);
+      }
+
+      if (!mounted) return;
+      final renderBox = context.findRenderObject() as RenderBox?;
+      final origin = renderBox == null
+          ? const Rect.fromLTWH(0, 0, 1, 1)
+          : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+      await Share.shareXFiles(
+        [sharedFile],
+        subject: doc.title,
+        sharePositionOrigin: origin,
+        fileNameOverrides: [fileName],
+      );
+    } catch (err) {
+      _showError('Partage impossible : $err');
+    }
+  }
+
+  Future<void> _duplicateDocument(DocItem doc) async {
+    if (_isImporting) return;
+    setState(() => _isImporting = true);
+    try {
+      final bytes = await _resolveDocumentBytes(doc);
+      if (bytes == null) {
+        _showError('Duplication impossible : fichier indisponible.');
+        return;
+      }
+      final duplicate = await _documentRepository.importDocumentBytes(
+        patientId: _patientId,
+        bytes: bytes,
+        fileName: _duplicateFileName(doc.name),
+        tags: doc.tags,
+        title: '${doc.title} - copie',
+      );
+      await _documentRepository.copyDocumentAnnotations(
+        sourceDocumentId: doc.id,
+        targetDocumentId: duplicate.id,
+      );
+      await _loadDocuments(silent: true, refreshRemote: false);
+      if (mounted) _showSnack('Document dupliqué.');
+    } catch (err) {
+      _showError('Duplication impossible : $err');
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
+    }
+  }
+
+  String _duplicateFileName(String originalName) {
+    final trimmed = originalName.trim();
+    if (trimmed.isEmpty) return 'document-copie.bin';
+    final dot = trimmed.lastIndexOf('.');
+    if (dot <= 0 || dot == trimmed.length - 1) return '$trimmed-copie';
+    return '${trimmed.substring(0, dot)}-copie${trimmed.substring(dot)}';
   }
 
   String _mimeTypeFor(DocItem doc) {
@@ -854,17 +935,54 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
-  // ----- Inline rename -----
+  // ----- Rename -----
 
-  Future<void> _renameInline(DocItem doc, String newTitle) async {
-    final trimmed = newTitle.trim();
-    if (trimmed.isEmpty || trimmed == doc.title) return;
+  Future<void> _showRenameDialog(DocItem doc) async {
+    final controller = TextEditingController(text: doc.title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Renommer le document'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 1,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            labelText: 'Nom du document',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) {
+            final trimmed = value.trim();
+            if (trimmed.isNotEmpty) Navigator.pop(dialogContext, trimmed);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: kBrandPurple),
+            onPressed: () {
+              final trimmed = controller.text.trim();
+              if (trimmed.isNotEmpty) Navigator.pop(dialogContext, trimmed);
+            },
+            child: const Text('Renommer'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = newTitle?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed == doc.title || !mounted) return;
     await _documentRepository.updateDocumentMetadata(
       documentId: doc.id,
       title: trimmed,
       tags: doc.tags,
     );
     await _loadDocuments(silent: true);
+    if (mounted) _showSnack('Document renommé.');
   }
 
   // ----- Helpers -----
@@ -1448,7 +1566,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       },
       onDelete: () => _deleteDocument(doc),
       onDownload: () => _downloadDocument(doc),
-      onTitleChanged: (value) => _renameInline(doc, value),
+      onRename: () => _showRenameDialog(doc),
+      onShare: () => _shareDocument(doc),
+      onDuplicate: () => _duplicateDocument(doc),
     );
     if (_isSelectionMode) return card;
     return _DraggableDocumentSlot(
@@ -2179,12 +2299,9 @@ class _PreviewScreenState extends State<_PreviewScreen> {
         final pdfWrapper = _pdfWrapperKey.currentState;
         final webPdfWrapper = _webPdfWrapperKey.currentState;
         if (pdfWrapper != null) {
-          // Mode PDF NATIF : flush toutes les pages modifiées sur
-          // disque (JSON par page), puis re-upload de la page
-          // courante en PNG aplati pour que NocoDB en ait une version
-          // annotée visible.
+          // Mode PDF natif : persiste les traits page par page à côté du
+          // PDF. Le fichier PDF original reste intact et multipage.
           await pdfWrapper.saveAll();
-          await _reuploadFlattenedCurrentPage();
         } else if (webPdfWrapper != null) {
           // Mode PDF WEB : aplatit chaque page modifiée et la stocke
           // dans `documents.annotations_json` (Map<page, dataUrl>) —
@@ -2238,31 +2355,6 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       // Pas bloquant : l'annotation JSON est sauvée localement, le
       // re-upload pourra être retenté au prochain Save.
     }
-  }
-
-  /// Variante PDF : aplatit la page courante affichée et l'enqueue comme
-  /// re-upload. Limitation actuelle : on ne ré-écrit qu'un PNG de la page
-  /// courante côté serveur. Un flatten multi-pages en PDF nécessite une
-  /// lib d'écriture PDF — à faire dans un ticket dédié.
-  Future<void> _reuploadFlattenedCurrentPage() async {
-    final annotator = _annotatorKey.currentState;
-    if (annotator == null) return;
-    try {
-      final bytes = await annotator.exportFlatPng();
-      if (bytes == null) return;
-      final docLocalPath = widget.doc.localPath;
-      final wrapperPdfPath = _pdfWrapperKey.currentState?.pdfPath;
-      final localPath = docLocalPath != null && docLocalPath.isNotEmpty
-          ? docLocalPath
-          : wrapperPdfPath;
-      if (localPath == null || localPath.isEmpty) return;
-      final flatPath = '$localPath.flat.png';
-      await NativeFileProtection.instance.writeProtectedBytes(flatPath, bytes);
-      await DocumentRepository().enqueueAnnotatedReupload(
-        documentId: widget.doc.id,
-        flattenedPath: flatPath,
-      );
-    } catch (_) {}
   }
 
   Future<void> _handleClose() async {
@@ -3176,6 +3268,13 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
                     key: widget.annotatorKey,
                     imageBytes: _currentImage,
                     onChanged: widget.onChanged,
+                    onPageSwipe: (delta) {
+                      if (delta > 0 && _currentPage < _totalPages) {
+                        unawaited(_goNext());
+                      } else if (delta < 0 && _currentPage > 1) {
+                        unawaited(_goPrev());
+                      }
+                    },
                   ),
                 ),
         ),
@@ -3647,6 +3746,12 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
               key: widget.annotatorKey,
               imagePath: pngPath,
               onChanged: widget.onChanged,
+              onPageSwipe: (delta) {
+                final target = _currentPage + delta;
+                if (target >= 1 && target <= _totalPages) {
+                  unawaited(_renderPage(target));
+                }
+              },
               initialStrokes: seeded,
               // Le save est piloté par le wrapper (`saveAll()`), pas par
               // chaque annotator individuel.
@@ -3909,6 +4014,10 @@ class _ImageAnnotator extends StatefulWidget {
 
   final VoidCallback onChanged;
 
+  /// Swipe horizontal tactile demandé par les PDF multipages.
+  /// `1` ouvre la page suivante, `-1` la page précédente.
+  final ValueChanged<int>? onPageSwipe;
+
   /// Si fourni, ces strokes sont utilisés au démarrage au lieu de charger
   /// depuis le fichier `.annotation.json` sur disque. Utile quand un parent
   /// (ex: _PdfAnnotatorWrapper) garde les strokes en mémoire entre deux
@@ -3925,6 +4034,7 @@ class _ImageAnnotator extends StatefulWidget {
     this.imagePath,
     this.imageBytes,
     required this.onChanged,
+    this.onPageSwipe,
     this.initialStrokes,
     this.autoPersistToDisk = true,
   }) : assert(
@@ -3943,7 +4053,17 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   int _savedHash = 0;
   // Clé du RepaintBoundary pour l'export PNG.
   final GlobalKey _boundaryKey = GlobalKey();
+  final TransformationController _transformationController =
+      TransformationController();
   StreamSubscription<PencilDoubleTapEvent>? _pencilDoubleTapSubscription;
+  int? _activeDrawingPointer;
+  bool _activeDrawingPointerIsTouch = false;
+  final Set<int> _touchPointers = <int>{};
+  Offset? _touchStart;
+  bool _touchGestureHadMultiplePointers = false;
+  List<_AnnotStroke>? _touchDrawingBaseline;
+  List<List<_AnnotStroke>>? _touchRedoBaseline;
+  double _zoom = 1;
 
   // Outils courants. Crayon noir simple, comme les notes rapides (quick toolset).
   _AnnotTool _tool = _AnnotTool.pen;
@@ -3973,6 +4093,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   @override
   void initState() {
     super.initState();
+    _transformationController.addListener(_handleTransformationChanged);
     final seeded = widget.initialStrokes;
     if (seeded != null) {
       // Seed depuis la mémoire (changement de page PDF) — pas de disque.
@@ -3994,6 +4115,9 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   void dispose() {
     _pencilDoubleTapSubscription?.cancel();
     _pencilDoubleTapSubscription = null;
+    _transformationController
+      ..removeListener(_handleTransformationChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -4202,6 +4326,121 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     widget.onChanged();
   }
 
+  void _handleTransformationChanged() {
+    final nextZoom = _transformationController.value.getMaxScaleOnAxis();
+    if ((nextZoom - _zoom).abs() < 0.01 || !mounted) return;
+    setState(() => _zoom = nextZoom);
+  }
+
+  void _setZoom(double value) {
+    final next = value.clamp(1.0, 5.0);
+    final dx = (_canvasSize.width - (_canvasSize.width * next)) / 2;
+    final dy = (_canvasSize.height - (_canvasSize.height * next)) / 2;
+    _transformationController.value = Matrix4.identity()
+      ..translateByDouble(dx, dy, 0, 1)
+      ..scaleByDouble(next, next, 1, 1);
+  }
+
+  bool _isDrawingDevice(PointerEvent event) {
+    if (event.kind == ui.PointerDeviceKind.stylus ||
+        event.kind == ui.PointerDeviceKind.invertedStylus) {
+      return true;
+    }
+    return event.kind == ui.PointerDeviceKind.mouse &&
+        (event.buttons & 0x01) != 0;
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (_isDrawingDevice(event)) {
+      _activeDrawingPointer = event.pointer;
+      _activeDrawingPointerIsTouch = false;
+      _startStroke(event.localPosition);
+      return;
+    }
+    if (event.kind != ui.PointerDeviceKind.touch) return;
+    if (_touchPointers.isEmpty) {
+      _touchStart = event.position;
+      _touchGestureHadMultiplePointers = false;
+    }
+    _touchPointers.add(event.pointer);
+    if (_touchPointers.length > 1) {
+      _touchGestureHadMultiplePointers = true;
+      // Sur une image, le premier doigt peut avoir commencé un trait.
+      // L'arrivée d'un second doigt signifie pinch : retire ce trait
+      // transitoire avant de laisser InteractiveViewer gérer le zoom.
+      if (_activeDrawingPointerIsTouch) {
+        _activeDrawingPointer = null;
+        _activeDrawingPointerIsTouch = false;
+        final baseline = _touchDrawingBaseline;
+        final redoBaseline = _touchRedoBaseline;
+        if (baseline != null) {
+          setState(() {
+            _strokes = baseline;
+            _redoStack
+              ..clear()
+              ..addAll(redoBaseline ?? const []);
+          });
+          widget.onChanged();
+        }
+        _touchDrawingBaseline = null;
+        _touchRedoBaseline = null;
+      }
+      return;
+    }
+    if (widget.onPageSwipe == null) {
+      _touchDrawingBaseline = List.of(_strokes);
+      _touchRedoBaseline = _redoStack.map(List<_AnnotStroke>.of).toList();
+      _activeDrawingPointer = event.pointer;
+      _activeDrawingPointerIsTouch = true;
+      _startStroke(event.localPosition);
+    }
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (_activeDrawingPointer == event.pointer) {
+      _appendStroke(event.localPosition);
+    }
+  }
+
+  void _handlePointerEnd(PointerEvent event) {
+    if (_activeDrawingPointer == event.pointer) {
+      _activeDrawingPointer = null;
+      final wasTouch = _activeDrawingPointerIsTouch;
+      _activeDrawingPointerIsTouch = false;
+      if (wasTouch) {
+        _touchPointers.remove(event.pointer);
+        if (_touchPointers.isEmpty) {
+          _touchStart = null;
+          _touchGestureHadMultiplePointers = false;
+          _touchDrawingBaseline = null;
+          _touchRedoBaseline = null;
+        }
+      }
+      return;
+    }
+    if (event.kind != ui.PointerDeviceKind.touch) return;
+    _touchPointers.remove(event.pointer);
+    if (_touchPointers.isNotEmpty) return;
+    _touchDrawingBaseline = null;
+    _touchRedoBaseline = null;
+
+    final start = _touchStart;
+    _touchStart = null;
+    if (start == null ||
+        _touchGestureHadMultiplePointers ||
+        _zoom > 1.05 ||
+        widget.onPageSwipe == null) {
+      _touchGestureHadMultiplePointers = false;
+      return;
+    }
+    _touchGestureHadMultiplePointers = false;
+    final delta = event.position - start;
+    if (delta.dx.abs() < 72 || delta.dx.abs() <= delta.dy.abs() * 1.5) {
+      return;
+    }
+    widget.onPageSwipe!(delta.dx < 0 ? 1 : -1);
+  }
+
   // ------------------------ Build ------------------------
 
   @override
@@ -4212,11 +4451,31 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
         Positioned.fill(
           child: Container(
             color: Color(0xFF0E1116),
-            child: Center(
-              child: RepaintBoundary(
-                key: _boundaryKey,
-                child: _buildImageWithOverlay(),
-              ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final size = Size(constraints.maxWidth, constraints.maxHeight);
+                _canvasSize = size;
+                return InteractiveViewer(
+                  transformationController: _transformationController,
+                  minScale: 1,
+                  maxScale: 5,
+                  // Le déplacement à un doigt ferait bouger la page pendant
+                  // un trait Pencil. Le pinch et les boutons de zoom restent
+                  // disponibles, tandis que le swipe horizontal change de page.
+                  panEnabled: false,
+                  boundaryMargin: const EdgeInsets.all(160),
+                  trackpadScrollCausesScale: true,
+                  scaleFactor: 140,
+                  child: SizedBox(
+                    width: size.width,
+                    height: size.height,
+                    child: RepaintBoundary(
+                      key: _boundaryKey,
+                      child: _buildImageWithOverlay(),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -4239,32 +4498,23 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     final Image img = _webMode
         ? Image.memory(widget.imageBytes!, fit: BoxFit.contain)
         : Image.file(File(widget.imagePath!), fit: BoxFit.contain);
-    // Enroule image + canvas dans le même widget pour que le RepaintBoundary
-    // capture tout en cohérence.
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        final size = Size(constraints.maxWidth, constraints.maxHeight);
-        // Met à jour _canvasSize après le frame pour que _normalize() utilise
-        // la bonne taille. En post-frame pour éviter setState() pendant build.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          if (_canvasSize != size) setState(() => _canvasSize = size);
-        });
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanStart: (d) => _startStroke(d.localPosition),
-          onPanUpdate: (d) => _appendStroke(d.localPosition),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Positioned.fill(child: img),
-              Positioned.fill(
-                child: CustomPaint(painter: _AnnotPainter(strokes: _strokes)),
-              ),
-            ],
+    // Les événements bruts permettent de distinguer le Pencil/souris
+    // (dessin) des doigts (pinch, déplacement et swipe de page).
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: _handlePointerDown,
+      onPointerMove: _handlePointerMove,
+      onPointerUp: _handlePointerEnd,
+      onPointerCancel: _handlePointerEnd,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(child: img),
+          Positioned.fill(
+            child: CustomPaint(painter: _AnnotPainter(strokes: _strokes)),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -4304,6 +4554,28 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
             tooltip: 'Gomme',
             onTap: () => _setTool(_AnnotTool.eraser),
           ),
+          const SizedBox(width: 6),
+          Container(width: 1, height: 24, color: const Color(0xFFE5E7EB)),
+          const SizedBox(width: 6),
+          _ToolButton(
+            icon: LucideIcons.zoomOut,
+            tooltip: 'Dézoomer',
+            onTap: _zoom > 1.01 ? () => _setZoom(_zoom - 0.5) : null,
+          ),
+          const SizedBox(width: 6),
+          _ToolButton(
+            icon: LucideIcons.maximize2,
+            tooltip: 'Taille d’origine',
+            onTap: _zoom > 1.01 ? () => _setZoom(1) : null,
+          ),
+          const SizedBox(width: 6),
+          _ToolButton(
+            icon: LucideIcons.zoomIn,
+            tooltip: 'Zoomer',
+            onTap: _zoom < 4.99 ? () => _setZoom(_zoom + 0.5) : null,
+          ),
+          const SizedBox(width: 6),
+          Container(width: 1, height: 24, color: const Color(0xFFE5E7EB)),
           const SizedBox(width: 6),
           _ToolButton(
             icon: LucideIcons.undo2,

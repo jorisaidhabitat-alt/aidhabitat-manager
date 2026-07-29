@@ -17,6 +17,7 @@ import '../services/data_service.dart';
 import '../services/dossier_repository.dart';
 import '../services/references_service.dart';
 import '../services/save_debounce.dart';
+import '../services/visit_date_time.dart';
 import 'conflict_resolution_screen.dart';
 import 'documents_screen.dart';
 import 'visit_report_screen.dart';
@@ -60,6 +61,10 @@ class DossierScreen extends StatefulWidget {
   final void Function(String dossierId, bool prepared)?
   onBeneficiaryPreparedChanged;
 
+  /// Met à jour immédiatement le snapshot conservé par `MainScreen` quand la
+  /// date de visite change, sans attendre le prochain pull NocoDB.
+  final void Function(String dossierId, String visitDate)? onVisitDateChanged;
+
   const DossierScreen({
     super.key,
     required this.dossier,
@@ -68,6 +73,7 @@ class DossierScreen extends StatefulWidget {
     this.onOpenVisitReport,
     this.onOpenDocuments,
     this.onBeneficiaryPreparedChanged,
+    this.onVisitDateChanged,
   });
 
   @override
@@ -97,6 +103,7 @@ class _DossierScreenState extends State<DossierScreen> {
   late String _city;
   late String _zipCode;
   late String _cityId;
+  String? _visitDate;
 
   // Readonly fields
   late String _incomeCategory;
@@ -225,6 +232,7 @@ class _DossierScreenState extends State<DossierScreen> {
     _incomeCategory = p.incomeCategory;
     _fiscalRevenue = _householdFiscalRevenue(p);
     _beneficiaryPrepared = widget.dossier.beneficiaryPrepared;
+    _visitDate = widget.dossier.visitDate;
 
     final n = p.numberPeople ?? 0;
     if (n <= 0) {
@@ -455,7 +463,110 @@ class _DossierScreenState extends State<DossierScreen> {
   // `VisitReportScreen` et `DocumentsScreen`.
   // ---------------------------------------------------------------------------
   Widget _buildHeader(BuildContext context) {
-    return BeneficiaryHeader(dossier: widget.dossier, onBack: widget.onBack);
+    return BeneficiaryHeader(
+      dossier: widget.dossier,
+      onBack: widget.onBack,
+      trailing: _buildVisitDateButton(context),
+    );
+  }
+
+  Widget _buildVisitDateButton(BuildContext context) {
+    final parsed = parseVisitDateTime(_visitDate);
+    final label = parsed == null
+        ? 'À planifier'
+        : DateFormat('dd/MM/yyyy', 'fr_FR').format(parsed);
+
+    return Tooltip(
+      message: 'Modifier la date de visite',
+      child: Material(
+        color: const Color(0xFFF2ECF5),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: _pickVisitDate,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2D8E9)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  LucideIcons.calendarDays,
+                  size: 18,
+                  color: kBrandPurple,
+                ),
+                const SizedBox(width: 9),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Date de visite',
+                      style: GoogleFonts.nunito(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF8A7A95),
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      label,
+                      style: GoogleFonts.nunito(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF2B323A),
+                        height: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickVisitDate() async {
+    final previousValue = _visitDate;
+    final now = DateTime.now();
+    final initial = parseVisitDateTime(previousValue) ?? now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 10, 12, 31),
+      helpText: 'DATE DE VISITE',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+    );
+    if (picked == null || !mounted) return;
+
+    final nextValue = DateFormat('yyyy-MM-dd').format(picked);
+    if (nextValue == previousValue) return;
+
+    setState(() => _visitDate = nextValue);
+
+    try {
+      await _repository.updateDossierFields(widget.dossier.id, {
+        'visit_date': nextValue,
+      });
+      widget.onVisitDateChanged?.call(widget.dossier.id, nextValue);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _visitDate = previousValue);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("La date de visite n'a pas pu être enregistrée."),
+        ),
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1242,6 +1353,7 @@ class _DossierScreenState extends State<DossierScreen> {
       // toolbar en bas-centre. Mise en cohérence visuelle avec les
       // notes du relevé de visite.
       stackedCards: true,
+      stackedTextFraction: 0.7,
       allowPagination: true,
       fillParentHeight: true,
       // Autosave debounced → pas de bouton Save explicite (design épuré).

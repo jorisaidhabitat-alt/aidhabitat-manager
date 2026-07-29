@@ -7,6 +7,7 @@ import '../../models/types.dart';
 import '../../services/data_service.dart';
 import '../../services/dossier_repository.dart';
 import '../../services/nocodb_api_client.dart';
+import '../../services/principal_retirement_fund_cache.dart';
 import '../../services/references_service.dart';
 import '../../services/save_debounce.dart';
 import '../../services/retirement_funds_repository.dart';
@@ -250,14 +251,25 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
   }
 
   Future<void> _loadPrincipalFundNames() async {
+    final cache = PrincipalRetirementFundCache.instance;
+    final cachedFunds = await cache.read();
+    if (mounted && cachedFunds.isNotEmpty) {
+      final sorted = [...cachedFunds]
+        ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
+      setState(() {
+        _principalFunds = sorted;
+        _principalFundNames = sorted
+            .map((fund) => fund['name'] ?? '')
+            .where((name) => name.isNotEmpty)
+            .toList(growable: false);
+        _principalFundsLoadError = null;
+      });
+    }
+
     try {
-      // Récupère les objets complets (avec logoUrl + phone) pour
-      // alimenter le picker visuel. Fallback : si l'endpoint plein
-      // échoue, on retombe sur la liste de noms seule (anciennement
-      // unique source). De cette manière le picker fonctionne sur
-      // device offline ayant déjà cache les noms.
       final funds = await NocodbApiClient().fetchPrincipalRetirementFunds();
       if (!mounted) return;
+      if (funds.isEmpty) return;
       final sorted = [...funds]
         ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
       setState(() {
@@ -268,8 +280,9 @@ class _BeneficiaryTabState extends State<BeneficiaryTab>
             .toList();
         _principalFundsLoadError = null;
       });
+      unawaited(cache.write(sorted));
     } catch (primaryError) {
-      // Fallback historique : juste les noms via l'API legacy.
+      if (cachedFunds.isNotEmpty) return;
       try {
         final names = await DataService().fetchPrincipalRetirementFundNames();
         if (!mounted) return;

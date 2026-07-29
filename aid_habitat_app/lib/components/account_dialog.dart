@@ -65,19 +65,19 @@ class _AccountDialogState extends State<AccountDialog> {
     }
   }
 
-  /// Wipe le cache local + re-pull depuis NocoDB. Demande utilisateur
-  /// 2026-05-06 : moyen de résoudre les divergences iPad ↔ Mac sans
-  /// passer par Safari → Avancé → Données de sites web. Confirmation
-  /// préalable car potentiellement long (recharge de tous les dossiers).
+  /// Recharge les données depuis NocoDB sans effacer le cache local.
+  /// L'opération est bloquée si des modifications sont encore en attente,
+  /// afin de ne jamais perdre une saisie ou une génération PDF différée.
   Future<void> _handleForceResync() async {
     if (_isResyncing) return;
     final confirm = await showAppConfirmationDialog<bool>(
       context: context,
       title: 'Forcer la synchronisation ?',
       message:
-          'Toutes les données locales seront supprimées et re-téléchargées '
-          'depuis le serveur. Utile en cas de divergence entre vos appareils. '
-          'Aucune perte : les données sont préservées dans NocoDB.',
+          'Les données seront relues depuis le serveur sans supprimer les '
+          'notes ni les documents conservés sur cet appareil. Si une '
+          'modification est encore en attente, elle sera préservée et la '
+          'synchronisation forcée sera reportée.',
       tone: AppConfirmationTone.warning,
       icon: LucideIcons.refreshCw,
       actions: const [
@@ -93,20 +93,15 @@ class _AccountDialogState extends State<AccountDialog> {
     if (confirm != true || !mounted) return;
     setState(() => _isResyncing = true);
     try {
-      final n = await _dataService.wipeLocalDataForResync();
+      await _dataService.forceResyncFromRemote();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Synchronisation lancée — $n entrée(s) locales effacées, '
-            're-téléchargement en cours…',
-          ),
+        const SnackBar(
+          content: Text('Synchronisation terminée — données à jour.'),
           backgroundColor: kBrandPurple,
-          duration: const Duration(seconds: 4),
+          duration: Duration(seconds: 4),
         ),
       );
-      // Ferme la dialog après lancement — le pull tourne en arrière-plan,
-      // l'app va se rafraîchir au prochain tick du SyncEngine (~5s).
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
@@ -401,10 +396,8 @@ class _AccountDialogState extends State<AccountDialog> {
               ),
               const SizedBox(height: 18),
               // Quick actions :
-              //   • Forcer la sync — wipe le cache local + re-pull
-              //     depuis NocoDB. Utile si on observe une divergence
-              //     iPad ↔ Mac sans vouloir se déconnecter (demande
-              //     utilisateur 2026-05-06).
+              //   • Forcer la sync — re-pull NocoDB sans effacer le cache.
+              //     Refus automatique si des opérations locales attendent.
               //   • Se déconnecter — purge la session ET le cache
               //     local (cf. `AuthService.signOut`).
               Wrap(

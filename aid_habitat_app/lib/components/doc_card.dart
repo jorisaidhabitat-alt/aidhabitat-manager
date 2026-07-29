@@ -62,8 +62,8 @@ class SyncBadge extends StatelessWidget {
 //   - badge sync (SyncBadge) en haut-droite
 //   - checkbox sélection (apparaît au survol, en mode sélection, ou si
 //     déjà sélectionnée)
-//   - bandeau blanc en bas : titre éditable inline + date + menu kebab
-//     (Télécharger / Supprimer)
+//   - bandeau blanc en bas : titre + date + menu kebab
+//     (Télécharger / Renommer / Partager / Dupliquer / Supprimer)
 //
 // Extraite de documents_screen.dart 2026-05-15.
 // =============================================================================
@@ -77,7 +77,9 @@ class DocCard extends StatefulWidget {
   final VoidCallback onToggleSelect;
   final VoidCallback onDelete;
   final VoidCallback onDownload;
-  final Future<void> Function(String newTitle) onTitleChanged;
+  final VoidCallback onRename;
+  final VoidCallback onShare;
+  final VoidCallback onDuplicate;
 
   const DocCard({
     super.key,
@@ -89,7 +91,9 @@ class DocCard extends StatefulWidget {
     required this.onToggleSelect,
     required this.onDelete,
     required this.onDownload,
-    required this.onTitleChanged,
+    required this.onRename,
+    required this.onShare,
+    required this.onDuplicate,
   });
 
   @override
@@ -97,54 +101,7 @@ class DocCard extends StatefulWidget {
 }
 
 class _DocCardState extends State<DocCard> {
-  bool _isEditingTitle = false;
   bool _hovering = false;
-  late TextEditingController _titleCtrl;
-  late FocusNode _titleFocus;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleCtrl = TextEditingController(text: widget.doc.title);
-    _titleFocus = FocusNode();
-  }
-
-  @override
-  void didUpdateWidget(covariant DocCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!_isEditingTitle && widget.doc.title != _titleCtrl.text) {
-      _titleCtrl.text = widget.doc.title;
-    }
-  }
-
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    _titleFocus.dispose();
-    super.dispose();
-  }
-
-  Future<void> _commitRename() async {
-    final newTitle = _titleCtrl.text.trim();
-    setState(() => _isEditingTitle = false);
-    if (newTitle.isEmpty || newTitle == widget.doc.title) {
-      _titleCtrl.text = widget.doc.title;
-      return;
-    }
-    await widget.onTitleChanged(newTitle);
-  }
-
-  void _startEditing() {
-    setState(() => _isEditingTitle = true);
-    _titleCtrl.text = widget.doc.title;
-    Future.microtask(() {
-      _titleFocus.requestFocus();
-      _titleCtrl.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: _titleCtrl.text.length,
-      );
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -279,44 +236,16 @@ class _DocCardState extends State<DocCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _isEditingTitle
-                              ? TextField(
-                                  controller: _titleCtrl,
-                                  focusNode: _titleFocus,
-                                  maxLines: 1,
-                                  textInputAction: TextInputAction.done,
-                                  style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 16,
-                                    color: Colors.black87,
-                                  ),
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 4,
-                                    ),
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                  ),
-                                  onSubmitted: (_) => _commitRename(),
-                                  onTapOutside: (_) => _commitRename(),
-                                )
-                              : GestureDetector(
-                                  onTap: selMode ? null : _startEditing,
-                                  behavior: HitTestBehavior.opaque,
-                                  child: Text(
-                                    doc.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.nunito(
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 16,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                ),
+                          Text(
+                            doc.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.nunito(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                              color: Colors.black87,
+                            ),
+                          ),
                           const SizedBox(height: 2),
                           Text(
                             dateLabel,
@@ -345,6 +274,12 @@ class _DocCardState extends State<DocCard> {
                         onSelected: (value) {
                           if (value == 'download') {
                             widget.onDownload();
+                          } else if (value == 'rename') {
+                            widget.onRename();
+                          } else if (value == 'share') {
+                            widget.onShare();
+                          } else if (value == 'duplicate') {
+                            widget.onDuplicate();
                           } else if (value == 'delete') {
                             widget.onDelete();
                           }
@@ -361,6 +296,49 @@ class _DocCardState extends State<DocCard> {
                                 ),
                                 SizedBox(width: 10),
                                 Text('Télécharger'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuDivider(),
+                          PopupMenuItem<String>(
+                            value: 'rename',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  LucideIcons.pencil,
+                                  size: 16,
+                                  color: kBrandDarkPurple,
+                                ),
+                                SizedBox(width: 10),
+                                Text('Renommer'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'share',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  LucideIcons.share2,
+                                  size: 16,
+                                  color: kBrandDarkPurple,
+                                ),
+                                SizedBox(width: 10),
+                                Text('Partager'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'duplicate',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  LucideIcons.copy,
+                                  size: 16,
+                                  color: kBrandDarkPurple,
+                                ),
+                                SizedBox(width: 10),
+                                Text('Dupliquer'),
                               ],
                             ),
                           ),

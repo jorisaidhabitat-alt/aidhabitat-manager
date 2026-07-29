@@ -675,6 +675,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             }
           });
         },
+        onVisitDateChanged: (id, visitDate) {
+          if (!mounted) return;
+          setState(() {
+            _dossiers = [
+              for (final d in _dossiers)
+                if (d.id == id) d.copyWith(visitDate: visitDate) else d,
+            ];
+            if (_selectedDossier?.id == id) {
+              _selectedDossier = _selectedDossier!.copyWith(
+                visitDate: visitDate,
+              );
+            }
+          });
+        },
       );
     }
     if (_activeView == 'documents' && _selectedDossier != null) {

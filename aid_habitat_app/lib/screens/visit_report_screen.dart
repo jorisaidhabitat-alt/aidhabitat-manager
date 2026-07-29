@@ -1380,6 +1380,13 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     }
 
     try {
+      // Si ce même rapport avait été mis en attente lors d'un essai
+      // hors ligne, le clic manuel en ligne devient la seule intention
+      // active. Sans cette suppression, `runSync()` pouvait lancer la
+      // génération différée en parallèle de la génération directe,
+      // puis recréer un état "en attente" ou produire un doublon.
+      await _dataService.cancelQueuedReportGeneration(_dossier.id);
+
       // Note : plus de settle delay ici depuis que `kSaveDebounceText`
       // est à 0 ms. Chaque keystroke a déjà écrit en SQLite + enqueued
       // sa sync_op, donc `runSync()` plus bas verra TOUTES les modifs
@@ -1423,8 +1430,17 @@ class _VisitReportScreenState extends State<VisitReportScreen>
       // contient toujours les dernières données saisies.
       try {
         final syncResult = await _dataService.runSync();
+        final patientId = _dossier.patient.id;
         final pendingAfterSync = await _dataService
-            .countPendingSyncOperations();
+            .countPendingReportPrerequisites(
+              dossierId: _dossier.id,
+              patientId: patientId,
+            );
+        final conflictingAfterSync = await _dataService
+            .countConflictingReportPrerequisites(
+              dossierId: _dossier.id,
+              patientId: patientId,
+            );
         // ignore: avoid_print
         print(
           '[report] runSync : pushed=${syncResult.pushedOperations} '
@@ -1434,11 +1450,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           'pendingAfter=$pendingAfterSync '
           'msg="${syncResult.message}"',
         );
-        if (syncResult.conflictCount > 0) {
+        if (conflictingAfterSync > 0) {
           // Conflits = action utilisateur requise (résolution manuelle).
           // Pas un cas pour la queue offline — on remonte l'erreur.
           _showReportError(
-            'Synchronisation incomplète : ${syncResult.conflictCount} '
+            'Synchronisation incomplète : $conflictingAfterSync '
             'conflit(s) à résoudre avant de pouvoir générer le rapport.',
           );
           ReportGenerationService.instance.notifyFailure(
@@ -1451,9 +1467,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
           );
           return;
         }
-        final waitingOperations = pendingAfterSync > 0
-            ? pendingAfterSync
-            : syncResult.failedOperations + syncResult.deferredOperations;
+        final waitingOperations = pendingAfterSync;
         if (waitingOperations > 0) {
           // Échec transitoire (réseau, 5xx serveur) → queue différée.
           await _enqueueReportForLater(

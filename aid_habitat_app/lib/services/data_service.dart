@@ -10,10 +10,10 @@ import 'access_members_repository.dart';
 import 'auth_service.dart';
 import 'dossier_repository.dart';
 import 'document_repository.dart';
-import 'local_database.dart';
 import 'note_repository.dart';
 import 'nocodb_api_client.dart';
 import 'nocodb_sync_service.dart';
+import 'principal_retirement_fund_cache.dart';
 import 'retirement_funds_repository.dart';
 import 'sync_engine.dart';
 import 'sync_repository.dart';
@@ -53,14 +53,10 @@ class DataService {
     _nocodbSyncService.onConflictAutoResolved = refreshWorkspaceFromRemote;
   }
 
-  /// One-shot cleanup run at app boot: drops sync operations that are
-  /// almost certainly obsolete (failed retries or very old pending ops
-  /// captured by a previous app version) AND débloque les entités
-  /// historiquement bloquées en `conflict` state (avant la mise en
-  /// place de l'auto-résolution « remote wins »). Prevents stale
-  /// payloads from overwriting fresh remote data on startup. Errors
-  /// are swallowed so a corrupted sync_operations table never blocks
-  /// the app from launching.
+  /// Réparation non destructive de la file au démarrage : réhabilite les
+  /// erreurs réseau, remet en attente les opérations interrompues, puis
+  /// débloque les anciens conflits. Aucun payload utilisateur n'est supprimé
+  /// automatiquement par ce passage.
   Future<void> purgeStaleSyncOperations() async {
     try {
       await _syncRepository.purgeStalePendingOperations();
@@ -306,16 +302,29 @@ class DataService {
   /// princ. » et le dropdown « Caisse complém. » proposaient les
   /// mêmes options.
   ///
-  /// Pas de cache local pour l'instant (pas de table SQLite dédiée
-  /// aux principales). Si l'app est offline, on retombe sur une
-  /// liste vide — l'ergo verra le dropdown « Sélectionner... » sans
-  /// choix tant que le réseau ne revient pas.
   Future<List<String>> fetchPrincipalRetirementFundNames() async {
     try {
-      return await _nocodbApiClient.fetchPrincipalRetirementFundNames();
+      final names = await _nocodbApiClient.fetchPrincipalRetirementFundNames();
+      if (names.isNotEmpty) {
+        final cached = await PrincipalRetirementFundCache.instance.read();
+        final byName = {
+          for (final fund in cached) fund['name']!.trim().toLowerCase(): fund,
+        };
+        await PrincipalRetirementFundCache.instance.write(
+          names
+              .map(
+                (name) =>
+                    byName[name.trim().toLowerCase()] ??
+                    {'id': '', 'name': name, 'phone': '', 'logoUrl': ''},
+              )
+              .toList(growable: false),
+        );
+        return names;
+      }
     } catch (_) {
-      return const [];
+      // Le cache local reste la source de secours au démarrage offline.
     }
+    return PrincipalRetirementFundCache.instance.readNames();
   }
 
   Future<bool> refreshRetirementFundsFromRemote() async {
@@ -930,23 +939,22 @@ class DataService {
       final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
       if (rawPayloads.isEmpty) return false;
       await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);
-      // Pull aussi les entités GLOBALES qui n'étaient rafraîchies
-      // qu'au boot (wiki, caisses retraite, photo profil, admin
-      // access). Demande utilisateur 2026-05-06 : « ça fait 10 min
-      // que mon app est ouverte sur iPad, page bibliothèque vide,
-      // page caisses vide … alors que tout est accessible sur Mac ».
-      // Sans ces refresh-en-chaîne, ces données restaient stale tant
-      // que l'app n'était pas relancée. Best-effort, fire-and-forget
-      // pour ne pas allonger le cycle pull (chacun a son timeout
-      // interne). Le SyncEngine émettra ensuite `lastSyncAt` →
-      // chaque écran (Wiki/Caisses/Documents/VAD) re-fetch via son
-      // propre listener.
-      // ignore: discarded_futures
-      refreshLocalAuthStateFromRemote();
-      // ignore: discarded_futures
-      refreshWikiItemsFromRemote();
-      // ignore: discarded_futures
-      refreshRetirementFundsFromRemote();
+      // Les données globales doivent être terminées AVANT que le
+      // SyncEngine annonce la fin du pull. L'ancien fire-and-forget
+      // pouvait laisser Bibliothèque et Caisses vides après une
+      // resynchronisation, sans nouvel événement pour rafraîchir l'UI.
+      await Future.wait([
+        refreshLocalAuthStateFromRemote(),
+        refreshWikiItemsFromRemote(),
+        refreshRetirementFundsFromRemote(),
+      ]);
+
+      // Précharge toutes les notes des dossiers accessibles. Sans ce
+      // warmup, seules les notes déjà ouvertes sur cet iPad existaient
+      // en SQLite : après une reconnexion puis un passage hors ligne,
+      // certains dossiers affichaient donc une note vide alors que son
+      // contenu était bien présent sur le serveur.
+      await _preloadWorkspaceNotePages(rawPayloads);
       // Warmup ANAH — la fonction Vercel `/api/anah-status` n'est appelée
       // qu'à l'ouverture de l'écran ANAH. Sans ce ping au pull workspace,
       // un cold start peut faire attendre 3-10 s la 1ère fois que
@@ -967,6 +975,29 @@ class DataService {
       // ignore: avoid_print
       print('[refreshWorkspace] ERROR: $e');
       return false;
+    }
+  }
+
+  Future<void> _preloadWorkspaceNotePages(
+    List<Map<String, dynamic>> rawPayloads,
+  ) async {
+    final patientIds = rawPayloads
+        .map((raw) {
+          final patient = (raw['patient'] as Map?)?.cast<String, dynamic>();
+          return patient?['id']?.toString().trim() ?? '';
+        })
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    // Petit pool borné : un compte admin peut voir tous les dossiers,
+    // mais on ne veut pas lancer 20 requêtes simultanées sur l'iPad.
+    const concurrency = 4;
+    for (var start = 0; start < patientIds.length; start += concurrency) {
+      final end = (start + concurrency).clamp(0, patientIds.length);
+      await Future.wait(
+        patientIds.sublist(start, end).map(refreshAllNotePagesForPatient),
+      );
     }
   }
 
@@ -1003,6 +1034,30 @@ class DataService {
     return _syncRepository.countPendingOperations();
   }
 
+  Future<int> countPendingReportPrerequisites({
+    required String dossierId,
+    required String patientId,
+  }) {
+    return _syncRepository.countPendingReportPrerequisites(
+      dossierId: dossierId,
+      patientId: patientId,
+    );
+  }
+
+  Future<int> countConflictingReportPrerequisites({
+    required String dossierId,
+    required String patientId,
+  }) {
+    return _syncRepository.countConflictingReportPrerequisites(
+      dossierId: dossierId,
+      patientId: patientId,
+    );
+  }
+
+  Future<int> cancelQueuedReportGeneration(String dossierId) {
+    return _syncRepository.discardSingleOperation('report_gen_$dossierId');
+  }
+
   Future<Dossier?> fetchRemoteDossierById(String dossierId) async {
     try {
       final remoteDossiers = await _nocodbApiClient.fetchDossiers();
@@ -1028,53 +1083,40 @@ class DataService {
     await _syncRepository.clearPendingOperationsForEntity(remoteDossier.id);
   }
 
-  /// Vide TOUTES les données locales (dossiers, documents, notes, sync_ops,
-  /// caches) MAIS préserve les tables d'auth (`app_users`,
-  /// `user_access_scopes`, `access_members`, `app_session`) pour que le
-  /// re-login fonctionne sans re-fetch initial du serveur.
+  /// Recharge l'état distant sans jamais vider le cache local.
   ///
-  /// Utilisé par :
-  ///   - Bouton « Forcer la sync » dans AccountDialog (demande utilisateur
-  ///     2026-05-06 : « le bouton doit être accessible quand on clique
-  ///     sur le profil »)
-  ///   - Opérations support / recovery quand on veut repartir d'un cache
-  ///     vide sans toucher aux tables d'auth.
-  ///
-  /// Renvoie le nombre de lignes supprimées (pour log/debug).
-  Future<int> wipeLocalDataForResync() async {
-    final db = await LocalDatabase.instance.database;
-    int total = 0;
-    // Tables de DONNÉES (à wiper) — l'auth + la session sont préservées.
-    const dataTables = <String>[
-      'dossiers',
-      'patients',
-      'housings',
-      'documents',
-      'note_pages',
-      'sync_operations',
-      'contexte_de_vie',
-      'diagnostic_sanitaires',
-      'mesures_anthropometriques',
-      'observations_synthese',
-      'visit_recommendations',
-      'wiki_items',
-      'retirement_funds',
-      'reference_sync_meta',
-      'web_media_cache',
-    ];
-    for (final table in dataTables) {
-      try {
-        final n = await db.delete(table);
-        total += n;
-      } catch (_) {
-        // Table peut-être pas encore créée (migration partielle) — ignore.
-      }
+  /// `mergeRemoteDossierPayloads` réconcilie déjà les suppressions NocoDB
+  /// et préserve les brouillons locaux. Effacer SQLite avant le pull était
+  /// donc inutile et pouvait laisser toute l'app vide si le réseau ou la
+  /// session échouait entre les deux étapes.
+  Future<void> forceResyncFromRemote() async {
+    final pending = await _syncRepository.countPendingOperations();
+    if (pending > 0) {
+      throw PendingSyncBeforeForceResyncException(pending);
     }
-    // Trigger un pull workspace + le SyncEngine reprendra ses pulls
-    // adaptatifs. Best-effort : si offline, le data viendra dès le retour
-    // online via le polling natif.
-    // ignore: discarded_futures
-    refreshWorkspaceFromRemote();
-    return total;
+
+    final refreshed = await refreshWorkspaceFromRemote();
+    if (!refreshed) {
+      throw const ForceResyncUnavailableException();
+    }
   }
+}
+
+class PendingSyncBeforeForceResyncException implements Exception {
+  const PendingSyncBeforeForceResyncException(this.count);
+
+  final int count;
+
+  @override
+  String toString() =>
+      '$count opération${count > 1 ? 's' : ''} encore en attente. '
+      'Laisse la synchronisation se terminer avant de recharger les données.';
+}
+
+class ForceResyncUnavailableException implements Exception {
+  const ForceResyncUnavailableException();
+
+  @override
+  String toString() =>
+      'Le serveur n’a pas pu être joint. Les données locales ont été conservées.';
 }

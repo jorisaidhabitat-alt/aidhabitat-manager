@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path/path.dart' as p;
@@ -270,6 +271,10 @@ class _PlanCanvasState extends State<PlanCanvas> {
   final List<_PlanStroke> _strokes = [];
   // In-progress stroke (pen/eraser) or shape preview (line/rect)
   _PlanStroke? _current;
+  int? _activeCanvasPointer;
+  PointerDeviceKind? _activeCanvasPointerKind;
+  Offset? _canvasPointerDown;
+  bool _canvasPointerMoved = false;
 
   // Undo / redo — snapshots deep-copiés des traits à chaque mutation
   // (trait terminé, symbole placé/déplacé/supprimé, effacer tout…).
@@ -555,8 +560,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     return box.globalToLocal(global);
   }
 
-  void _onPanStart(DragStartDetails d) {
-    final pt = _localPoint(d.globalPosition);
+  void _startStrokeAt(Offset pt) {
     // Couleur et taille dépendent de l'outil.
     int colorForStroke;
     double sizeForStroke;
@@ -602,13 +606,15 @@ class _PlanCanvasState extends State<PlanCanvas> {
     PlanTool.eraser,
   };
 
-  void _onPanUpdate(DragUpdateDetails d) {
+  void _updateStrokeAt(Offset pt) {
     final cur = _current;
     if (cur == null) return;
-    final pt = _localPoint(d.globalPosition);
     setState(() {
       if (_freehandTools.contains(cur.tool)) {
-        cur.points.add(pt);
+        final previous = cur.points.last;
+        if ((pt - previous).distanceSquared >= 0.16) {
+          cur.points.add(pt);
+        }
       } else {
         // Shape/symbole : toujours [start, current]
         if (cur.points.length < 2) {
@@ -620,7 +626,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     });
   }
 
-  void _onPanEnd(DragEndDetails details) {
+  void _finishCurrentStroke() {
     final cur = _current;
     if (cur == null) return;
     if (_freehandTools.contains(cur.tool) && cur.points.length < 2) {
@@ -980,7 +986,9 @@ class _PlanCanvasState extends State<PlanCanvas> {
   }
 
   Widget _buildSymbolOverlayTools() {
-    return _buildOverlayDock(_symbolButtons());
+    // Espacement légèrement resserré pour que le dernier équipement
+    // (Lavabo) reste entièrement hors de la barre des scénarios.
+    return _buildOverlayDock(_symbolButtons(), gap: 12);
   }
 
   Widget _buildPaginationOverlayTools() {
@@ -1005,7 +1013,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
     ]);
   }
 
-  Widget _buildOverlayDock(List<Widget> buttons) {
+  Widget _buildOverlayDock(List<Widget> buttons, {double gap = 18}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -1025,7 +1033,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 0; i < buttons.length; i++) ...[
-              if (i > 0) const SizedBox(width: 18),
+              if (i > 0) SizedBox(width: gap),
               buttons[i],
             ],
           ],
@@ -1699,12 +1707,12 @@ class _PlanCanvasState extends State<PlanCanvas> {
               ),
               // Draw area — remplit tout le canvas.
               Positioned.fill(
-                child: GestureDetector(
+                child: Listener(
                   behavior: HitTestBehavior.opaque,
-                  onTapUp: _onCanvasTapUp,
-                  onPanStart: _onPanStartRouted,
-                  onPanUpdate: _onPanUpdateRouted,
-                  onPanEnd: _onPanEndRouted,
+                  onPointerDown: _onCanvasPointerDown,
+                  onPointerMove: _onCanvasPointerMove,
+                  onPointerUp: _onCanvasPointerUp,
+                  onPointerCancel: _onCanvasPointerCancel,
                   child: MouseRegion(
                     cursor: _tool == PlanTool.eraser
                         ? SystemMouseCursors.cell
@@ -1861,8 +1869,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   /// flottants visibles). Tap sur du vide = désélection. Un drag sur
   /// un symbole non sélectionné reste un tracé normal : la manipulation
   /// demande toujours ce premier clic explicite.
-  void _onCanvasTapUp(TapUpDetails d) {
-    final pt = _localPoint(d.globalPosition);
+  int _symbolIndexAt(Offset pt) {
     // Si déjà en mode édition : tester si le tap est sur une poignée
     // (ne rien faire, le pan va gérer) ou dans le body → on garde
     // le mode édition. Tap ailleurs sur le même symbole → idem.
@@ -1873,24 +1880,42 @@ class _PlanCanvasState extends State<PlanCanvas> {
       if (bounds == null) continue;
       final local = _toSymbolLocal(s, pt);
       if (bounds.contains(local)) {
-        setState(() {
-          _selectedIndex = i;
-          _editingMode = true; // tap → mode édition
-        });
-        return;
+        return i;
       }
     }
-    // Tap ailleurs → désélectionner.
-    if (_selectedIndex != -1 || _editingMode) {
-      setState(() {
-        _selectedIndex = -1;
-        _editingMode = false;
-      });
-    }
+    return -1;
   }
 
-  void _onPanStartRouted(DragStartDetails d) {
-    final pt = _localPoint(d.globalPosition);
+  bool _isSupportedCanvasPointer(PointerEvent event) {
+    return event.kind == PointerDeviceKind.mouse ||
+        event.kind == PointerDeviceKind.touch ||
+        event.kind == PointerDeviceKind.stylus ||
+        event.kind == PointerDeviceKind.invertedStylus;
+  }
+
+  bool _isStylusPointer(PointerDeviceKind kind) {
+    return kind == PointerDeviceKind.stylus ||
+        kind == PointerDeviceKind.invertedStylus;
+  }
+
+  void _onCanvasPointerDown(PointerDownEvent event) {
+    if (!_isSupportedCanvasPointer(event)) return;
+    if (_activeCanvasPointer != null) {
+      // Le Pencil prend la priorité sur un contact tactile parasite
+      // (paume/doigt) afin de ne jamais donner l'impression d'un stylet mort.
+      if (!_isStylusPointer(event.kind) ||
+          _isStylusPointer(_activeCanvasPointerKind!)) {
+        return;
+      }
+      _discardActiveCanvasGesture();
+    }
+
+    final pt = event.localPosition;
+    _activeCanvasPointer = event.pointer;
+    _activeCanvasPointerKind = event.kind;
+    _canvasPointerDown = pt;
+    _canvasPointerMoved = false;
+
     // Mode édition : les poignées ont priorité (resize / rotation /
     // déplacement depuis le body).
     if (_selectedIndex >= 0 && _editingMode) {
@@ -1906,32 +1931,88 @@ class _PlanCanvasState extends State<PlanCanvas> {
         return;
       }
     }
-    // Aucun symbole sélectionné/manipulé → tracé libre, même si le
-    // pointeur démarre au-dessus d'un équipement.
-    _onPanStart(d);
+    _startStrokeAt(pt);
   }
 
-  void _onPanUpdateRouted(DragUpdateDetails d) {
+  void _onCanvasPointerMove(PointerMoveEvent event) {
+    if (_activeCanvasPointer != event.pointer) return;
+    final down = _canvasPointerDown;
+    if (down != null && (event.localPosition - down).distanceSquared >= 4) {
+      _canvasPointerMoved = true;
+    }
     if (_activeHandle != null) {
-      _updateSelectedSymbol(d.globalPosition);
+      _updateSelectedSymbol(event.position);
       return;
     }
-    _onPanUpdate(d);
+    _updateStrokeAt(event.localPosition);
   }
 
-  void _onPanEndRouted(DragEndDetails d) {
+  void _onCanvasPointerUp(PointerUpEvent event) {
+    if (_activeCanvasPointer != event.pointer) return;
     if (_activeHandle != null) {
-      setState(() {
-        _activeHandle = null;
-        _dragAnchor = null;
-        _dragInitialCenter = null;
-        _dragInitialCorner = null;
-        _dragInitialRotation = null;
-      });
+      _finishSymbolGesture();
       _scheduleSave();
+      _resetCanvasPointer();
       return;
     }
-    _onPanEnd(d);
+
+    final symbolIndex = _symbolIndexAt(event.localPosition);
+    if (!_canvasPointerMoved && symbolIndex >= 0) {
+      setState(() {
+        _current = null;
+        _selectedIndex = symbolIndex;
+        _editingMode = true;
+      });
+    } else if (!_canvasPointerMoved && _editingMode) {
+      // Un tap hors du symbole quitte l'édition, comme auparavant.
+      setState(() {
+        _current = null;
+        _selectedIndex = -1;
+        _editingMode = false;
+      });
+    } else {
+      _updateStrokeAt(event.localPosition);
+      _finishCurrentStroke();
+    }
+    _resetCanvasPointer();
+  }
+
+  void _onCanvasPointerCancel(PointerCancelEvent event) {
+    if (_activeCanvasPointer != event.pointer) return;
+    if (_activeHandle != null) {
+      _finishSymbolGesture();
+      _scheduleSave();
+    } else if (_current != null) {
+      _finishCurrentStroke();
+    }
+    _resetCanvasPointer();
+  }
+
+  void _finishSymbolGesture() {
+    setState(() {
+      _activeHandle = null;
+      _dragAnchor = null;
+      _dragInitialCenter = null;
+      _dragInitialCorner = null;
+      _dragInitialRotation = null;
+    });
+  }
+
+  void _resetCanvasPointer() {
+    _activeCanvasPointer = null;
+    _activeCanvasPointerKind = null;
+    _canvasPointerDown = null;
+    _canvasPointerMoved = false;
+  }
+
+  void _discardActiveCanvasGesture() {
+    _current = null;
+    _activeHandle = null;
+    _dragAnchor = null;
+    _dragInitialCenter = null;
+    _dragInitialCorner = null;
+    _dragInitialRotation = null;
+    _resetCanvasPointer();
   }
 
   void _updateSelectedSymbol(Offset globalPoint) {

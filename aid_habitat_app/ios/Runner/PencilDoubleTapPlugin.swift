@@ -36,10 +36,16 @@ class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegat
   private static let channelName = "aidhabitat/pencil_interaction"
 
   private let channel: FlutterMethodChannel
+  private var keyboardObserverTokens: [NSObjectProtocol] = []
 
   private init(channel: FlutterMethodChannel) {
     self.channel = channel
     super.init()
+    startSuppressingInputAssistant()
+  }
+
+  deinit {
+    keyboardObserverTokens.forEach(NotificationCenter.default.removeObserver)
   }
 
   // Méthode appelée par AppDelegate.swift au lancement.
@@ -104,6 +110,79 @@ class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegat
     // outil courant <-> outil précédemment utilisé.
     let action = Self.encodePreferredTapAction(UIPencilInteraction.preferredTapAction)
     channel.invokeMethod("doubleTap", arguments: ["preferredAction": action])
+  }
+
+  // MARK: - iPad text input assistant
+
+  // Flutter utilise une vue texte UIKit cachée pour Scribble. iPadOS lui
+  // ajoute par défaut une barre avec annuler/rétablir et la langue active,
+  // ce qui crée un inset bas et déplace inutilement le relevé. Les groupes
+  // de raccourcis sont retirés sans désactiver Scribble ni le clavier.
+  private func startSuppressingInputAssistant() {
+    let center = NotificationCenter.default
+    let notifications = [
+      UIResponder.keyboardWillShowNotification,
+      UIResponder.keyboardDidShowNotification,
+    ]
+
+    for notification in notifications {
+      let token = center.addObserver(
+        forName: notification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.suppressInputAssistant()
+        // La vue FlutterTextInput peut devenir first responder pendant
+        // l'animation du clavier : une seconde passe couvre ce basculement.
+        DispatchQueue.main.async { [weak self] in
+          self?.suppressInputAssistant()
+        }
+      }
+      keyboardObserverTokens.append(token)
+    }
+  }
+
+  private func suppressInputAssistant() {
+    guard
+      let rootView = Self.activeKeyWindow()?.rootViewController?.view,
+      let firstResponder = Self.firstResponder(in: rootView)
+    else {
+      return
+    }
+
+    let assistant = firstResponder.inputAssistantItem
+    let hadShortcuts =
+      !assistant.leadingBarButtonGroups.isEmpty ||
+      !assistant.trailingBarButtonGroups.isEmpty
+
+    assistant.leadingBarButtonGroups = []
+    assistant.trailingBarButtonGroups = []
+    assistant.allowsHidingShortcuts = true
+
+    if hadShortcuts {
+      firstResponder.reloadInputViews()
+    }
+  }
+
+  private static func activeKeyWindow() -> UIWindow? {
+    let scenes = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+    let activeScene = scenes.first(where: { $0.activationState == .foregroundActive })
+      ?? scenes.first
+    return activeScene?.windows.first(where: { $0.isKeyWindow })
+      ?? activeScene?.windows.first
+  }
+
+  private static func firstResponder(in view: UIView) -> UIView? {
+    if view.isFirstResponder {
+      return view
+    }
+    for subview in view.subviews {
+      if let responder = firstResponder(in: subview) {
+        return responder
+      }
+    }
+    return nil
   }
 
   // Conversion enum iOS → string portable. Évite de hardcoder des

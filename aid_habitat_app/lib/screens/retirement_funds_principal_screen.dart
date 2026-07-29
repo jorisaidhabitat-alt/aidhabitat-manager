@@ -9,13 +9,11 @@ import 'package:http/http.dart' as http;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:sqflite/sqflite.dart';
-
 import '../components/brand_colors.dart';
 import '../components/cached_remote_image.dart';
 import '../services/app_config.dart';
-import '../services/local_database.dart';
 import '../services/nocodb_api_client.dart';
+import '../services/principal_retirement_fund_cache.dart';
 import '../services/url_resolver.dart';
 
 /// Page « Caisses de retraite principales » — référentiel partagé.
@@ -50,11 +48,8 @@ class _RetirementFundsPrincipalScreenState
   // POST direct avec ses propres headers.
   final http.Client _client = http.Client();
   final NocodbApiClient _api = NocodbApiClient();
-  final LocalDatabase _localDb = LocalDatabase.instance;
-
-  /// Clé du cache `kv_store` pour la liste des caisses principales.
-  /// Pattern identique à `references_service.dart` (`refs_payload_v1`).
-  static const String _cacheKey = 'principal_retirement_funds_v1';
+  final PrincipalRetirementFundCache _cache =
+      PrincipalRetirementFundCache.instance;
 
   List<_PrincipalFund> _funds = const [];
   bool _isLoading = true;
@@ -134,26 +129,10 @@ class _RetirementFundsPrincipalScreenState
   }
 
   Future<List<_PrincipalFund>?> _readFromCache() async {
-    try {
-      final db = await _localDb.database;
-      final rows = await db.query(
-        'kv_store',
-        where: 'key = ?',
-        whereArgs: [_cacheKey],
-        limit: 1,
-      );
-      if (rows.isEmpty) return null;
-      final raw = rows.first['value'] as String?;
-      if (raw == null || raw.isEmpty) return null;
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return null;
-      return decoded
-          .whereType<Map>()
-          .map((e) => _PrincipalFund.fromJson(e.cast<String, dynamic>()))
-          .toList(growable: false);
-    } catch (_) {
-      return null;
-    }
+    final funds = await _cache.read();
+    return funds
+        .map((fund) => _PrincipalFund.fromJson(fund))
+        .toList(growable: false);
   }
 
   Future<void> _writeToCache(List<_PrincipalFund> funds) async {
@@ -165,29 +144,18 @@ class _RetirementFundsPrincipalScreenState
     // dégradée pollue durablement l'affichage de l'utilisateur (incident
     // 2026-05-15 10:07 : cache écrit avec [], affichage « Aucune caisse
     // trouvée » jusqu'à intervention manuelle).
-    if (funds.isEmpty) return;
-    try {
-      final db = await _localDb.database;
-      final encoded = jsonEncode(
-        funds
-            .map(
-              (f) => {
-                'id': f.id,
-                'name': f.name,
-                'phone': f.phone,
-                'logoUrl': f.logoUrl,
-              },
-            )
-            .toList(),
-      );
-      await db.insert('kv_store', {
-        'key': _cacheKey,
-        'value': encoded,
-        'updated_at': DateTime.now().toIso8601String(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    } catch (_) {
-      // Silent — un cache absent n'est pas fatal.
-    }
+    await _cache.write(
+      funds
+          .map(
+            (fund) => {
+              'id': fund.id,
+              'name': fund.name,
+              'phone': fund.phone,
+              'logoUrl': fund.logoUrl,
+            },
+          )
+          .toList(growable: false),
+    );
   }
 
   List<_PrincipalFund> get _filteredFunds {

@@ -359,6 +359,7 @@ class _SummaryTabState extends State<SummaryTab>
       fillParentHeight: true,
       attachedToTitleBanner: true,
       borderlessTextEditor: true,
+      focusOnTapAnywhere: true,
     );
   }
 
