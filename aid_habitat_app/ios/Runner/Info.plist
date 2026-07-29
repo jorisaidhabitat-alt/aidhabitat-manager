@@ -69,6 +69,12 @@
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>Aid&apos;Habitat accède à votre dossier Documents pour importer ou enregistrer des fichiers liés au dossier du bénéficiaire (rapports PDF, justificatifs).</string>
 
+	<!-- Dictée locale des notes écrites (Speech + microphone) -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Aid&apos;Habitat utilise le microphone uniquement lorsque vous activez la dictée d&apos;une note écrite.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Aid&apos;Habitat utilise la reconnaissance vocale sur l&apos;appareil pour transcrire votre dictée dans une note écrite.</string>
+
 	<!-- ====================================================== -->
 	<!-- Export Compliance                                       -->
 	<!-- "false" = on n&apos;utilise QUE de la crypto standard    -->

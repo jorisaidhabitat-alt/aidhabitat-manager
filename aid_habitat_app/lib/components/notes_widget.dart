@@ -15,6 +15,7 @@ import 'brand_colors.dart';
 import 'confirmation_dialog.dart';
 import 'notes_canvas_painters.dart';
 import 'soft_transitions.dart';
+import 'voice_dictation_button.dart';
 
 // Re-export des enums déplacés dans `notes_canvas_painters.dart` pour
 // préserver l'API publique consommée par `note_window_screen`,
@@ -449,6 +450,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   // Texte + contrôleur
   late final TextEditingController _textController;
   final FocusNode _textFocusNode = FocusNode();
+  bool _isVoiceDictating = false;
 
   // Pages
   late int _currentPage;
@@ -644,6 +646,7 @@ class _NotesWidgetState extends State<NotesWidget> {
         oldWidget.patientId != widget.patientId ||
         oldWidget.tabKey != widget.tabKey;
     if (changedDoc) {
+      _isVoiceDictating = false;
       // IMPORTANT pour l'animation de swipe canvas (MesuresTab) :
       // on appelle `.clear()` sur le Map, ce qui retire les entrées
       // (paires page→List) mais NE MUTE PAS les Lists elles-mêmes.
@@ -2030,6 +2033,7 @@ class _NotesWidgetState extends State<NotesWidget> {
   void _switchPage(int page) {
     if (page < 0 || page >= _totalPages || page == _currentPage) return;
     setState(() {
+      _isVoiceDictating = false;
       _currentPage = page;
       if (!widget.sharedText) {
         _textController.text = _pageTexts[page] ?? '';
@@ -2284,6 +2288,8 @@ class _NotesWidgetState extends State<NotesWidget> {
   // ---------------------------------------------------------------------------
 
   void _openTextModal() {
+    unawaited(VoiceDictationButton.cancelActive());
+    _isVoiceDictating = false;
     // Parent opted into "real tab" mode → delegate without showing any
     // floating modal. The parent will open a new entry in its TabBar.
     if (widget.onExpandToTab != null) {
@@ -2505,7 +2511,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                     padding: EdgeInsets.fromLTRB(
                       widget.allowTextModal ? 38 : 16,
                       12,
-                      16,
+                      VoiceDictationButton.isSupported ? 54 : 16,
                       6,
                     ),
                     child: TextField(
@@ -2525,6 +2531,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                           SpellCheckConfiguration.disabled(),
                       smartDashesType: SmartDashesType.disabled,
                       smartQuotesType: SmartQuotesType.disabled,
+                      readOnly: _isVoiceDictating,
                       decoration: _noteTextDecoration(widget.placeholder),
                     ),
                   ),
@@ -2560,6 +2567,22 @@ class _NotesWidgetState extends State<NotesWidget> {
                       ),
                     ),
                   ),
+                ),
+              ),
+            if (VoiceDictationButton.isSupported)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: VoiceDictationButton(
+                  key: ValueKey(
+                    'voice-${widget.patientId}-${widget.tabKey}-$_currentPage',
+                  ),
+                  controller: _textController,
+                  focusNode: _textFocusNode,
+                  onListeningChanged: (listening) {
+                    if (!mounted || _isVoiceDictating == listening) return;
+                    setState(() => _isVoiceDictating = listening);
+                  },
                 ),
               ),
           ],
@@ -2973,7 +2996,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           padding: EdgeInsets.fromLTRB(
             widget.allowTextModal ? 38 : 14,
             10,
-            14,
+            VoiceDictationButton.isSupported ? 52 : 14,
             10,
           ),
           child: TextField(
@@ -2992,6 +3015,7 @@ class _NotesWidgetState extends State<NotesWidget> {
             spellCheckConfiguration: SpellCheckConfiguration.disabled(),
             smartDashesType: SmartDashesType.disabled,
             smartQuotesType: SmartQuotesType.disabled,
+            readOnly: _isVoiceDictating,
             decoration: _noteTextDecoration(widget.placeholder),
           ),
         ),
@@ -3012,6 +3036,22 @@ class _NotesWidgetState extends State<NotesWidget> {
                   color: Color(0xFF5C6670),
                 ),
               ),
+            ),
+          ),
+        if (VoiceDictationButton.isSupported)
+          Positioned(
+            right: 8,
+            top: 8,
+            child: VoiceDictationButton(
+              key: ValueKey(
+                'voice-${widget.patientId}-${widget.tabKey}-$_currentPage',
+              ),
+              controller: _textController,
+              focusNode: _textFocusNode,
+              onListeningChanged: (listening) {
+                if (!mounted || _isVoiceDictating == listening) return;
+                setState(() => _isVoiceDictating = listening);
+              },
             ),
           ),
       ],
@@ -4016,7 +4056,9 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
   late Offset _pos;
   late Size _size;
   late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
   late bool _fullscreen;
+  bool _isVoiceDictating = false;
 
   /// Animation d'ouverture/fermeture — match `softDialogRouteBuilder`
   /// (cf. components/soft_transitions.dart) : fade 0→1 + scale 0.94→1.0
@@ -4044,6 +4086,7 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
     _sharedPos = _pos;
     _sharedSize = _size;
     _controller.dispose();
+    _focusNode.dispose();
     _entryController.dispose();
     super.dispose();
   }
@@ -4201,25 +4244,54 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
                       ),
                     ),
                     Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: TextField(
-                          controller: _controller,
-                          autofocus: true,
-                          keyboardType: TextInputType.multiline,
-                          textInputAction: TextInputAction.newline,
-                          maxLines: null,
-                          expands: true,
-                          textAlignVertical: TextAlignVertical.top,
-                          stylusHandwritingEnabled: true,
-                          autocorrect: false,
-                          enableSuggestions: false,
-                          spellCheckConfiguration:
-                              SpellCheckConfiguration.disabled(),
-                          smartDashesType: SmartDashesType.disabled,
-                          smartQuotesType: SmartQuotesType.disabled,
-                          decoration: _noteTextDecoration(widget.placeholder),
-                        ),
+                      child: Stack(
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              14,
+                              14,
+                              VoiceDictationButton.isSupported ? 56 : 14,
+                              14,
+                            ),
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              autofocus: true,
+                              keyboardType: TextInputType.multiline,
+                              textInputAction: TextInputAction.newline,
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                              stylusHandwritingEnabled: true,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              spellCheckConfiguration:
+                                  SpellCheckConfiguration.disabled(),
+                              smartDashesType: SmartDashesType.disabled,
+                              smartQuotesType: SmartQuotesType.disabled,
+                              readOnly: _isVoiceDictating,
+                              decoration: _noteTextDecoration(
+                                widget.placeholder,
+                              ),
+                            ),
+                          ),
+                          if (VoiceDictationButton.isSupported)
+                            Positioned(
+                              right: 12,
+                              top: 12,
+                              child: VoiceDictationButton(
+                                controller: _controller,
+                                focusNode: _focusNode,
+                                onListeningChanged: (listening) {
+                                  if (!mounted ||
+                                      _isVoiceDictating == listening) {
+                                    return;
+                                  }
+                                  setState(() => _isVoiceDictating = listening);
+                                },
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                     if (!_fullscreen)

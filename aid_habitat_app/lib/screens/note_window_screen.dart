@@ -14,6 +14,7 @@ import '../services/note_window_web_stub.dart'
     as note_window_web;
 import '../components/brand_colors.dart';
 import '../components/notes_canvas_painters.dart';
+import '../components/voice_dictation_button.dart';
 import '../services/data_service.dart';
 
 InputDecoration _noteWindowTextDecoration() {
@@ -131,6 +132,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen>
   StreamSubscription<dynamic>? _webIpcSub;
   bool _nativeIpcAvailable = true;
   bool _tearingDown = false;
+  bool _isVoiceDictating = false;
 
   @override
   void initState() {
@@ -406,26 +408,53 @@ class _NoteWindowScreenState extends State<NoteWindowScreen>
                 ),
               ),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    keyboardType: TextInputType.multiline,
-                    textInputAction: TextInputAction.newline,
-                    maxLines: null,
-                    expands: true,
-                    autofocus: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(fontSize: 14, height: 1.5),
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    spellCheckConfiguration: SpellCheckConfiguration.disabled(),
-                    smartDashesType: SmartDashesType.disabled,
-                    smartQuotesType: SmartQuotesType.disabled,
-                    decoration: _noteWindowTextDecoration(),
-                    onChanged: _sendLive,
-                  ),
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        16,
+                        VoiceDictationButton.isSupported ? 58 : 16,
+                        16,
+                      ),
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        maxLines: null,
+                        expands: true,
+                        autofocus: true,
+                        textAlignVertical: TextAlignVertical.top,
+                        style: const TextStyle(fontSize: 14, height: 1.5),
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        spellCheckConfiguration:
+                            SpellCheckConfiguration.disabled(),
+                        smartDashesType: SmartDashesType.disabled,
+                        smartQuotesType: SmartQuotesType.disabled,
+                        readOnly: _isVoiceDictating,
+                        decoration: _noteWindowTextDecoration(),
+                        onChanged: _sendLive,
+                      ),
+                    ),
+                    if (VoiceDictationButton.isSupported)
+                      Positioned(
+                        top: 14,
+                        right: 14,
+                        child: VoiceDictationButton(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          onTextChanged: _sendLive,
+                          onListeningChanged: (listening) {
+                            if (!mounted || _isVoiceDictating == listening) {
+                              return;
+                            }
+                            setState(() => _isVoiceDictating = listening);
+                          },
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],

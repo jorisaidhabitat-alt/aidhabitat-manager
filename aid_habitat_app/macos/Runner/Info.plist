@@ -46,6 +46,10 @@
 	<string>Aid&apos;Habitat accède au dossier Documents pour importer ou enregistrer des fichiers liés au dossier du bénéficiaire.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>Aid&apos;Habitat enregistre les rapports PDF générés dans votre dossier Téléchargements.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Aid&apos;Habitat utilise le microphone uniquement lorsque vous activez la dictée d&apos;une note écrite.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Aid&apos;Habitat utilise la reconnaissance vocale sur l&apos;appareil pour transcrire votre dictée dans une note écrite.</string>
 
 	<!-- Catégorie Mac App Store -->
 	<key>LSApplicationCategoryType</key>
