@@ -947,6 +947,7 @@ class DataService {
         refreshLocalAuthStateFromRemote(),
         refreshWikiItemsFromRemote(),
         refreshRetirementFundsFromRemote(),
+        fetchPrincipalRetirementFundNames(),
       ]);
 
       // Précharge toutes les notes des dossiers accessibles. Sans ce
