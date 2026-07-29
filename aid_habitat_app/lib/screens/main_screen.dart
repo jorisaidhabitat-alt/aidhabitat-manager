@@ -78,6 +78,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _syncEngine = SyncEngine();
     final connectivity = ConnectivityService();
     connectivity.bindSyncEngine(_syncEngine);
+    _syncEngine.bindRemoteSessionPreparer(() {
+      if (connectivity.isOffline) return Future<bool>.value(false);
+      return _authService.resumePendingRemoteSession();
+    });
     _isOffline = connectivity.isOffline;
 
     _syncSubscription = _syncEngine.stateStream.listen(_onSyncStateChanged);

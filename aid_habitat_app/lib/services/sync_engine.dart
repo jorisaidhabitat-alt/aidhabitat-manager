@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 
 import 'connectivity_service.dart';
@@ -32,6 +33,13 @@ class SyncEngine {
     NocodbSyncService? syncService,
     SyncRepository? syncRepository,
   }) => _instance;
+
+  @visibleForTesting
+  SyncEngine.testing({
+    required NocodbSyncService syncService,
+    required SyncRepository syncRepository,
+  }) : _syncService = syncService,
+       _syncRepository = syncRepository;
 
   final NocodbSyncService _syncService;
   final SyncRepository _syncRepository;
@@ -101,9 +109,11 @@ class SyncEngine {
   Timer? _periodicTimer;
   Timer? _debounceTimer;
   bool _disposed = false;
+  bool _started = false;
   bool _running = false;
   bool _rerunRequested = false;
   int _consecutiveFailures = 0;
+  Future<bool> Function()? _remoteSessionPreparer;
 
   // Pull (manuel, événementiel — plus de polling depuis 2026-05-12).
   bool _pullRunning = false;
@@ -117,6 +127,7 @@ class SyncEngine {
   /// retry timer (5 min) pour rejouer les ops `failed` de la queue.
   void start() {
     if (_disposed) return;
+    _started = true;
     _periodicTimer?.cancel();
     _retryTimer?.cancel();
     _debounceTimer?.cancel();
@@ -141,6 +152,7 @@ class SyncEngine {
   /// repartiront au prochain `start()`.
   void stop() {
     if (_disposed) return;
+    _started = false;
     _retryTimer?.cancel();
     _retryTimer = null;
     _periodicTimer?.cancel();
@@ -154,6 +166,7 @@ class SyncEngine {
   }
 
   void dispose() {
+    _started = false;
     _disposed = true;
     _retryTimer?.cancel();
     _periodicTimer?.cancel();
@@ -168,8 +181,15 @@ class SyncEngine {
   /// Request a sync cycle. Safe to call frequently — concurrent calls are
   /// coalesced into a single run.
   void requestSync() {
-    if (_disposed) return;
+    if (_disposed || !_started) return;
     _scheduleImmediate();
+  }
+
+  /// Installe une étape exécutée juste avant le drain réseau de la file.
+  /// Utilisée par l'authentification pour transformer une connexion locale
+  /// hors ligne en vraie session API dès que le réseau revient.
+  void bindRemoteSessionPreparer(Future<bool> Function()? preparer) {
+    _remoteSessionPreparer = preparer;
   }
 
   /// Push-on-mutation entry point. Called by repositories right after they
@@ -180,7 +200,7 @@ class SyncEngine {
   /// le device qui LIT (autre Mac/iPad) verra les modifs au prochain
   /// événement de (re)connexion ou pull-to-refresh.
   void notify() {
-    if (_disposed) return;
+    if (_disposed || !_started) return;
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_notifyDebounce, () {
       _scheduleImmediate();
@@ -345,7 +365,7 @@ class SyncEngine {
   /// était relancé — on aurait pu rester avec des données stales jusqu'au
   /// prochain foreground return).
   void onConnectivityBack() {
-    if (_disposed) return;
+    if (_disposed || !_started) return;
     _consecutiveFailures = 0;
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -360,6 +380,7 @@ class SyncEngine {
   // ---------------------------------------------------------------------------
 
   void _scheduleImmediate() {
+    if (_disposed || !_started) return;
     if (_running) {
       // A sync is already in flight. Queue another cycle so any mutations
       // that land during this run get pushed right after.
@@ -373,7 +394,7 @@ class SyncEngine {
   }
 
   void _scheduleRetry() {
-    if (_disposed || _running) return;
+    if (_disposed || !_started || _running) return;
     if (_consecutiveFailures >= _maxConsecutiveFailures) {
       _emitState(
         lastError:
@@ -407,7 +428,7 @@ class SyncEngine {
   // ---------------------------------------------------------------------------
 
   Future<void> _runSync() async {
-    if (_disposed || _running) return;
+    if (_disposed || !_started || _running) return;
     _running = true;
 
     // Refresh pending count for UI.
@@ -415,6 +436,30 @@ class SyncEngine {
     _emitState(isSyncing: true, pendingCount: pendingBefore);
 
     try {
+      // Une connexion locale effectuée hors ligne ne possède pas encore de
+      // jeton API. Avant de toucher à la file, tente de rattacher la session
+      // distante avec les identifiants conservés uniquement en RAM. Le drain
+      // attend ce résultat, ce qui supprime la course où report_generation
+      // restait "en attente" jusqu'au logout/login suivant.
+      final prepareRemoteSession = _remoteSessionPreparer;
+      if (pendingBefore > 0 && prepareRemoteSession != null) {
+        final sessionReady = await prepareRemoteSession();
+        if (_disposed || !_started) {
+          _running = false;
+          return;
+        }
+        if (!sessionReady) {
+          _running = false;
+          _emitState(
+            isSyncing: false,
+            pendingCount: pendingBefore,
+            lastError: null,
+          );
+          _scheduleRetry();
+          return;
+        }
+      }
+
       final result = await _syncService.pushPendingChanges();
       final pendingAfter = await _refreshPendingCount();
 

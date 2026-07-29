@@ -25,6 +25,15 @@ class AuthService {
   static String? _pendingSessionNotice;
   static final StreamController<void> _sessionInvalidatedController =
       StreamController<void>.broadcast();
+  static const Duration _pendingRemoteCredentialLifetime = Duration(hours: 12);
+
+  // Credentials are retained in process memory only when an offline login
+  // succeeds locally but the API cannot be reached. They are never persisted
+  // and are cleared after remote relinking, logout, rejection or expiry.
+  String? _pendingRemoteEmail;
+  String? _pendingRemotePassword;
+  DateTime? _pendingRemoteCredentialExpiresAt;
+  Future<bool>? _pendingRemoteLinkAttempt;
 
   static const String _bootstrapPasswordBuild = String.fromEnvironment(
     'AIDHABITAT_BOOTSTRAP_PASSWORD',
@@ -44,6 +53,23 @@ class AuthService {
       _sessionInvalidatedController.stream;
 
   static bool get _hasBootstrapPassword => _bootstrapPasswordBuild.isNotEmpty;
+
+  void _rememberPendingRemoteCredentials({
+    required String email,
+    required String password,
+  }) {
+    _pendingRemoteEmail = email;
+    _pendingRemotePassword = password;
+    _pendingRemoteCredentialExpiresAt = DateTime.now().add(
+      _pendingRemoteCredentialLifetime,
+    );
+  }
+
+  void _clearPendingRemoteCredentials() {
+    _pendingRemoteEmail = null;
+    _pendingRemotePassword = null;
+    _pendingRemoteCredentialExpiresAt = null;
+  }
 
   static String? validatePasswordPolicy(String password) {
     final value = password.trim();
@@ -454,6 +480,7 @@ class AuthService {
     // INATTEIGNABLE (mode offline) — auquel cas on suppose que l'auth
     // n'a pas changé.
     if (remoteResult.rejected) {
+      _clearPendingRemoteCredentials();
       // Sync local hash si l'utilisateur a tapé le bon nouveau password
       // (qui matche pas le hash local) — non, attends : si le serveur
       // rejette, c'est qu'il n'accepte pas non plus. Donc on échoue net.
@@ -468,6 +495,19 @@ class AuthService {
       return const LocalSignInResult(
         success: false,
         error: 'Mot de passe invalide',
+      );
+    }
+
+    if (remoteToken != null) {
+      _clearPendingRemoteCredentials();
+    } else if (localPasswordMatches && remoteResult.isUnreachable) {
+      // Connexion locale hors ligne : garde les identifiants uniquement
+      // en RAM pour échanger automatiquement une vraie session serveur au
+      // retour réseau. Cela évite de demander un second logout/login pour
+      // drainer les générations de rapport et autres opérations en attente.
+      _rememberPendingRemoteCredentials(
+        email: normalizedEmail,
+        password: password,
       );
     }
 
@@ -550,7 +590,76 @@ class AuthService {
     }, where: 'id = 1');
     await SecureSessionStorage.instance.write(token);
     AppConfig.setAppSessionToken(token);
+    _clearPendingRemoteCredentials();
     return true;
+  }
+
+  /// Reprend une session distante après une connexion locale effectuée hors
+  /// ligne. Le mot de passe n'existe qu'en mémoire vive et n'est jamais écrit
+  /// dans SQLite ou le secure storage.
+  ///
+  /// Retourne `true` quand une session serveur utilisable est présente. Un
+  /// rejet explicite invalide la session locale afin de demander proprement
+  /// le mot de passe courant ; une indisponibilité réseau conserve la tentative
+  /// pour le prochain cycle de synchronisation.
+  Future<bool> resumePendingRemoteSession() {
+    if (AppConfig.hasRemoteConfig) {
+      _clearPendingRemoteCredentials();
+      return Future<bool>.value(true);
+    }
+
+    final activeAttempt = _pendingRemoteLinkAttempt;
+    if (activeAttempt != null) return activeAttempt;
+
+    final email = _pendingRemoteEmail;
+    final password = _pendingRemotePassword;
+    final expiresAt = _pendingRemoteCredentialExpiresAt;
+    if (email == null ||
+        password == null ||
+        expiresAt == null ||
+        !expiresAt.isAfter(DateTime.now())) {
+      _clearPendingRemoteCredentials();
+      return Future<bool>.value(false);
+    }
+
+    final attempt = _resumePendingRemoteSession(
+      email: email,
+      password: password,
+    );
+    _pendingRemoteLinkAttempt = attempt;
+    return attempt.whenComplete(() {
+      if (identical(_pendingRemoteLinkAttempt, attempt)) {
+        _pendingRemoteLinkAttempt = null;
+      }
+    });
+  }
+
+  Future<bool> _resumePendingRemoteSession({
+    required String email,
+    required String password,
+  }) async {
+    final result = await NocodbApiClient().loginToRemote(
+      email: email,
+      password: password,
+    );
+    final token = result.token;
+    if (token != null) {
+      final db = await _database.database;
+      await db.update('app_session', {
+        'remote_token': '',
+        'updated_at': DateTime.now().toIso8601String(),
+      }, where: 'id = 1');
+      await SecureSessionStorage.instance.write(token);
+      AppConfig.setAppSessionToken(token);
+      _clearPendingRemoteCredentials();
+      return true;
+    }
+
+    if (result.rejected) {
+      _clearPendingRemoteCredentials();
+      await _handleRejectedRemoteSession();
+    }
+    return false;
   }
 
   /// Restore any remote session token persisted from a previous login.
@@ -694,6 +803,7 @@ class AuthService {
 
   Future<void> _handleRejectedRemoteSession() async {
     final db = await _database.database;
+    _clearPendingRemoteCredentials();
     await _clearSessionRowOnly(db);
     AppConfig.clearAppSessionToken();
     SyncEngine().stop();
@@ -704,6 +814,7 @@ class AuthService {
 
   Future<void> signOut() async {
     final db = await _database.database;
+    _clearPendingRemoteCredentials();
     await _clearSessionRowOnly(db);
     AppConfig.clearAppSessionToken();
     // L'iPad interne est offline-first : un logout ne doit pas pouvoir
