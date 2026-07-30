@@ -62,6 +62,7 @@ test('sends the note to Ollama without streaming', async () => {
   assert.equal(request.url, 'http://ollama.test/api/chat');
   assert.equal(body.stream, false);
   assert.equal(body.model, 'gemma3:4b');
+  assert.equal(body.keep_alive, '0');
   assert.equal(body.messages[1].content, 'La personne a du mal à entrer dans la douche.');
   assert.equal(
     result.text,

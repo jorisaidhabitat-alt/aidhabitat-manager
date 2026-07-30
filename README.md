@@ -34,3 +34,5 @@ Optional server variables:
 - `OLLAMA_BASE_URL` defaults to `http://127.0.0.1:11434`
 - `OLLAMA_REWRITE_MODEL` defaults to `gemma3:4b`
 - `OLLAMA_REWRITE_TIMEOUT_MS` defaults to `120000`
+- `OLLAMA_REWRITE_KEEP_ALIVE` defaults to `0` so the production server
+  releases the model memory after each rewrite

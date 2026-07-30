@@ -1,6 +1,7 @@
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = 'gemma3:4b';
 const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_KEEP_ALIVE = '0';
 
 export const REWRITE_MODES = Object.freeze({
   professional: [
@@ -30,6 +31,9 @@ export const getRewriteConfig = (env = process.env) => ({
   baseUrl: cleanBaseUrl(env.OLLAMA_BASE_URL),
   model: String(env.OLLAMA_REWRITE_MODEL || DEFAULT_MODEL).trim() || DEFAULT_MODEL,
   timeoutMs: positiveNumber(env.OLLAMA_REWRITE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
+  keepAlive: String(
+    env.OLLAMA_REWRITE_KEEP_ALIVE ?? DEFAULT_KEEP_ALIVE,
+  ).trim() || DEFAULT_KEEP_ALIVE,
 });
 
 export const normalizeRewriteMode = (value) => (
@@ -169,7 +173,7 @@ export const rewriteNote = async ({
       body: JSON.stringify({
         model: config.model,
         stream: false,
-        keep_alive: '5m',
+        keep_alive: config.keepAlive ?? DEFAULT_KEEP_ALIVE,
         messages: buildRewriteMessages(text, mode),
         options: {
           temperature: 0,
