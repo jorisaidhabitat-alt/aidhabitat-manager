@@ -4051,7 +4051,21 @@ class _AiRewriteButton extends StatefulWidget {
 }
 
 class _AiRewriteButtonState extends State<_AiRewriteButton> {
+  bool _available = false;
   bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvailability();
+  }
+
+  Future<void> _loadAvailability() async {
+    final available = await AiRewriteService.instance.isAvailable();
+    if (mounted && available != _available) {
+      setState(() => _available = available);
+    }
+  }
 
   String _errorMessage(Object error) {
     return error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
@@ -4119,6 +4133,8 @@ class _AiRewriteButtonState extends State<_AiRewriteButton> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_available) return const SizedBox.shrink();
+
     return Tooltip(
       message: 'Reformuler avec l’IA',
       child: IconButton(

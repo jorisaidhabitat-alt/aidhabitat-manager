@@ -16,6 +16,9 @@ import UIKit
     if let scannerRegistrar = registrar(forPlugin: "DocumentScannerPlugin") {
       DocumentScannerPlugin.register(with: scannerRegistrar)
     }
+    if let rewriteRegistrar = registrar(forPlugin: "AppleIntelligenceRewritePlugin") {
+      AppleIntelligenceRewritePlugin.register(with: rewriteRegistrar)
+    }
     if let registrar = registrar(forPlugin: "LocalFileProtectionChannel") {
       let channel = FlutterMethodChannel(
         name: fileProtectionChannelName,
