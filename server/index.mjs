@@ -5,6 +5,7 @@ import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
 import express from 'express';
+import aiRouter from './routes/ai.mjs';
 import feedbackRouter from './routes/feedback.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
@@ -8578,6 +8579,7 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
   }
 });
 
+app.use(aiRouter);
 app.use(feedbackRouter);
 
 app.use((error, _req, res, _next) => {

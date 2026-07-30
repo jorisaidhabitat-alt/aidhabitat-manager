@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../services/data_service.dart';
+import '../services/ai_rewrite_service.dart';
 import '../services/pencil_interaction_service.dart';
 import '../services/sync_engine.dart';
 import '../services/save_debounce.dart';
@@ -2511,7 +2512,7 @@ class _NotesWidgetState extends State<NotesWidget> {
                     padding: EdgeInsets.fromLTRB(
                       widget.allowTextModal ? 38 : 16,
                       12,
-                      VoiceDictationButton.isSupported ? 54 : 16,
+                      VoiceDictationButton.isSupported ? 92 : 54,
                       6,
                     ),
                     child: TextField(
@@ -2585,6 +2586,14 @@ class _NotesWidgetState extends State<NotesWidget> {
                   },
                 ),
               ),
+            Positioned(
+              right: VoiceDictationButton.isSupported ? 48 : 8,
+              top: 8,
+              child: _AiRewriteButton(
+                controller: _textController,
+                focusNode: _textFocusNode,
+              ),
+            ),
           ],
         ),
       ),
@@ -2996,7 +3005,7 @@ class _NotesWidgetState extends State<NotesWidget> {
           padding: EdgeInsets.fromLTRB(
             widget.allowTextModal ? 38 : 14,
             10,
-            VoiceDictationButton.isSupported ? 52 : 14,
+            VoiceDictationButton.isSupported ? 92 : 52,
             10,
           ),
           child: TextField(
@@ -3054,6 +3063,14 @@ class _NotesWidgetState extends State<NotesWidget> {
               },
             ),
           ),
+        Positioned(
+          right: VoiceDictationButton.isSupported ? 48 : 8,
+          top: 8,
+          child: _AiRewriteButton(
+            controller: _textController,
+            focusNode: _textFocusNode,
+          ),
+        ),
       ],
     );
     final editorSurface = widget.focusOnTapAnywhere
@@ -4023,6 +4040,284 @@ class _NotesWidgetState extends State<NotesWidget> {
 // Modal flottant draggable + resizable + plein écran
 // =============================================================================
 
+class _AiRewriteButton extends StatefulWidget {
+  const _AiRewriteButton({required this.controller, required this.focusNode});
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+
+  @override
+  State<_AiRewriteButton> createState() => _AiRewriteButtonState();
+}
+
+class _AiRewriteButtonState extends State<_AiRewriteButton> {
+  bool _loading = false;
+
+  String _errorMessage(Object error) {
+    return error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  Future<void> _rewrite() async {
+    if (_loading) return;
+    final originalText = widget.controller.text;
+    if (originalText.trim().length < 3) {
+      _showMessage('Écrivez une note avant de la reformuler.');
+      return;
+    }
+
+    widget.focusNode.unfocus();
+    await VoiceDictationButton.cancelActive();
+    if (!mounted) return;
+    setState(() => _loading = true);
+
+    try {
+      final rewrittenText = await AiRewriteService.instance.rewrite(
+        text: originalText,
+      );
+      if (!mounted) return;
+      if (widget.controller.text != originalText) {
+        _showMessage(
+          'La note a été modifiée pendant la reformulation. '
+          'La proposition a été ignorée.',
+        );
+        return;
+      }
+
+      final accepted = await showSoftDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => _AiRewritePreviewDialog(
+          originalText: originalText,
+          rewrittenText: rewrittenText,
+        ),
+      );
+      if (!mounted || accepted != true) return;
+      if (widget.controller.text != originalText) {
+        _showMessage(
+          'La note a changé avant la validation. Le texte original est conservé.',
+        );
+        return;
+      }
+
+      widget.controller.value = TextEditingValue(
+        text: rewrittenText,
+        selection: TextSelection.collapsed(offset: rewrittenText.length),
+      );
+      _showMessage('La reformulation a été appliquée.');
+    } catch (error) {
+      if (mounted) _showMessage(_errorMessage(error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Reformuler avec l’IA',
+      child: IconButton(
+        onPressed: _loading ? null : _rewrite,
+        icon: _loading
+            ? const SizedBox.square(
+                dimension: 15,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(LucideIcons.sparkles, size: 16),
+        style: IconButton.styleFrom(
+          fixedSize: const Size.square(32),
+          padding: EdgeInsets.zero,
+          backgroundColor: kBrandPurpleSoft,
+          foregroundColor: _kActiveText,
+          disabledBackgroundColor: const Color(0xFFF2F4F6),
+          disabledForegroundColor: const Color(0xFF8A939D),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiRewritePreviewDialog extends StatelessWidget {
+  const _AiRewritePreviewDialog({
+    required this.originalText,
+    required this.rewrittenText,
+  });
+
+  final String originalText;
+  final String rewrittenText;
+
+  Widget _buildTextPanel({
+    required String label,
+    required String text,
+    required bool highlighted,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(
+              highlighted ? LucideIcons.sparkles : LucideIcons.fileText,
+              size: 16,
+              color: highlighted ? _kActiveText : const Color(0xFF5C6670),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF374151),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: highlighted
+                  ? const Color(0xFFFAF7FC)
+                  : const Color(0xFFF8F9FA),
+              border: Border.all(
+                color: highlighted
+                    ? const Color(0xFFD9CCE2)
+                    : const Color(0xFFE4E7EB),
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                text,
+                style: const TextStyle(
+                  height: 1.45,
+                  fontSize: 14,
+                  color: Color(0xFF111827),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final dialogWidth = math.min(860.0, screen.width - 32);
+    final dialogHeight = math.min(620.0, screen.height - 48);
+
+    return Dialog(
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SizedBox(
+        width: dialogWidth,
+        height: dialogHeight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    LucideIcons.sparkles,
+                    size: 20,
+                    color: _kActiveText,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Vérifier la reformulation',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Fermer',
+                    onPressed: () => Navigator.of(context).pop(false),
+                    icon: const Icon(LucideIcons.x, size: 19),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Relisez la proposition avant de remplacer votre note.',
+                style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final original = _buildTextPanel(
+                      label: 'Note originale',
+                      text: originalText,
+                      highlighted: false,
+                    );
+                    final rewritten = _buildTextPanel(
+                      label: 'Proposition',
+                      text: rewrittenText,
+                      highlighted: true,
+                    );
+                    if (constraints.maxWidth < 620) {
+                      return Column(
+                        children: [
+                          Expanded(child: original),
+                          const SizedBox(height: 16),
+                          Expanded(child: rewritten),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: original),
+                        const SizedBox(width: 18),
+                        Expanded(child: rewritten),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Conserver l’original'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    icon: const Icon(LucideIcons.check, size: 17),
+                    label: const Text('Utiliser la proposition'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _kActiveText,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FloatingTextModal extends StatefulWidget {
   const _FloatingTextModal({
     required this.initialText,
@@ -4217,6 +4512,11 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
                                 ),
                               ),
                               const Spacer(),
+                              _AiRewriteButton(
+                                controller: _controller,
+                                focusNode: _focusNode,
+                              ),
+                              const SizedBox(width: 4),
                               IconButton(
                                 tooltip: _fullscreen
                                     ? 'Réduire'
