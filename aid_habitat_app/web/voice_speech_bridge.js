@@ -1,16 +1,39 @@
 (function installAidHabitatSpeechBridge() {
   const originalWebkitRecognition = window.webkitSpeechRecognition;
 
-  function useLocalRecognition(Recognition, locale) {
-    function LocalSpeechRecognition() {
+  function isArcBrowser() {
+    try {
+      const styles = window.getComputedStyle(document.documentElement);
+      return Boolean(
+        styles.getPropertyValue('--arc-palette-background').trim() ||
+        styles.getPropertyValue('--arc-palette-title').trim()
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function shouldUseRemoteTrack() {
+    try {
+      return isArcBrowser() ||
+        window.sessionStorage.getItem('aidHabitatRemoteSpeech') === '1';
+    } catch (_) {
+      return isArcBrowser();
+    }
+  }
+
+  function useRecognitionBridge(Recognition, locale, processLocally) {
+    function BridgedSpeechRecognition() {
       const recognition = new Recognition();
       recognition.lang = locale;
-      recognition.processLocally = true;
+      recognition.processLocally = processLocally;
       const nativeStart = recognition.start.bind(recognition);
       const nativeStop = recognition.stop.bind(recognition);
       const nativeAbort = recognition.abort.bind(recognition);
       let microphoneStream = null;
       let startCancelled = false;
+      let heardSpeech = false;
+      let receivedResult = false;
 
       const releaseMicrophone = function() {
         if (!microphoneStream) return;
@@ -44,7 +67,23 @@
         recognition.addEventListener(type, record);
       });
 
-      recognition.addEventListener('end', releaseMicrophone);
+      recognition.addEventListener('speechstart', function() {
+        heardSpeech = true;
+      });
+      recognition.addEventListener('result', function() {
+        receivedResult = true;
+      });
+      recognition.addEventListener('end', function() {
+        if (processLocally && heardSpeech && !receivedResult && !startCancelled) {
+          try {
+            window.sessionStorage.setItem('aidHabitatRemoteSpeech', '1');
+          } catch (_) {
+            // The next page load can still use Arc's palette detection.
+          }
+          window.__aidHabitatSpeechEvents.push('fallback:remote-next-session');
+        }
+        releaseMicrophone();
+      });
       recognition.start = function(audioTrack) {
         if (audioTrack) {
           nativeStart(audioTrack);
@@ -103,11 +142,11 @@
       return recognition;
     }
 
-    LocalSpeechRecognition.prototype = Recognition.prototype;
+    BridgedSpeechRecognition.prototype = Recognition.prototype;
     Object.defineProperty(window, 'webkitSpeechRecognition', {
       configurable: true,
       writable: true,
-      value: LocalSpeechRecognition,
+      value: BridgedSpeechRecognition,
     });
   }
 
@@ -116,6 +155,15 @@
     if (!Recognition) {
       window.__aidHabitatSpeechRuntime = 'unsupported';
       return 'unsupported';
+    }
+
+    // Arc exposes itself as Chromium. Its local French recognizer can detect
+    // speech without ever returning a transcript, so keep the explicit audio
+    // track while using the connected recognizer that Arc handles reliably.
+    if (shouldUseRemoteTrack()) {
+      useRecognitionBridge(Recognition, locale, false);
+      window.__aidHabitatSpeechRuntime = 'remote-track';
+      return 'remote-track';
     }
 
     // Browsers without the on-device API keep their existing remote service.
@@ -145,7 +193,7 @@
         window.__aidHabitatSpeechRuntime = 'remote';
         return 'remote';
       }
-      useLocalRecognition(Recognition, locale);
+      useRecognitionBridge(Recognition, locale, true);
       window.__aidHabitatSpeechRuntime = 'local';
       return 'local';
     } catch (error) {
