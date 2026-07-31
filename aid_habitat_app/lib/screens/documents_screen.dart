@@ -2663,7 +2663,6 @@ class _PreviewScreenState extends State<_PreviewScreen> {
         File(doc.localPath!).existsSync()) {
       return _PdfAnnotatorWrapper(
         pdfPath: doc.localPath!,
-        annotatorKey: _annotatorKey,
         wrapperKey: _pdfWrapperKey,
         onChanged: () => setState(() {}),
       );
@@ -2676,7 +2675,6 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     if (!kIsWeb && isPdf && doc.url != null && doc.url!.isNotEmpty) {
       return _RemotePdfAnnotatorWrapper(
         doc: doc,
-        annotatorKey: _annotatorKey,
         wrapperKey: _pdfWrapperKey,
         onChanged: () => setState(() {}),
       );
@@ -2690,7 +2688,6 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     if (kIsWeb && isPdf) {
       return _WebPdfAnnotatorWrapper(
         doc: doc,
-        annotatorKey: _annotatorKey,
         wrapperKey: _webPdfWrapperKey,
         onChanged: () => setState(() {}),
       );
@@ -2904,13 +2901,11 @@ class _TopbarButton extends StatelessWidget {
 class _WebPdfAnnotatorWrapper extends StatefulWidget {
   const _WebPdfAnnotatorWrapper({
     required this.doc,
-    required this.annotatorKey,
     required this.onChanged,
     this.wrapperKey,
   }) : super(key: wrapperKey);
 
   final DocItem doc;
-  final GlobalKey<_ImageAnnotatorState> annotatorKey;
   final VoidCallback onChanged;
   final GlobalKey<_WebPdfAnnotatorWrapperState>? wrapperKey;
 
@@ -2927,6 +2922,9 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
   int _renderTicket = 0;
   bool _loading = true;
   String? _error;
+  // Une nouvelle clé à chaque page empêche Flutter de réutiliser les traits
+  // du canvas précédent lorsque l'image de fond change.
+  GlobalKey<_ImageAnnotatorState> _liveAnnotatorKey = GlobalKey();
 
   /// Map en mémoire des annotations par page : clé = numéro de page
   /// (1-indexé), valeur = bytes PNG aplati. Hydraté au boot depuis
@@ -2944,7 +2942,7 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
   /// `_PreviewScreen` pour activer le bouton Save.
   bool get hasUnsavedChanges {
     if (_dirtyPages.isNotEmpty) return true;
-    final live = widget.annotatorKey.currentState;
+    final live = _liveAnnotatorKey.currentState;
     return live?.hasUnsavedChanges ?? false;
   }
 
@@ -3161,7 +3159,7 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
   /// mémoire pour la page courante. Marque la page dirty si l'aplat
   /// a changé. Appelé avant chaque navigation et avant chaque save.
   Future<void> _captureCurrentPageFlat() async {
-    final live = widget.annotatorKey.currentState;
+    final live = _liveAnnotatorKey.currentState;
     if (live == null) return;
     if (!live.hasUnsavedChanges) return;
     try {
@@ -3198,7 +3196,7 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
     _dirtyPages.clear();
     // Reset le hash du live annotator pour faire disparaître le
     // badge "Modifié" même si on reste sur la même page.
-    widget.annotatorKey.currentState?.saveAnnotation();
+    _liveAnnotatorKey.currentState?.saveAnnotation();
     if (mounted) {
       setState(() {});
       widget.onChanged();
@@ -3212,6 +3210,7 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
       _currentPage -= 1;
       _currentImage = null;
       _loading = true;
+      _liveAnnotatorKey = GlobalKey<_ImageAnnotatorState>();
     });
     await _renderCurrent();
   }
@@ -3223,6 +3222,7 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
       _currentPage += 1;
       _currentImage = null;
       _loading = true;
+      _liveAnnotatorKey = GlobalKey<_ImageAnnotatorState>();
     });
     await _renderCurrent();
   }
@@ -3249,33 +3249,17 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
         Expanded(
           child: _currentImage == null
               ? const SizedBox.shrink()
-              // L'_ImageAnnotator utilise la GlobalKey du parent pour
-              // que `_PreviewScreen` puisse l'interroger
-              // (`hasUnsavedChanges`, `exportFlatPng`, `saveAnnotation`).
-              // On wrap la GlobalKey via une ValueKey extérieure indexée
-              // sur `_currentPage` : à chaque changement de page,
-              // Flutter détruit le sous-arbre et le recrée → les strokes
-              // de la page précédente ne suivent PAS sur la nouvelle
-              // page (demande utilisateur 2026-04-28 : "l'écrit doit
-              // rester uniquement sur la page du PDF concerné, pas sur
-              // toutes les pages"). Les strokes de la page précédente
-              // ont été capturés en aplat dans `_captureCurrentPageFlat`
-              // juste avant la navigation, donc rien n'est perdu : ils
-              // sont incrustés dans `_currentImage` au render suivant.
-              : KeyedSubtree(
-                  key: ValueKey('webpdf-page-$_currentPage'),
-                  child: _ImageAnnotator(
-                    key: widget.annotatorKey,
-                    imageBytes: _currentImage,
-                    onChanged: widget.onChanged,
-                    onPageSwipe: (delta) {
-                      if (delta > 0 && _currentPage < _totalPages) {
-                        unawaited(_goNext());
-                      } else if (delta < 0 && _currentPage > 1) {
-                        unawaited(_goPrev());
-                      }
-                    },
-                  ),
+              : _ImageAnnotator(
+                  key: _liveAnnotatorKey,
+                  imageBytes: _currentImage,
+                  onChanged: widget.onChanged,
+                  onPageSwipe: (delta) {
+                    if (delta > 0 && _currentPage < _totalPages) {
+                      unawaited(_goNext());
+                    } else if (delta < 0 && _currentPage > 1) {
+                      unawaited(_goPrev());
+                    }
+                  },
                 ),
         ),
         if (_totalPages > 1)
@@ -3320,13 +3304,11 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
 /// d'annoter des documents synchronisés depuis le serveur (pas de localPath).
 class _RemotePdfAnnotatorWrapper extends StatefulWidget {
   final DocItem doc;
-  final GlobalKey<_ImageAnnotatorState> annotatorKey;
   final VoidCallback onChanged;
   final GlobalKey<_PdfAnnotatorWrapperState>? wrapperKey;
 
   const _RemotePdfAnnotatorWrapper({
     required this.doc,
-    required this.annotatorKey,
     required this.onChanged,
     this.wrapperKey,
   });
@@ -3512,7 +3494,6 @@ class _RemotePdfAnnotatorWrapperState
 
     return _PdfAnnotatorWrapper(
       pdfPath: pdfPath,
-      annotatorKey: widget.annotatorKey,
       wrapperKey: widget.wrapperKey,
       onChanged: widget.onChanged,
     );
@@ -3524,7 +3505,6 @@ class _RemotePdfAnnotatorWrapperState
 /// comme une image. Navigation précédent/suivant entre les pages.
 class _PdfAnnotatorWrapper extends StatefulWidget {
   final String pdfPath;
-  final GlobalKey<_ImageAnnotatorState> annotatorKey;
   final VoidCallback onChanged;
 
   /// Clé pour permettre au parent d'appeler `saveAll()` — écrit toutes les
@@ -3533,7 +3513,6 @@ class _PdfAnnotatorWrapper extends StatefulWidget {
 
   const _PdfAnnotatorWrapper({
     required this.pdfPath,
-    required this.annotatorKey,
     required this.onChanged,
     this.wrapperKey,
   }) : super(key: wrapperKey);
@@ -3549,6 +3528,9 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
   final Map<int, String> _pagePngPaths = {};
   bool _rendering = false;
   String? _error;
+  // L'état du canvas est page-scoped; les snapshots assurent la continuité
+  // lorsqu'on revient sur une page déjà visitée.
+  GlobalKey<_ImageAnnotatorState> _liveAnnotatorKey = GlobalKey();
 
   // Snapshots en mémoire des annotations par page — préservés entre deux
   // changements de page. Non écrits sur disque tant que `saveAll()` n'est
@@ -3564,7 +3546,7 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
     if (_dirtyPages.isNotEmpty) return true;
     // La page actuellement affichée peut avoir des modifs que le wrapper
     // n'a pas encore "capturées" dans la map mémoire.
-    final live = widget.annotatorKey.currentState;
+    final live = _liveAnnotatorKey.currentState;
     return live?.hasUnsavedChanges ?? false;
   }
 
@@ -3596,13 +3578,13 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
     _dirtyPages.clear();
     // Reset le hash de l'annotator courant pour que le badge "Modifié"
     // disparaisse aussi côté UI.
-    widget.annotatorKey.currentState?.saveAnnotation();
+    _liveAnnotatorKey.currentState?.saveAnnotation();
     widget.onChanged();
   }
 
   /// Copie les strokes live du `_ImageAnnotator` courant dans la map mémoire.
   void _captureCurrentPage() {
-    final live = widget.annotatorKey.currentState;
+    final live = _liveAnnotatorKey.currentState;
     if (live == null) return;
     final strokes = live.currentStrokes;
     final previous = _memoryStrokesByPage[_currentPage];
@@ -3672,9 +3654,13 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
     // Avant de quitter la page courante, on capture ses strokes en mémoire
     // pour ne pas les perdre lors du rebuild.
     _captureCurrentPage();
+    final pageChanged = pageNumber != _currentPage;
     setState(() {
       _rendering = true;
       _currentPage = pageNumber;
+      if (pageChanged) {
+        _liveAnnotatorKey = GlobalKey<_ImageAnnotatorState>();
+      }
     });
     try {
       // On ne rerend le PNG que si on ne l'a pas déjà fait pour cette page.
@@ -3735,28 +3721,20 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
     return Stack(
       children: [
         Positioned.fill(
-          child: KeyedSubtree(
-            // Recrée le sous-arbre à chaque page tout en gardant la
-            // GlobalKey sur l'annotator lui-même. Sans cette GlobalKey,
-            // _PreviewScreen ne voyait pas le dirty-state live : le
-            // bouton Enregistrer et le prompt de sortie restaient cachés
-            // après un dessin sur PDF macOS.
-            key: ValueKey('pdf-page-$_currentPage'),
-            child: _ImageAnnotator(
-              key: widget.annotatorKey,
-              imagePath: pngPath,
-              onChanged: widget.onChanged,
-              onPageSwipe: (delta) {
-                final target = _currentPage + delta;
-                if (target >= 1 && target <= _totalPages) {
-                  unawaited(_renderPage(target));
-                }
-              },
-              initialStrokes: seeded,
-              // Le save est piloté par le wrapper (`saveAll()`), pas par
-              // chaque annotator individuel.
-              autoPersistToDisk: false,
-            ),
+          child: _ImageAnnotator(
+            key: _liveAnnotatorKey,
+            imagePath: pngPath,
+            onChanged: widget.onChanged,
+            onPageSwipe: (delta) {
+              final target = _currentPage + delta;
+              if (target >= 1 && target <= _totalPages) {
+                unawaited(_renderPage(target));
+              }
+            },
+            initialStrokes: seeded,
+            // Le save est piloté par le wrapper (`saveAll()`), pas par
+            // chaque annotator individuel.
+            autoPersistToDisk: false,
           ),
         ),
         // Navigation entre pages (seulement si > 1 page).
