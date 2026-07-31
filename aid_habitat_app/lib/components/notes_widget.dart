@@ -4103,7 +4103,7 @@ class _AiRewriteButtonState extends State<_AiRewriteButton> {
         return;
       }
 
-      final accepted = await showSoftDialog<bool>(
+      final acceptedText = await showSoftDialog<String>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => _AiRewritePreviewDialog(
@@ -4111,7 +4111,7 @@ class _AiRewriteButtonState extends State<_AiRewriteButton> {
           rewrittenText: rewrittenText,
         ),
       );
-      if (!mounted || accepted != true) return;
+      if (!mounted || acceptedText == null) return;
       if (widget.controller.text != originalText) {
         _showMessage(
           'La note a changé avant la validation. Le texte original est conservé.',
@@ -4120,8 +4120,8 @@ class _AiRewriteButtonState extends State<_AiRewriteButton> {
       }
 
       widget.controller.value = TextEditingValue(
-        text: rewrittenText,
-        selection: TextSelection.collapsed(offset: rewrittenText.length),
+        text: acceptedText,
+        selection: TextSelection.collapsed(offset: acceptedText.length),
       );
       _showMessage('La reformulation a été appliquée.');
     } catch (error) {
@@ -4158,7 +4158,7 @@ class _AiRewriteButtonState extends State<_AiRewriteButton> {
   }
 }
 
-class _AiRewritePreviewDialog extends StatelessWidget {
+class _AiRewritePreviewDialog extends StatefulWidget {
   const _AiRewritePreviewDialog({
     required this.originalText,
     required this.rewrittenText,
@@ -4167,10 +4167,31 @@ class _AiRewritePreviewDialog extends StatelessWidget {
   final String originalText;
   final String rewrittenText;
 
+  @override
+  State<_AiRewritePreviewDialog> createState() =>
+      _AiRewritePreviewDialogState();
+}
+
+class _AiRewritePreviewDialogState extends State<_AiRewritePreviewDialog> {
+  late final TextEditingController _proposalController;
+
+  @override
+  void initState() {
+    super.initState();
+    _proposalController = TextEditingController(text: widget.rewrittenText);
+  }
+
+  @override
+  void dispose() {
+    _proposalController.dispose();
+    super.dispose();
+  }
+
   Widget _buildTextPanel({
     required String label,
     required String text,
     required bool highlighted,
+    TextEditingController? controller,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4208,16 +4229,33 @@ class _AiRewritePreviewDialog extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                text,
-                style: const TextStyle(
-                  height: 1.45,
-                  fontSize: 14,
-                  color: Color(0xFF111827),
-                ),
-              ),
-            ),
+            child: controller == null
+                ? SingleChildScrollView(
+                    child: SelectableText(
+                      text,
+                      style: const TextStyle(
+                        height: 1.45,
+                        fontSize: 14,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                  )
+                : TextField(
+                    controller: controller,
+                    expands: true,
+                    minLines: null,
+                    maxLines: null,
+                    textAlignVertical: TextAlignVertical.top,
+                    keyboardType: TextInputType.multiline,
+                    decoration: const InputDecoration.collapsed(
+                      hintText: 'Modifier la proposition…',
+                    ),
+                    style: const TextStyle(
+                      height: 1.45,
+                      fontSize: 14,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
           ),
         ),
       ],
@@ -4227,8 +4265,10 @@ class _AiRewritePreviewDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
+    final keyboardHeight = MediaQuery.viewInsetsOf(context).bottom;
     final dialogWidth = math.min(860.0, screen.width - 32);
-    final dialogHeight = math.min(620.0, screen.height - 48);
+    final availableHeight = screen.height - keyboardHeight - 48;
+    final dialogHeight = math.min(620.0, math.max(280.0, availableHeight));
 
     return Dialog(
       backgroundColor: Colors.white,
@@ -4262,14 +4302,14 @@ class _AiRewritePreviewDialog extends StatelessWidget {
                   ),
                   IconButton(
                     tooltip: 'Fermer',
-                    onPressed: () => Navigator.of(context).pop(false),
+                    onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(LucideIcons.x, size: 19),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
               const Text(
-                'Relisez la proposition avant de remplacer votre note.',
+                'Relisez et ajustez la proposition avant de remplacer votre note.',
                 style: TextStyle(fontSize: 13, color: Color(0xFF5C6670)),
               ),
               const SizedBox(height: 18),
@@ -4278,13 +4318,14 @@ class _AiRewritePreviewDialog extends StatelessWidget {
                   builder: (context, constraints) {
                     final original = _buildTextPanel(
                       label: 'Note originale',
-                      text: originalText,
+                      text: widget.originalText,
                       highlighted: false,
                     );
                     final rewritten = _buildTextPanel(
-                      label: 'Proposition',
-                      text: rewrittenText,
+                      label: 'Proposition modifiable',
+                      text: widget.rewrittenText,
                       highlighted: true,
+                      controller: _proposalController,
                     );
                     if (constraints.maxWidth < 620) {
                       return Column(
@@ -4312,16 +4353,21 @@ class _AiRewritePreviewDialog extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
+                    onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Conserver l’original'),
                   ),
-                  FilledButton.icon(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    icon: const Icon(LucideIcons.check, size: 17),
-                    label: const Text('Utiliser la proposition'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _kActiveText,
-                      foregroundColor: Colors.white,
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _proposalController,
+                    builder: (context, value, _) => FilledButton.icon(
+                      onPressed: value.text.trim().isEmpty
+                          ? null
+                          : () => Navigator.of(context).pop(value.text.trim()),
+                      icon: const Icon(LucideIcons.check, size: 17),
+                      label: const Text('Utiliser la proposition'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _kActiveText,
+                        foregroundColor: Colors.white,
+                      ),
                     ),
                   ),
                 ],
