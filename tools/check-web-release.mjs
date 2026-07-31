@@ -119,6 +119,39 @@ async function checkUnavailable(assetPath, label = assetPath) {
   }
 }
 
+async function checkLiveSecurityHeaders() {
+  if (mode !== 'url') return;
+
+  try {
+    const response = await fetch(source, { redirect: 'follow' });
+    const csp = response.headers.get('content-security-policy') || '';
+    const reportOnly = response.headers.get('content-security-policy-report-only') || '';
+    const requiredDirectives = [
+      "default-src 'self'",
+      "object-src 'none'",
+      "script-src-attr 'none'",
+      "connect-src 'self' https://api.aidhabitat.fr",
+      "upgrade-insecure-requests",
+    ];
+
+    if (!response.ok) {
+      failures.push(`security-headers: HTTP ${response.status}`);
+      return;
+    }
+    if (!csp || requiredDirectives.some((directive) => !csp.includes(directive))) {
+      failures.push('security-headers: CSP bloquante absente ou incomplète');
+      return;
+    }
+    if (reportOnly) {
+      failures.push('security-headers: CSP encore présente en Report-Only');
+      return;
+    }
+    checked.push('content-security-policy-enforced');
+  } catch (error) {
+    failures.push(`security-headers: ${error.message}`);
+  }
+}
+
 const indexHtml = await checkText('index.html', (text) => (
   text.includes("<title>App'Ergo</title>")
   && text.includes('flutter_bootstrap.js')
@@ -135,6 +168,7 @@ await checkText('flutter_bootstrap.js', (text) => (
 
 await checkUnavailable('flutter_service_worker.js', 'flutter_service_worker.js');
 await checkUnavailable('manifest.json', 'manifest.json');
+await checkLiveSecurityHeaders();
 
 await checkText('version.json', (text) => {
   try {
