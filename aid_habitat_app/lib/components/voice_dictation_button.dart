@@ -67,6 +67,52 @@ bool _startsWithPunctuation(String value) =>
 bool _endsWithOpeningPunctuation(String value) =>
     value.isNotEmpty && '([{'.contains(value[value.length - 1]);
 
+@visibleForTesting
+String voiceDictationMessageForError(String errorCode, {required bool isWeb}) {
+  final code = errorCode.toLowerCase();
+  if (isWeb &&
+      (code.contains('service-not-allowed') ||
+          code.contains('service_not_allowed') ||
+          code.contains('not-allowed') ||
+          code.contains('not_allowed'))) {
+    return 'Le microphone est autorisé, mais ce navigateur bloque son '
+        'service de reconnaissance vocale. Ouvrez app.aidhabitat.fr dans '
+        'Google Chrome ou Safari pour utiliser la dictée.';
+  }
+  if (code.contains('permission') ||
+      code.contains('disabled') ||
+      code.contains('not-allowed') ||
+      code.contains('not_allowed')) {
+    return 'Autorisez le microphone et la reconnaissance vocale dans '
+        'Réglages pour utiliser la dictée.';
+  }
+  if (isWeb &&
+      (code.contains('not supported') ||
+          code.contains('not_supported') ||
+          code.contains('speech_not_supported'))) {
+    return 'La dictée vocale n’est pas disponible dans ce navigateur. '
+        'Utilisez une version récente de Safari ou Chrome.';
+  }
+  if (isWeb && code.contains('audio-capture')) {
+    return 'Aucun microphone utilisable n’a été détecté par le navigateur.';
+  }
+  if (code.contains('network') ||
+      code.contains('language') ||
+      code.contains('on_device')) {
+    return isWeb
+        ? 'La dictée web nécessite une connexion active et la '
+              'reconnaissance française du navigateur.'
+        : 'La reconnaissance française hors ligne n’est pas disponible '
+              'sur cet appareil.';
+  }
+  if (code.contains('no_match') ||
+      code.contains('no-speech') ||
+      code.contains('speech_timeout')) {
+    return 'Aucune parole reconnue. Touchez le micro pour réessayer.';
+  }
+  return 'La dictée s’est interrompue. Le texte déjà reconnu est conservé.';
+}
+
 class _VoiceDictationStartResult {
   const _VoiceDictationStartResult.success() : errorMessage = null;
 
@@ -387,41 +433,7 @@ class _VoiceDictationButtonState extends State<VoiceDictationButton> {
   }
 
   String _messageForError(SpeechRecognitionError error) {
-    final code = error.errorMsg.toLowerCase();
-    if (code.contains('permission') ||
-        code.contains('disabled') ||
-        code.contains('not-allowed') ||
-        code.contains('not_allowed') ||
-        code.contains('service-not-allowed')) {
-      return kIsWeb
-          ? 'Autorisez le microphone pour app.aidhabitat.fr dans les '
-                'réglages du navigateur.'
-          : 'Autorisez le microphone et la reconnaissance vocale dans '
-                'Réglages pour utiliser la dictée.';
-    }
-    if (kIsWeb &&
-        (code.contains('not supported') ||
-            code.contains('not_supported') ||
-            code.contains('speech_not_supported'))) {
-      return 'La dictée vocale n’est pas disponible dans ce navigateur. '
-          'Utilisez une version récente de Safari ou Chrome.';
-    }
-    if (kIsWeb && code.contains('audio-capture')) {
-      return 'Aucun microphone utilisable n’a été détecté par le navigateur.';
-    }
-    if (code.contains('network') ||
-        code.contains('language') ||
-        code.contains('on_device')) {
-      return kIsWeb
-          ? 'La dictée web nécessite une connexion active et la '
-                'reconnaissance française du navigateur.'
-          : 'La reconnaissance française hors ligne n’est pas disponible '
-                'sur cet appareil.';
-    }
-    if (code.contains('no_match') || code.contains('speech_timeout')) {
-      return 'Aucune parole reconnue. Touchez le micro pour réessayer.';
-    }
-    return 'La dictée s’est interrompue. Le texte déjà reconnu est conservé.';
+    return voiceDictationMessageForError(error.errorMsg, isWeb: kIsWeb);
   }
 
   void _showMessage(String message) {

@@ -4,6 +4,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:aid_habitat_app/components/voice_dictation_button.dart';
 
 void main() {
+  group('voiceDictationMessageForError', () {
+    test('explains that web speech can be blocked after mic permission', () {
+      expect(
+        voiceDictationMessageForError('service-not-allowed', isWeb: true),
+        contains('Google Chrome ou Safari'),
+      );
+      expect(
+        voiceDictationMessageForError('not-allowed', isWeb: true),
+        contains('microphone est autorisé'),
+      );
+    });
+
+    test('keeps native permission guidance for Apple builds', () {
+      expect(
+        voiceDictationMessageForError('not-allowed', isWeb: false),
+        contains('Réglages'),
+      );
+    });
+  });
+
   group('applyVoiceDictationTranscript', () {
     test('insère la dictée à la fin avec un espace naturel', () {
       final result = applyVoiceDictationTranscript(
