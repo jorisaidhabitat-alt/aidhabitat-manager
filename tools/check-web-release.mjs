@@ -131,6 +131,8 @@ async function checkLiveSecurityHeaders() {
       "object-src 'none'",
       "script-src-attr 'none'",
       "connect-src 'self' https://api.aidhabitat.fr",
+      "https://www.gstatic.com",
+      "https://fonts.gstatic.com",
       "upgrade-insecure-requests",
     ];
 
