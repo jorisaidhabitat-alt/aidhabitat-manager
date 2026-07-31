@@ -20,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _isPasswordVisible = false;
   String? _error;
   String? _selectedEmail;
   List<LocalAppUser> _users = const [];
@@ -170,10 +171,27 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 8),
                         TextField(
                           controller: _passwordController,
-                          obscureText: true,
+                          obscureText: !_isPasswordVisible,
                           enabled: !_isSubmitting,
                           decoration: _inputDecoration().copyWith(
                             hintText: "Saisir le mot de passe",
+                            suffixIcon: IconButton(
+                              tooltip: _isPasswordVisible
+                                  ? 'Masquer le mot de passe'
+                                  : 'Afficher le mot de passe',
+                              onPressed: _isSubmitting
+                                  ? null
+                                  : () => setState(
+                                      () => _isPasswordVisible =
+                                          !_isPasswordVisible,
+                                    ),
+                              icon: Icon(
+                                _isPasswordVisible
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                size: 20,
+                              ),
+                            ),
                           ),
                           onSubmitted: (_) => _submit(),
                         ),
