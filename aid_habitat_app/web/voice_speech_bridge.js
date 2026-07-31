@@ -6,6 +6,30 @@
       const recognition = new Recognition();
       recognition.lang = locale;
       recognition.processLocally = true;
+
+      // Keep only event names and error codes for troubleshooting. Never
+      // retain recognized words or microphone data in this diagnostic log.
+      window.__aidHabitatSpeechEvents = [];
+      const record = function(event) {
+        const detail = event && event.error ? ':' + event.error : '';
+        window.__aidHabitatSpeechEvents.push(event.type + detail);
+        window.__aidHabitatSpeechEvents =
+          window.__aidHabitatSpeechEvents.slice(-30);
+      };
+      [
+        'start',
+        'audiostart',
+        'soundstart',
+        'speechstart',
+        'result',
+        'speechend',
+        'soundend',
+        'audioend',
+        'error',
+        'end',
+      ].forEach(function(type) {
+        recognition.addEventListener(type, record);
+      });
       return recognition;
     }
 

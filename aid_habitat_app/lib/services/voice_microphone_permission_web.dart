@@ -6,6 +6,19 @@ Future<String?> requestVoiceMicrophonePermissionImpl() async {
   final mediaDevices = html.window.navigator.mediaDevices;
 
   try {
+    // Do not briefly acquire an already-authorized microphone before speech
+    // recognition starts. Arc's local engine can otherwise start while the
+    // getUserMedia track is still being released and receive no audio.
+    try {
+      final permission = await html.window.navigator.permissions?.query(const {
+        'name': 'microphone',
+      });
+      if (permission?.state == 'granted') return null;
+    } catch (_) {
+      // Safari does not consistently expose microphone through Permissions.
+      // Fall back to getUserMedia, which also triggers the permission prompt.
+    }
+
     final stream = await mediaDevices?.getUserMedia(const {'audio': true});
     if (stream == null) {
       return 'Aucun microphone utilisable n’a été détecté par le navigateur.';
@@ -13,6 +26,9 @@ Future<String?> requestVoiceMicrophonePermissionImpl() async {
     for (final track in stream.getTracks()) {
       track.stop();
     }
+    // Let the browser release the physical input before SpeechRecognition
+    // acquires it. This delay only applies on the first permission request.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     return null;
   } on html.DomException catch (error) {
     final code = error.name.toLowerCase();
