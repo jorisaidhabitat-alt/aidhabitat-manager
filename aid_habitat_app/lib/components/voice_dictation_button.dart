@@ -75,15 +75,15 @@ class _VoiceDictationStartResult {
 }
 
 /// Owns the singleton `speech_to_text` instance and routes its callbacks to the
-/// currently active editor. Recognition is deliberately forced on-device:
-/// sensitive visit notes must never be sent to a speech-recognition server.
+/// currently active editor. Native Apple builds force on-device recognition.
+/// Web builds use the browser speech-recognition implementation.
 class _VoiceDictationService {
   _VoiceDictationService._();
 
   static final _VoiceDictationService instance = _VoiceDictationService._();
 
   static bool get isSupportedPlatform =>
-      !kIsWeb &&
+      kIsWeb ||
       (defaultTargetPlatform == TargetPlatform.iOS ||
           defaultTargetPlatform == TargetPlatform.macOS);
 
@@ -105,7 +105,7 @@ class _VoiceDictationService {
     if (!isSupportedPlatform) {
       return const _VoiceDictationStartResult.failure(
         'La dictée locale est disponible uniquement dans '
-        'l’application iPad ou Mac.',
+        'l’application iPad, Mac ou la web app.',
       );
     }
 
@@ -128,18 +128,24 @@ class _VoiceDictationService {
       }
       if (!_initialized) {
         _release(owner);
-        return const _VoiceDictationStartResult.failure(
-          'Autorisez le microphone et la reconnaissance vocale dans '
-          'Réglages pour utiliser la dictée.',
+        return _VoiceDictationStartResult.failure(
+          kIsWeb
+              ? 'La dictée vocale n’est pas disponible dans ce navigateur. '
+                    'Utilisez une version récente de Safari ou Chrome.'
+              : 'Autorisez le microphone et la reconnaissance vocale dans '
+                    'Réglages pour utiliser la dictée.',
         );
       }
 
       final localeId = await _findFrenchLocale();
       if (localeId == null) {
         _release(owner);
-        return const _VoiceDictationStartResult.failure(
-          'La reconnaissance française hors ligne n’est pas disponible '
-          'sur cet appareil.',
+        return _VoiceDictationStartResult.failure(
+          kIsWeb
+              ? 'La reconnaissance vocale française n’est pas disponible '
+                    'dans ce navigateur.'
+              : 'La reconnaissance française hors ligne n’est pas disponible '
+                    'sur cet appareil.',
         );
       }
 
@@ -148,10 +154,10 @@ class _VoiceDictationService {
         listenOptions: stt.SpeechListenOptions(
           localeId: localeId,
           partialResults: true,
-          onDevice: true,
+          onDevice: !kIsWeb,
           listenMode: stt.ListenMode.dictation,
           autoPunctuation: true,
-          enableHapticFeedback: true,
+          enableHapticFeedback: !kIsWeb,
           cancelOnError: true,
           pauseFor: const Duration(seconds: 5),
           listenFor: const Duration(minutes: 5),
@@ -160,9 +166,12 @@ class _VoiceDictationService {
       return const _VoiceDictationStartResult.success();
     } catch (_) {
       await _cancelActiveSession();
-      return const _VoiceDictationStartResult.failure(
-        'La dictée hors ligne n’a pas pu démarrer. Vérifiez que la '
-        'reconnaissance française est installée sur l’appareil.',
+      return _VoiceDictationStartResult.failure(
+        kIsWeb
+            ? 'La dictée n’a pas pu démarrer. Vérifiez l’autorisation du '
+                  'microphone et votre connexion.'
+            : 'La dictée hors ligne n’a pas pu démarrer. Vérifiez que la '
+                  'reconnaissance française est installée sur l’appareil.',
       );
     }
   }
@@ -187,6 +196,10 @@ class _VoiceDictationService {
   }
 
   Future<String?> _findFrenchLocale() async {
+    // The Web Speech API does not expose its locale catalogue. Explicitly
+    // request French instead of rejecting an otherwise supported browser.
+    if (kIsWeb) return 'fr-FR';
+
     final locales = await _speech.locales();
     if (locales.isEmpty) return null;
 
@@ -362,15 +375,35 @@ class _VoiceDictationButtonState extends State<VoiceDictationButton> {
 
   String _messageForError(SpeechRecognitionError error) {
     final code = error.errorMsg.toLowerCase();
-    if (code.contains('permission') || code.contains('disabled')) {
-      return 'Autorisez le microphone et la reconnaissance vocale dans '
-          'Réglages pour utiliser la dictée.';
+    if (code.contains('permission') ||
+        code.contains('disabled') ||
+        code.contains('not-allowed') ||
+        code.contains('not_allowed') ||
+        code.contains('service-not-allowed')) {
+      return kIsWeb
+          ? 'Autorisez le microphone pour app.aidhabitat.fr dans les '
+                'réglages du navigateur.'
+          : 'Autorisez le microphone et la reconnaissance vocale dans '
+                'Réglages pour utiliser la dictée.';
+    }
+    if (kIsWeb &&
+        (code.contains('not supported') ||
+            code.contains('not_supported') ||
+            code.contains('speech_not_supported'))) {
+      return 'La dictée vocale n’est pas disponible dans ce navigateur. '
+          'Utilisez une version récente de Safari ou Chrome.';
+    }
+    if (kIsWeb && code.contains('audio-capture')) {
+      return 'Aucun microphone utilisable n’a été détecté par le navigateur.';
     }
     if (code.contains('network') ||
         code.contains('language') ||
         code.contains('on_device')) {
-      return 'La reconnaissance française hors ligne n’est pas disponible '
-          'sur cet appareil.';
+      return kIsWeb
+          ? 'La dictée web nécessite une connexion active et la '
+                'reconnaissance française du navigateur.'
+          : 'La reconnaissance française hors ligne n’est pas disponible '
+                'sur cet appareil.';
     }
     if (code.contains('no_match') || code.contains('speech_timeout')) {
       return 'Aucune parole reconnue. Touchez le micro pour réessayer.';
@@ -399,9 +432,15 @@ class _VoiceDictationButtonState extends State<VoiceDictationButton> {
       button: true,
       label: active
           ? 'Arrêter la dictée vocale'
+          : kIsWeb
+          ? 'Démarrer la dictée vocale dans le navigateur'
           : 'Démarrer la dictée vocale hors ligne',
       child: Tooltip(
-        message: active ? 'Arrêter la dictée' : 'Dicter sur l’appareil',
+        message: active
+            ? 'Arrêter la dictée'
+            : kIsWeb
+            ? 'Dicter dans le navigateur'
+            : 'Dicter sur l’appareil',
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           width: widget.size,
