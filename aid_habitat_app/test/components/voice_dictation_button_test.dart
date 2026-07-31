@@ -24,6 +24,27 @@ void main() {
     });
   });
 
+  group('voiceDictationMessageForWebRuntime', () {
+    test('allows local and remote browser engines', () {
+      expect(voiceDictationMessageForWebRuntime('local'), isNull);
+      expect(voiceDictationMessageForWebRuntime('remote'), isNull);
+    });
+
+    test('explains a failed local language installation', () {
+      expect(
+        voiceDictationMessageForWebRuntime('install-failed'),
+        contains('module français'),
+      );
+    });
+
+    test('explains a local browser preparation failure', () {
+      expect(
+        voiceDictationMessageForWebRuntime('local-error'),
+        contains('dictée locale'),
+      );
+    });
+  });
+
   group('applyVoiceDictationTranscript', () {
     test('insère la dictée à la fin avec un espace naturel', () {
       final result = applyVoiceDictationTranscript(

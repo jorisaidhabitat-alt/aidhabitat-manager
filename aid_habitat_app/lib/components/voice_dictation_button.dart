@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../services/voice_microphone_permission.dart';
+import '../services/voice_speech_runtime.dart';
 
 /// Applies a complete speech-recognition hypothesis to the text value captured
 /// when dictation started. Reusing the same base value for partial results
@@ -113,6 +114,22 @@ String voiceDictationMessageForError(String errorCode, {required bool isWeb}) {
   return 'La dictée s’est interrompue. Le texte déjà reconnu est conservé.';
 }
 
+@visibleForTesting
+String? voiceDictationMessageForWebRuntime(String runtime) {
+  if (runtime == webVoiceRuntimeInstallFailed) {
+    return 'Le module français de dictée locale n’a pas pu être installé. '
+        'Vérifiez la connexion, puis touchez à nouveau le micro.';
+  }
+  if (runtime == webVoiceRuntimeLocalError) {
+    return 'Le navigateur n’a pas pu préparer la dictée locale. Rechargez la '
+        'page, puis touchez à nouveau le micro.';
+  }
+  if (runtime == webVoiceRuntimeUnsupported) {
+    return 'La dictée vocale n’est pas disponible dans ce navigateur.';
+  }
+  return null;
+}
+
 class _VoiceDictationStartResult {
   const _VoiceDictationStartResult.success() : errorMessage = null;
 
@@ -135,14 +152,32 @@ class _VoiceDictationService {
       (defaultTargetPlatform == TargetPlatform.iOS ||
           defaultTargetPlatform == TargetPlatform.macOS);
 
-  final stt.SpeechToText _speech = stt.SpeechToText();
+  stt.SpeechToText _speech = stt.SpeechToText();
   bool _initialized = false;
+  String? _webRuntime;
   Object? _activeOwner;
   ValueChanged<SpeechRecognitionResult>? _resultCallback;
   ValueChanged<String>? _statusCallback;
   ValueChanged<SpeechRecognitionError>? _errorCallback;
 
   bool isActiveOwner(Object owner) => identical(_activeOwner, owner);
+
+  Future<String?> prepareWebRuntime() async {
+    if (!kIsWeb) return null;
+    final runtime = await prepareWebVoiceSpeechRuntime();
+    final message = voiceDictationMessageForWebRuntime(runtime);
+    if (message != null) return message;
+
+    // speech_to_text creates and retains the browser recognition object during
+    // initialize(). Recreate it when the local constructor has just changed.
+    if (_webRuntime != runtime) {
+      await _cancelActiveSession();
+      _speech = stt.SpeechToText();
+      _initialized = false;
+      _webRuntime = runtime;
+    }
+    return null;
+  }
 
   Future<_VoiceDictationStartResult> start({
     required Object owner,
@@ -365,6 +400,15 @@ class _VoiceDictationButtonState extends State<VoiceDictationButton> {
     widget.focusNode?.requestFocus();
 
     if (kIsWeb) {
+      final runtimeError = await _service.prepareWebRuntime();
+      if (!mounted) return;
+      if (runtimeError != null) {
+        setState(() => _isStarting = false);
+        widget.onListeningChanged?.call(false);
+        _showMessage(runtimeError);
+        return;
+      }
+
       final permissionError = await requestVoiceMicrophonePermission();
       if (!mounted) return;
       if (permissionError != null) {
