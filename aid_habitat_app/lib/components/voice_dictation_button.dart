@@ -6,6 +6,8 @@ import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import '../services/voice_microphone_permission.dart';
+
 /// Applies a complete speech-recognition hypothesis to the text value captured
 /// when dictation started. Reusing the same base value for partial results
 /// prevents the recognizer from appending the same words several times.
@@ -315,6 +317,17 @@ class _VoiceDictationButtonState extends State<VoiceDictationButton> {
     setState(() => _isStarting = true);
     _baseValue = widget.controller.value;
     widget.focusNode?.requestFocus();
+
+    if (kIsWeb) {
+      final permissionError = await requestVoiceMicrophonePermission();
+      if (!mounted) return;
+      if (permissionError != null) {
+        setState(() => _isStarting = false);
+        widget.onListeningChanged?.call(false);
+        _showMessage(permissionError);
+        return;
+      }
+    }
 
     final result = await _service.start(
       owner: _owner,
