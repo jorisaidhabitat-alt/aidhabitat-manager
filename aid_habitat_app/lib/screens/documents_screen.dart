@@ -4311,12 +4311,17 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   }
 
   void _setZoom(double value) {
-    final next = value.clamp(1.0, 5.0);
+    final next = value.clamp(0.5, 5.0);
     final dx = (_canvasSize.width - (_canvasSize.width * next)) / 2;
     final dy = (_canvasSize.height - (_canvasSize.height * next)) / 2;
     _transformationController.value = Matrix4.identity()
       ..translateByDouble(dx, dy, 0, 1)
       ..scaleByDouble(next, next, 1, 1);
+  }
+
+  void _resetZoom() {
+    // L'identité restaure à la fois l'échelle de base et la position centrée.
+    _transformationController.value = Matrix4.identity();
   }
 
   bool _isDrawingDevice(PointerEvent event) {
@@ -4435,7 +4440,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
                 _canvasSize = size;
                 return InteractiveViewer(
                   transformationController: _transformationController,
-                  minScale: 1,
+                  minScale: 0.5,
                   maxScale: 5,
                   // Le déplacement à un doigt ferait bouger la page pendant
                   // un trait Pencil. Le pinch et les boutons de zoom restent
@@ -4444,6 +4449,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
                   boundaryMargin: const EdgeInsets.all(160),
                   trackpadScrollCausesScale: true,
                   scaleFactor: 140,
+                  onInteractionEnd: (_) => _resetZoom(),
                   child: SizedBox(
                     width: size.width,
                     height: size.height,
@@ -4537,20 +4543,22 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
           const SizedBox(width: 6),
           _ToolButton(
             icon: LucideIcons.zoomOut,
-            tooltip: 'Dézoomer',
-            onTap: _zoom > 1.01 ? () => _setZoom(_zoom - 0.5) : null,
+            tooltip: 'Maintenir pour dézoomer',
+            onPressStart: () => _setZoom(0.7),
+            onPressEnd: _resetZoom,
           ),
           const SizedBox(width: 6),
           _ToolButton(
             icon: LucideIcons.maximize2,
             tooltip: 'Taille d’origine',
-            onTap: _zoom > 1.01 ? () => _setZoom(1) : null,
+            onTap: _resetZoom,
           ),
           const SizedBox(width: 6),
           _ToolButton(
             icon: LucideIcons.zoomIn,
-            tooltip: 'Zoomer',
-            onTap: _zoom < 4.99 ? () => _setZoom(_zoom + 0.5) : null,
+            tooltip: 'Maintenir pour zoomer',
+            onPressStart: () => _setZoom(2),
+            onPressEnd: _resetZoom,
           ),
           const SizedBox(width: 6),
           Container(width: 1, height: 24, color: const Color(0xFFE5E7EB)),
@@ -4720,24 +4728,31 @@ class _ToolButton extends StatelessWidget {
   final bool selected;
   final String tooltip;
   final VoidCallback? onTap;
+  final VoidCallback? onPressStart;
+  final VoidCallback? onPressEnd;
 
   const _ToolButton({
     required this.icon,
     required this.tooltip,
     this.onTap,
+    this.onPressStart,
+    this.onPressEnd,
     this.selected = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final disabled = onTap == null;
+    final disabled = onTap == null && onPressStart == null;
     return Tooltip(
       message: tooltip,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
-          onTap: onTap,
+          onTap: onTap ?? (onPressStart == null ? null : () {}),
+          onTapDown: onPressStart == null ? null : (_) => onPressStart!(),
+          onTapUp: onPressEnd == null ? null : (_) => onPressEnd!(),
+          onTapCancel: onPressEnd,
           child: Container(
             width: 40,
             height: 40,

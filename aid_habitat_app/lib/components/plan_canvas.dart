@@ -29,6 +29,8 @@ const List<double> _kEraserSizePresets = <double>[8.0, 18.0, 44.0];
 const int _kDefaultHighlighterColor = 0xFFFDE047;
 const double _kDefaultHighlighterSize = 10.0;
 const List<double> _kHighlighterSizePresets = <double>[10.0, 16.0, 24.0];
+const double _kSymbolTapTolerance = 10.0;
+const double _kSymbolHitPadding = 8.0;
 
 // ---------------------------------------------------------------------------
 // Stroke model
@@ -275,6 +277,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
   PointerDeviceKind? _activeCanvasPointerKind;
   Offset? _canvasPointerDown;
   bool _canvasPointerMoved = false;
+  int _canvasPointerDownSymbolIndex = -1;
+  double _canvasPointerMaxDistanceSquared = 0;
 
   // Undo / redo — snapshots deep-copiés des traits à chaque mutation
   // (trait terminé, symbole placé/déplacé/supprimé, effacer tout…).
@@ -1869,7 +1873,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
   /// flottants visibles). Tap sur du vide = désélection. Un drag sur
   /// un symbole non sélectionné reste un tracé normal : la manipulation
   /// demande toujours ce premier clic explicite.
-  int _symbolIndexAt(Offset pt) {
+  int _symbolIndexAt(Offset pt, {double hitPadding = 0}) {
     // Si déjà en mode édition : tester si le tap est sur une poignée
     // (ne rien faire, le pan va gérer) ou dans le body → on garde
     // le mode édition. Tap ailleurs sur le même symbole → idem.
@@ -1879,7 +1883,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
       final bounds = s.symbolLocalBounds;
       if (bounds == null) continue;
       final local = _toSymbolLocal(s, pt);
-      if (bounds.contains(local)) {
+      if (bounds.inflate(hitPadding).contains(local)) {
         return i;
       }
     }
@@ -1915,6 +1919,11 @@ class _PlanCanvasState extends State<PlanCanvas> {
     _activeCanvasPointerKind = event.kind;
     _canvasPointerDown = pt;
     _canvasPointerMoved = false;
+    _canvasPointerDownSymbolIndex = _symbolIndexAt(
+      pt,
+      hitPadding: _kSymbolHitPadding,
+    );
+    _canvasPointerMaxDistanceSquared = 0;
 
     // Mode édition : les poignées ont priorité (resize / rotation /
     // déplacement depuis le body).
@@ -1937,8 +1946,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
   void _onCanvasPointerMove(PointerMoveEvent event) {
     if (_activeCanvasPointer != event.pointer) return;
     final down = _canvasPointerDown;
-    if (down != null && (event.localPosition - down).distanceSquared >= 4) {
-      _canvasPointerMoved = true;
+    if (down != null) {
+      final distanceSquared = (event.localPosition - down).distanceSquared;
+      if (distanceSquared > _canvasPointerMaxDistanceSquared) {
+        _canvasPointerMaxDistanceSquared = distanceSquared;
+      }
+      if (distanceSquared >= 4) {
+        _canvasPointerMoved = true;
+      }
     }
     if (_activeHandle != null) {
       _updateSelectedSymbol(event.position);
@@ -1956,8 +1971,21 @@ class _PlanCanvasState extends State<PlanCanvas> {
       return;
     }
 
-    final symbolIndex = _symbolIndexAt(event.localPosition);
-    if (!_canvasPointerMoved && symbolIndex >= 0) {
+    final down = _canvasPointerDown;
+    if (down != null) {
+      final distanceSquared = (event.localPosition - down).distanceSquared;
+      if (distanceSquared > _canvasPointerMaxDistanceSquared) {
+        _canvasPointerMaxDistanceSquared = distanceSquared;
+      }
+    }
+    final isStableSymbolTap =
+        _canvasPointerDownSymbolIndex >= 0 &&
+        _canvasPointerMaxDistanceSquared <=
+            _kSymbolTapTolerance * _kSymbolTapTolerance;
+    final symbolIndex = isStableSymbolTap
+        ? _canvasPointerDownSymbolIndex
+        : _symbolIndexAt(event.localPosition);
+    if ((isStableSymbolTap || !_canvasPointerMoved) && symbolIndex >= 0) {
       setState(() {
         _current = null;
         _selectedIndex = symbolIndex;
@@ -2003,6 +2031,8 @@ class _PlanCanvasState extends State<PlanCanvas> {
     _activeCanvasPointerKind = null;
     _canvasPointerDown = null;
     _canvasPointerMoved = false;
+    _canvasPointerDownSymbolIndex = -1;
+    _canvasPointerMaxDistanceSquared = 0;
   }
 
   void _discardActiveCanvasGesture() {

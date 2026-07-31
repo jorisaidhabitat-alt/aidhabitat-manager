@@ -1,3 +1,11 @@
+import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
+
+final tz.Location _parisLocation = () {
+  tz_data.initializeTimeZones();
+  return tz.getLocation('Europe/Paris');
+}();
+
 DateTime? parseVisitDateTime(String? raw) {
   final value = raw?.trim() ?? '';
   if (value.isEmpty) return null;
@@ -12,7 +20,8 @@ DateTime? parseVisitDateTime(String? raw) {
     return DateTime(parsed.year, parsed.month, parsed.day);
   }
 
-  // NocoDB serializes DateTime values in UTC. Convert them back to the
-  // device timezone before displaying or comparing visit hours.
-  return parsed.isUtc ? parsed.toLocal() : parsed;
+  // Les visites sont planifiées en France. Une conversion avec `toLocal()`
+  // dépendrait du fuseau configuré sur chaque iPad et pourrait donc afficher
+  // une heure différente d'un appareil à l'autre.
+  return parsed.isUtc ? tz.TZDateTime.from(parsed, _parisLocation) : parsed;
 }

@@ -199,6 +199,10 @@ class _AnahScreenState extends State<AnahScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_useEmbeddedWebView) {
+      return _buildEmbeddedPortal();
+    }
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -212,11 +216,7 @@ class _AnahScreenState extends State<AnahScreen> {
           // deux liens officiels + un CTA qui ouvre MaPrimeAdapt' dans un
           // nouvel onglet Safari — la seule solution réaliste côté web.
           Expanded(
-            child: kIsWeb
-                ? _buildWebExternalCard()
-                : (_useEmbeddedWebView
-                      ? _buildWebViewCard()
-                      : _buildNativeBrowserCard()),
+            child: kIsWeb ? _buildWebExternalCard() : _buildNativeBrowserCard(),
           ),
         ],
       ),
@@ -457,7 +457,7 @@ class _AnahScreenState extends State<AnahScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Header (titre + statut + boutons)
+  // Header (titre + statut)
   // -----------------------------------------------------------------------
 
   Widget _buildHeader() {
@@ -475,44 +475,6 @@ class _AnahScreenState extends State<AnahScreen> {
         ),
         const Spacer(),
         _buildStatusBadge(),
-        // Les boutons back/forward/reload n'ont de sens qu'avec la WebView
-        // native — sur web la carte affiche simplement le CTA externe.
-        if (!kIsWeb && _useEmbeddedWebView) ...[
-          const SizedBox(width: 12),
-          IconButton(
-            onPressed: _webController == null
-                ? null
-                : () => _webController!.goBack(),
-            icon: const Icon(LucideIcons.arrowLeft, size: 18),
-            tooltip: 'Précédent',
-          ),
-          IconButton(
-            onPressed: _webController == null
-                ? null
-                : () => _webController!.goForward(),
-            icon: const Icon(LucideIcons.arrowRight, size: 18),
-            tooltip: 'Suivant',
-          ),
-          IconButton(
-            onPressed: _webController == null
-                ? null
-                : () => _webController!.reload(),
-            icon: const Icon(LucideIcons.refreshCw, size: 18),
-            tooltip: 'Recharger',
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: () => _openPortal(
-              _currentUrl.isEmpty ? _registrationUrl : _currentUrl,
-            ),
-            icon: const Icon(LucideIcons.externalLink, size: 16),
-            label: const Text('Ouvrir dans Safari'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF2B323A),
-              side: const BorderSide(color: Color(0xFFB9C0C7)),
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -604,58 +566,87 @@ class _AnahScreenState extends State<AnahScreen> {
   }
 
   // -----------------------------------------------------------------------
-  // Carte WebView intégrée
+  // Portail WebView intégré
   // -----------------------------------------------------------------------
 
-  Widget _buildWebViewCard() {
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE4E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Mini barre d'adresse (read-only)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7FA),
-              border: Border(bottom: BorderSide(color: Color(0xFFE4E7EB))),
-            ),
-            child: Row(
-              children: [
-                Icon(LucideIcons.lock, size: 12, color: Color(0xFF5C6670)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    _currentUrl.isEmpty ? _registrationUrl : _currentUrl,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Color(0xFF2B323A), fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Barre de progression du chargement
-          if (_webLoading && _webProgress < 1)
-            LinearProgressIndicator(
+  Widget _buildEmbeddedPortal() {
+    return Stack(
+      children: [
+        Positioned.fill(child: _buildWebView()),
+        if (_webLoading && _webProgress < 1)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: LinearProgressIndicator(
               value: _webProgress == 0 ? null : _webProgress,
               minHeight: 2,
               color: kBrandPurple,
               backgroundColor: Colors.transparent,
             ),
-          // WebView
-          Expanded(child: _buildWebView()),
-        ],
+          ),
+        Positioned(
+          top: 12,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Material(
+              color: Colors.white.withValues(alpha: 0.96),
+              elevation: 3,
+              borderRadius: BorderRadius.circular(8),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildPortalControl(
+                      icon: LucideIcons.arrowLeft,
+                      tooltip: 'Retour en arrière',
+                      onPressed: _webController == null
+                          ? null
+                          : () => _webController!.goBack(),
+                    ),
+                    _buildPortalControl(
+                      icon: LucideIcons.arrowRight,
+                      tooltip: 'Retour en avant',
+                      onPressed: _webController == null
+                          ? null
+                          : () => _webController!.goForward(),
+                    ),
+                    _buildPortalControl(
+                      icon: LucideIcons.refreshCw,
+                      tooltip: 'Actualiser',
+                      onPressed: _webController == null
+                          ? null
+                          : () => _webController!.reload(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPortalControl({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 19),
+      style: IconButton.styleFrom(
+        fixedSize: const Size.square(40),
+        minimumSize: const Size.square(40),
+        padding: EdgeInsets.zero,
+        foregroundColor: const Color(0xFF2B323A),
+        disabledForegroundColor: const Color(0xFF9BA3AB),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
     );
   }

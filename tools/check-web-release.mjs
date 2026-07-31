@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Smoke check non destructif d'un bundle App'Ergo web.
 //
-// Vérifie les fichiers indispensables PWA/Flutter, soit depuis un dossier local
+// Vérifie les fichiers indispensables Flutter web, soit depuis un dossier local
 // `build/web`, soit depuis une URL publique/staging.
 
 import { readFile } from 'node:fs/promises';
@@ -90,40 +90,51 @@ async function checkBytes(assetPath, minBytes, label = assetPath) {
   }
 }
 
+async function checkUnavailable(assetPath, label = assetPath) {
+  const normalized = normalizeAssetPath(assetPath);
+  if (mode === 'dir') {
+    try {
+      await readFile(path.join(source, normalized));
+      failures.push(`${label}: doit être absent`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        failures.push(`${label}: ${error.message}`);
+        return;
+      }
+      checked.push(`${label}-absent`);
+    }
+    return;
+  }
+
+  try {
+    const target = new URL(normalized, source);
+    const response = await fetch(target, { redirect: 'manual' });
+    if (response.status !== 404 && response.status !== 410) {
+      failures.push(`${label}: HTTP ${response.status}, 404/410 attendu`);
+      return;
+    }
+    checked.push(`${label}-disabled`);
+  } catch (error) {
+    failures.push(`${label}: ${error.message}`);
+  }
+}
+
 const indexHtml = await checkText('index.html', (text) => (
   text.includes("<title>App'Ergo</title>")
-  && text.includes('manifest.json')
   && text.includes('flutter_bootstrap.js')
   && text.includes('pdfjs/pdf.min.js')
+  && text.includes('retireLegacyPwa')
+  && !text.includes('rel="manifest"')
 ), 'index.html');
-
-const manifestSource = await checkText('manifest.json', (text) => {
-  try {
-    const manifest = JSON.parse(text);
-    return (
-      manifest.name === "App'Ergo"
-      && manifest.short_name === "App'Ergo"
-      && manifest.display === 'standalone'
-      && Array.isArray(manifest.icons)
-      && manifest.icons.some((icon) => icon.src === 'icons/Icon-192.png')
-      && manifest.icons.some((icon) => icon.src === 'icons/Icon-512.png')
-      && manifest.icons.some((icon) => String(icon.purpose || '').includes('maskable'))
-    );
-  } catch {
-    return false;
-  }
-}, 'manifest.json');
 
 await checkText('flutter_bootstrap.js', (text) => (
   text.includes('main.dart.js')
   && text.includes('_flutter.loader.load')
+  && /_flutter\.loader\.load\(\s*\);/.test(text)
 ), 'flutter_bootstrap.js');
 
-await checkText('flutter_service_worker.js', (text) => (
-  text.includes('main.dart.js')
-  && text.includes('sqlite3.wasm')
-  && text.includes('pdfjs/pdf.worker.min.js')
-), 'flutter_service_worker.js');
+await checkUnavailable('flutter_service_worker.js', 'flutter_service_worker.js');
+await checkUnavailable('manifest.json', 'manifest.json');
 
 await checkText('version.json', (text) => {
   try {
@@ -157,10 +168,6 @@ if (
   checked.push('no-cdn-reference');
 } else if (indexHtml) {
   failures.push('index.html: référence CDN détectée');
-}
-
-if (manifestSource && manifestSource.includes('AidHabitat Manager')) {
-  failures.push('manifest.json: ancien nom AidHabitat Manager détecté');
 }
 
 if (failures.length > 0) {

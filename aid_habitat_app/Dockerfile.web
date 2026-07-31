@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Dockerfile pour le frontend Flutter web (PWA iPad + Mac browser).
+# Dockerfile pour le frontend Flutter web online-first (Mac et navigateurs).
 #
 # Stratégie : build Flutter en local (ou en CI GitHub Actions), puis on
 # packe le résultat statique dans une image nginx:alpine ultra-légère.

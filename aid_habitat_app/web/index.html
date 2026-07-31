@@ -22,19 +22,10 @@
   <meta name="description" content="App'Ergo — relevés de visite à domicile, dossiers ANAH, préconisations.">
   <meta name="theme-color" content="#907CA1">
 
-  <!-- iOS / iPadOS PWA meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="App'Ergo">
-  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
-  <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
-
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>App'Ergo</title>
-  <link rel="manifest" href="manifest.json">
   <style>
     html,
     body,
@@ -64,11 +55,7 @@
     officielle du package).
 
     Bundlé localement dans `web/pdfjs/` (au lieu d'un CDN unpkg.com)
-    depuis 2026-05-07 pour garantir le fonctionnement 100 % offline :
-    le service worker Flutter cache automatiquement les assets
-    same-origin, donc PDF.js reste dispo même si l'iPad part offline
-    avant le 1er load PDF (avant ce changement, le browser cache HTTP
-    pouvait évincer le script CDN et casser la preview offline).
+    pour éviter une dépendance externe et stabiliser la prévisualisation.
     Voir `web/pdfjs/pdf.min.js` (~230 Ko) + `pdf.worker.min.js`
     (~1 Mo). Mise à jour : remplacer les deux fichiers manuellement
     en récupérant la version voulue depuis https://unpkg.com/pdfjs-dist/.
@@ -188,6 +175,39 @@
   </script>
 </head>
 <body>
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    (() => {
+      // Migration unique depuis l'ancienne PWA. Elle retire seulement les
+      // workers/caches d'app-shell et conserve IndexedDB, localStorage et les
+      // opérations locales en attente de synchronisation.
+      const retireLegacyPwa = async () => {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((registration) => (
+            registration.unregister()
+          )));
+        }
+
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          const legacyCaches = cacheNames.filter((name) => (
+            name.startsWith('aidhabitat-pwa-')
+            || name === 'flutter-app-cache'
+            || name === 'flutter-temp-cache'
+          ));
+          await Promise.all(legacyCaches.map((name) => caches.delete(name)));
+        }
+      };
+
+      const startFlutter = () => {
+        const script = document.createElement('script');
+        script.src = 'flutter_bootstrap.js';
+        script.async = true;
+        document.body.appendChild(script);
+      };
+
+      retireLegacyPwa().catch(() => {}).finally(startFlutter);
+    })();
+  </script>
 </body>
 </html>

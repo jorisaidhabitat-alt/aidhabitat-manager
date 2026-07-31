@@ -12,6 +12,7 @@ import '../components/brand_colors.dart';
 import '../components/commune_field_group.dart';
 import '../components/form_widgets.dart';
 import '../components/notes_widget.dart';
+import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
 import '../services/dossier_repository.dart';
@@ -114,6 +115,7 @@ class _DossierScreenState extends State<DossierScreen> {
   // permet à NotesWidget de re-fetch quand la seed est terminée et
   // donc d'afficher le commentaire dès l'ouverture du dossier.
   int _quickNoteRefreshToken = 0;
+  int _quickNoteMode = 0;
 
   // References
   final ReferencesService _references = ReferencesService();
@@ -1340,28 +1342,96 @@ class _DossierScreenState extends State<DossierScreen> {
   // Right column: Notes
   // ---------------------------------------------------------------------------
   Widget _buildNotesColumn() {
-    return NotesWidget(
-      patientId: widget.dossier.patient.id,
-      tabKey: 'notes_rapides',
-      dossierId: widget.dossier.id,
-      scopeType: 'dossier_detail',
-      scopeId: widget.dossier.id,
-      sharedText: true,
-      allowTextModal: false,
-      // Nouvelle mise en page "deux cartes empilées" — texte en haut,
-      // canvas en bas avec pagination flottante en haut-droite et
-      // toolbar en bas-centre. Mise en cohérence visuelle avec les
-      // notes du relevé de visite.
-      stackedCards: true,
-      stackedTextFraction: 0.7,
-      allowPagination: true,
-      fillParentHeight: true,
-      // Autosave debounced → pas de bouton Save explicite (design épuré).
-      showSaveButton: false,
-      // Jeton bumped dès que la note rapide a été hydratée avec le
-      // commentaire projet → force NotesWidget à re-fetch la page 0
-      // et afficher le commentaire juste après l'ouverture du dossier.
-      externalRefreshToken: _quickNoteRefreshToken,
+    final showWrittenNote = _quickNoteMode == 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildQuickNoteModeNav(),
+        Expanded(
+          child: NotesWidget(
+            patientId: widget.dossier.patient.id,
+            tabKey: 'notes_rapides',
+            dossierId: widget.dossier.id,
+            scopeType: 'dossier_detail',
+            scopeId: widget.dossier.id,
+            sharedText: true,
+            allowTextModal: false,
+            showText: showWrittenNote,
+            showCanvas: !showWrittenNote,
+            // Le mode dessin conserve la présentation avec outils et
+            // pagination flottants. Le mode texte occupe toute la zone.
+            stackedCards: !showWrittenNote,
+            allowPagination: true,
+            fillParentHeight: true,
+            // Autosave debounced → pas de bouton Save explicite.
+            showSaveButton: false,
+            // Jeton bumped dès que la note rapide a été hydratée avec le
+            // commentaire projet → force NotesWidget à re-fetch la page 0.
+            externalRefreshToken: _quickNoteRefreshToken,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickNoteModeNav() {
+    const items = [
+      (icon: LucideIcons.fileText, label: 'Note écrite'),
+      (icon: LucideIcons.pencil, label: 'Note dessin'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF2ECF5),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Row(
+        children: List.generate(items.length, (index) {
+          final active = index == _quickNoteMode;
+          final color = active
+              ? const Color(0xFF0E1116)
+              : const Color(0xFF8A939D);
+          return Expanded(
+            child: SoftTapScale(
+              onTap: () {
+                if (_quickNoteMode == index) return;
+                FocusManager.instance.primaryFocus?.unfocus();
+                setState(() => _quickNoteMode = index);
+              },
+              child: Container(
+                color: Colors.transparent,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(items[index].icon, size: 16, color: color),
+                    const SizedBox(height: 2),
+                    Text(
+                      items[index].label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      height: 1.5,
+                      width: active ? 42 : 24,
+                      decoration: BoxDecoration(
+                        color: active ? kBrandPurple : Colors.transparent,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
     );
   }
 }

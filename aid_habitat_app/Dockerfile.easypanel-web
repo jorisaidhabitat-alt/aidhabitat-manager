@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Dockerfile Easypanel pour la PWA Flutter web.
+# Dockerfile Easypanel pour l'application Flutter web online-first.
 #
 # Contrairement à Dockerfile.web, celui-ci compile `build/web/` pendant le
 # build Docker. Il est donc adapté à Easypanel quand le service reconstruit

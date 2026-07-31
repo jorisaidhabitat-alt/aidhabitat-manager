@@ -40,7 +40,7 @@ concurrency:
 
 jobs:
   build-web:
-    name: Build PWA bundle
+    name: Build online-first web bundle
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -72,7 +72,7 @@ jobs:
           chmod +x ./tool/build_web.sh
           ./tool/build_web.sh
 
-      - name: Check PWA bundle
+      - name: Check web bundle
         working-directory: .
         run: npm run release:web-check -- --dir aid_habitat_app/build/web
 
@@ -109,11 +109,11 @@ jobs:
             --request POST \
             "$EASYPANEL_DEPLOY_URL"
 
-      - name: Upload PWA artifact
+      - name: Upload web artifact
         if: ${{ inputs.upload_artifact }}
         uses: actions/upload-artifact@v7
         with:
-          name: aidhabitat-pwa-web
+          name: aidhabitat-web
           path: aid_habitat_app/build/web
           if-no-files-found: error
           retention-days: 3

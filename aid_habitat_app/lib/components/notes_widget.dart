@@ -2997,37 +2997,45 @@ class _NotesWidgetState extends State<NotesWidget> {
     // En mode texte-seul (showCanvas: false → fillHeight: true), la
     // zone texte remplit toute la hauteur disponible. Sinon hauteur
     // fixe pilotée par le splitter (mode classique).
+    final editorPadding = EdgeInsets.fromLTRB(
+      widget.allowTextModal ? 38 : 14,
+      10,
+      VoiceDictationButton.isSupported ? 92 : 52,
+      10,
+    );
+    final textField = TextField(
+      controller: _textController,
+      focusNode: _textFocusNode,
+      keyboardType: TextInputType.multiline,
+      textInputAction: TextInputAction.newline,
+      maxLines: null,
+      expands: true,
+      textAlign: TextAlign.left,
+      textAlignVertical: TextAlignVertical.top,
+      style: const TextStyle(fontSize: 14),
+      stylusHandwritingEnabled: true,
+      autocorrect: false,
+      enableSuggestions: false,
+      spellCheckConfiguration: SpellCheckConfiguration.disabled(),
+      smartDashesType: SmartDashesType.disabled,
+      smartQuotesType: SmartQuotesType.disabled,
+      readOnly: _isVoiceDictating,
+      decoration: widget.focusOnTapAnywhere
+          ? _noteTextDecoration(
+              widget.placeholder,
+            ).copyWith(isCollapsed: false, contentPadding: editorPadding)
+          : _noteTextDecoration(widget.placeholder),
+    );
     final stack = Stack(
       children: [
-        // Zone texte — remplit toute la zone, avec une petite marge à
-        // gauche pour la poignée d'agrandissement.
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            widget.allowTextModal ? 38 : 14,
-            10,
-            VoiceDictationButton.isSupported ? 92 : 52,
-            10,
-          ),
-          child: TextField(
-            controller: _textController,
-            focusNode: _textFocusNode,
-            keyboardType: TextInputType.multiline,
-            textInputAction: TextInputAction.newline,
-            maxLines: null,
-            expands: true,
-            textAlign: TextAlign.left,
-            textAlignVertical: TextAlignVertical.top,
-            style: const TextStyle(fontSize: 14),
-            stylusHandwritingEnabled: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            spellCheckConfiguration: SpellCheckConfiguration.disabled(),
-            smartDashesType: SmartDashesType.disabled,
-            smartQuotesType: SmartQuotesType.disabled,
-            readOnly: _isVoiceDictating,
-            decoration: _noteTextDecoration(widget.placeholder),
-          ),
-        ),
+        // En mode pleine surface, le vrai TextField couvre toute la carte :
+        // iPadOS transmet donc l'écriture manuscrite au champ quel que soit
+        // le point de départ. Les marges deviennent du contentPadding et ne
+        // réduisent plus la zone Scribble.
+        if (widget.focusOnTapAnywhere)
+          Positioned.fill(child: textField)
+        else
+          Padding(padding: editorPadding, child: textField),
         // Poignée d'agrandissement — petite zone de tap confinée en haut-gauche
         // pour ne pas intercepter les taps destinés au TextField.
         if (widget.allowTextModal)
@@ -3073,19 +3081,6 @@ class _NotesWidgetState extends State<NotesWidget> {
         ),
       ],
     );
-    final editorSurface = widget.focusOnTapAnywhere
-        ? GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              if (_textFocusNode.hasFocus) return;
-              _textFocusNode.requestFocus();
-              _textController.selection = TextSelection.collapsed(
-                offset: _textController.text.length,
-              );
-            },
-            child: stack,
-          )
-        : stack;
 
     final boxedRadius = widget.attachedToTitleBanner
         ? const BorderRadius.only(
@@ -3106,8 +3101,8 @@ class _NotesWidgetState extends State<NotesWidget> {
       // contraint la zone. En mode classique, hauteur pilotée par le
       // splitter via _textAreaHeight.
       child: fillHeight
-          ? editorSurface
-          : SizedBox(height: _textAreaHeight, child: editorSurface),
+          ? stack
+          : SizedBox(height: _textAreaHeight, child: stack),
     );
 
     // En mode texte-seul (fillHeight) on resserre le padding externe

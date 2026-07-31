@@ -93,6 +93,7 @@ dependencies:
   # l'application pour que les données de visite restent sur l'iPad/Mac.
   speech_to_text: ^7.4.0
   pointycastle: ^4.0.0
+  timezone: ^0.11.1
 
 dev_dependencies:
   flutter_test:

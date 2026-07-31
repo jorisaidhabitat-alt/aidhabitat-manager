@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Host-agnostic Flutter web build for the aid'habitat PWA.
+# Host-agnostic Flutter web build for the online-first aid'habitat web app.
 #
 # Produces the same `build/web/` bundle whether it runs on Vercel, a local
 # workstation, a self-hosted CI, or any other Linux/macOS environment.
@@ -31,8 +31,8 @@ fi
 "$FLUTTER" config --enable-web
 "$FLUTTER" pub get
 
-# Copy the SQLite WASM bundle (+ shared worker) into web/ so the PWA can
-# run sqflite via IndexedDB in the browser.
+# Copy the SQLite WASM bundle (+ shared worker) into web/ so the web app can
+# keep its local safety database in IndexedDB.
 #
 # The setup step occasionally crashes with a webdev/build_daemon mismatch
 # on recent Dart SDKs ("dart compile does not support build hooks"). When
@@ -53,10 +53,15 @@ fi
 API_BASE_URL="${AIDHABITAT_API_BASE_URL:-}"
 
 "$FLUTTER" build web --release \
+  --pwa-strategy=none \
   --dart-define=AIDHABITAT_API_BASE_URL="$API_BASE_URL"
 
-# Copy the seeded static libraries into the PWA output so requests to
-# `/wiki-offline/...` and `/retirement-logos/...` resolve on the PWA origin.
+# Flutter can leave the previous generated worker behind after an incremental
+# build. It must never be shipped by the online-first web target.
+rm -f build/web/flutter_service_worker.js build/web/manifest.json
+
+# Copy the seeded static libraries into the web output so requests to
+# `/wiki-offline/...` and `/retirement-logos/...` resolve on the app origin.
 # The single-page rewrite `/(.*) -> /index.html` used by most static hosts
 # (Vercel, Netlify, Firebase, nginx try_files) would otherwise return the
 # app shell instead of the actual image bytes.
@@ -64,13 +69,13 @@ API_BASE_URL="${AIDHABITAT_API_BASE_URL:-}"
 # Sources are looked up in order:
 #   1. `$REPO_ROOT/public/<dir>` — canonical source at the monorepo root.
 #      Used on workstations so edits made in public/ are always fresh.
-#   2. `$APP_DIR/web-assets/<dir>` — vendored copy committed with the PWA
+#   2. `$APP_DIR/web-assets/<dir>` — vendored copy committed with the web
 #      project. Used on Vercel when the project's rootDirectory is
 #      aid_habitat_app/ (the monorepo root isn't uploaded there, so the
 #      parent public/ folder isn't available to the build runner).
 #
 # TODO: keep web-assets/ in sync with public/ — run `cp -R public/…
-# aid_habitat_app/web-assets/` before a PWA deploy, or set up a pre-commit
+# aid_habitat_app/web-assets/` before a web deploy, or set up a pre-commit
 # hook to auto-sync.
 for dir in wiki-offline retirement-logos; do
   src=""
@@ -87,121 +92,6 @@ for dir in wiki-offline retirement-logos; do
     echo "[build_web] WARN: no source found for $dir — skipping" >&2
   fi
 done
-
-node <<'NODE'
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-
-const outDir = path.resolve('build/web');
-const ignore = new Set(['flutter_service_worker.js']);
-
-function walk(dir) {
-  const entries = fs.readdirSync(dir, { withFileTypes: true })
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const files = [];
-  for (const entry of entries) {
-    const abs = path.join(dir, entry.name);
-    const rel = path.relative(outDir, abs).replaceAll(path.sep, '/');
-    if (entry.name === '.DS_Store') continue;
-    if (ignore.has(rel)) continue;
-    if (entry.isDirectory()) {
-      files.push(...walk(abs));
-    } else if (entry.isFile()) {
-      files.push(rel);
-    }
-  }
-  return files;
-}
-
-const resources = walk(outDir);
-const version = crypto
-  .createHash('sha256')
-  .update(resources.map((rel) => {
-    const stat = fs.statSync(path.join(outDir, rel));
-    return `${rel}:${stat.size}:${stat.mtimeMs}`;
-  }).join('\n'))
-  .digest('hex')
-  .slice(0, 16);
-
-const sw = `'use strict';
-
-const CACHE_NAME = 'aidhabitat-pwa-${version}';
-const RESOURCES = ${JSON.stringify(resources, null, 2)};
-const CORE = [
-  '/',
-  '/index.html',
-  '/flutter_bootstrap.js',
-  '/main.dart.js',
-  '/manifest.json',
-  '/pdfjs/pdf.min.js',
-  '/pdfjs/pdf.worker.min.js'
-];
-
-const resourceUrl = (resource) => new URL(resource === '/' ? '/' : '/' + resource, self.location.origin).toString();
-
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE);
-    await Promise.allSettled(
-      RESOURCES
-        .filter((resource) => !CORE.includes('/' + resource))
-        .map((resource) => cache.add(resourceUrl(resource)))
-    );
-  })());
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)));
-    await self.clients.claim();
-  })());
-});
-
-self.addEventListener('fetch', (event) => {
-  const request = event.request;
-  if (request.method !== 'GET') return;
-
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-
-  if (request.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const response = await fetch(request);
-        const cache = await caches.open(CACHE_NAME);
-        cache.put('/index.html', response.clone());
-        return response;
-      } catch (_) {
-        return (await caches.match('/index.html')) || Response.error();
-      }
-    })());
-    return;
-  }
-
-  event.respondWith((async () => {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    try {
-      const response = await fetch(request);
-      if (response.ok) {
-        const cache = await caches.open(CACHE_NAME);
-        cache.put(request, response.clone());
-      }
-      return response;
-    } catch (_) {
-      return Response.error();
-    }
-  })());
-});
-`;
-
-fs.writeFileSync(path.join(outDir, 'flutter_service_worker.js'), sw);
-console.log(`[build_web] generated offline service worker (${resources.length} resources, aidhabitat-pwa-${version})`);
-NODE
 
 echo "[build_web] build/web produced:"
 ls -lah build/web | head -20

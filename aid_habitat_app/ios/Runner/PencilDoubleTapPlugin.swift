@@ -28,7 +28,20 @@
 // du stylet — c'est un signal Bluetooth privé du firmware Pencil).
 
 import Flutter
+import ObjectiveC.runtime
 import UIKit
+
+private extension UIResponder {
+  /// Après swizzle sur FlutterTextInputView, cet appel invoque
+  /// l'implémentation UIKit originale puis neutralise sa barre d'assistance.
+  @objc func aidHabitatInputAssistantItem() -> UITextInputAssistantItem {
+    let assistant = aidHabitatInputAssistantItem()
+    assistant.leadingBarButtonGroups = []
+    assistant.trailingBarButtonGroups = []
+    assistant.allowsHidingShortcuts = true
+    return assistant
+  }
+}
 
 class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegate {
   // Channel name partagé avec `PencilInteractionService` côté Dart.
@@ -37,10 +50,12 @@ class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegat
 
   private let channel: FlutterMethodChannel
   private var keyboardObserverTokens: [NSObjectProtocol] = []
+  private static var didInstallInputAssistantSwizzle = false
 
   private init(channel: FlutterMethodChannel) {
     self.channel = channel
     super.init()
+    Self.installInputAssistantSuppression()
     startSuppressingInputAssistant()
   }
 
@@ -116,13 +131,74 @@ class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegat
 
   // Flutter utilise une vue texte UIKit cachée pour Scribble. iPadOS lui
   // ajoute par défaut une barre avec annuler/rétablir et la langue active,
-  // ce qui crée un inset bas et déplace inutilement le relevé. Les groupes
-  // de raccourcis sont retirés sans désactiver Scribble ni le clavier.
+  // ce qui crée un inset bas et déplace inutilement le relevé.
+  //
+  // La suppression sur notification seule arrivait trop tard : Scribble
+  // demande parfois l'inputAssistantItem avant toute notification clavier.
+  // On intercepte donc le getter de FlutterTextInputView une seule fois.
+  private static func installInputAssistantSuppression() {
+    guard !didInstallInputAssistantSwizzle else { return }
+    guard
+      let flutterInputViewClass = NSClassFromString("FlutterTextInputView"),
+      let originalMethod = class_getInstanceMethod(
+        flutterInputViewClass,
+        #selector(getter: UIResponder.inputAssistantItem)
+      ),
+      let replacementMethod = class_getInstanceMethod(
+        UIResponder.self,
+        #selector(UIResponder.aidHabitatInputAssistantItem)
+      )
+    else {
+      NSLog("[PencilDoubleTapPlugin] FlutterTextInputView introuvable pour masquer l'assistant")
+      return
+    }
+
+    let originalSelector = #selector(getter: UIResponder.inputAssistantItem)
+    let replacementSelector = #selector(UIResponder.aidHabitatInputAssistantItem)
+    // Si le getter vient de UIResponder, on en installe d'abord une copie
+    // propre à FlutterTextInputView. L'échange reste ainsi strictement local
+    // et ne modifie aucun autre responder UIKit.
+    class_addMethod(
+      flutterInputViewClass,
+      originalSelector,
+      method_getImplementation(originalMethod),
+      method_getTypeEncoding(originalMethod)
+    )
+    class_addMethod(
+      flutterInputViewClass,
+      replacementSelector,
+      method_getImplementation(replacementMethod),
+      method_getTypeEncoding(replacementMethod)
+    )
+    guard
+      let installedOriginal = class_getInstanceMethod(
+        flutterInputViewClass,
+        originalSelector
+      ),
+      let installedReplacement = class_getInstanceMethod(
+        flutterInputViewClass,
+        replacementSelector
+      )
+    else {
+      return
+    }
+
+    method_exchangeImplementations(installedOriginal, installedReplacement)
+    didInstallInputAssistantSwizzle = true
+  }
+
+  // Le rattrapage couvre les vues déjà créées avant l'enregistrement du
+  // plugin et les changements de first responder effectués par iPadOS.
   private func startSuppressingInputAssistant() {
     let center = NotificationCenter.default
     let notifications = [
       UIResponder.keyboardWillShowNotification,
       UIResponder.keyboardDidShowNotification,
+      UIResponder.keyboardWillChangeFrameNotification,
+      UIResponder.keyboardDidChangeFrameNotification,
+      UITextField.textDidBeginEditingNotification,
+      UITextView.textDidBeginEditingNotification,
+      UIApplication.didBecomeActiveNotification,
     ]
 
     for notification in notifications {
@@ -131,58 +207,57 @@ class PencilDoubleTapPlugin: NSObject, FlutterPlugin, UIPencilInteractionDelegat
         object: nil,
         queue: .main
       ) { [weak self] _ in
-        self?.suppressInputAssistant()
-        // La vue FlutterTextInput peut devenir first responder pendant
-        // l'animation du clavier : une seconde passe couvre ce basculement.
-        DispatchQueue.main.async { [weak self] in
-          self?.suppressInputAssistant()
-        }
+        self?.scheduleInputAssistantSuppression()
       }
       keyboardObserverTokens.append(token)
+    }
+
+    scheduleInputAssistantSuppression()
+  }
+
+  private func scheduleInputAssistantSuppression() {
+    suppressInputAssistant()
+    for delay in [0.0, 0.05, 0.2] {
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        self?.suppressInputAssistant()
+      }
     }
   }
 
   private func suppressInputAssistant() {
-    guard
-      let rootView = Self.activeKeyWindow()?.rootViewController?.view,
-      let firstResponder = Self.firstResponder(in: rootView)
-    else {
-      return
-    }
-
-    let assistant = firstResponder.inputAssistantItem
-    let hadShortcuts =
-      !assistant.leadingBarButtonGroups.isEmpty ||
-      !assistant.trailingBarButtonGroups.isEmpty
-
-    assistant.leadingBarButtonGroups = []
-    assistant.trailingBarButtonGroups = []
-    assistant.allowsHidingShortcuts = true
-
-    if hadShortcuts {
-      firstResponder.reloadInputViews()
+    for window in Self.activeWindows() {
+      Self.suppressInputAssistant(in: window)
     }
   }
 
-  private static func activeKeyWindow() -> UIWindow? {
+  private static func activeWindows() -> [UIWindow] {
     let scenes = UIApplication.shared.connectedScenes
       .compactMap { $0 as? UIWindowScene }
-    let activeScene = scenes.first(where: { $0.activationState == .foregroundActive })
-      ?? scenes.first
-    return activeScene?.windows.first(where: { $0.isKeyWindow })
-      ?? activeScene?.windows.first
+      .filter {
+        $0.activationState == .foregroundActive ||
+        $0.activationState == .foregroundInactive
+      }
+    return scenes.flatMap(\.windows)
   }
 
-  private static func firstResponder(in view: UIView) -> UIView? {
-    if view.isFirstResponder {
-      return view
-    }
-    for subview in view.subviews {
-      if let responder = firstResponder(in: subview) {
-        return responder
+  private static func suppressInputAssistant(in view: UIView) {
+    let className = NSStringFromClass(type(of: view))
+    let isFlutterTextInput = className.contains("FlutterTextInputView")
+    if isFlutterTextInput || view.isFirstResponder {
+      let assistant = view.inputAssistantItem
+      let hadShortcuts =
+        !assistant.leadingBarButtonGroups.isEmpty ||
+        !assistant.trailingBarButtonGroups.isEmpty
+      assistant.leadingBarButtonGroups = []
+      assistant.trailingBarButtonGroups = []
+      assistant.allowsHidingShortcuts = true
+      if hadShortcuts && view.isFirstResponder {
+        view.reloadInputViews()
       }
     }
-    return nil
+    for subview in view.subviews {
+      suppressInputAssistant(in: subview)
+    }
   }
 
   // Conversion enum iOS → string portable. Évite de hardcoder des

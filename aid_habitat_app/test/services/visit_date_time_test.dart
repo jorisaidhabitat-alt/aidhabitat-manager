@@ -3,10 +3,23 @@ import 'package:aid_habitat_app/services/visit_date_time.dart';
 
 void main() {
   group('parseVisitDateTime', () {
-    test('converts UTC timestamps to the device timezone', () {
-      const raw = '2026-07-28T08:00:00.000Z';
+    test('converts UTC timestamps to Europe/Paris in summer', () {
+      const raw = '2026-08-04T08:00:00.000Z';
+      final parsed = parseVisitDateTime(raw);
 
-      expect(parseVisitDateTime(raw), DateTime.parse(raw).toLocal());
+      expect(parsed, isNotNull);
+      expect(parsed!.hour, 10);
+      expect(parsed.minute, 0);
+      expect(parsed.timeZoneOffset, const Duration(hours: 2));
+      expect(parsed.toUtc(), DateTime.utc(2026, 8, 4, 8));
+    });
+
+    test('applies the Europe/Paris winter offset', () {
+      final parsed = parseVisitDateTime('2026-12-04T08:00:00.000Z');
+
+      expect(parsed, isNotNull);
+      expect(parsed!.hour, 9);
+      expect(parsed.timeZoneOffset, const Duration(hours: 1));
     });
 
     test('keeps local timestamps unchanged', () {
