@@ -125,7 +125,7 @@ class SyncEngine {
 
   /// Start the engine: run an initial sync + pull, and arm the safety net
   /// retry timer (5 min) pour rejouer les ops `failed` de la queue.
-  void start() {
+  void start({bool pullRemote = true}) {
     if (_disposed) return;
     _started = true;
     _periodicTimer?.cancel();
@@ -140,10 +140,15 @@ class SyncEngine {
       // événement explicite (boot/foreground/reconnect/pull-to-refresh).
       requestSync();
     });
-    // Boot : sync push + pull initial pour rattraper l'état serveur.
+    // Boot : sync push + pull initial pour rattraper l'état serveur. Après
+    // réauthentification, le caller peut différer le pull afin de pousser
+    // d'abord les saisies terrain locales et éviter qu'un snapshot distant
+    // ancien ne les remplace.
     requestSync();
-    // ignore: discarded_futures
-    _runPullSafe();
+    if (pullRemote) {
+      // ignore: discarded_futures
+      _runPullSafe();
+    }
   }
 
   /// Met l'engine en pause sans détruire le singleton. Utilisé lors d'un
@@ -474,7 +479,6 @@ class SyncEngine {
         );
         _scheduleRetry();
       } else {
-        _consecutiveFailures = 0;
         _running = false;
 
         // Purge completed operations older than 24h to prevent DB bloat.
@@ -492,6 +496,12 @@ class SyncEngine {
         // invite à ouvrir les détails.
         final hasFailedLeftover =
             (await _syncRepository.fetchTopFailingOperation()) != null;
+        final hasPendingRetry = pendingAfter > 0 && !hasFailedLeftover;
+        if (hasPendingRetry) {
+          _consecutiveFailures += 1;
+        } else {
+          _consecutiveFailures = 0;
+        }
         _emitState(
           isSyncing: false,
           pendingCount: pendingAfter,
@@ -518,6 +528,12 @@ class SyncEngine {
           scheduleMicrotask(() {
             if (!_disposed) _scheduleImmediate();
           });
+        } else if (hasPendingRetry) {
+          // Une coupure TLS peut laisser le Wi-Fi « connecté » : aucun
+          // événement Connectivity ne sera alors émis au retour du serveur.
+          // Le backoff court garantit une reprise naturelle sans attendre le
+          // filet périodique de cinq minutes et sans boucle réseau serrée.
+          _scheduleRetry();
         }
       }
     } catch (e) {

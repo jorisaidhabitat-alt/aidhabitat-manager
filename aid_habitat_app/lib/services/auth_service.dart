@@ -23,7 +23,7 @@ class AuthService {
   final LocalDatabase _database = LocalDatabase.instance;
 
   static String? _pendingSessionNotice;
-  static final StreamController<void> _sessionInvalidatedController =
+  static final StreamController<void> _remoteSessionExpiredController =
       StreamController<void>.broadcast();
   static const Duration _pendingRemoteCredentialLifetime = Duration(hours: 12);
 
@@ -49,8 +49,8 @@ class AuthService {
     return notice;
   }
 
-  static Stream<void> get sessionInvalidatedStream =>
-      _sessionInvalidatedController.stream;
+  static Stream<void> get remoteSessionExpiredStream =>
+      _remoteSessionExpiredController.stream;
 
   static bool get _hasBootstrapPassword => _bootstrapPasswordBuild.isNotEmpty;
 
@@ -757,9 +757,9 @@ class AuthService {
   ///
   /// Trois résultats :
   ///   • `valid` → on garde le token.
-  ///   • `rejected` → on purge la session locale (ligne `app_session`
-  ///     + secure storage + AppConfig) pour forcer une reconnexion
-  ///     propre sans toucher aux données métier locales.
+  ///   • `rejected` → on purge uniquement le jeton distant. La session
+  ///     locale et l'écran courant restent actifs pour que l'ergothérapeute
+  ///     puisse continuer à travailler hors ligne puis se réauthentifier.
   ///   • `unreachable` (offline / 5xx) → on garde le token pour
   ///     permettre le mode hors ligne.
   Future<void> _activateRestoredToken(Database db, String token) async {
@@ -780,9 +780,9 @@ class AuthService {
       // ignore: avoid_print
       print(
         '[auth-root] restored token rejected by server — '
-        'clearing session to force re-login (data preserved)',
+        'clearing remote token while preserving local session',
       );
-      await _clearSessionRowOnly(db);
+      await _clearRemoteTokenOnly(db);
       AppConfig.clearAppSessionToken();
       _pendingSessionNotice =
           'Votre session a expiré. Reconnectez-vous pour reprendre la synchronisation.';
@@ -801,15 +801,25 @@ class AuthService {
     await SecureSessionStorage.instance.clear();
   }
 
+  /// Retire seulement l'autorisation serveur. Le compte local reste connecté
+  /// et toutes les saisies ainsi que la file de synchronisation sont conservées.
+  Future<void> _clearRemoteTokenOnly(Database db) async {
+    await SecureSessionStorage.instance.clear();
+    await db.update('app_session', {
+      'remote_token': '',
+      'updated_at': DateTime.now().toIso8601String(),
+    }, where: 'id = 1');
+  }
+
   Future<void> _handleRejectedRemoteSession() async {
     final db = await _database.database;
     _clearPendingRemoteCredentials();
-    await _clearSessionRowOnly(db);
+    await _clearRemoteTokenOnly(db);
     AppConfig.clearAppSessionToken();
     SyncEngine().stop();
     _pendingSessionNotice =
         'Votre session a expiré. Reconnectez-vous pour reprendre la synchronisation.';
-    _sessionInvalidatedController.add(null);
+    _remoteSessionExpiredController.add(null);
   }
 
   Future<void> signOut() async {

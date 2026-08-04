@@ -492,6 +492,8 @@ class SyncRepository {
           OR last_error LIKE '%SocketException%'
           OR last_error LIKE '%ClientException%'
           OR last_error LIKE '%HttpException%'
+          OR last_error LIKE '%HandshakeException%'
+          OR last_error LIKE '%during handshake%' COLLATE NOCASE
           OR last_error LIKE '%TransientRemoteException%'
           OR last_error LIKE '%Remote note sync failed%'
           OR last_error LIKE '%Remote document upload failed%'

@@ -375,6 +375,8 @@ class _AuthRootState extends State<AuthRoot> {
   bool _isLoading = true;
   String? _bootError;
   String? _loginNotice;
+  bool _remoteSessionExpired = false;
+  bool _reauthDialogOpen = false;
 
   /// Écoute les pulls workspace pour rafraîchir le `currentUser`
   /// quand un autre device a modifié son profil (notamment la photo).
@@ -382,19 +384,23 @@ class _AuthRootState extends State<AuthRoot> {
   /// profil sur l'iPad, ça ne s'est pas actualisé sur le mac, ça
   /// doit être le cas de manière quasi instantané ».
   StreamSubscription<SyncEngineState>? _syncSubscription;
-  StreamSubscription<void>? _sessionInvalidatedSubscription;
+  StreamSubscription<void>? _remoteSessionExpiredSubscription;
   DateTime? _lastObservedSyncAt;
 
   @override
   void initState() {
     super.initState();
     _restoreSession();
-    _sessionInvalidatedSubscription = AuthService.sessionInvalidatedStream
+    _remoteSessionExpiredSubscription = AuthService.remoteSessionExpiredStream
         .listen((_) {
           if (!mounted) return;
+          final notice = AuthService.consumePendingSessionNotice();
           setState(() {
-            _currentUser = null;
-            _loginNotice = AuthService.consumePendingSessionNotice();
+            _remoteSessionExpired = true;
+            _loginNotice = notice;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showRemoteReauthenticationDialog();
           });
         });
     _syncSubscription = SyncEngine().stateStream.listen((state) {
@@ -434,8 +440,8 @@ class _AuthRootState extends State<AuthRoot> {
   void dispose() {
     _syncSubscription?.cancel();
     _syncSubscription = null;
-    _sessionInvalidatedSubscription?.cancel();
-    _sessionInvalidatedSubscription = null;
+    _remoteSessionExpiredSubscription?.cancel();
+    _remoteSessionExpiredSubscription = null;
     super.dispose();
   }
 
@@ -461,11 +467,18 @@ class _AuthRootState extends State<AuthRoot> {
         const Duration(seconds: 8),
       );
       if (!mounted) return;
+      final notice = AuthService.consumePendingSessionNotice();
       setState(() {
         _currentUser = user;
         _isLoading = false;
-        _loginNotice = AuthService.consumePendingSessionNotice();
+        _remoteSessionExpired = user != null && notice != null;
+        _loginNotice = user == null ? notice : null;
       });
+      if (user != null && notice != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showRemoteReauthenticationDialog();
+        });
+      }
       // ignore: avoid_print
       print('[auth-root] done. user=${user?.email ?? "(none)"}');
     } catch (e, st) {
@@ -487,7 +500,172 @@ class _AuthRootState extends State<AuthRoot> {
     if (!mounted) return;
     setState(() {
       _currentUser = null;
+      _remoteSessionExpired = false;
     });
+  }
+
+  Future<void> _showRemoteReauthenticationDialog() async {
+    final user = _currentUser;
+    if (!mounted || user == null || _reauthDialogOpen) return;
+    _reauthDialogOpen = true;
+
+    final passwordController = TextEditingController();
+    var obscurePassword = true;
+    var isSubmitting = false;
+    String? errorMessage;
+
+    final reconnected = await showSoftDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Reprendre la synchronisation'),
+          content: SizedBox(
+            width: 430,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Les données locales sont conservées. Saisissez le mot de '
+                  'passe de ${user.displayName} pour envoyer les modifications '
+                  'en attente.',
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: passwordController,
+                  obscureText: obscurePassword,
+                  enabled: !isSubmitting,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    labelText: 'Mot de passe',
+                    errorText: errorMessage,
+                    suffixIcon: IconButton(
+                      tooltip: obscurePassword
+                          ? 'Afficher le mot de passe'
+                          : 'Masquer le mot de passe',
+                      onPressed: isSubmitting
+                          ? null
+                          : () => setDialogState(
+                              () => obscurePassword = !obscurePassword,
+                            ),
+                      icon: Icon(
+                        obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                  onSubmitted: isSubmitting
+                      ? null
+                      : (_) => _submitRemoteReauthentication(
+                          dialogContext: dialogContext,
+                          setDialogState: setDialogState,
+                          user: user,
+                          passwordController: passwordController,
+                          setSubmitting: (value) => isSubmitting = value,
+                          setError: (value) => errorMessage = value,
+                        ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Continuer hors ligne'),
+            ),
+            FilledButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () => _submitRemoteReauthentication(
+                      dialogContext: dialogContext,
+                      setDialogState: setDialogState,
+                      user: user,
+                      passwordController: passwordController,
+                      setSubmitting: (value) => isSubmitting = value,
+                      setError: (value) => errorMessage = value,
+                    ),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Reconnecter'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    passwordController.dispose();
+    _reauthDialogOpen = false;
+    if (!mounted || reconnected != true) return;
+
+    setState(() {
+      _remoteSessionExpired = false;
+      _loginNotice = null;
+    });
+    // Les saisies locales sont prioritaires : on repousse toute la file avant
+    // de relire le serveur. Cela évite qu'un dossier distant incomplet ne
+    // remplace le travail terrain conservé sur l'iPad.
+    final engine = SyncEngine();
+    engine.start(pullRemote: false);
+    await engine.retryFailedOperations();
+    engine.requestSync();
+    // ignore: discarded_futures
+    _pullRemoteAfterLocalQueue(engine);
+  }
+
+  Future<void> _submitRemoteReauthentication({
+    required BuildContext dialogContext,
+    required StateSetter setDialogState,
+    required LocalAppUser user,
+    required TextEditingController passwordController,
+    required ValueChanged<bool> setSubmitting,
+    required ValueChanged<String?> setError,
+  }) async {
+    final password = passwordController.text;
+    if (password.isEmpty) {
+      setDialogState(() => setError('Saisissez votre mot de passe.'));
+      return;
+    }
+    setDialogState(() {
+      setSubmitting(true);
+      setError(null);
+    });
+    final linked = await _authService.linkRemoteSession(
+      email: user.email,
+      password: password,
+    );
+    if (!dialogContext.mounted) return;
+    if (linked) {
+      Navigator.of(dialogContext).pop(true);
+      return;
+    }
+    setDialogState(() {
+      setSubmitting(false);
+      setError('Mot de passe invalide ou serveur indisponible.');
+    });
+  }
+
+  Future<void> _pullRemoteAfterLocalQueue(SyncEngine engine) async {
+    try {
+      if (engine.currentState.pendingCount > 0 ||
+          engine.currentState.isSyncing) {
+        await engine.stateStream
+            .firstWhere((state) => !state.isSyncing && state.pendingCount == 0)
+            .timeout(const Duration(minutes: 2));
+      }
+      await engine.requestPull();
+    } catch (_) {
+      // Si la file ne peut pas être vidée, on ne pull pas : les données
+      // locales restent la source prioritaire jusqu'au prochain retry.
+    }
   }
 
   @override
@@ -557,7 +735,12 @@ class _AuthRootState extends State<AuthRoot> {
       );
     }
 
-    return MainScreen(currentUser: _currentUser!, onLogout: _handleLogout);
+    return MainScreen(
+      currentUser: _currentUser!,
+      onLogout: _handleLogout,
+      remoteSessionExpired: _remoteSessionExpired,
+      onReconnectRemoteSession: _showRemoteReauthenticationDialog,
+    );
   }
 }
 

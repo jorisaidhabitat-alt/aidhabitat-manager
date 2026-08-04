@@ -33,6 +33,23 @@ void main() {
       );
     });
 
+    test('HandshakeException → transient', () {
+      expect(
+        isTransientErrorLike(
+          const HandshakeException('Connection terminated during handshake'),
+        ),
+        isTrue,
+      );
+      expect(
+        isTransientErrorLike(
+          Exception(
+            'HandshakeException: Connection terminated during handshake',
+          ),
+        ),
+        isTrue,
+      );
+    });
+
     test('HttpException → transient', () {
       expect(isTransientErrorLike(const HttpException('bad header')), isTrue);
     });
@@ -46,18 +63,12 @@ void main() {
 
     test('Generic Exception with "Load failed" message → transient '
         '(Safari iPad PWA path)', () {
-      expect(
-        isTransientErrorLike(Exception('Load failed')),
-        isTrue,
-      );
+      expect(isTransientErrorLike(Exception('Load failed')), isTrue);
       expect(
         isTransientErrorLike(Exception('Fetch failed mid-flight')),
         isTrue,
       );
-      expect(
-        isTransientErrorLike(Exception('Failed to fetch')),
-        isTrue,
-      );
+      expect(isTransientErrorLike(Exception('Failed to fetch')), isTrue);
     });
 
     test('Exception mentioning ClientException (wrapped) → transient', () {
@@ -69,19 +80,21 @@ void main() {
       );
     });
 
-    test('HTTP 401 in message → transient (audit P0 #2 refonte 2026-05-15)',
-        () {
-      // Avant le fix, 401 → markFailed → bandeau rouge spammé pendant
-      // que le user reste avec un token expiré. Désormais traité comme
-      // transient → l'op reste en queue jusqu'à ce qu'un re-login
-      // injecte un token frais. Cf. nocodb_sync_service.dart::_isTransient*.
-      expect(
-        isTransientErrorLike(
-          Exception('Remote dossier update failed (401): unauthorized'),
-        ),
-        isTrue,
-      );
-    });
+    test(
+      'HTTP 401 in message → transient (audit P0 #2 refonte 2026-05-15)',
+      () {
+        // Avant le fix, 401 → markFailed → bandeau rouge spammé pendant
+        // que le user reste avec un token expiré. Désormais traité comme
+        // transient → l'op reste en queue jusqu'à ce qu'un re-login
+        // injecte un token frais. Cf. nocodb_sync_service.dart::_isTransient*.
+        expect(
+          isTransientErrorLike(
+            Exception('Remote dossier update failed (401): unauthorized'),
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('HTTP 403 in message → transient (même rationale que 401)', () {
       expect(
@@ -92,8 +105,7 @@ void main() {
       );
     });
 
-    test('HTTP 400 in message → NOT transient (4xx fonctionnel = bandeau)',
-        () {
+    test('HTTP 400 in message → NOT transient (4xx fonctionnel = bandeau)', () {
       // 400 = payload invalide, validation serveur, etc. Si la même
       // donnée est rejouée elle re-fail → boucle infinie de retry
       // silencieux. On veut le bandeau pour que l'ergo intervienne
@@ -166,10 +178,7 @@ void main() {
         isTransientErrorLike(Exception('Auth check failed (401)')),
         isTrue,
       );
-      expect(
-        isTransientErrorLike(Exception('Forbidden (403)')),
-        isTrue,
-      );
+      expect(isTransientErrorLike(Exception('Forbidden (403)')), isTrue);
     });
 
     test('HTTP 422 in message → NOT transient (validation NocoDB)', () {
@@ -193,7 +202,8 @@ void main() {
       expect(
         isTransientErrorLike(Exception('upload failed mid-flight')),
         isFalse,
-        reason: '"upload" et "load" partagent leur début, mais \\b '
+        reason:
+            '"upload" et "load" partagent leur début, mais \\b '
             'exclut maintenant ce match',
       );
     });
@@ -246,7 +256,10 @@ void main() {
   group('SessionTokenStatus enum', () {
     test('Les trois valeurs sont distinctes', () {
       expect(SessionTokenStatus.valid, isNot(SessionTokenStatus.rejected));
-      expect(SessionTokenStatus.rejected, isNot(SessionTokenStatus.unreachable));
+      expect(
+        SessionTokenStatus.rejected,
+        isNot(SessionTokenStatus.unreachable),
+      );
       expect(SessionTokenStatus.valid, isNot(SessionTokenStatus.unreachable));
     });
   });

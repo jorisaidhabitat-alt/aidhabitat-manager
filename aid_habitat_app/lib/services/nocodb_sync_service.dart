@@ -78,6 +78,7 @@ const Set<String> _kPermanent4xxMarkers = {
 bool isTransientErrorLike(Object error) {
   if (error is TimeoutException) return true;
   if (error is SocketException) return true;
+  if (error is HandshakeException) return true;
   if (error is HttpException) return true;
   if (error is http.ClientException) return true;
   final s = error.toString().toLowerCase();
@@ -95,6 +96,8 @@ bool isTransientErrorLike(Object error) {
   // `restoreRemoteSession` au boot (et le futur force-relogin sur 401)
   // débloque la situation sans alarmer l'utilisateur entre temps.
   return _kIpadNetworkErrorPattern.hasMatch(s) ||
+      s.contains('handshakeexception') ||
+      s.contains('during handshake') ||
       _kAuthFailureStatusPattern.hasMatch(s);
 }
 

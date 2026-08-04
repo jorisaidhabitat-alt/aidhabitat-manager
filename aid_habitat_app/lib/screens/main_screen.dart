@@ -27,10 +27,14 @@ class MainScreen extends StatefulWidget {
     super.key,
     required this.currentUser,
     required this.onLogout,
+    this.remoteSessionExpired = false,
+    this.onReconnectRemoteSession,
   });
 
   final LocalAppUser currentUser;
   final Future<void> Function() onLogout;
+  final bool remoteSessionExpired;
+  final Future<void> Function()? onReconnectRemoteSession;
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -498,6 +502,38 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   ///  - online but sync has errors → red "sync en échec" bar with message
   ///  - online, synced → nothing
   Widget _buildConnectivityBanner() {
+    if (widget.remoteSessionExpired) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        color: const Color(0xFFF5F3FF),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.lock_clock_outlined,
+              size: 18,
+              color: Color(0xFF6D4C7D),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Synchronisation suspendue. Vos données locales sont '
+                'conservées.',
+                style: TextStyle(
+                  color: Color(0xFF5B4668),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: widget.onReconnectRemoteSession,
+              child: const Text('Reconnecter'),
+            ),
+          ],
+        ),
+      );
+    }
     // L'indicateur "Mode hors-ligne" n'apparaît plus globalement — il est
     // rendu uniquement dans [AccountDialog] (page "Compte local"). Ce
     // bandeau reste pour les échecs de synchronisation (rouge).
