@@ -211,22 +211,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       });
     }
 
-    // IMPORTANT: pull BEFORE starting the sync engine. If we pushed first,
-    // any lingering pending operation (captured by a previous app version
-    // with potentially stale field values) would overwrite the current
-    // remote state before we even saw the fresh server data.
-    //
-    // Running the refresh first is safe even offline: it simply returns
-    // false and we fall through to starting the sync engine which will
-    // push the user's legitimate offline edits as soon as connectivity
-    // returns.
-    final didRefresh = await _dataService.refreshWorkspaceFromRemote();
-    if (didRefresh && mounted) {
-      await _refreshDossiers();
-    }
-
-    // Only now kick off the sync engine. It will push any legitimate local
-    // pending operations (e.g. offline edits) and schedule periodic checks.
+    // Le moteur vide d'abord la file locale, puis seulement après récupère
+    // le workspace distant. Ne pas faire de pull direct ici : au retour
+    // d'une journée hors ligne, un snapshot serveur incomplet pourrait sinon
+    // remplacer les saisies terrain avant leur envoi.
     _syncEngine.start();
   }
 

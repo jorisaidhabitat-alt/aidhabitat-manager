@@ -23,7 +23,9 @@ class SyncEngine {
     NocodbSyncService? syncService,
     SyncRepository? syncRepository,
   }) : _syncService = syncService ?? NocodbSyncService(),
-       _syncRepository = syncRepository ?? SyncRepository();
+       _syncRepository = syncRepository ?? SyncRepository(),
+       _workspacePuller = DataService().refreshWorkspaceFromRemote,
+       _isOffline = _readProductionOfflineState;
 
   static final SyncEngine _instance = SyncEngine._internal();
 
@@ -38,11 +40,21 @@ class SyncEngine {
   SyncEngine.testing({
     required NocodbSyncService syncService,
     required SyncRepository syncRepository,
+    Future<bool> Function()? workspacePuller,
+    bool Function()? isOffline,
   }) : _syncService = syncService,
-       _syncRepository = syncRepository;
+       _syncRepository = syncRepository,
+       _workspacePuller = workspacePuller ?? _noWorkspacePull,
+       _isOffline = isOffline ?? _alwaysOnline;
 
   final NocodbSyncService _syncService;
   final SyncRepository _syncRepository;
+  final Future<bool> Function() _workspacePuller;
+  final bool Function() _isOffline;
+
+  static Future<bool> _noWorkspacePull() async => false;
+  static bool _alwaysOnline() => false;
+  static bool _readProductionOfflineState() => ConnectivityService().isOffline;
 
   // ---------------------------------------------------------------------------
   // Configuration
@@ -112,6 +124,7 @@ class SyncEngine {
   bool _started = false;
   bool _running = false;
   bool _rerunRequested = false;
+  bool _pullAfterSyncRequested = false;
   int _consecutiveFailures = 0;
   Future<bool> Function()? _remoteSessionPreparer;
 
@@ -140,15 +153,11 @@ class SyncEngine {
       // événement explicite (boot/foreground/reconnect/pull-to-refresh).
       requestSync();
     });
-    // Boot : sync push + pull initial pour rattraper l'état serveur. Après
-    // réauthentification, le caller peut différer le pull afin de pousser
-    // d'abord les saisies terrain locales et éviter qu'un snapshot distant
-    // ancien ne les remplace.
+    // Boot : vide toujours la file locale AVANT le pull. L'ancien lancement
+    // concurrent créait une course où un snapshot serveur ancien pouvait
+    // remplacer une saisie terrain avant son envoi.
+    _pullAfterSyncRequested = pullRemote;
     requestSync();
-    if (pullRemote) {
-      // ignore: discarded_futures
-      _runPullSafe();
-    }
   }
 
   /// Met l'engine en pause sans détruire le singleton. Utilisé lors d'un
@@ -166,6 +175,7 @@ class SyncEngine {
     _debounceTimer = null;
     _running = false;
     _rerunRequested = false;
+    _pullAfterSyncRequested = false;
     _pullRunning = false;
     _emitState(isSyncing: false, clearError: true);
   }
@@ -231,9 +241,8 @@ class SyncEngine {
       // le pull repartait ici : si iPadOS avait suspendu l'écoute réseau,
       // une opération offline pouvait attendre le timer de sécurité de
       // cinq minutes malgré une connexion déjà revenue.
+      _pullAfterSyncRequested = true;
       requestSync();
-      // ignore: discarded_futures
-      _runPullSafe();
     }
   }
 
@@ -259,10 +268,10 @@ class SyncEngine {
   /// et iPad sur l'écran VAD).
   Future<bool> _runPullSafe() async {
     if (_disposed || _pullRunning) return false;
-    if (ConnectivityService().isOffline) return false;
+    if (_isOffline()) return false;
     _pullRunning = true;
     try {
-      final didRefresh = await DataService().refreshWorkspaceFromRemote();
+      final didRefresh = await _workspacePuller();
       if (didRefresh && !_disposed) {
         _emitState(lastSyncAt: DateTime.now());
       }
@@ -374,10 +383,8 @@ class SyncEngine {
     _consecutiveFailures = 0;
     _retryTimer?.cancel();
     _retryTimer = null;
+    _pullAfterSyncRequested = true;
     _scheduleImmediate();
-    // Pull aussi pour rattraper les modifs distantes (autre Mac/iPad).
-    // ignore: discarded_futures
-    _runPullSafe();
   }
 
   // ---------------------------------------------------------------------------
@@ -534,6 +541,10 @@ class SyncEngine {
           // Le backoff court garantit une reprise naturelle sans attendre le
           // filet périodique de cinq minutes et sans boucle réseau serrée.
           _scheduleRetry();
+        } else if (!hasFailedLeftover && _pullAfterSyncRequested) {
+          _pullAfterSyncRequested = false;
+          // ignore: discarded_futures
+          _runPullSafe();
         }
       }
     } catch (e) {

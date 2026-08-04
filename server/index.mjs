@@ -410,8 +410,12 @@ const FIELD_SETS = {
     'suivi_medical', 'frequence_suivi_medical', 'deficience_auditive_visuelle', 'deficience_auditive',
     'deficience_visuelle', 'taille_approximative', 'poids_exact', 'surcharge_pondérale',
     'utilise_fauteuil', 'utilise_canne', 'utilise_deambulateur', 'occupants_json',
+    'CreatedAt', 'UpdatedAt',
   ],
-  informationsAdministratives: ['uuid_source', 'dossier_id', 'beneficiaire_id', 'beneficiaires_id', 'date_visite', 'personnes_presentes'],
+  informationsAdministratives: [
+    'uuid_source', 'dossier_id', 'beneficiaire_id', 'beneficiaires_id',
+    'date_visite', 'personnes_presentes', 'CreatedAt', 'UpdatedAt',
+  ],
   diagnosticSanitaires: [
     'uuid_source', 'dossier_id', 'sdb_niveau_pieces_vie', 'wc_niveau', 'wc_etage', 'sdb_baignoire',
     'sdb_baignoire_hauteur', 'sdb_bac_douche', 'sdb_bac_douche_hauteur', 'sdb_vasque_suspendue',
@@ -776,6 +780,15 @@ const latestByFieldValue = (records, fieldName, value) => latestRecord(
 const getRecordUpdatedAt = (record) => {
   const raw = field(record, 'updated_at') || field(record, 'UpdatedAt') || field(record, 'created_at') || field(record, 'CreatedAt');
   return raw ? new Date(raw).toISOString() : null;
+};
+const getWorkspaceUpdatedAt = (...records) => {
+  const timestamps = records
+    .map(getRecordUpdatedAt)
+    .filter(Boolean)
+    .map((value) => new Date(value).getTime())
+    .filter(Number.isFinite);
+  if (timestamps.length === 0) return null;
+  return new Date(Math.max(...timestamps)).toISOString();
 };
 const sendConflictIfStale = (req, res, record) => {
   const expectedRaw = req.body?.expectedUpdatedAt || req.get('If-Unmodified-Since');
@@ -2394,6 +2407,12 @@ const createVirtualDossier = (beneficiaryRecord, appBeneficiaryId, housingRecord
     PF3: { id: 'PF3', works: [], grants: [] },
   },
   createdAt: field(beneficiaryRecord, 'CreatedAt') || new Date().toISOString(),
+  workspaceUpdatedAt: getWorkspaceUpdatedAt(
+    beneficiaryRecord,
+    housingRecord,
+    contextRecord,
+    infoRecord,
+  ),
 });
 
 const createDossier = (beneficiaryRecord, appBeneficiaryId, dossierRecord, housingRecord, contextRecord, infoRecord) => ({
@@ -2437,6 +2456,17 @@ const createDossier = (beneficiaryRecord, appBeneficiaryId, dossierRecord, housi
       || field(dossierRecord, 'CreatedAt')
       || field(dossierRecord, 'created_at')
       || new Date().toISOString(),
+  // Horodatage de lecture global, distinct de `updatedAt` qui reste celui
+  // de la row dossier pour l'optimistic concurrency. Une modification du
+  // logement ou du contexte doit invalider le cache web même si la row
+  // dossier elle-même n'a pas été touchée.
+  workspaceUpdatedAt: getWorkspaceUpdatedAt(
+    dossierRecord,
+    beneficiaryRecord,
+    housingRecord,
+    contextRecord,
+    infoRecord,
+  ),
 });
 
 const queryAll = async (tableId, options = {}) => {

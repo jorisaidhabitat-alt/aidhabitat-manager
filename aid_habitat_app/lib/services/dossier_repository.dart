@@ -571,7 +571,12 @@ class DossierRepository {
 
         final existingDossier = await txn.query(
           'dossiers',
-          columns: ['sync_state', 'patient_local_id', 'housing_local_id'],
+          columns: [
+            'sync_state',
+            'patient_local_id',
+            'housing_local_id',
+            'workspace_updated_at',
+          ],
           where: 'local_id = ?',
           whereArgs: [dossierId],
           limit: 1,
@@ -599,23 +604,14 @@ class DossierRepository {
         // relais. Si elle réussit, elle ré-écrit la valeur dans NocoDB
         // (potentiellement la même que ce qu'on vient de merger).
         bool remoteIsStrictlyNewer = false;
-        final remoteUpdatedAtForLww = _extractRemoteUpdatedAt(raw);
+        final remoteUpdatedAtForLww = _extractWorkspaceUpdatedAt(raw);
         if (remoteUpdatedAtForLww != null && existingDossier.isNotEmpty) {
-          final dossierRow = await txn.query(
-            'dossiers',
-            columns: ['remote_updated_at'],
-            where: 'local_id = ?',
-            whereArgs: [dossierId],
-            limit: 1,
-          );
-          if (dossierRow.isNotEmpty) {
-            final localRemoteUpdated =
-                dossierRow.first['remote_updated_at'] as String?;
-            remoteIsStrictlyNewer =
-                localRemoteUpdated == null ||
-                localRemoteUpdated.isEmpty ||
-                remoteUpdatedAtForLww.compareTo(localRemoteUpdated) > 0;
-          }
+          final localWorkspaceUpdated =
+              existingDossier.first['workspace_updated_at'] as String?;
+          remoteIsStrictlyNewer =
+              localWorkspaceUpdated == null ||
+              localWorkspaceUpdated.isEmpty ||
+              remoteUpdatedAtForLww.compareTo(localWorkspaceUpdated) > 0;
         }
 
         if (existingDossier.isNotEmpty &&
@@ -742,27 +738,18 @@ class DossierRepository {
           // par la valeur stale du serveur. Combiné avec la fenêtre
           // de 30 s, c'est la protection ceinture+bretelles contre le
           // bug « le nom disparaît pendant plusieurs secondes ».
-          final remoteUpdatedAtIncoming = _extractRemoteUpdatedAt(raw);
+          final remoteUpdatedAtIncoming = _extractWorkspaceUpdatedAt(raw);
           if (remoteUpdatedAtIncoming != null && existingDossier.isNotEmpty) {
-            final localRemoteUpdatedRows = await txn.query(
-              'dossiers',
-              columns: ['remote_updated_at'],
-              where: 'local_id = ?',
-              whereArgs: [dossierId],
-              limit: 1,
-            );
-            if (localRemoteUpdatedRows.isNotEmpty) {
-              final localRemoteUpdatedAt =
-                  localRemoteUpdatedRows.first['remote_updated_at'] as String?;
-              if (localRemoteUpdatedAt != null &&
-                  localRemoteUpdatedAt.isNotEmpty &&
-                  remoteUpdatedAtIncoming.compareTo(localRemoteUpdatedAt) <=
-                      0) {
-                // Payload distant pas plus récent → on a déjà cette
-                // version (ou une plus récente). Skip pour éviter un
-                // replay inutile qui pourrait créer du flicker.
-                continue;
-              }
+            final localWorkspaceUpdatedAt =
+                existingDossier.first['workspace_updated_at'] as String?;
+            if (localWorkspaceUpdatedAt != null &&
+                localWorkspaceUpdatedAt.isNotEmpty &&
+                remoteUpdatedAtIncoming.compareTo(localWorkspaceUpdatedAt) <=
+                    0) {
+              // Payload distant pas plus récent → on a déjà cette
+              // version (ou une plus récente). Skip pour éviter un
+              // replay inutile qui pourrait créer du flicker.
+              continue;
             }
           }
         }
@@ -815,6 +802,10 @@ class DossierRepository {
         dossierData['housing_local_id'] = housingLocalId;
         dossierData['plans_json'] = jsonEncode(const ['PF1', 'PF2', 'PF3']);
         dossierData['created_at'] = raw['createdAt']?.toString() ?? now;
+        dossierData['workspace_updated_at'] =
+            _extractWorkspaceUpdatedAt(raw) ??
+            _extractRemoteUpdatedAt(raw) ??
+            now;
         await _upsertByLocalId(
           txn: txn,
           table: 'dossiers',
@@ -1293,6 +1284,17 @@ class DossierRepository {
       }
     }
     return null;
+  }
+
+  /// Version globale du payload `/api/dossiers`. Elle sert uniquement à
+  /// décider si un pull doit être fusionné. Elle ne doit jamais alimenter
+  /// `remote_updated_at`, réservé à la garde optimiste de la row dossier.
+  String? _extractWorkspaceUpdatedAt(Map<String, dynamic> raw) {
+    final value = raw['workspaceUpdatedAt'];
+    if (value != null && value.toString().trim().isNotEmpty) {
+      return value.toString();
+    }
+    return _extractRemoteUpdatedAt(raw);
   }
 
   // ---------------------------------------------------------------------------

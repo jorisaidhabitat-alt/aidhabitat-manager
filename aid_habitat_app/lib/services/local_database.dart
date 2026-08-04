@@ -24,7 +24,7 @@ class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
   static const _debugFallbackDbName = 'aid_habitat_offline.debug_fallback.db';
-  static const _dbVersion = 19;
+  static const _dbVersion = 20;
 
   Database? _database;
   bool _forceDebugPlaintextFallback = false;
@@ -387,6 +387,16 @@ class LocalDatabase {
     if (oldVersion < 19) {
       await _migrateV18ToV19(db);
     }
+    if (oldVersion < 20) {
+      await _migrateV19ToV20(db);
+    }
+  }
+
+  /// v19 -> v20 : mémorise la version globale du workspace séparément de
+  /// `remote_updated_at`. Ce dernier doit rester l'horodatage de la row
+  /// dossier car il sert de garde `expectedUpdatedAt` lors des PATCH.
+  Future<void> _migrateV19ToV20(Database db) async {
+    await _addColumnIfMissing(db, 'dossiers', 'workspace_updated_at', 'TEXT');
   }
 
   /// v18 → v19 : socle commercial multi-organisation.
@@ -1225,6 +1235,7 @@ class LocalDatabase {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         remote_updated_at TEXT,
+        workspace_updated_at TEXT,
         sync_state TEXT NOT NULL
       )
     ''');

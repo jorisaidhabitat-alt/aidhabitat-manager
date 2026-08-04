@@ -58,6 +58,31 @@ void main() {
       engine.dispose();
     },
   );
+
+  test('au retour réseau, le push termine avant le pull workspace', () async {
+    final repository = _FakeSyncRepository();
+    final service = _BlockingSyncService();
+    var pullCalls = 0;
+    final engine = SyncEngine.testing(
+      syncService: service,
+      syncRepository: repository,
+      workspacePuller: () async {
+        pullCalls += 1;
+        return true;
+      },
+    );
+
+    engine.start();
+    await _waitUntil(() => service.pushCalls == 1);
+    expect(pullCalls, 0);
+
+    repository.pendingCount = 0;
+    service.completePush();
+    await _waitUntil(() => pullCalls == 1);
+
+    expect(pullCalls, 1);
+    engine.dispose();
+  });
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {
@@ -102,6 +127,27 @@ class _FakeSyncService extends NocodbSyncService {
       pushedOperations: 0,
       failedOperations: 0,
       message: 'Synchronisation terminée',
+    );
+  }
+}
+
+class _BlockingSyncService extends NocodbSyncService {
+  final Completer<SyncRunResult> _result = Completer<SyncRunResult>();
+  int pushCalls = 0;
+
+  @override
+  Future<SyncRunResult> pushPendingChanges() {
+    pushCalls += 1;
+    return _result.future;
+  }
+
+  void completePush() {
+    _result.complete(
+      const SyncRunResult(
+        pushedOperations: 1,
+        failedOperations: 0,
+        message: 'Synchronisation terminée',
+      ),
     );
   }
 }
