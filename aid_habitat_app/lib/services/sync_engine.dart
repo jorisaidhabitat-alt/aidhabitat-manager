@@ -200,6 +200,15 @@ class SyncEngine {
     _scheduleImmediate();
   }
 
+  /// Demande un cycle complet : pousse les mutations locales puis relit le
+  /// workspace distant. Contrairement à [requestSync], cette méthode convient
+  /// au bouton utilisateur « Synchroniser » et à la récupération cross-device.
+  void requestFullSync() {
+    if (_disposed || !_started) return;
+    _pullAfterSyncRequested = true;
+    _scheduleImmediate();
+  }
+
   /// Installe une étape exécutée juste avant le drain réseau de la file.
   /// Utilisée par l'authentification pour transformer une connexion locale
   /// hors ligne en vraie session API dès que le réseau revient.
@@ -484,6 +493,7 @@ class SyncEngine {
           lastError: result.message,
           lastSyncAt: DateTime.now(),
         );
+        _pullRequestedWorkspaceEvenWithFailures();
         _scheduleRetry();
       } else {
         _running = false;
@@ -541,10 +551,8 @@ class SyncEngine {
           // Le backoff court garantit une reprise naturelle sans attendre le
           // filet périodique de cinq minutes et sans boucle réseau serrée.
           _scheduleRetry();
-        } else if (!hasFailedLeftover && _pullAfterSyncRequested) {
-          _pullAfterSyncRequested = false;
-          // ignore: discarded_futures
-          _runPullSafe();
+        } else {
+          _pullRequestedWorkspaceEvenWithFailures();
         }
       }
     } catch (e) {
@@ -559,6 +567,17 @@ class SyncEngine {
       );
       _scheduleRetry();
     }
+  }
+
+  /// Une opération locale en échec ne doit pas geler tout le workspace.
+  /// Les repositories protègent déjà les entités réellement non synchronisées
+  /// avec leur `sync_state`; le pull peut donc réparer les autres dossiers sans
+  /// écraser la saisie locale concernée par l'échec.
+  void _pullRequestedWorkspaceEvenWithFailures() {
+    if (!_pullAfterSyncRequested) return;
+    _pullAfterSyncRequested = false;
+    // ignore: discarded_futures
+    _runPullSafe();
   }
 
   Future<int> _refreshPendingCount() async {

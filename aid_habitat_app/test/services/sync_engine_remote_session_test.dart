@@ -83,6 +83,50 @@ void main() {
     expect(pullCalls, 1);
     engine.dispose();
   });
+
+  test('une opération en échec ne bloque pas le pull demandé', () async {
+    final repository = _FakeSyncRepository()
+      ..topFailure = const {'id': 'failed-op'};
+    final service = _FailingSyncService();
+    var pullCalls = 0;
+    final engine = SyncEngine.testing(
+      syncService: service,
+      syncRepository: repository,
+      workspacePuller: () async {
+        pullCalls += 1;
+        return true;
+      },
+    );
+
+    engine.start();
+    await _waitUntil(() => pullCalls == 1);
+
+    expect(service.pushCalls, 1);
+    expect(pullCalls, 1);
+    engine.dispose();
+  });
+
+  test('la synchronisation manuelle complète relit le workspace', () async {
+    final repository = _FakeSyncRepository()..pendingCount = 0;
+    final service = _FakeSyncService();
+    var pullCalls = 0;
+    final engine = SyncEngine.testing(
+      syncService: service,
+      syncRepository: repository,
+      workspacePuller: () async {
+        pullCalls += 1;
+        return true;
+      },
+    );
+
+    engine.start(pullRemote: false);
+    await _waitUntil(() => service.pushCalls == 1);
+    engine.requestFullSync();
+    await _waitUntil(() => pullCalls == 1);
+
+    expect(pullCalls, 1);
+    engine.dispose();
+  });
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {
@@ -104,17 +148,32 @@ class _FakeSyncRepository extends SyncRepository {
       );
 
   int pendingCount = 1;
+  Map<String, String?>? topFailure;
 
   @override
   Future<int> countPendingOperations() async => pendingCount;
 
   @override
-  Future<Map<String, String?>?> fetchTopFailingOperation() async => null;
+  Future<Map<String, String?>?> fetchTopFailingOperation() async => topFailure;
 
   @override
   Future<int> purgeCompleted({
     Duration maxAge = const Duration(hours: 24),
   }) async => 0;
+}
+
+class _FailingSyncService extends NocodbSyncService {
+  int pushCalls = 0;
+
+  @override
+  Future<SyncRunResult> pushPendingChanges() async {
+    pushCalls += 1;
+    return const SyncRunResult(
+      pushedOperations: 0,
+      failedOperations: 1,
+      message: 'Échec réseau simulé',
+    );
+  }
 }
 
 class _FakeSyncService extends NocodbSyncService {

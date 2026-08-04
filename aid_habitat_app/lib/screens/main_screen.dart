@@ -306,7 +306,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _handleSyncNow() {
     FeedbackActivityService.instance.track('Synchronisation manuelle');
-    _syncEngine.requestSync();
+    _syncEngine.requestFullSync();
   }
 
   /// Ouvre un drawer (bottom sheet) listant TOUTES les opérations sync

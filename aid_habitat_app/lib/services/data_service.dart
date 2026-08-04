@@ -778,6 +778,9 @@ class DataService {
         pageNumber: pageNumber,
         dossierId: dossierId ?? remoteNote['dossierId']?.toString(),
         drawingJson: remoteNote['drawingJson']?.toString() ?? '',
+        textContent: remoteNote.containsKey('textContent')
+            ? remoteNote['textContent']?.toString() ?? ''
+            : null,
         remotePath: remoteNote['remotePath']?.toString(),
         remoteUrl: remoteNote['remoteUrl']?.toString(),
         updatedAt: remoteNote['updatedAt']?.toString(),
@@ -824,6 +827,9 @@ class DataService {
           pageNumber: pageNumber,
           dossierId: remote['dossierId']?.toString(),
           drawingJson: remote['drawingJson']?.toString() ?? '',
+          textContent: remote.containsKey('textContent')
+              ? remote['textContent']?.toString() ?? ''
+              : null,
           remotePath: remote['remotePath']?.toString(),
           remoteUrl: remote['remoteUrl']?.toString(),
           updatedAt: remote['updatedAt']?.toString(),

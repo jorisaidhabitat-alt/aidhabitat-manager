@@ -611,7 +611,10 @@ class DossierRepository {
           remoteIsStrictlyNewer =
               localWorkspaceUpdated == null ||
               localWorkspaceUpdated.isEmpty ||
-              remoteUpdatedAtForLww.compareTo(localWorkspaceUpdated) > 0;
+              _isRemoteTimestampNewer(
+                remoteUpdatedAtForLww,
+                localWorkspaceUpdated,
+              );
         }
 
         if (existingDossier.isNotEmpty &&
@@ -729,26 +732,22 @@ class DossierRepository {
             continue;
           }
 
-          // Garde de quatrième niveau : si le payload distant n'est
-          // pas STRICTEMENT plus récent que ce qu'on a déjà en local
-          // (`remote_updated_at`), on skip. Couvre le cas où NocoDB
-          // sert un read-replica avec du retard et nous renvoie une
-          // version PRÉ-PATCH alors qu'on vient d'écrire en local —
-          // sans cette garde, le merge écraserait la valeur fraîche
-          // par la valeur stale du serveur. Combiné avec la fenêtre
-          // de 30 s, c'est la protection ceinture+bretelles contre le
-          // bug « le nom disparaît pendant plusieurs secondes ».
+          // Après la fenêtre anti-flicker, un snapshot de même version doit
+          // pouvoir réparer un cache local déjà marqué `synced`. On ne refuse
+          // donc plus que les snapshots réellement plus anciens. L'ancienne
+          // comparaison `<=` figeait indéfiniment certains caches Web : le
+          // serveur renvoyait la bonne ligne au même timestamp, mais le merge
+          // n'était jamais rejoué.
           final remoteUpdatedAtIncoming = _extractWorkspaceUpdatedAt(raw);
           if (remoteUpdatedAtIncoming != null && existingDossier.isNotEmpty) {
             final localWorkspaceUpdatedAt =
                 existingDossier.first['workspace_updated_at'] as String?;
             if (localWorkspaceUpdatedAt != null &&
                 localWorkspaceUpdatedAt.isNotEmpty &&
-                remoteUpdatedAtIncoming.compareTo(localWorkspaceUpdatedAt) <=
-                    0) {
-              // Payload distant pas plus récent → on a déjà cette
-              // version (ou une plus récente). Skip pour éviter un
-              // replay inutile qui pourrait créer du flicker.
+                _isRemoteTimestampOlder(
+                  remoteUpdatedAtIncoming,
+                  localWorkspaceUpdatedAt,
+                )) {
               continue;
             }
           }
@@ -860,6 +859,24 @@ class DossierRepository {
         validParentIds: remotePatientIds,
       );
     });
+  }
+
+  bool _isRemoteTimestampOlder(String remoteValue, String localValue) {
+    final remote = DateTime.tryParse(remoteValue);
+    final local = DateTime.tryParse(localValue);
+    if (remote == null || local == null) {
+      return remoteValue.compareTo(localValue) < 0;
+    }
+    return remote.isBefore(local);
+  }
+
+  bool _isRemoteTimestampNewer(String remoteValue, String localValue) {
+    final remote = DateTime.tryParse(remoteValue);
+    final local = DateTime.tryParse(localValue);
+    if (remote == null || local == null) {
+      return remoteValue.compareTo(localValue) > 0;
+    }
+    return remote.isAfter(local);
   }
 
   /// Supprime de [table] toutes les lignes en état `synced` dont

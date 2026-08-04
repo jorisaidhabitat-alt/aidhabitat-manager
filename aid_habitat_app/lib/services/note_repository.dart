@@ -427,6 +427,7 @@ class NoteRepository {
     required String tabKey,
     required int pageNumber,
     required String drawingJson,
+    String? textContent,
     String? remotePath,
     String? remoteUrl,
     String? updatedAt,
@@ -452,15 +453,11 @@ class NoteRepository {
     // vie de BALS Joris sur iPad, sur Mac ça ne se change pas ».
     //
     // Désormais :
-    //  1. Si `remote.updatedAt > local.updated_at` → merge (le serveur
-    //     a une version plus récente, on prend, même si la row locale
-    //     est `pendingSync`).
-    //  2. Si `remote.updatedAt <= local.updated_at` → skip (notre
-    //     version locale est plus fraîche, le push en attente la
-    //     propagera bientôt).
-    //  3. Cas dégradés (timestamps absents / non-parsables) → fallback
-    //     sur l'ancien comportement (skip si !synced) pour préserver
-    //     le travail local en cours.
+    //  1. Une ligne locale non publiée n'est remplacée que si le serveur est
+    //     strictement plus récent.
+    //  2. Une ligne déjà `synced` accepte une version de même timestamp :
+    //     cela permet au serveur canonique de réparer un cache Web incomplet.
+    //  3. Un snapshot serveur réellement plus ancien reste refusé.
     //
     // Le NotesWidget protège déjà la frappe en cours via `_isDirty` →
     // pas de risque d'écraser ce que l'utilisateur tape MAINTENANT,
@@ -472,7 +469,14 @@ class NoteRepository {
         remoteUpdatedAt: updatedAt,
         localUpdatedAt: localUpdatedAt,
       );
-      if (!remoteIsNewer) {
+      final localHasUnpublishedChanges =
+          existing['sync_state']?.toString() != SyncState.synced.name;
+      final remoteIsOlder = _isRemoteUpdatedAtOlder(
+        remoteUpdatedAt: updatedAt,
+        localUpdatedAt: localUpdatedAt,
+      );
+      if ((localHasUnpublishedChanges && !remoteIsNewer) ||
+          (!localHasUnpublishedChanges && remoteIsOlder)) {
         return false;
       }
     }
@@ -484,7 +488,8 @@ class NoteRepository {
 
     final preservedTextContent = existing?['text_content'] as String? ?? '';
     final textContentAtRest = await OfflineVault.instance.sealString(
-      await OfflineVault.instance.openString(preservedTextContent),
+      textContent ??
+          await OfflineVault.instance.openString(preservedTextContent),
     );
     final drawingJsonAtRest = await OfflineVault.instance.sealString(
       drawingJson,
@@ -525,6 +530,18 @@ class NoteRepository {
     final local = DateTime.tryParse(localUpdatedAt);
     if (remote == null || local == null) return false;
     return remote.isAfter(local);
+  }
+
+  bool _isRemoteUpdatedAtOlder({
+    required String? remoteUpdatedAt,
+    required String? localUpdatedAt,
+  }) {
+    if (remoteUpdatedAt == null || remoteUpdatedAt.isEmpty) return false;
+    if (localUpdatedAt == null || localUpdatedAt.isEmpty) return false;
+    final remote = DateTime.tryParse(remoteUpdatedAt);
+    final local = DateTime.tryParse(localUpdatedAt);
+    if (remote == null || local == null) return false;
+    return remote.isBefore(local);
   }
 
   /// Migration locale (demande utilisateur 2026-04-29, option « 3 ») :
