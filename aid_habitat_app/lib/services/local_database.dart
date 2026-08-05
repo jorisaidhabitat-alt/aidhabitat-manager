@@ -3,7 +3,13 @@ import 'dart:io' show File;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart'
-    show kDebugMode, kIsWeb, debugPrint, defaultTargetPlatform, TargetPlatform;
+    show
+        kDebugMode,
+        kIsWeb,
+        debugPrint,
+        defaultTargetPlatform,
+        TargetPlatform,
+        visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 // Audit P0 #4 Layer 2 (2026-05-15) : `sqflite_sqlcipher` permet
@@ -20,6 +26,9 @@ import 'secure_session_storage.dart';
 
 class LocalDatabase {
   LocalDatabase._();
+
+  @visibleForTesting
+  LocalDatabase.forTesting(Database database) : _database = database;
 
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
@@ -73,6 +82,15 @@ class LocalDatabase {
     }
     await _sealExistingWebOfflineVaultData(_database!);
     return _database!;
+  }
+
+  @visibleForTesting
+  Future<void> createSchemaForTesting() async {
+    final db = _database;
+    if (db == null) {
+      throw StateError('La base de test doit être fournie au constructeur');
+    }
+    await _onCreate(db, _dbVersion);
   }
 
   /// Vrai quand on est sur une cible où `sqflite_sqlcipher` peut

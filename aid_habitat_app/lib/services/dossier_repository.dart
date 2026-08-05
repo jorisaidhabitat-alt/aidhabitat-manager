@@ -811,6 +811,18 @@ class DossierRepository {
           localId: dossierId,
           data: dossierData,
         );
+
+        // Contexte de vie possède sa propre table SQLite. Le payload distant
+        // était auparavant stocké uniquement dans `dossiers`, alors que
+        // ContextTab lit `contexte_de_vie` : les données multi-occupants
+        // restaient donc figées ou vides sur un autre appareil.
+        await _mergeRemoteContexteDeVie(
+          txn: txn,
+          raw: raw,
+          dossierId: dossierId,
+          patientLocalId: patientLocalId,
+          now: now,
+        );
       }
 
       // ----------------------------------------------------------------
@@ -877,6 +889,80 @@ class DossierRepository {
       return remoteValue.compareTo(localValue) > 0;
     }
     return remote.isAfter(local);
+  }
+
+  Future<void> _mergeRemoteContexteDeVie({
+    required Transaction txn,
+    required Map<String, dynamic> raw,
+    required String dossierId,
+    required String patientLocalId,
+    required String now,
+  }) async {
+    final hasMedical = raw['medicalContext'] is Map;
+    final hasAutonomy = raw['autonomy'] is Map;
+    if (!hasMedical && !hasAutonomy) return;
+
+    final existing = await txn.query(
+      'contexte_de_vie',
+      columns: const ['local_id', 'sync_state'],
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
+
+    if (existing.isNotEmpty) {
+      final syncState = existing.first['sync_state'] as String?;
+      if (syncState != null && syncState != SyncState.synced.name) {
+        return;
+      }
+
+      // Même après markCompleted, NocoDB peut brièvement relire l'ancienne
+      // valeur. Cette fenêtre protège la copie locale fraîche, comme pour les
+      // patients et logements dans le merge workspace principal.
+      final cutoff = DateTime.now()
+          .subtract(const Duration(seconds: 30))
+          .toIso8601String();
+      final activeOrRecentOperations = await txn.rawQuery(
+        '''
+        SELECT 1 FROM sync_operations
+        WHERE entity_type = 'contexte_de_vie'
+          AND entity_local_id = ?
+          AND (
+            status IN ('pending', 'running', 'failed')
+            OR (status = 'completed' AND updated_at > ?)
+          )
+        LIMIT 1
+        ''',
+        [dossierId, cutoff],
+      );
+      if (activeOrRecentOperations.isNotEmpty) return;
+    }
+
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'patient_local_id': patientLocalId,
+      'updated_at': now,
+      'sync_state': SyncState.synced.name,
+    };
+    if (hasMedical) {
+      data['medical_context_json'] = jsonEncode(raw['medicalContext']);
+    }
+    if (hasAutonomy) {
+      data['autonomy_json'] = jsonEncode(raw['autonomy']);
+    }
+
+    if (existing.isEmpty) {
+      data['local_id'] = 'ctx_remote_$dossierId';
+      await txn.insert('contexte_de_vie', data);
+      return;
+    }
+
+    await txn.update(
+      'contexte_de_vie',
+      data,
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+    );
   }
 
   /// Supprime de [table] toutes les lignes en état `synced` dont
