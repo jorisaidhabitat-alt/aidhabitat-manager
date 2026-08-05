@@ -450,11 +450,16 @@ const AUTONOMY_ITEMS = [
   'Toilette/habillage',
   'Continence',
   'Repas (y compris courses)',
-  'Tâches ménagères.domestiques',
+  'Tâches ménagères',
   'Démarches admin',
   'Cognition',
   'Communication',
 ];
+
+const canonicalAutonomyItemName = (value) => {
+  const name = stringValue(value).trim();
+  return name === 'Tâches ménagères.domestiques' ? 'Tâches ménagères' : name;
+};
 
 const VISIT_RECOMMENDATION_FIELDS = [
   'uuid_source',
@@ -1147,7 +1152,7 @@ const parseChecklistDone = (contextRecord) => {
     'Toilette/habillage': Boolean(field(contextRecord, 'autonomie_toilette')),
     'Continence': false,
     'Repas (y compris courses)': Boolean(field(contextRecord, 'autonomie_repas')),
-    'Tâches ménagères.domestiques': Boolean(field(contextRecord, 'autonomie_menage')),
+    'Tâches ménagères': Boolean(field(contextRecord, 'autonomie_menage')),
     'Démarches admin': Boolean(field(contextRecord, 'autonomie_demarches_admin')),
     'Cognition': false,
     'Communication': false,
@@ -3796,7 +3801,10 @@ const upsertContexte = async (
   const dossierRecord = options.dossierRecord || null;
   const beneficiaryRecordId = options.beneficiaryRecordId ?? null;
 
-  const checklistMap = new Map((autonomy?.checklist || []).map((item) => [item.name, item.checked]));
+  const checklistMap = new Map((autonomy?.checklist || []).map((item) => [
+    canonicalAutonomyItemName(item.name),
+    item.checked,
+  ]));
   const normalizedOccupants = Array.isArray(autonomy?.occupants)
     ? autonomy.occupants
       .filter((entry) => entry && typeof entry === 'object')
@@ -3882,7 +3890,7 @@ const upsertContexte = async (
     fields.restrictions_conduite = checklistMap.get('Conduite automobile') ? 'Oui' : '';
     fields.autonomie_toilette = checklistMap.get('Toilette/habillage') ? 'Oui' : '';
     fields.autonomie_repas = checklistMap.get('Repas (y compris courses)') ? 'Oui' : '';
-    fields.autonomie_menage = checklistMap.get('Tâches ménagères.domestiques') ? 'Oui' : '';
+    fields.autonomie_menage = checklistMap.get('Tâches ménagères') ? 'Oui' : '';
     fields.autonomie_demarches_admin = checklistMap.get('Démarches admin') ? 'Oui' : '';
     // `occupants_json` mélange medical + autonomy par occupant. On
     // ne le push que si autonomy est présent (cas typique : edit des

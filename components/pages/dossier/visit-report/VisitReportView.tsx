@@ -623,17 +623,21 @@ const AUTONOMY_DEFAULT_ITEMS = [
     "Toilette/habillage",
     "Continence",
     "Repas (y compris courses)",
-    "Tâches ménagères.domestiques",
+    "Tâches ménagères",
     "Démarches admin",
     "Cognition",
     "Communication",
 ];
 
+const canonicalAutonomyItemName = (name: string) => (
+    name === 'Tâches ménagères.domestiques' ? 'Tâches ménagères' : name
+);
+
 const buildAutonomyItems = (items?: Array<{ name: string; checked: boolean }>) => AUTONOMY_DEFAULT_ITEMS.map((name) => {
-    const existing = items?.find((item) => item.name === name);
+    const existing = items?.find((item) => canonicalAutonomyItemName(item.name) === name);
     return {
         name,
-        label: name === 'Tâches ménagères.domestiques' ? 'Tâches ménagères' : name,
+        label: name,
         checked: Boolean(existing?.checked),
     };
 });

@@ -40,6 +40,15 @@ const kAutonomyItemNames = [
   'Communication',
 ];
 
+const kHouseholdAutonomyItemName = 'Tâches ménagères';
+const kLegacyHouseholdAutonomyItemName = 'Tâches ménagères.domestiques';
+
+String canonicalAutonomyItemName(String name) {
+  return name.trim() == kLegacyHouseholdAutonomyItemName
+      ? kHouseholdAutonomyItemName
+      : name.trim();
+}
+
 class LocalAccessScope {
   final String type;
   final String value;

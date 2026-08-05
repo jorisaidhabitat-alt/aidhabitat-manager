@@ -243,10 +243,15 @@ class _ContextTabState extends State<ContextTab>
 
   /// Garantit les 11 items dans l'ordre canonique.
   List<AutonomyItem> _mergeAutonomyItems(List<AutonomyItem> existing) {
-    final map = {for (final e in existing) e.name: e};
-    return kAutonomyItemNames
-        .map((name) => map[name] ?? AutonomyItem(name: name))
-        .toList();
+    final map = {
+      for (final e in existing) canonicalAutonomyItemName(e.name): e,
+    };
+    return kAutonomyItemNames.map((name) {
+      final item = map[name];
+      return item == null
+          ? AutonomyItem(name: name)
+          : AutonomyItem(name: name, checked: item.checked);
+    }).toList();
   }
 
   /// Reconstitue la liste des 11 items humanHelp à partir d'un texte
@@ -256,10 +261,15 @@ class _ContextTabState extends State<ContextTab>
     String rawHomeHelpTxt,
   ) {
     if (existing.isNotEmpty) {
-      final map = {for (final e in existing) e.name: e};
-      return kAutonomyItemNames
-          .map((name) => map[name] ?? AutonomyItem(name: name))
-          .toList();
+      final map = {
+        for (final e in existing) canonicalAutonomyItemName(e.name): e,
+      };
+      return kAutonomyItemNames.map((name) {
+        final item = map[name];
+        return item == null
+            ? AutonomyItem(name: name)
+            : AutonomyItem(name: name, checked: item.checked);
+      }).toList();
     }
     final normalized = rawHomeHelpTxt.toLowerCase();
     return kAutonomyItemNames
